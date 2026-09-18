@@ -2,7 +2,7 @@
 summary: tauri's window dragDropEnabled defaults true and its native handler intercepts events before html5 dnd sees them
 status: current
 updated: 2026-06-29
-source: CM6 migration (personal/sway, branch code-mirror-6); `src-tauri/tauri.conf.json`, `src/components/TerminalView.tsx` (`handleDrop`)
+source: CM6 migration (personal/tori, branch code-mirror-6); `src-tauri/tauri.conf.json`, `src/components/TerminalView.tsx` (`handleDrop`)
 ---
 
 # Tauri dragDropEnabled defaults true and blocks HTML5 drop

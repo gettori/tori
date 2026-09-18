@@ -2,7 +2,7 @@
 summary: caretPositionFromPoint is chromium only, WKWebView answers inside a shadow tree so a drop point cannot be measured
 status: current
 updated: 2026-09-04
-source: "\"Labelled path attachments in the chat composer\" (personal/sway, branch `bugfix-260903`), phase 2, `src/panels/Chat/Composer.tsx`, _2026-09-04_"
+source: "\"Labelled path attachments in the chat composer\" (personal/tori, branch `bugfix-260903`), phase 2, `src/panels/Chat/Composer.tsx`, _2026-09-04_"
 ---
 
 # `caretPositionFromPoint` does not exist in WKWebView

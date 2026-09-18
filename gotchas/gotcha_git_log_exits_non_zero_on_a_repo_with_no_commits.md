@@ -2,7 +2,7 @@
 summary: git log exits non-zero on a repo with an unborn HEAD, the normal state of a fresh worktree, so probe HEAD first
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 6; `src-tauri/src/git.rs` (`git_log`); commit fecf42d"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 6; `src-tauri/src/git.rs` (`git_log`); commit fecf42d"
 ---
 
 # `git log` exits non-zero on a repo with no commits

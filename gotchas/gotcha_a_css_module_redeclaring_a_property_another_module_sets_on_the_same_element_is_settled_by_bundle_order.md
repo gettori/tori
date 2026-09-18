@@ -2,7 +2,7 @@
 summary: two CSS modules declaring the same property on one element resolve by bundler emit order, use a custom property
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); Phase 3 self-review; `src/components/Dialog/Dialog.module.css:37`, `src/components/Omnibox/Omnibox.module.css`, `scripts/check-tokens.mjs` check 8; commit `9d471b7`"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); Phase 3 self-review; `src/components/Dialog/Dialog.module.css:37`, `src/components/Omnibox/Omnibox.module.css`, `scripts/check-tokens.mjs` check 8; commit `9d471b7`"
 ---
 
 # A CSS module redeclaring a property another module sets on the same element is settled by bundle order

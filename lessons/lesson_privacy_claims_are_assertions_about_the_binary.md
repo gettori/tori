@@ -2,16 +2,16 @@
 summary: a no telemetry README claim was written from memory and was false, so it needs a count of every outbound call site
 status: current
 updated: 2026-07-28
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phase 5; `README.md`, `src-tauri/src/model.rs:11`, `docs/INSTALL.md`"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 5; `README.md`, `src-tauri/src/model.rs:11`, `docs/INSTALL.md`"
 ---
 
 # A privacy claim is an assertion about the binary, not a copy decision
 
 ## What happened
 
-The v0.1 README needed a no-telemetry statement. The first draft said Sway "makes exactly one network request on its own behalf: a once-a-day check against the GitHub Releases API," and that everything it stores is a plain file under `~/.config/sway/`.
+The v0.1 README needed a no-telemetry statement. The first draft said Tori "makes exactly one network request on its own behalf: a once-a-day check against the GitHub Releases API," and that everything it stores is a plain file under `~/.config/tori/`.
 
-Both sentences were false. `model.rs:11` fetches `https://openrouter.ai/api/v1/models` daily for the context meter's per-model window sizes (invoked from `Toolbar.tsx:48`), and caches the result to `~/Library/Caches/sway/`. `docs/INSTALL.md` carried the same error from an earlier phase, telling users that deleting `~/.config/sway/` "removes every trace."
+Both sentences were false. `model.rs:11` fetches `https://openrouter.ai/api/v1/models` daily for the context meter's per-model window sizes (invoked from `Toolbar.tsx:48`), and caches the result to `~/Library/Caches/tori/`. `docs/INSTALL.md` carried the same error from an earlier phase, telling users that deleting `~/.config/tori/` "removes every trace."
 
 Nothing was hidden. The update check was simply the network call that came to mind, and the sentence was written from memory of the architecture rather than from the code.
 
@@ -32,9 +32,9 @@ Two things fall out of this that are worth keeping:
 
 ## Re-audited 2026-07-28 (native chat)
 
-Re-run exhaustively when chat became the default surface, since the whole feature is a network-adjacent one. Result: Sway's own outbound HTTP is **still exactly two** `ureq::get` call sites, unchanged. `ureq` remains the only HTTP client in `Cargo.toml`; there is no `fetch`/`XHR`/`WebSocket` anywhere in the frontend; there is no Tauri http or updater plugin; git's `clone`/`fetch`/`push` are user-initiated subprocesses. The chat work added **zero** Sway-originated network paths - the MCP module touches local files only, hook events are in-band, and the harness override spawns a local binary.
+Re-run exhaustively when chat became the default surface, since the whole feature is a network-adjacent one. Result: Tori's own outbound HTTP is **still exactly two** `ureq::get` call sites, unchanged. `ureq` remains the only HTTP client in `Cargo.toml`; there is no `fetch`/`XHR`/`WebSocket` anywhere in the frontend; there is no Tauri http or updater plugin; git's `clone`/`fetch`/`push` are user-initiated subprocesses. The chat work added **zero** Tori-originated network paths - the MCP module touches local files only, hook events are in-band, and the harness override spawns a local binary.
 
-The claim still needed editing, though, which is the point of re-auditing rather than re-asserting. It said nothing about the fact that Sway now routinely **starts a process that talks to a vendor**. Added: the agent's traffic is its own, under the user's own subscription, and for MCP, Sway writes the config while Claude - not Sway - connects to whatever it names. A true statement can still mislead by omission once the product around it changes.
+The claim still needed editing, though, which is the point of re-auditing rather than re-asserting. It said nothing about the fact that Tori now routinely **starts a process that talks to a vendor**. Added: the agent's traffic is its own, under the user's own subscription, and for MCP, Tori writes the config while Claude - not Tori - connects to whatever it names. A true statement can still mislead by omission once the product around it changes.
 
 ## Related
 

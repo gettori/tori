@@ -2,7 +2,7 @@
 summary: give a thing a stable id separate from the name its consumers spell, a rename becomes one auditable table applied last
 status: current
 updated: 2026-07-24
-source: "Native theming system: palette + roles generator (personal/sway, branch `terminal-editor-design`); Phases 1, 3, 4; commits 08c2307, ad31d34, 825c0bb; `src/theme/roles.ts`"
+source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 1, 3, 4; commits 08c2307, ad31d34, 825c0bb; `src/theme/roles.ts`"
 ---
 
 # Split a thing's identity from the name its consumers spell

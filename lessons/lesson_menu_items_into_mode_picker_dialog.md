@@ -2,7 +2,7 @@
 summary: context menu rows that act on the same node and differ only by parameter collapse into one dialog with a mode picker
 status: current
 updated: 2026-07-12
-source: Combine group create actions into one New dialog (personal/sway, branch code-mirror-6); `src/components/NewProjectDialog.tsx`, `src/components/Sidebar.tsx` group menu; sibling `src/components/InitGitDialog.tsx`
+source: Combine group create actions into one New dialog (personal/tori, branch code-mirror-6); `src/components/NewProjectDialog.tsx`, `src/components/Sidebar.tsx` group menu; sibling `src/components/InitGitDialog.tsx`
 ---
 
 # Collapse related context-menu rows into one dialog with a mode picker

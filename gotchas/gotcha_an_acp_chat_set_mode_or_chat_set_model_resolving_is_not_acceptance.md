@@ -2,7 +2,7 @@
 summary: an ACP switch promise resolving means only that the request exists, not acceptance, so a .then can record a refusal
 status: current
 updated: 2026-09-04
-source: plan "Confirm an ACP mode or model switch from the agent's own answer" (personal/sway, branch `bugfix-260903`, issue 164, commit 1aedc0b), `src/panels/Chat/ChatView.tsx` (`recordConfirmed`, `askedMode`), `src-tauri/src/chat/acp_transport.rs:413`, [[concept_acp_config_options]], _2026-09-04_
+source: plan "Confirm an ACP mode or model switch from the agent's own answer" (personal/tori, branch `bugfix-260903`, issue 164, commit 1aedc0b), `src/panels/Chat/ChatView.tsx` (`recordConfirmed`, `askedMode`), `src-tauri/src/chat/acp_transport.rs:413`, [[concept_acp_config_options]], _2026-09-04_
 ---
 
 # An ACP `chat_set_mode` or `chat_set_model` resolving is not acceptance

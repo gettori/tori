@@ -2,7 +2,7 @@
 summary: Kobalte's toast store is module global and only clears on close, so leftover toasts leak into the next test or region
 status: current
 updated: 2026-08-15
-source: "plan \"Toasts onto Kobalte Toast\" (personal/sway, branch `105-toasts`, issue #105); `src/components/Toasts/Toasts.test.tsx`; `@kobalte/core@0.13.13` `dist/chunk/DX4MAOJL.js:259`; see [[component_toasts]]"
+source: "plan \"Toasts onto Kobalte Toast\" (personal/tori, branch `105-toasts`, issue #105); `src/components/Toasts/Toasts.test.tsx`; `@kobalte/core@0.13.13` `dist/chunk/DX4MAOJL.js:259`; see [[component_toasts]]"
 ---
 
 # Kobalte's toast store outlives the region that shows it

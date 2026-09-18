@@ -2,7 +2,7 @@
 summary: js-debug puts the whole absolute path in a frame's source.name, take the basename only when it starts with a slash
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phase 10 (personal/sway, branch `wave-8`); `src/utils/debugStack.ts` (`shortSource`)"
+source: "Editor wave 8: the debugger (DAP), Phase 10 (personal/tori, branch `wave-8`); `src/utils/debugStack.ts` (`shortSource`)"
 ---
 
 # js-debug's `source.name` is the absolute path

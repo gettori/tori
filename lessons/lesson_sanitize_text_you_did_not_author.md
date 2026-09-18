@@ -2,7 +2,7 @@
 summary: a PR review comment is the first send path text nobody here wrote, and its paste terminator can turn into live typing
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 12 self-review (Major, security); commit d0d9a3e; `src/utils/safeSend.ts:93`, `src/utils/threadAsk.ts`"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 12 self-review (Major, security); commit d0d9a3e; `src/utils/safeSend.ts:93`, `src/utils/threadAsk.ts`"
 ---
 
 # Sanitize text you did not author before it reaches a terminal

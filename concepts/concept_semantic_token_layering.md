@@ -2,12 +2,12 @@
 summary: a server's resolved colours paint over the grammar's guess, and deltaStart in the wire format is relative only per line
 status: current
 updated: 2026-08-03
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 7; commit 075b5d7; `src/utils/semanticTokens.ts`, `src/panels/Editor/semanticHighlight.ts`, `lspSemanticTokens.ts`"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 7; commit 075b5d7; `src/utils/semanticTokens.ts`, `src/panels/Editor/semanticHighlight.ts`, `lspSemanticTokens.ts`"
 ---
 
 # Semantic tokens: the server's answer layered over the grammar's guess
 
-A grammar can only see shape. `foo` in `f(foo)` and `foo` in `{ foo: 1 }` are the same three characters to Lezer, so lexical highlighting has to guess — Sway's guess was a `t.local(t.variableName)` rule that painted a good deal of ordinary local state as parameters. A language server has resolved the program, so it can say which is which.
+A grammar can only see shape. `foo` in `f(foo)` and `foo` in `{ foo: 1 }` are the same three characters to Lezer, so lexical highlighting has to guess — Tori's guess was a `t.local(t.variableName)` rule that painted a good deal of ordinary local state as parameters. A language server has resolved the program, so it can say which is which.
 
 **The two coexist; the server does not replace the grammar.** Lexical highlighting colours every character instantly and offline; the server colours the subset it has actually resolved, hundreds of milliseconds later, and only while it is running. So semantic answers arrive as *decorations on top*, never as a swapped `HighlightStyle`, and a file with no server looks exactly as it did. The capability block says so too: `augmentsSyntaxTokens: true`.
 
@@ -29,7 +29,7 @@ The **legend** is declared once, at `initialize`, on `semanticTokensProvider`. W
 
 ## Colours move, they are not added
 
-Every token type maps onto a `--syntax-*` role the theme already declares and the grammar already uses. Semantic colouring therefore introduces no new colour — it moves *existing* colours onto the runs of text that actually deserve them. A type Sway has no role for (rust-analyzer ships a dozen of its own) simply gets no class and keeps whatever the grammar gave it.
+Every token type maps onto a `--syntax-*` role the theme already declares and the grammar already uses. Semantic colouring therefore introduces no new colour — it moves *existing* colours onto the runs of text that actually deserve them. A type Tori has no role for (rust-analyzer ships a dozen of its own) simply gets no class and keeps whatever the grammar gave it.
 
 Only one modifier renders: `deprecated`, struck through rather than recoloured, so it composes — a deprecated method should still read as a method.
 

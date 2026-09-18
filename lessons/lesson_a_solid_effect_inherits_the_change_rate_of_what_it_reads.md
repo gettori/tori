@@ -2,7 +2,7 @@
 summary: a derived accessor over a store signal inherits the store's change rate, so an effect on it fires far more than meant
 status: current
 updated: 2026-08-26
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 6 (commit fecf42d); `src/panels/Editor/CommitLog.tsx`; hit twice more in Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155); phases 1 and 3, commits 8e5d0c3 and 7580a41; `src/panels/Editor/FileTree/FileTree.tsx`, `src/panels/Editor/Editor.tsx`"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 6 (commit fecf42d); `src/panels/Editor/CommitLog.tsx`; hit twice more in Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155); phases 1 and 3, commits 8e5d0c3 and 7580a41; `src/panels/Editor/FileTree/FileTree.tsx`, `src/panels/Editor/Editor.tsx`"
 ---
 
 # A Solid effect inherits the change rate of whatever its accessors read

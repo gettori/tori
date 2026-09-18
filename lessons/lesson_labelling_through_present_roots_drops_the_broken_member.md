@@ -2,7 +2,7 @@
 summary: labelling a path through only the present members prints a bare path for a broken one, so naming needs the full record
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158) - phase 4 self-review - `src/components/Omnibox/Omnibox.tsx:321`, `src/utils/featureMembers.ts:113`, commit `809c85b`"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158) - phase 4 self-review - `src/components/Omnibox/Omnibox.tsx:321`, `src/utils/featureMembers.ts:113`, commit `809c85b`"
 ---
 
 # Label through the member record, never through the selection's present roots

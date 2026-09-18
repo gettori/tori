@@ -2,7 +2,7 @@
 summary: F5 builds one of three debug configs, and console must stay internalConsole or js-debug loses the session silently
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phase 5; epic #69, sub-issue #71; commit 2a77eac"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phase 5; epic #69, sub-issue #71; commit 2a77eac"
 ---
 
 # Debug launch: three target kinds and one config builder
@@ -20,8 +20,8 @@ Three kinds, and no fourth: **the active file**, **a `package.json` script**, an
 - **`console: "internalConsole"` keeps the debuggee's stdio on the DAP wire as `output` events.** Phase 1 measured the alternative and it is not a preference: `integratedTerminal` and `externalTerminal` both make js-debug issue `runInTerminal`, and a client that cannot serve it loses the session at **zero stops, zero output and zero errors**, completely silently. It is also declared on `INodeLaunchConfiguration` alone, so sending it on an attach is a field the adapter has no slot for. See [[gotcha_console_integratedterminal_makes_js_debug_issue_runinterminal]].
 - **`stopOnEntry: true` is not a user-facing pause.** `dapSessions` continues straight through it. It exists because a short-lived TypeScript target otherwise runs to completion before js-debug resolves its source map, so the breakpoint never binds. See [[lesson_when_config_changes_nothing_it_is_a_race]].
 - **The package runner comes from the lockfile**, reusing `tasks.ts`'s rule rather than a second copy: `npm run dev` in a pnpm repo is not a preference somebody got wrong, it is a command that installs the wrong tree. See [[gotcha_npm_cannot_graft_onto_this_pnpm_tree]].
-- **An attach config carries none of the launch fields.** Sway did not start the process, so it has no environment to hand it and no entry to pause at. The port is remembered per workspace, following [[concept_path_keyed_workspace_stores]].
-- **`env` carries the augmented PATH**, because a GUI-launched Sway inherits a minimal one and `pnpm` is not on it ([[gotcha_gui_launched_processes_inherit_a_minimal_path]]). Phase 1 confirmed js-debug resolves `node` and `pnpm` from exactly the PATH it is handed.
+- **An attach config carries none of the launch fields.** Tori did not start the process, so it has no environment to hand it and no entry to pause at. The port is remembered per workspace, following [[concept_path_keyed_workspace_stores]].
+- **`env` carries the augmented PATH**, because a GUI-launched Tori inherits a minimal one and `pnpm` is not on it ([[gotcha_gui_launched_processes_inherit_a_minimal_path]]). Phase 1 confirmed js-debug resolves `node` and `pnpm` from exactly the PATH it is handed.
 
 ## Measured, all three kinds against the real bundle
 

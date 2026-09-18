@@ -1,8 +1,8 @@
 ---
-summary: askpass re execs Sway's own binary as the git credential helper over a private unix socket, failing closed on any error
+summary: askpass re execs Tori's own binary as the git credential helper over a private unix socket, failing closed on any error
 status: current
 updated: 2026-07-19
-source: Askpass credential bridge for backgrounded git (personal/sway, branch code-mirror-6); commit 3fff674; `src-tauri/src/askpass.rs`; `git_push` sibling added in Review-to-prompt + commit flow (branch `topbar`); commit 35bc401
+source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); commit 3fff674; `src-tauri/src/askpass.rs`; `git_push` sibling added in Review-to-prompt + commit flow (branch `topbar`); commit 35bc401
 ---
 
 # Askpass credential bridge
@@ -11,7 +11,7 @@ How a **backgrounded** git op (fetch/pull/push with no TTY) obtains credentials 
 
 ## The mechanism
 
-- **Same-binary re-exec as the helper.** `git`/`ssh` ask for credentials by invoking `$GIT_ASKPASS`/`$SSH_ASKPASS` with the prompt as `argv[1]` and reading the answer off stdout. We point those at **Sway's own executable** (`std::env::current_exe`), not a second bundled binary. `run()` checks an env marker (`SWAY_ASKPASS_SOCK` present) **before any Tauri/AppKit init** and, if set, runs a **stdout-answer-only** helper path then exits. The app's own process never has the marker (it is set only on the git child `Command`), so the branch is unambiguous. This dodges all the path-resolution/bundling problems of shipping a separate helper.
+- **Same-binary re-exec as the helper.** `git`/`ssh` ask for credentials by invoking `$GIT_ASKPASS`/`$SSH_ASKPASS` with the prompt as `argv[1]` and reading the answer off stdout. We point those at **Tori's own executable** (`std::env::current_exe`), not a second bundled binary. `run()` checks an env marker (`TORI_ASKPASS_SOCK` present) **before any Tauri/AppKit init** and, if set, runs a **stdout-answer-only** helper path then exits. The app's own process never has the marker (it is set only on the git child `Command`), so the branch is unambiguous. This dodges all the path-resolution/bundling problems of shipping a separate helper.
 - **Private Unix-socket transport, no tokio.** The app hosts a `std::os::unix::net::UnixListener` in a `0700` dir under `$TMPDIR`, with a **per-session random token** (`/dev/urandom`). An accept loop spawns a **thread per connection** (mirrors [[component_pty_host]]'s std-thread model). The helper connects, sends one newline-framed JSON `{token, op_id, prompt}`, and reads one response line back.
 - **Per-op identity, not per-prompt.** git calls askpass **once per field as a separate process** ("Username for …" then "Password for …"), so one fetch is 2+ helper runs. An `op_id` is threaded env → helper → socket so sibling prompts of one op are correlated. See [[gotcha_git_calls_askpass_once_per_field_as_separate_processes]].
 - **Per-op cancel latch.** Cancelling any field (`askpass_respond(id, null)`) inserts the `op_id` into a `cancelled` set; the op's *remaining* field-prompts then return empty immediately without surfacing a second dialog. So cancelling the username prompt aborts the whole fetch, not just one field.

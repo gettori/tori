@@ -2,7 +2,7 @@
 summary: axe treats a placeholder as an accessible name, so a field's only name vanishes the moment the user types
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/sway, branch `100-migrate-seven-conplex-dialogs`, issue #100); `src/components/Dialogs/SpaceDialog.tsx:14`, `PickerModal.tsx:143`; PR #125"
+source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/tori, branch `100-migrate-seven-conplex-dialogs`, issue #100); `src/components/Dialogs/SpaceDialog.tsx:14`, `PickerModal.tsx:143`; PR #125"
 ---
 
 # axe accepts a `placeholder` as an accessible name

@@ -2,7 +2,7 @@
 summary: markdown preview and image view bypass CodeEditor entirely since it reads every open file as utf8 text
 status: current
 updated: 2026-07-19
-source: "v0.1 features: status indicators, search, input layer (personal/sway, branch `topbar`); Phase 3"
+source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3"
 ---
 
 # Markdown preview + image view

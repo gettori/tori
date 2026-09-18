@@ -2,7 +2,7 @@
 summary: js split on newline yields a trailing empty string that rust's lines() does not, drifting a hunk hash on the last hunk
 status: current
 updated: 2026-07-20
-source: Editor upgrades (personal/sway, phase 2); `src/utils/diffHunks.ts`, `src-tauri/src/patch.rs` (`cross_language_tests`); commit 01f0196
+source: Editor upgrades (personal/tori, phase 2); `src/utils/diffHunks.ts`, `src-tauri/src/patch.rs` (`cross_language_tests`); commit 01f0196
 ---
 
 # A TS and Rust hunk parser must agree about trailing newlines

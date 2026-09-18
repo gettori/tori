@@ -2,7 +2,7 @@
 summary: giving CodeMirror a full document ChangeSet maps every position to the change's end, breaking rename and format on save
 status: current
 updated: 2026-08-03
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phases 3, 6; `src/panels/Editor/docDiff.ts`; commits c5dac84, cbb4497"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phases 3, 6; `src/panels/Editor/docDiff.ts`; commits c5dac84, cbb4497"
 ---
 
 # A whole-document replace collapses every position map

@@ -2,7 +2,7 @@
 summary: a CSS rule written against the wrong sibling matched nothing, yet the token guard passed since var() there resolves
 status: current
 updated: 2026-08-12
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 8; commit 14b389b; `src/panels/Editor/vimMode.ts`, `vimMode.test.tsx`"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 8; commit 14b389b; `src/panels/Editor/vimMode.ts`, `vimMode.test.tsx`"
 ---
 
 # A CSS rule that matches nothing passes every guard you have

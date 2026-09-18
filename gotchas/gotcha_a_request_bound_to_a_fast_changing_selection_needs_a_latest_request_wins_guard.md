@@ -2,7 +2,7 @@
 summary: an async fetch keyed on a fast changing selection can resolve stale and overwrite fresh data, guard with a request id
 status: current
 updated: 2026-07-18
-source: "Session worklog: status dot, touched files, panels (personal/sway, branch `topbar`); `src/panels/LeftSidebar/LeftSidebar.tsx` (`touchedCountFor`), `src/panels/Editor/SessionPanel.tsx` (`requestFor`), `src/panels/Editor/TranscriptViewer.tsx` (`requestFor`); see [[component_session_worklog]]"
+source: "Session worklog: status dot, touched files, panels (personal/tori, branch `topbar`); `src/panels/LeftSidebar/LeftSidebar.tsx` (`touchedCountFor`), `src/panels/Editor/SessionPanel.tsx` (`requestFor`), `src/panels/Editor/TranscriptViewer.tsx` (`requestFor`); see [[component_session_worklog]]"
 ---
 
 # A request bound to a fast-changing selection needs a latest-request-wins guard

@@ -2,7 +2,7 @@
 summary: a latched cached promise's value is the answer at first load, await it for ordering but read the signal for now
 status: current
 updated: 2026-08-17
-source: plan "Model catalogues from the harnesses themselves" (phase 4, personal/sway, branch `settings-and-chat`); `src/utils/modelCatalog.ts` (`ensureModelCatalogsLoaded`, `refreshDueCatalogs`); [[lesson_a_batch_answers_when_its_slowest_member_does]]
+source: plan "Model catalogues from the harnesses themselves" (phase 4, personal/tori, branch `settings-and-chat`); `src/utils/modelCatalog.ts` (`ensureModelCatalogsLoaded`, `refreshDueCatalogs`); [[lesson_a_batch_answers_when_its_slowest_member_does]]
 ---
 
 # A cached promise's value is the state of the world at first load

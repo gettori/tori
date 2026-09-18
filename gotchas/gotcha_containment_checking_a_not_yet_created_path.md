@@ -2,7 +2,7 @@
 summary: canonicalize fails on a not yet created path, reject parent dir segments first, then canonicalize the deepest ancestor
 status: current
 updated: 2026-07-10
-source: "Shared tab: editable `.shared` folder (personal/sway, branch code-mirror-6); `src-tauri/src/fs.rs` (`ensure_inside`, `resolve_existing_prefix`, `fs_mkdir`/`fs_delete`/`fs_rename`)"
+source: "Shared tab: editable `.shared` folder (personal/tori, branch code-mirror-6); `src-tauri/src/fs.rs` (`ensure_inside`, `resolve_existing_prefix`, `fs_mkdir`/`fs_delete`/`fs_rename`)"
 ---
 
 # Containment-checking a not-yet-created path

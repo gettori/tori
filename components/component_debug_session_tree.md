@@ -2,7 +2,7 @@
 summary: a debug run is a tree from birth, correlation is on request_seq and the failure text lives in body.error.format
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phase 3; epic #69, sub-issue #70; commit 1e72ae1"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phase 3; epic #69, sub-issue #70; commit 1e72ae1"
 ---
 
 # Debug session tree: the DAP client and the sessions it holds

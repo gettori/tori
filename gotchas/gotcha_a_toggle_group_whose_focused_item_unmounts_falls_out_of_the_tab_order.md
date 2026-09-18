@@ -2,7 +2,7 @@
 summary: a Kobalte toggle group never clears focusedKey when its item unmounts, so every item reads tabIndex -1 and Tab loses it
 status: current
 updated: 2026-08-15
-source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/sway, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/components/IconGrid/IconGrid.tsx`; commit 8f86c77"
+source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/tori, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/components/IconGrid/IconGrid.tsx`; commit 8f86c77"
 ---
 
 # A toggle group whose focused item unmounts falls out of the tab order

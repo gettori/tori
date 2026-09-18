@@ -2,7 +2,7 @@
 summary: closing stdin to deliver a mid turn message ends a stream json claude session, since it reads stdin until EOF
 status: current
 updated: 2026-07-29
-source: Chat surface plan, phase 2 spike 5 (personal/sway, branch `chat`); [[concept_mid_turn_steer]]
+source: Chat surface plan, phase 2 spike 5 (personal/tori, branch `chat`); [[concept_mid_turn_steer]]
 ---
 
 # A stream-json CLI reads stdin until EOF

@@ -2,7 +2,7 @@
 summary: a fresh brew rustup install defaults to a toolchain too old for Tauri 2, run rustup update stable first
 status: current
 updated: 2026-06-28
-source: Sway build plan (personal/sway); Phase 0 setup
+source: Tori build plan (personal/tori); Phase 0 setup
 ---
 
 # brew rustup ships an old default toolchain

@@ -2,7 +2,7 @@
 summary: the PR list, diff, threads and merge bar read checks from the shared poll store rather than fetching their own copy
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phases 4, 6, 8 to 13; commits 85728ec, db4be3b, cdd19dc, ce1c941, 51f1f1a, 8e6f03b, d0d9a3e, 945c1bd"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 4, 6, 8 to 13; commits 85728ec, db4be3b, cdd19dc, ce1c941, 51f1f1a, 8e6f03b, d0d9a3e, 945c1bd"
 ---
 
 # Pull Requests panel

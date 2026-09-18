@@ -2,7 +2,7 @@
 summary: a hidden ghost row rendered for measurement can quietly answer every query a test aims at the real visible row instead
 status: current
 updated: 2026-08-15
-source: Menu onto Kobalte DropdownMenu and ContextMenu, phase 4 (personal/sway, branch `103-menu`, skarif2/sway#103); `src/panels/Editor/__fixtures__/editorHarness.ts`, `src/test/tabs.ts`, `src/panels/Editor/syntheticTab.test.tsx`; commit `a0913d9`
+source: Menu onto Kobalte DropdownMenu and ContextMenu, phase 4 (personal/tori, branch `103-menu`, gettori/tori#103); `src/panels/Editor/__fixtures__/editorHarness.ts`, `src/test/tabs.ts`, `src/panels/Editor/syntheticTab.test.tsx`; commit `a0913d9`
 ---
 
 # The measuring ghost answered the test

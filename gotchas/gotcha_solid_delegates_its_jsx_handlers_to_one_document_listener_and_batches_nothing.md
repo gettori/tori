@@ -2,7 +2,7 @@
 summary: solid attaches one delegated listener per event type on document, a capture phase stop upstream deletes jsx handlers
 status: current
 updated: 2026-08-16
-source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/sway, branch `116-optional-accessible`, issue #116); `node_modules/solid-js/web/dist/web.js:477`, `src/panels/Editor/Editor.tsx` `closeTab`"
+source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/tori, branch `116-optional-accessible`, issue #116); `node_modules/solid-js/web/dist/web.js:477`, `src/panels/Editor/Editor.tsx` `closeTab`"
 ---
 
 # Solid delegates its JSX handlers to one `document` listener and batches nothing

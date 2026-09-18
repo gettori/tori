@@ -2,7 +2,7 @@
 summary: the fs watcher must filter .git, node_modules, dist and target before emitting fs://changed, or builds yank the editor
 status: current
 updated: 2026-06-29
-source: CM6 migration (personal/sway); `src-tauri/src/fs.rs` (`is_ignored`); commit ccd7337
+source: CM6 migration (personal/tori); `src-tauri/src/fs.rs` (`is_ignored`); commit ccd7337
 ---
 
 # The project watcher must filter churn dirs

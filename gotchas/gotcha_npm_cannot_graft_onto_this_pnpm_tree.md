@@ -7,4 +7,4 @@ source: "Editor wave-1 opener: multi-cursor, editing polish, language packs (bra
 
 # npm cannot graft onto this pnpm tree
 
-Don't `npm install <pkg>` in the sway repo: the tree is pnpm-managed (`node_modules/.pnpm`, no package-lock.json), npm's arborist crashes with `Cannot read properties of null (reading 'edgesOut')`, and one run even exited 0 while persisting nothing. Why: npm cannot reconcile pnpm's symlinked layout; use `pnpm add`.
+Don't `npm install <pkg>` in the tori repo: the tree is pnpm-managed (`node_modules/.pnpm`, no package-lock.json), npm's arborist crashes with `Cannot read properties of null (reading 'edgesOut')`, and one run even exited 0 while persisting nothing. Why: npm cannot reconcile pnpm's symlinked layout; use `pnpm add`.

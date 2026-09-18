@@ -2,7 +2,7 @@
 summary: one normalised symbol tree feeds the Outline tab, the palette's @ mode and breadcrumbs, rebuilt by range containment
 status: current
 updated: 2026-08-08
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 5; commit cbc5b0a; `src/utils/symbols.ts`, `src/panels/Editor/lspSymbols.ts`, `OutlinePanel.tsx`, `src/components/QuickOpen/QuickOpen.tsx`, the split below generalised by Editor wave 7 (branch `wave-7`); Phases 8-9; commits a1511d7, d7a6e3e"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 5; commit cbc5b0a; `src/utils/symbols.ts`, `src/panels/Editor/lspSymbols.ts`, `OutlinePanel.tsx`, `src/components/QuickOpen/QuickOpen.tsx`, the split below generalised by Editor wave 7 (branch `wave-7`); Phases 8-9; commits a1511d7, d7a6e3e"
 ---
 
 # Editor symbols: one tree, three surfaces
@@ -33,7 +33,7 @@ That constraint forces the rest of the design rather than being a preference: **
 
 **This shape is now the pattern for any surface whose existence `Editor.tsx` decides**, and wave 7 built two more on it verbatim: [[component_call_hierarchy]] (`utils/callHierarchy.ts` + `lspCallHierarchy.ts` + `CallsPanel.tsx`, with a registered `setCallFetcher` for lazy level expansion) and the fix lookup [[component_problems_panel]] reads through `setDiagnosticFixLookup`. The three-state store — absent means "not asked", `null` means "this server has no provider", an array **including an empty one** means "asked, and it does" — is copied one for one, because collapsing `null` and `[]` would make "this language cannot do this" and "point at something" the same message.
 
-The duplication the rule forces is real and deliberate: `utils/callHierarchy.ts` carries its own copy of `uriToPath` rather than importing `swayWorkspace`. A test compares the two across spaces, non-ASCII and a literal `%`, so the copies cannot drift into disagreeing about escaping.
+The duplication the rule forces is real and deliberate: `utils/callHierarchy.ts` carries its own copy of `uriToPath` rather than importing `toriWorkspace`. A test compares the two across spaces, non-ASCII and a literal `%`, so the copies cannot drift into disagreeing about escaping.
 
 ## Three states, not two
 

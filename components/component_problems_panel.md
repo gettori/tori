@@ -2,7 +2,7 @@
 summary: Problems lists LSP diagnostics worst file first from a CodeMirror published signal, capped per file at the most severe
 status: current
 updated: 2026-08-28
-source: "Editor upgrades: diff polish, hunk staging, diagnostics (personal/sway, phase 3); `src/utils/diagnostics.ts`, `src/panels/Editor/CodeEditor.tsx` (`publishFrom`)"
+source: "Editor upgrades: diff polish, hunk staging, diagnostics (personal/tori, phase 3); `src/utils/diagnostics.ts`, `src/panels/Editor/CodeEditor.tsx` (`publishFrom`)"
 ---
 
 # Problems panel
@@ -15,7 +15,7 @@ The LSP diagnostics of every open file, grouped by file and ordered worst-first,
 
 - **A store the panel can read.** CodeMirror keeps diagnostics inside an `EditorState`, reachable only from the editor view; the Problems list is a sibling surface. `CodeEditor` publishes to a module-level signal (`src/utils/diagnostics.ts`) whenever a `setDiagnosticsEffect` transaction lands — not on every keypress.
 - **Offset to line/column, once.** `problemsFromState` converts CodeMirror's absolute document offsets into the 1-based line/column that the editor's goto target and `@file#L<n>` mentions both speak, carrying `endLine` so a multi-line TypeScript error mentions `L12-L14` rather than collapsing to one line. Tested against real CodeMirror (`setDiagnostics` into an `EditorState`), not a mock.
-- **Open-tab scoping, by two independent mechanisms.** A language server on a monorepo publishes for far more than the user has open. `serverDiagnostics` bails when a published URI has no live view, and Sway's buffer map drops an `EditorState` when its tab closes (`dropDiagnostics`), so an unopened file never enters the store at all. `clearDiagnostics` runs on project switch.
+- **Open-tab scoping, by two independent mechanisms.** A language server on a monorepo publishes for far more than the user has open. `serverDiagnostics` bails when a published URI has no live view, and Tori's buffer map drops an `EditorState` when its tab closes (`dropDiagnostics`), so an unopened file never enters the store at all. `clearDiagnostics` runs on project switch.
 - **A per-file cap** (`MAX_PER_FILE`, 200) as the second, independent limit. It keeps the **most severe** rather than the first N, then restores document order: a file with 300 warnings before its first error must not hide the error.
 - **Ordering that puts the worst first.** `orderFiles` sorts by worst severity, then count, then path; `summarize` produces the per-severity badge counts.
 - **Send to agent.** `composeDiagnostic` (the third composer in `safeSend`, after hunk comments and selection mentions) builds `@<file>#L<start>-L<end> <severity>: <message>`, flattening multi-line server messages — a raw newline would submit the prompt on some agents and break the insert-only contract. Routed through `requestSend`, refused on a blocked session exactly like the hunk-comment path.

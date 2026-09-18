@@ -2,7 +2,7 @@
 summary: a pane lock refuses only its named kind, and homePane falls to the first pane when every pane is locked away
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phase 2; `src/layout/tabPlacement.ts` (`placementRefusal`), `src/layout/shellsWorkspace.ts:11`, `src/App.tsx` (`filePane`); commit `30f1ea9`"
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phase 2; `src/layout/tabPlacement.ts` (`placementRefusal`), `src/layout/shellsWorkspace.ts:11`, `src/App.tsx` (`filePane`); commit `30f1ea9`"
 ---
 
 # A pane lock is compared against the tab kind exactly

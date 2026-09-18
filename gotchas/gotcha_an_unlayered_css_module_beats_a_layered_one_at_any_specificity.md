@@ -2,7 +2,7 @@
 summary: every unlayered css declaration beats every layered one regardless of specificity, a layered override never reaches it
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/styles/reset.css:5`, `src/components/ShortcutSheet/ShortcutSheet.module.css:17`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/styles/reset.css:5`, `src/components/ShortcutSheet/ShortcutSheet.module.css:17`"
 ---
 
 # An unlayered CSS module beats a layered one at any specificity

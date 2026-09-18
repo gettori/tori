@@ -2,7 +2,7 @@
 summary: flag parity across tools is a claim about behaviour, not spelling, run each binary against a fixture before trusting it
 status: current
 updated: 2026-08-01
-source: "Search panel v2: toggles, ignored files, replace-in-files (personal/sway, branch `wave-1-2`); Phase 1; `src-tauri/src/search.rs:345` (`run_rg`), `src-tauri/src/search.rs:383` (`run_git_grep`); PR #81; issue #11"
+source: "Search panel v2: toggles, ignored files, replace-in-files (personal/tori, branch `wave-1-2`); Phase 1; `src-tauri/src/search.rs:345` (`run_rg`), `src-tauri/src/search.rs:383` (`run_git_grep`); PR #81; issue #11"
 ---
 
 # Prove flag parity by running the tools, not by reading their flags

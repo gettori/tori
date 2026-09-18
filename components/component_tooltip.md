@@ -2,16 +2,16 @@
 summary: tooltip only animates in, never out, since Kobalte never wraps tooltip content in presence so there is no closing frame
 status: current
 updated: 2026-08-16
-source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/sway, branch `130-re-audit-dialog-and-tooltip`, issue #130, part of #93); `src/components/Tooltip/Tooltip.tsx`, `Tooltip.module.css`, `src/lib/tooltip.ts`; originally built by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); commits c996ca9, 9826e7e"
+source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130, part of #93); `src/components/Tooltip/Tooltip.tsx`, `Tooltip.module.css`, `src/lib/tooltip.ts`; originally built by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); commits c996ca9, 9826e7e"
 ---
 
 # `Tooltip`: the one tooltip surface
 
-Kobalte's tooltip behind Sway's chrome, on [[component_lib_boundary]]. This page is the **recipe and the composition**: what the surface is made of and what its values are. The rule the whole design turns on - the trigger has to *be* the control, so `as` names a host to render rather than accepting a built one - lives in [[concept_tooltip_trigger_is_the_control]], along with the generic props, the no-label fast path, and `whenDisabled`.
+Kobalte's tooltip behind Tori's chrome, on [[component_lib_boundary]]. This page is the **recipe and the composition**: what the surface is made of and what its values are. The rule the whole design turns on - the trigger has to *be* the control, so `as` names a host to render rather than accepting a built one - lives in [[concept_tooltip_trigger_is_the_control]], along with the generic props, the no-label fast path, and `whenDisabled`.
 
 ## Composition
 
-`Root` > (`Trigger` as the control) + `Portal` > `Content`. Four parts, and `src/lib/tooltip.ts` re-exports exactly those four: `Arrow` is left out deliberately, because Sway draws none and a re-export nothing composes reads as supported surface.
+`Root` > (`Trigger` as the control) + `Portal` > `Content`. Four parts, and `src/lib/tooltip.ts` re-exports exactly those four: `Arrow` is left out deliberately, because Tori draws none and a re-export nothing composes reads as supported surface.
 
 `Portal` takes a `mount`, defaulting to the enclosing dialog's panel and falling back to `document.body`. A dialog aria-hides everything outside its panel, so a body-portalled tooltip inside one would be painted on screen and invisible to a screen reader at once. See [[component_dialog]]'s surface seam.
 
@@ -19,13 +19,13 @@ Kobalte's tooltip behind Sway's chrome, on [[component_lib_boundary]]. This page
 
 | Part | Value |
 |---|---|
-| Padding | `var(--sway-space-3) var(--sway-space-5)` (6 / 12) |
-| Type | `--sway-text-lg`, `--sway-line-normal` |
-| Surface | `--canvas-card`, `1px solid --border-default`, `--sway-radius-md`, `--shadow-md` |
+| Padding | `var(--tori-space-3) var(--tori-space-5)` (6 / 12) |
+| Type | `--tori-text-lg`, `--tori-line-normal` |
+| Surface | `--canvas-card`, `1px solid --border-default`, `--tori-radius-md`, `--shadow-md` |
 | Text | `--fg-default` |
 | Width | capped at `280px * --ui-scale`, `white-space: pre-wrap` |
 | Stacking | `z-index: 1300`, the top of the ladder (menus 1000, omnibox 1100, toasts 1200, dialog 1250) |
-| Motion | `tooltipContentIn` on `[data-expanded]`, `--sway-duration-fast`, fade + `scale(0.95)` |
+| Motion | `tooltipContentIn` on `[data-expanded]`, `--tori-duration-fast`, fade + `scale(0.95)` |
 | Origin | `transform-origin: var(--kb-tooltip-content-transform-origin, center)` |
 | Standoff | `gutter={4}` on `Root` |
 
@@ -43,7 +43,7 @@ Kobalte's tooltip behind Sway's chrome, on [[component_lib_boundary]]. This page
 
 The tooltip animates **in** and not out, and that is a property of the substrate rather than a preference. Kobalte does not run tooltip content through `solid-presence` the way the dialog does (`dist/tooltip/index.js` never calls `createPresence`), so the content is unmounted the instant the tooltip closes and there is no closing frame for an exit keyframe to land on. A `[data-closed]` rule here would be a rule that matches nothing, which reads in review as motion that exists and does not. The reference agrees by omission: solid-ui's tooltip ships an enter animation and no exit. See [[gotcha_kobaltes_tooltip_content_is_not_wrapped_in_presence_so_it_can_only_animate_in]].
 
-Enter is `--sway-duration-fast` rather than the dialog's `--sway-duration-med`: the 500ms open delay already made the user wait, and the animation is confirming a pointer that has arrived.
+Enter is `--tori-duration-fast` rather than the dialog's `--tori-duration-med`: the 500ms open delay already made the user wait, and the animation is confirming a pointer that has arrived.
 
 ## Delays
 

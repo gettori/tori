@@ -2,12 +2,12 @@
 summary: counts every raw occurrence of a rule and lets only a named entry with a reason and exact count through, else it fails
 status: current
 updated: 2026-08-15
-source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/sway, branch `102-tooltip-primitive`, issue #102); `src/test/interactiveTitle.test.ts`, `scripts/check-tokens.mjs`, `src/lib/boundary.test.ts`; commits c996ca9, dbfa12a"
+source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102); `src/test/interactiveTitle.test.ts`, `scripts/check-tokens.mjs`, `src/lib/boundary.test.ts`; commits c996ca9, dbfa12a"
 ---
 
 # The named-exemption guard
 
-Sway's repeated shape for a repo-wide rule: **count every occurrence, and exempt only by a named entry carrying a stated reason and an exact count.** The guard classifies nothing itself. Anything it has never heard of lands in the failure list rather than slipping past, which is what "fails open" means here. `check-tokens.mjs` established it for colour literals; `interactiveTitle.test.ts` is the fullest expression of it.
+Tori's repeated shape for a repo-wide rule: **count every occurrence, and exempt only by a named entry carrying a stated reason and an exact count.** The guard classifies nothing itself. Anything it has never heard of lands in the failure list rather than slipping past, which is what "fails open" means here. `check-tokens.mjs` established it for colour literals; `interactiveTitle.test.ts` is the fullest expression of it.
 
 ## How it works
 

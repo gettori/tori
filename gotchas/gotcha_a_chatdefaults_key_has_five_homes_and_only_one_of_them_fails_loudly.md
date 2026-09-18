@@ -2,7 +2,7 @@
 summary: a new chatDefaults setting needs edits in five places, a missing Rust field silently defaults false for existing users
 status: current
 updated: 2026-09-07
-source: plan "Chat composer Tier 1" (personal/sway, branch `composer-260907`), phase 2 . `src-tauri/src/settings.rs:287` . commit `39a05ac` . _2026-09-07_
+source: plan "Chat composer Tier 1" (personal/tori, branch `composer-260907`), phase 2 . `src-tauri/src/settings.rs:287` . commit `39a05ac` . _2026-09-07_
 ---
 
 # A `chatDefaults` key has five homes and only one of them fails loudly

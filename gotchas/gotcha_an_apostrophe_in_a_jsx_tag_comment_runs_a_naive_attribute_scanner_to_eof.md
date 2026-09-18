@@ -2,7 +2,7 @@
 summary: a source scanning test walking a jsx tag must skip comments before tracking quotes, an apostrophe opens a string to EOF
 status: current
 updated: 2026-08-13
-source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/sway, branch `102-tooltip-primitive`, issue #102); `src/test/interactiveTitle.test.ts`; commit `51771df`"
+source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102); `src/test/interactiveTitle.test.ts`; commit `51771df`"
 ---
 
 # An apostrophe in a JSX-tag comment runs a naive attribute scanner to EOF

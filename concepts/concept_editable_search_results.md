@@ -2,12 +2,12 @@
 summary: the search buffer guards each edit against the line's own text (was), not a file digest, so a late edit lands right
 status: current
 updated: 2026-08-27
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 11, issue #50, commit 48af914; extended by Phase 12 (#61, commit 98b038b); widened to span a Feature by Features phase 4 (#156), branch `feature-workspace`, phase 3, commit 9c7ce7a; `src/panels/Editor/searchResultsDoc.ts`, `searchResultsStore.ts`, `SearchResultsBuffer.tsx`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 11, issue #50, commit 48af914; extended by Phase 12 (#61, commit 98b038b); widened to span a Feature by Features phase 4 (#156), branch `feature-workspace`, phase 3, commit 9c7ce7a; `src/panels/Editor/searchResultsDoc.ts`, `searchResultsStore.ts`, `SearchResultsBuffer.tsx`"
 ---
 
 # The editable search-results buffer: a line-to-(file, line) map guarded by the line itself
 
-Project search results are materialised as one editable CodeMirror document. Edit the matching lines, press ⌘S, and the edits are written back to the files they came from. It is not a buffer inside `CodeEditor` and it is not a file: it is its own CodeMirror instance behind a `sway://search/<query>?ws=` tab, because the document has no path, needs no language server, and lives under rules no file buffer has.
+Project search results are materialised as one editable CodeMirror document. Edit the matching lines, press ⌘S, and the edits are written back to the files they came from. It is not a buffer inside `CodeEditor` and it is not a file: it is its own CodeMirror instance behind a `tori://search/<query>?ws=` tab, because the document has no path, needs no language server, and lives under rules no file buffer has.
 
 Since #156 the map is **buffer line -> (member, file, source line)**: one buffer covers a whole Feature, and a row writes into its own member's repo.
 
@@ -49,6 +49,6 @@ Since #156 the map is **buffer line -> (member, file, source line)**: one buffer
 - [[component_search_panel]] — the panel that produces the result set and now also owns history and saved searches.
 - [[concept_member_fan_out]] — how the merged, member-tagged result set is produced, and the `(root, path)` rule this document inherits.
 - [[concept_fail_closed_replace]] — the guard chain the panel's own replace uses, and why this one differs.
-- [[concept_synthetic_editor_tabs]] — the `sway://search` tab id, and why its `ws=` field stopped being a folder.
+- [[concept_synthetic_editor_tabs]] — the `tori://search` tab id, and why its `ws=` field stopped being a folder.
 - [[component_editor_stores]] — the eager/lazy boundary that forces the type-only imports.
 - [[gotcha_a_kept_editorstate_carries_the_configuration_it_was_built_with]] — the Major that hid inside the store.

@@ -1,13 +1,13 @@
 ---
-summary: GitHub's 5000 requests an hour means Sway batches one GraphQL call per project per tick, never one per branch unit
+summary: GitHub's 5000 requests an hour means Tori batches one GraphQL call per project per tick, never one per branch unit
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 5; commit 8aedaed; `src/utils/forgePoll.ts`, `src/utils/forgeStatus.ts`, `src-tauri/src/forge/status.rs:63`"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 5; commit 8aedaed; `src/utils/forgePoll.ts`, `src/utils/forgeStatus.ts`, `src-tauri/src/forge/status.rs:63`"
 ---
 
 # The forge rate budget (why a tick asks about a project)
 
-GitHub allows 5,000 requests an hour per account. Sway watches N branch-units across every open project and wants three facts about each (pull request, checks, review decision), so the naive shape (one request per unit per concern per tick) spends the whole hourly budget on an idle window nobody is looking at. The budget is therefore not a limit to respect at the edges, it is the constraint the whole poll layer is shaped around: **one batched GraphQL request per project per tick, never one per unit.**
+GitHub allows 5,000 requests an hour per account. Tori watches N branch-units across every open project and wants three facts about each (pull request, checks, review decision), so the naive shape (one request per unit per concern per tick) spends the whole hourly budget on an idle window nobody is looking at. The budget is therefore not a limit to respect at the edges, it is the constraint the whole poll layer is shaped around: **one batched GraphQL request per project per tick, never one per unit.**
 
 ## How it works
 

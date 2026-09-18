@@ -2,7 +2,7 @@
 summary: Toast.Region's focus hotkey cannot be disabled, only matched, and an empty combo matches every keystroke
 status: current
 updated: 2026-08-15
-source: "plan \"Toasts onto Kobalte Toast\" (personal/sway, branch `105-toasts`, issue #105); `src/components/Toasts/Toasts.tsx`; `@kobalte/core@0.13.13` `dist/chunk/DX4MAOJL.js:113`; see [[component_toasts]]"
+source: "plan \"Toasts onto Kobalte Toast\" (personal/tori, branch `105-toasts`, issue #105); `src/components/Toasts/Toasts.tsx`; `@kobalte/core@0.13.13` `dist/chunk/DX4MAOJL.js:113`; see [[component_toasts]]"
 ---
 
 # A Kobalte toast region cannot be turned off, only mismatched

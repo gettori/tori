@@ -2,7 +2,7 @@
 summary: a Rust test temp file keyed only on process id is shared by every test in one cargo run, parallel tests race and fail
 status: current
 updated: 2026-07-20
-source: Editor upgrades (personal/sway, phase 3, observed not introduced); `src-tauri/src/settings.rs` (`tmp_file`)
+source: Editor upgrades (personal/tori, phase 3, observed not introduced); `src-tauri/src/settings.rs` (`tmp_file`)
 ---
 
 # Rust tests sharing a temp path keyed only on process id race each other

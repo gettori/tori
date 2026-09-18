@@ -2,7 +2,7 @@
 summary: a For over an array rebuilt from props gets a new identity each read, so Solid rebuilds every row and drops focus
 status: current
 updated: 2026-08-15
-source: "plan \"SegmentedControl onto Kobalte ToggleGroup, absorb LayoutToggles\" (personal/sway, branch `108-segmented-control`, issue #108); `src/components/LayoutToggles/LayoutToggles.tsx`, `LayoutToggles.test.tsx` (\"keeps its buttons, and the focus on them, when a pane flips\"); see [[component_toggle_group]]"
+source: "plan \"SegmentedControl onto Kobalte ToggleGroup, absorb LayoutToggles\" (personal/tori, branch `108-segmented-control`, issue #108); `src/components/LayoutToggles/LayoutToggles.tsx`, `LayoutToggles.test.tsx` (\"keeps its buttons, and the focus on them, when a pane flips\"); see [[component_toggle_group]]"
 ---
 
 # A `<For>` over an array rebuilt from props recreates every row

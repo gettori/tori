@@ -2,7 +2,7 @@
 summary: a settings key added only in TypeScript is dropped by serde on save, so it reverts after appearing to work
 status: current
 updated: 2026-08-11
-source: "Editor Wave 6: the IDE surface, Phase 8 (personal/sway, branch `wave-6`); `src-tauri/src/settings.rs`, `src/panels/Settings/settingsStore.ts`; commit 2185971; _2026-08-05_, section-level half added by Settings redesign (branch `settings`, issue #91) Phase 1; commit 1dc97b4"
+source: "Editor Wave 6: the IDE surface, Phase 8 (personal/tori, branch `wave-6`); `src-tauri/src/settings.rs`, `src/panels/Settings/settingsStore.ts`; commit 2185971; _2026-08-05_, section-level half added by Settings redesign (branch `settings`, issue #91) Phase 1; commit 1dc97b4"
 ---
 
 # A frontend settings key with no Rust field is dropped on save

@@ -2,7 +2,7 @@
 summary: invoke on TAURI_INTERNALS is a readonly property on a non-configurable global, so wrapping it at runtime fails silently
 status: current
 updated: 2026-08-20
-source: plan "Worktree and tab switching at native speed" (phase 1, personal/sway, branch `unified-tab-bar`), `src/utils/tracedCore.ts`, `vite.config.ts`, commit 4b8287f, [[concept_release_profile_tracing]], _2026-08-20_
+source: plan "Worktree and tab switching at native speed" (phase 1, personal/tori, branch `unified-tab-bar`), `src/utils/tracedCore.ts`, `vite.config.ts`, commit 4b8287f, [[concept_release_profile_tracing]], _2026-08-20_
 ---
 
 # The Tauri internals invoke cannot be hooked at runtime

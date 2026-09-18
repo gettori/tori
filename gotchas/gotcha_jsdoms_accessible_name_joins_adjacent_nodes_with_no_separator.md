@@ -2,7 +2,7 @@
 summary: jsdom's accessible name joins adjacent nodes with no separator, an exact match passing in a browser finds nothing
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158) - phase 2 - `src/panels/Editor/featureTabIdentity.test.tsx:104`, `src/styles/patterns.module.css:62`, commit 6183eae - _2026-08-28_"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158) - phase 2 - `src/panels/Editor/featureTabIdentity.test.tsx:104`, `src/styles/patterns.module.css:62`, commit 6183eae - _2026-08-28_"
 ---
 
 # jsdom's accessible name joins adjacent nodes with no separator

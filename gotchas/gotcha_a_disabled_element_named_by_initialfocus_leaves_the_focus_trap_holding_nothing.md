@@ -2,7 +2,7 @@
 summary: a disabled control named by initialFocus refuses focus, so the trap holds nothing and closing restores focus nowhere
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/sway, branch `100-migrate-seven-conplex-dialogs`, issue #100); `src/components/Dialog/Dialog.tsx:91`, `Dialogs/stackedDialogs.test.tsx:225`; commit `8e56c39`"
+source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/tori, branch `100-migrate-seven-conplex-dialogs`, issue #100); `src/components/Dialog/Dialog.tsx:91`, `Dialogs/stackedDialogs.test.tsx:225`; commit `8e56c39`"
 ---
 
 # A `disabled` element named by `initialFocus` leaves the focus trap holding nothing

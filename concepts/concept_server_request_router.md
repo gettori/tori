@@ -2,12 +2,12 @@
 summary: serverRequests.ts intercepts server LSP requests on the transport, since receiveMessage answers the rest with -32601
 status: current
 updated: 2026-08-11
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 1 (commits c4750d7, cec4058), extended by Phases 5, 8, 9 (a620384, a1511d7, d7a6e3e); `src/panels/Editor/serverRequests.ts`, `lspClient.ts:410-500`, `serverEdits.ts`, `lspConfiguration.ts`, contrasted by Editor wave 8: the debugger (DAP) (branch `wave-8`), Phase 3; `src/utils/dapClient.ts:45`"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 1 (commits c4750d7, cec4058), extended by Phases 5, 8, 9 (a620384, a1511d7, d7a6e3e); `src/panels/Editor/serverRequests.ts`, `lspClient.ts:410-500`, `serverEdits.ts`, `lspConfiguration.ts`, contrasted by Editor wave 8: the debugger (DAP) (branch `wave-8`), Phase 3; `src/utils/dapClient.ts:45`"
 ---
 
 # The server-request router: answering what a language server asks back
 
-LSP is bidirectional, and `@codemirror/lsp-client` only travels one way. `LSPClient.receiveMessage` answers **every** server-initiated request with `-32601 MethodNotFound` (`lsp-client/dist/index.js:684-690`) and offers an extension point for notifications only. So a request Sway owes an answer to cannot be handled inside the library at all: it has to be intercepted on the **transport**, before the library ever sees the frame. `serverRequests.ts` is that seam, and it is a router keyed by method rather than a chain of hand-rolled interceptors, because every capability declared from here on owes an answer on the same seam and the second hand-rolled interceptor is where the rules below quietly stop being followed.
+LSP is bidirectional, and `@codemirror/lsp-client` only travels one way. `LSPClient.receiveMessage` answers **every** server-initiated request with `-32601 MethodNotFound` (`lsp-client/dist/index.js:684-690`) and offers an extension point for notifications only. So a request Tori owes an answer to cannot be handled inside the library at all: it has to be intercepted on the **transport**, before the library ever sees the frame. `serverRequests.ts` is that seam, and it is a router keyed by method rather than a chain of hand-rolled interceptors, because every capability declared from here on owes an answer on the same seam and the second hand-rolled interceptor is where the rules below quietly stop being followed.
 
 ## How it works
 
@@ -30,7 +30,7 @@ Only the **request** form is consumed. A notification-shaped frame, or a *respon
 
 **The router is generic over its context, and that is a correctness property rather than a typing flourish.** The first version of `applyDepsFor` looked its session up with `.find(s => s.handle.root === root)`. Sessions are keyed `(server_id, root)` and both bundled configs list `.git` as a root marker, so a repo where neither `Cargo.toml` nor `tsconfig.json` sits above the file **already** has two sessions on one root, and a server-initiated edit would have been applied through the wrong server's workspace and mapped through the wrong client. Making `Ctx` the whole `LspHandle` is what lets the type system refuse a bare root. Same rule as [[component_lsp_host]]'s session keying, inverted.
 
-**Declaring a capability creates the obligation.** [[concept_lsp_capability_contract]] says advertise only what you answer; this is the other half of it. `workspace.codeLens.refreshSupport` and `workspace.semanticTokens.refreshSupport` are promises that Sway will handle a push, and answering `-32601` to a push the client invited tells a conformant server the client lied. rust-analyzer's response to that is to stop asking, which is precisely the feature. So a refresh capability and its router entry land in the same change, never in sequence.
+**Declaring a capability creates the obligation.** [[concept_lsp_capability_contract]] says advertise only what you answer; this is the other half of it. `workspace.codeLens.refreshSupport` and `workspace.semanticTokens.refreshSupport` are promises that Tori will handle a push, and answering `-32601` to a push the client invited tells a conformant server the client lied. rust-analyzer's response to that is to stop asking, which is precisely the feature. So a refresh capability and its router entry land in the same change, never in sequence.
 
 ## The DAP router is the same seam with a different trust model
 

@@ -2,7 +2,7 @@
 summary: searching an amended decision's own words missed a page stating the same retired stance differently, sweep the noun
 status: current
 updated: 2026-08-12
-source: "Plan \"Amend adr_headless_primitives: wholesale adoption, Solid 2 gate\" (branch 95-ammend); ticket skarif2/sway#95; `personal/sway/components/component_button.md:8`; commit skarif2/grimoire-docs@7bd9416"
+source: "Plan \"Amend adr_headless_primitives: wholesale adoption, Solid 2 gate\" (branch 95-ammend); ticket gettori/tori#95; `personal/tori/components/component_button.md:8`; commit skarif2/grimoire-docs@7bd9416"
 ---
 
 # Sweep for the technology, not the policy wording

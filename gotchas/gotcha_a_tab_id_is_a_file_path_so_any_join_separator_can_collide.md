@@ -2,7 +2,7 @@
 summary: joining tab ids with a separator a file path can contain lets two different id lists collide on one cache key
 status: current
 updated: 2026-08-20
-source: plan "Worktree and tab switching at native speed" (phase 4, personal/sway, branch `unified-tab-bar`), `src/components/OverflowTabBar.tsx`, commit f16b6ae, [[component_overflow_tab_bar]], _2026-08-20_
+source: plan "Worktree and tab switching at native speed" (phase 4, personal/tori, branch `unified-tab-bar`), `src/components/OverflowTabBar.tsx`, commit f16b6ae, [[component_overflow_tab_bar]], _2026-08-20_
 ---
 
 # A tab id is a file path, so any join separator can collide

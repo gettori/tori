@@ -2,7 +2,7 @@
 summary: casting a tauri event payload with as suppresses the check catching a wrong field, the guard reads undefined always
 status: current
 updated: 2026-08-01
-source: "Fix the stale `fs://changed` payload contract in ReviewPanel (personal/sway, branch `wave-1-3`); `src/utils/events.ts:127`, `src/panels/Editor/ReviewPanel.tsx:481`; issue #12"
+source: "Fix the stale `fs://changed` payload contract in ReviewPanel (personal/tori, branch `wave-1-3`); `src/utils/events.ts:127`, `src/panels/Editor/ReviewPanel.tsx:481`; issue #12"
 ---
 
 # An `as` cast on an event payload opts out of the contract

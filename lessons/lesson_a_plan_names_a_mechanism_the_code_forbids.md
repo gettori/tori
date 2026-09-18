@@ -2,7 +2,7 @@
 summary: a plan written from reading the code can still name a mechanism the code forbids, caught by a guard or test in hand
 status: current
 updated: 2026-08-28
-source: "Feature lifecycle, member management and repair (personal/sway, branch `feature-workspace`, issue #159) - all five phases - commits 774704d, ef3779b, ede61ff, 70756f3; and again in #160 phase 3, same branch"
+source: "Feature lifecycle, member management and repair (personal/tori, branch `feature-workspace`, issue #159) - all five phases - commits 774704d, ef3779b, ede61ff, 70756f3; and again in #160 phase 3, same branch"
 ---
 
 # A plan names a mechanism the code forbids

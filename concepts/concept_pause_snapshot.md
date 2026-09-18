@@ -2,7 +2,7 @@
 summary: a paused debuggee's variablesReference answers the old value after a write, so trust the write's own reply
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phases 7-9; epic #69; `src/utils/debugVariables.ts:264`, `src/utils/debugWatch.ts:162`; commits 4d396a8, 1c1fbf6"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phases 7-9; epic #69; `src/utils/debugVariables.ts:264`, `src/utils/debugWatch.ts:162`; commits 4d396a8, 1c1fbf6"
 ---
 
 # A pause is a snapshot, and its references go stale in place

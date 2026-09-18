@@ -2,7 +2,7 @@
 summary: removing a tab click's redundant re-select fixed an invoke storm but intermittently dropped tabs from the strip
 status: current
 updated: 2026-08-20
-source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/sway, branch `unified-tab-bar`), Phase 4, commit c2b6526, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/App.tsx`, `src/utils/perfTrace.ts`"
+source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/tori, branch `unified-tab-bar`), Phase 4, commit c2b6526, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/App.tsx`, `src/utils/perfTrace.ts`"
 ---
 
 # The redundant write was load-bearing, and removing it lost tabs

@@ -2,7 +2,7 @@
 summary: codemirror's autoSync debounces document changes by 500ms, a positional request in that window gets wrong line numbers
 status: current
 updated: 2026-08-03
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phases 5, 7; `src/panels/Editor/lspSymbols.ts`, `lspSemanticTokens.ts`; commits cbc5b0a, 075b5d7"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phases 5, 7; `src/panels/Editor/lspSymbols.ts`, `lspSemanticTokens.ts`; commits cbc5b0a, 075b5d7"
 ---
 
 # `autoSync` is debounced, so `sync()` before a position request

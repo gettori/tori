@@ -2,7 +2,7 @@
 summary: git worktree list prints canonicalized paths, a starts_with containment check needs both sides canonicalized on macOS
 status: current
 updated: 2026-07-09
-source: Sidebar Context-Menu Redesign (personal/sway, branch code-mirror-6); `src-tauri/src/worktree.rs`; commit dac1093; [[concept_one_directory_two_spellings]]
+source: Sidebar Context-Menu Redesign (personal/tori, branch code-mirror-6); `src-tauri/src/worktree.rs`; commit dac1093; [[concept_one_directory_two_spellings]]
 ---
 
 # git worktree list reports canonical paths

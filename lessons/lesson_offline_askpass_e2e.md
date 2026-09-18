@@ -2,7 +2,7 @@
 summary: test an askpass bridge offline with `git credential fill` and a stub socket server, skip the real network and GUI
 status: current
 updated: 2026-07-10
-source: Askpass credential bridge for backgrounded git (personal/sway, branch code-mirror-6); commit 3fff674
+source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); commit 3fff674
 ---
 
 # Test the askpass bridge offline with `git credential fill`
@@ -17,8 +17,8 @@ The acceptance for [[component_askpass]] ("a real fetch pops the dialogs and com
 
 ```
 printf 'protocol=https\nhost=example.com\n\n' \
-  | GIT_ASKPASS=<sway-bin> GIT_TERMINAL_PROMPT=0 LC_ALL=C \
-    SWAY_ASKPASS_SOCK=<sock> SWAY_ASKPASS_TOKEN=tok SWAY_ASKPASS_OP=op \
+  | GIT_ASKPASS=<tori-bin> GIT_TERMINAL_PROMPT=0 LC_ALL=C \
+    TORI_ASKPASS_SOCK=<sock> TORI_ASKPASS_TOKEN=tok TORI_ASKPASS_OP=op \
     git -c credential.helper= credential fill
 ```
 

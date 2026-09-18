@@ -2,7 +2,7 @@
 summary: a JSX-returning factory runs once eagerly, so a For row it builds freezes when its store item mutates in place
 status: current
 updated: 2026-09-04
-source: "\"Subagent lanes in the chat panel\" (personal/sway, branch `bugfix-260903`); Phase 3 self-review; `src/panels/Chat/LaneStrip.tsx`, `src/panels/Chat/LaneStrip.test.tsx`; commit 785aa61"
+source: "\"Subagent lanes in the chat panel\" (personal/tori, branch `bugfix-260903`); Phase 3 self-review; `src/panels/Chat/LaneStrip.tsx`, `src/panels/Chat/LaneStrip.test.tsx`; commit 785aa61"
 ---
 
 # A factory returning JSX freezes a row built from a store object mutated in place

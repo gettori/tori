@@ -2,7 +2,7 @@
 summary: asking git for a renamed file's diff by new path alone loses rename detection and renders it as a whole new file
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 7; `src-tauri/src/git.rs` (`git_commit_file_diff`), `src/panels/Editor/CommitDetail.tsx`; commit b108974"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 7; `src-tauri/src/git.rs` (`git_commit_file_diff`), `src/panels/Editor/CommitDetail.tsx`; commit b108974"
 ---
 
 # Pathspec-limited rename detection needs both paths or it is not a rename

@@ -2,7 +2,7 @@
 summary: indexing a serde_json Value answers a missing key with null but indexing the inner Map panics, keep the read on Value
 status: current
 updated: 2026-08-17
-source: plan "Model catalogues from the harnesses themselves" (phase 1, personal/sway, branch `settings-and-chat`); `src-tauri/src/chat/claude.rs::absorb_control_response`; commit "Read an account that left a field out"
+source: plan "Model catalogues from the harnesses themselves" (phase 1, personal/tori, branch `settings-and-chat`); `src-tauri/src/chat/claude.rs::absorb_control_response`; commit "Read an account that left a field out"
 ---
 
 # Indexing a `serde_json::Map` panics where indexing a `Value` yields null

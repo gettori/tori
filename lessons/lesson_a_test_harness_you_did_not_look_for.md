@@ -2,7 +2,7 @@
 summary: absence of test files is not absence of a harness, read the runner config before concluding a capability is missing
 status: current
 updated: 2026-08-01
-source: "Search panel v2: toggles, ignored files, replace-in-files (personal/sway, branch `wave-1-2`); Phases 1 and 2; `vitest.config.ts`; PR #81; issue #11"
+source: "Search panel v2: toggles, ignored files, replace-in-files (personal/tori, branch `wave-1-2`); Phases 1 and 2; `vitest.config.ts`; PR #81; issue #11"
 ---
 
 # Read the config before concluding a capability is missing

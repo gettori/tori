@@ -2,7 +2,7 @@
 summary: typescript language server advertises code lenses unconditionally but answers empty until workspace config enables them
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth, Phase 9 (personal/sway, branch `wave-7`); `src-tauri/lsp/typescript.toml`; commit d7a6e3e"
+source: "Editor wave 7: language intelligence depth, Phase 9 (personal/tori, branch `wave-7`); `src-tauri/lsp/typescript.toml`; commit d7a6e3e"
 ---
 
 # `typescript-language-server` answers no code lenses until a workspace configuration enables them

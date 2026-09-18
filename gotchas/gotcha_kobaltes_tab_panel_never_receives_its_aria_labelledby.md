@@ -2,7 +2,7 @@
 summary: Tabs.Content reads aria-labelledby from a non reactive Map filled after render, so it never gets labelled, supply both
 status: current
 updated: 2026-08-16
-source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/sway, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/panels/Settings/Settings.tsx`, `node_modules/@kobalte/core/dist/chunk/7DPKSDZL.js`"
+source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/panels/Settings/Settings.tsx`, `node_modules/@kobalte/core/dist/chunk/7DPKSDZL.js`"
 ---
 
 # Kobalte's tab panel never receives its `aria-labelledby`

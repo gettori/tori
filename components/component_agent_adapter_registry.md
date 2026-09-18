@@ -2,7 +2,7 @@
 summary: a third agent is only a TOML file, since single variant enums make an unparseable transcript shape unreachable
 status: current
 updated: 2026-08-15
-source: "Adapter registry, pulse, presence, checkpoints (personal/sway, branch `topbar`); Phase 1; Prove the adapter: opencode + claude hooks (personal/sway, branch `topbar`); Phases 2-3; v0.1 features: status indicators, search, input layer (personal/sway, branch `topbar`); Phase 3; `src-tauri/src/agents.rs`, `ADAPTERS.md`"
+source: "Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 1; Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phases 2-3; v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/agents.rs`, `ADAPTERS.md`"
 ---
 
 # Agent adapter registry
@@ -16,7 +16,7 @@ Claude and pi were hardcoded branches throughout the backend (`Terminal.tsx`'s s
 pi and opencode were unbundled (branch `navigation`, phase 8, commit e6d98c2).
 **The mechanism is untouched; only its contents shrank.** `build_registry_from`
 still loops over bundled adapters and still reads every `*.toml` in
-`~/.config/sway/agents/`, and two tests pin exactly that: `claude` is the only
+`~/.config/tori/agents/`, and two tests pin exactly that: `claude` is the only
 bundled id, and a user TOML naming a fresh id registers *beside* it rather than
 replacing it.
 
@@ -24,7 +24,7 @@ replacing it.
 one-armed `match`es (`extract_touched_files`, `parse_transcript_turns`,
 `session_prompt_tail`) are what make that load-bearing. They look like no-ops and
 are not: adding a variant fails to compile at each site, so a transcript shape
-Sway cannot parse is unreachable from a config string. `discovery.backend`
+Tori cannot parse is unreachable from a config string. `discovery.backend`
 accepts `"file"` only.
 
 `AgentId` on the frontend is an **open alias over `string`**, deliberately not a
@@ -43,10 +43,10 @@ example).
 ## Responsibilities
 
 - **`AgentAdapter`** (resolved, in-memory): id, label, launch spec (`{id}`/`{file}` placeholders across program/base-args/yolo/resume-args), `discovery` (a `Discovery` enum, `File{dir, filename_regex}` | `Sqlite{db_path}` — see below), parser kind (`claude_jsonl` | `pi_jsonl` | `opencode_sqlite`, a closed Rust enum — parsing logic stays code, only its *selection* is data), running-pattern template, `verified_against` (the agent CLI version this adapter's conventions were captured against, echoed in `ADAPTERS.md`), and capability flags (`needs_you`, `pty_quiet_ms`, `hooks`).
-- **`discovery.backend`**: `"file"` (default, claude/pi) walks a session-transcript directory tree matching `filename_pattern`'s named `id` capture. `"sqlite"` (opencode) has no per-session file at all — `db_path` points at one shared DB covering *every* project on the machine; the session id lives in a DB column. Sway opens this DB **strictly read-only**; deleting a session shells out to the agent's own CLI (`opencode session delete <id>`) rather than a raw SQL statement, since the schema's foreign keys aren't cascade-safe without `PRAGMA foreign_keys=ON`.
+- **`discovery.backend`**: `"file"` (default, claude/pi) walks a session-transcript directory tree matching `filename_pattern`'s named `id` capture. `"sqlite"` (opencode) has no per-session file at all — `db_path` points at one shared DB covering *every* project on the machine; the session id lives in a DB column. Tori opens this DB **strictly read-only**; deleting a session shells out to the agent's own CLI (`opencode session delete <id>`) rather than a raw SQL statement, since the schema's foreign keys aren't cascade-safe without `PRAGMA foreign_keys=ON`.
 - **`capabilities.hooks`**: whether a verified hook-driven status mechanism exists for this agent (see [[component_claude_hooks_status]]), overriding the transcript-tail join ([[concept_needs_you_floor]]) as the authoritative working/needs-you source when a hook fires. Not generically TOML-authorable — turning it on for a new agent needs matching Rust code, the same way a new `parser.kind` needs code. Only `claude.toml` sets it.
 - **`capabilities.context_window`** (Phase 3): drives [[component_command_palette]]'s sidebar sibling, the per-session context meter. An untagged Rust enum, `ContextWindow::Fixed(u64) | PerModel(HashMap<String, u64>)` — a plain number applies to every model this adapter launches, or a per-model table with a reserved `"default"` key as the fallback (`ContextWindow::resolve`, mirrored on the frontend as `resolveContextWindow`). Additive/optional, no schema version bump. Only `claude.toml` declares one (`default = 200000`, `"claude-sonnet-4-5" = 1000000` for its 1M-token beta window) — `pi`/`opencode` ship without it since there's no adapter-verified figure for them, and the meter simply doesn't render rather than guessing.
-- **Loading & merge**: bundled `claude.toml`/`pi.toml`/`opencode.toml` are `include_str!`-embedded (no Tauri resource bundling needed); user files load from `~/.config/sway/agents/*.toml` at startup (not live-watched — restart to pick up changes) and merge bundled-then-user into a process-wide `OnceLock` registry (`agents::registry()`).
+- **Loading & merge**: bundled `claude.toml`/`pi.toml`/`opencode.toml` are `include_str!`-embedded (no Tauri resource bundling needed); user files load from `~/.config/tori/agents/*.toml` at startup (not live-watched — restart to pick up changes) and merge bundled-then-user into a process-wide `OnceLock` registry (`agents::registry()`).
 - **Override semantics**: a user file whose id matches a built-in **whole-replaces** it. A broken override (missing required fields, bad `schema_version`, an unknown parser kind) **keeps the previous entry and logs loudly** — never a silent disappearance, but also never a silent fallback that masks the error.
 - **Validation**: `schema_version = 1` required (unknown versions rejected), required top-level fields checked collectively (all missing fields named in one error, not one-at-a-time), `filename_pattern` must have a named `id` capture (matched via the `regex` crate — already a transitive dependency, so this cost nothing new), parser kind checked against the closed enum, `discovery.backend` checked against `"file" | "sqlite"` with backend-specific required fields (`dir`/`filename_pattern` vs `db_path`).
 
@@ -54,7 +54,7 @@ example).
 
 - `src-tauri/src/agents.rs:57` — the `AgentAdapter` struct; `agents.rs:49` — the `Discovery` enum.
 - `src-tauri/src/agents.rs:190` — `load_adapter_str`, raw-TOML → validated adapter.
-- `src-tauri/src/agents.rs:272` — user adapter dir (`~/.config/sway/agents`).
+- `src-tauri/src/agents.rs:272` — user adapter dir (`~/.config/tori/agents`).
 - `src-tauri/src/agents.rs:363` — `parser_kind_for`, the lookup other modules call instead of branching on the agent string themselves.
 - `src/utils/agents.ts` — the frontend mirror (snake_case fields matching the Rust JSON shape 1:1), a Solid signal cache (`ensureAgentsLoaded`/`agents`/`findAgent`) seeded with a fallback identical to the bundled TOML (must be kept in sync by hand — caught missing the opencode entry in Phase 2 self-review).
 - `ADAPTERS.md` — the schema reference, now versioned stable (v1).

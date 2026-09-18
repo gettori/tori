@@ -2,7 +2,7 @@
 summary: split a characterization test into a contract block that survives a refactor intact and a shape block that shifts
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99, part of #93); `src/components/Dialogs/*.test.tsx`, `src/components/ShortcutSheet/ShortcutSheet.test.tsx`; commits `2f4df8a`, `7c07e0d`, `3abcd42`; applied again by plan \"Migrate the seven complex dialogs onto Dialog\" (branch `100-migrate-seven-conplex-dialogs`, issue #100, PR #125); commits `7c21e5e`, `11464ba`, `97a1eb6`, `d6a640f`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99, part of #93); `src/components/Dialogs/*.test.tsx`, `src/components/ShortcutSheet/ShortcutSheet.test.tsx`; commits `2f4df8a`, `7c07e0d`, `3abcd42`; applied again by plan \"Migrate the seven complex dialogs onto Dialog\" (branch `100-migrate-seven-conplex-dialogs`, issue #100, PR #125); commits `7c21e5e`, `11464ba`, `97a1eb6`, `d6a640f`"
 ---
 
 # Characterize the contract, not the shape

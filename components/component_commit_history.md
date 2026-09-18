@@ -2,21 +2,21 @@
 summary: log and commit tabs share one diff-tree framing with root, first-parent and rename flags together for clean merges
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 6 and 7 (commits fecf42d, b108974)"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 6 and 7 (commits fecf42d, b108974)"
 ---
 
 # Commit history: log, commit detail, file history
 
 **Location:** `src/panels/Editor/CommitLog.tsx`, `src/panels/Editor/CommitDetail.tsx`, `src-tauri/src/git.rs` (`git_log`, `git_commit_files`, `git_commit_file_diff`, `valid_object_name`)
 
-Branch history and a single commit's diff, rendered as [[concept_synthetic_editor_tabs]] (`sway://log`, `sway://commit/<sha>`) so they open in the editor pane where there is width to read them, rather than in the right panel's column.
+Branch history and a single commit's diff, rendered as [[concept_synthetic_editor_tabs]] (`tori://log`, `tori://commit/<sha>`) so they open in the editor pane where there is width to read them, rather than in the right panel's column.
 
 ## Responsibilities
 
 - **`git_log`**, one flat NUL stream: `-z --format=%H%x00%h%x00%s%x00%an%x00%cr%x00%D`, six NUL-terminated fields per commit with records NUL-terminated too, so `split('\0').chunks_exact(6)` drops the trailing empty field for free. `%D` is empty for an undecorated commit, which is nearly every commit, and is the case the parse fixture pins.
 - **An unborn HEAD is an empty log, not an error**, detected with `rev-parse --quiet --verify HEAD`. See [[gotcha_git_log_exits_non_zero_on_a_repo_with_no_commits]].
 - **`git_log` takes an optional `file`**, which is `--follow`, rather than being a separate command: file history is the same view with a different header, and one component is what stops the two lists drifting.
-- **`sway://commit/<sha>`** renders per-file diffs by reusing `diffView.ts` and `DiffRows.tsx`, so a commit's diff looks exactly like the Changes panel's.
+- **`tori://commit/<sha>`** renders per-file diffs by reusing `diffView.ts` and `DiffRows.tsx`, so a commit's diff looks exactly like the Changes panel's.
 - **Rows in both views are `<button>`s**, not divs, which is what makes a commit reachable by keyboard.
 - **A sha from a tab id is a string**, so `valid_object_name` (hex, 7 to 64) gates both commit commands before the value reaches a command line. File paths are already safe by sitting after `--`.
 - **A 100% rename has no hunks**, so the file view says "Moved, with no change to its contents." rather than rendering an empty body, which reads as a failed load. Same for a binary or mode-only change.

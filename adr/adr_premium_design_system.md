@@ -2,14 +2,14 @@
 summary: chrome gets spacious density while editor and terminal stay dense, and the brand accent stays off the theme accent
 status: current
 updated: 2026-07-14
-source: plan "Premium Design System for sway" (branch code-mirror-6); rollout Phases 1-7 complete
+source: plan "Premium Design System for tori" (branch code-mirror-6); rollout Phases 1-7 complete
 ---
 
 # Premium design system: two-tier density + a brand token family split from the theme accent
 
-sway is being redesigned into one cohesive, premium look. Because sway is a dense IDE but the design inspiration is spacious SaaS, we adopt a **two-tier density model**: chrome (sidebar, toolbar, dialogs, settings, menus, toasts, buttons) is spacious with rounded inner containers and soft elevation, while work surfaces (editor, terminal, file tree, session tree, tabs) stay information-dense and are upgraded only via radii, hovers, typography, and iconography. Panes stay edge-to-edge (no floating cards); the premium feel comes from inner rounding + layered shadows, not pane insets.
+tori is being redesigned into one cohesive, premium look. Because tori is a dense IDE but the design inspiration is spacious SaaS, we adopt a **two-tier density model**: chrome (sidebar, toolbar, dialogs, settings, menus, toasts, buttons) is spacious with rounded inner containers and soft elevation, while work surfaces (editor, terminal, file tree, session tree, tabs) stay information-dense and are upgraded only via radii, hovers, typography, and iconography. Panes stay edge-to-edge (no floating cards); the premium feel comes from inner rounding + layered shadows, not pane insets.
 
-The key structural decision: the brand accent is a **new, fixed `--brand-*` semantic token family, kept separate from the theme-following `--accent`.** The theme engine ([[component_theme_engine]]) lets users import VS Code themes that override `--accent` and the syntax tokens at runtime; folding the brand color into `--accent` would let an imported code theme mutate sway's identity. So chrome selection/focus/active bind to a fixed champagne-gold `--brand-*`, while `--accent`, syntax, and git/diff colors remain theme-driven and untouched. This extends the two-tier token structure of [[adr_ui_config_system]] rather than replacing it.
+The key structural decision: the brand accent is a **new, fixed `--brand-*` semantic token family, kept separate from the theme-following `--accent`.** The theme engine ([[component_theme_engine]]) lets users import VS Code themes that override `--accent` and the syntax tokens at runtime; folding the brand color into `--accent` would let an imported code theme mutate tori's identity. So chrome selection/focus/active bind to a fixed champagne-gold `--brand-*`, while `--accent`, syntax, and git/diff colors remain theme-driven and untouched. This extends the two-tier token structure of [[adr_ui_config_system]] rather than replacing it.
 
 Supporting choices: bundle **Inter** for UI text (mono unchanged); use **Lucide** (`lucide-solid`) for all UI/nav/action icons via an `<Icon>` wrapper while **keeping Seti** colored glyphs for file types ([[component_seti_icons]]); add elevation tokens and codified chrome-vs-work spacing conventions to [[concept_design_token_system]]. Dark-first; light tokens are kept valid but full light QA is deferred. A hidden in-app `/styleguide` gallery is the per-phase QA surface.
 

@@ -2,7 +2,7 @@
 summary: import.meta.glob keys are normalized relative to the importing file, so filtering by a folder name in the pattern fails
 status: current
 updated: 2026-08-12
-source: "Design system foundation: src/lib boundary, Kobalte install, import guard (personal/sway, branch `94-design-system-foundation`, issue #94); `src/lib/boundary.test.ts:28`; commit e90eba3"
+source: "Design system foundation: src/lib boundary, Kobalte install, import guard (personal/tori, branch `94-design-system-foundation`, issue #94); `src/lib/boundary.test.ts:28`; commit e90eba3"
 ---
 
 # `import.meta.glob` keys are normalized against the importing file

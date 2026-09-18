@@ -2,7 +2,7 @@
 summary: a stashed EditorState handed to a second mount still runs the first mount's extensions unless reconfigured
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 11 (personal/sway, branch `wave-6`); `src/panels/Editor/searchResultsStore.ts`; commit 48af914"
+source: "Editor Wave 6: the IDE surface, Phase 11 (personal/tori, branch `wave-6`); `src/panels/Editor/searchResultsStore.ts`; commit 48af914"
 ---
 
 # A kept `EditorState` carries the configuration it was built with

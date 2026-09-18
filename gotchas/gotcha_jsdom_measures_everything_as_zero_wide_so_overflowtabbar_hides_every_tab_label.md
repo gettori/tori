@@ -2,7 +2,7 @@
 summary: jsdom measures every element zero wide, so OverflowTabBar folds every tab into the overflow menu under test
 status: current
 updated: 2026-08-16
-source: "Editor wave 1: close out the fundamentals (personal/sway, branch `wave-1-4`); Phase 3 self-review; `src/panels/Editor/editorCommands.test.tsx:12`, `src/components/OverflowTabBar.tsx:60`; commit bd9567c; _2026-08-02_; extended by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); `src/test/tabs.ts`; commit `51771df`; _2026-08-13_; cause corrected by \"Menu onto Kobalte DropdownMenu and ContextMenu\" phase 4 (branch `103-menu`, issue #103); commit `a0913d9`; _2026-08-15_; solved by plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (branch `111-tab-and-overflow-tab-bar`, issue #111); `src/test/tabLayout.ts`, `src/test/frames.ts`"
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3 self-review; `src/panels/Editor/editorCommands.test.tsx:12`, `src/components/OverflowTabBar.tsx:60`; commit bd9567c; _2026-08-02_; extended by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); `src/test/tabs.ts`; commit `51771df`; _2026-08-13_; cause corrected by \"Menu onto Kobalte DropdownMenu and ContextMenu\" phase 4 (branch `103-menu`, issue #103); commit `a0913d9`; _2026-08-15_; solved by plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (branch `111-tab-and-overflow-tab-bar`, issue #111); `src/test/tabLayout.ts`, `src/test/frames.ts`"
 ---
 
 # jsdom measures everything as zero-wide, so OverflowTabBar hides every tab label

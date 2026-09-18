@@ -2,7 +2,7 @@
 summary: a test dispatching window events must be named test.tsx, the .test.ts project runs in node with no window
 status: current
 updated: 2026-09-07
-source: plan "Chat composer Tier 1" (personal/sway, branch `composer-260907`), phase 4 . `vitest.config.ts:65` . `src/panels/Chat/composerScratch.test.tsx` . commit `8e8579e` . _2026-09-07_
+source: plan "Chat composer Tier 1" (personal/tori, branch `composer-260907`), phase 4 . `vitest.config.ts:65` . `src/panels/Chat/composerScratch.test.tsx` . commit `8e8579e` . _2026-09-07_
 ---
 
 # A test that dispatches window events cannot be a `.test.ts`

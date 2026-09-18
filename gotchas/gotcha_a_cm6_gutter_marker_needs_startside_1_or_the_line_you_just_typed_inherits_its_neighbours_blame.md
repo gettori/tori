@@ -2,7 +2,7 @@
 summary: a CM6 gutter marker at default startSide sits before an insertion, so a line typed at line start shows the wrong blame
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 8, 9; `src/panels/Editor/blameGutter.ts`; commits ad173e9, 6dc425f"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 8, 9; `src/panels/Editor/blameGutter.ts`; commits ad173e9, 6dc425f"
 ---
 
 # A CM6 gutter marker needs `startSide = 1` or the line you just typed inherits its neighbour's blame

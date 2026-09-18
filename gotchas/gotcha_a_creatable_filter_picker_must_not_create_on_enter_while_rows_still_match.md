@@ -2,7 +2,7 @@
 summary: in a creatable filter picker Enter must accept the highlighted match, not create the typed text while rows still match
 status: current
 updated: 2026-08-12
-source: "Add Branch/Worktree unify (personal/sway, branch code-mirror-6); now `src/components/Dialogs/PickerModal.tsx` (`commitEnter`, `commitTyped`, `creatable`), moved in #100; _2026-07-11, path refreshed 2026-08-12_"
+source: "Add Branch/Worktree unify (personal/tori, branch code-mirror-6); now `src/components/Dialogs/PickerModal.tsx` (`commitEnter`, `commitTyped`, `creatable`), moved in #100; _2026-07-11, path refreshed 2026-08-12_"
 ---
 
 # A creatable filter-picker must not create on Enter while rows still match

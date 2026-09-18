@@ -2,7 +2,7 @@
 summary: an ARIA role on a list item replaces its implicit listitem role and axe fails the parent list for it
 status: current
 updated: 2026-08-15
-source: "plan \"Toasts onto Kobalte Toast\" (personal/sway, branch `105-toasts`, issue #105); `src/components/Toasts/Toasts.tsx`; see [[component_toasts]]"
+source: "plan \"Toasts onto Kobalte Toast\" (personal/tori, branch `105-toasts`, issue #105); `src/components/Toasts/Toasts.tsx`; see [[component_toasts]]"
 ---
 
 # A `role="status"` `li` fails axe's list rule

@@ -2,7 +2,7 @@
 summary: OS notification, tray and dock badge read one shared rising edge tracker so they cannot disagree on needs you
 status: current
 updated: 2026-07-28
-source: Adapter registry, pulse, presence, checkpoints (personal/sway, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`
+source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`
 ---
 
 # Presence (OS notification, tray, dock badge)

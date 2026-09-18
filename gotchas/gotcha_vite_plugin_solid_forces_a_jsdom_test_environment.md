@@ -2,7 +2,7 @@
 summary: vite-plugin-solid injects a jsdom setup by default, add a standalone node environment vitest config for DOM free tests
 status: current
 updated: 2026-06-29
-source: Overflow-tab-bar (personal/sway); `vitest.config.ts`, `src/components/tabOverflow.test.ts`
+source: Overflow-tab-bar (personal/tori); `vitest.config.ts`, `src/components/tabOverflow.test.ts`
 ---
 
 # vite-plugin-solid forces a jsdom test environment

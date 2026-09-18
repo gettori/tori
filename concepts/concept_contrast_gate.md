@@ -2,7 +2,7 @@
 summary: every theme role must declare a contrast floor and surface, or the gate fails, catching 31 misses in shipped palettes
 status: current
 updated: 2026-08-22
-source: "Native theming system: palette + roles generator (personal/sway, branch `terminal-editor-design`); Phases 6, 7; commit db3abe9"
+source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 6, 7; commit db3abe9"
 ---
 
 # The contrast gate

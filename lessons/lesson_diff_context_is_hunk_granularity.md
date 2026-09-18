@@ -2,7 +2,7 @@
 summary: diff `-U` context width also sets hunk boundaries, widening it to collapse unchanged regions coarsens hunk staging too
 status: current
 updated: 2026-07-20
-source: "Editor upgrades: diff polish, hunk staging, diagnostics (personal/sway, phases 1-2); commits d1a6844, 01f0196; `src/panels/Editor/ReviewPanel.tsx` (`DIFF_CONTEXT`), `src/utils/diffView.ts` (`hunkGaps`)"
+source: "Editor upgrades: diff polish, hunk staging, diagnostics (personal/tori, phases 1-2); commits d1a6844, 01f0196; `src/panels/Editor/ReviewPanel.tsx` (`DIFF_CONTEXT`), `src/utils/diffView.ts` (`hunkGaps`)"
 ---
 
 # Diff context width and hunk granularity are the same knob

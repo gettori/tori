@@ -9,13 +9,13 @@ source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase
 
 **Location:** `src-tauri/src/chat/` (key files: `acp_transport.rs`, `acp.rs`, `acp_sessions.rs`)
 
-Sway's second `AgentTransport`, speaking the Agent Client Protocol to any agent that implements it. Three bundled adapters ride it today (OpenCode, Gemini, Codex) and roughly thirty more are launchable from the catalog, all through this one module with no Rust per agent. It is what makes [[adr_harness_breadth]]'s "a new harness is a TOML file" claim true.
+Tori's second `AgentTransport`, speaking the Agent Client Protocol to any agent that implements it. Three bundled adapters ride it today (OpenCode, Gemini, Codex) and roughly thirty more are launchable from the catalog, all through this one module with no Rust per agent. It is what makes [[adr_harness_breadth]]'s "a new harness is a TOML file" claim true.
 
 ## Responsibilities
 
 - Spawn the agent, handshake, open and load sessions, stream a turn, map every `session/update` onto an existing `ChatEvent`, and park the agent's permission question until the user answers it.
 - **It does not add a `ChatEvent` variant.** Four phases and two protocols made demands on the event model and none of them needed one - see [[concept_transport_neutral_event_model]].
-- **It does not decide anything the agent can decide.** Permissions, modes and models are the agent's; Sway renders them. See `sway-harness-owns-permissions`.
+- **It does not decide anything the agent can decide.** Permissions, modes and models are the agent's; Tori renders them. See `tori-harness-owns-permissions`.
 - **It declines `fs` and `terminal` client capabilities.** Agents do their own I/O. An agent that asks anyway must still be *answered*, or it hangs.
 - It does not steer. ACP has no mid-turn delivery, so `steer` returns an error rather than queueing, because a queued turn is indistinguishable upstream from a steer that landed.
 
@@ -32,7 +32,7 @@ Sway's second `AgentTransport`, speaking the Agent Client Protocol to any agent 
 
 **One dedicated OS thread per session runs `block_on`.** The crate is on the smol stack (`async-io`, `async-process`, `futures-lite`, `blocking`) rather than tokio, 44 new crates in total, so this is the cheaper of the two outcomes: no second global runtime beside Tauri's.
 
-**Sway spawns the child itself and hands the SDK the pipes.** `AcpAgent::from_str("opencode acp")` would have the SDK spawn it, which bypasses `transport::build_command` and therefore `env::augmented_path()` — the same PATH trap `pty.rs` exists for. Spawning it here also keeps the pid, which the ownership registry needs and which the SDK's connect path never hands back.
+**Tori spawns the child itself and hands the SDK the pipes.** `AcpAgent::from_str("opencode acp")` would have the SDK spawn it, which bypasses `transport::build_command` and therefore `env::augmented_path()` — the same PATH trap `pty.rs` exists for. Spawning it here also keeps the pid, which the ownership registry needs and which the SDK's connect path never hands back.
 
 **A parked responder cannot be answered twice, by ownership rather than by a check.** `Responder::respond(self, ..)` is synchronous and consumes `self`, so a permission question parks in a `Mutex<HashMap<String, Parked>>` holding the responder itself. Answering *is* consuming it.
 
@@ -53,10 +53,10 @@ The switch-answer path (`switch_events`) is a pure function and is unit tested o
 
 ## What the catalogue work added
 
-- `set_config_option` joined the transport trait, so a control Sway has no bespoke picker for can still be switched ([[concept_generic_config_mirror]]). Claude's arm errors rather than succeeding silently.
+- `set_config_option` joined the transport trait, so a control Tori has no bespoke picker for can still be switched ([[concept_generic_config_mirror]]). Claude's arm errors rather than succeeding silently.
 - `ChatEvent::ConfigOptions` is emitted behind `SessionStarted`, from `session/update`'s `ConfigOptionUpdate` (previously unhandled) and from every switch answer, always carrying the agent's whole option set.
 - `switch_events` reads each `set_config_option` answer: the whole set goes out first (it is how the store confirms an ACP pick, see [[concept_acp_config_options]]), then a mode that did not take is `ModeRefused` for all three shapes (an error, an answer naming another mode, an answer naming no mode), while a model keeps a plain `SessionError`. The `session/set_mode` fallback's error is `ModeRefused` too.
-- `initialize_request` and `new_session_request` are `pub` and **shared with the catalogue probe** rather than copied. A probe that handshook with different client capabilities would be measuring an agent Sway never actually runs.
+- `initialize_request` and `new_session_request` are `pub` and **shared with the catalogue probe** rather than copied. A probe that handshook with different client capabilities would be measuring an agent Tori never actually runs.
 
 ## Related
 

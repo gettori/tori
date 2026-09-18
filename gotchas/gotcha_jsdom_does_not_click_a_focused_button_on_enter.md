@@ -2,7 +2,7 @@
 summary: a real browser synthesizes a click on the focused button on Enter but jsdom does not, the assertion needs an ancestor
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/ConfirmDialog.tsx:44`, `ConfirmDialog.test.tsx:118`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/ConfirmDialog.tsx:44`, `ConfirmDialog.test.tsx:118`"
 ---
 
 # jsdom does not click a focused button on Enter

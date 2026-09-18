@@ -9,7 +9,7 @@ source: plan "Answer AskUserQuestion inside the chat panel" (phases 2, 3, 4), br
 
 **Location:** `src-tauri/src/chat/claude.rs` (recognition + the answer strings), `src-tauri/src/chat/claude_transport.rs` (parking and withdrawal), `src/panels/Chat/chatStore.ts` (the item kind), `src/panels/Chat/QuestionCard.tsx` (the form)
 
-`AskUserQuestion` reaches Sway as a `can_use_tool` control request, because the CLI has no interactive client on this transport and hands the question out rather than deciding it. Sway renders it as a form in the transcript, and the answer travels back as the one field a permission answer has for text: a denial's `message`. The channel itself is [[adr_askuserquestion_answer_channel]]; this page is the machinery either side of it.
+`AskUserQuestion` reaches Tori as a `can_use_tool` control request, because the CLI has no interactive client on this transport and hands the question out rather than deciding it. Tori renders it as a form in the transcript, and the answer travels back as the one field a permission answer has for text: a denial's `message`. The channel itself is [[adr_askuserquestion_answer_channel]]; this page is the machinery either side of it.
 
 ## The question is its own event, not a permission
 
@@ -30,7 +30,7 @@ The event carries **no `turn_id` and no deadline field**. A question blocks a to
 
 One entry is `"<question text>"="<value>"`, joined by `, `, with ` selected preview:` plus the option's own preview text appended when the picked option declared one. Two details that a careful reading of the corpus corrected and a casual one gets wrong: the second string carries **U+2014**, not a hyphen (written `\u{2014}` in the Rust source, with a test asserting exactly two of them and no ` - `), and an option may carry a `preview` key that the answer echoes back.
 
-**Picks and free text join into one value, and that is an extension rather than a measurement.** The corpus has no entry carrying both, because the CLI's own client cannot produce one, but Sway's form offers Other beside a multi-select's boxes. One value per question is the only shape the grammar has, so they join with `, `. A test pins it so the choice is on the record.
+**Picks and free text join into one value, and that is an extension rather than a measurement.** The corpus has no entry carrying both, because the CLI's own client cannot produce one, but Tori's form offers Other beside a multi-select's boxes. One value per question is the only shape the grammar has, so they join with `, `. A test pins it so the choice is on the record.
 
 A blank Other box is not free text. Without the trim and filter, an empty field left behind by the form would move the whole call onto the free-text string and tell the agent to read a clarification nobody wrote.
 

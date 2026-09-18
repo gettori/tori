@@ -2,7 +2,7 @@
 summary: a release build trace rig with marks and a mismatch pass control row, run deliberately and never gating anything
 status: current
 updated: 2026-08-20
-source: "Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phases 1 and 7, commits 4b8287f, 267fc4a; The reveal path: verify the mismatch switch, then decide what it costs (same branch), Phases 1 to 4, commits 6b0867b, be27425, dab0114, c2b6526"
+source: "Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phases 1 and 7, commits 4b8287f, 267fc4a; The reveal path: verify the mismatch switch, then decide what it costs (same branch), Phases 1 to 4, commits 6b0867b, be27425, dab0114, c2b6526"
 ---
 
 # Performance trace harness
@@ -18,7 +18,7 @@ shape.
 
 ## Responsibilities
 
-- Write correlated backend and frontend traces to `~/.config/sway/trace/`,
+- Write correlated backend and frontend traces to `~/.config/tori/trace/`,
   only when asked by env var.
 - Drive the app through a fixed sequence so the slow state is reproducible.
 - Report the rows the targets are read from.
@@ -33,7 +33,7 @@ shape.
   `@tauri-apps/api/core` by `vite.config.ts` in production builds only.
 - `src/utils/perfTrace.ts` - spans, the `done` latch, `traceNote`, flush.
 - `src/utils/perfRecipe.ts` - the scripted recipe; runs only when both
-  `SWAY_TRACE` and `SWAY_RECIPE` are set.
+  `TORI_TRACE` and `TORI_RECIPE` are set.
 - `scripts/trace-report.mjs` - joins both files; `--invokes` for every call.
 
 ## What it grew (2026-08-20)
@@ -72,14 +72,14 @@ shape.
 
 ```
 pnpm tauri build --bundles app
-rm -rf ~/.config/sway/trace
-SWAY_TRACE=1 SWAY_RECIPE=6x4x3 \
-  src-tauri/target/release/bundle/macos/Sway.app/Contents/MacOS/sway
+rm -rf ~/.config/tori/trace
+TORI_TRACE=1 TORI_RECIPE=6x4x3 \
+  src-tauri/target/release/bundle/macos/Tori.app/Contents/MacOS/tori
 node scripts/trace-report.mjs
 ```
 
-`SWAY_RECIPE` is `<worktrees>x<terminals-each>x<ab-rounds>`. The app drives
-itself and exits on its own. `SWAY_TRACE=1` alone traces manual clicking.
+`TORI_RECIPE` is `<worktrees>x<terminals-each>x<ab-rounds>`. The app drives
+itself and exits on its own. `TORI_TRACE=1` alone traces manual clicking.
 
 **Keep the window frontmost for the whole run.** See
 [[lesson_an_occluded_window_reports_no_paint]].

@@ -2,7 +2,7 @@
 summary: quick fixes capture the server's raw diagnostics ahead of CodeMirror's lint state, since tsserver needs the code field
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 2 (commits 5155ea8, 630d36a), Phase 3 (952c547); issue #64"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 2 (commits 5155ea8, 630d36a), Phase 3 (952c547); issue #64"
 ---
 
 # Code actions: quick fixes, source actions, and the bulb

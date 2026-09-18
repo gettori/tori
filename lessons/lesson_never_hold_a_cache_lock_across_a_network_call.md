@@ -2,7 +2,7 @@
 summary: a PR cache held its lock across the HTTP fetch that filled it, so one slow request serialized every project's lookup
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 3 self-review (Major); commit 7f9be1a; `src-tauri/src/forge/prs.rs:106`"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 3 self-review (Major); commit 7f9be1a; `src-tauri/src/forge/prs.rs:106`"
 ---
 
 # Never hold a cache lock across a network call

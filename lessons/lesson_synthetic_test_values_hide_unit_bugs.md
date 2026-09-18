@@ -2,7 +2,7 @@
 summary: unit sensitive code needs realistic magnitude fixtures, round numbers like 100 200 300 cannot reveal a wrong unit
 status: current
 updated: 2026-07-20
-source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/sway, branch `main`); Phase 1; `src-tauri/src/checkpoint.rs`"
+source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 1; `src-tauri/src/checkpoint.rs`"
 ---
 
 # Synthetic test values hide unit bugs — pin unit-sensitive code with realistic magnitudes

@@ -2,7 +2,7 @@
 summary: a throwaway probe sampled a modal stack one tick before Kobalte finished aria hiding and reported a problem as gone
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/stackedDialogs.test.tsx`; commit `bfca5c2`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/stackedDialogs.test.tsx`; commit `bfca5c2`"
 ---
 
 # A probe that measures too early reports no problem

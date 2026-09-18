@@ -2,7 +2,7 @@
 summary: a backend event folding into an open modal needs an identity and still-open guard, or it resurrects a closed modal
 status: current
 updated: 2026-07-10
-source: Unified Attach Existing Branch (personal/sway, branch code-mirror-6); `src/components/Sidebar.tsx` (`git://fetch-done` handler, `resolvePick`)
+source: Unified Attach Existing Branch (personal/tori, branch code-mirror-6); `src/components/Sidebar.tsx` (`git://fetch-done` handler, `resolvePick`)
 ---
 
 # A fire-and-forget backend event feeding a modal must be identity- and open-guarded

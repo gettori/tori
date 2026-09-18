@@ -2,7 +2,7 @@
 summary: a git rename or copy record spends three fields where every other change spends two, desyncing a fixed size chunker
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 2, 5, 7; `src-tauri/src/git.rs` (`parse_status`, `git_stash_show`), `src-tauri/src/git.rs` (`git_commit_files`); commits db98306, 3071c3a, b108974"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 2, 5, 7; `src-tauri/src/git.rs` (`parse_status`, `git_stash_show`), `src-tauri/src/git.rs` (`git_commit_files`); commits db98306, 3071c3a, b108974"
 ---
 
 # A rename or copy record spends an extra field, so a fixed-size chunker desyncs

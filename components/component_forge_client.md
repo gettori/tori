@@ -2,14 +2,14 @@
 summary: forge client owns the OAuth device flow, keychain credential and caches in Rust, and the token never crosses the bridge
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd"
 ---
 
 # Forge client (Rust)
 
 **Location:** `src-tauri/src/forge/` (key files: `mod.rs`, `http.rs`, `github.rs`, `model.rs`, `token.rs`, `device_flow.rs`, `auth.rs`, `prs.rs`, `status.rs`, `commands.rs`)
 
-Everything Sway knows about a forge's HTTP API. It owns the provider trait, the transport, the credential, the two caches and the Tauri command surface. It reaches the network on a plain blocking `fn` (so Tauri runs it off the async runtime, matching `model.rs` and `update.rs`), and it never hands the access token to the frontend.
+Everything Tori knows about a forge's HTTP API. It owns the provider trait, the transport, the credential, the two caches and the Tauri command surface. It reaches the network on a plain blocking `fn` (so Tauri runs it off the async runtime, matching `model.rs` and `update.rs`), and it never hands the access token to the frontend.
 
 ## Responsibilities
 

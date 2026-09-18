@@ -2,7 +2,7 @@
 summary: re reading a producer's file on the event that updated memory state shows the previous turn, prefer the live store
 status: current
 updated: 2026-07-30
-source: Make the session controls tell the truth about the CLI, follow-up to phase 5 (personal/sway, branch `chat`); `src/panels/Chat/ChatView.tsx` (`liveDetail`), `src/panels/Chat/chatStore.ts` (`promptsSent`, `toolCallsSeen`), commit "Count compactions live, and stop showing two token numbers"; [[component_chat_panel]]
+source: Make the session controls tell the truth about the CLI, follow-up to phase 5 (personal/tori, branch `chat`); `src/panels/Chat/ChatView.tsx` (`liveDetail`), `src/panels/Chat/chatStore.ts` (`promptsSent`, `toolCallsSeen`), commit "Count compactions live, and stop showing two token numbers"; [[component_chat_panel]]
 ---
 
 # A figure re-read from a file lags the event that triggered the re-read

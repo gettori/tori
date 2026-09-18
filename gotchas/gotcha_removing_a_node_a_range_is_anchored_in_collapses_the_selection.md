@@ -2,7 +2,7 @@
 summary: evicting a row a selection's Range anchors in collapses it, removing a node between the two ends silently empties it
 status: current
 updated: 2026-09-07
-source: plan "PDF viewer tab" (personal/sway, branch `logo-update-260907`), phase 3 . `src/panels/Editor/PdfView.tsx:115` . commit `dc57d79` . _2026-09-07_
+source: plan "PDF viewer tab" (personal/tori, branch `logo-update-260907`), phase 3 . `src/panels/Editor/PdfView.tsx:115` . commit `dc57d79` . _2026-09-07_
 ---
 
 # Removing a node a Range is anchored in collapses the selection

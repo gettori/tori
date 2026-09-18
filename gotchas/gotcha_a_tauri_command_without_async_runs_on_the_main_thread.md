@@ -2,7 +2,7 @@
 summary: a sync tauri command doing blocking io freezes the window, only async commands dispatch off the main thread
 status: current
 updated: 2026-07-19
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phases 2 and 5; `src-tauri/src/model.rs:65`, `src-tauri/src/update.rs:138`"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phases 2 and 5; `src-tauri/src/model.rs:65`, `src-tauri/src/update.rs:138`"
 ---
 
 # A Tauri command without `async` runs on the main thread

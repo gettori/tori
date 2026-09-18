@@ -2,7 +2,7 @@
 summary: editor tabs key per branch unit workspace while buffers stay global, closing a tab is the only thing that discards one
 status: current
 updated: 2026-08-05
-source: "Editor wave 1: close out the fundamentals (personal/sway, branch `wave-1-4`); Phase 2, issue #14; commit 87fcfe7; `src/panels/Editor/Editor.tsx:152`, `src/utils/editorTabPersist.ts`, `src/panels/Editor/purgeTabs.ts`"
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 2, issue #14; commit 87fcfe7; `src/panels/Editor/Editor.tsx:152`, `src/utils/editorTabPersist.ts`, `src/panels/Editor/purgeTabs.ts`"
 ---
 
 # Editor tabs belong to a workspace, buffers outlive the strip
@@ -15,7 +15,7 @@ Editor tabs were one flat global list, so a file opened in worktree A stayed ope
 - **A tab belongs to the workspace selected when it was opened**, including Docs-tree and `.shared/` files that live outside any project root. That is what gives those files somewhere predictable to land instead of nowhere.
 - **`openPaths` carries the union**, so `evictClosed` fires only on an explicit tab close. Handing it the visible strip would discard a background workspace's buffers — unsaved edits included — with none of `closeTab`'s discard confirm.
 - **The mount gates on the union too**, and visibility rides on the existing `hidden` prop. See [[lesson_a_mount_gate_is_a_destroy_gate]]: this is where the real hazard was.
-- **Persistence** (`editorTabPersist.ts`) stores `{[workspace]: {paths, active, savedAt}}` under `sway.editor.tabs.v1`, 30 paths per workspace, 30-day staleness. `toStore` refuses to write under an empty workspace key — the bucket tabs opened before a selection resolves would land in — and that refusal lives in the pure module so it is tested rather than asserted in a comment.
+- **Persistence** (`editorTabPersist.ts`) stores `{[workspace]: {paths, active, savedAt}}` under `tori.editor.tabs.v1`, 30 paths per workspace, 30-day staleness. `toStore` refuses to write under an empty workspace key — the bucket tabs opened before a selection resolves would land in — and that refusal lives in the pure module so it is tested rather than asserted in a comment.
 - **Restore is per workspace, on first visit, automatic**, and lazy: it sets descriptors, and only the active tab's buffer is built by `CodeEditor`'s own swap. Paths are probed with `file_exists` first and a path that cannot be probed is treated as gone, since a tab whose buffer can only ever report that it failed to open is worse than no tab.
 - **`purgeTabsUnder`** (`purgeTabs.ts`) sweeps every workspace when a space is deleted, not only the visible one, and reports the removed paths so the caller can clear the state it keys by path.
 
@@ -41,7 +41,7 @@ and reopen stack follow through the same sweep. `repoint` is shared by both
 modules, so "under" has exactly one definition across the tree and the pane. See
 [[component_project_file_tree]] and [[concept_path_keyed_workspace_stores]].
 
-**Scratch buffers are ordinary files** at `~/.config/sway/scratch/Untitled-N`,
+**Scratch buffers are ordinary files** at `~/.config/tori/scratch/Untitled-N`,
 bucketed by the workspace selected when ⌘N was pressed, exactly like every other
 tab. Because the path is absolute, `toStore`, the `file_exists` probe,
 `dirtyStash` and the fs commands all serve them unchanged. The number is the
@@ -69,4 +69,4 @@ through `CodeEditor`, which owns `formatForSave`.
 - [[lesson_a_mount_gate_is_a_destroy_gate]] — the near-miss this design's mount gate created and then closed.
 - [[concept_workspace_tab_grouping]] — the same grouping key, one pane over.
 - [[component_tab_restore]] — the terminal-side precedent, and why this one does not offer.
-- [[concept_synthetic_editor_tabs]] - the `sway://` ids that share this strip without naming a file.
+- [[concept_synthetic_editor_tabs]] - the `tori://` ids that share this strip without naming a file.

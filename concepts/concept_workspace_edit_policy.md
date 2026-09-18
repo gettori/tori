@@ -2,7 +2,7 @@
 summary: applyWorkspaceEdit is one applier with precheck, onDirty and beforeWrite hooks, as callers differ only in policy
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 1 (commits c4750d7, cec4058), Phases 2-3 (5155ea8, 630d36a, 952c547); `src/panels/Editor/workspaceEdit.ts`, `serverEdits.ts`, `batchWrite.ts`, `codeActionCommand.ts`, `lspRename.ts`"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 1 (commits c4750d7, cec4058), Phases 2-3 (5155ea8, 630d36a, 952c547); `src/panels/Editor/workspaceEdit.ts`, `serverEdits.ts`, `batchWrite.ts`, `codeActionCommand.ts`, `lspRename.ts`"
 ---
 
 # Applying a WorkspaceEdit: one applier, three policy hooks
@@ -29,7 +29,7 @@ Writes go through `batchWrite.ts` (`writeFilesSuppressingEcho`), which was lifte
 
 **A server-initiated edit may never open a modal.** The server is *blocked* on the answer. Where the interactive path asks "may I save this for you", `serverEdits.ts` answers `{"applied": false}` with a `failureReason` and explains in a toast. This is the whole shape of the module.
 
-**A UI deadline is not a request timeout, and they point in opposite directions.** `serverEdits` bounds its answer at **2 s**; `request_timeout_ms` is 20 s for TypeScript and 90 s for rust-analyzer and measures how long Sway is willing to wait for a *server*. Using the latter here would leave a server blocked for a minute and a half on a question about the user's own dirty buffer. The same 2 s bound is used by `organizeOnSave.ts` and by the completion resolve, each for its own version of "a person is waiting".
+**A UI deadline is not a request timeout, and they point in opposite directions.** `serverEdits` bounds its answer at **2 s**; `request_timeout_ms` is 20 s for TypeScript and 90 s for rust-analyzer and measures how long Tori is willing to wait for a *server*. Using the latter here would leave a server blocked for a minute and a half on a question about the user's own dirty buffer. The same 2 s bound is used by `organizeOnSave.ts` and by the completion resolve, each for its own version of "a person is waiting".
 
 **A deadline that abandons its loser has to stop it cooperatively.** The first version raced a promise against a timer, answered `applied: false` at 2 s, and let the losing apply run on: an apply that was merely slow (2.1 s) would then write files *behind* an answer saying nothing changed. `beforeWrite` reading an `expired` flag the timer sets is what makes the abandonment real, and it is pinned by a test confirmed to fail without it.
 

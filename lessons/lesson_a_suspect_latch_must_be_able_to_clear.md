@@ -2,7 +2,7 @@
 summary: a rejected credential flag was set by a 401 and cleared by nothing, so a state flag needs both edges and one owner
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 2 (a Phase 1 bug) and Phase 2 self-review; commits 474f146, e73cf00; `src-tauri/src/forge/http.rs`, `src-tauri/src/forge/auth.rs:158`"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 2 (a Phase 1 bug) and Phase 2 self-review; commits 474f146, e73cf00; `src-tauri/src/forge/http.rs`, `src-tauri/src/forge/auth.rs:158`"
 ---
 
 # A health flag needs both edges and exactly one owner

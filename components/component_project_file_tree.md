@@ -2,7 +2,7 @@
 summary: FileTree sections by Feature member, each root fenced for fs writes; deletes go through a Disposer to Trash, never rm
 status: current
 updated: 2026-08-28
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 1, issue #48; commits 5386ef8 + cfab50e; multi-root sections, per-member watchers and expanded persistence from Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155); commits 8e5d0c3, 4f852b0, 7580a41, 76b20bd; the row menu heading from Repository identity on tabs, breadcrumbs, quick-open and menus (issue #158), Phase 5, commit `c422394`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 1, issue #48; commits 5386ef8 + cfab50e; multi-root sections, per-member watchers and expanded persistence from Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155); commits 8e5d0c3, 4f852b0, 7580a41, 76b20bd; the row menu heading from Repository identity on tabs, breadcrumbs, quick-open and menus (issue #158), Phase 5, commit `c422394`"
 ---
 
 # Project file tree (editable, multi-root)
@@ -45,7 +45,7 @@ Two choices worth keeping:
 
 ## What the tree remembers
 
-Expansion was never persisted: every `TreeNode` owned a local `open` signal, so reopening a workspace collapsed it back to its roots. It now lives in `src/utils/treeExpanded.ts` under `sway.treeExpanded.v1`, the ninth member of [[concept_path_keyed_workspace_stores]].
+Expansion was never persisted: every `TreeNode` owned a local `open` signal, so reopening a workspace collapsed it back to its roots. It now lives in `src/utils/treeExpanded.ts` under `tori.treeExpanded.v1`, the ninth member of [[concept_path_keyed_workspace_stores]].
 
 - **Two lists per workspace**, `dirs` and `closed`, because the defaults differ: a directory starts shut so the open ones are recorded, a section header starts open so only the closed ones are. One flat list of open paths would have made a member that joins a Feature later arrive hidden.
 - **Entries are absolute paths**, so which member a directory belongs to falls out of its prefix and `wsKey` alone is a sufficient key.

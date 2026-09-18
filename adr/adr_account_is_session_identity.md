@@ -2,7 +2,7 @@
 summary: an account binds at spawn like the agent and stays fixed all session, beating a global switch or a model side pill
 status: current
 updated: 2026-09-05
-source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/sway, branch `multiaccount`), all four phases. Commits `8e670fb` (spawn and resume), `aa084e0` (catalogues), `0bac9e3` (the palette), `7b33143` (defaults); `src-tauri/src/chat/commands.rs`, `src-tauri/src/accounts.rs`, `src/panels/Terminal/Terminal.tsx`"
+source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), all four phases. Commits `8e670fb` (spawn and resume), `aa084e0` (catalogues), `0bac9e3` (the palette), `7b33143` (defaults); `src-tauri/src/chat/commands.rs`, `src-tauri/src/accounts.rs`, `src/panels/Terminal/Terminal.tsx`"
 ---
 
 # An account is part of session identity, like the agent

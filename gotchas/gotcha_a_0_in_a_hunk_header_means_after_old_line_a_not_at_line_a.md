@@ -2,7 +2,7 @@
 summary: a hunk header's zero length old span means after old line a, not at line a, so mapped lines land one row too high
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 9; `src-tauri/src/agent_lines.rs`; commit 6dc425f"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 9; `src-tauri/src/agent_lines.rs`; commit 6dc425f"
 ---
 
 # `-a,0` in a hunk header means "after old line a", not "at line a"

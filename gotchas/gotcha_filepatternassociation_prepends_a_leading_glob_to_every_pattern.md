@@ -2,7 +2,7 @@
 summary: vscode-json-languageservice prepends **/ to every pattern, so an absolute schema path matches only as a suffix
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth, Phase 6 (personal/sway, branch `wave-7`); `src/utils/swaySettingsFiles.ts`; commit 506d7e7"
+source: "Editor wave 7: language intelligence depth, Phase 6 (personal/tori, branch `wave-7`); `src/utils/toriSettingsFiles.ts`; commit 506d7e7"
 ---
 
 # `FilePatternAssociation` prepends a leading glob to every pattern

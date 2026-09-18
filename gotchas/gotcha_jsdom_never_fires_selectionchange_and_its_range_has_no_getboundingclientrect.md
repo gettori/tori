@@ -2,7 +2,7 @@
 summary: jsdom never fires selectionchange and its Range has no getBoundingClientRect, so both must be handled by hand
 status: current
 updated: 2026-09-07
-source: plan "Chat composer Tier 1" (personal/sway, branch `composer-260907`), phase 3 . `src/panels/Chat/QuoteSelection.tsx:44` . commit `c3eb12f` . _2026-09-07_; re-hit by the PDF's Quote in "PDF viewer tab" (branch `logo-update-260907`), phase 3 . `src/panels/Editor/pdfView.test.tsx` . commit `dc57d79` . _2026-09-07_
+source: plan "Chat composer Tier 1" (personal/tori, branch `composer-260907`), phase 3 . `src/panels/Chat/QuoteSelection.tsx:44` . commit `c3eb12f` . _2026-09-07_; re-hit by the PDF's Quote in "PDF viewer tab" (branch `logo-update-260907`), phase 3 . `src/panels/Editor/pdfView.test.tsx` . commit `dc57d79` . _2026-09-07_
 ---
 
 # jsdom never fires `selectionchange`, and its `Range` has no `getBoundingClientRect`

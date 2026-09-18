@@ -2,7 +2,7 @@
 summary: rebuilds the notification stack on Kobalte's Toast keeping both old write APIs, focus hotkey is a command row now
 status: current
 updated: 2026-08-15
-source: "plan \"Toasts onto Kobalte Toast\" (personal/sway, branch `105-toasts`, issue #105, part of #93); previous hand-rolled stack owned by `LeftSidebar.tsx`; commit c6b0e7b is the parent"
+source: "plan \"Toasts onto Kobalte Toast\" (personal/tori, branch `105-toasts`, issue #105, part of #93); previous hand-rolled stack owned by `LeftSidebar.tsx`; commit c6b0e7b is the parent"
 ---
 
 # Toasts

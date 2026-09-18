@@ -2,7 +2,7 @@
 summary: a paint time that exactly equals the last IPC return is not render cost, nothing painted until the work stopped
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phase 1, commit 4b8287f, `src/utils/perfTrace.ts`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phase 1, commit 4b8287f, `src/utils/perfTrace.ts`
 ---
 
 # A paint time equal to the last invoke is starvation, not render cost

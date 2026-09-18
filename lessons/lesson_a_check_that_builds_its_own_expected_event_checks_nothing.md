@@ -2,7 +2,7 @@
 summary: a neutrality check compared the mapper to an event it hand built instead of calling the mapper, so it checked nothing
 status: current
 updated: 2026-09-04
-source: plan "Confirm an ACP mode or model switch from the agent's own answer" (personal/sway, branch `bugfix-260903`, issue 164, commit 1aedc0b); `src-tauri/src/chat/neutrality_check.rs` (`map_acp`, `CurrentModeUpdate` arm); `src-tauri/src/chat/acp.rs` (`an_update_with_no_sway_counterpart_maps_to_no_events`)
+source: plan "Confirm an ACP mode or model switch from the agent's own answer" (personal/tori, branch `bugfix-260903`, issue 164, commit 1aedc0b); `src-tauri/src/chat/neutrality_check.rs` (`map_acp`, `CurrentModeUpdate` arm); `src-tauri/src/chat/acp.rs` (`an_update_with_no_tori_counterpart_maps_to_no_events`)
 ---
 
 # A check that builds its own expected event checks nothing

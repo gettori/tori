@@ -2,7 +2,7 @@
 summary: mocking listen as one handler per event name drops a second subscriber, so the test fires into the wrong component
 status: current
 updated: 2026-08-01
-source: "Fix the stale `fs://changed` payload contract in ReviewPanel (personal/sway, branch `wave-1-3`); `src/panels/Editor/ReviewPanel.test.tsx:49`; issue #12"
+source: "Fix the stale `fs://changed` payload contract in ReviewPanel (personal/tori, branch `wave-1-3`); `src/panels/Editor/ReviewPanel.test.tsx:49`; issue #12"
 ---
 
 # A keyed listener map in a test shadows a second listener for the same event

@@ -2,7 +2,7 @@
 summary: symlinked .shared files read as untracked git entries and block worktree removal unless the dirty check ignores them
 status: current
 updated: 2026-07-10
-source: Sidebar as Project Manager + Shared tab (personal/sway, branch code-mirror-6); `src-tauri/src/worktree.rs` (`tree_dirty`, `remove_worktree`, `SHARED_DIR`); commits 09ad986, _shared-tab_
+source: Sidebar as Project Manager + Shared tab (personal/tori, branch code-mirror-6); `src-tauri/src/worktree.rs` (`tree_dirty`, `remove_worktree`, `SHARED_DIR`); commits 09ad986, _shared-tab_
 ---
 
 # .shared symlinks read as untracked and block worktree removal

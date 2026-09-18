@@ -2,7 +2,7 @@
 summary: plain repo branches show only when explicitly attached, and an orphaned session re homes rather than vanishing
 status: current
 updated: 2026-07-09
-source: Sidebar Context-Menu Redesign (personal/sway, branch code-mirror-6); commits 03849c5, 17a334a, dac1093, e704411
+source: Sidebar Context-Menu Redesign (personal/tori, branch code-mirror-6); commits 03849c5, 17a334a, dac1093, e704411
 ---
 
 # ADR: Plain-repo branches are explicitly attached, not all-listed
@@ -13,7 +13,7 @@ The sidebar listed every local branch of a plain repo as a branch-unit, which is
 
 ## Decisions
 
-- **Out-of-band store.** Attachment lives in `~/.config/sway/attached.json` (repo path -> {branches, seeded}), mirroring the `adopted.json` pattern - kept out of the watched `sway.toml` so writes never loop the config watcher. Discovery emits `list_branches ∩ (attached ∪ {current})`, starting from real branches so a stale entry never yields a phantom unit.
+- **Out-of-band store.** Attachment lives in `~/.config/tori/attached.json` (repo path -> {branches, seeded}), mirroring the `adopted.json` pattern - kept out of the watched `tori.toml` so writes never loop the config watcher. Discovery emits `list_branches ∩ (attached ∪ {current})`, starting from real branches so a stale entry never yields a phantom unit.
 - **Per-repo seeded flag**, distinct from "set is empty", seeded once (origin default else current) and skipped until the repo has a branch, so detaching to empty is never silently re-seeded.
 - **Detach hides, Delete removes.** Detach drops a branch from the visible set (git untouched); Delete runs `git branch -D` and prunes the store. Both keep only a current-checkout guard.
 - **No session is ever orphaned.** A Claude session whose recorded branch has no visible unit re-homes onto the current-checkout unit (or the folder-fallback unit when HEAD is detached/unborn), so attach/detach/delete never hide history - which is why detach/delete need no session guard.

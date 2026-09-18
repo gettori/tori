@@ -2,7 +2,7 @@
 summary: an early return that skips clearing a banner signal leaves the previous context's banner showing after a switch
 status: current
 updated: 2026-07-20
-source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (personal/sway, branch `main`); Phase 2; `src/panels/Terminal/Terminal.tsx` (`restoreOffer` memo, `markOffered`); see [[component_tab_restore]]"
+source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (personal/tori, branch `main`); Phase 2; `src/panels/Terminal/Terminal.tsx` (`restoreOffer` memo, `markOffered`); see [[component_tab_restore]]"
 ---
 
 # An offer banner built by early-return leaks across contexts

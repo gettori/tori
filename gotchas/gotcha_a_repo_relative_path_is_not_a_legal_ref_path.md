@@ -2,7 +2,7 @@
 summary: building a refs/ name straight from a file path breaks on leading dots, .lock suffixes and .., rejected by update-ref
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 15 (personal/sway, branch `wave-6`); `src-tauri/src/local_history.rs:71`; commit b622f33"
+source: "Editor Wave 6: the IDE surface, Phase 15 (personal/tori, branch `wave-6`); `src-tauri/src/local_history.rs:71`; commit b622f33"
 ---
 
 # A repo-relative path is not a legal ref path

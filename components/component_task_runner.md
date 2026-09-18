@@ -2,7 +2,7 @@
 summary: tasks come from npm scripts, make targets and just recipes, a rerun always opens a new tab since init only fires once
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 14, issue #56, commit 44d8c99"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 14, issue #56, commit 44d8c99"
 ---
 
 # Task runner (npm scripts, make targets, just recipes)

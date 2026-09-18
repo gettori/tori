@@ -2,7 +2,7 @@
 summary: the Forge trait sits over a Transport seam so rate budget and a rejected credential are captured once, not per method
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phases 1 to 3; commits 474f146, e73cf00, 7f9be1a; `src-tauri/src/forge/mod.rs:154`, `src-tauri/src/forge/http.rs:143`, `src-tauri/src/forge/github.rs`"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1 to 3; commits 474f146, e73cf00, 7f9be1a; `src-tauri/src/forge/mod.rs:154`, `src-tauri/src/forge/http.rs:143`, `src-tauri/src/forge/github.rs`"
 ---
 
 # Forge provider seam (trait over transport)

@@ -2,7 +2,7 @@
 summary: a macOS gui launched process gets a minimal PATH lacking local bin, homebrew and volta, spawning claude or node fails
 status: current
 updated: 2026-06-29
-source: Sway build plan; `src-tauri/src/env.rs` (`augmented_path`); commits 3c2cde1, 15d039e
+source: Tori build plan; `src-tauri/src/env.rs` (`augmented_path`); commits 3c2cde1, 15d039e
 ---
 
 # GUI-launched processes inherit a minimal PATH

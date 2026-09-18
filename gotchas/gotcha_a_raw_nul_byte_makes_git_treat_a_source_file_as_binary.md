@@ -2,7 +2,7 @@
 summary: a literal NUL byte in a source file makes git diff it as binary with no patch shown, write the escape instead
 status: current
 updated: 2026-08-03
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 3 (found, pre-existing since Phase 2); `src/panels/Editor/lspClient.ts`; commit c5dac84"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 3 (found, pre-existing since Phase 2); `src/panels/Editor/lspClient.ts`; commit c5dac84"
 ---
 
 # A raw NUL byte makes git treat a source file as binary

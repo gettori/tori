@@ -2,7 +2,7 @@
 summary: Button anchors a control family on shared control height tokens, and title is now a type error in favor of tooltip
 status: current
 updated: 2026-08-15
-source: "Button component + migrate all buttons (personal/sway, branch code-mirror-6); `src/components/Button/Button.tsx`, `Button.module.css`, `src/styles/tokens.css`; reworked fixed-height + sibling primitives + call-site migration: plan \"A font-driven scaling system + unified controls\" (branch terminal-editor-design) Phases 4-5; `title` retired for `tooltip`: plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); commits c996ca9, dbfa12a"
+source: "Button component + migrate all buttons (personal/tori, branch code-mirror-6); `src/components/Button/Button.tsx`, `Button.module.css`, `src/styles/tokens.css`; reworked fixed-height + sibling primitives + call-site migration: plan \"A font-driven scaling system + unified controls\" (branch terminal-editor-design) Phases 4-5; `title` retired for `tooltip`: plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); commits c996ca9, dbfa12a"
 ---
 
 # Button

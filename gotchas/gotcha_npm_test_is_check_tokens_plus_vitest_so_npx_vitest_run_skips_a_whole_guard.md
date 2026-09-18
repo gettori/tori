@@ -2,7 +2,7 @@
 summary: npm test runs check-tokens.mjs before vitest, a bare npx vitest run skips the only guard for dead var names or colours
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phase 5; `package.json` (`test`), `scripts/check-tokens.mjs`; commit `d4a59d3`"
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phase 5; `package.json` (`test`), `scripts/check-tokens.mjs`; commit `d4a59d3`"
 ---
 
 # `npm test` is `check-tokens` plus vitest, so `npx vitest run` skips a whole guard

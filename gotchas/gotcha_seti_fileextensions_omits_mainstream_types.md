@@ -2,7 +2,7 @@
 summary: VS Code's theme-seti fileExtensions omits ts, js, json, md, css and py, which resolve via languageIds instead
 status: current
 updated: 2026-06-30
-source: Seti file-type icons (personal/sway, branch code-mirror-6); `scripts/gen-seti.mjs` (`EXT_TO_LANG`)
+source: Seti file-type icons (personal/tori, branch code-mirror-6); `scripts/gen-seti.mjs` (`EXT_TO_LANG`)
 ---
 
 # Seti fileExtensions omits mainstream types

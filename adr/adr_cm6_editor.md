@@ -2,14 +2,14 @@
 summary: editor drops the cross origin code server iframe for same origin CodeMirror 6, so drag to terminal finally works
 status: current
 updated: 2026-08-03
-source: CM6 editor migration plan (personal/sway, branch code-mirror-6); commits ccd7337->15d039e (Phases 1 to 11); amended 2026-08-03 by the editor roadmap discussion and Editor wave 4 (branch `wave-4`, commits 7bb34d2->14b389b)
+source: CM6 editor migration plan (personal/tori, branch code-mirror-6); commits ccd7337->15d039e (Phases 1 to 11); amended 2026-08-03 by the editor roadmap discussion and Editor wave 4 (branch `wave-4`, commits 7bb34d2->14b389b)
 ---
 
 # Editor: CodeMirror 6 (same-origin) with bundled LSP, over code-server
 
-Sway's editor moves from the **code-server VS Code iframe** back to a **same-origin CodeMirror 6** editor wired by us. The code-server `<iframe>` is cross-origin, which makes the cross-pane features Sway actually wants impossible: dragging a file from the explorer onto the terminal, clicking a `file:line:col` path in the terminal to open it, sharing the theme, and any deep editor↔terminal glue. CM6 runs in the same SolidJS document as the xterm terminal, so all of that becomes ordinary function/signal calls. This supersedes the editor half of [[adr_stack_choice]] (which went Monaco -> code-server).
+Tori's editor moves from the **code-server VS Code iframe** back to a **same-origin CodeMirror 6** editor wired by us. The code-server `<iframe>` is cross-origin, which makes the cross-pane features Tori actually wants impossible: dragging a file from the explorer onto the terminal, clicking a `file:line:col` path in the terminal to open it, sharing the theme, and any deep editor↔terminal glue. CM6 runs in the same SolidJS document as the xterm terminal, so all of that becomes ordinary function/signal calls. This supersedes the editor half of [[adr_stack_choice]] (which went Monaco -> code-server).
 
-We accept rebuilding the IDE surroundings ourselves (file tree, tabs, save, git gutter, diff) because that is the price of same-origin integration, and because Sway is an agent/terminal-first tool that *shows* code, not an IDE that runs agents. To keep it genuinely useful we still ship language intelligence: **Sway bundles a TS/JS language server** (`typescript-language-server` + `typescript`) and bridges JSON-RPC to `@codemirror/lsp-client`, so completion/hover/diagnostics/go-to-def work with no project-local install.
+We accept rebuilding the IDE surroundings ourselves (file tree, tabs, save, git gutter, diff) because that is the price of same-origin integration, and because Tori is an agent/terminal-first tool that *shows* code, not an IDE that runs agents. To keep it genuinely useful we still ship language intelligence: **Tori bundles a TS/JS language server** (`typescript-language-server` + `typescript`) and bridges JSON-RPC to `@codemirror/lsp-client`, so completion/hover/diagnostics/go-to-def work with no project-local install.
 
 The PTY output stream is also rewritten from base64-over-global-events to **Tauri Channels**, pairing with an xterm **WebGL** renderer for smooth high-throughput output.
 
@@ -35,7 +35,7 @@ The roadmap discussion of 2026-08-01 settled the editor's ceiling as **proper ID
 - **Extension marketplace** — a plugin host is the weight that made the VS Code iframe untenable.
 - **Remote development** — the editor's value here is that it shares one document with the terminal on this machine.
 - **CRDT collaboration** — a different product with a different data model.
-- **A tree-sitter swap** — Lezer is CM6's own parser and already ships the grammars Sway needs; the accuracy gap that motivated a swap is closed by [[concept_semantic_token_layering]] instead.
+- **A tree-sitter swap** — Lezer is CM6's own parser and already ships the grammars Tori needs; the accuracy gap that motivated a swap is closed by [[concept_semantic_token_layering]] instead.
 
 These are not "not yet". They are decisions, and re-litigating one means reopening this ADR.
 
@@ -47,7 +47,7 @@ Sequenced elsewhere, not out: minimap (wave 5), sticky scroll and breadcrumbs (w
 - [[component_cm6_editor]] — the editor pane this decision produced.
 - [[component_lsp_host]] — the language intelligence, now a TOML server registry rather than one bundled server.
 - [[concept_lsp_workspace_bridge]] — what closed the cross-file follow-up above.
-- [[concept_lsp_capability_contract]] — the rule governing what Sway tells a server it can do.
+- [[concept_lsp_capability_contract]] — the rule governing what Tori tells a server it can do.
 - [[component_project_formatter]] · [[component_editor_symbols]] · [[concept_semantic_token_layering]] — the wave-4 surfaces built on it.
 - [[component_pty_host]] — the terminal half, now streamed over Tauri Channels.
 - [[concept_fs_change_pipeline]] — the disk-change glue the same-origin editor relies on.

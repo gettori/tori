@@ -2,7 +2,7 @@
 summary: a latest-wins guard keyed on what changed (like position) never fires, key it on the display surface instead
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 7 (commit a862bbe); `src/panels/Editor/peekLocations.ts`; issue #66"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 7 (commit a862bbe); `src/panels/Editor/peekLocations.ts`; issue #66"
 ---
 
 # A latest-wins guard keyed on the thing that changed can never fire

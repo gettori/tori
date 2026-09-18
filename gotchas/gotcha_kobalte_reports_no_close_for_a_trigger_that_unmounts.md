@@ -2,7 +2,7 @@
 summary: kobalte fires no close event when a menu trigger unmounts, an open count never comes down, track the row's own id
 status: current
 updated: 2026-08-15
-source: Menu onto Kobalte DropdownMenu and ContextMenu, phases 3 to 5 (personal/sway, branch `103-menu`); `src/panels/Terminal/HistoryPanel.tsx`, `src/panels/Editor/Editor.tsx`; [[component_menu]]; commits `7c610cb`, `a0913d9`
+source: Menu onto Kobalte DropdownMenu and ContextMenu, phases 3 to 5 (personal/tori, branch `103-menu`); `src/panels/Terminal/HistoryPanel.tsx`, `src/panels/Editor/Editor.tsx`; [[component_menu]]; commits `7c610cb`, `a0913d9`
 ---
 
 # Kobalte reports no close for a trigger that unmounts

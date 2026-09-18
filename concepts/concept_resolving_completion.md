@@ -1,19 +1,19 @@
 ---
-summary: swayCompletion() replaces lsp-client's completion source to fire additionalTextEdits as a second transaction at 2s
+summary: toriCompletion() replaces lsp-client's completion source to fire additionalTextEdits as a second transaction at 2s
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 4 (commit bd8158a); `src/panels/Editor/lspCompletion.ts`, `lspClient.ts:346-393`"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 4 (commit bd8158a); `src/panels/Editor/lspCompletion.ts`, `lspClient.ts:346-393`"
 ---
 
 # Auto-import means replacing the library's completion source, not wrapping it
 
-tsserver puts auto-import edits in `completionItem/resolve`, and `@codemirror/lsp-client` never sends that request: it applies `additionalTextEdits` from the *initial* item only (`dist/index.js:969-978`). There is no hook to add. The library builds each option's `apply` while mapping the reply, and CodeMirror's `apply` is **synchronous**, so there is nowhere to await a resolve between the pick and the commit. The only way in is to replace `serverCompletion()` with Sway's own source, which means the client's extension list has to be **written out by hand** instead of spread from `languageServerExtensions()`. That hand-written list is now a permanent constraint on this file, and it is why `clientExtensions()` is exported so tests build the client the app builds.
+tsserver puts auto-import edits in `completionItem/resolve`, and `@codemirror/lsp-client` never sends that request: it applies `additionalTextEdits` from the *initial* item only (`dist/index.js:969-978`). There is no hook to add. The library builds each option's `apply` while mapping the reply, and CodeMirror's `apply` is **synchronous**, so there is nowhere to await a resolve between the pick and the commit. The only way in is to replace `serverCompletion()` with Tori's own source, which means the client's extension list has to be **written out by hand** instead of spread from `languageServerExtensions()`. That hand-written list is now a permanent constraint on this file, and it is why `clientExtensions()` is exported so tests build the client the app builds.
 
 ## How it works
 
-`swayCompletion()` re-implements `serverCompletionSource` with one addition: after the identifier is inserted, the item is resolved and any `additionalTextEdits` that come back are dispatched as a **second transaction**. Insertion never waits on the server, so a refused, slow or unsupported resolve costs the import line and nothing else. The round trip is bounded at **2 s** (not `request_timeout_ms`, which is 20 s/90 s and also covers `initialize`): an edit landing a minute later does not read as a late auto-import, it reads as the editor typing by itself into wherever the caret has moved on to. On expiry the request is cancelled with `$/cancelRequest` rather than merely abandoned.
+`toriCompletion()` re-implements `serverCompletionSource` with one addition: after the identifier is inserted, the item is resolved and any `additionalTextEdits` that come back are dispatched as a **second transaction**. Insertion never waits on the server, so a refused, slow or unsupported resolve costs the import line and nothing else. The round trip is bounded at **2 s** (not `request_timeout_ms`, which is 20 s/90 s and also covers `initialize`): an edit landing a minute later does not read as a late auto-import, it reads as the editor typing by itself into wherever the caret has moved on to. On expiry the request is cancelled with `$/cancelRequest` rather than merely abandoned.
 
-`completionItem.resolveSupport` is declared for `additionalTextEdits` **only**, so nothing licenses the server to withhold documentation Sway never resolves.
+`completionItem.resolveSupport` is declared for `additionalTextEdits` **only**, so nothing licenses the server to withhold documentation Tori never resolves.
 
 **The ordering inside the resolve is the whole correctness story**, and all three parts were confirmed by breaking them and watching a named test fail:
 
@@ -29,7 +29,7 @@ All-or-nothing came free: `mapPosition` throws for a line the document does not 
 
 **The wrapper was dropping the `pickedCompletion` annotation**, which is added *around* `insertCompletionText` rather than inside it. Nothing reads it while `activateOnCompletion` stays at its default, which is exactly why the loss would have gone unnoticed.
 
-**And writing the list out by hand revealed that the library's keymap had never been bound at all.** `keymap.of(...)` returns a bare `FacetProvider`, and the client keeps a configured extension only if it is an array or carries `.extension` (`dist/index.js:551`). Spread as a top-level entry the whole keymap was dropped on the floor, so F12, ⇧F12, F2 and ⇧⌥F were never bound by it, while `commands.ts` advertised three of them as `sub:` labels. Wrapping it in an array binds it, but only `jumpToDefinitionKeymap` and `findReferencesKeymap`: the library's ⇧⌥F would take the chord from Sway's `lsp-format` (which tries the project's Biome or Prettier first, and would then swallow ⇧⌥F in stylesheets and Markdown too), and its F2 runs the `renameSymbol` whose `doRename` skips unopened files silently.
+**And writing the list out by hand revealed that the library's keymap had never been bound at all.** `keymap.of(...)` returns a bare `FacetProvider`, and the client keeps a configured extension only if it is an array or carries `.extension` (`dist/index.js:551`). Spread as a top-level entry the whole keymap was dropped on the floor, so F12, ⇧F12, F2 and ⇧⌥F were never bound by it, while `commands.ts` advertised three of them as `sub:` labels. Wrapping it in an array binds it, but only `jumpToDefinitionKeymap` and `findReferencesKeymap`: the library's ⇧⌥F would take the chord from Tori's `lsp-format` (which tries the project's Biome or Prettier first, and would then swallow ⇧⌥F in stylesheets and Markdown too), and its F2 runs the `renameSymbol` whose `doRename` skips unopened files silently.
 
 ## Related
 

@@ -38,6 +38,6 @@ Plan "The composer offers every lever the agent published" (branch `unified-chat
 
 ## What the fast-mode finding became
 
-The refusal this page recorded is still true and is still published. What changed is where it comes from: the `initialize` catalogue publishes `supportsFastMode` per model, so `claude::config_options` reads the flag off the row rather than off a Sway-side table. The table restating it had been matching nothing the whole time, which is [[lesson_a_restatement_matches_nothing_and_says_nothing]].
+The refusal this page recorded is still true and is still published. What changed is where it comes from: the `initialize` catalogue publishes `supportsFastMode` per model, so `claude::config_options` reads the flag off the row rather than off a Tori-side table. The table restating it had been matching nothing the whole time, which is [[lesson_a_restatement_matches_nothing_and_says_nothing]].
 
 Related: [[concept_capability_resolution]], [[lesson_debug_the_harness_before_recording_the_outcome]], [[lesson_a_restatement_matches_nothing_and_says_nothing]], [[component_catalog_probe]].

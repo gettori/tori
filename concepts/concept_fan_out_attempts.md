@@ -10,7 +10,7 @@ source: Chat surface plan, phase 12 (branch `chat`); `src-tauri/src/attempts.rs`
 Several independent attempts at one task, each in its own worktree, one of which
 is promoted while the rest are discarded outright. The point is that the attempts
 are *alternatives*, so nothing here merges: the winner's branch is kept exactly
-as it stands and what happens to it afterwards is ordinary git work. Sway records
+as it stands and what happens to it afterwards is ordinary git work. Tori records
 only the two things git has no field for, which group an attempt belongs to and
 what the group was trying to do, and reconciles that record against git on every
 read.

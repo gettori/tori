@@ -7,7 +7,7 @@ source: plan "A font-driven scaling system + unified controls" (branch terminal-
 
 # Font-driven UI scaling: one multiplier zooms the whole chrome
 
-**Location:** `src/styles/tokens.css` (`--ui-scale`, `--sway-text-*`, `--sway-space-*`, `--control-*`), `src/panels/Settings/{scale.ts,settingsStore.ts}`, `src/panels/Editor/CodeEditor.tsx`
+**Location:** `src/styles/tokens.css` (`--ui-scale`, `--tori-text-*`, `--tori-space-*`, `--control-*`), `src/panels/Settings/{scale.ts,settingsStore.ts}`, `src/panels/Editor/CodeEditor.tsx`
 
 The chrome resizes as one piece. A single multiplier, `--ui-scale`, folds through every type step, every ≥2px spacing value, and every control dimension, so raising the UI font size (or zooming) is a true uniform zoom rather than a font-size-only change that leaves padding and controls stranded. The editor and terminal deliberately stay **out** of this: they carry their own independent font sizes.
 
@@ -17,8 +17,8 @@ The chrome resizes as one piece. A single multiplier, `--ui-scale`, folds throug
 
 Three token groups consume it, each `calc(base * var(--ui-scale))`:
 
-- **Type ramp** `--sway-text-2xs..4xl` (9 steps: 10/11/12/13/14/15/16/18/21). Re-based from the old fixed ramp so chrome keeps its look (max rendered delta ≤0.77px) while Settings text now scales too.
-- **Space scale** `--sway-space-1..8` (2/4/6/8/12/16/24/32). Every ≥2px padding/margin/gap/dimension is either a `--sway-space-*` token or an inline `calc(px * var(--ui-scale))`.
+- **Type ramp** `--tori-text-2xs..4xl` (9 steps: 10/11/12/13/14/15/16/18/21). Re-based from the old fixed ramp so chrome keeps its look (max rendered delta ≤0.77px) while Settings text now scales too.
+- **Space scale** `--tori-space-1..8` (2/4/6/8/12/16/24/32). Every ≥2px padding/margin/gap/dimension is either a `--tori-space-*` token or an inline `calc(px * var(--ui-scale))`.
 - **Control tokens** `--control-height{,-sm,-xs}` (28/24/20) + `--control-icon` (16), with **no floor** ([[component_button]] and its sibling primitives ride these).
 
 ## The one viewport exception

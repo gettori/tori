@@ -2,7 +2,7 @@
 summary: with no global scan to baseline from, a session stamps seen on first sight, and pruning a stamp must be folder scoped
 status: stale
 updated: 2026-07-31
-source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (personal/sway, branch `main`); Phase 1; commit 83c0572; `src/utils/unseen.ts` (+ `unseen.test.ts`), `src/panels/LeftSidebar/LeftSidebar.tsx` (`noteScans`, the selection effect, `.unseenDot`)"
+source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (personal/tori, branch `main`); Phase 1; commit 83c0572; `src/utils/unseen.ts` (+ `unseen.test.ts`), `src/panels/LeftSidebar/LeftSidebar.tsx` (`noteScans`, the selection effect, `.unseenDot`)"
 ---
 
 # Unseen-change stamp bookkeeping
@@ -12,7 +12,7 @@ source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (per
 > `noteScans`, `viewStamps`, the stamp effect and `.unseenDot` with it. Within a
 > branch-scoped [[component_history_dropdown]], "unseen" and "live" are nearly
 > the same set, and the residual case is what the History button's badge covers.
-> Existing `sway.lastViewed` stamps were not migrated. **Kept** because the
+> Existing `tori.lastViewed` stamps were not migrated. **Kept** because the
 > reasoning below is about a constraint that has not changed - `list_sessions` is
 > still folder-scoped, so anything that ever wants a "since you last looked"
 > signal faces the same no-global-baseline problem and should read this first.
@@ -21,7 +21,7 @@ How the sidebar decides a session row has moved since you last looked at it. A r
 
 ## Why stamp-on-first-sight, not a baseline event
 
-`list_sessions(folder)` is folder-scoped (see [[component_session_scanner]]) — Sway never enumerates all sessions across all agents at once. So there is no moment at which "everything currently known" can be stamped as a baseline, and an upgrade launch cannot mark the world as seen.
+`list_sessions(folder)` is folder-scoped (see [[component_session_scanner]]) — Tori never enumerates all sessions across all agents at once. So there is no moment at which "everything currently known" can be stamped as a baseline, and an upgrade launch cannot mark the world as seen.
 
 The rule instead is **stamp-on-first-sight**: a session seen in any scan without a stamp gets stamped immediately, and its pre-stamp activity never badges. Consequences that fall out of this and are worth keeping straight:
 
@@ -35,7 +35,7 @@ A stamp is `{ at, cwd }`, keyed `agent:id` (ids are only unique within an adapte
 
 ## First sight uses max(now, last_active)
 
-Not `now`. A session that has been busy for days would otherwise badge the instant Sway meets it if its `last_active` were ahead of the local clock (skew, or a session written on another machine). Taking the max means first sight is never immediately unseen.
+Not `now`. A session that has been busy for days would otherwise badge the instant Tori meets it if its `last_active` were ahead of the local clock (skew, or a session written on another machine). Taking the max means first sight is never immediately unseen.
 
 ## Select and deselect both stamp
 

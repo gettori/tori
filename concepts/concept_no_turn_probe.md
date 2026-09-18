@@ -7,7 +7,7 @@ source: plan "Model catalogues from the harnesses themselves" (phases 1 and 3, b
 
 # Asking a harness what it can run, without spending a turn
 
-Sway shows no model it was not told about, which means it has to ask. Asking means starting the harness's own binary, and the whole design question is what that costs the user: tokens, a session in their history, a process left running.
+Tori shows no model it was not told about, which means it has to ask. Asking means starting the harness's own binary, and the whole design question is what that costs the user: tokens, a session in their history, a process left running.
 
 **The claim shipped is "a probe submits no turn", and the first draft said "token-free or it does not ship".** The weakening is the interesting part, and it is written into the module doc rather than quietly dropped.
 
@@ -24,7 +24,7 @@ Sway shows no model it was not told about, which means it has to ask. Asking mea
 
 **The probe writes as well as reads, and the promise still holds.** Since the per-model sweep ([[component_catalog_probe]]), the ACP arm sends one `session/set_config_option` per model inside that session, because one `session/new` answer describes one model ([[concept_acp_config_options]]). That is a mutation, so "read-only" was never the claim; **"submits no turn" is**, and a config switch is not a turn. It costs nothing measurable either: handshake plus `session/new` alone is 4.4s on OpenCode and the same probe plus eight switches is 4.3s.
 
-What it does leave behind is a session whose recorded config is the *last* model swept rather than the agent's default. That lands in the same discarded scratch session the whole mechanism already accounts for: it is closed immediately, it lives in the constant probe directory, and the two ignored hygiene tests (`a_probe_leaves_nothing_in_the_history_sway_would_adopt`, `a_codex_probe_is_not_adopted_into_the_history_a_chat_lists`) still pass. The catalogue's own `current` values are read from the **opening** answer, so nothing downstream describes the post-sweep state.
+What it does leave behind is a session whose recorded config is the *last* model swept rather than the agent's default. That lands in the same discarded scratch session the whole mechanism already accounts for: it is closed immediately, it lives in the constant probe directory, and the two ignored hygiene tests (`a_probe_leaves_nothing_in_the_history_tori_would_adopt`, `a_codex_probe_is_not_adopted_into_the_history_a_chat_lists`) still pass. The catalogue's own `current` values are read from the **opening** answer, so nothing downstream describes the post-sweep state.
 
 ## Phantom hygiene is a directory, not a list of ids
 
@@ -32,7 +32,7 @@ The obvious alternative was to remember the session ids the probe created and fi
 
 The filter lives inside `acp_sessions::adopt` itself, as a `probe_cwds: &[String]` parameter, so no future caller can forget it. The slice rather than a path keeps `adopt` pure - the caller resolves the spellings against the filesystem and `adopt` only compares - and **both spellings are passed** because macOS hands out `/var/...` while agents record `/private/var/...` ([[concept_one_directory_two_spellings]]).
 
-Measured 2026-08-17: Codex answers `session/list` and **scopes it to the asking session's cwd**, so a probe session is out of a user's history twice over. That is reassuring rather than load-bearing: the agent's scoping is the agent's to change, the filter is Sway's.
+Measured 2026-08-17: Codex answers `session/list` and **scopes it to the asking session's cwd**, so a probe session is out of a user's history twice over. That is reassuring rather than load-bearing: the agent's scoping is the agent's to change, the filter is Tori's.
 
 ## A deadline, not an expectation
 

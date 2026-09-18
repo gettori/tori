@@ -2,7 +2,7 @@
 summary: macOS cannot hold breadcrumbs.ts beside Breadcrumbs.tsx, tsc reports it as an import error not a collision
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 7 (personal/sway, branch `wave-6`); `src/panels/Editor/breadcrumbTrail.ts`; commit c6177fa"
+source: "Editor Wave 6: the IDE surface, Phase 7 (personal/tori, branch `wave-6`); `src/panels/Editor/breadcrumbTrail.ts`; commit c6177fa"
 ---
 
 # A case-insensitive filesystem cannot hold `foo.ts` beside `Foo.tsx`

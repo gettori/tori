@@ -2,7 +2,7 @@
 summary: git worktree list still shows a folder deleted outside git, prune first then filter by is_dir before trusting it
 status: current
 updated: 2026-08-28
-source: "Feature lifecycle, member management and repair (personal/sway, branch `feature-workspace`, issue #159) - phase 3 - `src-tauri/src/features.rs` `build_member`, `src-tauri/src/worktree.rs` `prune_worktrees`, commit ede61ff - _2026-08-28_"
+source: "Feature lifecycle, member management and repair (personal/tori, branch `feature-workspace`, issue #159) - phase 3 - `src-tauri/src/features.rs` `build_member`, `src-tauri/src/worktree.rs` `prune_worktrees`, commit ede61ff - _2026-08-28_"
 ---
 
 # git keeps listing a worktree you deleted outside it

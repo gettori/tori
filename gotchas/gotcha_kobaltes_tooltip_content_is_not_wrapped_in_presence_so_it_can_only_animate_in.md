@@ -2,7 +2,7 @@
 summary: Kobalte's tooltip content skips solid-presence unlike its dialog, so it unmounts instantly and data-closed hits nothing
 status: current
 updated: 2026-08-16
-source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/sway, branch `130-re-audit-dialog-and-tooltip`, issue #130); `@kobalte/core` 0.13.13 `dist/tooltip/index.js` vs `dist/chunk/IN725QRS.js`; `src/components/Tooltip/Tooltip.module.css`"
+source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130); `@kobalte/core` 0.13.13 `dist/tooltip/index.js` vs `dist/chunk/IN725QRS.js`; `src/components/Tooltip/Tooltip.module.css`"
 ---
 
 # Kobalte's tooltip content is not wrapped in presence, so it can only animate in

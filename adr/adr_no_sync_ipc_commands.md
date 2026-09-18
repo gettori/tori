@@ -2,12 +2,12 @@
 summary: only pty and lsp_send stay sync on the IPC thread by design, because their ordering is semantics, not just a lock
 status: needs-verification
 updated: 2026-08-20
-source: not recorded; imported from grimoire docs/personal/sway
+source: not recorded; imported from grimoire docs/personal/tori
 ---
 
 # No command that can block runs on the IPC thread
 
-Every Tauri command in Sway used to be a sync `fn` executed inline on the IPC
+Every Tauri command in Tori used to be a sync `fn` executed inline on the IPC
 thread, which made the backend a global serialisation point: one warm worktree
 switch issued 57 invokes, 654ms of body time, all strictly serialized, with a
 median queue wait of 132ms and a worst case of 1437ms. We decided the rule is
@@ -40,7 +40,7 @@ effect of the execution model. See
 ## Consequences
 
 - Every load-modify-save store mutator needed an explicit `named_lock`, because
-  the IPC thread had been their implicit lock too (sway.toml, attached.json,
+  the IPC thread had been their implicit lock too (tori.toml, attached.json,
   settings, the session overlay, touched-file attribution).
 - `git status` reads cannot run outside the repo write lock without
   `--no-optional-locks`, because a concurrent `git add` *fails* on `index.lock`

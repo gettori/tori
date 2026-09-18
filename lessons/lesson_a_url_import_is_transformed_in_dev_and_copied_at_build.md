@@ -2,7 +2,7 @@
 summary: serving a worker via `?url` breaks only in dev since Vite injects a document touching import, serve it as a plain asset
 status: current
 updated: 2026-09-07
-source: plan "PDF viewer tab" (personal/sway, branch `logo-update-260907`), phase 1 . `vite.config.ts`, `src/panels/Editor/pdfjsRuntime.ts` . commit `bfb58fd`
+source: plan "PDF viewer tab" (personal/tori, branch `logo-update-260907`), phase 1 . `vite.config.ts`, `src/panels/Editor/pdfjsRuntime.ts` . commit `bfb58fd`
 ---
 
 # Serve a worker script as an asset, never through `?url`

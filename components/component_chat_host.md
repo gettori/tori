@@ -54,7 +54,7 @@ switch the UI had promised would wait for the next turn, and consume it. So
 beside `chat_send`, writing the identical `user` frame and nothing else. See
 [[concept_mid_turn_steer]].
 
-**The command side of neutrality gained its own check.** An event Sway cannot map
+**The command side of neutrality gained its own check.** An event Tori cannot map
 is a gap in the model; a verb a harness cannot serve is normal and permanent.
 `neutrality_check.rs` now carries `Support` plus exhaustive `codex_support` /
 `acp_support`, pinning that send, interrupt and close stay the shared floor while
@@ -67,7 +67,7 @@ every sibling store already used `rules::write_atomically` (write temp, fsync
 temp, `rename`, fsync directory). Both readers here end in `unwrap_or_default()`,
 so a torn file read back as *no claims at all* and every live session would have
 looked unowned to the next opener. The module header now also states its scope
-honestly: nothing here addresses **two live Sways**, which race the file with no
+honestly: nothing here addresses **two live Toris**, which race the file with no
 cross-process lock and drop the loser's claim by last-writer-wins. See
 [[lesson_a_cut_settles_only_what_was_measured]] and
 [[gotcha_a_truncating_write_under_a_lenient_reader_loses_data_silently]].

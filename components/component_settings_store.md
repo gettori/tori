@@ -2,14 +2,14 @@
 summary: Settings store resolves formatOnSave in three states (null, false, true) with ??; vimMode has no per-project form
 status: current
 updated: 2026-08-14
-source: "Central configurable UI system (personal/sway, branch code-mirror-6); Phases 3, 4; commits 94055c9, 631d16e; theme rework: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phases 2, 7"
+source: "Central configurable UI system (personal/tori, branch code-mirror-6); Phases 3, 4; commits 94055c9, 631d16e; theme rework: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phases 2, 7"
 ---
 
 # Global settings store & panel
 
 **Location:** `src-tauri/src/settings.rs`, `src/panels/Settings/{settingsStore.ts,Settings.tsx,scale.ts}`, `src-tauri/src/lib.rs`
 
-Sway's user-preference layer: a global JSONC file, a reactive frontend store, and an in-app panel. Distinct from `sway.toml`, which is project *discovery* config ([[component_project_discovery]]); this is **user preferences** (appearance / typography) at `~/.config/sway/settings.json`.
+Tori's user-preference layer: a global JSONC file, a reactive frontend store, and an in-app panel. Distinct from `tori.toml`, which is project *discovery* config ([[component_project_discovery]]); this is **user preferences** (appearance / typography) at `~/.config/tori/settings.json`.
 
 ## Editor preferences, and which shape a setting takes (2026-08-03, wave 4)
 
@@ -35,7 +35,7 @@ Both default **off**. `formatOnSave` because a repo carrying a `.prettierrc` is 
 
 ## Frontend (`settings.ts`)
 
-- A Solid `createStore` (reactive for the panel). `applySettings` writes tokens as inline props on `<html>` (`--sway-font-ui`, `--editor-font-*`, `--ui-scale`, `--ui-line-height`) into the [[concept_design_token_system]]; the CM6 theme reads `--editor-font-*` via `var()` so font changes are live. `--ui-scale = (uiFontSize/15) × zoom` is computed by the pure, DOM-free `scale.ts` (unit-tested off-DOM like the resolver) and drives the whole chrome, see [[concept_ui_scaling_system]].
+- A Solid `createStore` (reactive for the panel). `applySettings` writes tokens as inline props on `<html>` (`--tori-font-ui`, `--editor-font-*`, `--ui-scale`, `--ui-line-height`) into the [[concept_design_token_system]]; the CM6 theme reads `--editor-font-*` via `var()` so font changes are live. `--ui-scale = (uiFontSize/15) × zoom` is computed by the pure, DOM-free `scale.ts` (unit-tested off-DOM like the resolver) and drives the whole chrome, see [[concept_ui_scaling_system]].
 - `applyAll` = tokens + `setTheme(appearance.theme)`, run by both load and save. **`settings.appearance` is the single source of truth for the theme**; `applyCachedTheme` handles FOUC only. The VS Code import branch is gone, and `applyAll` is synchronous again now that nothing awaits an import round-trip.
 - **Two watchers, and the theme one is second on purpose.** `initSettings` loads user themes *before* settings, because `settings.json` may name one and resolving it after the first paint would flash the fallback and report a theme that in fact exists. It then starts `settings://changed` and `themes://changed`. A themes-folder change only re-applies when the active theme came from that folder, so saving an unrelated theme file does not repaint the app.
 - **`setTheme` returns problems, and the store is what shows them**, as toasts capped at three plus a count (the contrast gate reports every failing pair, and a hand-edited palette can fail dozens). Silently landing on a different theme than the settings file names is exactly the "my theme changed on its own" the import notice exists to avoid. See [[component_theme_engine]].
@@ -44,22 +44,22 @@ Both default **off**. `formatOnSave` because a repo carrying a `.prettierrc` is 
 ## Panel (`SettingsPanel.tsx`)
 
 - Portaled overlay (same pattern as `ConfirmDialog`: backdrop/Escape close, rAF focus), opened by a **topbar gear** (always visible, unlike the session-scoped Toolbar). It is the first component authored on the target architecture: a scoped `.module.css` in the `components` layer reading only tokens.
-- Controls commit on `onChange` (blur, not per-keystroke) → `saveSettings` → persist + `applyAll` (live). Numeric inputs go through a `clamp` helper that rejects empty/NaN/out-of-range so a blank font size can't blank the UI. The theme `<select>` groups options by source (`Bundled` / `From ~/.config/sway/themes`) and binds through a `currentTheme()` that falls back to the default for an id no longer installed, so a stale settings file renders the theme that is actually painted rather than a blank control.
+- Controls commit on `onChange` (blur, not per-keystroke) → `saveSettings` → persist + `applyAll` (live). Numeric inputs go through a `clamp` helper that rejects empty/NaN/out-of-range so a blank font size can't blank the UI. The theme `<select>` groups options by source (`Bundled` / `From ~/.config/tori/themes`) and binds through a `currentTheme()` that falls back to the default for an id no longer installed, so a stale settings file renders the theme that is actually painted rather than a blank control.
 
 ## Chat and Harness sections (2026-07-28)
 
 Two sections added for [[component_chat_panel]], both following the per-section struct + `#[serde(default)]` pattern:
 
-- **`chatDefaults`** - `defaultSurface` (`chat` | `agent`, the fallback restoring PTY-as-default), seed `model`/`effort`/`mode` for a project with no remembered pick of its own, `streaming`, `density`, `toolOutputLines`, `showSwayHooks`, and `maxConcurrentChats`.
+- **`chatDefaults`** - `defaultSurface` (`chat` | `agent`, the fallback restoring PTY-as-default), seed `model`/`effort`/`mode` for a project with no remembered pick of its own, `streaming`, `density`, `toolOutputLines`, `showToriHooks`, and `maxConcurrentChats`.
 - **`harness`** - `path`, overriding the discovered binary. Read from disk at each spawn rather than cached, since the setting exists precisely to try a different binary and a restart would defeat it.
 
 Note the naming: the pre-existing `chat` key is the **per-project** pick map and was left alone. Folding both into one key would have reshaped a field users already have on disk, and `load_from` has no per-section recovery - one section failing to deserialize takes the whole file down to defaults, losing the user's theme over a chat preference. Non-default primitives (`streaming: true`, `toolOutputLines: 20`, `maxConcurrentChats: 4`) use `#[serde(default = "...")]` functions, since a bare `#[serde(default)]` on a bool would silently ship streaming off for every existing settings file.
 
-**A key can also leave, and `ChatDefaults` is why that is cheap here.** `approvalAutoDenySecs` was removed on 2026-08-14: it round-tripped through both stores and rendered in Settings under **Safety**, claiming "Sway owns this timeout so it always fires before the harness's own", while the deadline that fires is the `approval::DECIDE_TIMEOUT_SECS` constant and always was. The struct carries no `deny_unknown_fields`, so a `settings.json` still holding the key parses, ignores it and drops it on the next save. That is worth checking rather than assuming - see [[gotcha_deny_unknown_fields_makes_a_deleted_field_a_migration]] for the sibling struct where the same deletion would have failed every file on disk at once.
+**A key can also leave, and `ChatDefaults` is why that is cheap here.** `approvalAutoDenySecs` was removed on 2026-08-14: it round-tripped through both stores and rendered in Settings under **Safety**, claiming "Tori owns this timeout so it always fires before the harness's own", while the deadline that fires is the `approval::DECIDE_TIMEOUT_SECS` constant and always was. The struct carries no `deny_unknown_fields`, so a `settings.json` still holding the key parses, ignores it and drops it on the next save. That is worth checking rather than assuming - see [[gotcha_deny_unknown_fields_makes_a_deleted_field_a_migration]] for the sibling struct where the same deletion would have failed every file on disk at once.
 
 ## A per-workspace layer, and one home for a setting's name (2026-08-05, wave 6)
 
-`editorDefaults` gained a third layer below the user's file: a `<root>/.sway/settings.json`
+`editorDefaults` gained a third layer below the user's file: a `<root>/.tori/settings.json`
 overlay, resolved default < user < workspace. The mechanism, the tracking story
 and the rules it imposes on every later feature live in
 [[concept_workspace_settings_overlay]]; what changed *here* is worth naming:
@@ -88,8 +88,8 @@ and the rules it imposes on every later feature live in
 
 ## A setting's fourth home: the shipped JSON schema (2026-08-08, wave 7)
 
-Sway now ships two JSON schemas for its own settings files and feeds them to the
-bundled JSON language server, so editing `~/.config/sway/settings.json` by hand
+Tori now ships two JSON schemas for its own settings files and feeds them to the
+bundled JSON language server, so editing `~/.config/tori/settings.json` by hand
 flags an unknown key, checks a value's type, and completes each key with the
 description the panel shows. That makes the schema the **fourth home** of an
 `EditorDefaults` key, after the type, `settingsCatalog.ts` and `settings.rs`.
@@ -100,7 +100,7 @@ override *map* in the global file and the override *block* in a workspace file.
 what keeps the fourth home one home. See
 [[concept_workspace_settings_overlay]] for the full list and the test that
 guards each, and [[concept_schema_backed_json]] for how the schemas reach the
-server (and why those two files are opened as `jsonc`, not `json` — Sway reads
+server (and why those two files are opened as `jsonc`, not `json` — Tori reads
 them with json5, and the server treats a comment as an error under any other id).
 
 ## The panel becomes six tabs (2026-08-11, settings redesign)

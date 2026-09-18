@@ -2,7 +2,7 @@
 summary: one toggle group backs icon and swatch pickers so a hundred glyphs collapse to one tab stop, ArrowUp/Down move a row
 status: current
 updated: 2026-08-15
-source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/sway, branch `109-dedupe-icon-and-swatch-grids`, issue #109, part of #93); `src/components/IconGrid/IconGrid.tsx`, `src/components/Dialogs/SpaceDialog.tsx`, `src/components/Dialogs/ProjectIconDialog.tsx`, `src/lib/toggle-group.ts`; commits cd09a5e, 8f86c77; PR #138"
+source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/tori, branch `109-dedupe-icon-and-swatch-grids`, issue #109, part of #93); `src/components/IconGrid/IconGrid.tsx`, `src/components/Dialogs/SpaceDialog.tsx`, `src/components/Dialogs/ProjectIconDialog.tsx`, `src/lib/toggle-group.ts`; commits cd09a5e, 8f86c77; PR #138"
 ---
 
 # IconGrid: the one icon and swatch picker

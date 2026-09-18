@@ -2,7 +2,7 @@
 summary: contrast misses between 2.5 and 3.0 look fine to the eye and fail a ratio, so measure every role as a mandatory gate
 status: current
 updated: 2026-07-24
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phase 3; `src/styles/tokens.css`; confirmed again: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phase 6, commit db3abe9"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 3; `src/styles/tokens.css`; confirmed again: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phase 6, commit db3abe9"
 ---
 
 # Contrast misses are invisible to the eye and obvious to a ratio

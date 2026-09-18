@@ -2,7 +2,7 @@
 summary: Kobalte's optionGroupChildren is read off every entry, one bare option in a grouped list throws and drops the combobox
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx`, `src/components/Omnibox/Omnibox.tsx`; commit `bd86d48`"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx`, `src/components/Omnibox/Omnibox.tsx`; commit `bd86d48`"
 ---
 
 # Kobalte's `optionGroupChildren` is all-or-nothing

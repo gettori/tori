@@ -2,7 +2,7 @@
 summary: panes are anonymous and any tab kind can live in any one, so pin chat left is a routing rule not a fixed dock layout
 status: needs-verification
 updated: 2026-09-03
-source: not recorded; imported from grimoire docs/personal/sway
+source: not recorded; imported from grimoire docs/personal/tori
 ---
 
 # Generic split panes over a dock model for the unified tab bar

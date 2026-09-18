@@ -2,7 +2,7 @@
 summary: the src lib boundary guard matches raw text, so naming Kobalte in a comment fails the suite exactly like a real import
 status: current
 updated: 2026-08-15
-source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/sway, branch `107-checkbox-switch-slider`, issue #107); `src/lib/boundary.test.ts:47`; commit 121f892"
+source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/tori, branch `107-checkbox-switch-slider`, issue #107); `src/lib/boundary.test.ts:47`; commit 121f892"
 ---
 
 # The `src/lib` boundary guard reads comments, not just imports

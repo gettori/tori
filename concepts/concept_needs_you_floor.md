@@ -2,7 +2,7 @@
 summary: the sidebar dot joins PTY quiet against the transcript tail, gated per agent by a measured needs_you capability flag
 status: current
 updated: 2026-08-14
-source: "Adapter registry, pulse, presence, checkpoints (personal/sway, branch `topbar`); Phase 2; Prove the adapter: opencode + claude hooks (personal/sway, branch `topbar`); Phase 3; `src-tauri/src/pty.rs`, `src-tauri/src/sessions.rs` (`session_tail_state`), `src-tauri/src/hooks.rs`, `src/panels/LeftSidebar/LeftSidebar.tsx` (`sessionDot`)"
+source: "Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 2; Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/pty.rs`, `src-tauri/src/sessions.rs` (`session_tail_state`), `src-tauri/src/hooks.rs`, `src/panels/LeftSidebar/LeftSidebar.tsx` (`sessionDot`)"
 ---
 
 # Needs-you floor (working/blocked dot join)
@@ -15,7 +15,7 @@ A live session's sidebar dot has four states — none/hollow/working/needs-you �
 
 `sessions.rs`'s `session_tail_state(id, path, agent)` classifies the transcript's *last* turn (via the already-agent-agnostic `parse_transcript_turns`): a trailing `tool_call` → `blocked-candidate`, a trailing final `text` → `done`, anything else (no turns yet, mid-thinking, a tool result awaiting the next reply) → `working`. This is a **guess** from a proxy signal — it can't tell "blocked on a real permission prompt" from "still generating with nothing streamed yet".
 
-**Phase 3 promoted claude off the guess entirely.** When `agents::find(agent).hooks` is true, `session_tail_state` checks [[component_claude_hooks_status]]'s `hooks::status_for(id)` *first*: if claude's own injected hook fired and wrote a recognized status (`Notification` → `blocked-candidate`, `UserPromptSubmit`/`PreToolUse` → `working`, `Stop` → `done`), that's returned directly, and the transcript-tail guess below it never runs. Only when no hook file exists yet (a session just launched, or the claude process wasn't Sway-launched) does it fall through to the tail join. pi and opencode have no hook mechanism (`hooks = false`) and always use the tail join.
+**Phase 3 promoted claude off the guess entirely.** When `agents::find(agent).hooks` is true, `session_tail_state` checks [[component_claude_hooks_status]]'s `hooks::status_for(id)` *first*: if claude's own injected hook fired and wrote a recognized status (`Notification` → `blocked-candidate`, `UserPromptSubmit`/`PreToolUse` → `working`, `Stop` → `done`), that's returned directly, and the transcript-tail guess below it never runs. Only when no hook file exists yet (a session just launched, or the claude process wasn't Tori-launched) does it fall through to the tail join. pi and opencode have no hook mechanism (`hooks = false`) and always use the tail join.
 
 `LeftSidebar.tsx`'s `sessionDot(id)` composes them, keyed differently on purpose: PTY activity is keyed by *tab* id (one hosted shell can outlive/precede its session attribution), tail state by *session* id. `activity === "quiet" && tailState === "blocked-candidate"` → needs-you; `activity === "active"` → working; otherwise solid/hollow/none based on whether a live tab and a running probe exist. Detached sessions (no live tab) cap at the hollow dot — working/needs-you both require a real PTY to observe.
 
@@ -71,7 +71,7 @@ supersedes this join entirely, so the capped dot costs them nothing.
 
 `computeSessionDot` gained `forgeAttention` (`src/utils/sessionDot.ts:96`), which
 is true when a required check on this branch's pull request has failed. It is not
-a fourth tier: the tiers grade Sway's certainty about a *session*, and this is a
+a fourth tier: the tiers grade Tori's certainty about a *session*, and this is a
 fact about the *branch*, which is why it sits beside them rather than among them.
 
 It only ever **raises a session that is sitting still** (`solid` or `hollow`

@@ -2,7 +2,7 @@
 summary: breakpoints bind from live events not the setBreakpoints response, which always answers verified false
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phase 6; epic #69, sub-issue #72; commit 70fa87c"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phase 6; epic #69, sub-issue #72; commit 70fa87c"
 ---
 
 # Debug breakpoints: a pure store, a mapped gutter, and one sync

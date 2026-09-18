@@ -2,7 +2,7 @@
 summary: adding aria-label to a tab whose text tests query by replaces its accessible name, breaking queries once counts show
 status: current
 updated: 2026-08-13
-source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/sway, branch `settings`, issue #91); Phase 3; `src/panels/Settings/Settings.tsx` (`tabName`); commit fe9a640; _2026-08-11_; extended by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); `src/test/interactiveTitle.test.ts`, `src/panels/Editor/Editor.tsx`; commit `51771df`"
+source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/tori, branch `settings`, issue #91); Phase 3; `src/panels/Settings/Settings.tsx` (`tabName`); commit fe9a640; _2026-08-11_; extended by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); `src/test/interactiveTitle.test.ts`, `src/panels/Editor/Editor.tsx`; commit `51771df`"
 ---
 
 # An `aria-label` on a tab replaces its accessible name

@@ -2,7 +2,7 @@
 summary: a value with a natural unset spelling needs three stored states, since nullish coalescing treats the default as nothing
 status: current
 updated: 2026-09-05
-source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/sway, branch `multiaccount`), phase 4; `src-tauri/src/settings.rs` (`ChatPrefs::profile`), `src/utils/agentHealth.ts` (`knownProfile`), `src/utils/agentEnabled.ts` (`draftChatProfile`)"
+source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), phase 4; `src-tauri/src/settings.rs` (`ChatPrefs::profile`), `src/utils/agentHealth.ts` (`knownProfile`), `src/utils/agentEnabled.ts` (`draftChatProfile`)"
 ---
 
 # Store "the default account" as a value, never as null

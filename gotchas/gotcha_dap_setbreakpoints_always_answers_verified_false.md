@@ -2,7 +2,7 @@
 summary: DAP setBreakpoints always answers verified false even for bound breakpoints, drive the marker from breakpoint events
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phase 1 spike (personal/sway, branch `wave-8`); `src/utils/debugBreakpoints.ts`; commit 70fa87c"
+source: "Editor wave 8: the debugger (DAP), Phase 1 spike (personal/tori, branch `wave-8`); `src/utils/debugBreakpoints.ts`; commit 70fa87c"
 ---
 
 # DAP `setBreakpoints` always answers `verified: false`

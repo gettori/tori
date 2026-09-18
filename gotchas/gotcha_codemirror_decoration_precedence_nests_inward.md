@@ -2,7 +2,7 @@
 summary: CodeMirror decoration precedence nests spans inward, so the innermost element's color wins, not the highest specificity
 status: current
 updated: 2026-08-03
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 7; `src/panels/Editor/semanticHighlight.ts`; commit 075b5d7"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 7; `src/panels/Editor/semanticHighlight.ts`; commit 075b5d7"
 ---
 
 # CodeMirror decoration precedence nests inward

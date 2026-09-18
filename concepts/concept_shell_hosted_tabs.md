@@ -2,7 +2,7 @@
 summary: every terminal tab is really a login shell seeded once by the backend, so exiting the agent drops to a live prompt
 status: current
 updated: 2026-09-06
-source: "Per-workspace terminal sessions, shell-hosted agents, and plain shell tabs (personal/sway, branch `topbar`); commits fe02de4 (backend + tab model), 25ea740 (+ Terminal button); fourth kind from Editor Wave 6: the IDE surface (branch `wave-6`), Phase 14, issue #56, commit 44d8c99; `src-tauri/src/pty.rs`, `src-tauri/src/env.rs`, `src/panels/Terminal/Terminal.tsx`, `src/panels/Terminal/TerminalView.tsx`; command tabs joined the login-shell model in plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (branch `standalone-terminals`, issue #166), Phase 1, commit `aadacd3`, _2026-09-06_"
+source: "Per-workspace terminal sessions, shell-hosted agents, and plain shell tabs (personal/tori, branch `topbar`); commits fe02de4 (backend + tab model), 25ea740 (+ Terminal button); fourth kind from Editor Wave 6: the IDE surface (branch `wave-6`), Phase 14, issue #56, commit 44d8c99; `src-tauri/src/pty.rs`, `src-tauri/src/env.rs`, `src/panels/Terminal/Terminal.tsx`, `src/panels/Terminal/TerminalView.tsx`; command tabs joined the login-shell model in plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (branch `standalone-terminals`, issue #166), Phase 1, commit `aadacd3`, _2026-09-06_"
 ---
 
 # Shell-hosted agent tabs

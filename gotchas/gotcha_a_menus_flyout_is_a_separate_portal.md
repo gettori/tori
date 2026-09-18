@@ -2,7 +2,7 @@
 summary: a submenu resolving its own portal mount drifts once a call site passes an explicit mount, so publish it instead
 status: current
 updated: 2026-08-15
-source: Menu onto Kobalte DropdownMenu and ContextMenu, phase 5 self-review (personal/sway, branch `103-menu`); `src/components/Menu/surface.ts`, `src/components/Menu/Dropdown.test.tsx`; [[component_menu]]; commit `1827ba1`
+source: Menu onto Kobalte DropdownMenu and ContextMenu, phase 5 self-review (personal/tori, branch `103-menu`); `src/components/Menu/surface.ts`, `src/components/Menu/Dropdown.test.tsx`; [[component_menu]]; commit `1827ba1`
 ---
 
 # A menu's flyout is a separate portal

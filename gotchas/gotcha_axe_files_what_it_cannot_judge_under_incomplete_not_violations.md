@@ -2,7 +2,7 @@
 summary: axe puts rules it cannot judge under jsdom into incomplete not violations, so violations only reports green falsely
 status: current
 updated: 2026-08-12
-source: "plan \"axe-core harness in the jsdom vitest project\" (personal/sway, branch `97-axe-core`, issue #97); `src/test/axe.ts`, `src/test/axe.test.tsx:62`; commit 0010b81"
+source: "plan \"axe-core harness in the jsdom vitest project\" (personal/tori, branch `97-axe-core`, issue #97); `src/test/axe.ts`, `src/test/axe.test.tsx:62`; commit 0010b81"
 ---
 
 # axe files what it cannot judge under `incomplete`, not `violations`

@@ -7,7 +7,7 @@ source: plan "The composer offers every lever the agent published" (phase 2, bra
 
 # A restatement that matches nothing says nothing
 
-Sway kept one hand-maintained fact about claude's models: which one has a fast mode. It was keyed `claude-opus-5`. The catalogue resolves **both** Opus rows to `claude-opus-5[1m]`.
+Tori kept one hand-maintained fact about claude's models: which one has a fast mode. It was keyed `claude-opus-5`. The catalogue resolves **both** Opus rows to `claude-opus-5[1m]`.
 
 So the lookup matched nothing. It had matched nothing since the day it was written, on every machine, and no test, type or guard said so.
 

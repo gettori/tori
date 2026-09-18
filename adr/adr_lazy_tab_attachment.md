@@ -2,7 +2,7 @@
 summary: tabs restore inert with no process until reached for, but a reload reattaches every tab, beating a restore banner
 status: needs-verification
 updated: 2026-08-21
-source: not recorded; imported from grimoire docs/personal/sway; `src-tauri/src/pty.rs`
+source: not recorded; imported from grimoire docs/personal/tori; `src-tauri/src/pty.rs`
 ---
 
 # Tabs restore inert: lazy when attaching would spawn, eager when it only rewires

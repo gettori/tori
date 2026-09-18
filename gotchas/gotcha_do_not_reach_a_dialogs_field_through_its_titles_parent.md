@@ -2,7 +2,7 @@
 summary: querying a dialog field through its title's parent only works while the dialog is a flat box, Dialog nests head body
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/panels/Editor/editorCommands.test.tsx:110`, `src/panels/Editor/scratchTabs.test.tsx:145`, `src/panels/LeftSidebar/LeftSidebar.test.tsx:157`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/panels/Editor/editorCommands.test.tsx:110`, `src/panels/Editor/scratchTabs.test.tsx:145`, `src/panels/LeftSidebar/LeftSidebar.test.tsx:157`"
 ---
 
 # Do not reach a dialog's field through its title's parent

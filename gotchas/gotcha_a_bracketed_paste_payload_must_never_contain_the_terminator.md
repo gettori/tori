@@ -2,7 +2,7 @@
 summary: unsanitized pasted text can smuggle the bracketed paste terminator, getting typed as commands at a live agent prompt
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 12 self-review; `src/utils/safeSend.ts:93`; commit d0d9a3e"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 12 self-review; `src/utils/safeSend.ts:93`; commit d0d9a3e"
 ---
 
 # A bracketed-paste payload must never contain the terminator

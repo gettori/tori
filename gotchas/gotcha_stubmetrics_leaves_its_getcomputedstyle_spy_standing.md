@@ -2,7 +2,7 @@
 summary: stubMetrics never restores its getComputedStyle spy, so a later accessible-name lookup or axe scan in the file dies
 status: current
 updated: 2026-09-04
-source: "\"Labelled path attachments in the chat composer\" (personal/sway, branch `bugfix-260903`), phase 2, `src/panels/Chat/Composer.test.tsx`, _2026-09-04_"
+source: "\"Labelled path attachments in the chat composer\" (personal/tori, branch `bugfix-260903`), phase 2, `src/panels/Chat/Composer.test.tsx`, _2026-09-04_"
 ---
 
 # `stubMetrics` leaves its `getComputedStyle` spy standing

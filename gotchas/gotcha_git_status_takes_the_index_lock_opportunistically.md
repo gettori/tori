@@ -2,7 +2,7 @@
 summary: git status takes index.lock opportunistically, so a concurrent write fails unless it passes no-optional-locks
 status: current
 updated: 2026-08-20
-source: plan "Worktree and tab switching at native speed" (phase 2, personal/sway, branch `unified-tab-bar`), `src-tauri/src/git.rs` (`git_status_body`), `src-tauri/src/exec.rs`, commit d8714d0, [[lesson_the_ipc_thread_was_also_the_lock]], _2026-08-20_
+source: plan "Worktree and tab switching at native speed" (phase 2, personal/tori, branch `unified-tab-bar`), `src-tauri/src/git.rs` (`git_status_body`), `src-tauri/src/exec.rs`, commit d8714d0, [[lesson_the_ipc_thread_was_also_the_lock]], _2026-08-20_
 ---
 
 # `git status` takes the index lock opportunistically

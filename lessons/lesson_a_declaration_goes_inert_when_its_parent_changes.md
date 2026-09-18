@@ -2,7 +2,7 @@
 summary: a flex scroller rule went dead the day its parent stopped being a flex container, and a presence guard never noticed
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); Phases 3 and 4; `src/components/Omnibox/Omnibox.module.css`, `src/components/Dialog/Dialog.module.css`, `scripts/check-tokens.mjs` check 8; commit `9d471b7`"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); Phases 3 and 4; `src/components/Omnibox/Omnibox.module.css`, `src/components/Dialog/Dialog.module.css`, `scripts/check-tokens.mjs` check 8; commit `9d471b7`"
 ---
 
 # A declaration can go inert without changing, when its parent does

@@ -2,14 +2,14 @@
 summary: context menu wrappers use display contents, dropdown wrappers need a real box since floating-ui measures its rect
 status: current
 updated: 2026-08-15
-source: Menu onto Kobalte DropdownMenu and ContextMenu, phases 3 to 6 (personal/sway, branch `103-menu`, skarif2/sway#103); `src/components/Menu/Dropdown.tsx`, `src/panels/Chat/Picker.tsx`, `src/panels/Terminal/Terminal.tsx`, `src/components/OverflowTabBar.tsx`, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/panels/Editor/Editor.tsx`; commits `7c610cb`, `a0913d9`, `3e0ddc4`
+source: Menu onto Kobalte DropdownMenu and ContextMenu, phases 3 to 6 (personal/tori, branch `103-menu`, gettori/tori#103); `src/components/Menu/Dropdown.tsx`, `src/panels/Chat/Picker.tsx`, `src/panels/Terminal/Terminal.tsx`, `src/components/OverflowTabBar.tsx`, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/panels/Editor/Editor.tsx`; commits `7c610cb`, `a0913d9`, `3e0ddc4`
 ---
 
 # Wrapping a control that already belongs to something else
 
-A Sway control can belong to exactly one primitive. `Tooltip`, `ContextMenu` and `Dropdown` all render *as* their control (that is [[concept_tooltip_trigger_is_the_control]]: a Solid JSX element is already-constructed DOM, and nothing can inject a trigger's handlers into it afterwards), so a button that is already a tooltip's cannot also be a menu's. The second primitive has to go *around* it.
+A Tori control can belong to exactly one primitive. `Tooltip`, `ContextMenu` and `Dropdown` all render *as* their control (that is [[concept_tooltip_trigger_is_the_control]]: a Solid JSX element is already-constructed DOM, and nothing can inject a trigger's handlers into it afterwards), so a button that is already a tooltip's cannot also be a menu's. The second primitive has to go *around* it.
 
-Five of Sway's nine menu sites needed that. This page is what the ticket learned about doing it, because a wrapper is never free and the price is different depending on which menu is wrapping.
+Five of Tori's nine menu sites needed that. This page is what the ticket learned about doing it, because a wrapper is never free and the price is different depending on which menu is wrapping.
 
 ## Which wrapper, and why the answer is not one wrapper
 

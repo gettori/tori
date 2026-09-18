@@ -2,7 +2,7 @@
 summary: Kobalte puts tooltip behavior on the trigger, so Tooltip renders the control instead of wrapping one, title banned
 status: current
 updated: 2026-08-15
-source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/sway, branch `102-tooltip-primitive`, issue #102, part of #93); `src/components/Tooltip/Tooltip.tsx`, `src/components/Dialog/surface.ts`, `src/lib/tooltip.ts`, `src/test/interactiveTitle.test.ts`; commits c996ca9, 9826e7e, 51771df, a23d8f4, dbfa12a; extended by plan \"Dedupe icon and swatch grids into one IconGrid\" (branch `109-dedupe-icon-and-swatch-grids`, issue #109); commit cd09a5e; PR #138"
+source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102, part of #93); `src/components/Tooltip/Tooltip.tsx`, `src/components/Dialog/surface.ts`, `src/lib/tooltip.ts`, `src/test/interactiveTitle.test.ts`; commits c996ca9, 9826e7e, 51771df, a23d8f4, dbfa12a; extended by plan \"Dedupe icon and swatch grids into one IconGrid\" (branch `109-dedupe-icon-and-swatch-grids`, issue #109); commit cd09a5e; PR #138"
 ---
 
 # The tooltip trigger is the control
@@ -11,9 +11,9 @@ A native `title` is a mouse-only tooltip: it never appears for a keyboard user, 
 
 ## How it works
 
-**`as` takes a host to render, never a constructed element.** `Tooltip.Trigger`'s polymorphic `as` accepts a component or a tag; a Solid JSX element is already-built DOM and nothing can inject the trigger's props into it afterwards. So `<Tooltip as="button" label=… >` renders the button, and Sway's own controls compose it **from the inside** (`Button` renders `<Tooltip as="button" …>`, not `<Tooltip><Button/></Tooltip>`). A raw element gets the standalone form.
+**`as` takes a host to render, never a constructed element.** `Tooltip.Trigger`'s polymorphic `as` accepts a component or a tag; a Solid JSX element is already-built DOM and nothing can inject the trigger's props into it afterwards. So `<Tooltip as="button" label=… >` renders the button, and Tori's own controls compose it **from the inside** (`Button` renders `<Tooltip as="button" …>`, not `<Tooltip><Button/></Tooltip>`). A raw element gets the standalone form.
 
-**A tag name was the only host until #109, and now a component is one too.** The case that forced it: a control that *is* a headless primitive's part, so it exists only under that primitive's context and cannot be built from the inside the way `Button` is. [[component_icon_grid]]'s tiles are `ToggleGroup.Item`s that also need a tooltip, and the outward-in trick below does not reach them, since there is no Sway control in between to render `as="button"`. `Tooltip`'s props are generic over the host (`TooltipProps<T, P>`, `as?: keyof JSX.HTMLElementTags | Component<P>`), so the host's own required props are demanded at the call site.
+**A tag name was the only host until #109, and now a component is one too.** The case that forced it: a control that *is* a headless primitive's part, so it exists only under that primitive's context and cannot be built from the inside the way `Button` is. [[component_icon_grid]]'s tiles are `ToggleGroup.Item`s that also need a tooltip, and the outward-in trick below does not reach them, since there is no Tori control in between to render `as="button"`. `Tooltip`'s props are generic over the host (`TooltipProps<T, P>`, `as?: keyof JSX.HTMLElementTags | Component<P>`), so the host's own required props are demanded at the call site.
 
 That genericity is the whole point rather than a nicety. Widening `as` alone would leave the prop surface pinned to `ButtonHTMLAttributes`, which already declares an optional `value` of its own, so `<Tooltip as={ToggleGroup.ButtonItem}>` with no `value` would compile and every tile would register under the same undefined key. Inference also needs a *concrete* component on the other side, see [[gotcha_a_generic_polymorphic_component_cannot_be_inferred_from]].
 

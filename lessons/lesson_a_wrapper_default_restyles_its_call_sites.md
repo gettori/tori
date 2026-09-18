@@ -2,7 +2,7 @@
 summary: a new wrapper defaulted its label size and color, silently restyling every row that had already made its own choice
 status: current
 updated: 2026-08-15
-source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/sway, branch `107-checkbox-switch-slider`, issue #107); `src/components/Checkbox/Checkbox.module.css`, `src/components/Switch/Switch.module.css`, `src/components/Slider/Slider.module.css`"
+source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/tori, branch `107-checkbox-switch-slider`, issue #107); `src/components/Checkbox/Checkbox.module.css`, `src/components/Switch/Switch.module.css`, `src/components/Slider/Slider.module.css`"
 ---
 
 # A wrapper's "sensible default" restyles every call site that already chose
@@ -14,11 +14,11 @@ The new `Checkbox` and `Switch` wrappers styled their label the obvious way:
 ```css
 .label {
   color: var(--fg-default);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 ```
 
-Read alone, that is a reasonable default. Read against the call sites, it was a silent restyle of all of them. Every row these controls were about to be dropped into had already made that choice on its own class: `.wtCheck` in the dialogs sets `--sway-text-lg`, `.amendRow` and `.cumulativeToggle` and `.readsToggle` in the panels set `--fg-muted` at `--sway-text-md`. Those classes are passed to the wrapper as `class` and land on the *root*, so they style the row, while the wrapper's own `.label` rule wins on the label element inside it. The migration would have shipped a dozen controls whose text was the wrong size and colour, against a plan that explicitly ruled out visual change.
+Read alone, that is a reasonable default. Read against the call sites, it was a silent restyle of all of them. Every row these controls were about to be dropped into had already made that choice on its own class: `.wtCheck` in the dialogs sets `--tori-text-lg`, `.amendRow` and `.cumulativeToggle` and `.readsToggle` in the panels set `--fg-muted` at `--tori-text-md`. Those classes are passed to the wrapper as `class` and land on the *root*, so they style the row, while the wrapper's own `.label` rule wins on the label element inside it. The migration would have shipped a dozen controls whose text was the wrong size and colour, against a plan that explicitly ruled out visual change.
 
 The fix was to inherit rather than declare:
 

@@ -2,7 +2,7 @@
 summary: measures an inert ghost row to decide what fits, and a gesture flag cleared in a queueMicrotask made every tab dead
 status: current
 updated: 2026-08-20
-source: "Overflow-tab-bar plan (personal/sway, branch code-mirror-6), `src/components/OverflowTabBar.tsx`, `tabOverflow.ts`, `+N` named and tooltipped, first mounted test: plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102), `src/components/OverflowTabBar.test.tsx`, commit dbfa12a, re-measure gating from \"Worktree and tab switching at native speed\" (branch `unified-tab-bar`, phase 4, commit f16b6ae)"
+source: "Overflow-tab-bar plan (personal/tori, branch code-mirror-6), `src/components/OverflowTabBar.tsx`, `tabOverflow.ts`, `+N` named and tooltipped, first mounted test: plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102), `src/components/OverflowTabBar.test.tsx`, commit dbfa12a, re-measure gating from \"Worktree and tab switching at native speed\" (branch `unified-tab-bar`, phase 4, commit f16b6ae)"
 ---
 
 # Overflow tab bar

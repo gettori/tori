@@ -2,7 +2,7 @@
 summary: REFIT_PANES re-measured only the focused view on reveal, so a split's unfocused pane stuck at placeholder height
 status: current
 updated: 2026-08-20
-source: "plan \"The reveal path: verify the mismatch switch, then decide what it costs\" (phase 2, personal/sway, branch `unified-tab-bar`), `src/panels/Editor/CodeEditor.tsx`, commit be27425, [[component_cm6_editor]], _2026-08-20_"
+source: "plan \"The reveal path: verify the mismatch switch, then decide what it costs\" (phase 2, personal/tori, branch `unified-tab-bar`), `src/panels/Editor/CodeEditor.tsx`, commit be27425, [[component_cm6_editor]], _2026-08-20_"
 ---
 
 # REFIT_PANES re-measured only the focused view, so a split left one unmeasured

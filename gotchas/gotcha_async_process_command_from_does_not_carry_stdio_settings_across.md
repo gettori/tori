@@ -2,7 +2,7 @@
 summary: converting a std::process::Command with pipes set via async_process::Command::from drops the stdio settings
 status: current
 updated: 2026-08-14
-source: Defer permissions to the harness, and grow to four harnesses, phase 4 (personal/sway, branch `chat-fix`); `src-tauri/src/chat/acp_transport.rs`; [[component_acp_transport]]
+source: Defer permissions to the harness, and grow to four harnesses, phase 4 (personal/tori, branch `chat-fix`); `src-tauri/src/chat/acp_transport.rs`; [[component_acp_transport]]
 ---
 
 # `async_process::Command::from` does not carry stdio settings across

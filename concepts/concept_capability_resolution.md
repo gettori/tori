@@ -7,7 +7,7 @@ source: plan "Make the session controls tell the truth about the CLI" (all five 
 
 # Capability resolution for session controls
 
-Every session control (model, effort, permission mode, fast mode, the context meter) answers two different questions, and conflating them is what let Sway offer things the CLI would not do. **What a control may offer** is the adapter's declaration *intersected* with the live model's flags. **What a control shows as the current value** comes from a stated precedence: what the running session reported, then what the adapter declares, then nothing at all. "Nothing" is a real answer and renders as an absent control, never as a guess.
+Every session control (model, effort, permission mode, fast mode, the context meter) answers two different questions, and conflating them is what let Tori offer things the CLI would not do. **What a control may offer** is the adapter's declaration *intersected* with the live model's flags. **What a control shows as the current value** comes from a stated precedence: what the running session reported, then what the adapter declares, then nothing at all. "Nothing" is a real answer and renders as an absent control, never as a guess.
 
 ## How it works
 
@@ -28,5 +28,5 @@ Every session control (model, effort, permission mode, fast mode, the context me
 
 - [[component_chat_model_resolver]] - the module every surface reads.
 - [[concept_harness_capability_tiers]] - the same "measured outcomes, not feature names" rule, one level up at the harness rather than the model.
-- [[concept_transport_neutral_event_model]] - why a mode is a string the adapter names rather than a variant Sway enumerates.
+- [[concept_transport_neutral_event_model]] - why a mode is a string the adapter names rather than a variant Tori enumerates.
 - [[lesson_probe_the_capability_before_building_its_control]] - what to do when a capability looks available and is not.

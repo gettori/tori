@@ -2,7 +2,7 @@
 summary: a shell trap set on the same line as a command belongs to the shell, an interrupt leaves it stuck in the live prompt
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phase 1; `src-tauri/src/runner.rs` (`script`); commit `aadacd3`"
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phase 1; `src-tauri/src/runner.rs` (`script`); commit `aadacd3`"
 ---
 
 # A trap typed into the user's own shell outlives the command it was set for

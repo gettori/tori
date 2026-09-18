@@ -2,7 +2,7 @@
 summary: solid prevent scroll infers a fake scrollbar from jsdom's zero clientWidth, writes invalid css, getComputedStyle throws
 status: current
 updated: 2026-08-12
-source: "Design system foundation: src/lib boundary, Kobalte install, import guard (personal/sway, branch `94-design-system-foundation`, issue #94); `src/test/domSetup.ts:39`; commit e90eba3"
+source: "Design system foundation: src/lib boundary, Kobalte install, import guard (personal/tori, branch `94-design-system-foundation`, issue #94); `src/test/domSetup.ts:39`; commit e90eba3"
 ---
 
 # Kobalte's scroll lock writes invalid CSS into jsdom

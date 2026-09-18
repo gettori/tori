@@ -2,7 +2,7 @@
 summary: git blame porcelain emits a commit's metadata only on its first line, hold the current commit across later bare headers
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 8; `src-tauri/src/blame.rs`; commit ad173e9"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 8; `src-tauri/src/blame.rs`; commit ad173e9"
 ---
 
 # `git blame --porcelain` emits a commit's metadata only the first time it appears

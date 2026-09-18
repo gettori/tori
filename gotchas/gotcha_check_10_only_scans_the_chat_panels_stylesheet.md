@@ -2,7 +2,7 @@
 summary: the blocking tier token guard only reads Chat.module.css, so a new module using a blocking token still passes unseen
 status: current
 updated: 2026-09-06
-source: "Agent usage preview plan (personal/sway, branch `agent-usage`), phase 2 . `scripts/check-tokens.mjs:733` . `src/components/UsageStrip/UsageStrip.module.css` . PR #169 . _2026-09-06_"
+source: "Agent usage preview plan (personal/tori, branch `agent-usage`), phase 2 . `scripts/check-tokens.mjs:733` . `src/components/UsageStrip/UsageStrip.module.css` . PR #169 . _2026-09-06_"
 ---
 
 # Check 10 only scans the chat panel's stylesheet

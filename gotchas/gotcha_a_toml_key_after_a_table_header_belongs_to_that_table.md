@@ -2,7 +2,7 @@
 summary: a bare TOML key after a table header becomes a field of that table, not top level, with only a warning
 status: current
 updated: 2026-07-18
-source: "Prove the adapter: opencode + claude hooks (personal/sway, branch `topbar`); Phase 2; `src-tauri/agents/opencode.toml`; commit 8505b27"
+source: "Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phase 2; `src-tauri/agents/opencode.toml`; commit 8505b27"
 ---
 
 # A TOML key after a table header belongs to that table

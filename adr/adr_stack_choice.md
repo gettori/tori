@@ -1,13 +1,13 @@
 ---
-summary: Tauri plus SolidJS plus Monaco and a manual sway toml, chosen for a small binary that still embeds pty and editor
+summary: Tauri plus SolidJS plus Monaco and a manual tori toml, chosen for a small binary that still embeds pty and editor
 status: stale
 updated: 2026-07-14
-source: not recorded; imported from grimoire docs/personal/sway
+source: not recorded; imported from grimoire docs/personal/tori
 ---
 
-# Sway stack: Tauri + SolidJS + Monaco + manual sway.toml
+# Tori stack: Tauri + SolidJS + Monaco + manual tori.toml
 
-For a fast, single-window dev cockpit on macOS we chose **Tauri 2** (Rust backend, web UI) over Electron and native SwiftUI: it gives a small native binary and low memory while still allowing an embedded terminal and editor, which SwiftUI makes very hard. The frontend is **SolidJS + Vite** for fine-grained reactivity under high-frequency PTY/file streams. The editor is **Monaco** wired by us (no LSP/extensions initially) for speed over fidelity. The tree structure is a **manually declared `sway.toml`** (spaces → projects, one working dir each) while sessions and branches are **auto-discovered** (git branches live; Claude sessions from `~/.claude`), so the user controls structure but never hand-maintains session lists.
+For a fast, single-window dev cockpit on macOS we chose **Tauri 2** (Rust backend, web UI) over Electron and native SwiftUI: it gives a small native binary and low memory while still allowing an embedded terminal and editor, which SwiftUI makes very hard. The frontend is **SolidJS + Vite** for fine-grained reactivity under high-frequency PTY/file streams. The editor is **Monaco** wired by us (no LSP/extensions initially) for speed over fidelity. The tree structure is a **manually declared `tori.toml`** (spaces → projects, one working dir each) while sessions and branches are **auto-discovered** (git branches live; Claude sessions from `~/.claude`), so the user controls structure but never hand-maintains session lists.
 
 ## Considered Options
 

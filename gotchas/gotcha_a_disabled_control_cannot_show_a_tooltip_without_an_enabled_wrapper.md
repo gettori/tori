@@ -2,7 +2,7 @@
 summary: a disabled button fires no pointer events and takes no focus, so a tooltip needs an enabled wrapper around it
 status: current
 updated: 2026-08-13
-source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/sway, branch `102-tooltip-primitive`, issue #102); `src/components/Tooltip/Tooltip.tsx`; commit `c996ca9`"
+source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102); `src/components/Tooltip/Tooltip.tsx`; commit `c996ca9`"
 ---
 
 # A disabled control cannot show a tooltip without an enabled wrapper

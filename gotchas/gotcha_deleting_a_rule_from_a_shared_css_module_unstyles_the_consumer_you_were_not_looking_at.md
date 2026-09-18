@@ -2,7 +2,7 @@
 summary: a CSS rule dead in one folder can be the only height bound for a different file sharing the module, grep every importer
 status: current
 updated: 2026-08-13
-source: "Delete the legacy modal chrome (personal/sway, branch `101-delete-legacy-modal-chrome`, issue #101, part of #93); `src/components/Omnibox/Omnibox.module.css`, `scripts/check-tokens.mjs`; regression introduced in commit be21ced"
+source: "Delete the legacy modal chrome (personal/tori, branch `101-delete-legacy-modal-chrome`, issue #101, part of #93); `src/components/Omnibox/Omnibox.module.css`, `scripts/check-tokens.mjs`; regression introduced in commit be21ced"
 ---
 
 # Deleting a rule from a shared CSS module unstyles the consumer you were not looking at

@@ -2,7 +2,7 @@
 summary: staging a hunk rebuilds the patch with rewritten offsets, a content fingerprint refuses to apply if the diff has moved
 status: current
 updated: 2026-08-02
-source: "Editor upgrades: diff polish, hunk staging, diagnostics (personal/sway, phase 2); commit 01f0196; `src-tauri/src/patch.rs`, `src-tauri/src/git.rs` (`git_apply_hunks`), `src/utils/hunkFingerprint.ts`; extended to discard and line selection by Editor wave 2: git depth (branch `wave-2`), Phases 4 and 14; commits b42b494, 4c9154e"
+source: "Editor upgrades: diff polish, hunk staging, diagnostics (personal/tori, phase 2); commit 01f0196; `src-tauri/src/patch.rs`, `src-tauri/src/git.rs` (`git_apply_hunks`), `src/utils/hunkFingerprint.ts`; extended to discard and line selection by Editor wave 2: git depth (branch `wave-2`), Phases 4 and 14; commits b42b494, 4c9154e"
 ---
 
 # Hunk-level staging: rebuilt patches, offsets, and content fingerprints

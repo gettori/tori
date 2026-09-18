@@ -2,7 +2,7 @@
 summary: a draft lifted into a scratch tab has one writer, the editor, and the link and its file die on send, close or edit here
 status: current
 updated: 2026-09-07
-source: "plan \"Chat composer Tier 1: spell check, safe sends, draft tooling\" (personal/sway, branch `composer-260907`, merged into `logo-update-260907`), phase 4 . `src/panels/Chat/composerScratch.ts:20` . `src-tauri/src/scratch.rs:86` . commit `8e8579e`"
+source: "plan \"Chat composer Tier 1: spell check, safe sends, draft tooling\" (personal/tori, branch `composer-260907`, merged into `logo-update-260907`), phase 4 . `src/panels/Chat/composerScratch.ts:20` . `src-tauri/src/scratch.rs:86` . commit `8e8579e`"
 ---
 
 # A draft edited in a scratch tab has one writer

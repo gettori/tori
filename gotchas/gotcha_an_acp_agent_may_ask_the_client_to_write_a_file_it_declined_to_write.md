@@ -2,7 +2,7 @@
 summary: an ACP agent can still ask to write a file after declining that capability, refusing is fine, not answering hangs it
 status: current
 updated: 2026-08-14
-source: Defer permissions to the harness, and grow to four harnesses, phase 6 (personal/sway, branch `chat-fix`); [[concept_acp_agent_quirks]]
+source: Defer permissions to the harness, and grow to four harnesses, phase 6 (personal/tori, branch `chat-fix`); [[concept_acp_agent_quirks]]
 ---
 
 # An ACP agent may ask the client to write a file it declined to write

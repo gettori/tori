@@ -2,7 +2,7 @@
 summary: reverting a mutation test with git checkout on an uncommitted tree destroys the work, restore from a scratch copy
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth, Phases 6 and 9 (personal/sway, branch `wave-7`); commits 506d7e7, d7a6e3e"
+source: "Editor wave 7: language intelligence depth, Phases 6 and 9 (personal/tori, branch `wave-7`); commits 506d7e7, d7a6e3e"
 ---
 
 # Reverting a mutation with `git checkout` restores HEAD, not your work

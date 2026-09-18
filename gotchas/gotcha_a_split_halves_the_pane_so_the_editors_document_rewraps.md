@@ -2,7 +2,7 @@
 summary: a pane split rewraps the editor's document, so compare the first visible line, not a pixel scrollTop reading
 status: current
 updated: 2026-08-20
-source: "plan \"The reveal path: verify the mismatch switch, then decide what it costs\" (phase 3, personal/sway, branch `unified-tab-bar`), `src/utils/perfRecipe.ts`, commit dab0114, [[lesson_a_pixel_is_not_a_position]], _2026-08-20_"
+source: "plan \"The reveal path: verify the mismatch switch, then decide what it costs\" (phase 3, personal/tori, branch `unified-tab-bar`), `src/utils/perfRecipe.ts`, commit dab0114, [[lesson_a_pixel_is_not_a_position]], _2026-08-20_"
 ---
 
 # A split halves the pane, so the editor's document rewraps

@@ -2,7 +2,7 @@
 summary: one box resolves its mode purely from the query's own prefix, so nothing on screen can ever disagree with what it shows
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 6, issue #59, commit b58c96a; `src/utils/omniboxModes.ts`, `src/components/Omnibox/Omnibox.tsx`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 6, issue #59, commit b58c96a; `src/utils/omniboxModes.ts`, `src/components/Omnibox/Omnibox.tsx`"
 ---
 
 # The omnibox: a mode is a function of the query, never state

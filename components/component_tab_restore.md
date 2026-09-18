@@ -2,7 +2,7 @@
 summary: Tab restore respawns shells, resumes sessions, not scrollback; focused tab is an index since ids never survive relaunch
 status: current
 updated: 2026-07-20
-source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (personal/sway, branch `main`); Phase 2; `src/utils/tabPersist.ts`, `src/panels/Terminal/Terminal.tsx`"
+source: "Daily-driver polish: unseen badge, copy actions, tab peek, restore (personal/tori, branch `main`); Phase 2; `src/utils/tabPersist.ts`, `src/panels/Terminal/Terminal.tsx`"
 ---
 
 # Terminal tab restore
@@ -13,7 +13,7 @@ Brings the terminal tab strip back after a relaunch. **Restore is respawn + resu
 
 ## What is stored, and what deliberately is not
 
-Per-workspace descriptors in localStorage (`sway.terminalTabs`), keyed by the branch-unit folder so they line up with [[concept_workspace_tab_grouping]]:
+Per-workspace descriptors in localStorage (`tori.terminalTabs`), keyed by the branch-unit folder so they line up with [[concept_workspace_tab_grouping]]:
 
 - Stored: `title`, `cwd`, `kind`, `program`, `args`, and an agent tab's soft `sessionId`; plus the tab order and the focused tab per workspace.
 - **Not stored: tab ids.** A restored tab gets a fresh PTY and therefore a fresh id, so the focused tab is recorded as an **index into the stored order**, not an id.

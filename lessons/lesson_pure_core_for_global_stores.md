@@ -2,14 +2,14 @@
 summary: split a command touching a global json store into a pure core taking state explicitly plus a thin load save emit layer
 status: current
 updated: 2026-07-09
-source: Sidebar Context-Menu Redesign (personal/sway, branch code-mirror-6); `src-tauri/src/config.rs`, `src-tauri/src/worktree.rs`; commits 17a334a, dac1093, e704411
+source: Sidebar Context-Menu Redesign (personal/tori, branch code-mirror-6); `src-tauri/src/config.rs`, `src-tauri/src/worktree.rs`; commits 17a334a, dac1093, e704411
 ---
 
 # Extract a pure core from commands that touch a global store
 
 ## What happened
 
-The attached-branch work needed `#[tauri::command]`s that read/write a **global** JSON store (`~/.config/sway/attached.json`) and shell out to git. Testing them directly would either clobber the developer's real store (not hermetic) or need `State<ProjectIndex>` wiring a test can't easily build. Rust runs tests in parallel threads of one process, so an env-var override of the store path would race between tests, and there was no config-dir indirection to hook.
+The attached-branch work needed `#[tauri::command]`s that read/write a **global** JSON store (`~/.config/tori/attached.json`) and shell out to git. Testing them directly would either clobber the developer's real store (not hermetic) or need `State<ProjectIndex>` wiring a test can't easily build. Rust runs tests in parallel threads of one process, so an env-var override of the store path would race between tests, and there was no config-dir indirection to hook.
 
 ## Why
 

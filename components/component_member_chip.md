@@ -2,7 +2,7 @@
 summary: the one chip showing a file's repo by initials on its Space tint, decorative unless a broken member's badge needs it
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158) - phase 1 - commits `a7e2797`, `b1ac5f2`; worn by phases 2 and 3, commits `6183eae`, `12fe232`"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158) - phase 1 - commits `a7e2797`, `b1ac5f2`; worn by phases 2 and 3, commits `6183eae`, `12fe232`"
 ---
 
 # MemberChip

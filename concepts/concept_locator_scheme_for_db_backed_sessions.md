@@ -2,7 +2,7 @@
 summary: a removed adapter smuggled a sqlite backed session through the existing path field as a synthetic locator string
 status: stale
 updated: 2026-07-31
-source: "Prove the adapter: opencode + claude hooks (personal/sway, branch `topbar`); Phase 2; `src-tauri/src/opencode.rs`, `src-tauri/src/sessions.rs`"
+source: "Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phase 2; `src-tauri/src/opencode.rs`, `src-tauri/src/sessions.rs`"
 ---
 
 # Locator scheme for DB-backed sessions
@@ -18,7 +18,7 @@ source: "Prove the adapter: opencode + claude hooks (personal/sway, branch `topb
 > shape means answering at each of them rather than smuggling it through a
 > specially-shaped path again.
 
-Sway's session model is file-path-centric: `SessionMeta.path` is a real jsonl file, and half a dozen functions in `sessions.rs` (`session_detail`, `extract_touched_files`, `parse_transcript_turns`, `session_prompt_tail`, `delete_session`, `touched_files_cached`'s mtime check) take that path and read/stat it directly. opencode breaks that assumption completely — its sessions have no per-session file at all, every session's messages/parts are rows in one shared SQLite DB covering every project on the machine. Rather than restructure those six functions into an abstraction over "a session's backing store" (a materially bigger diff, touching claude/pi's working code paths too), the DB-backed case is smuggled through the *existing* string-typed `path` field.
+Tori's session model is file-path-centric: `SessionMeta.path` is a real jsonl file, and half a dozen functions in `sessions.rs` (`session_detail`, `extract_touched_files`, `parse_transcript_turns`, `session_prompt_tail`, `delete_session`, `touched_files_cached`'s mtime check) take that path and read/stat it directly. opencode breaks that assumption completely — its sessions have no per-session file at all, every session's messages/parts are rows in one shared SQLite DB covering every project on the machine. Rather than restructure those six functions into an abstraction over "a session's backing store" (a materially bigger diff, touching claude/pi's working code paths too), the DB-backed case is smuggled through the *existing* string-typed `path` field.
 
 ## How it works
 
@@ -34,7 +34,7 @@ The guarded function delegates to a same-shaped counterpart in `opencode.rs` tha
 
 `touched_files_cached`'s cache-freshness check is the one place this needed real care: `std::fs::metadata` on a synthetic locator always fails, which would silently freeze the cache at `SystemTime::UNIX_EPOCH` forever (never invalidating after the first read). The locator branch uses `opencode::mtime_for` (the DB's own `time_updated` column) instead of a filesystem stat.
 
-Session deletion follows the same "delegate, don't reimplement" shape but for safety rather than shape: `delete_session` shells out to `opencode session delete <id>` (mirroring `session_running`'s existing pgrep-shelling pattern) rather than issuing a raw SQL `DELETE`, since the DB's foreign keys aren't cascade-safe without `PRAGMA foreign_keys=ON` and Sway doesn't own opencode's data-integrity rules. The DB itself is opened strictly read-only (`SQLITE_OPEN_READ_ONLY`) everywhere Sway reads from it.
+Session deletion follows the same "delegate, don't reimplement" shape but for safety rather than shape: `delete_session` shells out to `opencode session delete <id>` (mirroring `session_running`'s existing pgrep-shelling pattern) rather than issuing a raw SQL `DELETE`, since the DB's foreign keys aren't cascade-safe without `PRAGMA foreign_keys=ON` and Tori doesn't own opencode's data-integrity rules. The DB itself is opened strictly read-only (`SQLITE_OPEN_READ_ONLY`) everywhere Tori reads from it.
 
 ## Why it's this way
 

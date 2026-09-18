@@ -2,7 +2,7 @@
 summary: a deleted file's stashed text is the falsy empty string, so a truthy payload check silently drops the conflict banner
 status: current
 updated: 2026-07-20
-source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/sway, branch `main`); Phase 1; `src/panels/Editor/CodeEditor.tsx` (`pendingKind`); see [[component_turn_checkpoints]]"
+source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 1; `src/panels/Editor/CodeEditor.tsx` (`pendingKind`); see [[component_turn_checkpoints]]"
 ---
 
 # An empty-string payload reads as "no pending state"

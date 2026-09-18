@@ -2,7 +2,7 @@
 summary: tsc clean was reported from a run that predated the session's last edit, so the verify has to postdate the whole diff
 status: current
 updated: 2026-07-19
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phase 3 defect, found in Phase 4; commits 3275344 (broke), 10efde7 (fixed)"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 3 defect, found in Phase 4; commits 3275344 (broke), 10efde7 (fixed)"
 ---
 
 # Re-run the full verify after the last edit, not the last risky one

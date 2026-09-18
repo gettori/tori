@@ -1,13 +1,13 @@
 ---
-summary: Sway caches harness state keyed on (agent, account); catalogFor never falls back to default while profileSignedOut does
+summary: Tori caches harness state keyed on (agent, account); catalogFor never falls back to default while profileSignedOut does
 status: current
 updated: 2026-09-05
-source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/sway, branch `multiaccount`), phases 2 to 4; `src-tauri/src/catalog_probe.rs`, `src/utils/modelCatalog.ts`, `src/utils/agentHealth.ts`"
+source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), phases 2 to 4; `src-tauri/src/catalog_probe.rs`, `src/utils/modelCatalog.ts`, `src/utils/agentHealth.ts`"
 ---
 
 # The account is half the key
 
-Everything Sway remembers about an agent is remembered per **(agent, account)**, not per agent: the model catalogue, the probe lock, the sign-in answer, the transcript root, the spawn environment, and the project's remembered pick. An account is a login of one binary, and two logins can sit on different plans, offer different models and answer `whoami` differently, so an answer filed under the agent alone is whichever account happened to answer last.
+Everything Tori remembers about an agent is remembered per **(agent, account)**, not per agent: the model catalogue, the probe lock, the sign-in answer, the transcript root, the spawn environment, and the project's remembered pick. An account is a login of one binary, and two logins can sit on different plans, offer different models and answer `whoami` differently, so an answer filed under the agent alone is whichever account happened to answer last.
 
 ## How it works
 

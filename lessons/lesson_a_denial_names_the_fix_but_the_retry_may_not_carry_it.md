@@ -46,19 +46,19 @@ it" competes with the model's own memory of having read it, and sometimes loses.
 
 ## What this no longer applies to (2026-08-14)
 
-**Sway has no denial left to write a reason into.** The spend ceiling was this
+**Tori has no denial left to write a reason into.** The spend ceiling was this
 measurement's one production consumer, and it moved to the turn boundary when
-Sway stopped deciding tool calls: enforcement is now `pendingFlush` declining to
+Tori stopped deciding tool calls: enforcement is now `pendingFlush` declining to
 open the next turn, so there is nothing to refuse and nothing to tell the model.
 The "two audiences" rule survives in the vault as a rule and is not currently
 exercised by any code.
 
 **The measurement itself is untouched and is the reason to keep this page.** Both
-halves are facts about how a model reacts to a refusal, not about Sway's
+halves are facts about how a model reacts to a refusal, not about Tori's
 architecture. The first half in particular - that a denial naming its fix
 produces a retry every time but the re-read only 7 times in 9 - is a live
 constraint on **any** guard whose correctness depends on the retry carrying fresh
-content, and Sway will write more of those. The `PreToolUse` hook both spikes rode
+content, and Tori will write more of those. The `PreToolUse` hook both spikes rode
 now only captures ([[concept_pretooluse_capture_hook]]), so a future guard of this
 shape would have to be built somewhere else, which makes the takeaway more worth
 remembering rather than less.

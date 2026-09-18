@@ -2,7 +2,7 @@
 summary: before scoping a big CSS migration, count var() versus hardcoded hex, an old monolith may already be mostly tokenized
 status: current
 updated: 2026-07-13
-source: Central configurable UI system (personal/sway, branch code-mirror-6); Phases 5a, 5b; commits abe9429, 932f8ef; `src/App.css`, `src/styles/tokens.css`, `src/theme/bundled.ts`
+source: Central configurable UI system (personal/tori, branch code-mirror-6); Phases 5a, 5b; commits abe9429, 932f8ef; `src/App.css`, `src/styles/tokens.css`, `src/theme/bundled.ts`
 ---
 
 # Measure token coverage before scoping a big CSS migration

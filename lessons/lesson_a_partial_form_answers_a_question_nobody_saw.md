@@ -9,7 +9,7 @@ source: plan "Answer AskUserQuestion inside the chat panel" (phases 3, 4), branc
 
 ## What happened
 
-`AskUserQuestion` arrives as a JSON blob and Sway renders it as a form. The first cut of the store claimed the call **as soon as the tool name matched**, so an input it could not read became an empty question row instead of falling back to an ordinary tool card. A test written to pin the broken-input case is what caught it, on my own code, after the Rust side had already got the rule right.
+`AskUserQuestion` arrives as a JSON blob and Tori renders it as a form. The first cut of the store claimed the call **as soon as the tool name matched**, so an input it could not read became an empty question row instead of falling back to an ordinary tool card. A test written to pin the broken-input case is what caught it, on my own code, after the Rust side had already got the rule right.
 
 ## Why
 

@@ -2,7 +2,7 @@
 summary: role listbox on a container whose only child is a no-matches fallback trips aria-required-children, drop the role too
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/sway, branch `100-migrate-seven-conplex-dialogs`, issue #100); `src/components/Dialogs/PickerModal.tsx:160`, `PickerModal.test.tsx`; commit `97a1eb6`"
+source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/tori, branch `100-migrate-seven-conplex-dialogs`, issue #100); `src/components/Dialogs/PickerModal.tsx:160`, `PickerModal.test.tsx`; commit `97a1eb6`"
 ---
 
 # An emptied `listbox` is worse than no listbox

@@ -2,14 +2,14 @@
 summary: code lens draws reference and implementation counts above lines, off by default until a workspace configuration is sent
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 9 (commit d7a6e3e); issue #68"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 9 (commit d7a6e3e); issue #68"
 ---
 
 # Code lens: counts above the line, behind a setting
 
 **Location:** `src/panels/Editor/lspCodeLens.ts`, `src/panels/Editor/codeLensWidget.ts`, `src-tauri/lsp/typescript.toml`
 
-Reference and implementation counts drawn as block widgets above the lines they describe, off by default. It is the only language feature in Sway that is not an answer to a question the user asked: nobody puts the caret anywhere to get "3 references". That makes it the only one whose cost is paid whether or not anybody reads it, which is the entire reason for the setting and for where the gate sits.
+Reference and implementation counts drawn as block widgets above the lines they describe, off by default. It is the only language feature in Tori that is not an answer to a question the user asked: nobody puts the caret anywhere to get "3 references". That makes it the only one whose cost is paid whether or not anybody reads it, which is the entire reason for the setting and for where the gate sits.
 
 ## Responsibilities
 
@@ -40,7 +40,7 @@ Reference and implementation counts drawn as block widgets above the lines they 
 
 ## The setting drew nothing until the server was told to produce any
 
-`typescript-language-server` 4.4.1 advertises `codeLensProvider: { resolveProvider: true }` **unconditionally**, but both providers check the *workspace configuration* before producing anything (`cli.mjs:21364`), and a preference nobody sent reads as off. Measured both ways on a file with three exported symbols: no `[settings]` table, **0 lenses**; with one, **3**. The preference is read out of the workspace configuration, not `initialization_options` (`getWorkspacePreferencesForFile`, `cli.mjs:21129`), which is what it looks like it should be. Enabling it costs nothing while Sway's setting is off, because the expense is in the request and Sway does not make one.
+`typescript-language-server` 4.4.1 advertises `codeLensProvider: { resolveProvider: true }` **unconditionally**, but both providers check the *workspace configuration* before producing anything (`cli.mjs:21364`), and a preference nobody sent reads as off. Measured both ways on a file with three exported symbols: no `[settings]` table, **0 lenses**; with one, **3**. The preference is read out of the workspace configuration, not `initialization_options` (`getWorkspacePreferencesForFile`, `cli.mjs:21129`), which is what it looks like it should be. Enabling it costs nothing while Tori's setting is off, because the expense is in the request and Tori does not make one.
 
 `showOnAllFunctions` is deliberately not set: on, every inner helper gets a lens and most read "0 references".
 

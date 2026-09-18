@@ -2,7 +2,7 @@
 summary: a component mounted through Portal attaches to document.body as a sibling of render's container, not inside it
 status: current
 updated: 2026-08-12
-source: "plan \"axe-core harness in the jsdom vitest project\" (personal/sway, branch `97-axe-core`, issue #97); `src/components/Toasts/Toasts.test.tsx`, `src/test/axe.ts`; commit 0010b81"
+source: "plan \"axe-core harness in the jsdom vitest project\" (personal/tori, branch `97-axe-core`, issue #97); `src/components/Toasts/Toasts.test.tsx`, `src/test/axe.ts`; commit 0010b81"
 ---
 
 # A portalled component is not inside `render`'s container

@@ -2,17 +2,17 @@
 summary: pre destruction snapshots are owned by a worktree identity minted at creation, so a same named worktree inherits none
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 3 (commit e4c3872), wired to discard in Phase 4 (commit b42b494); `src-tauri/src/backstop.rs`, `src/panels/Editor/CheckpointTimeline.tsx`"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 3 (commit e4c3872), wired to discard in Phase 4 (commit b42b494); `src-tauri/src/backstop.rs`, `src/panels/Editor/CheckpointTimeline.tsx`"
 ---
 
 # Backstops: undo snapshots owned by a worktree identity
 
-Before Sway destroys uncommitted work it takes a **backstop**: a snapshot of the whole working tree that the user can restore from the timeline. Discard is the caller that made this necessary, since it is the one apply path that rewrites files rather than shuffling the index.
+Before Tori destroys uncommitted work it takes a **backstop**: a snapshot of the whole working tree that the user can restore from the timeline. Discard is the caller that made this necessary, since it is the one apply path that rewrites files rather than shuffling the index.
 
 ## How it works
 
 - **Its own module, deliberately not an extension of [[component_turn_checkpoints]].** Those are keyed by session and exist because a *turn* was reverted. A discard has no session and no prompt boundary, so it has no key of that shape available.
-- **The record, not the ref, carries ownership.** The ref (`refs/sway/discard/<worktreeId>/<ts>`) exists only as a gc anchor. A sidecar record under the worktree's **own** git dir (`.bare/worktrees/<name>/sway/`) holds the tree oid, the worktree path, HEAD at snapshot time, and a label.
+- **The record, not the ref, carries ownership.** The ref (`refs/tori/discard/<worktreeId>/<ts>`) exists only as a gc anchor. A sidecar record under the worktree's **own** git dir (`.bare/worktrees/<name>/tori/`) holds the tree oid, the worktree path, HEAD at snapshot time, and a label.
 - Two consequences follow from that and both are the point: listing reads the sidecar and never the refs, so cross-worktree leakage is structurally impossible rather than filtered out; and restore reads `rec.tree` directly, so a re-minted worktree id orphans refs but never orphans a restorable snapshot.
 - **The worktree id is minted from creation time plus pid** and stored in the sidecar. Nothing derives it from the worktree's *name*.
 - **Snapshotting never touches the user's index**, using the scratch-index + `write-tree` pattern checkpoints already use.

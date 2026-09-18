@@ -2,7 +2,7 @@
 summary: one COMMANDS table drives the palette, the shortcut sheet and the dispatcher, so a binding cannot drift from its list
 status: current
 updated: 2026-08-28
-source: "v0.1 features: status indicators, search, input layer (personal/sway, branch `topbar`); Phase 3; binding table + sheet: v0.1 release gate, same branch, Phase 4, commit 0a0a1d3; merged into one registry by Editor wave 1: close out the fundamentals (branch `wave-1-4`), Phase 3, issue #15, commit bd9567c; shell and list moved onto shared surfaces by plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); commit `9d471b7`; quick-open across a Feature's members from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, issue #158), Phase 4, commit `809c85b`"
+source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3; binding table + sheet: v0.1 release gate, same branch, Phase 4, commit 0a0a1d3; merged into one registry by Editor wave 1: close out the fundamentals (branch `wave-1-4`), Phase 3, issue #15, commit bd9567c; shell and list moved onto shared surfaces by plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); commit `9d471b7`; quick-open across a Feature's members from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, issue #158), Phase 4, commit `809c85b`"
 ---
 
 # Command palette + hotkey remap

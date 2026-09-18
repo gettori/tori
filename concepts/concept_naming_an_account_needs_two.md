@@ -2,7 +2,7 @@
 summary: namedProfiles returns empty until there are two accounts, so every surface stays silent on a single-account install
 status: current
 updated: 2026-09-05
-source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/sway, branch `multiaccount`), phases 2 and 3; `src/utils/agentHealth.ts` (`namedProfiles`, `profileLabel`), `src-tauri/src/sessions.rs` (`profile_label`)"
+source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), phases 2 and 3; `src/utils/agentHealth.ts` (`namedProfiles`, `profileLabel`), `src-tauri/src/sessions.rs` (`profile_label`)"
 ---
 
 # Naming an account only means something when there are two

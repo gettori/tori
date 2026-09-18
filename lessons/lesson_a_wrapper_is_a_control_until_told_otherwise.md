@@ -2,7 +2,7 @@
 summary: a comment claimed a menu wrapper was not focusable and passed two phases of review, until an axe scan found it was
 status: current
 updated: 2026-08-15
-source: Menu onto Kobalte DropdownMenu and ContextMenu, phase 6 self-review (personal/sway, branch `103-menu`, skarif2/sway#103); `src/components/Menu/Dropdown.tsx`, `src/components/OverflowTabBar.test.tsx`; commit `3e0ddc4`
+source: Menu onto Kobalte DropdownMenu and ContextMenu, phase 6 self-review (personal/tori, branch `103-menu`, gettori/tori#103); `src/components/Menu/Dropdown.tsx`, `src/components/OverflowTabBar.test.tsx`; commit `3e0ddc4`
 ---
 
 # A wrapper is a control until you tell it not to be

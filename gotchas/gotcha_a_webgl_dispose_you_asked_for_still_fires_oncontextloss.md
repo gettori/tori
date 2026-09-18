@@ -2,7 +2,7 @@
 summary: a deliberate WebGL eviction still fires onContextLoss seconds later from an uncleared timer, so check slot identity
 status: current
 updated: 2026-08-20
-source: plan "Worktree and tab switching at native speed" (phase 5, personal/sway, branch `unified-tab-bar`), `src/panels/Terminal/webglLru.ts`, commit 565dbf9, [[concept_webgl_context_lru]], _2026-08-20_
+source: plan "Worktree and tab switching at native speed" (phase 5, personal/tori, branch `unified-tab-bar`), `src/panels/Terminal/webglLru.ts`, commit 565dbf9, [[concept_webgl_context_lru]], _2026-08-20_
 ---
 
 # A WebGL dispose you asked for still fires onContextLoss

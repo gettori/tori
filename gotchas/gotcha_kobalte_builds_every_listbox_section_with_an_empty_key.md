@@ -2,7 +2,7 @@
 summary: Kobalte gives every listbox section key empty string, so a second heading added on update collides with the first
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:99,190`; commit `9d471b7`"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:99,190`; commit `9d471b7`"
 ---
 
 # Kobalte builds every listbox section with an empty key

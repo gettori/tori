@@ -2,7 +2,7 @@
 summary: vitest stubs a css raw import to an empty string or a proxy object, put css assertions in check tokens mjs instead
 status: current
 updated: 2026-09-07
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phase 4; `scripts/check-tokens.mjs`, `src/theme/theme.test.ts`; commit 10efde7; _2026-07-19_; re-hit in Status deepening (personal/sway, branch `main`); Phase 2; _2026-07-20_; re-hit in \"Delete the legacy modal chrome\" (branch `101-delete-legacy-modal-chrome`, issue #101); `scripts/check-tokens.mjs` check 8; _2026-08-13_; re-hit in \"Answer AskUserQuestion inside the chat panel\" (branch `chat-transcription`); Phase 5; `scripts/check-tokens.mjs` check 10; _2026-08-22_; re-hit in \"PDF viewer tab\" (branch `logo-update-260907`), phase 3 . `scripts/check-tokens.mjs` check 11 . commit `dc57d79` . _2026-09-07_"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 4; `scripts/check-tokens.mjs`, `src/theme/theme.test.ts`; commit 10efde7; _2026-07-19_; re-hit in Status deepening (personal/tori, branch `main`); Phase 2; _2026-07-20_; re-hit in \"Delete the legacy modal chrome\" (branch `101-delete-legacy-modal-chrome`, issue #101); `scripts/check-tokens.mjs` check 8; _2026-08-13_; re-hit in \"Answer AskUserQuestion inside the chat panel\" (branch `chat-transcription`); Phase 5; `scripts/check-tokens.mjs` check 10; _2026-08-22_; re-hit in \"PDF viewer tab\" (branch `logo-update-260907`), phase 3 . `scripts/check-tokens.mjs` check 11 . commit `dc57d79` . _2026-09-07_"
 ---
 
 # vitest stubs CSS imports to the empty string

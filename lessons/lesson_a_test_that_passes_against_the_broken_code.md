@@ -2,7 +2,7 @@
 summary: six tests across two waves asserted something true of every implementation while named for the thing they skipped
 status: current
 updated: 2026-08-28
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phases 9, 11, 12 (#57, #50, #61); commits 3cbbde1, 48af914, 98b038b, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 7, 8, 9; commits a862bbe, a1511d7, d7a6e3e"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phases 9, 11, 12 (#57, #50, #61); commits 3cbbde1, 48af914, 98b038b, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 7, 8, 9; commits a862bbe, a1511d7, d7a6e3e"
 ---
 
 # Run the new test against the unfixed line before believing it

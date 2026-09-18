@@ -2,7 +2,7 @@
 summary: Rust's DefaultHasher suits a within run cache key and is catastrophic in a persisted ref name since std never fixes it
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 15, issue #51, commit b622f33; `src-tauri/src/local_history.rs:71`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 15, issue #51, commit b622f33; `src-tauri/src/local_history.rs:71`"
 ---
 
 # Never build a persisted key out of a hash whose algorithm is unspecified

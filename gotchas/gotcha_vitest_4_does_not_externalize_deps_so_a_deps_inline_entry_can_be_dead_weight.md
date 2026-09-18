@@ -2,7 +2,7 @@
 summary: vitest 4 no longer externalizes deps by default, so a deps.inline entry added on reasoning alone can be dead weight
 status: current
 updated: 2026-08-12
-source: "Design system foundation: src/lib boundary, Kobalte install, import guard (personal/sway, branch `94-design-system-foundation`, issue #94); `vitest.config.ts:47`; commit e90eba3"
+source: "Design system foundation: src/lib boundary, Kobalte install, import guard (personal/tori, branch `94-design-system-foundation`, issue #94); `vitest.config.ts:47`; commit e90eba3"
 ---
 
 # vitest 4 does not externalize deps, so a `deps.inline` entry can be dead weight

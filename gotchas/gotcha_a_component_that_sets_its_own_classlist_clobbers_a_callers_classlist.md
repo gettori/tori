@@ -2,7 +2,7 @@
 summary: a shared component's own classList beats the caller's classList spread in, so selected state silently gets dropped
 status: current
 updated: 2026-08-15
-source: "Button component + migrate all buttons (personal/sway, branch code-mirror-6); `src/components/Button/Button.tsx` (spread then `classList`); left-native widgets in `Editor.tsx`, `NewProjectDialog.tsx`, `LeftSidebar.tsx`, `OverflowTabBar.tsx`, `Terminal.tsx`; resolution for `SegmentedControl` + `LayoutToggles`: branch `108-segmented-control`, issue #108; _2026-07-13, amended 2026-08-15_"
+source: "Button component + migrate all buttons (personal/tori, branch code-mirror-6); `src/components/Button/Button.tsx` (spread then `classList`); left-native widgets in `Editor.tsx`, `NewProjectDialog.tsx`, `LeftSidebar.tsx`, `OverflowTabBar.tsx`, `Terminal.tsx`; resolution for `SegmentedControl` + `LayoutToggles`: branch `108-segmented-control`, issue #108; _2026-07-13, amended 2026-08-15_"
 ---
 
 # A component that sets its own classList clobbers a caller's classList

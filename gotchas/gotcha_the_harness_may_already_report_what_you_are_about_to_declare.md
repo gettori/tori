@@ -2,7 +2,7 @@
 summary: every result frame carries modelUsage with the real context window per model, a hand maintained table just drifted
 status: current
 updated: 2026-07-30
-source: Make the session controls tell the truth about the CLI, phase 5 (personal/sway, branch `chat`); `src/utils/chatModels.ts` (`reportedWindows`, `contextWindowFor`), `src-tauri/agents/claude.toml`, `dev/fixtures/claude/plain-turn.jsonl`; [[concept_capability_resolution]]
+source: Make the session controls tell the truth about the CLI, phase 5 (personal/tori, branch `chat`); `src/utils/chatModels.ts` (`reportedWindows`, `contextWindowFor`), `src-tauri/agents/claude.toml`, `dev/fixtures/claude/plain-turn.jsonl`; [[concept_capability_resolution]]
 ---
 
 # The harness may already report what you are about to declare

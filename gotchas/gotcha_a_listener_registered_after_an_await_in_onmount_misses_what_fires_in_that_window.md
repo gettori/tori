@@ -2,7 +2,7 @@
 summary: a listener registered after the first await in onMount misses anything fired first, a missed event never redelivers
 status: current
 updated: 2026-08-02
-source: "Editor wave 1: close out the fundamentals (personal/sway, branch `wave-1-4`); Phases 1 and 3; `src/panels/Editor/CodeEditor.tsx:553`, `src/panels/Editor/Editor.tsx` (onMount), `src/panels/Editor/editorCommands.test.tsx`; commits ca440df, bd9567c"
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phases 1 and 3; `src/panels/Editor/CodeEditor.tsx:553`, `src/panels/Editor/Editor.tsx` (onMount), `src/panels/Editor/editorCommands.test.tsx`; commits ca440df, bd9567c"
 ---
 
 # A listener registered after an `await` in `onMount` misses what fires in that window

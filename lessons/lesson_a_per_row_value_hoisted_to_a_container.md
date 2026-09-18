@@ -2,7 +2,7 @@
 summary: a login route built once for every profile row would have signed one account into another's default, unseen by a test
 status: current
 updated: 2026-08-15
-source: Make a harness installable, signed in, and discoverable (personal/sway, branch `harness-lifecycle`); Phase 3 self-review; `src-tauri/src/auth.rs` (`login_route`), `src/panels/Settings/AgentAccounts.tsx`
+source: Make a harness installable, signed in, and discoverable (personal/tori, branch `harness-lifecycle`); Phase 3 self-review; `src-tauri/src/auth.rs` (`login_route`), `src/panels/Settings/AgentAccounts.tsx`
 ---
 
 # A per-row value hoisted to a container is invisible to a unit test

@@ -2,7 +2,7 @@
 summary: a dropdown inside a bar that is position relative and overflow hidden gets clipped by it too, portal it to the body
 status: current
 updated: 2026-06-29
-source: Overflow-tab-bar (personal/sway); `src/components/OverflowTabBar.tsx`, `src/App.css` (`.tab-overflow-menu`)
+source: Overflow-tab-bar (personal/tori); `src/components/OverflowTabBar.tsx`, `src/App.css` (`.tab-overflow-menu`)
 ---
 
 # overflow:hidden on a positioned bar clips its own dropdown

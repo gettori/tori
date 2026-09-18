@@ -2,7 +2,7 @@
 summary: the encoded claude projects folder maps slash and dot both to a dash and cannot be reversed, read cwd from the jsonl
 status: current
 updated: 2026-06-28
-source: Sway build plan (personal/sway); `src-tauri/src/sessions.rs` (`parse_session`); commit e121aeb
+source: Tori build plan (personal/tori); `src-tauri/src/sessions.rs` (`parse_session`); commit e121aeb
 ---
 
 # Encoded Claude dir name is lossy

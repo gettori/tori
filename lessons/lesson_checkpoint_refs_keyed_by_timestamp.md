@@ -2,14 +2,14 @@
 summary: key a snapshot per event design by the event's own timestamp, not a count of artifacts produced, or a skip corrupts it
 status: current
 updated: 2026-07-18
-source: Adapter registry, pulse, presence, checkpoints (personal/sway, branch `topbar`); Phase 4; `src-tauri/src/checkpoint.rs`
+source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 4; `src-tauri/src/checkpoint.rs`
 ---
 
 # Key checkpoint refs by boundary timestamp, not a sequential counter
 
 ## What happened
 
-The plan's task wording implied refs named `refs/sway/checkpoint/<sessionId>/<n>` with `n` auto-incrementing per snapshot. Implementing that literally, then wiring per-turn diffs on top of it, surfaced a mapping problem before any code shipped: the same task also requires skipping a ref write when the computed tree is unchanged (an idle turn, or a duplicate trigger). The moment any boundary is skipped, `n` develops a gap, and a later turn's diff needs to know *exactly* which prior boundary to diff against — a gap silently breaks that mapping (which `n` is "the turn before this one" once some `n`'s never existed?).
+The plan's task wording implied refs named `refs/tori/checkpoint/<sessionId>/<n>` with `n` auto-incrementing per snapshot. Implementing that literally, then wiring per-turn diffs on top of it, surfaced a mapping problem before any code shipped: the same task also requires skipping a ref write when the computed tree is unchanged (an idle turn, or a duplicate trigger). The moment any boundary is skipped, `n` develops a gap, and a later turn's diff needs to know *exactly* which prior boundary to diff against — a gap silently breaks that mapping (which `n` is "the turn before this one" once some `n`'s never existed?).
 
 ## Why
 

@@ -2,7 +2,7 @@
 summary: an uncontrolled Kobalte combobox toggles selection, so a repeat pick fires onChange null and the row goes dead
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:135`; commit `9d471b7`"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:135`; commit `9d471b7`"
 ---
 
 # An uncontrolled Kobalte combobox treats a repeat pick as a deselect

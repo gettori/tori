@@ -2,7 +2,7 @@
 summary: Storybook runs the Kobalte wrappers on the app's real tokens with no pin, no viteFinal and docgen off
 status: current
 updated: 2026-08-12
-source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/sway, branch `96-storybook`, issue #96, part of #93); `.storybook/main.ts`, `.storybook/preview.tsx`; skarif2/sway#96 comment 5259157006"
+source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96, part of #93); `.storybook/main.ts`, `.storybook/preview.tsx`; gettori/tori#96 comment 5259157006"
 ---
 
 # The Storybook workshop
@@ -41,7 +41,7 @@ The decorator calls `applyResolved` straight from its body rather than from a `c
 
 ## What was measured
 
-Theme switching was verified through the Chrome DevTools Protocol against the live story iframe rather than by eye. Both `sway-dark` and `sway-light` paint the full **110** inline role props on `<html>` (not a partial overwrite, because `paintRoles` iterates the whole `OWNED` set and removes what a palette does not produce), flip `data-theme`, and move the computed body background between `rgb(21,23,28)` and `rgb(255,255,255)`, matching `--canvas-default` in each theme. Inter resolves, which also proves Vite serves `public/` here (builder-vite sets `root` to the project root and never overrides `publicDir`).
+Theme switching was verified through the Chrome DevTools Protocol against the live story iframe rather than by eye. Both `tori-dark` and `tori-light` paint the full **110** inline role props on `<html>` (not a partial overwrite, because `paintRoles` iterates the whole `OWNED` set and removes what a palette does not produce), flip `data-theme`, and move the computed body background between `rgb(21,23,28)` and `rgb(255,255,255)`, matching `--canvas-default` in each theme. Inter resolves, which also proves Vite serves `public/` here (builder-vite sets `root` to the project root and never overrides `publicDir`).
 
 axe was run against the live iframes: an icon-only button with no accessible name yields one critical `button-name` violation, while `WithIcons`, which contains an icon-only button **with** `aria-label`, passes with ten checks. The fixture that proved this was deliberately transient and removed; the repo ships no story that intentionally fails axe.
 

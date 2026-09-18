@@ -2,7 +2,7 @@
 summary: plain grep treats CodeEditor.tsx as binary and skips it, use grep -a or tsc instead of trusting a grep sweep for usage
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 5 (personal/sway, branch `wave-6`); `src/panels/Editor/CodeEditor.tsx`; commit 2f3f046"
+source: "Editor Wave 6: the IDE surface, Phase 5 (personal/tori, branch `wave-6`); `src/panels/Editor/CodeEditor.tsx`; commit 2f3f046"
 ---
 
 # `grep` skips `CodeEditor.tsx` as binary

@@ -2,7 +2,7 @@
 summary: js-debug fires initialized more than once, a second configuration pass resends setBreakpoints and wipes the first set
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phase 1 spike (personal/sway, branch `wave-8`); `src/utils/dapSessions.ts:298`; commit 1e72ae1"
+source: "Editor wave 8: the debugger (DAP), Phase 1 spike (personal/tori, branch `wave-8`); `src/utils/dapSessions.ts:298`; commit 1e72ae1"
 ---
 
 # js-debug emits `initialized` more than once per session

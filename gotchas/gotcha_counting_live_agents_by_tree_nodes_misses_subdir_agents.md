@@ -2,7 +2,7 @@
 summary: counting live agents by rendered sidebar nodes undercounts one running in an unrendered subdirectory
 status: current
 updated: 2026-07-10
-source: Delete Group (personal/sway, branch code-mirror-6); `src/pathScope.ts`, `src/components/Sidebar.tsx` (`countRunningAgents`); commit fef06e6
+source: Delete Group (personal/tori, branch code-mirror-6); `src/pathScope.ts`, `src/components/Sidebar.tsx` (`countRunningAgents`); commit fef06e6
 ---
 
 # Counting live agents by tree nodes misses subdir agents
