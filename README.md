@@ -83,7 +83,13 @@ claude's; both need Rust.
 
 ## Install
 
-Download the latest `Tori_<version>_universal.dmg` from the
+```sh
+brew install --cask gettori/tap/tori
+```
+
+The cask clears the quarantine flag as it installs, and `brew upgrade --cask
+tori` keeps it current. Otherwise download the latest
+`Tori_<version>_universal.dmg` from the
 [Releases page](https://github.com/gettori/releases/releases), drag it into
 Applications, then follow **[docs/INSTALL.md](docs/INSTALL.md)** for the first
 launch.

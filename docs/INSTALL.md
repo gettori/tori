@@ -9,6 +9,15 @@ expected, and getting past it takes about ten seconds.
 > installing it. If that trade is not one you want to make, building from
 > source is always an option (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+## Install with Homebrew
+
+```sh
+brew install --cask gettori/tap/tori
+```
+
+The cask clears the quarantine flag for you, so the Gatekeeper steps below are
+only for a DMG you downloaded yourself. The rest of this page is that route.
+
 ## 1. Install
 
 1. Download `Tori_<version>_universal.dmg` from the
@@ -67,16 +76,17 @@ files; it is what the **Open Anyway** button does under the hood.
 
 Tori checks for a newer release on launch (once a day at most) and shows a
 dismissible notice in the title bar when one exists. It never downloads or
-installs anything for you: click through to the Releases page and repeat the
-steps above. Replacing an unsigned app re-triggers quarantine anyway, so an
-in-place auto-update would not save you the **Open Anyway** step.
+installs anything for you: run `brew upgrade --cask tori`, or click through to
+the Releases page and repeat the steps above. Replacing an unsigned app
+re-triggers quarantine anyway, so an in-place auto-update would not save you
+the **Open Anyway** step.
 
 To stop the check entirely, use the app offline; a failed check is silent.
 
 ## Uninstalling
 
-Drag `/Applications/Tori.app` to the Trash. Everything else Tori writes lives
-under a single directory, `~/.config/tori/`:
+`brew uninstall --cask tori`, or drag `/Applications/Tori.app` to the Trash.
+Everything else Tori writes lives under a single directory, `~/.config/tori/`:
 
 - `settings.json` - appearance, typography, layout preferences
 - `tori.toml` - your spaces, projects, and folders
