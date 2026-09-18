@@ -294,6 +294,40 @@ export function searchIcons(query: string): PickerIcon[] {
   return PICKER_ICONS.filter((e) => squash(e.name).includes(q));
 }
 
+/** How many icons a picker rests on.
+ *
+ *  All of them at once is a wall you scroll past rather than a set you read,
+ *  and in a dialog whose real question is a name or an image it is the tallest
+ *  thing on screen. A short shelf says what an icon here looks like; the field
+ *  above it is how you reach a particular one, which is the only way anyone
+ *  finds one in a set this size anyway. */
+export const SHELF = 24;
+
+/** `size` icons drawn from the set without repeats.
+ *
+ *  Draw it once for the life of a picker and hold it: per keystroke, or per
+ *  render, would reshuffle the shelf under the pointer on its way to a tile. */
+export function drawShelf(size: number = SHELF): PickerIcon[] {
+  const pool = [...PICKER_ICONS];
+  const out: PickerIcon[] = [];
+  while (out.length < size && pool.length) {
+    out.push(...pool.splice(Math.floor(Math.random() * pool.length), 1));
+  }
+  return out;
+}
+
+/** `shelf` with `chosen` forced into it, which is what a picker shows at rest.
+ *
+ *  A stored icon, or one a reroll landed on, is anywhere in the set, and a
+ *  picker showing nothing selected reads as having lost the choice rather than
+ *  as not showing it. The forced entry takes the front and the shelf keeps its
+ *  length, so the block below the field never changes height. */
+export function restingShelf(shelf: PickerIcon[], chosen: string | null): PickerIcon[] {
+  if (!chosen || shelf.some((e) => e.name === chosen)) return shelf;
+  const entry = PICKER_ICONS.find((e) => e.name === chosen);
+  return entry ? [entry, ...shelf.slice(0, shelf.length - 1)] : shelf;
+}
+
 /** The glyph a project gets when nobody chose one and no favicon was found: a
  *  stable pick from the set, hashed on `seed` (the project's absolute path). It
  *  reads as an arbitrary icon, but it is the *same* arbitrary icon on every
