@@ -41,7 +41,6 @@ import { caretListener, cursorJumpListener } from "./cursorJump";
 import { breakpointGutter, setBreakpointMarkers } from "./breakpointGutter";
 import type { BreakpointMark } from "../../utils/debugBreakpoints";
 import { frameHighlight, setFrameLineMarker } from "./frameHighlight";
-import { debugRunning } from "../../utils/debugStore";
 import { debugHover } from "./debugHover";
 import { toriRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
@@ -1307,10 +1306,19 @@ export default function CodeEditor(props: {
       caretListener((line, column) => props.onCaretMove?.(path, line, column)),
       // Per buffer rather than in `commonExtensions`, because both handlers have
       // to name the file they are talking about and only this closure knows it.
-      breakpointGutter({
-        onToggle: (line) => props.onToggleBreakpoint?.(path, line),
-        onMoved: (lines, docLines) => props.onBreakpointsMoved?.(path, lines, docLines),
-      }),
+      //
+      // `Prec.high` for where the column lands, not for what wins a keystroke:
+      // gutters are laid out left to right in the order the facet reads them,
+      // and a facet reads its highest-precedence inputs first. That puts the
+      // breakpoints outside the line numbers, where every debugger since Visual
+      // Studio has put them, from a buffer-local extension that is otherwise
+      // added last.
+      Prec.high(
+        breakpointGutter({
+          onToggle: (line) => props.onToggleBreakpoint?.(path, line),
+          onMoved: (lines, docLines) => props.onBreakpointsMoved?.(path, lines, docLines),
+        }),
+      ),
       frameHighlight(),
       // Beside the frame highlight rather than in `commonExtensions`, because
       // both are the paused program showing through the buffer and they should
@@ -2619,7 +2627,6 @@ export default function CodeEditor(props: {
     return (
       <div
         class={styles.codeEditorWrap}
-        classList={{ [styles.debugging]: debugRunning() }}
         style={{ display: hiddenOf(p.id) ? "none" : undefined }}
       >
         <Show when={conflict()?.path === pathOf(p.id) ? conflict() : null}>

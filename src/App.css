@@ -549,8 +549,18 @@ html {
 
 /* Breakpoints. Emitted as literal class strings by
    src/panels/Editor/breakpointGutter.ts, so global rather than CSS-module
-   scoped: they end up in CodeMirror's own DOM. Shown only while debugging (see
-   CodeEditor.module.css).
+   scoped: they end up in CodeMirror's own DOM.
+
+   The leftmost column, outside the line numbers, and always there. It used to
+   take width only once a session was running, which meant the one thing you do
+   *before* you start a debugger was the one thing the buffer would not let you
+   do. A column that appears when you no longer need it also shifts every line
+   sideways at the moment the program stops.
+
+   The left inset is the 5px CodeMirror's own line numbers reserve, so the first
+   column of an editor sits off the edge by the same amount whether breakpoints
+   are in front of it or not. `box-sizing: border-box` on every gutter means the
+   width below carries the inset: 12px of dot, 5px of air.
 
    Red because that is what a breakpoint has been in every debugger anyone has
    used, and the shape carries the state so the colour is not doing the work
@@ -559,12 +569,21 @@ html {
    not going to stop anything yet, and saying so in the same red as one that
    will would make the column mean two things at once. */
 .cm-breakpoint-gutter {
-  width: calc(12px * var(--ui-scale));
-  padding: 0;
+  width: calc(17px * var(--ui-scale));
+  padding: 0 0 0 calc(5px * var(--ui-scale));
   cursor: pointer;
   font-size: var(--tori-text-sm);
   line-height: 1;
-  text-align: center;
+}
+
+/* Centred by the box rather than by the text. A gutter element is given the
+   line's height in pixels, and a dot laid out as text sits at the top of that
+   box on the baseline of a font it is not part of, which is a dot that misses
+   its own line by a couple of pixels on every line of the file. */
+.cm-breakpoint-gutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cm-breakpoint-gutter .cm-gutterElement.cm-breakpoint {
@@ -579,7 +598,12 @@ html {
   color: transparent;
 }
 
-.cm-breakpoint-gutter:hover .cm-gutterElement.cm-breakpoint-hint {
+/* The hovered line's hint, not the whole column's. A dot on every line answers
+   "this column takes breakpoints", which the reader learns once; a dot on the
+   line under the pointer answers "click here and it lands on line 42", which is
+   the question actually being asked, and it does not paint a second dotted rule
+   down the file to do it. */
+.cm-breakpoint-gutter .cm-gutterElement.cm-breakpoint-hint:hover {
   color: var(--fg-subtle);
 }
 
