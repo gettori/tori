@@ -1,0 +1,70 @@
+/* The branch-sync chip, built on the toolbar's `.member` recipe: a small tinted
+   box whose hue is the whole message. The four tones are written out rather
+   than routed through one custom property, because `color-mix()` fed from a
+   `var()` is dropped whole by some engines (see the note on --space-tint-rgb in
+   App.css) and the tone is a class here anyway. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
+  flex: 0 0 auto;
+  height: calc(20px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  border: 1px solid;
+  border-radius: var(--tori-radius-sm);
+  font: inherit;
+  font-size: var(--tori-text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.danger {
+  color: var(--danger-fg);
+  background: color-mix(in srgb, var(--danger-fg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger-fg) 45%, transparent);
+}
+
+/* The louder amber, so a divergence is not drawn at the same weight as merely
+   being behind: one needs a decision about history, the other needs a pull. */
+.warn {
+  color: var(--attention-emphasis);
+  background: color-mix(in srgb, var(--attention-emphasis) 14%, transparent);
+  border-color: color-mix(in srgb, var(--attention-emphasis) 45%, transparent);
+}
+
+.attention {
+  color: var(--attention-fg);
+  background: color-mix(in srgb, var(--attention-fg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--attention-fg) 45%, transparent);
+}
+
+/* No fill at all. These states are facts about a branch that is working
+   normally, and a tinted box for each would put three pills on a healthy bar. */
+.muted {
+  color: var(--fg-muted);
+  background: none;
+  border-color: transparent;
+}
+
+/* The border, not the fill. A flat hover background outranks the tone blocks
+   above and turns a conflicts chip grey at the exact moment it is being reached
+   for, which is the one moment its colour is doing work. */
+.chip:hover,
+.chip:focus-visible {
+  border-color: currentColor;
+}
+
+/* The untinted tones have no fill to brighten, so they get one here. */
+.muted:hover,
+.muted:focus-visible {
+  background: var(--neutral-subtle);
+}
+
+/* The conflicted paths under the sentence. A list rather than a run of lines,
+   so a reader hears how many there are before hearing the first one. */
+.paths {
+  margin: calc(4px * var(--ui-scale)) 0 0;
+  padding-left: calc(14px * var(--ui-scale));
+  color: var(--fg-muted);
+}
