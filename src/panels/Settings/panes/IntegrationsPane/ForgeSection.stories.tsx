@@ -16,12 +16,13 @@ function account(host: string, login: string, auth: AuthState, provider: ForgePr
     expiresAt: null,
     rejectedAt: auth.kind === "suspect" ? Date.UTC(2026, 8, 12, 12) / 1000 : null,
     scopes: provider === "github" ? ["repo", "workflow"] : null,
+    source: "token",
     auth,
   };
 }
 
 function host(name: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
-  return { host: name, accounts, gitCredentials: false, gitEverywhere: false, defaultAccount: null, ...extra };
+  return { host: name, accounts, gitCredentials: false, gitEverywhere: false, defaultAccount: null, appId: null, ...extra };
 }
 
 function routes(baseUrl: string, provider: ForgeProvider): SignInRoutes {

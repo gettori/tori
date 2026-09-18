@@ -82,16 +82,23 @@ export default function HostsStep(props: {
                     {(f) => (
                       <>
                         <div class={styles.hostError}>
-                          <div class={styles.hostErrorTitle}>Sign-in did not complete</div>
+                          <div class={styles.hostErrorTitle}>
+                            {f().failure.kind === "needsToken" ? "Not from here" : "Sign-in did not complete"}
+                          </div>
                           <div>{failureText(card.cloud, f().failure, props.lifetimeSecs)}</div>
                         </div>
-                        <Button
-                          class={styles.hostButton}
-                          disabled={props.waitingFor !== null}
-                          onClick={() => props.onSignIn(card.cloud)}
-                        >
-                          Try again
-                        </Button>
+                        {/* Trying again would take the same route to the same
+                            sentence: the token this host needs is asked for in
+                            Settings, which this step cannot open. */}
+                        <Show when={f().failure.kind !== "needsToken"}>
+                          <Button
+                            class={styles.hostButton}
+                            disabled={props.waitingFor !== null}
+                            onClick={() => props.onSignIn(card.cloud)}
+                          >
+                            Try again
+                          </Button>
+                        </Show>
                       </>
                     )}
                   </Match>

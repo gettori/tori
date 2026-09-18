@@ -1,9 +1,9 @@
 import { createEffect, createSignal, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import type { ForgeHost } from "../../utils/forgeTypes";
+import type { ForgeHost, SignInStart } from "../../utils/forgeTypes";
 import { noteForgeAccounts, resetForgeResolutions } from "../../utils/forgeStatus";
 import DeviceWaitCard from "../Settings/panes/IntegrationsPane/DeviceWaitCard";
-import { createDeviceFlow } from "../Settings/panes/IntegrationsPane/deviceFlow";
+import { asFailure, createDeviceFlow } from "../Settings/panes/IntegrationsPane/deviceFlow";
 import { CLOUDS, type Cloud, type Failure } from "../Settings/panes/IntegrationsPane/forgeAddFlow";
 import HostsStep, { signedInOn } from "./steps/HostsStep";
 
@@ -59,14 +59,35 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
     await refresh();
   }
 
-  function signIn(cloud: Cloud) {
+  async function signIn(cloud: Cloud) {
     setSignInTried(true);
     setFailure(null);
     setWaitingFor(cloud);
+    device.cancel();
     // An account the host stopped accepting is signed in again in place, not
     // added beside itself.
     const stale = hosts().find((h) => h.host === cloud)?.accounts[0];
-    void device.start({ ...CLOUDS[cloud], accountId: stale?.id ?? null });
+    try {
+      const start = await invoke<SignInStart>("forge_sign_in_start", {
+        ...CLOUDS[cloud],
+        accountId: stale?.id ?? null,
+      });
+      // Reading the user's `gh` login finishes without a card, and pasting a
+      // token is not something first run asks for: Settings > Hosts is where
+      // that belongs, so the step just says so and moves on.
+      if (start.kind === "signedIn") {
+        setWaitingFor(null);
+        return void useForGit(cloud, start.accountId);
+      }
+      if (start.kind === "token") {
+        setWaitingFor(null);
+        return setFailure({ cloud, failure: { kind: "needsToken", host: start.routes.host } });
+      }
+      void device.resume(start.prompt);
+    } catch (e) {
+      setWaitingFor(null);
+      setFailure({ cloud, failure: asFailure(e) });
+    }
   }
 
   function cancel() {
@@ -100,7 +121,7 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
           onCancel={cancel}
         />
       }
-      onSignIn={signIn}
+      onSignIn={(cloud) => void signIn(cloud)}
     />
   );
 

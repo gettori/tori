@@ -1,21 +1,14 @@
 import { createSignal, onCleanup, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { copyText } from "../../../../utils/clipboard";
-import { isForgeError } from "../../../../utils/forgeTypes";
-import type { Failure, Target } from "./forgeAddFlow";
+import { isForgeError, type DevicePrompt } from "../../../../utils/forgeTypes";
+import type { Failure } from "./forgeAddFlow";
 
 type PollReport =
   | { kind: "authorized"; accountId: string; login: string }
   | { kind: "pending"; nextIntervalSecs: number }
   | { kind: "denied"; code: string }
   | { kind: "expired"; code: string };
-
-export type DevicePrompt = {
-  userCode: string;
-  verificationUri: string;
-  expiresInSecs: number;
-  intervalSecs: number;
-};
 
 // Through the opener plugin, as `Markdown` does: in the app's webview
 // `window.open` does not reach the default browser.
@@ -54,13 +47,20 @@ export function failureText(host: string, failure: Failure, lifetimeSecs: number
           {failure.code === null ? "" : <> <code>{failure.code}</code></>}
         </>
       );
+    case "needsToken":
+      return (
+        <>
+          {failure.host} needs a personal access token, and Tori asks for one in Settings {">"} Hosts. Install
+          the GitHub CLI and sign in with it to skip that.
+        </>
+      );
   }
 }
 
 /**
- * One browser sign-in at a time, as Rust holds it: start, poll at the pace the
- * host asks for, and settle into `onAuthorized` or `onFailed`. Shared by
- * Settings > Hosts and first run's hosts step.
+ * One browser sign-in at a time, as Rust holds it: adopt the flow Rust started,
+ * poll at the pace the host asks for, and settle into `onAuthorized` or
+ * `onFailed`. Shared by Settings > Hosts and first run's hosts step.
  */
 export function createDeviceFlow(handlers: {
   onAuthorized: (signedIn: { accountId: string; login: string }) => void;
@@ -97,26 +97,21 @@ export function createDeviceFlow(handlers: {
   }
   onCleanup(cancel);
 
-  async function start(target: Target) {
-    cancel();
+  // Rust has already started this flow, so there is no cancel here: cancelling
+  // would drop the very pending sign-in being adopted. The caller cancels any
+  // previous one *before* it asks Rust to start another.
+  async function resume(p: DevicePrompt) {
     const mine = run;
-    const { provider, baseUrl, accountId } = target;
-    try {
-      const p = await invoke<DevicePrompt>("forge_device_start", { provider, baseUrl, accountId });
-      if (run !== mine) return void invoke("forge_device_cancel");
-      setPrompt(p);
-      setLifetimeSecs(p.expiresInSecs);
-      setDeadline(Date.now() + p.expiresInSecs * 1000);
-      setNow(Date.now());
-      // On the clipboard before the page opens, so the paste is ready when it loads.
-      setClipboardOk(await copyText(p.userCode));
-      if (run !== mine || prompt() !== p) return;
-      openInBrowser(p.verificationUri);
-      schedule(mine, p.intervalSecs);
-      ticker = setInterval(() => tick(mine), 1000);
-    } catch (e) {
-      if (run === mine) handlers.onFailed(asFailure(e));
-    }
+    setPrompt(p);
+    setLifetimeSecs(p.expiresInSecs);
+    setDeadline(Date.now() + p.expiresInSecs * 1000);
+    setNow(Date.now());
+    // On the clipboard before the page opens, so the paste is ready when it loads.
+    setClipboardOk(await copyText(p.userCode));
+    if (run !== mine || prompt() !== p) return;
+    openInBrowser(p.verificationUri);
+    schedule(mine, p.intervalSecs);
+    ticker = setInterval(() => tick(mine), 1000);
   }
 
   // At zero the host is asked rather than told: its own `expired_token` is what
@@ -181,7 +176,7 @@ export function createDeviceFlow(handlers: {
     lifetimeSecs,
     remainingMs: () => deadline() - now(),
     clipboardOk,
-    start,
+    resume,
     cancel,
     copyAgain,
   };

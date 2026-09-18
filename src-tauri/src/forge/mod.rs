@@ -19,10 +19,12 @@
 //!   * `http`  - the transport seam, redaction, and both pagination walkers
 //!   * `github`, `gitlab` - the providers
 //!   * `accounts` - accounts per host, and which one a repo acts as
+//!   * `cli` - the user's own `gh` login, read for hosts its org approved
 //!   * `remote` - a git remote as a host plus a repo
 
 pub mod accounts;
 pub mod auth;
+pub mod cli;
 pub mod commands;
 pub mod device_flow;
 pub mod github;

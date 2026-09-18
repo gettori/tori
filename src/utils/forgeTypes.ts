@@ -241,6 +241,10 @@ export type AuthState =
 
 export type ForgeProvider = "github" | "gitlab";
 
+/// Where an account's token came from, which decides what a row offers when the
+/// host stops accepting it.
+export type ForgeSource = "cli" | "browser" | "token";
+
 /// One account Tori holds on a forge host, with its credential state.
 export type ForgeAccount = {
   id: string;
@@ -253,6 +257,7 @@ export type ForgeAccount = {
   /// Epoch **seconds** when the host stopped accepting the token.
   rejectedAt: number | null;
   scopes: string[] | null;
+  source: ForgeSource;
   auth: AuthState;
 };
 
@@ -267,6 +272,8 @@ export type ForgeHost = {
   gitEverywhere: boolean;
   /// The account a repo with no pick of its own acts as.
   defaultAccount: string | null;
+  /// The OAuth application registered on this instance, self-managed only.
+  appId: string | null;
 };
 
 /// Which account a checkout acts as. `noAccount` carries no host when the
@@ -286,6 +293,26 @@ export type SignInRoutes = {
   /// there is none, which is what leaves token paste as the only route.
   appId: string | null;
 };
+
+/// Step one of a device flow, as the host worded it.
+export type DevicePrompt = {
+  userCode: string;
+  verificationUri: string;
+  expiresInSecs: number;
+  intervalSecs: number;
+};
+
+/// What pressing a host's one sign-in button did.
+///
+/// Rust picks the route, so this is an answer rather than a menu: either the
+/// user's own `gh` login already covered it, or here is the browser to go to,
+/// or here is what a token for this host has to look like. `routes` rides along
+/// with the browser too, because a device flow that fails still has to be able
+/// to fall back to a token without asking Rust a second question.
+export type SignInStart =
+  | { kind: "signedIn"; accountId: string; login: string }
+  | { kind: "browser"; prompt: DevicePrompt; routes: SignInRoutes }
+  | { kind: "token"; routes: SignInRoutes };
 
 export function forgeAccountName(account: ForgeAccount): string {
   return account.label || account.login || account.baseUrl;
@@ -381,7 +408,18 @@ export const FORGE_KEYS = {
   pagedTruncated: ["items", "truncated"],
   rateSnapshot: ["limit", "remaining", "resetAt"],
   statusReport: ["rate", "statuses", "uncovered"],
-  forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider", "rejectedAt", "scopes"],
+  forgeAccount: [
+    "auth",
+    "baseUrl",
+    "expiresAt",
+    "id",
+    "label",
+    "login",
+    "provider",
+    "rejectedAt",
+    "scopes",
+    "source",
+  ],
   signInRoutes: ["appId", "baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler
   // branches on it, so it is checked against Rust the same way.
