@@ -312,9 +312,12 @@ describe("the sidebar levels that outlive the session rows", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.contextMenu(await row("repo"));
-    expect(await screen.findByText("Add Worktree")).toBeTruthy();
+    expect(await screen.findByText("Add worktree…")).toBeTruthy();
     expect(screen.getByText("Fan out…")).toBeTruthy();
-    expect(screen.getByText("Remove project")).toBeTruthy();
+    expect(screen.getByText("Remove project…")).toBeTruthy();
+    // The header names what the menu is acting on, and which of the three
+    // project menus this is.
+    expect(screen.getByText("Bare")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.contextMenu(await row("feat"));

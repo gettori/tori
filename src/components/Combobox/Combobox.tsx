@@ -46,6 +46,16 @@ export default function Combobox(props: {
   onQueryChange: (query: string) => void;
   /** A row was committed, by Enter or by click. */
   onSelect: (value: string) => void;
+  /** The row the caller has parked its choice on, drawn rather than committed.
+   *
+   *  Kobalte's own selection stays empty here (see `value` below), because for
+   *  the palette and the picker a commit is an event and the surface closes on
+   *  it. A dialog whose confirm is a button needs the choice to survive as a
+   *  state and be visible while the rest of the form is filled in, and that is
+   *  a different thing from the row the arrows are on. `aria-current` rather
+   *  than `aria-selected`: the latter is the primitive's, and in a combobox it
+   *  means the committed value. */
+  picked?: string | null;
   placeholder?: string;
   "aria-label": string;
   /** The list's own accessible name, e.g. what is being picked. */
@@ -63,6 +73,12 @@ export default function Combobox(props: {
    *  button). Inside `Control` rather than beside it, so it reads as part of
    *  the field and cannot drift away from it on a narrow surface. */
   trailing?: JSX.Element;
+  /** Content between the field and the list: the branch dialog's create row and
+   *  its list header. A slot rather than the caller drawing it around this
+   *  component, because the field and the list are one element's children here
+   *  and there is no seam between them from outside. Shown whether or not the
+   *  list is, so a filter that matches nothing still offers the name as new. */
+  aboveList?: JSX.Element;
   /** Keys the caller handles itself, before the primitive sees them. The
    *  picker's create-on-Enter needs this: with nothing matching there is no row
    *  for Enter to commit, so the primitive does nothing and the caller decides
@@ -151,7 +167,12 @@ export default function Combobox(props: {
         <Primitive.Section class={styles.section}>{section.section.rawValue.label}</Primitive.Section>
       )}
       itemComponent={(item) => (
-        <Primitive.Item item={item.item} class={styles.item}>
+        <Primitive.Item
+          item={item.item}
+          class={styles.item}
+          data-picked={props.picked === item.item.rawValue.value ? "" : undefined}
+          aria-current={props.picked === item.item.rawValue.value || undefined}
+        >
           {/* Still the label part when the caller owns the row's content: it is
               what names the option in the accessibility tree, so a rich row
               must be inside it rather than beside it. Only the layout differs,
@@ -173,6 +194,7 @@ export default function Combobox(props: {
         />
         {props.trailing}
       </Primitive.Control>
+      {props.aboveList}
       <Show
         when={hasRows()}
         fallback={

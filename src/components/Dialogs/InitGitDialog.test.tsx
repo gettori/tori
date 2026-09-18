@@ -35,9 +35,9 @@ function open(props: Partial<Omit<InitProps, "onConfirm" | "onCancel">> = {}) {
   return {
     onConfirm,
     onCancel,
-    branch: screen.getByPlaceholderText("blank = git default (main)") as HTMLInputElement,
-    url: screen.getByPlaceholderText("https://… (optional)") as HTMLInputElement,
-    bare: screen.getByRole("checkbox") as HTMLInputElement,
+    branch: screen.getByPlaceholderText("main") as HTMLInputElement,
+    url: screen.getByPlaceholderText("git@github.com:org/repo.git") as HTMLInputElement,
+    bare: screen.getByRole("button", { name: "Bare + worktree" }),
   };
 }
 
@@ -81,7 +81,7 @@ describe("InitGitDialog", () => {
     it("carries the bare + worktree choice", () => {
       const { onConfirm, bare } = open();
 
-      fireEvent.change(bare, { target: { checked: true } });
+      fireEvent.click(bare);
       fireEvent.click(screen.getByRole("button", { name: "Initialize" }));
 
       expect(onConfirm).toHaveBeenCalledWith({ branch: "", url: "", bare: true });
@@ -90,13 +90,15 @@ describe("InitGitDialog", () => {
     it("says which of the two layouts is about to be created", () => {
       const { bare } = open();
 
-      expect(screen.getByText("A normal git repository in this folder.")).toBeTruthy();
+      expect(
+        screen.getByText("A standard git repository with one working tree in this folder."),
+      ).toBeTruthy();
 
-      fireEvent.change(bare, { target: { checked: true } });
+      fireEvent.click(bare);
 
       expect(
         screen.getByText(
-          "Creates a .bare repo with one initial worktree; add more branches as their own folders.",
+          "A .bare repo in this folder, with each branch checked out as its own sibling folder.",
         ),
       ).toBeTruthy();
     });
