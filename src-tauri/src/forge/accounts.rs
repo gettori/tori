@@ -4,7 +4,7 @@
 //! wrappers, like `crate::accounts`. Tokens are not in the file: each account's
 //! secret sits in the keychain under its id (see `token`).
 
-use super::model::AuthState;
+use super::model::{AuthState, OrgAccess};
 use super::remote::{canonical_host, Remote};
 use super::token::Secret;
 use super::ForgeError;
@@ -79,6 +79,10 @@ pub struct Account {
     pub scopes: Option<Vec<String>>,
     #[serde(default)]
     pub source: Source,
+    /// Organisations that refused this account and have not been authorized
+    /// since. Learned from the hosts' own refusals, never probed for.
+    #[serde(default)]
+    pub org_access: Vec<OrgAccess>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -209,6 +213,7 @@ pub fn add_account(
         rejected_at: None,
         scopes: None,
         source,
+        org_access: Vec::new(),
     });
     Ok(id)
 }
@@ -280,6 +285,39 @@ pub fn note_rejection(file: &mut AccountsFile, id: &str, suspect: bool, now: u64
     }
 }
 
+/// Files an organisation's refusal, once.
+///
+/// An organisation that is in the way refuses every poll tick, and the URL
+/// carries a per-request authorization token, so a newest-wins rule would
+/// rewrite the accounts file every couple of minutes for as long as the block
+/// lasted. The first URL is kept instead: opening a spent one lands on GitHub's
+/// own page, which issues a fresh challenge there.
+///
+/// Answers whether anything changed, so the caller can skip the save.
+pub fn note_org_access(file: &mut AccountsFile, id: &str, access: OrgAccess) -> bool {
+    let mut added = false;
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.id == id && !account.org_access.iter().any(|a| a.org == access.org) {
+            account.org_access.push(access.clone());
+            added = true;
+        }
+    }
+    added
+}
+
+/// Forgets every refusal on record for an account.
+///
+/// A sign-in mints a new token with an SSO session of its own, so the stored
+/// authorization URLs no longer apply and an org that was blocked may not be.
+/// Keeping them would show the user a list of problems they may have just fixed.
+pub fn clear_org_access(file: &mut AccountsFile, id: &str) {
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.id == id {
+            account.org_access.clear();
+        }
+    }
+}
+
 pub fn note_scopes(file: &mut AccountsFile, id: &str, scopes: Vec<String>) {
     for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
         if account.id == id {
@@ -325,6 +363,7 @@ pub fn migrate_legacy(
             rejected_at: None,
             scopes: None,
             source: Source::default(),
+            org_access: Vec::new(),
         });
     }
     file.legacy_migrated = true;
@@ -597,6 +636,47 @@ mod tests {
 
     fn signed_in(file: &mut AccountsFile, login: &str) -> String {
         add_account(file, Provider::Github, GH, GITHUB_COM, login, Source::Token, None).unwrap()
+    }
+
+    #[test]
+    fn a_saml_refusal_names_the_org_from_its_own_url_and_is_filed_once() {
+        use super::super::http::{sso_challenge, test_support::StubTransport};
+        let refusal = |value: &str| {
+            StubTransport::with_headers(403, &[("X-GitHub-SSO", value)], r#"{"message":"Resource protected by organization SAML enforcement."}"#)
+        };
+        let first = sso_challenge(&refusal(
+            "required; url=https://github.com/orgs/acme/sso?authorization_request=AR_one",
+        ))
+        .expect("a required challenge names its org");
+        assert_eq!(first.org, "acme");
+        assert_eq!(first.url, "https://github.com/orgs/acme/sso?authorization_request=AR_one");
+
+        // The other form of the header lists numeric ids and no URL, so there is
+        // no login in it to record.
+        assert_eq!(sso_challenge(&refusal("partial-results; organizations=21955855")), None);
+
+        let mut file = AccountsFile::default();
+        let id = signed_in(&mut file, "arif");
+        assert!(note_org_access(&mut file, &id, first), "the first refusal is news");
+        assert!(
+            !note_org_access(
+                &mut file,
+                &id,
+                OrgAccess { org: "acme".into(), url: "https://github.com/orgs/acme/sso?authorization_request=AR_two".into() },
+            ),
+            "the same org again changes nothing, so the caller skips the save"
+        );
+        let (_, account) = find(&file, &id).unwrap();
+        // One entry, still the first URL. The refusal repeats on every tick, so
+        // a newest-wins rule would rewrite the file for as long as the block
+        // lasted, and a spent challenge lands on the page that issues a new one.
+        assert_eq!(account.org_access.len(), 1);
+        assert_eq!(account.org_access[0].url, "https://github.com/orgs/acme/sso?authorization_request=AR_one");
+
+        // Signing in again mints a new SSO session, so what the old token was
+        // refused says nothing about the new one.
+        clear_org_access(&mut file, &id);
+        assert!(find(&file, &id).unwrap().1.org_access.is_empty());
     }
 
     fn tori() -> Remote {

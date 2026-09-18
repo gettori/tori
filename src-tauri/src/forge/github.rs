@@ -30,7 +30,7 @@ use super::http::{
 };
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
-    Grant, MergeableState, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef,
+    Grant, MergeableState, OrgAccess, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef,
     ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
@@ -459,6 +459,17 @@ impl Forge for GitHubForge {
 
     fn token_grant(&self) -> Grant {
         self.transport.grant()
+    }
+
+    fn sso_challenge(&self) -> Option<OrgAccess> {
+        self.transport.sso()
+    }
+
+    /// `GET /users/{owner}` answers for both kinds and is public, so this works
+    /// on exactly the token that was just refused.
+    fn owner_is_org(&self, owner: &str) -> Result<bool, ForgeError> {
+        let v = self.send(self.rest("GET", &format!("/users/{owner}"), None))?;
+        Ok(str_at(&v, "type") == "Organization")
     }
 
     fn auth_state(&self) -> AuthState {

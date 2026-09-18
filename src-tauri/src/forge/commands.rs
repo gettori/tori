@@ -69,6 +69,10 @@ pub struct ForgeErrorDto {
     /// Unix seconds at which the primary budget refills. The number that lets a
     /// 403 resume on time rather than after a fixed guess.
     pub reset_at_secs: Option<u64>,
+    /// The organisation standing in the way, for the one failure that has one.
+    /// Named separately from the message because the surfaces branch on it: what
+    /// to offer next depends on the organisation, not on the sentence.
+    pub org: Option<String>,
 }
 
 impl From<ForgeError> for ForgeErrorDto {
@@ -95,6 +99,7 @@ impl From<ForgeError> for ForgeErrorDto {
             ForgeError::Forbidden { .. } => "forbidden",
             ForgeError::RateLimited { .. } => "rateLimited",
             ForgeError::NotFound => "notFound",
+            ForgeError::OrgUnapproved { .. } => "orgUnapproved",
             ForgeError::AlreadyExists { .. } => "alreadyExists",
             ForgeError::NotMergeable { .. } => "notMergeable",
             ForgeError::AccountPickNeeded { .. } => "pickAccount",
@@ -103,12 +108,17 @@ impl From<ForgeError> for ForgeErrorDto {
             ForgeError::Transport { .. } => "transport",
             ForgeError::Malformed { .. } => "malformed",
         };
+        let org = match &e {
+            ForgeError::OrgUnapproved { org } => Some(org.clone()),
+            _ => None,
+        };
         Self {
             kind: kind.into(),
             message: e.to_string(),
             rate_limit_kind,
             retry_after_secs,
             reset_at_secs,
+            org,
         }
     }
 }
@@ -166,6 +176,30 @@ pub enum SignInStart {
     Token { routes: SignInRoutes },
 }
 
+/// Whether the user asked for the GitHub CLI by name, or just pressed sign in.
+///
+/// Carried rather than passed as a bare flag because it is the whole of the
+/// difference between reading `gh` and hijacking a re-auth, and a `true` at a
+/// call site says neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CliAsk {
+    /// Ordinary sign in. `gh` answers only where it cannot collide.
+    Whoever,
+    /// A control that says "GitHub CLI". `gh` may also re-source an account of
+    /// the same login that came from somewhere else.
+    Named,
+}
+
+impl From<bool> for CliAsk {
+    fn from(named: bool) -> Self {
+        if named {
+            Self::Named
+        } else {
+            Self::Whoever
+        }
+    }
+}
+
 /// Whether `gh`'s token may answer for this sign-in.
 ///
 /// Only where nothing of the user's is overwritten by it: a host that has no
@@ -173,15 +207,28 @@ pub enum SignInStart {
 /// `gh` supplied in the first place. Anywhere else the user is adding or
 /// repairing a *second* identity, and `gh` speaks for only one, so it would
 /// quietly hand back the first.
-fn gh_may_answer(file: &AccountsFile, host: &str, login: &str, reauth: Option<&str>) -> bool {
+///
+/// [`CliAsk::Named`] is the user having pressed a control that says "GitHub
+/// CLI", which is the one case where adopting `gh` for an account that came from
+/// a pasted token is not a hijack: the login is the same person either way, and
+/// only the route to them changes. It is what the organisation notice presses,
+/// since an organisation refuses an application rather than a person.
+fn gh_may_answer(
+    file: &AccountsFile,
+    host: &str,
+    login: &str,
+    reauth: Option<&str>,
+    ask: CliAsk,
+) -> bool {
     let same_login = |a: &accounts::Account| {
         a.login.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(login))
     };
     match reauth {
         // The host is checked too: ids are unique across hosts, so one from
         // another host would otherwise be judged against this host's accounts.
-        Some(id) => accounts::find(file, id)
-            .is_some_and(|(at, a)| at == host && a.source == Source::Cli && same_login(a)),
+        Some(id) => accounts::find(file, id).is_some_and(|(at, a)| {
+            at == host && same_login(a) && (a.source == Source::Cli || ask == CliAsk::Named)
+        }),
         None => !file
             .hosts
             .get(host)
@@ -195,12 +242,13 @@ pub fn forge_sign_in_start(
     provider: Provider,
     base_url: String,
     account_id: Option<String>,
+    prefer_cli: bool,
 ) -> Result<SignInStart, ForgeErrorDto> {
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
     let file = accounts::load();
     let reauth = account_id.as_deref();
     if provider == Provider::Github {
-        if let Some(signed) = cli_sign_in(&file, &base_url, &host, reauth)? {
+        if let Some(signed) = cli_sign_in(&file, &base_url, &host, reauth, prefer_cli.into())? {
             return Ok(SignInStart::SignedIn { account_id: signed.account_id, login: signed.login });
         }
         // GitHub's browser route is Tori's own application, which an
@@ -241,6 +289,7 @@ fn cli_sign_in(
     base_url: &str,
     host: &str,
     reauth: Option<&str>,
+    ask: CliAsk,
 ) -> Result<Option<SignedIn>, ForgeError> {
     let Some(token) = cli::token(host) else {
         return Ok(None);
@@ -258,7 +307,7 @@ fn cli_sign_in(
             return Err(e);
         }
     }
-    if !gh_may_answer(file, host, &named.login, reauth) {
+    if !gh_may_answer(file, host, &named.login, reauth, ask) {
         return Ok(None);
     }
     store_signed_in(
@@ -290,7 +339,9 @@ fn recover_cli(id: &str) -> Result<Option<SignedIn>, ForgeError> {
         return Ok(None);
     }
     let (base_url, host) = (account.base_url.clone(), host.to_string());
-    cli_sign_in(&file, &base_url, &host, Some(id))
+    // Nobody pressed anything: the startup probe is repairing an account that
+    // was already `gh`'s, which `gh_may_answer` allows on its own.
+    cli_sign_in(&file, &base_url, &host, Some(id), CliAsk::Whoever)
 }
 
 // Per host, because only that instance can issue one: gitlab.com's is Tori's
@@ -476,6 +527,13 @@ pub fn forge_device_cancel(state: tauri::State<'_, DeviceFlowState>) {
     state.0.lock().unwrap().take();
 }
 
+/// Whether the GitHub CLI is installed, which decides whether an organisation
+/// notice can offer it as the route not yet tried.
+#[tauri::command(async)]
+pub fn forge_cli_installed() -> bool {
+    cli::installed()
+}
+
 #[tauri::command(async)]
 pub fn forge_add_token(
     provider: Provider,
@@ -568,6 +626,7 @@ fn store_signed_in(
     let account_id = accounts::update(|file| {
         let id = accounts::add_account(file, provider, base_url, host, &login, source, reauth)?;
         accounts::note_expiry(file, &id, expires_at);
+        accounts::clear_org_access(file, &id);
         if let Some(scopes) = scopes.clone() {
             accounts::note_scopes(file, &id, scopes);
         }
@@ -831,15 +890,105 @@ fn attempt<T>(
 ) -> Result<T, ForgeError> {
     let first = run(c.forge.as_ref());
     auth::note_result(&c.account_id, &first);
+    note_org_access(&c.account_id, c.forge.as_ref());
     if !matches!(first, Err(ForgeError::CredentialSuspect)) {
-        return first;
+        return named_org(c, first);
     }
     let Some(renewed) = renewed_client(c) else {
-        return first;
+        return named_org(c, first);
     };
     let second = run(renewed.forge.as_ref());
     auth::note_result(&c.account_id, &second);
-    second
+    note_org_access(&c.account_id, renewed.forge.as_ref());
+    named_org(c, second)
+}
+
+/// Names the organisation behind a `404`, where one is behind it.
+///
+/// A repo that does not exist and a repo an organisation is hiding from this
+/// token answer identically, and only the owner's own public record tells them
+/// apart. Asked here rather than at the call sites because every call funnels
+/// through [`attempt`], and a `404` on any of them means the same thing.
+fn named_org<T>(c: &Client, result: Result<T, ForgeError>) -> Result<T, ForgeError> {
+    if result.is_ok() {
+        seen().lock().unwrap().insert(repo_key(c));
+        return result;
+    }
+    if !matches!(result, Err(ForgeError::NotFound)) {
+        return result;
+    }
+    // A repo that has answered this account even once belongs to an organisation
+    // that already let Tori in, so a later `404` is a sub-resource that is gone,
+    // not a door being held shut. Without this every deleted comment on an
+    // organisation's repo would read as a blocked application.
+    if seen().lock().unwrap().contains(&repo_key(c)) {
+        return result;
+    }
+    match owner_is_org(c) {
+        true => Err(ForgeError::OrgUnapproved { org: c.repo.owner.clone() }),
+        false => result,
+    }
+}
+
+/// Repos that have answered, as `owner/repo@account`.
+///
+/// Per account as well as per repo, because the whole point is what *this*
+/// token can reach: a second account on the same host may be a member where the
+/// first is not.
+fn seen() -> &'static Mutex<std::collections::BTreeSet<String>> {
+    static SEEN: std::sync::OnceLock<Mutex<std::collections::BTreeSet<String>>> =
+        std::sync::OnceLock::new();
+    SEEN.get_or_init(|| Mutex::new(std::collections::BTreeSet::new()))
+}
+
+fn repo_key(c: &Client) -> String {
+    format!("{}/{}@{}", c.repo.owner, c.repo.repo, c.account_id)
+}
+
+/// Whether a repo's owner is an organisation, asked once per owner per account.
+///
+/// A `404` comes back on every poll tick, and the answer cannot change while the
+/// owner exists, so without the memo a repo Tori cannot see would spend a
+/// request every two minutes re-learning the same fact. Keyed by account because
+/// an owner's login only identifies it together with the host the account is on.
+/// A failed probe is not recorded, so an offline laptop does not pin the answer
+/// to `false`.
+fn owner_is_org(c: &Client) -> bool {
+    static KNOWN: std::sync::OnceLock<Mutex<BTreeMap<String, bool>>> = std::sync::OnceLock::new();
+    let known = KNOWN.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let key = format!("{}@{}", c.repo.owner, c.account_id);
+    if let Some(answer) = known.lock().unwrap().get(&key) {
+        return *answer;
+    }
+    let Ok(is_org) = c.forge.owner_is_org(&c.repo.owner) else {
+        return false;
+    };
+    known.lock().unwrap().insert(key, is_org);
+    is_org
+}
+
+/// Files an organisation that refused this account, where the last call met one.
+///
+/// Beside [`auth::note_result`] because it answers the same question for the
+/// same reason: every forge call passes through here, so an organisation named
+/// on any of them is recorded once, in one place, rather than at whichever call
+/// sites remembered to look.
+fn note_org_access(account_id: &str, forge: &dyn Forge) {
+    let Some(access) = forge.sso_challenge() else {
+        return;
+    };
+    // Read before the write, because the write is the expensive half and the
+    // refusal repeats on every tick: an organisation already on record leaves
+    // the file alone rather than re-saving it for the rest of the session.
+    if accounts::find(&accounts::load(), account_id)
+        .is_some_and(|(_, a)| a.org_access.iter().any(|o| o.org == access.org))
+    {
+        return;
+    }
+    let _ = accounts::update(|file| {
+        accounts::note_org_access(file, account_id, access.clone());
+        Ok(())
+    });
 }
 
 /// The same repo and account, holding whatever credential the account has now.
@@ -1674,6 +1823,7 @@ mod tests {
             rejected_at: None,
             scopes: None,
             source: Source::Token,
+            org_access: Vec::new(),
         };
         let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| {
             Some(1)
@@ -1784,7 +1934,7 @@ mod tests {
 
         // A host Tori holds nothing on: the common first sign-in, and the one
         // case where reading gh takes nothing away.
-        assert!(gh_may_answer(&file, host, "skarif2", None));
+        assert!(gh_may_answer(&file, host, "skarif2", None, CliAsk::Whoever));
 
         let personal = accounts::add_account(
             &mut file,
@@ -1798,20 +1948,28 @@ mod tests {
         .unwrap();
         // Pressing add again with gh logged in as the account already held would
         // re-sign-in that one instead of adding the second identity asked for.
-        assert!(!gh_may_answer(&file, host, "skarif2", None));
-        assert!(gh_may_answer(&file, host, "fonn-arif", None), "a login Tori does not hold yet");
+        assert!(!gh_may_answer(&file, host, "skarif2", None, CliAsk::Whoever));
+        assert!(gh_may_answer(&file, host, "fonn-arif", None, CliAsk::Whoever), "a login Tori does not hold yet");
 
         // Re-auth follows the account, not gh: only the account gh supplied.
-        assert!(gh_may_answer(&file, host, "skarif2", Some(&personal)));
+        assert!(gh_may_answer(&file, host, "skarif2", Some(&personal), CliAsk::Whoever));
         let pasted = github_account(&mut file, "fonn-arif");
         assert!(
-            !gh_may_answer(&file, host, "fonn-arif", Some(&pasted)),
+            !gh_may_answer(&file, host, "fonn-arif", Some(&pasted), CliAsk::Whoever),
             "a pasted account is repaired with a token, not silently re-sourced"
         );
         // gh switched accounts under a cli-sourced one: storing that token here
         // would file somebody else's credential under this account's id.
-        assert!(!gh_may_answer(&file, host, "fonn-arif", Some(&personal)));
-        assert!(!gh_may_answer(&file, host, "skarif2", Some("no-such-account")));
+        assert!(!gh_may_answer(&file, host, "fonn-arif", Some(&personal), CliAsk::Whoever));
+        assert!(!gh_may_answer(&file, host, "skarif2", Some("no-such-account"), CliAsk::Whoever));
+
+        // Pressed by hand, on a control that names the CLI: the pasted account
+        // and gh are the same person, and an organisation that refused Tori's
+        // application has no quarrel with gh's, so this is the one route left.
+        assert!(gh_may_answer(&file, host, "fonn-arif", Some(&pasted), CliAsk::Named));
+        // Still not somebody else. Asking for gh cannot move an account to a
+        // login that is not the one it holds.
+        assert!(!gh_may_answer(&file, host, "fonn-arif", Some(&personal), CliAsk::Named));
     }
 
     #[test]
@@ -1833,7 +1991,7 @@ mod tests {
         // The ordinary rejection: gh rotated its token, same person behind it.
         assert!(switched_away(account(), "skarif2").is_none());
         assert!(switched_away(account(), "SKARIF2").is_none(), "logins compare without case");
-        assert!(gh_may_answer(&file, host, "skarif2", Some(&id)), "so the fresh token is stored");
+        assert!(gh_may_answer(&file, host, "skarif2", Some(&id), CliAsk::Whoever), "so the fresh token is stored");
 
         // `gh auth switch` since: the account's id is already picked by repos,
         // so adopting this token would quietly re-point them at another person.

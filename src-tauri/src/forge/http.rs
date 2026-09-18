@@ -18,7 +18,7 @@
 //! thread's comments. One walker cannot cover both, and pretending otherwise is
 //! how the nested case silently truncates.
 
-use super::model::{Grant, RateSnapshot};
+use super::model::{Grant, OrgAccess, RateSnapshot};
 use super::{epoch_secs, ForgeError, RateLimitKind};
 use serde_json::Value;
 
@@ -202,6 +202,9 @@ pub struct Recording {
     suspect: std::sync::atomic::AtomicBool,
     rate: std::sync::Mutex<RateSnapshot>,
     grant: std::sync::Mutex<Grant>,
+    /// Latched, not overwritten: only a refusal carries the header, so a 403 on
+    /// page three of a walk must survive the pages that answer normally.
+    sso: std::sync::Mutex<Option<OrgAccess>>,
 }
 
 impl Recording {
@@ -211,6 +214,7 @@ impl Recording {
             suspect: std::sync::atomic::AtomicBool::new(false),
             rate: std::sync::Mutex::new(RateSnapshot::default()),
             grant: std::sync::Mutex::new(Grant::default()),
+            sso: std::sync::Mutex::new(None),
         }
     }
 
@@ -225,6 +229,11 @@ impl Recording {
         self.grant.lock().unwrap().clone()
     }
 
+    /// The organisation a refusal named since this client was built, if one did.
+    pub fn sso(&self) -> Option<OrgAccess> {
+        self.sso.lock().unwrap().clone()
+    }
+
     pub fn suspect(&self) -> bool {
         self.suspect.load(std::sync::atomic::Ordering::Relaxed)
     }
@@ -235,6 +244,9 @@ impl Transport for Recording {
         let resp = self.inner.send(req)?;
         *self.rate.lock().unwrap() = rate_snapshot(&resp);
         *self.grant.lock().unwrap() = grant_of(&resp);
+        if let Some(challenge) = sso_challenge(&resp) {
+            *self.sso.lock().unwrap() = Some(challenge);
+        }
         match resp.status {
             401 => self.suspect.store(true, std::sync::atomic::Ordering::Relaxed),
             // Any answered call clears the suspicion. A 401 from a proxy, a
@@ -268,6 +280,23 @@ fn grant_of(resp: &HttpResponse) -> Grant {
         }),
         expires_at: resp.header("GitHub-Authentication-Token-Expiration").and_then(epoch_secs),
     }
+}
+
+/// The organisation a SAML host is holding this request for.
+///
+/// Only `X-GitHub-SSO: required`, which carries the authorization URL and names
+/// the org in its own path. The header's other form, `partial-results`, lists
+/// numeric ids instead, and turning one of those into a login needs an endpoint
+/// GitHub does not document.
+pub fn sso_challenge(resp: &HttpResponse) -> Option<OrgAccess> {
+    let value = resp.header("X-GitHub-SSO")?;
+    let (state, params) = value.split_once(';')?;
+    if state.trim() != "required" {
+        return None;
+    }
+    let url = params.split(';').find_map(|p| p.trim().strip_prefix("url="))?.trim();
+    let org = url.split("/orgs/").nth(1)?.split('/').next()?;
+    (!org.is_empty()).then(|| OrgAccess { org: org.to_string(), url: url.to_string() })
 }
 
 /// What a response said about the rate budget, in either spelling.

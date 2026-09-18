@@ -17,6 +17,7 @@ function account(host: string, login: string, auth: AuthState, provider: ForgePr
     rejectedAt: auth.kind === "suspect" ? Date.UTC(2026, 8, 12, 12) / 1000 : null,
     scopes: provider === "github" ? ["repo", "workflow"] : null,
     source: "token",
+    orgAccess: [],
     auth,
   };
 }
@@ -149,7 +150,23 @@ export const State05TokenExpiry: Story = {
   },
 };
 
-export const State06Picker: Story = {
+export const State06BlockedOrg: Story = {
+  render: () => {
+    stubHost([
+      host("github.com", [
+        {
+          ...account("github.com", "octocat", signedIn("octocat")),
+          orgAccess: [
+            { org: "acme", url: "https://github.com/orgs/acme/sso?authorization_request=AR_kgD" },
+          ],
+        },
+      ]),
+    ]);
+    return <ForgeSection />;
+  },
+};
+
+export const State07Picker: Story = {
   render: () => {
     stubHost([]);
     return <ForgeSection />;
@@ -161,7 +178,7 @@ export const State06Picker: Story = {
   },
 };
 
-export const State07Waiting: Story = {
+export const State08Waiting: Story = {
   render: () => {
     stubHost([]);
     return <ForgeSection />;
@@ -175,7 +192,7 @@ export const State07Waiting: Story = {
   },
 };
 
-export const State08TokenPaste: Story = {
+export const State09TokenPaste: Story = {
   render: () => {
     stubHost([], "denied");
     return <ForgeSection />;
@@ -190,7 +207,7 @@ export const State08TokenPaste: Story = {
   },
 };
 
-export const State09SelfManaged: Story = {
+export const State10SelfManaged: Story = {
   render: () => {
     stubHost([]);
     return <ForgeSection />;
@@ -204,7 +221,7 @@ export const State09SelfManaged: Story = {
   },
 };
 
-export const State10Error: Story = {
+export const State11Error: Story = {
   render: () => {
     stubHost([], "expires");
     return <ForgeSection />;

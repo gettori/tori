@@ -38,8 +38,9 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, DraftComment, Grant, MergeableState, Paged, PrFile, PullRequest,
-    RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, DraftComment, Grant, MergeableState, OrgAccess, Paged, PrFile,
+    PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus,
+    Viewer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +82,11 @@ pub enum ForgeError {
         reset_at_secs: Option<u64>,
     },
     NotFound,
+    /// A `404` an organisation is behind: the owner is an organisation, so the
+    /// repo may well exist and simply be hidden from a token it has not
+    /// approved. Its own variant because a missing repo and a blocked one look
+    /// identical on the wire and need opposite answers from the user.
+    OrgUnapproved { org: String },
     /// The mutation conflicts with existing state (a PR for this head already
     /// exists, a thread is already resolved).
     AlreadyExists { message: String },
@@ -126,6 +132,7 @@ impl std::fmt::Display for ForgeError {
                 None => write!(f, "{kind:?} rate limit"),
             },
             Self::NotFound => write!(f, "not found"),
+            Self::OrgUnapproved { org } => write!(f, "{org} has not approved Tori"),
             Self::AlreadyExists { message } => write!(f, "{message}"),
             Self::NotMergeable { message } => write!(f, "{message}"),
             Self::AccountPickNeeded { host } => write!(f, "pick which {host} account this repo uses"),
@@ -183,6 +190,19 @@ pub trait Forge: Send + Sync {
     /// nothing; GitLab has to ask, which is why this is separate from
     /// [`Forge::viewer`] and the caller decides when to spend it.
     fn token_grant(&self) -> Grant;
+
+    /// The organisation a refusal named since this client was built, where the
+    /// provider names one. Read after a call rather than carried in the error,
+    /// because a paginated walk can be refused on a page no caller sees.
+    fn sso_challenge(&self) -> Option<OrgAccess>;
+
+    /// Whether `owner` is an organisation rather than a person, from the host's
+    /// own public record.
+    ///
+    /// The one question that tells a missing repo from a repo an organisation is
+    /// hiding, since both answer `404`. A provider with no organisation-level
+    /// block on applications answers `false` without asking anyone.
+    fn owner_is_org(&self, owner: &str) -> Result<bool, ForgeError>;
 
     /// Who the stored token belongs to. Needed before a review can be offered,
     /// because the author of a PR cannot approve or request changes on it.
@@ -368,6 +388,12 @@ mod tests {
         }
         fn token_grant(&self) -> Grant {
             Grant::default()
+        }
+        fn sso_challenge(&self) -> Option<OrgAccess> {
+            None
+        }
+        fn owner_is_org(&self, _owner: &str) -> Result<bool, ForgeError> {
+            Ok(false)
         }
         fn viewer(&self) -> Result<Viewer, ForgeError> {
             Err(ForgeError::NotAuthenticated)

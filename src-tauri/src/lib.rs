@@ -528,6 +528,7 @@ pub fn run() {
             worktree::remove_worktree_and_branch,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_start,
+            forge::commands::forge_cli_installed,
             forge::commands::forge_set_app_id,
             forge::commands::forge_set_git_credentials,
             forge::commands::forge_set_git_everywhere,

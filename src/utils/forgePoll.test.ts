@@ -24,6 +24,7 @@ const err = (kind: string, over: Partial<ForgeErrorDto> = {}): ForgeErrorDto => 
   message: "…",
   rateLimitKind: null,
   retryAfterSecs: null,
+  org: null,
   resetAtSecs: null,
   ...over,
 });

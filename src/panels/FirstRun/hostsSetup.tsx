@@ -71,6 +71,9 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
       const start = await invoke<SignInStart>("forge_sign_in_start", {
         ...CLOUDS[cloud],
         accountId: stale?.id ?? null,
+        // First run has no organisation notice to press, so it never overrides
+        // the rule that keeps `gh` out of a pasted account's re-auth.
+        preferCli: false,
       });
       // Reading the user's `gh` login finishes without a card, and pasting a
       // token is not something first run asks for: Settings > Hosts is where

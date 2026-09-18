@@ -108,6 +108,7 @@ import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils
 import { apiCanServe } from "../../utils/createPr";
 import {
   forgeHosts,
+  forgeOrgNotice,
   forgePause,
   forgeRepo,
   noteForgeEnabled,
@@ -143,6 +144,7 @@ import {
   SquareTerminal,
   Unlink,
   Plug,
+  ShieldAlert,
   UserRound,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
@@ -996,6 +998,27 @@ export default function LeftSidebar(props: {
               }}
             >
               <Icon icon={Plug} />
+            </Tooltip>
+          )}
+        </Show>
+        {/* Ahead of the doors below, because it outranks them: an account that
+            exists and is signed in still cannot see this repo, so "add an
+            account" would send the user to fix something that is not broken. */}
+        <Show when={forgeOrgNotice(p.path)}>
+          {(notice) => (
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.rowGlyph}
+              aria-label={`${p.name}: ${notice().message}`}
+              label={`${notice().message} ${notice().action}.`}
+              data-forge-door="orgUnapproved"
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" });
+              }}
+            >
+              <Icon icon={ShieldAlert} />
             </Tooltip>
           )}
         </Show>

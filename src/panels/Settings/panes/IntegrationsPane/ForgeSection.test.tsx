@@ -45,7 +45,7 @@ const calls = {
 };
 
 function account(id: string, auth: AuthState, login: string | null, extra: Partial<ForgeAccount> = {}): ForgeAccount {
-  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, scopes: null, source: "token", auth, ...extra };
+  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, scopes: null, source: "token", orgAccess: [], auth, ...extra };
 }
 
 function hostOf(host: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
@@ -223,6 +223,7 @@ const refused = (message: string): ForgeErrorDto => ({
   rateLimitKind: null,
   retryAfterSecs: null,
   resetAtSecs: null,
+  org: null,
 });
 
 describe("the forge accounts settings section", () => {
@@ -522,6 +523,32 @@ describe("the forge accounts settings section", () => {
     expect(screen.queryByTestId("missing-scopes")).toBeNull();
     fireEvent.click(flowCard().getByText("Done"));
     await waitFor(() => expect(screen.queryByTestId("add-flow")).toBeNull());
+  });
+
+  it("carries a blocked organisation to the page that can unblock it", async () => {
+    // Authorizing is GitHub's own decision on GitHub's own page, so the row's
+    // whole job is to name the org and hand the user the URL it was refused with.
+    hosts = [
+      hostOf("github.com", [
+        account("github-com-arif", { kind: "signedIn", login: "arif" }, "arif", {
+          orgAccess: [
+            { org: "acme", url: "https://github.com/orgs/acme/sso?authorization_request=AR_one" },
+            { org: "globex", url: "https://github.com/orgs/globex/sso?authorization_request=AR_two" },
+          ],
+        }),
+        account("github-com-clear", { kind: "signedIn", login: "clear" }, "clear"),
+      ]),
+    ];
+    render(() => <ForgeSection />);
+    const rows = await screen.findAllByTestId("forge-account");
+    expect(rows.filter((row) => within(row).queryByTestId("org-access-notice"))).toHaveLength(1);
+
+    const notice = screen.getByTestId("org-access-notice");
+    expect(notice.textContent).toContain("Organisations have not let this account through:");
+    fireEvent.click(within(notice).getByText("Authorize for globex"));
+    await waitFor(() =>
+      expect(handoff).toEqual(["open https://github.com/orgs/globex/sso?authorization_request=AR_two"]),
+    );
   });
 
   it("counts a token down to its date, then turns the row back into the one button", async () => {

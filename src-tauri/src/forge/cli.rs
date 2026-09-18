@@ -11,6 +11,15 @@ use crate::env;
 /// What one `gh` run answered: whether it succeeded, and what it printed.
 pub type Answer = Option<(bool, Vec<u8>)>;
 
+/// Whether `gh` is on this machine at all, without running it.
+///
+/// A path lookup, not a spawn: the only question the sign-in surfaces ask is
+/// whether offering the CLI route is worth offering, and a process per ask would
+/// put that on the poll path.
+pub fn installed() -> bool {
+    env::resolve_binary("gh").is_some()
+}
+
 /// The token `gh` holds for `host`, if it is installed and logged in there.
 pub fn token(host: &str) -> Option<String> {
     token_from(host, spawn)
