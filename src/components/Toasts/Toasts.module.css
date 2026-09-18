@@ -1,9 +1,9 @@
 .toastRegion {
   position: fixed;
-  right: calc(14px * var(--ui-scale));
-  bottom: calc(14px * var(--ui-scale));
+  right: calc(24px * var(--ui-scale));
+  bottom: calc(24px * var(--ui-scale));
   z-index: 1200;
-  max-width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(28px * var(--ui-scale))));
+  max-width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
   pointer-events: none;
 }
 .toastStack {
@@ -11,6 +11,10 @@
   flex-direction: column;
   gap: calc(8px * var(--ui-scale));
 }
+/* Marked the way a selected sidebar row is: the accent bar down the left edge
+   over a wash that fades out to the right, square on the bar and rounded away
+   from it. The wash sits on an opaque card rather than on the column's own
+   canvas, because a toast floats over whatever the panes are showing. */
 .toast {
   display: flex;
   align-items: flex-start;
@@ -19,19 +23,26 @@
   font-size: var(--tori-text-lg);
   line-height: 1.4;
   color: var(--fg-default);
-  background: var(--canvas-head);
+  background:
+    linear-gradient(to right, var(--toast-wash), transparent),
+    var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-left: 3px solid var(--border-default);
-  border-radius: var(--tori-radius-xl);
+  /* The bar as a border, not the sidebar's background layer: the other three
+     edges keep their hairline, and a background bar would paint under it. */
+  border-left: var(--tori-border-thick) solid var(--toast-accent);
+  border-radius: 0 var(--tori-radius-lg) var(--tori-radius-lg) 0;
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
   animation: toast-in 140ms ease-out;
 }
 .toast.error {
-  border-left-color: var(--danger-fg);
+  --toast-accent: var(--danger-fg);
+  --toast-wash: color-mix(in srgb, var(--danger-fg) 14%, transparent);
 }
+/* The same gold a selected row is marked with, at the same strength. */
 .toast.info {
-  border-left-color: var(--brand-default);
+  --toast-accent: var(--brand-bar);
+  --toast-wash: var(--brand-subtle);
 }
 .toastMsg {
   flex: 1;
