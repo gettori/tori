@@ -20,7 +20,11 @@ import {
   type SignInRoutes,
   type SignInStart,
 } from "../../../../utils/forgeTypes";
-import { noteForgeAccounts, resetForgeResolutions } from "../../../../utils/forgeStatus";
+import {
+  forgeAccountOrgNotices,
+  noteForgeAccounts,
+  resetForgeResolutions,
+} from "../../../../utils/forgeStatus";
 import {
   began,
   CLOUDS,
@@ -139,6 +143,11 @@ function missingScopes(account: ForgeAccount, asked: string[]): string[] {
   return held.length === 0 ? [] : asked.filter((scope) => !held.includes(scope));
 }
 
+// Authorizing is a decision GitHub takes from the user on its own page, so the
+// row can only carry them to it.
+const blockedBy = (count: number) =>
+  `${count === 1 ? "An organisation has" : "Organisations have"} not let this account through:`;
+
 const signedIn = (host: ForgeHost) => host.accounts.filter((a) => a.auth.kind === "signedIn");
 
 export default function ForgeSection() {
@@ -236,7 +245,7 @@ export default function ForgeSection() {
   }
 
   /// Rust picks the route, so this asks for the sign-in rather than for a menu.
-  async function connect(target: Target, onError?: (message: string) => void) {
+  async function connect(target: Target, onError?: (message: string) => void, preferCli = false) {
     // Before Rust is asked, never after: starting a flow and then cancelling
     // would drop the pending sign-in that was just created.
     device.cancel();
@@ -245,6 +254,10 @@ export default function ForgeSection() {
         provider: target.provider,
         baseUrl: target.baseUrl,
         accountId: target.accountId,
+        // Rust keeps `gh` away from an account the user pasted a token for,
+        // because that would hijack a re-auth they meant to type. Pressing a
+        // control that names the CLI is the one thing that says otherwise.
+        preferCli,
       });
       if (start.kind !== "signedIn") setRoutes(start.routes);
       enter(began({ ...target, baseUrl: start.kind === "signedIn" ? target.baseUrl : start.routes.baseUrl }, start));
@@ -258,9 +271,10 @@ export default function ForgeSection() {
     }
   }
 
-  const connectHost = (host: ForgeHost, accountId: string | null = null) => {
+  const connectHost = (host: ForgeHost, accountId: string | null = null, preferCli = false) => {
     const first = host.accounts.find((a) => a.id === accountId) ?? host.accounts[0];
-    if (first) void connect({ provider: first.provider, baseUrl: first.baseUrl, accountId });
+    if (first)
+      void connect({ provider: first.provider, baseUrl: first.baseUrl, accountId }, undefined, preferCli);
   };
 
   const continuePicker = () => {
@@ -556,6 +570,36 @@ export default function ForgeSection() {
                         <Show when={account.auth.kind === "signedIn" && needsWorkflow(account)}>
                           <div class={`${cards.reason} ${cards.nudge}`} data-testid="workflow-notice">
                             {widenWorkflow(account)}
+                          </div>
+                        </Show>
+                        {/* An organisation that never approved Tori says so
+                            nowhere: only a repo that would not open reveals it,
+                            so the row offers the route this account has not
+                            spent. */}
+                        <For each={forgeAccountOrgNotices(account.id)}>
+                          {(notice) => (
+                            <div class={cards.orgs} data-testid="org-unapproved-notice">
+                              <span>{notice.message}</span>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={() => connectHost(host, account.id, notice.route === "cli")}
+                              >
+                                {notice.action}
+                              </Button>
+                            </div>
+                          )}
+                        </For>
+                        <Show when={account.orgAccess.length > 0}>
+                          <div class={cards.orgs} data-testid="org-access-notice">
+                            <span>{blockedBy(account.orgAccess.length)}</span>
+                            <For each={account.orgAccess}>
+                              {(org) => (
+                                <Button variant="ghost" size="xs" onClick={() => openInBrowser(org.url)}>
+                                  Authorize for {org.org}
+                                </Button>
+                              )}
+                            </For>
                           </div>
                         </Show>
                         {/* A lapsed token is Tori's own read of a date, not a

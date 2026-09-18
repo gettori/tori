@@ -63,8 +63,10 @@ import {
   startForgePolling,
   unitStatus,
   uncoveredUnits,
+  forgeOrgNotice,
   forgePause,
   forgeViewer,
+  noteForgeCliInstalled,
   type WatchedProject,
 } from "./forgeStatus";
 
@@ -82,6 +84,7 @@ function account(id: string, auth: AuthState): ForgeAccount {
     rejectedAt: null,
     scopes: null,
     source: "token",
+    orgAccess: [],
     auth,
   };
 }
@@ -540,5 +543,54 @@ describe("the background schedule", () => {
     vi.advanceTimersByTime(POLL_INTERVAL_MS * 3);
     await flush();
     expect(asks.length, "the interval outlived its owner").toBe(1);
+  });
+});
+
+describe("an organisation standing in front of a repo", () => {
+  /** One tick that fails the way Rust reports a blocked organisation. */
+  async function pollInto(err: Error, source: ForgeAccount["source"] = "token") {
+    const acme = { ...account("personal", SIGNED_IN), source };
+    signedInWith([project("/acme", ["main"])], [acme]);
+    answers = [err];
+    await pollNow("focus", NOW);
+    await flush();
+  }
+
+  it("says nothing about a plain 404, which names no organisation to say it about", async () => {
+    // A repo that is simply gone reads the same on the wire. Rust is the one
+    // that tells the two apart, so a `notFound` reaching here is the answer
+    // that it could not, and inventing a notice would send the user to
+    // authorize an organisation that is not in the way.
+    await pollInto(forgeError("notFound"));
+    expect(forgeOrgNotice("/acme")).toBeNull();
+  });
+
+  it("offers a token account the CLI, since gh's own application was let in long ago", async () => {
+    noteForgeCliInstalled(true);
+    await pollInto(forgeError("orgUnapproved", { org: "acme", message: "acme has not approved Tori" }));
+    expect(forgeOrgNotice("/acme")).toEqual({
+      org: "acme",
+      route: "cli",
+      message: "acme has not approved Tori.",
+      action: "Sign in with GitHub CLI",
+    });
+  });
+
+  it("offers a cli account a token instead, because it has already spent that route", async () => {
+    noteForgeCliInstalled(true);
+    await pollInto(forgeError("orgUnapproved", { org: "acme" }), "cli");
+    expect(forgeOrgNotice("/acme")?.route).toBe("token");
+    expect(forgeOrgNotice("/acme")?.action).toBe("Paste a classic token");
+  });
+
+  it("clears the notice on the first tick the repo answers", async () => {
+    noteForgeCliInstalled(true);
+    await pollInto(forgeError("orgUnapproved", { org: "acme" }));
+    expect(forgeOrgNotice("/acme")).not.toBeNull();
+
+    answers = [report([status("main")])];
+    await pollNow("manual", NOW + MIN_GAP_MS + 1);
+    await flush();
+    expect(forgeOrgNotice("/acme")).toBeNull();
   });
 });

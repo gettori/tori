@@ -242,6 +242,7 @@ const OCTOCAT: ForgeHost = {
       rejectedAt: null,
       scopes: ["repo", "workflow"],
       source: "token",
+      orgAccess: [],
       auth: { kind: "signedIn", login: "octocat" },
     },
   ],

@@ -203,6 +203,7 @@ const signInAs = async (login: string) => {
       rejectedAt: null,
       scopes: null,
       source: "token",
+      orgAccess: [],
       auth: { kind: "signedIn", login },
     },
   ]);

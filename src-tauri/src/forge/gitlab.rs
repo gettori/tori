@@ -24,8 +24,8 @@
 use super::http::{classify, paginate_rest, HttpRequest, Recording, Transport, PAGE_CAP};
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
-    MergeableState, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment,
-    ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    MergeableState, OrgAccess, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef,
+    ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -461,6 +461,20 @@ impl Forge for GitLabForge {
             }),
             expires_at: opt_str(&v, "expires_at").as_deref().and_then(epoch_secs),
         }
+    }
+
+    /// Nothing to answer. GitLab enforces SAML at the group level and says so by
+    /// refusing the whole instance, never by naming a group in a header.
+    fn sso_challenge(&self) -> Option<OrgAccess> {
+        None
+    }
+
+    /// Always `false`, and asked for nothing. A GitLab group cannot block an
+    /// application the way a GitHub organisation can, so a `404` here is a repo
+    /// that is genuinely not there and a request to check would be spent on a
+    /// distinction that does not exist.
+    fn owner_is_org(&self, _owner: &str) -> Result<bool, ForgeError> {
+        Ok(false)
     }
 
     fn auth_state(&self) -> AuthState {
