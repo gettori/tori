@@ -79,9 +79,9 @@ describe("the space's empty area", () => {
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
 
     expect(rightClick(scroller(container))).toBe(true);
-    expect(await screen.findByText("New in “work”…")).toBeTruthy();
-    expect(screen.getByText("Edit space…")).toBeTruthy();
-    expect(screen.getByText("Delete space…")).toBeTruthy();
+    expect(await screen.findByText("New in “work”")).toBeTruthy();
+    expect(screen.getByText("Edit space")).toBeTruthy();
+    expect(screen.getByText("Delete space")).toBeTruthy();
   });
 
   it("leaves a row's own right-click alone", async () => {
@@ -92,8 +92,8 @@ describe("the space's empty area", () => {
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
 
     rightClick(screen.getByText("proj"));
-    expect(await screen.findByText("Change icon…")).toBeTruthy();
-    expect(screen.queryByText("Delete space…")).toBeNull();
+    expect(await screen.findByText("Change icon")).toBeTruthy();
+    expect(screen.queryByText("Delete space")).toBeNull();
   });
 
   // A clone into this space is killed by the delete exactly as a shell here is
@@ -113,7 +113,7 @@ describe("the space's empty area", () => {
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
 
     rightClick(scroller(container));
-    pointerClick(await screen.findByText("Delete space…"));
+    pointerClick(await screen.findByText("Delete space"));
     // The count is a stat panel now: a caps label and a value on two lines, so
     // this reads the box rather than one of them.
     await waitFor(() =>

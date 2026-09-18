@@ -614,7 +614,7 @@ export default function LeftSidebar(props: {
     busy: boolean;
   } | null>(null);
 
-  // The "Initialize git…" dialog for a non-git folder (branch + optional origin +
+  // The "Initialize git" dialog for a non-git folder (branch + optional origin +
   // layout). `busy` gates the buttons while init runs.
   const [initReq, setInitReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
 
@@ -1585,7 +1585,7 @@ export default function LeftSidebar(props: {
 
   // --- plain-dir git lifecycle ---
 
-  // Open the "Initialize git…" dialog for a non-git folder.
+  // Open the "Initialize git" dialog for a non-git folder.
   function openInitGit(p: Project) {
     setInitReq({ p, busy: false });
   }
@@ -1796,6 +1796,25 @@ export default function LeftSidebar(props: {
   // Sequential, not parallel: `git worktree add` takes the repository index
   // lock, so three at once would race for it.
   async function fanOut(p: Project) {
+    // An attempt is a worktree on a new branch, and a branch has to start from a
+    // commit. Asked before the two questions rather than left to git: the
+    // refusal does not depend on the answers, and `git worktree add -b` meets an
+    // unborn HEAD with "fatal: invalid reference: HEAD" and a hint about
+    // `--orphan`, which is not what anyone here wants. A repo initialized while
+    // git had no identity lands in exactly this state (see `confirmInitGit`).
+    let head: string;
+    try {
+      head = await invoke<string>("git_head_sha", { projectPath: p.path });
+    } catch (e) {
+      return setError(String(e));
+    }
+    if (!head) {
+      return setError(
+        `“${p.name}” has no commits yet, so there is nothing for the attempts to branch from. Commit once, then fan out.`,
+        "info",
+      );
+    }
+
     const goal = await askText(
       "Fan out: what are these attempts for?",
       "",
@@ -2025,12 +2044,12 @@ export default function LeftSidebar(props: {
   const spaceMenu = (g: Space): MenuItem[] => [
     { heading: spaceMenuHead(g) },
     { separator: true },
-    { label: `New in “${g.name}”…`, onClick: () => openNewProject(g) },
+    { label: `New in “${g.name}”`, onClick: () => openNewProject(g) },
     { label: "New space", onClick: () => addSpace() },
     { separator: true },
-    { label: "Edit space…", onClick: () => editSpace(g) },
+    { label: "Edit space", onClick: () => editSpace(g) },
     { separator: true },
-    { label: "Delete space…", danger: true, onClick: () => openDeleteSpace(g) },
+    { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
   ];
 
   // A project with a working tree git can branch from: a plain repo or a
@@ -2080,15 +2099,15 @@ export default function LeftSidebar(props: {
         ? []
         : [
             {
-              label: hasOrigin(p) ? "Change origin…" : "Set origin…",
+              label: hasOrigin(p) ? "Change origin" : "Set origin",
               warn: true,
               onClick: () => void openOrigin(p),
             } as MenuItem,
           ]),
       ...(ruleRows(projectRows(p.path)).length > 1 || projectRows(p.path).length
-        ? [{ label: "Agents\u2026", onClick: () => setAgentsReq(p) }]
+        ? [{ label: "Agents", onClick: () => setAgentsReq(p) }]
         : []),
-      { label: "Change icon…", onClick: () => setIconReq({ p, busy: false }) },
+      { label: "Change icon", onClick: () => setIconReq({ p, busy: false }) },
       { separator: true },
       kind.remove,
     ];
@@ -2102,13 +2121,13 @@ export default function LeftSidebar(props: {
       case "worktree":
         return {
           rows: [
-            { label: "Add worktree…", onClick: () => void openBranchDialog(p, "worktree") },
-            { label: "Fan out…", onClick: () => fanOut(p) },
+            { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
+            { label: "Fan out", onClick: () => fanOut(p) },
             // Beside Add worktree on purpose: the menu that makes worktrees is
             // where you say what they are made with.
-            { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
+            { label: "Shared in worktrees", onClick: () => openSharedFiles(p) },
           ],
-          remove: { label: "Remove project…", danger: true, onClick: () => openRemoveProject(p) },
+          remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
         };
       case "plain-dir": {
         // A non-git folder: it anchors sessions directly (no branch node), so its
@@ -2118,18 +2137,18 @@ export default function LeftSidebar(props: {
           rows: [
             { label: "New session", onClick: () => startSession(g, p, u) },
             { separator: true },
-            { label: "Initialize git…", onClick: () => openInitGit(p) },
+            { label: "Initialize git", onClick: () => openInitGit(p) },
           ],
-          remove: { label: "Remove folder…", danger: true, onClick: () => openRemoveFolder(p) },
+          remove: { label: "Remove folder", danger: true, onClick: () => openRemoveFolder(p) },
         };
       }
       case "plain":
         return {
           rows: [
-            { label: "Add branch…", onClick: () => void openBranchDialog(p, "branch") },
-            { label: "Fan out…", onClick: () => fanOut(p) },
+            { label: "Add branch", onClick: () => void openBranchDialog(p, "branch") },
+            { label: "Fan out", onClick: () => fanOut(p) },
           ],
-          remove: { label: "Remove project…", danger: true, onClick: () => openRemoveProject(p) },
+          remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
         };
       case "incomplete":
         // A bare container with no worktrees (a killed bootstrap, or all worktrees
@@ -2137,11 +2156,11 @@ export default function LeftSidebar(props: {
         // actions to bring one back, plus stub removal.
         return {
           rows: [
-            { label: "Add worktree…", onClick: () => void openBranchDialog(p, "worktree") },
-            { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
+            { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
+            { label: "Shared in worktrees", onClick: () => openSharedFiles(p) },
           ],
           remove: {
-            label: "Remove empty container…",
+            label: "Remove empty container",
             danger: true,
             onClick: () => cleanupStub(p.branchUnits[0]),
           },
@@ -2149,7 +2168,7 @@ export default function LeftSidebar(props: {
       default:
         return {
           rows: [],
-          remove: { label: "Remove project…", danger: true, onClick: () => openRemoveProject(p) },
+          remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
         };
     }
   };
@@ -2159,9 +2178,9 @@ export default function LeftSidebar(props: {
     // (its branches live in .bare), so offer that as well as removal.
     if (u.kind === "incomplete") {
       return [
-        { label: "Add worktree…", onClick: () => void openBranchDialog(p, "worktree") },
+        { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
         { separator: true },
-        { label: "Remove empty container…", danger: true, onClick: () => cleanupStub(u) },
+        { label: "Remove empty container", danger: true, onClick: () => cleanupStub(u) },
       ];
     }
     const items: MenuItem[] = [
