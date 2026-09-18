@@ -37,6 +37,7 @@ import {
   push as pushToOrigin,
   type FileStatus,
 } from "../../utils/gitActions";
+import { fetchRootNow } from "../../utils/remoteSync";
 import { amendRewritesPushed } from "../../utils/commitMessage";
 import { DIFF_CONTEXT } from "../../utils/diffHunks";
 import { compactAge } from "../../utils/compactAge";
@@ -969,8 +970,16 @@ export default function ReviewPanel(props: {
     // .git is watcher-filtered (gotchas), so a terminal-side commit/stage/push
     // emits no fs://changed - window focus and the askpass-bridge git events
     // (fetch here, push above) pick up the slack.
-    unlistenFetchDone = await listen("git://fetch-done", () => refreshAll());
-    unlistenFetchError = await listen("git://fetch-error", () => refreshAll());
+    // Scoped to this panel's own sections. A scheduled sweep emits for every
+    // repo the sidebar knows, and refreshing all of them on each of those would
+    // re-read a Topic's whole file list once per unrelated container.
+    const mine = (repo?: string) => !!repo && sections().some((sec) => sec.root === repo);
+    unlistenFetchDone = await listen<{ repo?: string }>("git://fetch-done", (e) => {
+      if (mine(e.payload?.repo)) refreshAll();
+    });
+    unlistenFetchError = await listen<{ repo?: string }>("git://fetch-error", (e) => {
+      if (mine(e.payload?.repo)) refreshAll();
+    });
     window.addEventListener("focus", refreshAll);
   });
   onCleanup(() => {
@@ -1301,7 +1310,12 @@ export default function ReviewPanel(props: {
           size="sm"
           icon={<Icon icon={RefreshCw} />}
           tooltip="Refresh"
-          onClick={() => void refreshAll()}
+          onClick={() => {
+            // The refs first, then everything read off them. Not awaited: the
+            // fetch answers on `git://fetch-done`, which already refreshes.
+            fetchRootNow(viewedRoot());
+            void refreshAll();
+          }}
         />
         <Dropdown as="span" wrapper menu={gitMenu()} placement="bottom-end">
           <IconButton

@@ -1908,11 +1908,59 @@ fn git_command(repo: &str, op_id: &str, sock: &Path, token: &str) -> Command {
 }
 
 /// Payload for the background-fetch result events.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchResult {
     repo: String,
     ok: bool,
     error: String,
+    /// A scheduled fetch nobody asked for. Every listener that reloads the world
+    /// on this event has to ignore the quiet ones, or a background sweep across
+    /// twenty repos becomes twenty full reloads.
+    quiet: bool,
+    /// When the fetch finished, unix seconds.
+    fetched_at: u64,
+}
+
+/// When each container was last asked to fetch, keyed by its git common dir.
+/// Monotonic, so the floor holds across a clock change.
+static LAST_FETCH: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, std::time::Instant>>,
+> = std::sync::OnceLock::new();
+
+fn fetch_attempts()
+-> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, std::time::Instant>> {
+    LAST_FETCH.get_or_init(Default::default)
+}
+
+/// Note that a container was asked, without asking whether it was due. The
+/// manual fetch calls this so the next sweep does not repeat what you just ran.
+fn record_fetch_attempt(common: &Path) {
+    fetch_attempts()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(common.to_path_buf(), std::time::Instant::now());
+}
+
+/// Take the right to fetch this container, or report that it is too soon. The
+/// check and the record are one critical section, so two sweeps racing the same
+/// container cannot both get through it.
+fn claim_fetch(common: &Path, min_age: std::time::Duration) -> bool {
+    let mut attempts = fetch_attempts()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if attempts.get(common).is_some_and(|at| at.elapsed() < min_age) {
+        return false;
+    }
+    attempts.insert(common.to_path_buf(), std::time::Instant::now());
+    true
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or(0)
 }
 
 /// Background `git fetch` through the askpass bridge: runs on its own thread with
@@ -1949,6 +1997,7 @@ pub fn git_fetch(
         let (ok, error) = {
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            record_fetch_attempt(&crate::exec::common_dir(&repo));
             match crate::git_health::run(&mut cmd) {
                 Ok(o) if o.status.success() => (true, String::new()),
                 Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
@@ -1956,9 +2005,136 @@ pub fn git_fetch(
             }
         };
         let event = if ok { "git://fetch-done" } else { "git://fetch-error" };
-        let _ = app.emit(event, FetchResult { repo, ok, error });
+        let _ = app.emit(event, FetchResult { repo, ok, error, quiet: false, fetched_at: now_secs() });
     });
     Ok(())
+}
+
+/// A `git` that can never ask a human anything. The askpass vars are *unset*
+/// rather than merely not set: a parent shell may have exported them, and a
+/// fetch on a ten-minute timer must not pop a dialog over what you are doing.
+fn quiet_git_command(repo: &str) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    cmd.env_remove("GIT_ASKPASS");
+    cmd.env_remove("SSH_ASKPASS");
+    cmd.env_remove("SSH_ASKPASS_REQUIRE");
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd.env("LC_ALL", "C");
+    cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new");
+    cmd.env("PATH", augmented_path());
+    cmd
+}
+
+/// Fetch every repository the sidebar knows, on a schedule, without asking.
+///
+/// `min_age_secs` is the floor: a container asked more recently than that is
+/// left alone, which is what lets the chip click and the Changes refresh call
+/// this freely. `only` narrows the sweep to one root's container.
+#[tauri::command]
+pub fn git_fetch_quiet(
+    app: AppHandle,
+    index: State<crate::config::ProjectIndex>,
+    min_age_secs: u64,
+    only: Option<String>,
+) -> Result<(), String> {
+    let index = index.inner().clone();
+    thread::spawn(move || {
+        let Ok(config) = crate::config::get_config_body(&index) else {
+            return;
+        };
+        let min_age = std::time::Duration::from_secs(min_age_secs);
+        let mut run = |repo: &str| {
+            let mut cmd = quiet_git_command(repo);
+            cmd.args(["fetch", "--all"]);
+            match crate::git_health::run(&mut cmd) {
+                Ok(out) if out.status.success() => Ok(()),
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+                Err(e) => Err(e),
+            }
+        };
+        for event in quiet_sweep(&config, only.as_deref(), min_age, &mut run) {
+            let name = if event.ok { "git://fetch-done" } else { "git://fetch-error" };
+            let _ = app.emit(name, event);
+        }
+    });
+    Ok(())
+}
+
+/// One sweep: which containers are due, the fetch itself, and the events that
+/// follow. The fetch is a parameter and the events are returned rather than
+/// emitted, so a test can watch both without an `AppHandle`.
+fn quiet_sweep(
+    config: &crate::config::ResolvedConfig,
+    only: Option<&str>,
+    min_age: std::time::Duration,
+    fetch: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Vec<FetchResult> {
+    use crate::config::ProjectKind;
+
+    let wanted = only.map(crate::exec::common_dir);
+    // A Vec, not a map: the events come out in the order the sidebar lists its
+    // projects, and one sweep covers few enough containers that the scan costs
+    // nothing next to the subprocess at the end of it.
+    let mut containers: Vec<(PathBuf, Vec<String>)> = Vec::new();
+    for unit in config
+        .spaces
+        .iter()
+        .flat_map(|space| &space.projects)
+        .flat_map(|project| &project.branch_units)
+    {
+        if !matches!(unit.kind, ProjectKind::Worktree | ProjectKind::Plain) {
+            continue;
+        }
+        let common = crate::exec::common_dir(&unit.folder_path);
+        if wanted.as_ref().is_some_and(|want| *want != common) {
+            continue;
+        }
+        match containers.iter_mut().find(|(seen, _)| *seen == common) {
+            // Every branch of a plain repo is a unit on the *same* folder, so
+            // the distinct paths are what the listeners want one event each for.
+            Some((_, folders)) => {
+                if !folders.contains(&unit.folder_path) {
+                    folders.push(unit.folder_path.clone());
+                }
+            }
+            None => containers.push((common, vec![unit.folder_path.clone()])),
+        }
+    }
+
+    let mut events = Vec::new();
+    for (common, folders) in containers {
+        // After the dedupe, so a plain repo listing twenty branches costs one
+        // probe rather than twenty. An unborn repo has no remote-tracking refs
+        // to move, and a folder that stopped being one fails every sweep.
+        if !folders
+            .iter()
+            .any(|f| git_capture(f, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok())
+        {
+            continue;
+        }
+        // `try_lock`, never `lock`: a held lock is a manual op mid-flight on
+        // this repo, and a read nobody asked for must not queue in front of it.
+        let lock = crate::exec::repo_lock(&folders[0]);
+        let Ok(_guard) = lock.try_lock() else {
+            continue;
+        };
+        if !claim_fetch(&common, min_age) {
+            continue;
+        }
+        let outcome = fetch(&folders[0]);
+        let fetched_at = now_secs();
+        for repo in folders {
+            events.push(FetchResult {
+                repo,
+                ok: outcome.is_ok(),
+                error: outcome.as_ref().err().cloned().unwrap_or_default(),
+                quiet: true,
+                fetched_at,
+            });
+        }
+    }
+    events
 }
 
 /// The remote-tracking ref `branch` follows, in its short spelling
@@ -3086,6 +3262,181 @@ diff --git a/f b/f
         assert_eq!(sync.upstream, UpstreamSync::default());
         assert_eq!(sync.base, None);
         scrub(&[&dir]);
+    }
+
+    /// A config holding exactly these units, so a sweep can be driven without
+    /// a config file, a root, or discovery.
+    fn config_of(units: Vec<crate::config::BranchUnit>) -> crate::config::ResolvedConfig {
+        crate::config::ResolvedConfig {
+            path: String::new(),
+            roots: vec![],
+            spaces: vec![crate::config::Space {
+                name: "work".into(),
+                path: String::new(),
+                projects: vec![crate::config::Project {
+                    name: "p".into(),
+                    path: String::new(),
+                    branch_units: units,
+                    icon: None,
+                    icon_file: None,
+                    favicon: None,
+                }],
+                icon: None,
+                color: None,
+            }],
+        }
+    }
+
+    fn unit(folder: &Path, kind: crate::config::ProjectKind) -> crate::config::BranchUnit {
+        crate::config::BranchUnit {
+            label: "u".into(),
+            folder_path: folder.to_string_lossy().into_owned(),
+            branch: Some("main".into()),
+            kind,
+            is_current: false,
+        }
+    }
+
+    /// Runs one sweep with the real floor bypassed, counting the fetches and
+    /// returning the events. Every sweep test needs the same three lines.
+    fn sweep(
+        config: &crate::config::ResolvedConfig,
+        only: Option<&str>,
+        min_age: std::time::Duration,
+    ) -> (usize, Vec<FetchResult>) {
+        let mut runs = 0;
+        let events = quiet_sweep(config, only, min_age, &mut |_| {
+            runs += 1;
+            Ok(())
+        });
+        (runs, events)
+    }
+
+    const NO_FLOOR: std::time::Duration = std::time::Duration::ZERO;
+
+    #[test]
+    fn a_quiet_sweep_fetches_a_container_once_and_tells_every_worktree_of_it() {
+        let (local, remote) = repo_on_feature();
+        let second = local.with_extension("wt");
+        git(&local, &["worktree", "add", "-q", "-b", "other", &second.to_string_lossy(), "feat"]);
+
+        let config = config_of(vec![
+            unit(&local, crate::config::ProjectKind::Worktree),
+            unit(&second, crate::config::ProjectKind::Worktree),
+        ]);
+        let (runs, events) = sweep(&config, None, NO_FLOOR);
+
+        assert_eq!(runs, 1, "two worktrees share one common dir, so one fetch");
+        assert_eq!(events.len(), 2, "but each folder is a row that wants telling");
+        assert!(events.iter().all(|e| e.ok && e.quiet));
+        assert!(events.iter().any(|e| e.repo == local.to_string_lossy()));
+        assert!(events.iter().any(|e| e.repo == second.to_string_lossy()));
+
+        git(&local, &["worktree", "remove", "--force", &second.to_string_lossy()]);
+        scrub(&[&local, &remote, &second]);
+    }
+
+    #[test]
+    fn a_plain_repos_branches_share_one_fetch_and_one_event() {
+        let (local, remote) = repo_with_remote();
+        git(&local, &["push", "-q", "-u", "origin", "main"]);
+        // Three attached branches, all reported on the same folder path.
+        let config = config_of(vec![
+            unit(&local, crate::config::ProjectKind::Plain),
+            unit(&local, crate::config::ProjectKind::Plain),
+            unit(&local, crate::config::ProjectKind::Plain),
+        ]);
+        let (runs, events) = sweep(&config, None, NO_FLOOR);
+
+        assert_eq!(runs, 1);
+        assert_eq!(events.len(), 1, "one folder is one row, however many branches hang off it");
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn a_sweep_passes_over_folders_that_are_not_repos_to_fetch() {
+        let plain_dir = empty_tmp();
+        let unborn = empty_tmp();
+        git(&unborn, &["init", "-q"]);
+
+        let config = config_of(vec![
+            unit(&plain_dir, crate::config::ProjectKind::PlainDir),
+            // A repo kind, but with no commit: nothing to bring up to date.
+            unit(&unborn, crate::config::ProjectKind::Worktree),
+        ]);
+        let (runs, events) = sweep(&config, None, NO_FLOOR);
+
+        assert_eq!((runs, events.len()), (0, 0));
+        scrub(&[&plain_dir, &unborn]);
+    }
+
+    #[test]
+    fn a_second_sweep_inside_the_floor_fetches_nothing() {
+        let (local, remote) = repo_on_feature();
+        let config = config_of(vec![unit(&local, crate::config::ProjectKind::Worktree)]);
+
+        assert_eq!(sweep(&config, None, NO_FLOOR).0, 1);
+        let (runs, events) = sweep(&config, None, std::time::Duration::from_secs(90));
+        assert_eq!((runs, events.len()), (0, 0), "asked seconds ago, so not due");
+
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn a_sweep_steps_around_a_repo_somebody_else_is_writing() {
+        let (local, remote) = repo_on_feature();
+        let config = config_of(vec![unit(&local, crate::config::ProjectKind::Worktree)]);
+
+        let lock = crate::exec::repo_lock(&local.to_string_lossy());
+        let held = lock.lock().unwrap();
+        let (runs, events) = sweep(&config, None, NO_FLOOR);
+        assert_eq!((runs, events.len()), (0, 0), "a manual op holds this repo");
+        drop(held);
+
+        // And it is not skipped for good: the next sweep takes it.
+        assert_eq!(sweep(&config, None, NO_FLOOR).0, 1);
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn only_narrows_the_sweep_to_one_containers_units() {
+        let (one, one_remote) = repo_on_feature();
+        let (two, two_remote) = repo_on_feature();
+        let config = config_of(vec![
+            unit(&one, crate::config::ProjectKind::Worktree),
+            unit(&two, crate::config::ProjectKind::Worktree),
+        ]);
+
+        let (runs, events) = sweep(&config, Some(&two.to_string_lossy()), NO_FLOOR);
+        assert_eq!(runs, 1);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].repo, two.to_string_lossy());
+
+        scrub(&[&one, &one_remote, &two, &two_remote]);
+    }
+
+    #[test]
+    fn the_quiet_command_can_never_ask_a_human_anything() {
+        let cmd = quiet_git_command("/repo");
+        let envs: std::collections::HashMap<String, Option<String>> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (k.to_string_lossy().into_owned(), v.map(|s| s.to_string_lossy().into_owned()))
+            })
+            .collect();
+
+        // Cleared, not merely absent: an inherited one would still be used.
+        assert_eq!(envs.get("GIT_ASKPASS"), Some(&None));
+        assert_eq!(envs.get("SSH_ASKPASS"), Some(&None));
+        assert_eq!(envs.get("SSH_ASKPASS_REQUIRE"), Some(&None));
+        assert_eq!(envs.get("GIT_TERMINAL_PROMPT").unwrap().as_deref(), Some("0"));
+        assert_eq!(envs.get("LC_ALL").unwrap().as_deref(), Some("C"));
+        let ssh = envs.get("GIT_SSH_COMMAND").unwrap().as_deref().unwrap();
+        assert!(ssh.contains("BatchMode=yes"), "ssh must not sit at a prompt: {ssh}");
+        assert!(ssh.contains("StrictHostKeyChecking=accept-new"), "{ssh}");
+        // No bridge coordinates at all, which is what `git_command` exists to set.
+        assert!(!envs.contains_key(ENV_SOCK));
+        assert!(!envs.contains_key(ENV_TOKEN));
     }
 
     #[test]

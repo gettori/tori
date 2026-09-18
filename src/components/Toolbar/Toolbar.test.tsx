@@ -60,10 +60,18 @@ vi.mock("@tauri-apps/api/core", () => ({
     return Promise.resolve(null);
   },
 }));
-vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
+const handlers: Record<string, ((e: { payload: unknown }) => void)[]> = {};
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, fn: (e: { payload: unknown }) => void) => {
+    (handlers[name] ??= []).push(fn);
+    return Promise.resolve(() => {
+      handlers[name] = (handlers[name] ?? []).filter((f) => f !== fn);
+    });
+  },
+}));
 
 const { default: Toolbar } = await import("./Toolbar");
-const { enterRoots, refreshGit } = await import("../../utils/gitActions");
+const { enterRoots, refreshGit, startGitWatch } = await import("../../utils/gitActions");
 const { SET_RIGHT_MODE } = await import("../../utils/events");
 
 const topicSel = (activeRoot: string) => ({
@@ -131,8 +139,23 @@ async function loadSync(answers: Record<string, unknown>): Promise<void> {
 beforeEach(() => {
   bridge.calls.length = 0;
   sync.byRoot = {};
+  for (const key of Object.keys(handlers)) delete handlers[key];
   enterRoots([]);
 });
+
+/** The chip's tooltip text. Kobalte mounts the content only while the tooltip
+ *  is open and opens on focus with no delay, which is the path that needs no
+ *  timers (see Tooltip.test.tsx). */
+const tipText = () => {
+  const trigger = syncChip()!;
+  trigger.focus();
+  fireEvent.focus(trigger);
+  return screen.queryByRole("tooltip")?.textContent ?? "";
+};
+
+const fireFetch = (name: string, payload: unknown) => {
+  for (const fn of handlers[name] ?? []) fn({ payload });
+};
 
 describe("Toolbar for a Topic", () => {
   it("shows the Topic crumb and a chip per member, the active root pressed", async () => {
@@ -237,6 +260,48 @@ describe("Toolbar for a Topic", () => {
     window.removeEventListener(SET_RIGHT_MODE, onMode);
 
     expect(modes).toEqual([{ mode: "changes" }]);
+  });
+
+  it("says how long ago the refs were fetched, and names a quiet failure", async () => {
+    await loadSync({ "/w/api": upstream({ behind: 3 }) });
+    const stopWatch = await startGitWatch();
+    render(() => <Toolbar selected={unitSel as never} />);
+
+    fireFetch("git://fetch-error", {
+      repo: "/w/api",
+      ok: false,
+      error: "could not read Username",
+      quiet: true,
+      fetchedAt: Math.floor(Date.now() / 1000) - 5 * 60,
+    });
+
+    await waitFor(() => expect(tipText()).toMatch(/Fetched 5 min ago/));
+    // The one place a quiet failure is ever said out loud.
+    expect(tipText()).toMatch(/could not read Username/);
+
+    stopWatch();
+  });
+
+  it("marks a silent branch stale when it cannot reach the remote at all", async () => {
+    // In sync, so `syncState` has nothing to say - but the numbers behind that
+    // silence are only as fresh as the last fetch that worked.
+    await loadSync({ "/w/api": upstream() });
+    const stopWatch = await startGitWatch();
+    render(() => <Toolbar selected={unitSel as never} />);
+    expect(syncChip()).toBeNull();
+
+    fireFetch("git://fetch-error", {
+      repo: "/w/api",
+      ok: false,
+      error: "host is unreachable",
+      quiet: true,
+      fetchedAt: Math.floor(Date.now() / 1000),
+    });
+
+    await waitFor(() => expect(syncChip()?.dataset.syncLevel).toBe("staleFetch"));
+    expect(syncChip()?.getAttribute("aria-label")).toBe("Cannot reach the remote");
+
+    stopWatch();
   });
 
   it("passes the axe gate with a chip on the bar", async () => {

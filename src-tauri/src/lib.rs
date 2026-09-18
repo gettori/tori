@@ -402,6 +402,7 @@ pub fn run() {
             git::git_remote_add,
             git::git_origin,
             git::git_fetch,
+            git::git_fetch_quiet,
             git::git_push,
             git::git_ahead_behind,
             git::git_branch_sync,

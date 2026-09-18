@@ -312,6 +312,40 @@ describe("the shared git store", () => {
     expect(listeners["git://fetch-done"]).toHaveLength(0);
   });
 
+  it("records what a fetch reported, per root, and never toasts a quiet failure", async () => {
+    await refreshGit("/proj");
+    const stop = await startGitWatch();
+
+    const quietFailure = {
+      repo: "/proj",
+      ok: false,
+      error: "could not read Username",
+      quiet: true,
+      fetchedAt: 1_700_000_000,
+    };
+    const seen = await toastsFrom(async () => {
+      for (const fn of listeners["git://fetch-error"] ?? []) fn({ payload: quietFailure });
+      await vi.waitFor(() => expect(gitState().lastFetch).toBeTruthy());
+    });
+
+    // The tooltip is the whole audience for this. A repo behind a credential
+    // prompt fails every single sweep, so a toast apiece would be the feature
+    // making itself unusable.
+    expect(seen).toEqual([]);
+    expect(gitState().lastFetch).toEqual({
+      at: 1_700_000_000,
+      error: "could not read Username",
+      quiet: true,
+    });
+
+    // A success clears the error rather than leaving the last one to age.
+    for (const fn of listeners["git://fetch-done"] ?? [])
+      fn({ payload: { repo: "/proj", ok: true, error: "", quiet: true, fetchedAt: 1_700_000_900 } });
+    await vi.waitFor(() => expect(gitState().lastFetch?.error).toBe(""));
+
+    stop();
+  });
+
   it("refreshes the member a burst names, and only that one", async () => {
     enterRoots(["/a", "/b"]);
     status = [];

@@ -255,6 +255,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Whether git is installed and usable, and what to run to install it when it is not.",
   },
   {
+    id: "fetch-every",
+    section: "git",
+    label: "Fetch every",
+    hint: "How often Tori fetches every repository in the background, so a branch can say it is behind before you ask. Never asks for a password: a repo whose remote needs one is simply left alone. Off stops the timer and the fetch on window focus.",
+  },
+  {
     id: "forge",
     section: "forge",
     label: "Hosts",

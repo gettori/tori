@@ -30,6 +30,8 @@ const DIFF = [
 ].join("\n");
 
 const calls: { status: number; diff: number; stashList: number } = { status: 0, diff: 0, stashList: 0 };
+/** Every `git_fetch_quiet` the panel asked for, so a test can see the floor. */
+const quietFetches: { minAgeSecs: number; only: string | null }[] = [];
 
 // What `git_ahead_behind` reports, and what `git_commit` was called with. Both
 // drive the amend guard, which is the only thing here that asks the backend a
@@ -191,6 +193,9 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "backstop_list":
         return Promise.resolve([]);
       // checkpoint_turn_files / git_ahead_behind / git_origin /
+      case "git_fetch_quiet":
+        quietFetches.push(args as never);
+        return Promise.resolve(null);
       // git_default_base_branch: the panel try/catches each one, so a null is a
       // fine stand-in for every backend call this test does not drive.
       default:
@@ -213,7 +218,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import ReviewPanel from "./ReviewPanel";
-import { stage, stagedFiles, enterRoots, refreshStatus } from "../../utils/gitActions";
+import {
+  stage,
+  stagedFiles,
+  enterRoots,
+  refreshStatus,
+  gitStateFor,
+  startGitWatch,
+} from "../../utils/gitActions";
 import {
   TOAST,
   OPEN_IN_EDITOR,
@@ -278,6 +290,7 @@ beforeEach(async () => {
   enterRoots(["/proj"]);
   statusRows = [UNSTAGED];
   calls.status = 0;
+  quietFetches.length = 0;
   calls.diff = 0;
   calls.stashList = 0;
   statusByRoot = null;
@@ -347,6 +360,87 @@ describe("a11y", () => {
     const copy = screen.getAllByRole("button", { name: "Copy diff" });
     expect(copy.length).toBeGreaterThan(0);
     expect(copy[0].getAttribute("title")).toBeNull();
+  });
+});
+
+describe("fetch events the panel is not about", () => {
+  const fire = (name: string, payload: unknown) => {
+    for (const fn of handlers[name] ?? []) fn({ payload });
+  };
+
+  it("refreshes for its own repo's fetch and ignores every other one", async () => {
+    await mountPanel();
+
+    // The scheduled sweep emits one of these per container it touched. This
+    // panel is showing one repo, and re-reading its whole file list once per
+    // unrelated container is the cost the guard exists to avoid.
+    calls.status = 0;
+    fire("git://fetch-done", { repo: "/some/other/repo", quiet: true });
+    fire("git://fetch-error", { repo: "/some/other/repo", quiet: true });
+    await Promise.resolve();
+    expect(calls.status).toBe(0);
+
+    // Its own repo still moves it, quiet or not: the refs did change.
+    fire("git://fetch-done", { repo: "/proj", quiet: true });
+    await waitFor(() => expect(calls.status).toBeGreaterThan(0));
+  });
+
+  it("still refreshes on a manual fetch of the repo it is showing", async () => {
+    await mountPanel();
+
+    calls.status = 0;
+    fire("git://fetch-done", { repo: "/proj", quiet: false });
+    await waitFor(() => expect(calls.status).toBeGreaterThan(0));
+  });
+});
+
+describe("the Refresh button", () => {
+  const fire = (name: string, payload: unknown) => {
+    for (const fn of handlers[name] ?? []) fn({ payload });
+  };
+  const refresh = () => fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+  it("brings the refs up to date before re-reading what is derived from them", async () => {
+    await mountPanel();
+
+    refresh();
+    expect(quietFetches).toEqual([{ minAgeSecs: 90, only: "/proj" }]);
+  });
+
+  it("does not re-fetch a repo that was fetched seconds ago", async () => {
+    await mountPanel();
+    // The fetch time is recorded by the shared store's watch, which the editor
+    // starts, not the panel. Without it nothing here would ever look fresh.
+    const stopWatch = await startGitWatch();
+
+    // The store learns the fetch time from the event the backend emits, which
+    // is the same thing the tooltip's "fetched N min ago" reads.
+    fire("git://fetch-done", {
+      repo: "/proj",
+      ok: true,
+      error: "",
+      quiet: true,
+      fetchedAt: Math.floor(Date.now() / 1000),
+    });
+    await waitFor(() => expect(gitStateFor("/proj").lastFetch).toBeTruthy());
+
+    quietFetches.length = 0;
+    refresh();
+    expect(quietFetches).toEqual([]);
+
+    // Stale again, and it asks: the floor is a wait, not a lockout.
+    fire("git://fetch-done", {
+      repo: "/proj",
+      ok: true,
+      error: "",
+      quiet: true,
+      fetchedAt: Math.floor(Date.now() / 1000) - 600,
+    });
+    await waitFor(() => expect(gitStateFor("/proj").lastFetch?.at).toBeLessThan(Date.now() / 1000 - 300));
+    refresh();
+    expect(quietFetches).toEqual([{ minAgeSecs: 90, only: "/proj" }]);
+
+    stopWatch();
   });
 });
 
