@@ -168,7 +168,13 @@ export function breakpointGutter(handlers: {
       // A hint on every line with no breakpoint, so the column has something to
       // reveal on hover. `others` is what `markers` already produced for this
       // line, so a marked line is left alone without asking the field twice.
-      lineMarker: (_view, _line, others) => (others.length ? null : HINT),
+      //
+      // It is not only ours, though: CodeMirror hands `lineMarker` everything
+      // the `gutterLineClass` facet contributed too, and the active-line
+      // highlight is one of those. Testing the length rather than the kind left
+      // the caret's own line as the one line in the file with no hint on it.
+      lineMarker: (_view, _line, others) =>
+        others.some((marker) => marker instanceof BreakpointMarker) ? null : HINT,
       initialSpacer: () => new SpacerMarker(),
       domEventHandlers: {
         mousedown: (view, block) => {
