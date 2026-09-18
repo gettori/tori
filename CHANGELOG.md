@@ -10,32 +10,9 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 ## 26.918.0-alpha
 
-Sway is Tori. The app, the source, the release builds and the Homebrew cask all
-changed name at once, and the new install shares nothing with the old one.
-
 A fresh Tori opens a setup window instead of an empty sidebar. It shows a
 short intro once, then goes through agents, base folder, space, git hosts and
 a first project, and ends on a summary before Tori opens.
-
-### The rename
-
-- `brew install --cask gettori/tap/tori` installs it. Homebrew knows the old
-  cask's name, so it takes an existing `sway` install over rather than leaving
-  you with two. From a DMG it is the same drag into Applications as before, on
-  `Tori.app` now.
-- Nothing is migrated. Spaces, settings, agent overrides, checkpoints, the
-  layout the window remembered and every signed-in host start empty, and the
-  agents have to be signed in again.
-- Nothing is deleted either. `~/.config/sway`, `~/Library/Application
-  Support/sway`, `~/Library/Caches/sway`, the `com.sway.forge` keychain
-  entries, and `.sway/` and `refs/sway/` inside the repos Sway touched are all
-  still there, only never read. Delete them once Tori is set up the way you
-  want it.
-- `Sway.app` and `Tori.app` are different apps to macOS, so both sit in
-  Applications until you bin the old one. Worktrees Sway made are ordinary git
-  worktrees and stay where they are.
-- Releases before this one still say Sway on the releases page. That is what
-  shipped.
 
 ### First run
 
@@ -153,20 +130,20 @@ a chat draft, and a Claude turn that fails now says why.
 ## 26.914.0-alpha
 
 Claude accounts no longer assume `~/.claude`. You can add an account from a
-config folder you already have, and Sway stops creating an empty login on a
+config folder you already have, and Tori stops creating an empty login on a
 machine that keeps Claude somewhere else.
 
 ### Accounts
 
 - Add a Claude account from an existing config folder, like `~/.claude-work`,
-  instead of one Sway makes. The folder has to already hold Claude's files,
+  instead of one Tori makes. The folder has to already hold Claude's files,
   and if it is already signed in no login tab opens. The default home and a
   folder that is already added are refused.
 - A Browse button next to the folder field opens a folder picker with hidden
   folders shown, so dot folders like `~/.claude-work` are pickable.
 - Removing an account made from your own folder only forgets it. Nothing is
   deleted, and it is signed out only if you ask for that in the same dialog.
-- Sway no longer writes `~/.claude` at launch. Before, the health check, the
+- Tori no longer writes `~/.claude` at launch. Before, the health check, the
   session watcher and the model probe each created it, so a user who keeps
   Claude in another folder got an empty login they never asked for.
 - With no `~/.claude` on disk there is no default account: the accounts card
@@ -283,10 +260,10 @@ pane. Files shared across worktrees get a page of their own.
 
 ## 26.911.0-alpha
 
-Sway's commands get a dock, and they stop depending on your shell. The Shells
+Tori's commands get a dock, and they stop depending on your shell. The Shells
 sidebar mode is gone: a clone, bootstrap or sign-in opens in a dock at the
 bottom of whatever workspace is on screen, and an rc that attaches tmux or
-execs another shell no longer eats what Sway types.
+execs another shell no longer eats what Tori types.
 
 ### The dock
 
@@ -306,11 +283,11 @@ execs another shell no longer eats what Sway types.
 
 ### Shells and your rc
 
-- Every tab's shell gets `TERM_PROGRAM=Sway` and `TERM_PROGRAM_VERSION`, so an
-  rc can skip its tmux handover when it sees Sway. These replace whatever Sway
+- Every tab's shell gets `TERM_PROGRAM=Tori` and `TERM_PROGRAM_VERSION`, so an
+  rc can skip its tmux handover when it sees Tori. These replace whatever Tori
   inherited, so a dev run started from Apple Terminal no longer makes every tab
   source `/etc/zshrc_Apple_Terminal`.
-- Sway's own commands exec the program directly instead of typing a runner
+- Tori's own commands exec the program directly instead of typing a runner
   script into a login shell. PATH still comes from your login shell, anything
   else your rc exports doesn't. A failed command keeps its output and exit code
   on screen, a program that isn't on PATH shows `exit 127` instead of a tab
@@ -356,10 +333,10 @@ sidebar, the settings rail and the tab strip.
 
 - An ACP agent keeps its conversation privately and replays it only to a
   session that is already running, so a Codex tab restored after a restart
-  opened blank. Sway mirrors the events to a log of its own as they go past,
+  opened blank. Tori mirrors the events to a log of its own as they go past,
   and a restored chat reads its conversation back from there.
 - Your own turn is in that stream. Codex answers with no copy of the prompt, so
-  anything reading the log later saw the assistant talking to itself. Sway
+  anything reading the log later saw the assistant talking to itself. Tori
   writes down the prompt it sent before the request goes out, and drops an
   agent's echo where there is one.
 - The sidebar and the chat's status strip get a true prompt count for an ACP
@@ -495,14 +472,14 @@ the Features and Shells lists were redrawn against the design.
 
 - The Dock shows the sailboat on its own again, transparent background and
   all, instead of shrunk onto a light tile. macOS Tahoe puts that tile on
-  every plain `.icns`, so Sway now sets its icon on the running app the way
+  every plain `.icns`, so Tori now sets its icon on the running app the way
   `pnpm tauri dev` and VLC do. Finder and a Dock entry for the closed app
   still show the tile; only an Icon Composer asset can change those.
 
 ## 26.907.0-alpha
 
 Accounts: sign in more than once per agent, and every session says which login
-it runs as. Quota lands in the titlebar, Sway's own commands become terminal
+it runs as. Quota lands in the titlebar, Tori's own commands become terminal
 tabs under a new Shells mode, and PDFs open as real pages you can quote from.
 
 ### Accounts
@@ -539,7 +516,7 @@ tabs under a new Shells mode, and PDFs open as real pages you can quote from.
 
 - A third sidebar mode, Shells, beside Spaces and Features, carrying a count of
   what is running.
-- Sway's own commands (clone, bootstrap, install, sign-in) run as terminal tabs
+- Tori's own commands (clone, bootstrap, install, sign-in) run as terminal tabs
   in a workspace of their own rather than as opaque jobs. Each runs from a login
   shell with a runner reporting its exit, so `Ctrl-C` leaves you at a prompt
   instead of killing the tab.
@@ -582,7 +559,7 @@ tabs under a new Shells mode, and PDFs open as real pages you can quote from.
   the coloured app icon.
 - The bundle carries only what a macOS build uses: the Windows `.ico` and Square
   logos are gone, and so are the Vite and Tauri scaffold SVGs. The dev page is
-  titled Sway rather than the scaffold's default.
+  titled Tori rather than the scaffold's default.
 - Settings draws its own scrollbars in both places it scrolls.
 - The Ghostty and VS Code hand-offs moved to the right of the bar, and the dev
   tag is gone.
@@ -596,7 +573,7 @@ tabs under a new Shells mode, and PDFs open as real pages you can quote from.
 
 - macOS only; unsigned, so a manual install still needs the steps in
   [docs/INSTALL.md](docs/INSTALL.md).
-- Update checking is a notice only; Sway never installs an update for you.
+- Update checking is a notice only; Tori never installs an update for you.
 
 ## 26.904.0-alpha
 
@@ -627,7 +604,7 @@ that survive a reload.
 
 ### Attachments
 
-- A pasted or dropped file is written under `~/.config/sway/attachments` and
+- A pasted or dropped file is written under `~/.config/tori/attachments` and
   handed to the agent as a path, the same shape a tree drag or an `@` mention
   already had. Each becomes `[image 3]`, `[pdf 1]` or `[file 2]`, numbered per
   composer and never reused.
@@ -678,7 +655,7 @@ that survive a reload.
 
 - macOS only; unsigned, so a manual install still needs the steps in
   [docs/INSTALL.md](docs/INSTALL.md).
-- Update checking is a notice only; Sway never installs an update for you.
+- Update checking is a notice only; Tori never installs an update for you.
 
 ## 26.830.0-alpha
 
@@ -691,7 +668,7 @@ fits.
 - **Features**, a new sidebar mode beside Spaces. A Feature is one branch name
   (`feat/<slug>`) across any set of repositories. Creating one probes each repo
   for an existing branch, offers to adopt it, and builds a worktree per member
-  under `.sway/worktrees`; members that fail are listed with a Retry.
+  under `.tori/worktrees`; members that fail are listed with a Retry.
 - A Feature opens as one workspace. Editor tabs, terminals, panes and search
   history live under it, while git, the file watcher and the shell follow
   whichever member you are in.
@@ -738,7 +715,7 @@ fits.
 
 ### Window
 
-- Sway asks before quitting, and the red traffic light closes the window.
+- Tori asks before quitting, and the red traffic light closes the window.
 - The window drags from the titlebar and the sidebar again.
 - Breadcrumbs show the whole branch name.
 - A `tauri dev` window is told apart from the installed app.
@@ -746,14 +723,14 @@ fits.
 ### Install
 
 - The Homebrew cask clears the quarantine flag itself, so
-  `brew install --cask skarif2/tap/sway` now takes no flags. Homebrew 6 removed
+  `brew install --cask gettori/tap/tori` now takes no flags. Homebrew 6 removed
   `--no-quarantine`.
 
 ### Known limitations
 
 - macOS only; unsigned, so a manual install still needs the steps in
   [docs/INSTALL.md](docs/INSTALL.md).
-- Update checking is a notice only; Sway never installs an update for you.
+- Update checking is a notice only; Tori never installs an update for you.
 
 ## 26.824.0-alpha
 
@@ -763,11 +740,11 @@ First public release. macOS only, unsigned (see
 ### Agents
 
 - Data-driven agent adapters: Claude ships bundled, and any agent CLI can be
-  added by dropping a `schema_version = 1` TOML into `~/.config/sway/agents/`.
+  added by dropping a `schema_version = 1` TOML into `~/.config/tori/agents/`.
   See `ADAPTERS.md`. (This release also bundled `pi` and `opencode`; both were
   removed in a later one.)
 - An **Agents** section in Settings showing, per adapter, whether its CLI is
-  installed, which version, where sessions are read from, and what Sway can do
+  installed, which version, where sessions are read from, and what Tori can do
   with it. Binaries resolve against the login-shell PATH, so an agent installed
   via nvm, volta, asdf, or mise is found rather than reported missing.
 - First run opens on those cards with a short welcome, once.
@@ -801,4 +778,4 @@ First public release. macOS only, unsigned (see
 
 - macOS only; unsigned, so first launch needs the steps in
   [docs/INSTALL.md](docs/INSTALL.md).
-- Update checking is a notice only; Sway never installs an update for you.
+- Update checking is a notice only; Tori never installs an update for you.
