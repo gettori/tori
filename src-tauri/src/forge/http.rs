@@ -18,8 +18,8 @@
 //! thread's comments. One walker cannot cover both, and pretending otherwise is
 //! how the nested case silently truncates.
 
-use super::model::RateSnapshot;
-use super::{ForgeError, RateLimitKind};
+use super::model::{Grant, RateSnapshot};
+use super::{epoch_secs, ForgeError, RateLimitKind};
 use serde_json::Value;
 
 /// What replaces a credential in any human-readable rendering.
@@ -201,7 +201,7 @@ pub struct Recording {
     /// [`super::model::AuthState::Suspect`].
     suspect: std::sync::atomic::AtomicBool,
     rate: std::sync::Mutex<RateSnapshot>,
-    scopes: std::sync::Mutex<Option<Vec<String>>>,
+    grant: std::sync::Mutex<Grant>,
 }
 
 impl Recording {
@@ -210,7 +210,7 @@ impl Recording {
             inner,
             suspect: std::sync::atomic::AtomicBool::new(false),
             rate: std::sync::Mutex::new(RateSnapshot::default()),
-            scopes: std::sync::Mutex::new(None),
+            grant: std::sync::Mutex::new(Grant::default()),
         }
     }
 
@@ -218,10 +218,11 @@ impl Recording {
         *self.rate.lock().unwrap()
     }
 
-    /// GitHub's `X-OAuth-Scopes` from the last answer, `None` when it carried
-    /// none: a fine-grained token, or a host that does not send it.
-    pub fn scopes(&self) -> Option<Vec<String>> {
-        self.scopes.lock().unwrap().clone()
+    /// What the last answer said about the token itself. Both halves are `None`
+    /// when it carried neither header: a fine-grained token reports no classic
+    /// scopes, and only a token with a deadline is dated.
+    pub fn grant(&self) -> Grant {
+        self.grant.lock().unwrap().clone()
     }
 
     pub fn suspect(&self) -> bool {
@@ -233,9 +234,7 @@ impl Transport for Recording {
     fn send(&self, req: HttpRequest) -> Result<HttpResponse, ForgeError> {
         let resp = self.inner.send(req)?;
         *self.rate.lock().unwrap() = rate_snapshot(&resp);
-        *self.scopes.lock().unwrap() = resp.header("X-OAuth-Scopes").map(|s| {
-            s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
-        });
+        *self.grant.lock().unwrap() = grant_of(&resp);
         match resp.status {
             401 => self.suspect.store(true, std::sync::atomic::Ordering::Relaxed),
             // Any answered call clears the suspicion. A 401 from a proxy, a
@@ -255,6 +254,21 @@ impl Transport for Recording {
 /// A cap rather than an unbounded loop: a paging bug on either side would
 /// otherwise spend the whole rate budget in one call. Reported, never silent.
 pub const PAGE_CAP: usize = 20;
+
+/// What a GitHub response said about the token that made it.
+///
+/// Both headers ride answers the client was making anyway, so reading them here
+/// costs no request: `X-OAuth-Scopes` on any authenticated call, and
+/// `GitHub-Authentication-Token-Expiration` on a personal access token that was
+/// given a date.
+fn grant_of(resp: &HttpResponse) -> Grant {
+    Grant {
+        scopes: resp.header("X-OAuth-Scopes").map(|s| {
+            s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+        }),
+        expires_at: resp.header("GitHub-Authentication-Token-Expiration").and_then(epoch_secs),
+    }
+}
 
 /// What a response said about the rate budget, in either spelling.
 ///

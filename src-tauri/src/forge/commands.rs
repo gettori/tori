@@ -14,8 +14,8 @@ use super::accounts::{
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
-    AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef,
-    ReviewComment, ReviewEvent, ReviewThread, StatusReport,
+    AuthState, Capabilities, DraftComment, Grant, MergeableState, Paged, PrFile, PullRequest,
+    RepoRef, ReviewComment, ReviewEvent, ReviewThread, StatusReport,
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
@@ -245,7 +245,7 @@ fn cli_sign_in(
     let Some(token) = cli::token(host) else {
         return Ok(None);
     };
-    let named = match ask_viewer(Provider::Github, base_url, host, &token) {
+    let named = match ask_viewer(Provider::Github, base_url, host, &token, Source::Cli) {
         Ok(named) => named,
         // A `gh` that is installed but holds a stale token must not block the
         // token route behind an error about a credential the user never chose.
@@ -519,16 +519,16 @@ fn add_signed_in(
     source: Source,
     reauth: Option<&str>,
 ) -> Result<SignedIn, ForgeError> {
-    let named = ask_viewer(provider, base_url, host, &secret.access_token)?;
+    let named = ask_viewer(provider, base_url, host, &secret.access_token, source)?;
     store_signed_in(provider, base_url, host, secret, expires_at, source, reauth, named)
 }
 
-/// Who a token belongs to, and what it is allowed to do, in one round trip.
+/// Who a token belongs to, and what the host says the token itself holds.
 /// Split from the storing half so a route that has to decide *before* filing
 /// the account does not pay for a second viewer call.
 struct Named {
     login: String,
-    scopes: Option<Vec<String>>,
+    grant: Grant,
 }
 
 fn ask_viewer(
@@ -536,6 +536,7 @@ fn ask_viewer(
     base_url: &str,
     host: &str,
     token: &str,
+    source: Source,
 ) -> Result<Named, ForgeError> {
     let forge = forge_for(provider, base_url, Some(token.to_string()), None);
     let login = match forge.viewer() {
@@ -545,7 +546,7 @@ fn ask_viewer(
         }
         Err(e) => return Err(e),
     };
-    Ok(Named { login, scopes: reported_scopes(provider, forge.as_ref()) })
+    Ok(Named { login, grant: reported_grant(provider, source, forge.as_ref()) })
 }
 
 fn store_signed_in(
@@ -558,7 +559,12 @@ fn store_signed_in(
     reauth: Option<&str>,
     named: Named,
 ) -> Result<SignedIn, ForgeError> {
-    let Named { login, scopes } = named;
+    let Named { login, grant } = named;
+    // The flow's own lifetime wins where there is one: a browser token's
+    // `expires_in` is the authority on itself, and the grant read is the only
+    // source for a pasted one.
+    let expires_at = expires_at.or(grant.expires_at);
+    let scopes = grant.scopes;
     let account_id = accounts::update(|file| {
         let id = accounts::add_account(file, provider, base_url, host, &login, source, reauth)?;
         accounts::note_expiry(file, &id, expires_at);
@@ -854,6 +860,16 @@ fn refresher() -> &'static refresh::Refresher {
     R.get_or_init(refresh::Refresher::default)
 }
 
+/// What an account's deadline is right now, read live rather than captured, so
+/// the caller that waited at the renewal gate sees the deadline the winner just
+/// moved and spends no request of its own.
+fn live_deadline(id: &str) -> Option<u64> {
+    match auth::state(id) {
+        AuthState::Suspect { .. } => Some(0),
+        _ => accounts::find(&accounts::load(), id).and_then(|(_, a)| a.expires_at),
+    }
+}
+
 /// The access token to act as, renewed first when it is near its deadline or
 /// when the last call came back 401.
 ///
@@ -861,18 +877,35 @@ fn refresher() -> &'static refresh::Refresher {
 /// spent, so the next call renews it and clears the suspicion instead of
 /// waiting for the user. Only a refused renewal makes that suspicion stick.
 fn fresh_token(file: &AccountsFile, host: &str, account: &accounts::Account) -> Option<String> {
+    fresh_token_with(file, host, account, live_deadline)
+}
+
+/// The same with the deadline supplied, so a test can put an account past one
+/// without the accounts file the live reader goes through.
+fn fresh_token_with(
+    file: &AccountsFile,
+    host: &str,
+    account: &accounts::Account,
+    deadline_of: impl Fn(&str) -> Option<u64>,
+) -> Option<String> {
     let id = account.id.clone();
     let current = auth::token(&id);
-    // Re-read rather than captured, so the caller that waited at the gate sees
-    // the deadline the winner just moved and spends no request of its own.
-    let deadline = || match auth::state(&id) {
-        AuthState::Suspect { .. } => Some(0),
-        _ => accounts::find(&accounts::load(), &id).and_then(|(_, a)| a.expires_at),
-    };
+    let deadline = || deadline_of(&id);
     if !refresh::due(deadline(), now_secs()) {
         return current;
     }
-    let refresh_token = token::load_secret(&id).ok().flatten()?.refresh_token?;
+    let Some(refresh_token) = token::load_secret(&id).ok().flatten().and_then(|s| s.refresh_token)
+    else {
+        // A pasted token carries a deadline and nothing that can replace it.
+        // Dropping it on that date would sign the account out on Tori's clock,
+        // ahead of the host that is the only authority on whether it still
+        // works. A rejection is that authority having already answered, so it
+        // is the one due token still withheld.
+        return match auth::state(&id) {
+            AuthState::Suspect { .. } => None,
+            _ => current,
+        };
+    };
     let client_id = client_id_for(file, account.provider, host)?;
     let endpoints = match account.provider {
         Provider::Github => device_flow::github_endpoints(),
@@ -1318,22 +1351,43 @@ fn learn_login(account_id: &str) -> Result<String, ForgeError> {
     auth::note_result(account_id, &result);
     let login = result?.login;
     auth::note_login(account_id, login.clone());
-    let scopes = reported_scopes(account.provider, forge.as_ref());
+    let grant = reported_grant(account.provider, account.source, forge.as_ref());
     accounts::update(|file| {
         accounts::note_login(file, account_id, &login);
-        if let Some(scopes) = scopes {
+        if let Some(scopes) = grant.scopes {
             accounts::note_scopes(file, account_id, scopes);
+        }
+        // Only when the host named one: the grant read says nothing about a
+        // token it could not ask about, and writing that silence back would
+        // erase a deadline the sign-in recorded.
+        if grant.expires_at.is_some() {
+            accounts::note_expiry(file, account_id, grant.expires_at);
         }
         Ok(())
     })?;
     Ok(login)
 }
 
-/// What to record after a viewer call answered. GitHub only, and a token that
-/// reports no classic scopes (a fine-grained one) records an empty list, so it
-/// reads as asked and is not asked again at every launch.
-fn reported_scopes(provider: Provider, forge: &dyn Forge) -> Option<Vec<String>> {
-    (provider == Provider::Github).then(|| forge.granted_scopes().unwrap_or_default())
+/// What to record after a viewer call answered.
+///
+/// GitHub is free: both headers rode the call that just landed, and a token
+/// reporting no classic scopes (a fine-grained one) records an empty list, so it
+/// reads as asked and is not asked again at every launch. GitLab costs a
+/// request, and only a pasted token is worth it: a browser account's lifetime
+/// came with the exchange that minted it, and the endpoint is a personal access
+/// token's own record.
+fn reported_grant(provider: Provider, source: Source, forge: &dyn Forge) -> Grant {
+    match provider {
+        Provider::Github => {
+            let grant = forge.token_grant();
+            Grant { scopes: Some(grant.scopes.unwrap_or_default()), ..grant }
+        }
+        // Passed through as it came: GitLab has no fine-grained tokens, so an
+        // instance that would not answer leaves both halves genuinely unknown,
+        // which an empty list would misreport as a token holding nothing.
+        Provider::Gitlab if source == Source::Token => forge.token_grant(),
+        Provider::Gitlab => Grant::default(),
+    }
 }
 
 fn log_startup(message: &str) {
@@ -1600,6 +1654,36 @@ mod tests {
     }
 
     #[test]
+    fn a_pasted_token_past_its_deadline_still_goes_out() {
+        // Nothing here can renew it, and Tori's clock is not the authority on
+        // whether the host still accepts it. Withholding it on the date would
+        // sign the account out early, with no way back but another paste.
+        let id = "github-com-lapsed-pat";
+        // Installs the mock credential store process-wide; the service name is
+        // this test's own, so nothing else reads what it writes.
+        let _ = super::super::token::tests::mock_entry_in("com.tori.forge.lapsed-pat", id);
+        auth::sign_in(id, &Secret::access("ghp_lapsed".into()), Some("lapsed".into())).unwrap();
+
+        let account = accounts::Account {
+            id: id.into(),
+            provider: Provider::Github,
+            base_url: "https://github.com".into(),
+            login: Some("lapsed".into()),
+            label: "lapsed".into(),
+            expires_at: Some(1),
+            rejected_at: None,
+            scopes: None,
+            source: Source::Token,
+        };
+        let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| {
+            Some(1)
+        });
+        assert_eq!(token.as_deref(), Some("ghp_lapsed"));
+
+        auth::sign_out(id).unwrap();
+    }
+
+    #[test]
     fn a_github_sign_in_records_the_scopes_the_host_reported_and_gitlab_records_none() {
         use super::super::http::test_support::StubTransport;
         let stub = |resp| Box::new(StubTransport::new(vec![resp]));
@@ -1613,7 +1697,8 @@ mod tests {
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("github.com").unwrap();
         let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", accounts::Source::Token, None).unwrap();
-        accounts::note_scopes(&mut file, &id, reported_scopes(Provider::Github, &github).unwrap());
+        let grant = reported_grant(Provider::Github, Source::Token, &github);
+        accounts::note_scopes(&mut file, &id, grant.scopes.unwrap());
         let file: AccountsFile = serde_json::from_str(&serde_json::to_string(&file).unwrap()).unwrap();
         let (_, account) = accounts::find(&file, &id).unwrap();
         assert_eq!(account.scopes.as_deref(), Some(&["repo".to_string(), "workflow".to_string()][..]));
@@ -1627,7 +1712,7 @@ mod tests {
             None,
         );
         fine.viewer().unwrap();
-        assert_eq!(reported_scopes(Provider::Github, &fine), Some(vec![]));
+        assert_eq!(reported_grant(Provider::Github, Source::Token, &fine).scopes, Some(vec![]));
 
         let gitlab = gitlab::GitLabForge::new(
             stub(StubTransport::json(200, r#"{"username":"arif"}"#)),
@@ -1636,7 +1721,60 @@ mod tests {
             None,
         );
         gitlab.viewer().unwrap();
-        assert_eq!(reported_scopes(Provider::Gitlab, &gitlab), None);
+        // The one GitLab source that is not asked: the browser flow already said
+        // how long its token lives, and the endpoint is a personal access
+        // token's own record anyway.
+        assert_eq!(reported_grant(Provider::Gitlab, Source::Browser, &gitlab), Grant::default());
+    }
+
+    #[test]
+    fn a_dated_token_records_its_deadline_and_a_browser_gitlab_account_is_not_asked() {
+        use super::super::http::test_support::StubTransport;
+        // GitHub says so in a header on the viewer call itself, down to the
+        // second and always in UTC.
+        let github = github::GitHubForge::new(
+            Box::new(StubTransport::new(vec![StubTransport::with_headers(
+                200,
+                &[
+                    ("X-OAuth-Scopes", "repo, workflow"),
+                    ("GitHub-Authentication-Token-Expiration", "2026-12-31 23:59:59 UTC"),
+                ],
+                r#"{"login":"arif"}"#,
+            )])),
+            "https://github.com",
+            Some("ghp_dated".into()),
+            None,
+        );
+        github.viewer().unwrap();
+        let grant = reported_grant(Provider::Github, Source::Token, &github);
+        assert_eq!(grant.expires_at, Some(1_798_761_599));
+
+        // GitLab keeps both facts on the token's own record, and dates it to the
+        // day rather than the second.
+        let gitlab = gitlab::GitLabForge::new(
+            Box::new(StubTransport::new(vec![
+                StubTransport::json(200, r#"{"username":"arif"}"#),
+                StubTransport::json(200, r#"{"scopes":["api","write_repository"],"expires_at":"2027-03-01"}"#),
+            ])),
+            "https://gitlab.com",
+            Some("glpat_dated".into()),
+            None,
+        );
+        gitlab.viewer().unwrap();
+        let grant = reported_grant(Provider::Gitlab, Source::Token, &gitlab);
+        assert_eq!(grant.expires_at, Some(1_803_859_200));
+        assert_eq!(grant.scopes.as_deref(), Some(&["api".to_string(), "write_repository".to_string()][..]));
+
+        // The same instance from the browser: one queued response, and a second
+        // request would exhaust it, so this also proves nothing was spent.
+        let browser = gitlab::GitLabForge::new(
+            Box::new(StubTransport::new(vec![StubTransport::json(200, r#"{"username":"arif"}"#)])),
+            "https://gitlab.com",
+            Some("glpat_browser".into()),
+            None,
+        );
+        browser.viewer().unwrap();
+        assert_eq!(reported_grant(Provider::Gitlab, Source::Browser, &browser), Grant::default());
     }
 
     #[test]
