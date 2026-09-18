@@ -1,11 +1,14 @@
-//! The OAuth device flow: how Tori gets a forge token without a redirect
+//! The OAuth device flow: how Tori gets a GitLab token without a redirect
 //! server or a client secret.
+//!
+//! GitLab only. GitHub hosts sign in through the CLI or a pasted token, so
+//! Tori registers no GitHub application.
 //!
 //! Three steps, and the middle one is a loop:
 //!
-//!   1. `POST /login/device/code` returns a short `user_code` to show, a
+//!   1. `POST /oauth/authorize_device` returns a short `user_code` to show, a
 //!      `verification_uri` to open, and a `device_code` to poll with.
-//!   2. `POST /login/oauth/access_token` is polled until it stops answering
+//!   2. `POST /oauth/token` is polled until it stops answering
 //!      `authorization_pending`.
 //!   3. The token that comes back goes to the keychain via [`super::token`].
 //!
@@ -21,57 +24,36 @@ use super::ForgeError;
 use serde::Serialize;
 use serde_json::Value;
 
-/// The OAuth app's client id.
+/// gitlab.com's client id, public by design and committed on purpose: the
+/// device flow has no client secret, which is exactly why it suits a desktop
+/// app. A secret shipped in a binary is a secret shipped to every user, so
+/// there is none to ship.
 ///
-/// Public by design, and committed on purpose: the device flow has no client
-/// secret, which is exactly why it suits a desktop app. A secret shipped in a
-/// binary is a secret shipped to every user, so there is none to ship.
-/// A build with this left empty refuses to start a flow it cannot finish
-/// instead of failing at GitHub, which is why the shaping functions guard on an
-/// empty id rather than trusting the constant.
-pub const CLIENT_ID: &str = "Ov23liYTSvmd1SBenOiR";
-
-/// GitLab's equivalent, per instance rather than global: a self-managed server
-/// only has an application if its own admin registered one, which is why the
-/// id is stored per host and this constant covers gitlab.com alone.
-/// The application needs "Device authorization grant" ticked, or gitlab.com
-/// answers `access_denied` before anyone signs in.
+/// Per instance rather than global: a self-managed server only has an
+/// application if its own admin registered one, which is why the id is stored
+/// per host and this constant covers gitlab.com alone. The application needs
+/// "Device authorization grant" ticked, or gitlab.com answers `access_denied`
+/// before anyone signs in.
 pub const GITLAB_COM_CLIENT_ID: &str = "1d723468eb20d4c10bd604bf602f4435985ace170788a7cfecc82f4f45cb4822";
 
-/// The scope asked for. `repo` covers private repositories, PRs, and the
-/// Checks API. `workflow` because GitHub refuses a push that touches
-/// `.github/workflows/` without it, and agents edit CI. Still no `read:org`.
-const SCOPE: &str = "repo workflow";
-/// GitLab's equivalent of `repo`. `write_repository` is deliberately absent:
-/// pushing through the account is Phase 5's switch, and asking for it here
-/// would widen every sign-in for a feature that is off.
+/// GitLab's equivalent of GitHub's `repo`. `write_repository` is deliberately
+/// absent: pushing through the account is Phase 5's switch, and asking for it
+/// here would widen every sign-in for a feature that is off.
 const GITLAB_SCOPE: &str = "api";
 
 pub const ACCESS_DENIED: &str = "access_denied";
 pub const EXPIRED_TOKEN: &str = "expired_token";
 
-const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
-const ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
-
-/// Where one provider's device flow lives, and what it asks for.
+/// Where an instance's device flow lives, and what it asks for.
 ///
-/// Both forges implement RFC 8628, so the two steps and every error string are
-/// shared; what differs is the origin and the scope. GitLab's endpoints hang off
-/// the instance's own base URL, which is what makes a self-managed server the
-/// same flow at a different address.
+/// An address rather than a constant because GitLab's endpoints hang off the
+/// instance's own base URL, which is what makes a self-managed server the same
+/// RFC 8628 flow at a different address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Endpoints {
     pub code_url: String,
     pub token_url: String,
     pub scope: &'static str,
-}
-
-pub fn github_endpoints() -> Endpoints {
-    Endpoints {
-        code_url: DEVICE_CODE_URL.to_string(),
-        token_url: ACCESS_TOKEN_URL.to_string(),
-        scope: SCOPE,
-    }
 }
 
 pub fn gitlab_endpoints(base_url: &str) -> Endpoints {
@@ -83,16 +65,12 @@ pub fn gitlab_endpoints(base_url: &str) -> Endpoints {
     }
 }
 
-/// The floor for the poll interval when the server does not name one. GitHub's
-/// documented default is 5 seconds.
+/// The floor for the poll interval when the server does not name one. RFC
+/// 8628's documented default is 5 seconds.
 const DEFAULT_INTERVAL_SECS: u64 = 5;
 /// What a `slow_down` adds when the response carries no new interval. The RFC
 /// requires the client to increase the interval by 5 seconds on this signal.
 const SLOW_DOWN_BUMP_SECS: u64 = 5;
-
-pub fn is_configured() -> bool {
-    !CLIENT_ID.is_empty()
-}
 
 /// What the frontend is allowed to see after step 1.
 ///
@@ -149,7 +127,7 @@ pub enum PollOutcome {
     Authorized { token: TokenSet },
     Pending { next_interval_secs: u64 },
     SlowDown { next_interval_secs: u64 },
-    /// The user pressed cancel on GitHub's page.
+    /// The user pressed cancel on the instance's page.
     Denied,
     /// The device code aged out; the flow has to start over.
     Expired,
@@ -230,8 +208,8 @@ fn form_post(url: &str, body: String) -> HttpRequest {
         method: "POST",
         url: url.to_string(),
         headers: vec![
-            // Without this GitHub answers form-encoded. Asking for JSON keeps
-            // one parser in this module rather than two.
+            // Asked for explicitly so no server's form-encoded default reaches
+            // the parser, which keeps one reader in this module rather than two.
             ("Accept".into(), "application/json".into()),
             ("Content-Type".into(), "application/x-www-form-urlencoded".into()),
             ("User-Agent".into(), "tori".into()),
@@ -240,13 +218,9 @@ fn form_post(url: &str, body: String) -> HttpRequest {
     }
 }
 
-// The two request-shaping functions take the client id explicitly rather than
-// reading the constant. Built while `CLIENT_ID` was still empty, a version that
-// guarded on the constant would have bailed before shaping anything, so the form
-// encoding, the URLs and the `grant_type` would have run for real for the first
-// time on the day the app was registered. Passing the id in meant they were
-// exercised before that, and registration changed a value rather than a code
-// path. It still buys the tests a stand-in id instead of the live one.
+// The request-shaping functions take the client id explicitly because a
+// self-managed instance's id is the one its own admin registered, so there is no
+// constant to read. It also buys the tests a stand-in instead of the live one.
 
 /// Step 1: ask for a device code.
 pub fn start_with(
@@ -285,9 +259,9 @@ pub fn poll_once_with(
             flow.device_code
         ),
     ))?;
-    // The waiting cases arrive as an `error` field, with 200 from GitHub and 400
-    // from GitLab (RFC 8628's own status), so the body is the signal, not the
-    // status. Only a failure that carries no OAuth error is an error here.
+    // The waiting cases arrive as an `error` field, and GitLab sends them with
+    // 400 (RFC 8628's own status), so the body is the signal and not the status.
+    // Only a failure that carries no OAuth error is an error here.
     let oauth_error = resp.status == 400
         && serde_json::from_str::<Value>(&resp.body).is_ok_and(|v| v.get("error").is_some_and(Value::is_string));
     if resp.status >= 400 && !oauth_error {
@@ -326,16 +300,6 @@ pub fn refresh_with(
         .ok_or_else(|| ForgeError::Malformed { message: "refresh returned no token".into() })
 }
 
-// --- thin wrappers over the registered client id ---
-
-pub fn start(transport: &dyn Transport) -> Result<(DevicePrompt, PendingFlow), ForgeError> {
-    start_with(transport, CLIENT_ID, &github_endpoints())
-}
-
-pub fn poll_once(transport: &dyn Transport, flow: &PendingFlow) -> Result<PollOutcome, ForgeError> {
-    poll_once_with(transport, CLIENT_ID, &github_endpoints(), flow)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::http::test_support::StubTransport;
@@ -353,8 +317,8 @@ mod tests {
 
     #[test]
     fn an_authorized_poll_yields_the_token() {
-        let out = classify_poll(r#"{"access_token":"gho_x","token_type":"bearer"}"#, 5).unwrap();
-        assert_eq!(out, authorized("gho_x"));
+        let out = classify_poll(r#"{"access_token":"glpat_x","token_type":"bearer"}"#, 5).unwrap();
+        assert_eq!(out, authorized("glpat_x"));
     }
 
     #[test]
@@ -484,7 +448,7 @@ mod tests {
     fn step_one_splits_what_the_user_sees_from_what_stays_in_rust() {
         let (prompt, flow) = parse_device_code(
             r#"{"device_code":"dc_secret","user_code":"WDJB-MJHT",
-                "verification_uri":"https://github.com/login/device",
+                "verification_uri":"https://gitlab.com/oauth/device",
                 "expires_in":900,"interval":5}"#,
         )
         .unwrap();
@@ -510,65 +474,45 @@ mod tests {
     }
 
     #[test]
-    fn an_unregistered_build_refuses_to_start_a_flow_it_cannot_finish() {
-        // Without an id, starting anyway would send GitHub a request guaranteed
-        // to fail and report it as a server problem rather than a missing
-        // registration. The guard lives in the shaping functions rather than in
-        // `start`, so it stays reachable from a test now that the real constant
-        // is filled in.
+    fn an_unregistered_instance_refuses_to_start_a_flow_it_cannot_finish() {
+        // A self-managed server with no application registered has no id to
+        // send. Starting anyway would post a request guaranteed to fail and
+        // report it as a server problem rather than a missing registration.
         let t = StubTransport::new(vec![]);
-        let gh = github_endpoints();
-        assert_eq!(start_with(&t, "", &gh).unwrap_err(), ForgeError::NotAuthenticated);
+        let acme = gitlab_endpoints("https://git.acme.test");
+        assert_eq!(start_with(&t, "", &acme).unwrap_err(), ForgeError::NotAuthenticated);
         let flow = PendingFlow { device_code: "d".into(), interval_secs: 5 };
-        assert_eq!(poll_once_with(&t, "", &gh, &flow).unwrap_err(), ForgeError::NotAuthenticated);
+        assert_eq!(poll_once_with(&t, "", &acme, &flow).unwrap_err(), ForgeError::NotAuthenticated);
         assert_eq!(t.request_count(), 0, "nothing reached the wire");
     }
 
     #[test]
-    fn the_registered_client_id_is_the_one_the_flow_uses() {
-        // The gate this phase was blocked on. An empty constant would leave
-        // every sign-in attempt failing as `NotAuthenticated` with nothing on
-        // the wire, which looks identical to a rejected credential.
-        assert!(is_configured(), "the OAuth app's client id is committed");
-
-        let t = StubTransport::new(vec![StubTransport::json(
-            200,
-            r#"{"device_code":"d","user_code":"U","verification_uri":"https://x","interval":5}"#,
-        )]);
-        start(&t).unwrap();
-        assert!(
-            t.bodies()[0].contains(&format!("client_id={CLIENT_ID}")),
-            "the wrapper sends the registered id, not a stand-in"
-        );
-    }
-
-    #[test]
-    fn step_one_sends_the_form_github_expects() {
+    fn step_one_sends_the_form_the_oauth_endpoint_expects() {
         // Exercised with a stand-in id, so the assertion is about the shape of
         // the request rather than about which app it names.
         let t = StubTransport::new(vec![StubTransport::json(
             200,
             r#"{"device_code":"d","user_code":"U","verification_uri":"https://x","interval":5}"#,
         )]);
-        start_with(&t, "Iv1.test", &github_endpoints()).unwrap();
+        let acme = gitlab_endpoints("https://git.acme.test");
+        start_with(&t, "app-id", &acme).unwrap();
 
         let req = &t.requests()[0];
         assert_eq!(req.method, "POST");
-        assert_eq!(req.url, DEVICE_CODE_URL);
+        assert_eq!(req.url, "https://git.acme.test/oauth/authorize_device");
         let body = req.body.clone().unwrap();
-        assert!(body.contains("client_id=Iv1.test"));
-        assert!(body.contains("scope=repo%20workflow"), "repo and workflow, form-encoded, nothing wider");
-        // Without an explicit Accept, GitHub answers form-encoded and the JSON
-        // parser above would have nothing to read.
+        assert!(body.contains("client_id=app-id"));
+        // Without an explicit Accept a server may answer form-encoded, and the
+        // JSON parser above would have nothing to read.
         assert!(req.headers.iter().any(|(k, v)| k == "Accept" && v == "application/json"));
     }
 
     #[test]
     fn the_poll_sends_the_device_grant_type() {
-        let t = StubTransport::new(vec![StubTransport::json(200, r#"{"access_token":"gho_x"}"#)]);
+        let t = StubTransport::new(vec![StubTransport::json(200, r#"{"access_token":"glpat_x"}"#)]);
         let flow = PendingFlow { device_code: "dc".into(), interval_secs: 5 };
-        let out = poll_once_with(&t, "Iv1.test", &github_endpoints(), &flow).unwrap();
-        assert_eq!(out, authorized("gho_x"));
+        let out = poll_once_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), &flow).unwrap();
+        assert_eq!(out, authorized("glpat_x"));
 
         let body = t.requests()[0].body.clone().unwrap();
         assert!(body.contains("device_code=dc"));
@@ -580,7 +524,7 @@ mod tests {
 
     #[test]
     fn a_pending_poll_is_read_from_the_body_not_the_status() {
-        // GitHub answers 200 while waiting, so a status-first reading would
+        // A server may answer 200 while waiting, so a status-first reading would
         // treat every wait as success and every success as indistinguishable.
         let t = StubTransport::new(vec![StubTransport::json(
             200,
@@ -588,7 +532,7 @@ mod tests {
         )]);
         let flow = PendingFlow { device_code: "dc".into(), interval_secs: 5 };
         assert_eq!(
-            poll_once_with(&t, "Iv1.test", &github_endpoints(), &flow).unwrap(),
+            poll_once_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), &flow).unwrap(),
             PollOutcome::Pending { next_interval_secs: 5 }
         );
     }
@@ -619,7 +563,10 @@ mod tests {
     fn the_poll_request_never_puts_the_device_code_in_a_debug_string() {
         // `StubTransport` records requests and a failing assertion prints them,
         // so the flow's secret must be redacted there like any other.
-        let req = form_post(ACCESS_TOKEN_URL, "device_code=dc_secret&client_id=pub".into());
+        let req = form_post(
+            &gitlab_endpoints("https://git.acme.test").token_url,
+            "device_code=dc_secret&client_id=pub".into(),
+        );
         let debugged = format!("{req:?}");
         assert!(!debugged.contains("dc_secret"), "device code leaked: {debugged}");
         assert!(debugged.contains("client_id=pub"), "the public half stays readable");
