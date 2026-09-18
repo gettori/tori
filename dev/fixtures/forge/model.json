@@ -50,7 +50,8 @@
     "scopes": [
       "repo",
       "workflow"
-    ]
+    ],
+    "source": "cli"
   },
   "forgeError": {
     "kind": "rateLimited",

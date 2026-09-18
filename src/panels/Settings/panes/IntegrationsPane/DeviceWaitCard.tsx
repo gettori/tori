@@ -2,7 +2,8 @@ import { Show } from "solid-js";
 import { Check } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
-import { openInBrowser, type DevicePrompt } from "./deviceFlow";
+import { openInBrowser } from "./deviceFlow";
+import type { DevicePrompt } from "../../../../utils/forgeTypes";
 import cards from "./ForgeSection.module.css";
 
 function codeGroups(code: string): [string, string] {

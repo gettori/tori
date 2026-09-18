@@ -482,6 +482,7 @@ mod tests {
                     expires_at: Some(1_785_179_400),
                     rejected_at: None,
                     scopes: Some(vec!["repo".into(), "workflow".into()]),
+                    source: super::super::accounts::Source::Cli,
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

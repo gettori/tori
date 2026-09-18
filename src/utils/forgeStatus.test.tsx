@@ -81,6 +81,7 @@ function account(id: string, auth: AuthState): ForgeAccount {
     expiresAt: null,
     rejectedAt: null,
     scopes: null,
+    source: "token",
     auth,
   };
 }

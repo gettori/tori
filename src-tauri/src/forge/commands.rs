@@ -8,7 +8,9 @@
 //! to the frontend, because a `device_code` is a secret: whoever holds one can
 //! complete the exchange. The frontend gets a user code and a URL.
 
-use super::accounts::{self, AccountView, AccountsFile, HostView, Provider, Resolution, SignInRoutes};
+use super::accounts::{
+    self, AccountView, AccountsFile, HostView, Provider, Resolution, SignInRoutes, Source,
+};
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
@@ -17,7 +19,10 @@ use super::model::{
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
-use super::{auth, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
+use super::{
+    auth, cli, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError,
+    MergeMethod,
+};
 use crate::credential::Reach;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -144,11 +149,148 @@ pub fn forge_accounts() -> Vec<HostView> {
     accounts::view(&accounts::load(), auth::state)
 }
 
+/// What happened when the user pressed the host's one sign-in button.
+///
+/// The frontend offers no choice of route, so this is the answer to "sign me
+/// in", not a menu: either it is already done, or here is the browser to go to,
+/// or here is what a token for this host has to look like.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
+pub enum SignInStart {
+    /// `gh` already held a usable token, so nothing was asked of the user.
+    SignedIn { account_id: String, login: String },
+    /// A device flow is running; poll it with `forge_device_poll`. The routes
+    /// ride along so a flow that fails can fall back to a token without asking
+    /// again.
+    Browser { prompt: DevicePrompt, routes: SignInRoutes },
+    Token { routes: SignInRoutes },
+}
+
+/// Whether `gh`'s token may answer for this sign-in.
+///
+/// Only where nothing of the user's is overwritten by it: a host that has no
+/// account for `gh`'s login yet, or a re-authentication of the very account
+/// `gh` supplied in the first place. Anywhere else the user is adding or
+/// repairing a *second* identity, and `gh` speaks for only one, so it would
+/// quietly hand back the first.
+fn gh_may_answer(file: &AccountsFile, host: &str, login: &str, reauth: Option<&str>) -> bool {
+    let same_login = |a: &accounts::Account| {
+        a.login.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(login))
+    };
+    match reauth {
+        // The host is checked too: ids are unique across hosts, so one from
+        // another host would otherwise be judged against this host's accounts.
+        Some(id) => accounts::find(file, id)
+            .is_some_and(|(at, a)| at == host && a.source == Source::Cli && same_login(a)),
+        None => !file
+            .hosts
+            .get(host)
+            .is_some_and(|record| record.accounts.iter().any(same_login)),
+    }
+}
+
 #[tauri::command(async)]
-pub fn forge_sign_in_routes(provider: Provider, base_url: String) -> Result<SignInRoutes, ForgeErrorDto> {
+pub fn forge_sign_in_start(
+    state: tauri::State<'_, DeviceFlowState>,
+    provider: Provider,
+    base_url: String,
+    account_id: Option<String>,
+) -> Result<SignInStart, ForgeErrorDto> {
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
     let file = accounts::load();
-    Ok(routes_in(&file, provider, &base_url, &host))
+    let reauth = account_id.as_deref();
+    if provider == Provider::Github {
+        if let Some(signed) = cli_sign_in(&file, &base_url, &host, reauth)? {
+            return Ok(SignInStart::SignedIn { account_id: signed.account_id, login: signed.login });
+        }
+        // GitHub's browser route is Tori's own application, which an
+        // organisation can refuse to approve. A token the user makes themselves
+        // is the route that survives that, so it is the only fallback offered.
+        return Ok(SignInStart::Token { routes: routes_in(&file, provider, &base_url, &host) });
+    }
+    let routes = routes_in(&file, provider, &base_url, &host);
+    if routes.device_flow {
+        let prompt = start_device_flow(&state, &file, provider, base_url, host, account_id)?;
+        return Ok(SignInStart::Browser { prompt, routes });
+    }
+    Ok(SignInStart::Token { routes })
+}
+
+/// Why a `cli` account cannot be repaired from `gh` as it stands.
+///
+/// `gh auth switch` moves the CLI to another login while Tori's account keeps
+/// pointing at the first. Storing the new token under the old id would move an
+/// account to somebody else's identity behind an id that repositories already
+/// pick, so the switch is named instead: only the user can decide which of the
+/// two they meant.
+fn switched_away(account: &accounts::Account, gh_login: &str) -> Option<ForgeError> {
+    let held = account.login.as_deref()?;
+    let moved = account.source == Source::Cli && !held.eq_ignore_ascii_case(gh_login);
+    moved.then(|| ForgeError::Invalid {
+        message: format!(
+            "The GitHub CLI is signed in as {gh_login} now, not {held}. \
+             Run `gh auth switch` to go back, or paste a token for {held}."
+        ),
+    })
+}
+
+/// `Ok(None)` is the ordinary answer on a machine with no `gh`, or one whose
+/// `gh` speaks for somebody else: the caller falls through to a token.
+fn cli_sign_in(
+    file: &AccountsFile,
+    base_url: &str,
+    host: &str,
+    reauth: Option<&str>,
+) -> Result<Option<SignedIn>, ForgeError> {
+    let Some(token) = cli::token(host) else {
+        return Ok(None);
+    };
+    let named = match ask_viewer(Provider::Github, base_url, host, &token) {
+        Ok(named) => named,
+        // A `gh` that is installed but holds a stale token must not block the
+        // token route behind an error about a credential the user never chose.
+        Err(_) => return Ok(None),
+    };
+    // Said out loud only where `gh` was the account's own route, because that is
+    // the one case where the user pressed a button expecting `gh` to answer.
+    if let Some(account) = reauth.and_then(|id| accounts::find(file, id)).map(|(_, a)| a) {
+        if let Some(e) = switched_away(account, &named.login) {
+            return Err(e);
+        }
+    }
+    if !gh_may_answer(file, host, &named.login, reauth) {
+        return Ok(None);
+    }
+    store_signed_in(
+        Provider::Github,
+        base_url,
+        host,
+        Secret::access(token),
+        None,
+        Source::Cli,
+        reauth,
+        named,
+    )
+    .map(Some)
+}
+
+/// A `cli` account the host stopped accepting, repaired from `gh` without
+/// asking the user.
+///
+/// The token belongs to `gh`, which rotates it on its own schedule, so a
+/// rejection here usually means `gh` already holds a newer one. Run from the
+/// startup probe beside [`learn_login`], off the setup thread, because reading
+/// `gh` spawns a process.
+fn recover_cli(id: &str) -> Result<Option<SignedIn>, ForgeError> {
+    let file = accounts::load();
+    let Some((host, account)) = accounts::find(&file, id) else {
+        return Ok(None);
+    };
+    if account.source != Source::Cli {
+        return Ok(None);
+    }
+    let (base_url, host) = (account.base_url.clone(), host.to_string());
+    cli_sign_in(&file, &base_url, &host, Some(id))
 }
 
 // Per host, because only that instance can issue one: gitlab.com's is Tori's
@@ -252,22 +394,15 @@ fn client_id_for(file: &AccountsFile, provider: Provider, host: &str) -> Option<
 }
 
 /// Starts a device flow, holding the secret half in Rust.
-#[tauri::command(async)]
-pub fn forge_device_start(
-    state: tauri::State<'_, DeviceFlowState>,
+fn start_device_flow(
+    state: &tauri::State<'_, DeviceFlowState>,
+    file: &AccountsFile,
     provider: Provider,
     base_url: String,
+    host: String,
     account_id: Option<String>,
-) -> Result<DevicePrompt, ForgeErrorDto> {
-    let (base_url, host) = accounts::normalize_base_url(&base_url)?;
-    let file = accounts::load();
-    if !routes_in(&file, provider, &base_url, &host).device_flow {
-        return Err(ForgeError::Invalid {
-            message: format!("Tori has no browser sign-in for {host}. Paste a token instead."),
-        }
-        .into());
-    }
-    let client_id = client_id_for(&file, provider, &host).unwrap_or_default();
+) -> Result<DevicePrompt, ForgeError> {
+    let client_id = client_id_for(file, provider, &host).unwrap_or_default();
     let endpoints = match provider {
         Provider::Github => device_flow::github_endpoints(),
         Provider::Gitlab => device_flow::gitlab_endpoints(&base_url),
@@ -312,6 +447,7 @@ pub fn forge_device_poll(
                 &sign_in.host,
                 Secret { access_token: t.access_token, refresh_token: t.refresh_token },
                 expires_at(t.expires_in_secs),
+                Source::Browser,
                 sign_in.reauth.as_deref(),
             )?;
             PollReport::Authorized { account_id: signed.account_id, login: signed.login }
@@ -360,6 +496,7 @@ pub fn forge_add_token(
         &host,
         Secret::access(token.to_string()),
         None,
+        Source::Token,
         account_id.as_deref(),
     )?)
 }
@@ -379,9 +516,28 @@ fn add_signed_in(
     host: &str,
     secret: Secret,
     expires_at: Option<u64>,
+    source: Source,
     reauth: Option<&str>,
 ) -> Result<SignedIn, ForgeError> {
-    let forge = forge_for(provider, base_url, Some(secret.access_token.clone()), None);
+    let named = ask_viewer(provider, base_url, host, &secret.access_token)?;
+    store_signed_in(provider, base_url, host, secret, expires_at, source, reauth, named)
+}
+
+/// Who a token belongs to, and what it is allowed to do, in one round trip.
+/// Split from the storing half so a route that has to decide *before* filing
+/// the account does not pay for a second viewer call.
+struct Named {
+    login: String,
+    scopes: Option<Vec<String>>,
+}
+
+fn ask_viewer(
+    provider: Provider,
+    base_url: &str,
+    host: &str,
+    token: &str,
+) -> Result<Named, ForgeError> {
+    let forge = forge_for(provider, base_url, Some(token.to_string()), None);
     let login = match forge.viewer() {
         Ok(viewer) => viewer.login,
         Err(ForgeError::CredentialSuspect) => {
@@ -389,9 +545,22 @@ fn add_signed_in(
         }
         Err(e) => return Err(e),
     };
-    let scopes = reported_scopes(provider, forge.as_ref());
+    Ok(Named { login, scopes: reported_scopes(provider, forge.as_ref()) })
+}
+
+fn store_signed_in(
+    provider: Provider,
+    base_url: &str,
+    host: &str,
+    secret: Secret,
+    expires_at: Option<u64>,
+    source: Source,
+    reauth: Option<&str>,
+    named: Named,
+) -> Result<SignedIn, ForgeError> {
+    let Named { login, scopes } = named;
     let account_id = accounts::update(|file| {
-        let id = accounts::add_account(file, provider, base_url, host, &login, reauth)?;
+        let id = accounts::add_account(file, provider, base_url, host, &login, source, reauth)?;
         accounts::note_expiry(file, &id, expires_at);
         if let Some(scopes) = scopes.clone() {
             accounts::note_scopes(file, &id, scopes);
@@ -1083,9 +1252,15 @@ pub fn restore_at_startup(enabled: bool) {
         log_startup(&format!("forge: {e}"));
         return;
     }
-    if let Err(e) =
-        accounts::update(|file| accounts::migrate_legacy(file, token::load_legacy, token::save_secret))
-    {
+    if let Err(e) = accounts::update(|file| {
+        accounts::migrate_legacy(file, token::load_legacy, token::save_secret)?;
+        // After the migration, so the account it just wrote is read the same way
+        // as every other one.
+        accounts::backfill_source(file, |id| {
+            token::load_secret(id).ok().flatten().map(|s| s.access_token)
+        });
+        Ok(())
+    }) {
         log_startup(&format!("forge: {e}"));
     }
     let file = accounts::load();
@@ -1113,6 +1288,12 @@ pub fn restore_at_startup(enabled: bool) {
     if enabled && !probe.is_empty() {
         std::thread::spawn(move || {
             for id in probe {
+                // A `cli` account first: its token is `gh`'s to rotate, so the
+                // rejection is usually answered by re-reading it rather than by
+                // asking the user for anything.
+                if matches!(recover_cli(&id), Ok(Some(_))) {
+                    continue;
+                }
                 let _ = learn_login(&id);
             }
         });
@@ -1329,7 +1510,7 @@ mod tests {
     }
 
     fn github_account(file: &mut AccountsFile, login: &str) -> String {
-        accounts::add_account(file, Provider::Github, "https://github.com", accounts::GITHUB_COM, login, None)
+        accounts::add_account(file, Provider::Github, "https://github.com", accounts::GITHUB_COM, login, accounts::Source::Token, None)
             .unwrap()
     }
 
@@ -1431,7 +1612,7 @@ mod tests {
         github.viewer().unwrap();
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("github.com").unwrap();
-        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", None).unwrap();
+        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", accounts::Source::Token, None).unwrap();
         accounts::note_scopes(&mut file, &id, reported_scopes(Provider::Github, &github).unwrap());
         let file: AccountsFile = serde_json::from_str(&serde_json::to_string(&file).unwrap()).unwrap();
         let (_, account) = accounts::find(&file, &id).unwrap();
@@ -1456,6 +1637,77 @@ mod tests {
         );
         gitlab.viewer().unwrap();
         assert_eq!(reported_scopes(Provider::Gitlab, &gitlab), None);
+    }
+
+    #[test]
+    fn gh_answers_for_a_new_login_and_stands_aside_for_every_other_target() {
+        let mut file = AccountsFile::default();
+        let host = accounts::GITHUB_COM;
+
+        // A host Tori holds nothing on: the common first sign-in, and the one
+        // case where reading gh takes nothing away.
+        assert!(gh_may_answer(&file, host, "skarif2", None));
+
+        let personal = accounts::add_account(
+            &mut file,
+            Provider::Github,
+            "https://github.com",
+            host,
+            "skarif2",
+            accounts::Source::Cli,
+            None,
+        )
+        .unwrap();
+        // Pressing add again with gh logged in as the account already held would
+        // re-sign-in that one instead of adding the second identity asked for.
+        assert!(!gh_may_answer(&file, host, "skarif2", None));
+        assert!(gh_may_answer(&file, host, "fonn-arif", None), "a login Tori does not hold yet");
+
+        // Re-auth follows the account, not gh: only the account gh supplied.
+        assert!(gh_may_answer(&file, host, "skarif2", Some(&personal)));
+        let pasted = github_account(&mut file, "fonn-arif");
+        assert!(
+            !gh_may_answer(&file, host, "fonn-arif", Some(&pasted)),
+            "a pasted account is repaired with a token, not silently re-sourced"
+        );
+        // gh switched accounts under a cli-sourced one: storing that token here
+        // would file somebody else's credential under this account's id.
+        assert!(!gh_may_answer(&file, host, "fonn-arif", Some(&personal)));
+        assert!(!gh_may_answer(&file, host, "skarif2", Some("no-such-account")));
+    }
+
+    #[test]
+    fn a_rejected_cli_account_recovers_from_gh_unless_gh_moved_on() {
+        let mut file = AccountsFile::default();
+        let host = accounts::GITHUB_COM;
+        let id = accounts::add_account(
+            &mut file,
+            Provider::Github,
+            "https://github.com",
+            host,
+            "skarif2",
+            accounts::Source::Cli,
+            None,
+        )
+        .unwrap();
+        let account = || accounts::find(&file, &id).unwrap().1;
+
+        // The ordinary rejection: gh rotated its token, same person behind it.
+        assert!(switched_away(account(), "skarif2").is_none());
+        assert!(switched_away(account(), "SKARIF2").is_none(), "logins compare without case");
+        assert!(gh_may_answer(&file, host, "skarif2", Some(&id)), "so the fresh token is stored");
+
+        // `gh auth switch` since: the account's id is already picked by repos,
+        // so adopting this token would quietly re-point them at another person.
+        let e = switched_away(account(), "fonn-arif").expect("a switch is refused");
+        let message = e.to_string();
+        assert!(message.contains("fonn-arif"), "names who gh is now: {message}");
+        assert!(message.contains("skarif2"), "and who the account is: {message}");
+
+        // A pasted account is nobody's business but the user's, switch or not.
+        let pasted = github_account(&mut file, "fonn-arif");
+        let pasted = accounts::find(&file, &pasted).unwrap().1;
+        assert!(switched_away(pasted, "someone-else").is_none());
     }
 
     #[test]
@@ -1487,7 +1739,7 @@ mod tests {
     fn a_github_enterprise_remote_resolves_through_its_account() {
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("ghe.acme.test").unwrap();
-        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", None).unwrap();
+        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", accounts::Source::Token, None).unwrap();
         let remote = remote::parse("git@ghe.acme.test:acme/widgets.git").unwrap();
         assert_eq!(client_in(&file, &BTreeMap::new(), remote).ok().map(|c| c.account_id), Some(id));
     }
@@ -1496,7 +1748,7 @@ mod tests {
     fn a_clone_resolves_its_account_from_the_host_and_path_git_sends() {
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("gitlab.com").unwrap();
-        let arif = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "skarif2", None).unwrap();
+        let arif = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "skarif2", accounts::Source::Token, None).unwrap();
         let picks = BTreeMap::new();
         let path = "skarif2/masterchef.git";
 
@@ -1507,7 +1759,7 @@ mod tests {
         assert_eq!(git_account_at(&file, &picks, "gitlab.com:8443", path, tori), None);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", "", tori), None);
 
-        let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "fonn-arif", None).unwrap();
+        let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "fonn-arif", accounts::Source::Token, None).unwrap();
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), None, "two accounts, no pick, no default");
         let picks = BTreeMap::from([("gitlab.com/skarif2/masterchef".to_string(), work.clone())]);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), Some(work));

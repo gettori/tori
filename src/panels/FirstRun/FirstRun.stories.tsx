@@ -241,12 +241,14 @@ const OCTOCAT: ForgeHost = {
       expiresAt: null,
       rejectedAt: null,
       scopes: ["repo", "workflow"],
+      source: "token",
       auth: { kind: "signedIn", login: "octocat" },
     },
   ],
   gitCredentials: false,
   gitEverywhere: false,
   defaultAccount: null,
+  appId: null,
 };
 
 function HostsStory(props: {

@@ -19,10 +19,12 @@ pub const GITLAB_COM: &str = "gitlab.com";
 /// after a deleted accounts file updates this account instead of adding a twin.
 pub const MIGRATED_GITHUB_ID: &str = "github-com-migrated";
 
-const FILE_VERSION: u32 = 1;
+const FILE_VERSION: u32 = 2;
 
-fn file_version() -> u32 {
-    FILE_VERSION
+/// A file with no `version` predates the field, so it reads as the first one
+/// rather than the current one. A migration keyed on the version has to see it.
+fn legacy_version() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +41,20 @@ impl Provider {
             Self::Gitlab => "GitLab",
         }
     }
+}
+
+/// Where an account's token came from. Decides whether `gh` may speak for the
+/// account, and which route a host that stops accepting it offers next.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Source {
+    /// Read from the user's own `gh` login.
+    Cli,
+    /// Minted by an OAuth application of Tori's.
+    Browser,
+    /// Pasted by the user.
+    #[default]
+    Token,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +77,8 @@ pub struct Account {
     pub rejected_at: Option<u64>,
     #[serde(default)]
     pub scopes: Option<Vec<String>>,
+    #[serde(default)]
+    pub source: Source,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,7 +107,7 @@ pub struct HostRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsFile {
-    #[serde(default = "file_version")]
+    #[serde(default = "legacy_version")]
     pub version: u32,
     /// Keyed the way `remote::parse` spells a host.
     #[serde(default)]
@@ -150,6 +168,7 @@ pub fn add_account(
     base_url: &str,
     host: &str,
     login: &str,
+    source: Source,
     reauth: Option<&str>,
 ) -> Result<String, ForgeError> {
     let mut taken: Vec<String> = all_accounts(file).map(|(_, a)| a.id.clone()).collect();
@@ -165,6 +184,7 @@ pub fn add_account(
         existing.login = Some(login.to_string());
         existing.base_url = base_url.to_string();
         existing.rejected_at = None;
+        existing.source = source;
         return Ok(existing.id.clone());
     }
     let unnamed = |a: &&mut Account| a.login.is_none() && reauth == Some(a.id.as_str());
@@ -175,6 +195,7 @@ pub fn add_account(
         }
         adopted.base_url = base_url.to_string();
         adopted.rejected_at = None;
+        adopted.source = source;
         return Ok(adopted.id.clone());
     }
     let id = mint_id(&taken, host, login);
@@ -187,8 +208,28 @@ pub fn add_account(
         expires_at: None,
         rejected_at: None,
         scopes: None,
+        source,
     });
     Ok(id)
+}
+
+/// The route an account took, for files written before the field existed.
+///
+/// Only an OAuth application mints a `gho_` token, so that prefix is the one
+/// surviving record of a browser sign-in on an account that never stored its
+/// route. Gated on the file version rather than run every launch, because a
+/// `gh` token wears the same prefix and would keep flipping a [`Source::Cli`]
+/// account to [`Source::Browser`].
+pub fn backfill_source(file: &mut AccountsFile, read: impl Fn(&str) -> Option<String>) {
+    if file.version >= FILE_VERSION {
+        return;
+    }
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.provider == Provider::Github && read(&account.id).is_some_and(|t| t.starts_with("gho_")) {
+            account.source = Source::Browser;
+        }
+    }
+    file.version = FILE_VERSION;
 }
 
 /// Readable rather than random, so the keychain entry names who it is for.
@@ -283,6 +324,7 @@ pub fn migrate_legacy(
             expires_at: None,
             rejected_at: None,
             scopes: None,
+            source: Source::default(),
         });
     }
     file.legacy_migrated = true;
@@ -490,6 +532,10 @@ pub struct HostView {
     pub git_credentials: bool,
     pub git_everywhere: bool,
     pub default_account: Option<String>,
+    /// The OAuth application the user registered on a self-managed instance.
+    /// Absent on the clouds, where the application is Tori's own and showing it
+    /// would invite editing something the user cannot change.
+    pub app_id: Option<String>,
 }
 
 pub fn account_view(account: &Account, auth: impl Fn(&str) -> AuthState) -> AccountView {
@@ -506,6 +552,7 @@ pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostVi
             git_credentials: git_credentials(file, host),
             git_everywhere: git_everywhere(file, host),
             default_account: default_account(record),
+            app_id: (host != GITLAB_COM && host != GITHUB_COM).then(|| app_id(file, host)).flatten(),
         })
         .collect()
 }
@@ -549,7 +596,7 @@ mod tests {
     const GH: &str = "https://github.com";
 
     fn signed_in(file: &mut AccountsFile, login: &str) -> String {
-        add_account(file, Provider::Github, GH, GITHUB_COM, login, None).unwrap()
+        add_account(file, Provider::Github, GH, GITHUB_COM, login, Source::Token, None).unwrap()
     }
 
     fn tori() -> Remote {
@@ -571,6 +618,46 @@ mod tests {
         .unwrap();
         let (_, account) = find(&bare, "a").unwrap();
         assert_eq!((account.login.as_deref(), account.expires_at), (None, None));
+    }
+
+    #[test]
+    fn a_file_without_sources_backfills_the_browser_ones_once() {
+        let mut file: AccountsFile = serde_json::from_str(
+            r#"{"hosts":{"github.com":{"accounts":[
+                {"id":"browser","provider":"github","baseUrl":"https://github.com","login":"a"},
+                {"id":"pasted","provider":"github","baseUrl":"https://github.com","login":"b"}
+            ]}}}"#,
+        )
+        .unwrap();
+        assert_eq!(file.version, 1, "a file with no version predates the field");
+        let source = |file: &AccountsFile, id| find(file, id).unwrap().1.source;
+        assert_eq!(source(&file, "browser"), Source::Token);
+
+        let stored = |id: &str| match id {
+            "browser" => Some("gho_from_the_device_flow".to_string()),
+            _ => Some("ghp_pasted_by_hand".to_string()),
+        };
+        backfill_source(&mut file, stored);
+        assert_eq!(source(&file, "browser"), Source::Browser);
+        assert_eq!(source(&file, "pasted"), Source::Token);
+
+        // A `gh` token wears the same prefix, so a second pass must not reach an
+        // account that has since signed in through the CLI.
+        let mut again = file.clone();
+        for account in again.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+            account.source = Source::Cli;
+        }
+        backfill_source(&mut again, stored);
+        assert_eq!(source(&again, "browser"), Source::Cli);
+    }
+
+    #[test]
+    fn signing_in_by_another_route_records_that_route() {
+        let mut file = AccountsFile::default();
+        let id = signed_in(&mut file, "skarif2");
+        assert_eq!(find(&file, &id).unwrap().1.source, Source::Token);
+        add_account(&mut file, Provider::Github, GH, GITHUB_COM, "skarif2", Source::Cli, None).unwrap();
+        assert_eq!(find(&file, &id).unwrap().1.source, Source::Cli, "the same account, re-sourced");
     }
 
     #[test]
@@ -691,7 +778,7 @@ mod tests {
         signed_in(&mut file, "a");
         signed_in(&mut file, "b");
         let elsewhere =
-            add_account(&mut file, Provider::Gitlab, "https://gitlab.com", GITLAB_COM, "arif", None).unwrap();
+            add_account(&mut file, Provider::Gitlab, "https://gitlab.com", GITLAB_COM, "arif", Source::Token, None).unwrap();
         assert!(matches!(
             set_default_account(&mut file, GITHUB_COM, Some(&elsewhere)),
             Err(ForgeError::Invalid { .. })
@@ -774,7 +861,7 @@ mod tests {
         let mut file = AccountsFile::default();
         let host = "gitlab.example.com";
         let base = "https://gitlab.example.com";
-        let first = add_account(&mut file, Provider::Gitlab, base, host, "arif", None).unwrap();
+        let first = add_account(&mut file, Provider::Gitlab, base, host, "arif", Source::Token, None).unwrap();
         assert!(!git_credentials(&file, host), "git keeps its own helpers until asked");
 
         assert!(set_git_credentials(&mut file, host, true));
@@ -794,7 +881,7 @@ mod tests {
 
         // An unanswered pick is not an account to act as, so git keeps whatever
         // helper it had rather than being handed an arbitrary one.
-        let second = add_account(&mut file, Provider::Gitlab, base, host, "arif-work", None).unwrap();
+        let second = add_account(&mut file, Provider::Gitlab, base, host, "arif-work", Source::Token, None).unwrap();
         assert!(!serves_git(&file, &picks, &remote));
         picks.insert(remote.key(), second.clone());
         assert!(serves_git(&file, &picks, &remote));

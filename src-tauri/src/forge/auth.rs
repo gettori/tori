@@ -505,9 +505,9 @@ mod tests {
     }
 
     fn on_disk() -> (super::super::accounts::AccountsFile, String) {
-        use super::super::accounts::{add_account, AccountsFile, Provider, GITHUB_COM};
+        use super::super::accounts::{add_account, AccountsFile, Provider, Source, GITHUB_COM};
         let mut file = AccountsFile::default();
-        let id = add_account(&mut file, Provider::Github, "https://github.com", GITHUB_COM, "fonn-arif", None).unwrap();
+        let id = add_account(&mut file, Provider::Github, "https://github.com", GITHUB_COM, "fonn-arif", Source::Token, None).unwrap();
         (file, id)
     }
 

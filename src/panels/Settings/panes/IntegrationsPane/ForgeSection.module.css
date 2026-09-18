@@ -121,6 +121,12 @@
   color: var(--danger-fg);
 }
 
+.source {
+  font-size: var(--tori-text-2xs);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
 .line .remove {
   color: var(--fg-muted);
 }
@@ -298,17 +304,6 @@
 
 .tileName[data-mono] {
   font-family: var(--tori-font-mono);
-}
-
-.route {
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-2xs);
-  font-weight: 500;
-  color: var(--fg-muted);
-}
-
-.route[data-route="browser"] {
-  color: var(--brand-default);
 }
 
 .actions {

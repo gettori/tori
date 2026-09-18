@@ -477,7 +477,7 @@ mod tests {
         let mut file = AccountsFile::default();
         for (input, provider) in [("github.com", Provider::Github), ("gitlab.com", Provider::Gitlab)] {
             let (base_url, host) = accounts::normalize_base_url(input).unwrap();
-            accounts::add_account(&mut file, provider, &base_url, &host, "skarif2", None).unwrap();
+            accounts::add_account(&mut file, provider, &base_url, &host, "skarif2", accounts::Source::Token, None).unwrap();
         }
         accounts::set_git_credentials(&mut file, "gitlab.com", true);
 
