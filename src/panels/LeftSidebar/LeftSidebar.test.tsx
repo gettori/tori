@@ -68,6 +68,10 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
+    // A repo with a commit. Fan out refuses an unborn HEAD before it asks
+    // anything, since an attempt is a branch and a branch needs somewhere to
+    // start.
+    if (cmd === "git_head_sha") return Promise.resolve("abc1234");
     if (cmd === "create_attempt") {
       return Promise.resolve({ path: "/made", branch: String(args.branch), uncloned: [] });
     }
@@ -156,7 +160,7 @@ describe("fan-out groups in the tree", () => {
     const project = (await screen.findByText("repo")).parentElement!;
 
     fireEvent.contextMenu(project);
-    pointerClick(await screen.findByText("Fan out…"));
+    pointerClick(await screen.findByText("Fan out"));
 
     // Reached through the accessibility tree: since the prompt moved onto
     // `Dialog`, its title is the panel's heading and the input is no longer a
