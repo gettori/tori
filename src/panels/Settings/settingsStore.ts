@@ -156,6 +156,10 @@ export type UsageSettings = {
  *  reads is worse than a missing feature - it reads as broken rather than
  *  absent. Flat rather than nested per feature, so a user looking for soft wrap
  *  does not have to know whether it is a view concern or a language one. */
+/** The four places a caret line can be marked, VS Code's `renderLineHighlight`
+ *  spelled the same way it spells it. */
+export type ActiveLineHighlight = "none" | "gutter" | "line" | "all";
+
 export type EditorDefaults = {
   formatOnSave: boolean;
   /** Ask the language server to organize this file's imports before writing it.
@@ -172,6 +176,15 @@ export type EditorDefaults = {
   vimMode: boolean;
   /** Vertical guides at each indent level, active one highlighted. (Phase 3) */
   indentGuides: boolean;
+  /**
+   * Where the line the caret is on is marked: nowhere, in the gutter, across
+   * the line, or both.
+   *
+   * The second value here that is not a switch, and for the same reason as the
+   * first: four answers do not fit a checkbox. VS Code's own setting, option
+   * for option, because this is a preference people arrive already holding.
+   */
+  activeLineHighlight: ActiveLineHighlight;
   /** Wrap long lines rather than scrolling horizontally. The palette's
    *  per-tab override outranks this for one buffer. (Phase 2) */
   softWrap: boolean;
@@ -313,6 +326,10 @@ export const DEFAULT_SETTINGS: Settings = {
     codeLens: false,
     vimMode: false,
     indentGuides: true,
+    // Both places, which is where the caret line has always been marked here.
+    // VS Code defaults to the line alone; this defaults to what Tori already
+    // looked like, so turning the setting on for the first time changes nothing.
+    activeLineHighlight: "all",
     softWrap: false,
     renderWhitespace: false,
     scrollPastEnd: true,

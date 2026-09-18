@@ -5,6 +5,7 @@ import {
   OWN_ROW_TOGGLES,
   Row,
   TodoTagsRow,
+  ActiveLineRow,
   ToggleRow,
   idsIn,
   workspaceName,
@@ -43,6 +44,7 @@ export default function EditorPane(props: PaneProps) {
             The hint is optional, carried only by the keys whose effect is not
             obvious from the label. */}
         <For each={EDITOR_TOGGLES}>{(t) => <ToggleRow {...props} entry={t} />}</For>
+        <ActiveLineRow {...props} />
         <TodoTagsRow {...props} />
         {/* The two reader preferences that live in localStorage rather than in
             `EditorDefaults`, so they get plain rows: no workspace badge and no

@@ -10,13 +10,19 @@
 //
 // Editor-side on purpose: this imports CodeMirror, so it sits behind the lazy
 // editor boundary and must never be imported from the eager side.
-import { EditorView, highlightWhitespace, scrollPastEnd } from "@codemirror/view";
+import {
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  highlightWhitespace,
+  scrollPastEnd,
+} from "@codemirror/view";
 import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { rainbowBrackets, bracketPairGuides } from "./bracketPairs";
 import { minimap } from "./minimap";
 import { stickyScroll } from "./stickyScroll";
 import type { Extension } from "@codemirror/state";
-import type { EditorDefaults } from "../Settings/settingsStore";
+import type { ActiveLineHighlight, EditorDefaults } from "../Settings/settingsStore";
 
 /** A preference that resolves to a live-swappable extension. Named separately
  *  from the settings keys because deciding *which* are on is the part with
@@ -24,6 +30,8 @@ import type { EditorDefaults } from "../Settings/settingsStore";
  *  without a DOM to build extensions in. */
 export type EditorFeature =
   | "indentGuides"
+  | "activeLine"
+  | "activeLineGutter"
   | "softWrap"
   | "renderWhitespace"
   | "scrollPastEnd"
@@ -31,6 +39,17 @@ export type EditorFeature =
   | "bracketPairGuides"
   | "minimap"
   | "stickyScroll";
+
+/** The one setting here that is not a switch, spread over the two extensions
+ *  that answer it. Marking the gutter and marking the line are separate
+ *  features to CodeMirror and separate places to the eye, and VS Code's four
+ *  options are the four ways to pair them. */
+const ACTIVE_LINE: Record<ActiveLineHighlight, EditorFeature[]> = {
+  none: [],
+  gutter: ["activeLineGutter"],
+  line: ["activeLine"],
+  all: ["activeLine", "activeLineGutter"],
+};
 
 /**
  * Per-buffer answers that outrank the global setting.
@@ -48,6 +67,10 @@ export function activeEditorFeatures(
 ): EditorFeature[] {
   const on: EditorFeature[] = [];
   if (prefs.indentGuides) on.push("indentGuides");
+  // `?? ACTIVE_LINE` rather than the lookup alone: the value can arrive from a
+  // hand-edited settings.json, where the type says nothing, and a typo that
+  // silently unmarked the caret line would read as the editor being broken.
+  on.push(...(ACTIVE_LINE[prefs.activeLineHighlight] ?? ACTIVE_LINE.all));
   if (overrides.softWrap ?? prefs.softWrap) on.push("softWrap");
   if (prefs.renderWhitespace) on.push("renderWhitespace");
   if (prefs.scrollPastEnd) on.push("scrollPastEnd");
@@ -79,6 +102,11 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
         activeDark: "var(--border-strong)",
       },
     }),
+  // Both live here rather than in `makeState` because the setting behind them
+  // has four values and every change between two of them is an add or a remove
+  // of one of these, which is exactly what a compartment is for.
+  activeLine: () => highlightActiveLine(),
+  activeLineGutter: () => highlightActiveLineGutter(),
   softWrap: () => EditorView.lineWrapping,
   renderWhitespace: () => highlightWhitespace(),
   scrollPastEnd: () => scrollPastEnd(),

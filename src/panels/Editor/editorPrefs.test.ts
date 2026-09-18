@@ -14,6 +14,7 @@ const PREFS: EditorDefaults = {
   codeLens: false,
   vimMode: false,
   indentGuides: true,
+  activeLineHighlight: "all",
   softWrap: false,
   renderWhitespace: false,
   scrollPastEnd: true,
@@ -41,11 +42,13 @@ const withPrefs = (over: Partial<EditorDefaults>): EditorDefaults => ({ ...PREFS
 
 // Every switch false, derived rather than written out, so a preference added to
 // the type later starts off here instead of quietly joining every expectation
-// below. A setting that is not a switch has no "off" to be put in, so it keeps
-// its default: `todoPatterns` is a list of tags, and `false` is not one.
-const ALL_OFF = Object.fromEntries(
-  Object.entries(PREFS).map(([k, v]) => [k, typeof v === "boolean" ? false : v]),
-) as EditorDefaults;
+// below. A setting that is not a switch keeps its default unless it has a real
+// "off" to be put in: `todoPatterns` is a list of tags and `false` is not one,
+// while `activeLineHighlight` spells its own.
+const ALL_OFF = {
+  ...Object.fromEntries(Object.entries(PREFS).map(([k, v]) => [k, typeof v === "boolean" ? false : v])),
+  activeLineHighlight: "none",
+} as EditorDefaults;
 const only = (over: Partial<EditorDefaults>): EditorDefaults => ({ ...ALL_OFF, ...over });
 
 describe("which comfort features a buffer gets", () => {
@@ -98,7 +101,9 @@ describe("a tab's soft-wrap override", () => {
   });
 
   it("leaves the other features alone", () => {
-    const rest = withPrefs({
+    // From the all-off block like the rest of this describe, so the expectation
+    // below names the features this case is about and no others.
+    const rest = only({
       indentGuides: true,
       softWrap: false,
       renderWhitespace: true,

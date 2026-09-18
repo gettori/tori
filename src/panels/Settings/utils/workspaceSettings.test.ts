@@ -12,6 +12,7 @@ const DEFAULTS: EditorDefaults = {
   codeLens: false,
   vimMode: false,
   indentGuides: true,
+  activeLineHighlight: "all",
   softWrap: false,
   renderWhitespace: false,
   scrollPastEnd: true,

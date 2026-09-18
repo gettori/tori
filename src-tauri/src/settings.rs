@@ -430,6 +430,12 @@ pub struct EditorDefaults {
     pub vim_mode: bool,
     #[serde(default = "default_true")]
     pub indent_guides: bool,
+    /// Where the line the caret is on is marked: `none`, `gutter`, `line` or
+    /// `all`. A string for `todo_patterns`' reason, and VS Code's four values
+    /// spelled the way VS Code spells them, because it is a preference people
+    /// arrive already holding.
+    #[serde(default = "default_active_line_highlight")]
+    pub active_line_highlight: String,
     #[serde(default)]
     pub soft_wrap: bool,
     #[serde(default)]
@@ -466,6 +472,10 @@ fn default_todo_patterns() -> String {
     "TODO,FIXME,HACK,XXX".to_string()
 }
 
+fn default_active_line_highlight() -> String {
+    "all".to_string()
+}
+
 impl Default for EditorDefaults {
     fn default() -> Self {
         Self {
@@ -474,6 +484,7 @@ impl Default for EditorDefaults {
             code_lens: false,
             vim_mode: false,
             indent_guides: true,
+            active_line_highlight: default_active_line_highlight(),
             soft_wrap: false,
             render_whitespace: false,
             scroll_past_end: true,
