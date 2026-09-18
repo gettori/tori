@@ -8,7 +8,7 @@ import Icon from "../Icon/Icon";
 import IconGrid from "../IconGrid/IconGrid";
 import ProjectIcon from "../Icon/ProjectIcon";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
-import { searchIcons } from "../Icon/iconRegistry";
+import { PICKER_ICONS, drawShelf, restingShelf, searchIcons } from "../Icon/iconRegistry";
 import { isFileDrag, droppedPaths } from "../../utils/externalDrop";
 
 /** What the dialog hands back. Exactly one branch is in force at a time, which
@@ -74,7 +74,17 @@ export default function ProjectIconDialog(props: {
   const [file, setFile] = createSignal<string | null>(props.iconFile);
   const [picking, setPicking] = createSignal(false);
   const [over, setOver] = createSignal(false);
+  // Mirrors the grid's own query, which it does not publish otherwise, so the
+  // "+N more" line can go when a search is what is on screen.
+  const [query, setQuery] = createSignal("");
+  // Drawn once for the life of the dialog; see `drawShelf` on why.
+  const shelf = drawShelf();
   let search: HTMLInputElement | undefined;
+
+  // What the grid shows at rest: a short shelf rather than the whole set, with
+  // whatever is stored forced into it.
+  const resting = () => restingShelf(shelf, icon());
+  const hidden = () => PICKER_ICONS.length - resting().length;
 
   const choice = (): ProjectIconChoice => {
     if (source() === "upload") return file() ? { file: file()! } : {};
@@ -247,16 +257,15 @@ export default function ProjectIconDialog(props: {
           {/* No leading tile: "no glyph" is the Automatic segment above, which
               is a different mode rather than a value in this grid, so `null`
               never comes back out of it. */}
-          <div>
+          <div class={styles.pickerBody}>
             <IconGrid
-              class={styles.pickGrid}
               aria-label="Project icon"
               value={icon()}
               onChange={(name) => {
                 if (name != null) setIcon(name);
               }}
-              tiles={(query) =>
-                searchIcons(query).map((entry) => ({
+              tiles={(typed) =>
+                (typed.trim() ? searchIcons(typed) : resting()).map((entry) => ({
                   value: entry.name,
                   label: entry.name,
                   content: <Icon icon={entry.icon} />,
@@ -266,8 +275,14 @@ export default function ProjectIconDialog(props: {
                 label: "Search icons",
                 placeholder: "Search icons",
                 ref: (el) => (search = el),
+                onQuery: setQuery,
               }}
             />
+            {/* Only at rest. During a search the grid is showing every match,
+                so there is no remainder to name. */}
+            <Show when={!query().trim() && hidden() > 0}>
+              <div class={styles.pickerMore}>+{hidden()} more, search to reach them</div>
+            </Show>
           </div>
         </Show>
       </div>

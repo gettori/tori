@@ -58,9 +58,15 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
       screen.getByRole("group", { name: "Project icon" }).querySelectorAll("button"),
     );
   const mode = (name: string) => screen.getByRole("button", { name });
+  // The grid rests on a short random shelf, so a named glyph is reached the way
+  // a user reaches one: through the field beside it.
+  const pick = (name: string) => {
+    fireEvent.input(search(), { target: { value: name } });
+    fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === name)!);
+  };
   const dropzone = () => screen.getByRole("button", { name: /SVG, PNG or ICO/ });
   const panel = () => screen.getByRole("dialog");
-  return { onConfirm, onCancel, onPickFile, search, tiles, mode, dropzone, panel };
+  return { onConfirm, onCancel, onPickFile, search, tiles, mode, pick, dropzone, panel };
 }
 
 const save = (label = "Save") =>
@@ -123,20 +129,20 @@ describe("ProjectIconDialog", () => {
     });
 
     it("saves a picked glyph by name", () => {
-      const { onConfirm, tiles, mode } = open();
+      const { onConfirm, mode, pick } = open();
 
       fireEvent.click(mode("Pick an icon"));
-      fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === "Rocket")!);
+      pick("Rocket");
       fireEvent.click(save());
 
       expect(onConfirm).toHaveBeenCalledWith({ icon: "Rocket" });
     });
 
     it("un-chooses the glyph when an image is uploaded", async () => {
-      const { onConfirm, tiles, mode, dropzone } = open();
+      const { onConfirm, mode, pick, dropzone } = open();
 
       fireEvent.click(mode("Pick an icon"));
-      fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === "Rocket")!);
+      pick("Rocket");
       fireEvent.click(mode("Upload"));
       fireEvent.click(dropzone());
       await waitFor(() => expect(screen.getByText("logo.png")).toBeTruthy());
@@ -195,10 +201,10 @@ describe("ProjectIconDialog", () => {
       const { search, tiles, mode } = open();
 
       fireEvent.click(mode("Pick an icon"));
-      const all = tiles().length;
+      const shelf = tiles().length;
       fireEvent.input(search(), { target: { value: "rocket" } });
 
-      expect(tiles().length).toBeLessThan(all);
+      expect(tiles().length).toBeLessThan(shelf);
       expect(tiles()[0].getAttribute("aria-label")).toBe("Rocket");
     });
 
