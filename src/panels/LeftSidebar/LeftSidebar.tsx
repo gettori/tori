@@ -2457,7 +2457,16 @@ export default function LeftSidebar(props: {
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits(p, [u]);
     const sync = () => syncFor(u.folderPath, u.branch);
-    const marks = createMemo(() => syncMarks(sync()));
+    // While an agent holds this row, the row is about the agent. Half of these
+    // marks are being rewritten as you read them, since an executing agent is
+    // writing files and may be committing, and "uncommitted changes" during an
+    // agent run is a mark that is always true and therefore says nothing. The
+    // quiet states keep theirs: `idle` and `running` ask nothing of you.
+    const held = () => {
+      const r = rollup();
+      return r.waitingForApproval + r.waitingForAnswer + r.executing > 0;
+    };
+    const marks = createMemo(() => (held() ? [] : syncMarks(sync())));
     // Memoized, not a bare accessor: the row reads it several times and each
     // read would otherwise re-parse the origin URL.
     const chip = createMemo(() =>
