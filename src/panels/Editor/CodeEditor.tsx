@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, For, Sh
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { EditorView, keymap, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
+import { EditorView, keymap, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
 import { Annotation, EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateEffect, type StateField } from "@codemirror/state";
@@ -1050,8 +1050,6 @@ export default function CodeEditor(props: {
     // mode vim is the one that should win. `vimMode.test.tsx` pins the rule.
     vimConf.of([]),
     diffLineNumbers(),
-    highlightActiveLine(),
-    highlightActiveLineGutter(),
     ...(follower ? [] : [history()]),
     drawSelection(),
     dropCursor(),
