@@ -9,8 +9,9 @@ import { Annotation, EditorState, Compartment, Prec, Text, type Extension, type 
 import { defaultKeymap, history, historyField, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { syntaxHighlighting, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
+import { syntaxHighlighting, indentOnInput, bracketMatching, foldKeymap } from "@codemirror/language";
 import { toriHighlight } from "./syntaxStyle";
+import { foldingExtension } from "./folding";
 import { toriTheme } from "./editorTheme";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
@@ -1074,7 +1075,7 @@ export default function CodeEditor(props: {
       text.replace(/\r\n?|\n/g, state.lineBreak),
     ),
     highlightSpecialChars(),
-    foldGutter(),
+    foldingExtension(),
     highlightSelectionMatches(),
     diffGutterExtension(),
     // The view rather than a path, because one buffer's extensions outlive a
