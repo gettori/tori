@@ -1,7 +1,10 @@
 import { Show, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
+import { X } from "lucide-solid";
 import { Toast } from "../../lib/toast";
 import Button from "../Button/Button";
+import Icon from "../Icon/Icon";
+import IconButton from "../IconButton/IconButton";
 import { on as onEvent, onWith, FOCUS_TOASTS, TOAST, type ToastEvent } from "../../utils/events";
 import styles from "./Toasts.module.css";
 
@@ -54,15 +57,13 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
         )}
       </Show>
       <Toast.CloseButton
-        as={Button}
-        variant="ghost"
+        as={IconButton}
+        icon={<Icon icon={X} />}
         size="xs"
         class={styles.toastClose}
         aria-label="Dismiss"
         tooltip="Dismiss"
-      >
-        ×
-      </Toast.CloseButton>
+      />
     </Toast.Root>
   ));
 }
