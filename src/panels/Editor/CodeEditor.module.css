@@ -43,10 +43,3 @@
   background: var(--canvas-head);
   border-bottom: 1px solid var(--brand-default);
 }
-
-/* The breakpoint column takes width only while something is being debugged.
-   `!important` because CodeMirror's base theme sets `display: flex !important`
-   on every gutter; this selector is the more specific of the two. */
-.codeEditorWrap:not(.debugging) :global(.cm-breakpoint-gutter) {
-  display: none !important;
-}
