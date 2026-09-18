@@ -180,7 +180,7 @@ describe("creating a branch-unit from the project menu", () => {
   it("moves the selection onto the worktree it just made", async () => {
     await mounted();
 
-    await menu("proj", "Add worktree…");
+    await menu("proj", "Add worktree");
     await typeAndAdd("wave-4", "worktree");
 
     await waitFor(() => expect(cmds()).toContain("create_worktree"));
@@ -193,7 +193,7 @@ describe("creating a branch-unit from the project menu", () => {
   it("moves the selection onto the branch it just created and checked out", async () => {
     await mounted();
 
-    await menu("repo", "Add branch…");
+    await menu("repo", "Add branch");
     await typeAndAdd("feat-2", "branch");
 
     await waitFor(() => expect(cmds()).toContain("git_checkout"));
@@ -207,7 +207,7 @@ describe("creating a branch-unit from the project menu", () => {
     // raise the working-tree confirm the user never asked for.
     await mounted();
 
-    await menu("repo", "Add branch…");
+    await menu("repo", "Add branch");
     await pickAndAdd("old", "branch");
 
     await waitFor(() => expect(cmds()).toContain("attach_branch"));

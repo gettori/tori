@@ -112,9 +112,9 @@ describe("the active space header", () => {
     pointerClick(menuButton());
     // The same rows `spaceMenu` gives a root-discovered space's tile, each one
     // naming what it acts on.
-    expect(await screen.findByText("New in “work”…")).toBeTruthy();
-    expect(screen.getByText("Edit space…")).toBeTruthy();
-    expect(screen.getByText("Delete space…")).toBeTruthy();
+    expect(await screen.findByText("New in “work”")).toBeTruthy();
+    expect(screen.getByText("Edit space")).toBeTruthy();
+    expect(screen.getByText("Delete space")).toBeTruthy();
   });
 
   it("keeps the menu reachable without a pointer", async () => {
@@ -129,7 +129,7 @@ describe("the active space header", () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());
     expect(rightClick(header()!)).toBe(true);
-    expect(await screen.findByText("Delete space…")).toBeTruthy();
+    expect(await screen.findByText("Delete space")).toBeTruthy();
   });
 
   // With the mode tabs gone the heading is the only thing naming the view, so

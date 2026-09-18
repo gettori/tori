@@ -289,32 +289,32 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(notes.querySelector('[class*="iconChevron"]')).toBeNull();
   });
 
-  it("offers Change icon… on every project, whatever its git kind", async () => {
+  it("offers Change icon on every project, whatever its git kind", async () => {
     mount();
 
     fireEvent.contextMenu(await row("repo"));
-    expect(await screen.findByText("Change icon…")).toBeTruthy();
+    expect(await screen.findByText("Change icon")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
 
     // A plain-dir folder gets it too: the icon is a property of the row, not of
     // whatever git is (or is not) doing underneath it.
     fireEvent.contextMenu(await row("notes"));
-    expect(await screen.findByText("Change icon…")).toBeTruthy();
+    expect(await screen.findByText("Change icon")).toBeTruthy();
   });
 
   it("keeps the space, project and branch-unit context menus", async () => {
     mount(["p:work/repo"]);
 
     fireEvent.contextMenu(await screen.findByRole("button", { name: "work" }));
-    expect(await screen.findByText("New in “work”…")).toBeTruthy();
-    expect(screen.getByText("Edit space…")).toBeTruthy();
-    expect(screen.getByText("Delete space…")).toBeTruthy();
+    expect(await screen.findByText("New in “work”")).toBeTruthy();
+    expect(screen.getByText("Edit space")).toBeTruthy();
+    expect(screen.getByText("Delete space")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.contextMenu(await row("repo"));
-    expect(await screen.findByText("Add worktree…")).toBeTruthy();
-    expect(screen.getByText("Fan out…")).toBeTruthy();
-    expect(screen.getByText("Remove project…")).toBeTruthy();
+    expect(await screen.findByText("Add worktree")).toBeTruthy();
+    expect(screen.getByText("Fan out")).toBeTruthy();
+    expect(screen.getByText("Remove project")).toBeTruthy();
     // The header names what the menu is acting on, and which of the three
     // project menus this is.
     expect(screen.getByText("Bare")).toBeTruthy();
@@ -437,7 +437,7 @@ describe("the sidebar levels that outlive the session rows", () => {
 
       const m = await screen.findByRole("menu");
       expect(within(m).getByText("New session")).toBeTruthy();
-      expect(within(m).queryByText("Fan out…")).toBeNull();
+      expect(within(m).queryByText("Fan out")).toBeNull();
       expect(within(m).queryByText("Remove project")).toBeNull();
       expect(screen.getAllByRole("menu")).toHaveLength(1);
     });
