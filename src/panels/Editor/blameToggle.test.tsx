@@ -147,7 +147,7 @@ describe("the blame toggle", () => {
   });
 
   it("offers no toggle on a tab that is not a file", async () => {
-    // A commit log has no lines to blame, and the control would sit there doing
+    // The graph has no lines to blame, and the control would sit there doing
     // nothing beside a view that cannot use it.
     mounted = render(() => (
       <>
@@ -156,7 +156,7 @@ describe("the blame toggle", () => {
       </>
     ));
     await waitFor(() => expect(listening.ready).toBe(true));
-    emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", REPO) });
+    emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", REPO) });
 
     await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
     expect(screen.queryByLabelText(BUTTON)).toBeNull();

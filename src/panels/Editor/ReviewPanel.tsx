@@ -1256,10 +1256,10 @@ export default function ReviewPanel(props: {
         disabled={!menuRoot()}
         onClick={() => {
           const root = menuRoot();
-          if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", root) });
+          if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", root) });
         }}
       >
-        Show Commit Log
+        Open Graph in Editor
       </MenuRow>
     </>
   );
@@ -1600,6 +1600,20 @@ export default function ReviewPanel(props: {
               <div class={styles.tabActions}>
                 <span class={styles.spacer} />
                 <Show when={historyOpen() && tab() === "graph"}>
+                  {/* The same numbers as row two's push pill, said again beside
+                      the drawing they describe: a tall file list puts the two
+                      far enough apart that the trunk below has nothing here
+                      saying how much of it the remote has. A readout and not a
+                      second Push, which row two already is. */}
+                  <Show when={aheadBehind()}>
+                    {(ab) => (
+                      <span class={styles.stripMeta}>
+                        {ab().has_upstream
+                          ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
+                          : "Unpushed"}
+                      </span>
+                    )}
+                  </Show>
                   <Tooltip
                     as="button"
                     type="button"

@@ -43,16 +43,16 @@ describe("toStore", () => {
   });
 
   it("never stores a synthetic view, nor records one as the active tab", () => {
-    // A relaunch restores files; a commit log is opened on request, and every
+    // A relaunch restores files; a graph is opened on request, and every
     // stored path is probed for existence, which a `tori://` id can never pass.
-    const log = syntheticId("log", "/w/a");
+    const log = syntheticId("graph", "/w/a");
     const out = toStore([tab(log), tab("/w/a/one.ts")], { "/w/a": log }, 100);
     expect(out["/w/a"].paths).toEqual(["/w/a/one.ts"]);
     expect(out["/w/a"].active).toBeNull();
   });
 
   it("writes no entry for a workspace holding only a synthetic view", () => {
-    expect(toStore([tab(syntheticId("log", "/w/a"))], {}, 100)).toEqual({});
+    expect(toStore([tab(syntheticId("graph", "/w/a"))], {}, 100)).toEqual({});
   });
 });
 

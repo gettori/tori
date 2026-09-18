@@ -61,7 +61,7 @@ import SearchPanel from "./SearchPanel";
 import DebugPanel from "./DebugPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
-import CommitLog from "./CommitLog";
+import FileHistory from "./FileHistory";
 import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import CommitDiffView from "./CommitDiffView";
@@ -804,7 +804,7 @@ export default function Editor(props: {
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
   // The active tab when it is a real file. The three suffix tests below ask
   // what is on disk, and a synthetic id ends in the workspace path - a folder
-  // named `notes.md` would otherwise give the commit log a preview toggle and
+  // named `notes.md` would otherwise give the graph a preview toggle and
   // render MarkdownPreview against a `tori://` id.
   const activeFileTab = () => {
     const t = activeTab();
@@ -1493,7 +1493,7 @@ export default function Editor(props: {
     if (!entry?.paths.length) return;
     // Files opened here already this run are current truth; a restore would be
     // pasting last run's strip over them. Synthetic tabs do not count: opening
-    // the commit log from the sidebar selects the branch-unit and opens the tab
+    // the graph from the sidebar selects the branch-unit and opens the tab
     // in the same breath, which lands while these probes are still in flight,
     // and that must not cost the workspace its file restore.
     if (openFileTabs(w).length) return;
@@ -2619,7 +2619,7 @@ export default function Editor(props: {
               <Show when={pdfId()} keyed>
                 {(id) => <PdfToolbar path={id} />}
               </Show>
-              {/* Not for a `tori://` view: a commit log has no working copy for
+              {/* Not for a `tori://` view: a graph has no working copy for
                   git to blame. Not for a PDF either: blame is per line, and a
                   PDF has none - it is not even read as text. */}
               <Show when={filePath() && !isSyntheticId(filePath()!) && !pdfId()}>{blameBtn()}</Show>
@@ -2664,13 +2664,11 @@ export default function Editor(props: {
           <Show when={syntheticOf(fileId())}>
             {(t) => (
               <>
-                <Show when={t().kind === "log"}>
-                  <CommitLog workspace={t().workspace} />
-                </Show>
-                {/* One file's history is the same list under a pathspec, so it
-                    is the same component, not a near-copy of it. */}
+                {/* A list rather than the graph the branch's history gets: a
+                    pathspec simplifies the walk, so these rows' parents are
+                    mostly commits the list never shows. */}
                 <Show when={t().kind === "history"}>
-                  <CommitLog workspace={t().workspace} file={t().arg} />
+                  <FileHistory workspace={t().workspace} file={t().arg} />
                 </Show>
                 {/* The other half of the same question: git's list is what was
                     committed, this one is what was saved. */}

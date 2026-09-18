@@ -2,7 +2,7 @@
 //
 // The tab model is path-keyed all the way down: `tabId` is the path, dirty flags
 // and preview choices are keyed by path, and CodeEditor's buffer map is keyed by
-// path. A view like the commit log has no file behind it, so it borrows that key
+// path. A view like the commit graph has no file behind it, so it borrows that key
 // space with a `tori://` id instead of inventing a second tab type nothing else
 // understands.
 //
@@ -10,11 +10,11 @@
 //
 //   - Uniqueness. Every path-keyed map above has no workspace dimension, on the
 //     grounds that "a path names exactly one file across every workspace". A
-//     bare `tori://log` would break that: two branch-units each showing their
-//     own log would collide in one key.
+//     bare `tori://graph` would break that: two branch-units each showing their
+//     own graph would collide in one key.
 //   - Purging. `purgeTabsUnder` closes tabs by path prefix when a folder goes
 //     away. An id with no workspace in it is under no folder, so a deleted space
-//     would leave its log tab behind, addressing a worktree that no longer exists.
+//     would leave its graph tab behind, addressing a worktree that no longer exists.
 //
 // Everything downstream keys off `isSyntheticId`: these ids are never persisted,
 // never given a buffer in `CodeEditor`, and therefore never attach a language
@@ -25,9 +25,9 @@
 const PREFIX = "tori://";
 
 export type SyntheticTab = {
-  /** What the tab shows: `log`, `commit`, `history`. */
+  /** What the tab shows: `graph`, `commit`, `history`. */
   kind: string;
-  /** The kind's argument (a sha, a repo-relative file path), or "" for `log`. */
+  /** The kind's argument (a sha, a repo-relative file path), or "" for `graph`. */
   arg: string;
   /** Absolute path of the branch-unit folder this tab belongs to. */
   workspace: string;
@@ -122,7 +122,6 @@ export function tabScopePath(id: string): string {
 export function syntheticTabName(id: string): string {
   const t = parseSyntheticId(id);
   if (!t) return id;
-  if (t.kind === "log") return "Commit log";
   if (t.kind === "graph") return "Graph";
   if (t.kind === "shared") return "Shared in worktrees";
   // A sha is unreadable past its first few characters, and a file's history is

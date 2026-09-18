@@ -1,4 +1,4 @@
-/* One file's local history, as a full-pane view like the commit log. Rows are
+/* One file's local history, as a full-pane view like its git history. Rows are
    the checkpoint timeline's shape and its diff is rendered by the same rule, so
    two lists of versions in this app do not read as two different features. */
 .localHistory {

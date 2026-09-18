@@ -1,6 +1,6 @@
 /* One commit, as an editor tab. The header borrows the Changes panel's rhythm
-   (see CommitLog.module.css, which came from the same place) so the log and the
-   commit it opens read as one surface. */
+   (see FileHistory.module.css, which came from the same place) so a list of
+   commits and the commit it opens read as one surface. */
 .commitDetail {
   flex: 1;
   overflow: auto;

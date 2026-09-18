@@ -383,7 +383,7 @@ describe("the sidebar levels that outlive the session rows", () => {
       mount(["p:work/repo"]);
       fireEvent.contextMenu(await row("feat"));
 
-      pointerClick(await screen.findByText("Commit log"));
+      pointerClick(await screen.findByText("Graph"));
 
       await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     });
@@ -443,18 +443,18 @@ describe("the sidebar levels that outlive the session rows", () => {
     });
   });
 
-  it("opens a branch-unit's commit log, selecting that unit on the way", async () => {
+  it("opens a branch-unit's graph, selecting that unit on the way", async () => {
     mount(["p:work/repo"]);
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
     window.addEventListener(OPEN_IN_EDITOR, listener);
 
     fireEvent.contextMenu(await row("feat"));
-    pointerClick(await screen.findByText("Commit log"));
+    pointerClick(await screen.findByText("Graph"));
 
     // The tab is workspace-scoped, so the unit has to be selected first or the
-    // log would open into a workspace nobody is looking at.
-    await waitFor(() => expect(opened).toEqual([syntheticId("log", `${REPO}/feat`)]));
+    // graph would open into a workspace nobody is looking at.
+    await waitFor(() => expect(opened).toEqual([syntheticId("graph", `${REPO}/feat`)]));
     expect(selections[selections.length - 1]).toMatchObject({ folderPath: `${REPO}/feat` });
     window.removeEventListener(OPEN_IN_EDITOR, listener);
   });

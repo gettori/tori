@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight, GitBranch, RefreshCw } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
-import { gitStateFor } from "../../utils/gitActions";
+import { gitStateFor, type LogEntry } from "../../utils/gitActions";
 import { authorInitials, buildGraph, foldPills, refPill, type GraphRow } from "../../utils/commitGraph";
 import { commitDiffTabId, syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
@@ -11,7 +11,6 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Button from "../../components/Button/Button";
-import type { LogEntry } from "./CommitLog";
 import styles from "./GraphView.module.css";
 
 /** One backend page. The list grows by this much per "Load more". */
@@ -20,6 +19,11 @@ const PAGE = 100;
 /** One commit's changed files, as `git_commit_detail` reports them. */
 type CommitFile = { path: string; old_path: string | null; status: string };
 type CommitDetail = { files: CommitFile[] };
+
+// Ahead and behind, as the Changes panel writes them. Escaped rather than
+// literal so the source stays ASCII.
+const UP = "\u2191";
+const DOWN = "\u2193";
 
 /** Lane geometry in design px, before `--ui-scale`. */
 const LANE_W = 14;
@@ -48,9 +52,8 @@ const LANE_HUES = [
  * The commit graph, at reading width.
  *
  * The sidebar's Graph section is the glance: one lane, the subject, the refs.
- * This is the other half, and it is a tab for the reason the commit log is one
- * - lanes, author, date and sha are four columns, and the right panel is the
- * narrow column. Expanding a row lists what that commit touched, so the
+ * This is the other half, and it is a tab because lanes, author, date and sha
+ * are four columns and the right panel is the narrow one. Expanding a row lists what that commit touched, so the
  * question "what landed here" is answered without leaving the graph.
  */
 export default function GraphView(props: { workspace: string }) {
@@ -219,6 +222,15 @@ export default function GraphView(props: { workspace: string }) {
             <span class={styles.branch}>
               <Icon icon={GitBranch} />
               {branch()}
+            </span>
+          )}
+        </Show>
+        {/* Where this branch stands against its upstream. The drawing says what
+            the history is; this says how much of it the remote has. */}
+        <Show when={gitStateFor(props.workspace).aheadBehind}>
+          {(ab) => (
+            <span class={styles.aheadBehind}>
+              {ab().has_upstream ? `${UP}${ab().ahead} ${DOWN}${ab().behind}` : "Unpushed branch"}
             </span>
           )}
         </Show>

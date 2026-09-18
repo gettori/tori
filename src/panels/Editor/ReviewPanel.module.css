@@ -218,6 +218,16 @@
   cursor: pointer;
 }
 
+/* A fact beside the toggles, in their type but without their affordance. */
+.stripMeta {
+  flex: none;
+  padding: 0 calc(2px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
+  white-space: nowrap;
+}
+
 .stripToggle:hover {
   color: var(--fg-default);
 }

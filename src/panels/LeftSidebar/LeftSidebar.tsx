@@ -997,7 +997,7 @@ export default function LeftSidebar(props: {
 
   /// Select the branch-unit, then show the Pull Requests panel for its project.
   ///
-  /// Selecting first, exactly as "New session" and "Commit log" do: the panel is
+  /// Selecting first, exactly as "New session" and "Graph" do: the panel is
   /// workspace-scoped, so one opened into a workspace nobody is looking at would
   /// be invisible until you happened to switch back.
   async function openPullRequests(g: Space, p: Project, u: BranchUnit) {
@@ -2185,7 +2185,7 @@ export default function LeftSidebar(props: {
     }
     const items: MenuItem[] = [
       { label: "New session", onClick: () => startSession(g, p, u) },
-      { label: "Commit log", onClick: () => openCommitLog(g, p, u) },
+      { label: "Graph", onClick: () => openGraph(g, p, u) },
     ];
     if (u.kind === "worktree") {
       items.push({ separator: true });
@@ -2343,12 +2343,12 @@ export default function LeftSidebar(props: {
     }
   }
 
-  // "Commit log" menu action: select the unit first, exactly as "New session"
-  // does. The log tab is workspace-scoped, and a tab opened into a workspace
-  // nobody is looking at would be invisible until you happened to switch back.
-  async function openCommitLog(g: Space, p: Project, u: BranchUnit) {
+  // "Graph" menu action: select the unit first, exactly as "New session" does.
+  // The graph tab is workspace-scoped, and a tab opened into a workspace nobody
+  // is looking at would be invisible until you happened to switch back.
+  async function openGraph(g: Space, p: Project, u: BranchUnit) {
     if (await selectUnit(g, p, u)) {
-      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("log", u.folderPath) });
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("graph", u.folderPath) });
     }
   }
 

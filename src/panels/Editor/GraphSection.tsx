@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { GitCommitHorizontal } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
-import { gitStateFor } from "../../utils/gitActions";
+import { gitStateFor, type LogEntry } from "../../utils/gitActions";
 import { authorInitials, foldPills } from "../../utils/commitGraph";
 import { compactAge } from "../../utils/compactAge";
 import { syntheticId } from "../../utils/syntheticTabs";
@@ -12,7 +12,6 @@ import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import CommitFiles from "./CommitFiles";
-import type { LogEntry } from "./CommitLog";
 import styles from "./GraphSection.module.css";
 
 /** Enough to see the branch you are on and where it left the trunk. The full

@@ -48,6 +48,13 @@
   color: var(--fg-muted);
 }
 
+.aheadBehind {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  white-space: nowrap;
+}
+
 .spacer {
   flex: 1;
 }

@@ -543,7 +543,7 @@ export const COMMANDS: Command[] = [
     label: "Close editor tab",
     group: "editor",
     run: () => emit(EDITOR_CLOSE_TAB),
-    // Any tab, not just a file one: the commit log is closed the same way.
+    // Any tab, not just a file one: the graph is closed the same way.
     requires: ["editorTab"],
   },
   {
