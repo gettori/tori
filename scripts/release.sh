@@ -14,7 +14,7 @@
 set -euo pipefail
 
 RELEASES_REPO=gettori/releases
-TAP_REPO=gettori/tap
+TAP_REPO=gettori/homebrew-tap
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -138,14 +138,18 @@ cask "tori" do
   desc "Dev workflow manager: session tree + Claude terminal + editor"
   homepage "https://github.com/${RELEASES_REPO}"
 
+  # No version bound: the bundle sets no minimum, so older macOS is untested
+  # rather than blocked, and this says only what the app really requires.
+  depends_on :macos
+
   app "Tori.app"
 
   # Homebrew 6 removed --no-quarantine, and the app is unsigned, so without
-  # this Gatekeeper reports it as damaged. Legacy postflight blocks still run
-  # in third-party taps; drop this once builds are signed and notarized.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-cr", "#{appdir}/Tori.app"]
+  # this Gatekeeper reports it as damaged. postflight_steps rather than the
+  # postflight block it replaces, which Homebrew 7 deprecates and warns about
+  # on every read. Drop the whole stanza once builds are signed and notarized.
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/Tori.app"]
   end
 end
 EOF
@@ -157,5 +161,4 @@ rm -rf "$tap" "$notes"
 echo
 echo "Released Tori $version:"
 echo "  https://github.com/${RELEASES_REPO}/releases/tag/$tag"
-echo "  brew tap gettori/tap https://github.com/${TAP_REPO}"
 echo "  brew install --cask gettori/tap/tori"
