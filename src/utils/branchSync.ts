@@ -146,16 +146,74 @@ export type SyncState = {
 
 const NOTHING: SyncState = { level: "none", tone: "muted", label: "", detail: "", conflicts: [] };
 
-/** The levels whose label is words rather than an arrow, and so wants a line of
- *  its own on a sidebar row.
- *
- *  `ahead` and `behind` draw as counts beside the branch name, where they cost
- *  no height. `unpushed` is deliberately out: it is the resting state of every
- *  branch somebody just cut, so a line for it would be a line on most rows the
- *  day they are made. */
-const OWN_LINE = new Set<SyncLevel>(["conflicts", "diverged", "baseBehind"]);
+/** One glyph a surface draws for one fact. `count` is null where the fact has
+ *  no number: uncommitted work, a branch that has never been pushed, a merge
+ *  that would fight. */
+export type SyncMark = {
+  kind: "conflict" | "push" | "pull" | "dirty";
+  count: number | null;
+  tone: SyncTone;
+  /** This mark's own clause of the sentence a tooltip assembles. */
+  title: string;
+};
 
-export const needsOwnLine = (state: SyncState): boolean => OWN_LINE.has(state.level);
+/**
+ * Every fact worth a glyph, in drawing order, for a surface with no room for
+ * words.
+ *
+ * Not a verdict. `syncState` picks the one thing worth *saying*, which is what
+ * a chip with a sentence in it needs; this returns them all, because a branch
+ * that is ninety-nine behind *and* about to conflict is two things, and a row
+ * that showed only the louder would be hiding the number you act on.
+ *
+ * Colour is spent on the two states that need a decision and nowhere else. Most
+ * branches in a sidebar are behind something, so an amber "behind" is a column
+ * of amber, and a colour every row wears is a colour that has stopped saying
+ * anything.
+ */
+export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
+  if (!sync || sync.detached) return [];
+  const { ahead, behind, has_upstream, rewritten } = sync.upstream;
+  const fighting = sync.base?.conflicts ?? [];
+  const marks: SyncMark[] = [];
+
+  // First, so the one red glyph in a column keeps the same place in the run and
+  // never sits against the forge's own marks at the other end.
+  if (sync.base && fighting.length > 0) {
+    marks.push({
+      kind: "conflict",
+      count: null,
+      tone: "danger",
+      title: `${sync.base.name} has moved on, and ${plural(fighting.length, "file")} would conflict when you catch up`,
+    });
+  }
+
+  // Both lit is diverged, which needs no word for it: the pair is the word.
+  const diverged = ahead > 0 && behind > 0;
+  const tone: SyncTone = diverged ? "warn" : "muted";
+  if (ahead > 0) {
+    marks.push({ kind: "push", count: ahead, tone, title: `${plural(ahead, "commit")} to push` });
+  } else if (!has_upstream) {
+    // The same fact without a number to put on it: nothing is pushed, so
+    // everything is pending. One glyph fewer to learn than a state of its own.
+    marks.push({ kind: "push", count: null, tone: "muted", title: "This branch has no upstream yet" });
+  }
+  if (behind > 0) {
+    marks.push({ kind: "pull", count: behind, tone, title: `${plural(behind, "commit")} to pull` });
+  }
+  if (diverged && rewritten) {
+    marks[marks.length - 1].title += ". The upstream still points at history you rewrote, so this needs a force push";
+  }
+  if (sync.dirty) {
+    marks.push({ kind: "dirty", count: null, tone: "muted", title: "Uncommitted changes" });
+  }
+  return marks;
+}
+
+/** The sentence a mark run's single tooltip carries. One hover target per row,
+ *  because four glyphs with four native tooltips is four times the same census
+ *  entry for text nobody reads four times. */
+export const markTitle = (marks: readonly SyncMark[]): string => marks.map((m) => m.title).join("\n");
 
 /** How loud each level is, lowest first. `syncState` resolves in this order
  *  too, so a Topic and the rows under it cannot disagree about which of two
@@ -171,9 +229,13 @@ const SEVERITY: Record<SyncLevel, number> = {
   none: 6,
 };
 
-/** One member, as a roll-up reads it: what to call it, and what its own row
- *  would say. */
-export type MemberSync = { label: string; state: SyncState };
+/** One member, as a roll-up reads it: what to call it, and the facts its own
+ *  row is drawn from. */
+export type MemberSync = { label: string; sync: BranchSync | null | undefined };
+
+/** A Topic's answer: the loudest member's verdict, its glyphs, and which member
+ *  it was. `label` is empty when no member had anything to say. */
+export type Rollup = { state: SyncState; marks: SyncMark[]; label: string };
 
 /**
  * What a Topic says on behalf of its members: the loudest thing any one of them
@@ -184,25 +246,30 @@ export type MemberSync = { label: string; state: SyncState };
  * member it belongs to, and a Topic that lit up every time somebody started
  * typing would be a light nobody reads.
  */
-export function rollupSync(states: readonly MemberSync[]): SyncState {
-  let loudest: MemberSync | null = null;
+export function rollupSync(states: readonly MemberSync[]): Rollup {
+  let loudest: { member: MemberSync; state: SyncState } | null = null;
   let others = 0;
   for (const member of states) {
-    if (member.state.level === "none") continue;
-    if (!loudest || SEVERITY[member.state.level] < SEVERITY[loudest.state.level]) {
-      loudest = member;
+    const state = syncState(member.sync);
+    if (state.level === "none") continue;
+    if (!loudest || SEVERITY[state.level] < SEVERITY[loudest.state.level]) {
+      loudest = { member, state };
       others = 0;
-    } else if (member.state.level === loudest.state.level) {
+    } else if (state.level === loudest.state.level) {
       others += 1;
     }
   }
-  if (!loudest) return NOTHING;
+  if (!loudest) return { state: NOTHING, marks: [], label: "" };
 
   // One member's words, and only that member named. The counts and the paths in
   // a detail belong to the branch they were measured on, so naming its
   // neighbours in front of them would read their numbers onto the wrong repo.
   const more = others > 0 ? ` And ${others} other${others === 1 ? "" : "s"} like it.` : "";
-  return { ...loudest.state, detail: `${loudest.label}: ${loudest.state.detail}${more}` };
+  return {
+    state: { ...loudest.state, detail: `${loudest.member.label}: ${loudest.state.detail}${more}` },
+    marks: syncMarks(loudest.member.sync),
+    label: loudest.member.label,
+  };
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;

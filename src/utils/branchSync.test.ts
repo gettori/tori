@@ -14,7 +14,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { adoptSync, resyncRoot, rollupSync, syncFor, syncState, syncUnits } = await import("./branchSync");
+const { adoptSync, resyncRoot, rollupSync, syncFor, syncMarks, syncState, syncUnits } =
+  await import("./branchSync");
 
 const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
@@ -116,6 +117,59 @@ describe("what a branch's sync facts are worth saying", () => {
   });
 });
 
+// The glyphs, for a surface with no room for words. `syncState` picks the one
+// thing worth saying; this returns every fact, because a branch can owe two.
+
+describe("the marks a row draws for its remote", () => {
+  const kinds = (s: BranchSync | null) => syncMarks(s).map((m) => `${m.kind}${m.count ?? ""}`);
+
+  it("draws a count per direction, and the conflict first", () => {
+    expect(kinds(upstream({ behind: 3 }))).toEqual(["pull3"]);
+    expect(kinds(upstream({ ahead: 2 }))).toEqual(["push2"]);
+    expect(kinds(sync({ dirty: true }))).toEqual(["dirty"]);
+    // Leading, so the one red glyph in a column keeps its place and never sits
+    // against the forge's own marks at the row's other end.
+    expect(
+      kinds(
+        sync({
+          dirty: true,
+          upstream: { ahead: 0, behind: 9, has_upstream: true, rewritten: false },
+          base: { name: "main", ahead: 1, behind: 2, conflicts: ["src/a.ts"] },
+        }),
+      ),
+    ).toEqual(["conflict", "pull9", "dirty"]);
+  });
+
+  it("spends colour on the two states that need a decision", () => {
+    // Most branches in a sidebar are behind something, so an amber "behind"
+    // would be a column of amber and would stop saying anything.
+    expect(syncMarks(upstream({ behind: 400 }))[0].tone).toBe("muted");
+    expect(syncMarks(sync({ dirty: true }))[0].tone).toBe("muted");
+    // Diverged: both arrows, both amber, and no word needed for it.
+    const diverged = syncMarks(upstream({ ahead: 2, behind: 3 }));
+    expect(diverged.map((m) => m.tone)).toEqual(["warn", "warn"]);
+    expect(syncMarks(base({ behind: 1, conflicts: ["src/a.ts"] }))[0].tone).toBe("danger");
+  });
+
+  it("marks a branch nobody has pushed with the push glyph and no number", () => {
+    const never = syncMarks(upstream({ has_upstream: false }));
+    expect(never.map((m) => `${m.kind}${m.count ?? ""}`)).toEqual(["push"]);
+    expect(never[0].title).toContain("no upstream");
+  });
+
+  it("puts the force-push warning in the tooltip, not on the row", () => {
+    const rewritten = syncMarks(upstream({ ahead: 2, behind: 3, rewritten: true }));
+    expect(rewritten.map((m) => m.kind)).toEqual(["push", "pull"]);
+    expect(rewritten[rewritten.length - 1].title).toContain("force push");
+  });
+
+  it("draws nothing for a detached head or a branch nothing has answered for", () => {
+    expect(syncMarks(null)).toEqual([]);
+    expect(syncMarks(sync({ detached: true, dirty: true }))).toEqual([]);
+    expect(syncMarks(sync())).toEqual([]);
+  });
+});
+
 // The store around it. What is asserted here is *which rows are asked about*,
 // because the answers are the backend's and the cost of getting this wrong is a
 // `git` process per row on every config change.
@@ -194,7 +248,7 @@ describe("the sync store's bookkeeping", () => {
 // own levels, or the Topic and the row under it disagree.
 
 describe("what a Topic says for its members", () => {
-  const at = (label: string, s: BranchSync | null) => ({ label, state: syncState(s) });
+  const at = (label: string, sync: BranchSync | null) => ({ label, sync });
 
   it("reports the loudest member and names it", () => {
     const rolled = rollupSync([
@@ -202,10 +256,10 @@ describe("what a Topic says for its members", () => {
       at("web", base({ behind: 2, conflicts: ["src/a.ts"] })),
       at("cli", upstream({ behind: 1 })),
     ]);
-    expect(rolled.level).toBe("conflicts");
-    expect(rolled.tone).toBe("danger");
-    expect(rolled.detail).toContain("web");
-    expect(rolled.conflicts).toEqual(["src/a.ts"]);
+    expect(rolled.state.level).toBe("conflicts");
+    expect(rolled.state.tone).toBe("danger");
+    expect(rolled.state.detail).toContain("web");
+    expect(rolled.state.conflicts).toEqual(["src/a.ts"]);
   });
 
   it("names one member and counts the rest at its level", () => {
@@ -214,13 +268,13 @@ describe("what a Topic says for its members", () => {
       at("web", upstream({ behind: 9 })),
       at("cli", upstream({ ahead: 2 })),
     ]);
-    expect(rolled.level).toBe("behind");
+    expect(rolled.state.level).toBe("behind");
     // The counts in a detail were measured on one branch, so only that branch
     // is named in front of them.
-    expect(rolled.detail.startsWith("api: ")).toBe(true);
-    expect(rolled.detail).toContain("1 commit on the upstream");
-    expect(rolled.detail).toContain("And 1 other like it.");
-    expect(rolled.label).toBe(syncState(upstream({ behind: 1 })).label);
+    expect(rolled.state.detail.startsWith("api: ")).toBe(true);
+    expect(rolled.state.detail).toContain("1 commit on the upstream");
+    expect(rolled.state.detail).toContain("And 1 other like it.");
+    expect(rolled.state.label).toBe(syncState(upstream({ behind: 1 })).label);
   });
 
   it("counts only the members still at the level it settled on", () => {
@@ -231,21 +285,22 @@ describe("what a Topic says for its members", () => {
       at("web", upstream({ behind: 2 })),
       at("cli", base({ behind: 1, conflicts: ["src/a.ts"] })),
     ]);
-    expect(rolled.level).toBe("conflicts");
-    expect(rolled.detail.startsWith("cli: ")).toBe(true);
-    expect(rolled.detail).not.toContain("other");
+    expect(rolled.state.level).toBe("conflicts");
+    expect(rolled.state.detail.startsWith("cli: ")).toBe(true);
+    expect(rolled.state.detail).not.toContain("other");
   });
 
   it("says nothing when no member has anything to say", () => {
-    expect(rollupSync([]).level).toBe("none");
-    expect(rollupSync([at("api", null), at("web", sync())]).level).toBe("none");
+    expect(rollupSync([]).state.level).toBe("none");
+    expect(rollupSync([]).marks).toEqual([]);
+    expect(rollupSync([at("api", null), at("web", sync())]).state.level).toBe("none");
   });
 
   it("does not roll up uncommitted work", () => {
     // Dirty never reaches a `SyncState`, so a Topic whose only news is that
     // somebody is mid-edit reports nothing. The marker stays on the member.
     const rolled = rollupSync([at("api", sync({ dirty: true })), at("web", sync({ dirty: true }))]);
-    expect(rolled.level).toBe("none");
-    expect(rolled.label).toBe("");
+    expect(rolled.state.level).toBe("none");
+    expect(rolled.state.label).toBe("");
   });
 });

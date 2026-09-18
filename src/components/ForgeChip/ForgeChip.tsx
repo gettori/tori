@@ -17,12 +17,9 @@ import {
   CircleDotDashed,
   MessageSquareWarning,
   MessageSquareCheck,
-  Plug,
-  UserRound,
   type LucideIcon,
 } from "lucide-solid";
 import Icon from "../Icon/Icon";
-import IconButton from "../IconButton/IconButton";
 import { chipDraws, type BadgeTone, type ForgeChip, type PrChipState } from "../../utils/forgeChip";
 import styles from "./ForgeChip.module.css";
 
@@ -67,23 +64,10 @@ export default function ForgeChipView(props: {
   // The wrapper draws only when something inside it will. A descriptor whose
   // kinds all render nothing must leave no element behind, so an inert unit
   // cannot be hovered, focused, or clicked into a capability it does not have.
-  const picking = () => props.chip.kind === "pickAccount";
   const anything = () => chipDraws(props.chip);
 
   const body = () => (
     <>
-      <Show when={picking()}>
-        <span class={styles.forgeItem} title="Pick which account this repo uses" data-forge-pick>
-          <Icon icon={UserRound} />
-        </span>
-      </Show>
-      <Show when={props.chip.connect}>
-        {(c) => (
-          <span class={styles.forgeItem} title={c().title} data-forge-connect>
-            <Icon icon={Plug} />
-          </span>
-        )}
-      </Show>
       <Show when={pr()}>
         {(p) => (
           <span
@@ -124,49 +108,28 @@ export default function ForgeChipView(props: {
   return (
     <Show when={anything()}>
       <Show
-        when={props.onActivate && props.chip.connect}
+        when={props.onActivate}
         fallback={
-          <Show
-            when={props.onActivate}
-            fallback={
-              <span class={styles.forgeChip} data-forge-state={props.chip.kind}>
-                {body()}
-              </span>
-            }
-          >
-            <button
-              type="button"
-              class={styles.forgeChip}
-              data-forge-state={props.chip.kind}
-              aria-label={props.label}
-              // The sidebar row around this is a div with its own onClick, so
-              // without this a click on the chip would also select the branch and
-              // the panel would open onto whatever that selection changed to.
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onActivate?.();
-              }}
-            >
-              {body()}
-            </button>
-          </Show>
+          <span class={styles.forgeChip} data-forge-state={props.chip.kind}>
+            {body()}
+          </span>
         }
       >
-        {(c) => (
-          <IconButton
-            size="xs"
-            class={styles.connect}
-            icon={<Icon icon={Plug} />}
-            aria-label={props.label}
-            tooltip={c().title}
-            data-forge-state={props.chip.kind}
-            data-forge-connect
-            onClick={(e: MouseEvent) => {
-              e.stopPropagation();
-              props.onActivate?.();
-            }}
-          />
-        )}
+        <button
+          type="button"
+          class={styles.forgeChip}
+          data-forge-state={props.chip.kind}
+          aria-label={props.label}
+          // The sidebar row around this is a div with its own onClick, so
+          // without this a click on the chip would also select the branch and
+          // the panel would open onto whatever that selection changed to.
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onActivate?.();
+          }}
+        >
+          {body()}
+        </button>
       </Show>
     </Show>
   );

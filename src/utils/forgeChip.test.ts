@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { forgeChip } from "./forgeChip";
+import { forgeChip, forgeDoor } from "./forgeChip";
 import type { CheckState, PullRequest, ReviewDecision, UnitStatus } from "./forgeTypes";
 import type { KnownHosts } from "./prUrl";
 
@@ -30,7 +30,7 @@ const status = (over: Partial<UnitStatus> = {}): UnitStatus => ({
 });
 
 const chip = (over: Partial<Parameters<typeof forgeChip>[0]> = {}) =>
-  forgeChip({ origin: GH, hosts: HOSTS, branch: "wave-3", firstUnit: true, paused: null, status: status(), ...over });
+  forgeChip({ origin: GH, hosts: HOSTS, branch: "wave-3", paused: null, status: status(), ...over });
 
 describe("the states that render nothing", () => {
   it("tells a remote it cannot serve apart from a branch with no PR yet", () => {
@@ -61,18 +61,47 @@ describe("the states that render nothing", () => {
     expect(chip({ origin: null, offBase: 3, hasUpstream: true }).kind).toBe("inert");
   });
 
-  it("offers an account for a host with none, once per repo", () => {
-    // Before one, a chip promising in-app PR state would be promising a call
-    // that comes back `unsupportedRemote`, so the chip offers the account instead.
+  it("leaves a host with no account inert, wherever the door for it is", () => {
+    // A chip promising in-app PR state here would be promising a call that comes
+    // back `unsupportedRemote`. The offer of an account is `forgeDoor`'s, and
+    // belongs to the repo rather than to any one of its branches.
     const ghe = "https://github.acme.com/skarif2/tori.git";
-    expect(chip({ origin: ghe }).connect?.title).toContain("github.acme.com");
-    expect(chip({ origin: "git@git.corp.test:skarif2/tori.git" }).kind).toBe("connect");
-    expect(chip({ origin: ghe, firstUnit: false }).kind).toBe("inert");
+    expect(chip({ origin: ghe }).kind).toBe("inert");
+    expect(chip({ origin: "git@git.corp.test:skarif2/tori.git" }).kind).toBe("inert");
     expect(chip({ origin: ghe, paused: "disabled" }).kind).toBe("inert");
     const registered: KnownHosts = new Map([
       ["github.acme.com", { provider: "github", baseUrl: "https://github.acme.com" }],
     ]);
     expect(chip({ origin: ghe, hosts: registered }).kind).toBe("pr");
+  });
+
+});
+
+describe("the door a repo needs before any of it means anything", () => {
+  const door = (over: Partial<Parameters<typeof forgeDoor>[0]> = {}) =>
+    forgeDoor({ origin: GH, hosts: HOSTS, paused: null, ...over });
+
+  it("offers an account for a host that has none", () => {
+    const ghe = "https://github.acme.com/skarif2/tori.git";
+    const offered = door({ origin: ghe });
+    expect(offered?.kind).toBe("connect");
+    expect(offered).toMatchObject({ host: "github.acme.com" });
+    expect((offered as { title: string }).title).toContain("github.acme.com");
+  });
+
+  it("offers the pick when the host has several accounts and this repo has none", () => {
+    expect(door({ paused: "pickAccount" })?.kind).toBe("pickAccount");
+  });
+
+  it("offers nothing when there is nothing to offer", () => {
+    // A repo already served needs no door. Nor does one whose origin has no
+    // adapter at all, or one the user switched the forge off for: the first has
+    // no account that would help, and the last asked not to be asked.
+    expect(door()).toBe(null);
+    expect(door({ origin: null })).toBe(null);
+    expect(door({ origin: undefined })).toBe(null);
+    expect(door({ origin: "git@bitbucket.org:skarif2/tori.git" })).toBe(null);
+    expect(door({ origin: "https://github.acme.com/skarif2/tori.git", paused: "disabled" })).toBe(null);
   });
 
   it("has nothing to say about a folder that is not a branch", () => {
@@ -92,15 +121,9 @@ describe("the states that render nothing", () => {
   it("stops claiming anything the moment polling stops", () => {
     // The statuses survive a sign-out in the store, so without this the chips
     // would sit there aging, describing a repo state nothing is refreshing.
-    for (const paused of ["signedOut", "disabled", "suspect"] as const) {
+    for (const paused of ["signedOut", "disabled", "suspect", "pickAccount"] as const) {
       expect(chip({ paused }).kind).toBe("hidden");
     }
-  });
-
-  it("offers the account pick when the host has several and the repo chose none", () => {
-    const c = chip({ paused: "pickAccount" });
-    expect(c.kind).toBe("pickAccount");
-    expect(c.pr).toBeNull();
   });
 
   it("says nothing at all about a unit no tick has covered", () => {

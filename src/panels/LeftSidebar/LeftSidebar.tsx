@@ -99,10 +99,11 @@ import {
   liveSessionStatuses,
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
-import { chipDraws, forgeChip, type ForgeChip } from "../../utils/forgeChip";
-import { needsOwnLine, resyncRoot, syncFor, syncState, syncUnits } from "../../utils/branchSync";
+import { forgeChip, forgeDoor, type ForgeChip } from "../../utils/forgeChip";
+import { markTitle, resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
 import { compactAge } from "../../utils/compactAge";
 import ForgeChipView from "../../components/ForgeChip/ForgeChip";
+import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
@@ -141,6 +142,8 @@ import {
   CircleDashed,
   SquareTerminal,
   Unlink,
+  Plug,
+  UserRound,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import { CheckMark, QuestionMark, WorkingMark } from "../../components/Icon/statusMarks";
@@ -934,11 +937,36 @@ export default function LeftSidebar(props: {
   // not have - and, equally, so a sidebar full of GitLab checkouts stays as
   // quiet as it is today.
   function forgeChipNode(g: Space, p: Project, u: BranchUnit, chip: () => ForgeChip) {
-    // A control only when there is a pull request to open a panel *onto*, or a
-    // host to add an account for. A branch with no PR yet renders the quiet
-    // no-PR mark and stays inert: the panel lists what exists, and a button that
-    // opens a list this branch is not in would be a control that does nothing.
+    // A control only when there is a pull request to open a panel *onto*. A
+    // branch with no PR yet renders the quiet no-PR mark and stays inert: the
+    // panel lists what exists, and a button that opens a list this branch is not
+    // in would be a control that does nothing.
     const opens = () => chip().kind === "pr";
+    return (
+      <ForgeChipView
+        chip={chip()}
+        label={`Pull requests for ${p.name}`}
+        onActivate={opens() ? () => void openPullRequests(g, p, u) : undefined}
+      />
+    );
+  }
+
+  // The one door a repo needs, on the repo's own row: an account for its host,
+  // or a choice between the accounts that host already has.
+  //
+  // Here rather than on a branch row because neither question is about a branch.
+  // Drawn per branch, "add an account" had to be suppressed on all but one row,
+  // and the only rule for picking that row was positional: filtering moved the
+  // door, truncation hid it behind `+N`, and collapsing the project took it away
+  // entirely - which is when a tidy sidebar is hardest to sign in from.
+  function forgeDoorNode(p: Project) {
+    const door = createMemo(() =>
+      forgeDoor({ origin: origins()[p.path], hosts: forgeHosts(), paused: forgePause(p.path) }),
+    );
+    const connect = () => {
+      const d = door();
+      return d?.kind === "connect" ? d : null;
+    };
     const pickItems = (): MenuItem[] => {
       const repo = forgeRepo(p.path);
       if (repo?.kind !== "pick") return [];
@@ -952,34 +980,48 @@ export default function LeftSidebar(props: {
       ];
     };
     return (
-      <Show
-        when={chip().kind === "pickAccount"}
-        fallback={
-          <ForgeChipView
-            chip={chip()}
-            label={chip().connect?.title ?? `Pull requests for ${p.name}`}
-            onActivate={
-              chip().connect
-                ? () => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" })
-                : opens()
-                  ? () => void openPullRequests(g, p, u)
-                  : undefined
-            }
-          />
-        }
-      >
-        {/* The row selects its branch on click, which picking must not also do. */}
-        <span onClick={(e) => e.stopPropagation()}>
-          <Dropdown
-            as="span"
-            items={pickItems()}
-            placement="bottom-end"
-            aria-label={`Pick an account for ${p.name}`}
-          >
-            <ForgeChipView chip={chip()} />
-          </Dropdown>
-        </span>
-      </Show>
+      <>
+        <Show when={connect()}>
+          {(c) => (
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.rowGlyph}
+              aria-label={`${p.name}: add an account for ${c().host}`}
+              label={c().title}
+              data-forge-door="connect"
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" });
+              }}
+            >
+              <Icon icon={Plug} />
+            </Tooltip>
+          )}
+        </Show>
+        <Show when={door()?.kind === "pickAccount"}>
+          {/* The row toggles the project on click, which picking must not also do. */}
+          <span onClick={(e) => e.stopPropagation()}>
+            <Dropdown
+              as="span"
+              items={pickItems()}
+              placement="bottom-end"
+              aria-label={`Pick an account for ${p.name}`}
+            >
+              <Tooltip
+                as="button"
+                type="button"
+                class={styles.rowGlyph}
+                aria-label={`Pick an account for ${p.name}`}
+                label="Pick which account this repo uses"
+                data-forge-door="pickAccount"
+              >
+                <Icon icon={UserRound} />
+              </Tooltip>
+            </Dropdown>
+          </span>
+        </Show>
+      </>
     );
   }
 
@@ -2415,7 +2457,7 @@ export default function LeftSidebar(props: {
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits(p, [u]);
     const sync = () => syncFor(u.folderPath, u.branch);
-    const state = createMemo(() => syncState(sync()));
+    const marks = createMemo(() => syncMarks(sync()));
     // Memoized, not a bare accessor: the row reads it several times and each
     // read would otherwise re-parse the origin URL.
     const chip = createMemo(() =>
@@ -2423,9 +2465,9 @@ export default function LeftSidebar(props: {
         origin: origins()[p.path],
         hosts: forgeHosts(),
         branch: u.branch,
-        firstUnit: u.branch === p.branchUnits.find((x) => x.branch)?.branch,
         paused: forgePause(p.path),
         status: unitStatus(p.path, u.branch),
+
         // Zero once answered, undefined until then: a row cannot be told apart
         // from "the base itself" any other way, and guessing zero would put a
         // "ready" mark on every branch for the instant before the batch lands.
@@ -2433,29 +2475,14 @@ export default function LeftSidebar(props: {
         hasUpstream: sync()?.upstream.has_upstream,
       }),
     );
-    const dirty = () => !!sync()?.dirty;
-    // The quiet no-PR mark is on every branch of every GitHub repo, so a line
-    // of its own for it would be a second line on almost every row. It stays on
-    // line one, where it costs no height; everything louder moves down.
-    const quietChip = () => chip().kind === "noPr";
-    const pill = () => chipDraws(chip()) && !quietChip();
-    const second = () => needsOwnLine(state()) || dirty() || pill();
-    const ahead = () => sync()?.upstream.ahead ?? 0;
-    const behind = () => sync()?.upstream.behind ?? 0;
-    const countsName = () =>
-      [ahead() > 0 ? `${ahead()} ahead` : "", behind() > 0 ? `${behind()} behind` : ""]
-        .filter(Boolean)
-        .join(", ");
-    // One tooltip for the row rather than one per mark: the marks are small,
-    // none of them is focusable, and the reader wants the branch's story in one
-    // place rather than three hovers to assemble it.
+    // One hover target for the whole run rather than one per glyph: they are
+    // 13px each, none of them is focusable, and the reader wants the branch's
+    // standing in one place rather than four hovers to assemble it.
     const story = () =>
       [
-        unitLabel(u),
+        markTitle(marks()),
         sync()?.head_committed_at ? `Last commit ${compactAge(sync()!.head_committed_at)} ago` : "",
-        state().detail,
-        ...state().conflicts,
-        dirty() ? "Uncommitted changes" : "",
+        ...(sync()?.base?.conflicts ?? []),
       ]
         .filter(Boolean)
         .join("\n");
@@ -2475,64 +2502,36 @@ export default function LeftSidebar(props: {
           aria-current={unitSelected(u) ? "true" : undefined}
         >
           <span class={styles.rowIcon}><UnitIcon kind={u.kind} active={rollup().executing > 0} /></span>
-          <span class={styles.label} title={story()}>{unitLabel(u)}</span>
-          {/* Counts, not a verdict: both directions can be true at once, and
-              here they cost no height. What needs words goes on line two. */}
-          <Show when={ahead() > 0 || behind() > 0}>
-            {/* The arrows are glyphs: read out they name two characters, not a
-                state, so the name is said once beside them instead. */}
-            <span class={styles.syncCounts} data-sync-counts aria-hidden="true">
-              <Show when={ahead() > 0}>
-                <span>{`\u2191${ahead()}`}</span>
-              </Show>
-              <Show when={behind() > 0}>
-                <span>{`\u2193${behind()}`}</span>
-              </Show>
-            </span>
-            <span class={styles.srOnly}>{countsName()}</span>
-          </Show>
-          <For each={topicsAt(u.folderPath)}>
-            {(f) => (
-              <IconButton
-                size="xs"
-                class={styles.topicChip}
-                icon={<Icon icon={Tag} />}
-                aria-label={`Open Topic ${f.name}`}
-                tooltip={f.name}
-                data-topic-chip={f.id}
-                onClick={(e: MouseEvent) => {
-                  e.stopPropagation();
-                  selectTopic(f, u.folderPath);
-                  setMode("topics");
-                }}
-              />
-            )}
-          </For>
-          <Show when={u.kind === "incomplete"}>
-            <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
-          </Show>
-          <Show when={u.isCurrent}>
-            <span class={styles.dot} title="current checkout">●</span>
-          </Show>
-          <Show when={quietChip()}>{forgeChipNode(g, p, u, chip)}</Show>
-          {statusBubble(rollup)}
+          <span class={styles.label}>{unitLabel(u)}</span>
+          <span class={styles.rowEnd}>
+            <SyncMarks marks={marks()} label={story()} />
+            <For each={topicsAt(u.folderPath)}>
+              {(f) => (
+                <IconButton
+                  size="xs"
+                  class={styles.topicChip}
+                  icon={<Icon icon={Tag} />}
+                  aria-label={`Open Topic ${f.name}`}
+                  tooltip={f.name}
+                  data-topic-chip={f.id}
+                  onClick={(e: MouseEvent) => {
+                    e.stopPropagation();
+                    selectTopic(f, u.folderPath);
+                    setMode("topics");
+                  }}
+                />
+              )}
+            </For>
+            <Show when={u.kind === "incomplete"}>
+              <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
+            </Show>
+            <Show when={u.isCurrent}>
+              <span class={styles.dot} title="current checkout">●</span>
+            </Show>
+            {forgeChipNode(g, p, u, chip)}
+            {statusBubble(rollup)}
+          </span>
         </ContextMenu>
-        {/* A sibling of the row, not a part of it, so the rail, the hover pill
-            and the drag handle stay measured against a row that never grows. It
-            selects the same unit: a dead strip under a live row is worse. */}
-        <Show when={second()}>
-          <div class={styles.stateLine} data-state-line onClick={() => selectUnit(g, p, u)}>
-            <Show when={needsOwnLine(state())}>
-              <span class={`${styles.syncLabel} ${styles[state().tone]}`} data-sync-level={state().level}>
-                {state().label}
-              </span>
-            </Show>
-            <Show when={dirty()}>
-              <span class={styles.dirtyMark} data-sync-dirty>uncommitted</span>
-            </Show>
-            <Show when={pill()}>{forgeChipNode(g, p, u, chip)}</Show>
-          </div>
-        </Show>
       </div>
     );
   }
@@ -3169,6 +3168,7 @@ export default function LeftSidebar(props: {
                     </Show>
                   </span>
                   <span class={styles.label}>{p.name}</span>
+                  <span class={styles.rowEnd}>
                   {/* Lit only when a worktree is missing a shared file, since a
                       healthy container has nothing to say. Doubles as the one
                       path to the page that is not a right-click. */}
@@ -3187,6 +3187,7 @@ export default function LeftSidebar(props: {
                       />
                     )}
                   </Show>
+                  {forgeDoorNode(p)}
                   {statusBubble(() =>
                     plainDir()
                       ? bubbleForUnits(p, [folderUnit()])
@@ -3194,6 +3195,7 @@ export default function LeftSidebar(props: {
                         ? bubbleForUnits(p, allUnits())
                         : null,
                   )}
+                  </span>
                 </ContextMenu>
                 <Show when={popen() && !plainDir()}>
                   <For

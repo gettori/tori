@@ -5,7 +5,7 @@
 // that draws "no pull request" when the truth is "this remote is not GitHub" is
 // wrong in a way nobody reports, because both look like an absence.
 //
-// ## Eight kinds, and the three that matter
+// ## Six kinds, and the three that matter
 //
 // The distinction the plan cares about is **inert vs noPr**. `noPr` means the
 // forge answered and there is no PR yet, which is a normal, temporary state of a
@@ -33,15 +33,7 @@ import type { PauseReason } from "./forgePoll";
 import type { KnownHosts } from "./prUrl";
 import type { CheckRollup, ReviewDecision, UnitStatus } from "./forgeTypes";
 
-export type ForgeChipKind =
-  | "hidden"
-  | "inert"
-  | "unknown"
-  | "noPr"
-  | "readyForPr"
-  | "pr"
-  | "pickAccount"
-  | "connect";
+export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "readyForPr" | "pr";
 
 /// What the PR glyph depicts. `none` is the no-PR marker, which is a state of
 /// the branch rather than of a pull request, hence a value here rather than a
@@ -56,10 +48,39 @@ export type ForgeChip = {
   pr: { state: PrChipState; label: string; title: string } | null;
   checks: { tone: BadgeTone; title: string } | null;
   review: { tone: BadgeTone; title: string } | null;
-  connect: { title: string } | null;
 };
 
-const NOTHING: ForgeChip = { kind: "hidden", pr: null, checks: null, review: null, connect: null };
+const NOTHING: ForgeChip = { kind: "hidden", pr: null, checks: null, review: null };
+
+/**
+ * What a *repo* needs from the user before anything the forge says about it can
+ * be trusted: an account for its host, or a choice between the accounts that
+ * host already has.
+ *
+ * Separate from `forgeChip` because neither is a fact about a branch. Answered
+ * per branch, "add an account" has to be suppressed on all but one row, and the
+ * rule for picking that row can only be positional: filtering the tree moves the
+ * door, truncating a long branch list hides it behind `+N`, and collapsing the
+ * project removes it altogether. A repo has one row of its own, and that is
+ * where one door per repo belongs.
+ */
+export type ForgeDoor = { kind: "connect"; host: string; title: string } | { kind: "pickAccount" };
+
+export function forgeDoor(input: {
+  origin: string | null | undefined;
+  hosts: KnownHosts;
+  paused: PauseReason | null;
+}): ForgeDoor | null {
+  // `undefined` is "not probed yet" and `null` is "no origin". Neither has a
+  // door, but only the second one is a settled answer.
+  if (!input.origin) return null;
+  if (!apiCanServe(input.origin, input.hosts)) {
+    if (input.paused === "disabled") return null;
+    const host = connectHost(input.origin, input.hosts);
+    return host ? { kind: "connect", host, title: `Add an account for ${host} in Settings` } : null;
+  }
+  return input.paused === "pickAccount" ? { kind: "pickAccount" } : null;
+}
 
 /// The whole chip for one branch-unit.
 ///
@@ -71,7 +92,6 @@ export function forgeChip(input: {
   origin: string | null | undefined;
   hosts: KnownHosts;
   branch: string | null;
-  firstUnit: boolean;
   paused: PauseReason | null;
   status: UnitStatus | null;
   /** Commits this branch has that its base does not. Undefined is "the sync
@@ -85,18 +105,13 @@ export function forgeChip(input: {
   // every other question, including whether the origin has been probed.
   if (!input.branch) return { ...NOTHING, kind: "inert" };
   if (input.origin === undefined) return NOTHING;
-  if (!apiCanServe(input.origin, input.hosts)) {
-    // One door per repo, not per branch: signed out, every row would carry one.
-    const host = input.firstUnit && input.paused !== "disabled" ? connectHost(input.origin, input.hosts) : null;
-    if (!host) return { ...NOTHING, kind: "inert" };
-    return { ...NOTHING, kind: "connect", connect: { title: `Add an account for ${host} in Settings` } };
-  }
-  // Several accounts on the host and none picked for this repo: the pick is the
-  // one thing worth drawing.
-  if (input.paused === "pickAccount") return { ...NOTHING, kind: "pickAccount" };
-  // Signed out, switched off, or a credential the forge rejected: the poller is
-  // stopped, so the newest thing this store holds is whatever was true before it
-  // stopped. Rendering it would age silently.
+  // The door this repo needs is `forgeDoor`'s answer and the project row's to
+  // draw. What is left here is a branch the API will never speak for.
+  if (!apiCanServe(input.origin, input.hosts)) return { ...NOTHING, kind: "inert" };
+  // Signed out, switched off, waiting for an account to be picked, or a
+  // credential the forge rejected: the poller is stopped, so the newest thing
+  // this store holds is whatever was true before it stopped. Rendering it would
+  // age silently.
   if (input.paused !== null) return NOTHING;
   if (input.status === null) return { ...NOTHING, kind: "unknown" };
 
@@ -116,7 +131,6 @@ export function forgeChip(input: {
       },
       checks: null,
       review: null,
-      connect: null,
     };
   }
   const state: PrChipState = pr.state === "open" ? (pr.isDraft ? "draft" : "open") : pr.state;
@@ -128,7 +142,6 @@ export function forgeChip(input: {
     // both, and a badge for "no checks" is a badge for nothing.
     checks: checksBadge(input.status.checks),
     review: reviewBadge(input.status.reviewDecision),
-    connect: null,
   };
 }
 
@@ -137,13 +150,7 @@ export function forgeChip(input: {
 /// answer before the chip exists, and two spellings of "draws nothing" is how a
 /// row ends up with an empty line reserved for an absence.
 export function chipDraws(chip: ForgeChip): boolean {
-  return (
-    chip.kind === "pickAccount" ||
-    chip.connect !== null ||
-    chip.pr !== null ||
-    chip.checks !== null ||
-    chip.review !== null
-  );
+  return chip.pr !== null || chip.checks !== null || chip.review !== null;
 }
 
 /// The checks and verdict badges alone, for a surface listing pull requests the
@@ -161,7 +168,6 @@ export function forgeBadges(status: UnitStatus | null): ForgeChip {
     pr: null,
     checks: checksBadge(status.checks),
     review: reviewBadge(status.reviewDecision),
-    connect: null,
   };
 }
 

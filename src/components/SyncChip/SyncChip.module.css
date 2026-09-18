@@ -61,6 +61,14 @@
   background: var(--neutral-subtle);
 }
 
+/* The unreachable-remote glyph, which stands alone where the marks would be:
+   there are no counts to draw when the last fetch that worked is the newest
+   thing there is. */
+.glyph {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
 /* The conflicted paths under the sentence. A list rather than a run of lines,
    so a reader hears how many there are before hearing the first one. */
 .paths {

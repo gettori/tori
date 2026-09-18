@@ -1,0 +1,52 @@
+/* The git marks on a row, drawn to `ForgeChip.module.css`'s measurements on
+   purpose: the two runs sit side by side on every sidebar row, and a 13px glyph
+   next to a 14px one reads as a mistake rather than as two kinds of news. */
+.marks {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  flex: 0 0 auto;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  font-size: var(--tori-text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mark :global(svg) {
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
+/* Three tones, and two of them are rare on purpose. Most branches in a sidebar
+   are behind something, so an amber "behind" would be a column of amber, and a
+   colour worn by every row has stopped carrying information. */
+.muted {
+  color: var(--fg-muted);
+}
+
+/* Diverged: the one upstream state that needs a decision about history rather
+   than a routine pull. Both arrows wear it, since the pair is the state. */
+.warn {
+  color: var(--attention-emphasis);
+}
+
+.attention {
+  color: var(--attention-fg);
+}
+
+.danger {
+  color: var(--danger-fg);
+}
+
+/* The tooltip's own body. The run's clauses are newline-joined, and a tooltip
+   is not a `<pre>`, so the breaks have to be honoured here or four facts arrive
+   as one sentence. */
+.lines {
+  display: block;
+  white-space: pre-line;
+}

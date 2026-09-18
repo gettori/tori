@@ -195,7 +195,7 @@ describe("what a Topic row says about its members' branches", () => {
     memberSync: (m: Member) => by[m.repoPath] ?? null,
   });
 
-  it("reports the loudest member, and names it behind the pill", () => {
+  it("reports the loudest member, and names it behind the pill", async () => {
     const { container } = mount(
       topic([member("/w/api", 0), member("/w/web", 1)]),
       () => {},
@@ -204,8 +204,11 @@ describe("what a Topic row says about its members' branches", () => {
 
     const pill = container.querySelector("[data-topic-sync]")!;
     expect(pill.getAttribute("data-topic-sync")).toBe("conflicts");
-    expect(pill.textContent).toBe("main: 2 conflicts");
-    expect(pill.getAttribute("title")).toContain("web");
+    // The loudest member's own glyphs, and the tooltip says whose they are.
+    expect(pill.querySelector("[data-sync-mark=conflict]")).toBeTruthy();
+
+    fireEvent.pointerEnter(pill.querySelector("[data-sync-marks]")!);
+    expect((await screen.findByRole("tooltip")).textContent).toContain("web");
   });
 
   it("dots only the members that have something to report", () => {

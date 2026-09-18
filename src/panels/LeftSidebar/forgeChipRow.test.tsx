@@ -187,6 +187,9 @@ const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 // Up to the branch node: the louder chips draw on the row's second line, which
 // is a sibling of the row rather than part of it.
 const row = async (label: string) => (await screen.findByText(label)).parentElement!.parentElement!;
+
+/** A project's own row, which is where the forge's one-door-per-repo lives. */
+const projectRow = async (name: string) => (await screen.findByText(name)).parentElement!;
 const statusAsks = () =>
   bridge.calls.filter((c) => c.cmd === "forge_unit_statuses").map((c) => c.args.projectPath);
 
@@ -213,8 +216,6 @@ describe("the forge chip on a branch row", () => {
 
     const shipped = await row("shipped");
     await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeTruthy());
-
-    expect(shipped.querySelector("[data-state-line] [data-forge-pr]")).toBeTruthy();
 
     // Open, all checks green, approved.
     expect(shipped.querySelector('[data-forge-pr="open"]')?.textContent).toContain("#11");
@@ -243,9 +244,6 @@ describe("the forge chip on a branch row", () => {
 
     const fresh = await row("fresh");
     await waitFor(() => expect(fresh.querySelector('[data-forge-state="noPr"]')).toBeTruthy());
-    // A mark on every branch of every GitHub repo, so a line of its own for it
-    // would be a line on almost every row.
-    expect(fresh.querySelector("[data-state-line]")).toBeNull();
     // No number, and no checks or verdict hanging off a PR that does not exist.
     expect(fresh.querySelector('[data-forge-pr="none"]')?.textContent).toBe("");
     expect(fresh.querySelector("[data-forge-checks]")).toBeNull();
@@ -262,9 +260,11 @@ describe("the forge chip on a branch row", () => {
     );
 
     // gitlab.com has an adapter, so a repo there with no account is offered one
-    // rather than left blank. What it must not show is PR state.
+    // rather than left blank. The offer is the repo's, so it is on the repo's
+    // row; the branch under it shows no PR state and no door of its own.
+    expect((await projectRow("gl")).querySelector('[data-forge-door="connect"]')).toBeTruthy();
     const gl = await row("gl-main");
-    expect(gl.querySelector('[data-forge-state="connect"]')).toBeTruthy();
+    expect(gl.querySelector("[data-forge-state]")).toBeNull();
     expect(gl.querySelector("[data-forge-pr]")).toBeNull();
 
     // A repo with no origin has nothing to connect to, so nothing renders and
@@ -273,6 +273,7 @@ describe("the forge chip on a branch row", () => {
     expect(solo.querySelector("[data-forge-state]")).toBeNull();
     expect(solo.querySelector("[data-forge-pr]")).toBeNull();
     expect(solo.querySelector("button")).toBeNull();
+    expect((await projectRow("solo")).querySelector("[data-forge-door]")).toBeNull();
 
     // A plain-dir project row is its own unit and has no branch, so it is inert
     // for the same reason and by the same rule.
@@ -315,9 +316,13 @@ describe("the forge chip on a branch row", () => {
 
     await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeNull());
 
-    // github.com has no account left, so the repo offers one, on its first row only.
-    expect(shipped.querySelector('button[data-forge-state="connect"]')).toBeTruthy();
-    expect((await row("drafting")).querySelector("[data-forge-state]")).toBeNull();
+    // github.com has no account left, so the repo offers one, once, on the row
+    // that is the repo. No branch under it carries a door or a claim.
+    expect((await projectRow("gh")).querySelector('button[data-forge-door="connect"]')).toBeTruthy();
+    for (const branch of ["shipped", "drafting", "broken", "fresh"]) {
+      expect((await row(branch)).querySelector("[data-forge-door]")).toBeNull();
+      expect((await row(branch)).querySelector("[data-forge-state]")).toBeNull();
+    }
   });
 });
 

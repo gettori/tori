@@ -529,17 +529,65 @@
 /* A container whose worktrees did not all get their shared files. Warning hue
    rather than the session states beside it: this is about the project's setup,
    not about anything running in it. */
+/* In `.rowEnd` with the rest, so it takes that cluster's box and its 13px
+   glyph rather than a control's. */
 .driftMark {
   flex: none;
-  margin-left: auto;
+  height: calc(13px * var(--ui-scale));
+  padding: 0;
+  border-color: transparent;
   color: var(--scale-orange);
 }
 
-/* CSS-sized (the numeric Lucide size is dropped) so it tracks --ui-scale, on
-   the 14px the row's chevron and status glyph already share. */
-.driftMark :global(svg) {
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
+/* Everything a row says about itself, in one cluster at its end.
+   Each of these used to push itself right with its own `margin-left: auto`, so
+   a row with two of them split the free space *between* them and the glyphs
+   landed in a different column on every row. One auto margin, one order, one
+   column. */
+.rowEnd {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* The cluster owns the alignment now, so nothing inside it may claim the free
+   space for itself. */
+.rowEnd > * {
+  margin-left: 0;
+}
+
+/* One glyph box for every mark in the cluster, which is what actually makes a
+   column: a 14px glyph beside a 13px one is half a pixel of drift per row, and
+   a padded control beside a bare span is four. A more specific rule still wins,
+   which is how the Tag chip keeps its 12px. */
+.rowEnd :global(svg) {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
+/* The forge's one door per repo: add an account for this host, or pick between
+   the ones it has. Sized to the glyph rather than to a control, so it lands in
+   the same column as a branch row's marks directly below it. */
+.rowGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.rowGlyph:hover,
+.rowGlyph:focus-visible {
+  color: var(--brand-default);
 }
 
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
@@ -611,69 +659,6 @@
 }
 
 .row .badge.hint {
-  color: var(--fg-muted);
-  background: var(--neutral-subtle);
-}
-
-/* Two counts rather than one verdict: both at once is the normal shape of a
-   diverged branch, and the verdict that needs words is on the line below. */
-.row .syncCounts {
-  flex: 0 0 auto;
-  display: inline-flex;
-  gap: calc(3px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-
-/* A sibling of the row, so `.row.branch` keeps its height and the rail (drawn
-   on `.branchNode`, top to bottom) spans the taller node for free. The indent
-   is the label's own x: the row's padding, its 16px icon slot, and its gap. */
-.stateLine {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: var(--tori-space-2);
-  padding: 0 calc(8px * var(--ui-scale)) var(--branch-row-pad)
-    calc(var(--branch-label-x) + 16px * var(--ui-scale) + var(--tori-space-3));
-  font-size: var(--tori-text-2xs);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.syncLabel {
-  flex: 0 0 auto;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The same four semantic roles the titlebar chip uses, as colour only: a tinted
-   box per row would put a second grid of coloured blocks down a column whose
-   job is names. */
-.syncLabel.danger {
-  color: var(--danger-fg);
-}
-.syncLabel.warn {
-  color: var(--attention-emphasis);
-}
-.syncLabel.attention {
-  color: var(--attention-fg);
-}
-.syncLabel.muted {
-  color: var(--fg-muted);
-}
-
-/* Uncommitted work: a marker beside the severity scale rather than a step on
-   it. Dirty is normal, and toning it would rank "I am mid-edit" against "this
-   will conflict". */
-.srOnly {
-  composes: srOnly from "../../styles/patterns.module.css";
-}
-
-.dirtyMark {
-  flex: 0 0 auto;
-  padding: 0 calc(4px * var(--ui-scale));
-  border-radius: 3px;
   color: var(--fg-muted);
   background: var(--neutral-subtle);
 }
