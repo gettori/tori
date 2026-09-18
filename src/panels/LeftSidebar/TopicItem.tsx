@@ -7,6 +7,8 @@ import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { REPAIR_LABEL, type Topic, type Member, type RepairAction } from "../../utils/topics";
 import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
+import { rollupSync, syncState } from "../../utils/branchSync";
+import type { BranchSync } from "../../utils/gitActions";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./TopicItem.module.css";
 
@@ -34,6 +36,11 @@ export default function TopicItem(props: {
   menu?: MenuItem[];
   /** Right-click rows for one member row; none leaves the rows inert. */
   memberMenu?: (member: Member) => MenuItem[];
+  /** Where one member's branch stands. Injected rather than read from the sync
+   *  store here, so the key rule (a member's worktree plus the Topic's branch)
+   *  stays at the one call site that already knows both. Absent draws no state
+   *  at all, which is what a story or a Topic nothing has answered for wants. */
+  memberSync?: (member: Member) => BranchSync | null;
   /** The members' repo paths in the order a drag or a Move landed on. */
   onReorder?: (repoPaths: string[]) => void;
   /** Controlled disclosure. A list that replaces the record on every rename or
@@ -50,6 +57,14 @@ export default function TopicItem(props: {
   const members = createMemo(() => tintedMembers(props.topic, props.spaces));
   const shown = () => members().slice(0, CHIP_CAP);
   const overflow = () => Math.max(0, members().length - CHIP_CAP);
+
+  const syncOf = (m: Member) => props.memberSync?.(m) ?? null;
+  const stateOf = (m: Member) => syncState(syncOf(m));
+  // Over every member, not the six that fit: a Topic speaks for all of them,
+  // and the conflict hiding behind `+3` is the one worth knowing about.
+  const rollup = createMemo(() =>
+    rollupSync(members().map((m) => ({ label: m.label, state: stateOf(m.member) }))),
+  );
 
   const drag = createDragReorder({
     keys: () => members().map((m) => m.member.repoPath),
@@ -87,6 +102,17 @@ export default function TopicItem(props: {
         <div class={styles.name} data-name title={props.topic.branch}>
           {props.topic.name}
         </div>
+        {/* At the trailing end of line one, so a Topic with news is exactly as
+            tall as one without. */}
+        <Show when={rollup().level !== "none"}>
+          <span
+            class={`${styles.rollup} ${styles[rollup().tone]}`}
+            data-topic-sync={rollup().level}
+            title={rollup().detail}
+          >
+            {rollup().label}
+          </span>
+        </Show>
       </div>
       <Show
         when={open()}
@@ -94,11 +120,19 @@ export default function TopicItem(props: {
           <div class={styles.chips}>
             <For each={shown()}>
               {(m) => {
+                // Memoized, not bare accessors: the chip reads each of them in
+                // its title, its dot and that dot's tone, and `syncState`
+                // rebuilds its verdict on every read.
+                const sync = createMemo(() => stateOf(m.member));
+                const dirty = createMemo(() => !!syncOf(m.member)?.dirty);
                 const title = () => {
                   const s = m.state;
-                  return s.reason && s.reason !== "pending"
-                    ? `${m.label}: ${s.label} (${s.reason})`
-                    : `${m.label}: ${s.label}, ${m.key}`;
+                  const branch = [sync().detail, dirty() ? "Uncommitted changes" : ""].filter(Boolean);
+                  const head =
+                    s.reason && s.reason !== "pending"
+                      ? `${m.label}: ${s.label} (${s.reason})`
+                      : `${m.label}: ${s.label}, ${m.key}`;
+                  return [head, ...branch].join("\n");
                 };
                 return (
                   <MemberChip
@@ -120,6 +154,15 @@ export default function TopicItem(props: {
                       >
                         {badgeGlyph(m.member)}
                       </span>
+                    </Show>
+                    {/* Two corners, because the two are independent: a member
+                        can be mid-edit with nothing else to report, and a
+                        conflicted one need not have touched a file. */}
+                    <Show when={sync().level !== "none"}>
+                      <span class={`${styles.syncDot} ${styles[sync().tone]}`} data-member-sync={sync().level} />
+                    </Show>
+                    <Show when={dirty()}>
+                      <span class={styles.dirtyDot} data-member-dirty />
                     </Show>
                   </MemberChip>
                 );

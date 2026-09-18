@@ -208,7 +208,10 @@ const KEPT = new Map<string, Kept>([
     "panels/Editor/SharedFilesView.tsx",
     { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` },
   ],
-  ["panels/LeftSidebar/TopicItem.tsx", { count: 4, reason: TRUNCATION }],
+  [
+    "panels/LeftSidebar/TopicItem.tsx",
+    { count: 5, reason: `four ${TRUNCATION}, and the Topic roll-up's, which names the members behind it` },
+  ],
   ["panels/LeftSidebar/TopicList.tsx", { count: 2, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
   ["panels/LeftSidebar/forgeChipRow.test.tsx", { count: 2, reason: FIXTURE }],
@@ -300,7 +303,7 @@ const KEPT = new Map<string, Kept>([
  *  **Up two**: the graph page's two rows, the diff tab's path and an agent
  *  file's link target, less the Changes panel's member header span and the
  *  Search view's file header div, both dropped by their rebuilds. */
-const RAW_ELEMENT_TITLES = 70;
+const RAW_ELEMENT_TITLES = 71;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -422,9 +425,11 @@ describe("the title= guard", () => {
     // Up one span: a branch row's name, which now carries the branch's whole
     // story behind it (last commit, what it is behind, the paths a catch-up
     // would fight over) rather than only the text a narrow column truncates.
+    // Up one more span: a Topic's roll-up, whose pill has room for one branch's
+    // verdict and whose title is where "which member" goes.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 15,
-      span: 55,
+      span: 56,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
