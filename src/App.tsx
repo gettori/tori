@@ -33,6 +33,7 @@ import Editor from './panels/Editor/Editor';
 import { stageHost } from './tabs/stageHost';
 import { traceMark, tracePaint } from './utils/perfTrace';
 import { registerRecipeHost } from './utils/perfRecipe';
+import { startRemoteFetch } from './utils/remoteSync';
 import Toolbar from './components/Toolbar/Toolbar';
 import WindowControls from './components/WindowControls/WindowControls';
 import Resizer from './components/Resizer/Resizer';
@@ -573,6 +574,11 @@ function App() {
       leaves: () => paneLeaves().length,
     }),
   );
+
+  // Here rather than in the sidebar, which is where the forge poller starts:
+  // this one answers for every repo in the config, not for the tree that
+  // happens to be rendered, and it has to keep running with the sidebar shut.
+  onCleanup(startRemoteFetch());
 
   function persistLayout() {
     try {

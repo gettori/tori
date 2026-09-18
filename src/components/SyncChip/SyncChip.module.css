@@ -68,3 +68,10 @@
   padding-left: calc(14px * var(--ui-scale));
   color: var(--fg-muted);
 }
+
+/* The fetch line under the sentence: when the refs were last brought up to
+   date, and the failure that is too routine to toast. */
+.fetched {
+  margin-top: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+}

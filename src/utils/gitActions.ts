@@ -39,6 +39,9 @@ export type FileStatus = {
 };
 export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 
+/** `FetchResult` in src-tauri/src/git.rs, as it arrives on the two events. */
+type FetchEvent = { repo?: string; error?: string; quiet?: boolean; fetchedAt?: number };
+
 /** Where a branch stands against its upstream. `rewritten` separates the two
  *  ways a branch diverges, which want opposite advice: history this side
  *  rewrote needs a force push, a commit somebody else pushed needs a pull.
@@ -51,6 +54,21 @@ export type UpstreamSync = { ahead: number; behind: number; has_upstream: boolea
  *  Reading `null` as clean is what would keep a row quiet in front of the
  *  rebase that hurts. */
 export type BaseSync = { name: string; behind: number; conflicts: string[] | null };
+
+/** The last fetch that touched a root, from the `git://fetch-*` events.
+ *
+ *  Kept per root rather than per container because that is what a row asks
+ *  with: the store has no idea which folders share a `.git`, and the backend
+ *  already fans one container's result out to every folder in it. */
+export type LastFetch = {
+  /** Unix seconds, from the backend's own clock. */
+  at: number;
+  /** Empty on success. A quiet failure lives here and nowhere else: it is the
+   *  resting state of a repo behind a credential prompt, so it belongs in a
+   *  tooltip rather than in a toast. */
+  error: string;
+  quiet: boolean;
+};
 
 /** Mirrors `BranchSync` in src-tauri/src/git.rs. */
 export type BranchSync = {
@@ -102,6 +120,8 @@ export type GitState = {
    *  six call sites across the Changes panel, the graph and file history read
    *  that field, and moving them is not what this is for. */
   sync: BranchSync | null;
+  /** The last fetch reported for this root, or null before any. */
+  lastFetch: LastFetch | null;
 };
 
 /** A file with the member it came from, for the reads that span a Topic. */
@@ -112,7 +132,15 @@ export type RootedFile = FileStatus & { root: string };
 // slotless read distinguishable from an entered member that has not answered
 // yet: the first knows nothing, the second knows it is clean so far.
 const NO_FILES: FileStatus[] = [];
-const NO_SLOT: GitState = { root: null, files: NO_FILES, branch: null, aheadBehind: null, head: null, sync: null };
+const NO_SLOT: GitState = {
+  root: null,
+  files: NO_FILES,
+  branch: null,
+  aheadBehind: null,
+  head: null,
+  sync: null,
+  lastFetch: null,
+};
 
 // The slot map, in the order the roots were entered, which is member order.
 const [slots, setSlots] = createSignal<ReadonlyMap<string, GitState>>(new Map());
@@ -249,7 +277,15 @@ export function enterRoots(roots: readonly string[], active: string | null = roo
       continue;
     }
     epochs.set(root, ++epoch);
-    next.set(root, { root, files: [], branch: null, aheadBehind: null, head: null, sync: null });
+    next.set(root, {
+      root,
+      files: [],
+      branch: null,
+      aheadBehind: null,
+      head: null,
+      sync: null,
+      lastFetch: null,
+    });
   }
   for (const root of epochs.keys()) if (!next.has(root)) epochs.delete(root);
   setActiveRoot(active && next.has(active) ? active : (roots[0] ?? null));
@@ -531,10 +567,31 @@ export async function startGitWatch(): Promise<() => void> {
     if (root) void run(root);
     else for (const r of [...epochs.keys()]) void run(r);
   };
+  // The backend fans one container's fetch out to every folder in it, so the
+  // root on the payload is already the key a row reads by.
+  const noteFetch = (e: FetchEvent, ok: boolean) => {
+    const root = e.repo;
+    if (!root || !epochs.has(root)) return;
+    writeSlot(root, {
+      lastFetch: { at: e.fetchedAt ?? 0, error: ok ? "" : (e.error ?? "Fetch failed"), quiet: !!e.quiet },
+    });
+  };
   const unlisteners = await Promise.all([
     listen<FsChanged>("fs://changed", (e) => refreshOne(e.payload?.root, refreshStatus)),
-    listen<{ repo?: string }>("git://fetch-done", (e) => refreshOne(e.payload?.repo, refreshGit)),
-    listen<{ repo?: string }>("git://fetch-error", (e) => refreshOne(e.payload?.repo, refreshGit)),
+    // A fetch moves remote-tracking refs and nothing else, so the scheduled one
+    // re-reads only what is derived from them. The manual one keeps the fuller
+    // refresh: `.git` is watcher-filtered, so a commit made in a terminal has no
+    // `fs://changed` to arrive on and this is where it gets noticed.
+    listen<FetchEvent>("git://fetch-done", (e) => {
+      noteFetch(e.payload ?? {}, true);
+      refreshOne(e.payload?.repo, e.payload?.quiet ? refreshMeta : refreshGit);
+    }),
+    listen<FetchEvent>("git://fetch-error", (e) => {
+      noteFetch(e.payload ?? {}, false);
+      // Still a refresh: `--all` across several remotes can fail on one and
+      // have moved the refs of another.
+      refreshOne(e.payload?.repo, e.payload?.quiet ? refreshMeta : refreshGit);
+    }),
   ]);
   return () => {
     for (const un of unlisteners) un();

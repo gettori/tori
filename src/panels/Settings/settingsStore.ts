@@ -43,6 +43,11 @@ export type PanePins = { terminal: PinSide; chat: PinSide; file: PinSide };
  *  misbehaving poller would disable PR creation and the review surface too. */
 /** The forge kill switch, and the account each repo picked (written by Rust). */
 export type ForgeSettings = { enabled: boolean; picks: Record<string, string> };
+
+/** Git behaviour Tori decides, as opposed to git's own config. Mirrors `Git` in
+ *  src-tauri/src/settings.rs. `fetchEveryMinutes: 0` is off, and off stops the
+ *  focus fetch as well as the timer. */
+export type GitSettings = { fetchEveryMinutes: number };
 /** What a chat reopens with, remembered per project because the right harness,
  *  model and effort are a property of the work rather than of the user. `model`
  *  is the `--model` **value**, never the resolved id the session reports back:
@@ -267,6 +272,7 @@ export type Settings = {
   checkpoints: Checkpoints;
   panePins: PanePins;
   forge: ForgeSettings;
+  git: GitSettings;
   chatDefaults: ChatDefaults;
   budgets: Budgets;
   editorDefaults: EditorDefaults;
@@ -288,6 +294,7 @@ export type AgentRow = { agent: string; profile: string };
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark" },
   forge: { enabled: true, picks: {} },
+  git: { fetchEveryMinutes: 10 },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,
@@ -662,6 +669,16 @@ export function setEditorDefault<K extends keyof EditorDefaults>(
     ...settings,
     editorDefaults: { ...settings.editorDefaults, [key]: on },
   };
+  void saveSettings(next).catch(() => {});
+}
+
+/** How often the background fetch runs, in minutes. Zero is off.
+ *
+ *  Its own setter rather than a generic one, because the scheduler reads this
+ *  through `SETTINGS_CHANGED` and rebuilding the timer on a value nobody wrote
+ *  is a fetch on every unrelated save. */
+export function setFetchEveryMinutes(minutes: number): void {
+  const next: Settings = { ...settings, git: { ...settings.git, fetchEveryMinutes: minutes } };
   void saveSettings(next).catch(() => {});
 }
 
