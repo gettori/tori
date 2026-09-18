@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { adoptSync, resyncRoot, syncFor, syncState, syncUnits } = await import("./branchSync");
+const { adoptSync, resyncRoot, rollupSync, syncFor, syncState, syncUnits } = await import("./branchSync");
 
 const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
@@ -186,5 +186,66 @@ describe("the sync store's bookkeeping", () => {
     adoptSync("/gone", "main", base({ behind: 5 }));
     expect(syncFor("/gone", "main")).toBe(null);
     expect(batches.length).toBe(0);
+  });
+});
+
+// The Topic roll-up. Ordering is the whole of it: a Topic reports one thing, so
+// which member's thing it is has to be settled the same way a row settles its
+// own levels, or the Topic and the row under it disagree.
+
+describe("what a Topic says for its members", () => {
+  const at = (label: string, s: BranchSync | null) => ({ label, state: syncState(s) });
+
+  it("reports the loudest member and names it", () => {
+    const rolled = rollupSync([
+      at("api", upstream({ ahead: 3 })),
+      at("web", base({ behind: 2, conflicts: ["src/a.ts"] })),
+      at("cli", upstream({ behind: 1 })),
+    ]);
+    expect(rolled.level).toBe("conflicts");
+    expect(rolled.tone).toBe("danger");
+    expect(rolled.detail).toContain("web");
+    expect(rolled.conflicts).toEqual(["src/a.ts"]);
+  });
+
+  it("names one member and counts the rest at its level", () => {
+    const rolled = rollupSync([
+      at("api", upstream({ behind: 1 })),
+      at("web", upstream({ behind: 9 })),
+      at("cli", upstream({ ahead: 2 })),
+    ]);
+    expect(rolled.level).toBe("behind");
+    // The counts in a detail were measured on one branch, so only that branch
+    // is named in front of them.
+    expect(rolled.detail.startsWith("api: ")).toBe(true);
+    expect(rolled.detail).toContain("1 commit on the upstream");
+    expect(rolled.detail).toContain("And 1 other like it.");
+    expect(rolled.label).toBe(syncState(upstream({ behind: 1 })).label);
+  });
+
+  it("counts only the members still at the level it settled on", () => {
+    // Two quiet ones first, then the loud one: the tally the quiet pair built
+    // up belongs to a level this no longer reports.
+    const rolled = rollupSync([
+      at("api", upstream({ behind: 1 })),
+      at("web", upstream({ behind: 2 })),
+      at("cli", base({ behind: 1, conflicts: ["src/a.ts"] })),
+    ]);
+    expect(rolled.level).toBe("conflicts");
+    expect(rolled.detail.startsWith("cli: ")).toBe(true);
+    expect(rolled.detail).not.toContain("other");
+  });
+
+  it("says nothing when no member has anything to say", () => {
+    expect(rollupSync([]).level).toBe("none");
+    expect(rollupSync([at("api", null), at("web", sync())]).level).toBe("none");
+  });
+
+  it("does not roll up uncommitted work", () => {
+    // Dirty never reaches a `SyncState`, so a Topic whose only news is that
+    // somebody is mid-edit reports nothing. The marker stays on the member.
+    const rolled = rollupSync([at("api", sync({ dirty: true })), at("web", sync({ dirty: true }))]);
+    expect(rolled.level).toBe("none");
+    expect(rolled.label).toBe("");
   });
 });

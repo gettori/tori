@@ -16,6 +16,7 @@ import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
 import { memberState, type Topic, type Member, type RepairAction, topicKey, LAST_MEMBER } from "../../utils/topics";
 import { moveKey } from "../../utils/dragReorder";
+import { syncFor } from "../../utils/branchSync";
 import { on as onEvent, NEW_TOPIC } from "../../utils/events";
 import { removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
@@ -442,6 +443,7 @@ export default function TopicList(props: {
                 onRepair={(m, action) => void repair(f, m, action)}
                 menu={menu(f)}
                 memberMenu={memberMenu(f)}
+                memberSync={(m) => syncFor(m.worktreePath, f.branch)}
                 onReorder={(repoPaths) => void reorder(f, repoPaths)}
                 expanded={!!expanded()[f.id]}
                 onExpand={(open) => setExpanded((prev) => ({ ...prev, [f.id]: open }))}

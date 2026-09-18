@@ -44,9 +44,13 @@ let drawn = new Map<string, { path: string; branch: string }>();
 
 /** One row's standing, or null while nothing has answered for it. Null and
  *  "in sync" are the same to `syncState`, which is what keeps an unanswered row
- *  from reading as a clean one. */
-export function syncFor(folderPath: string, branch: string | null | undefined): BranchSync | null {
-  return answers[keyOf(folderPath, branch)] ?? null;
+ *  from reading as a clean one. A missing folder is one of those nulls: a Topic
+ *  member whose worktree is gone has no branch to stand anywhere. */
+export function syncFor(
+  folderPath: string | null | undefined,
+  branch: string | null | undefined,
+): BranchSync | null {
+  return folderPath ? (answers[keyOf(folderPath, branch)] ?? null) : null;
 }
 
 /**
@@ -152,6 +156,54 @@ const NOTHING: SyncState = { level: "none", tone: "muted", label: "", detail: ""
 const OWN_LINE = new Set<SyncLevel>(["conflicts", "diverged", "baseBehind"]);
 
 export const needsOwnLine = (state: SyncState): boolean => OWN_LINE.has(state.level);
+
+/** How loud each level is, lowest first. `syncState` resolves in this order
+ *  too, so a Topic and the rows under it cannot disagree about which of two
+ *  members is louder. A `Record` over the union rather than a list, so a level
+ *  added to `SyncLevel` and forgotten here will not compile. */
+const SEVERITY: Record<SyncLevel, number> = {
+  conflicts: 0,
+  diverged: 1,
+  behind: 2,
+  baseBehind: 3,
+  ahead: 4,
+  unpushed: 5,
+  none: 6,
+};
+
+/** One member, as a roll-up reads it: what to call it, and what its own row
+ *  would say. */
+export type MemberSync = { label: string; state: SyncState };
+
+/**
+ * What a Topic says on behalf of its members: the loudest thing any one of them
+ * has to report, named by the members it belongs to.
+ *
+ * Dirty is absent, and cannot be here: it never reaches a `SyncState` at all.
+ * That is the design, not an omission. Uncommitted work is a marker on the
+ * member it belongs to, and a Topic that lit up every time somebody started
+ * typing would be a light nobody reads.
+ */
+export function rollupSync(states: readonly MemberSync[]): SyncState {
+  let loudest: MemberSync | null = null;
+  let others = 0;
+  for (const member of states) {
+    if (member.state.level === "none") continue;
+    if (!loudest || SEVERITY[member.state.level] < SEVERITY[loudest.state.level]) {
+      loudest = member;
+      others = 0;
+    } else if (member.state.level === loudest.state.level) {
+      others += 1;
+    }
+  }
+  if (!loudest) return NOTHING;
+
+  // One member's words, and only that member named. The counts and the paths in
+  // a detail belong to the branch they were measured on, so naming its
+  // neighbours in front of them would read their numbers onto the wrong repo.
+  const more = others > 0 ? ` And ${others} other${others === 1 ? "" : "s"} like it.` : "";
+  return { ...loudest.state, detail: `${loudest.label}: ${loudest.state.detail}${more}` };
+}
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 

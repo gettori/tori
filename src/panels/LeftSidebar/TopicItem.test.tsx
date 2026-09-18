@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import TopicItem, { CHIP_CAP, type SpaceTint } from "./TopicItem";
 import type { Topic, Member, MemberState } from "../../utils/topics";
+import type { BranchSync } from "../../utils/gitActions";
 import styles from "./TopicItem.module.css";
 import chipStyles from "../../components/MemberChip/MemberChip.module.css";
 
@@ -172,5 +173,92 @@ describe("TopicItem", () => {
 
       expect(onReorder).toHaveBeenCalledWith(["/w/web", "/w/api", "/o/dotfiles"]);
     });
+  });
+});
+
+/** `BranchSync` as the backend sends it, clean unless told otherwise. */
+const branchSync = (over: Partial<BranchSync> = {}): BranchSync => ({
+  detached: false,
+  dirty: false,
+  head_committed_at: 1_700_000_000,
+  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+  base: null,
+  ...over,
+});
+
+const CONFLICTED = branchSync({
+  base: { name: "main", ahead: 2, behind: 4, conflicts: ["src/a.ts", "src/b.ts"] },
+});
+
+describe("what a Topic row says about its members' branches", () => {
+  const withSync = (by: Record<string, BranchSync>) => ({
+    memberSync: (m: Member) => by[m.repoPath] ?? null,
+  });
+
+  it("reports the loudest member, and names it behind the pill", () => {
+    const { container } = mount(
+      topic([member("/w/api", 0), member("/w/web", 1)]),
+      () => {},
+      withSync({ "/w/web": CONFLICTED, "/w/api": branchSync({ upstream: { ahead: 1, behind: 0, has_upstream: true, rewritten: false } }) }),
+    );
+
+    const pill = container.querySelector("[data-topic-sync]")!;
+    expect(pill.getAttribute("data-topic-sync")).toBe("conflicts");
+    expect(pill.textContent).toBe("main: 2 conflicts");
+    expect(pill.getAttribute("title")).toContain("web");
+  });
+
+  it("dots only the members that have something to report", () => {
+    const { container } = mount(
+      topic([member("/w/api", 0), member("/w/web", 1), member("/o/dotfiles", 2)]),
+      () => {},
+      withSync({ "/w/web": CONFLICTED, "/o/dotfiles": branchSync({ dirty: true }) }),
+    );
+
+    const dotted = Array.from(container.querySelectorAll("[data-member-sync]"));
+    expect(dotted.length).toBe(1);
+    expect(dotted[0].getAttribute("data-member-sync")).toBe("conflicts");
+
+    // Dirty is a marker beside the scale, not a step on it: its own corner, and
+    // no roll-up (the pill above reports the conflict, not the typing).
+    const dirty = Array.from(container.querySelectorAll("[data-member-dirty]"));
+    expect(dirty.length).toBe(1);
+    expect(dirty[0].closest("[data-chip]")?.getAttribute("data-chip")).toBe("/o/dotfiles");
+  });
+
+  it("says nothing at all when the only news is that somebody is mid-edit", () => {
+    const { container } = mount(
+      topic([member("/w/api", 0)]),
+      () => {},
+      withSync({ "/w/api": branchSync({ dirty: true }) }),
+    );
+
+    expect(container.querySelector("[data-topic-sync]")).toBeNull();
+    expect(container.querySelector("[data-member-dirty]")).toBeTruthy();
+  });
+
+  it("keeps a Topic with news the same shape as one without", () => {
+    // jsdom has no layout, so "the same height" is pinned structurally: the
+    // roll-up goes inside the name's own line, so the row gains no block.
+    const members = [member("/w/api", 0), member("/w/web", 1)];
+    const quiet = mount(topic(members)).container.querySelector("[data-topic]")!;
+    const loud = mount(topic(members), () => {}, withSync({ "/w/web": CONFLICTED })).container
+      .querySelector("[data-topic]")!;
+
+    expect(loud.children.length).toBe(quiet.children.length);
+    expect(loud.querySelector("[data-topic-sync]")!.parentElement!.className).toBe(
+      loud.querySelector("[data-name]")!.parentElement!.className,
+    );
+  });
+
+  it("stays clean under axe with a roll-up and dotted members", async () => {
+    const { container } = mount(
+      topic([member("/w/api", 0), member("/w/web", 1)]),
+      () => {},
+      withSync({ "/w/web": CONFLICTED, "/w/api": branchSync({ dirty: true }) }),
+    );
+
+    expect(container.querySelector("[data-topic-sync]")).toBeTruthy();
+    await expectNoAxeViolations(container);
   });
 });
