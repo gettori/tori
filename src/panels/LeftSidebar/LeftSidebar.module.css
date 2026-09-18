@@ -922,24 +922,30 @@
 }
 
 /* The same head, for a project's menu. Restated rather than shared with the
-   space one above: the glyph takes the git hue instead of a space's, and the
-   kind badge is a third child that has to push to the far edge. */
+   space one above: the mark is the project's own icon rather than a space's
+   initial, so it can be an image, and the kind badge is a third child that has
+   to push to the far edge. */
 .projectMenuHead {
   display: flex;
   align-items: center;
   gap: var(--tori-space-4);
   min-width: 0;
 }
+/* Both shapes `ProjectIcon` resolves to, at the size the sidebar row wears
+   them: a glyph in the name's ink, so the two read as one unit, and an image
+   letterboxed rather than cropped. */
 .projectMenuHead svg {
   flex: none;
   width: var(--control-icon);
   height: var(--control-icon);
-  color: var(--fg-subtle);
+  color: var(--fg-default);
 }
-/* A project git is doing something with wears the brand, the same way its row
-   in the tree does; a plain folder stays in the muted voice. */
-.projectMenuGit svg {
-  color: var(--brand-default);
+.projectMenuHead img {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  object-fit: contain;
+  border-radius: calc(3px * var(--ui-scale));
 }
 .projectMenuName {
   font-weight: 600;
