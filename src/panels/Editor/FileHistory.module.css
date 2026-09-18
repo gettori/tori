@@ -1,7 +1,7 @@
-/* The commit log, as an editor tab. Same header rhythm as the Changes panel
+/* One file's history, as an editor tab. Same header rhythm as the Changes panel
    (ReviewPanel.module.css) so the two read as one surface, but laid out for the
    wide side of the pane: one line per commit, nothing wraps. */
-.commitLog {
+.fileHistory {
   flex: 1;
   overflow: auto;
   background: var(--canvas-card);
@@ -22,7 +22,7 @@
   border-bottom: 1px solid var(--border-default);
 }
 
-.branchName {
+.fileName {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -41,7 +41,7 @@
   color: var(--danger-fg);
 }
 
-.commitLog :global(.tree-empty) {
+.fileHistory :global(.tree-empty) {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
 }

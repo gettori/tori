@@ -309,7 +309,7 @@ export default function ConflictView(props: {
 
   // Which read is current. The pane reuses one view across tabs of the same
   // kind, so a slower answer for the file you left can land under the file you
-  // opened. Same token as `CommitDetail` and `CommitLog`, and the same reason.
+  // opened. Same token as `CommitDetail` and `FileHistory`, and the same reason.
   let current = 0;
 
   const regions = createMemo(() => {

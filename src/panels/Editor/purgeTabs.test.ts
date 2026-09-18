@@ -82,10 +82,10 @@ describe("purgeTabsUnder", () => {
   });
 
   it("takes a synthetic tab with the workspace its id names", () => {
-    const log = syntheticId("log", "/space/one/main");
+    const log = syntheticId("graph", "/space/one/main");
     const input: TabMaps<{ path: string; name: string }> = {
       tabs: {
-        "/space/one/main": [t("/space/one/main/a.ts"), { path: log, name: "Commit log" }],
+        "/space/one/main": [t("/space/one/main/a.ts"), { path: log, name: "Graph" }],
         "/space/two/main": [t("/space/two/main/d.ts")],
       },
       active: { "/space/one/main": log, "/space/two/main": "/space/two/main/d.ts" },
@@ -99,9 +99,9 @@ describe("purgeTabsUnder", () => {
   });
 
   it("leaves a synthetic tab whose workspace is not under the deleted root", () => {
-    const log = syntheticId("log", "/space/two/main");
+    const log = syntheticId("graph", "/space/two/main");
     const input: TabMaps<{ path: string; name: string }> = {
-      tabs: { "/space/two/main": [{ path: log, name: "Commit log" }] },
+      tabs: { "/space/two/main": [{ path: log, name: "Graph" }] },
       active: { "/space/two/main": log },
     };
     const out = purgeTabsUnder(input, "/space/one");
@@ -138,9 +138,9 @@ describe("a results buffer's own roots", () => {
     // Evicted from the store, or never opened here. Scoping it to the id keeps
     // the branch-unit case working and errs towards keeping the tab, which is
     // the safe direction for a purge that skips the dirty prompt.
-    const log = syntheticId("log", "/space/one/main");
+    const log = syntheticId("graph", "/space/one/main");
     const maps: TabMaps<{ path: string; name: string }> = {
-      tabs: { "/space/one/main": [{ path: log, name: "Commit log" }] },
+      tabs: { "/space/one/main": [{ path: log, name: "Graph" }] },
       active: { "/space/one/main": log },
     };
     expect(purgeTabsUnder(maps, "/space/one", () => null).removed).toEqual([log]);
