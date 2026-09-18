@@ -638,6 +638,28 @@ describe("what a branch row says about its remote", () => {
     expect((await screen.findByRole("tooltip")).textContent).toContain("3 commits to pull");
   });
 
+  it("stands the marks down while an agent holds the row, and brings them back", async () => {
+    bridge.sync = {
+      [syncKey("feat")]: syncOf({
+        dirty: true,
+        upstream: { ahead: 1, behind: 2, has_upstream: true, rewritten: false },
+      }),
+    };
+    mount(["p:work/repo"]);
+    await waitFor(async () => expect((await marks("feat")).length).toBe(3));
+
+    await waitFor(() => expect(bridge.handlers["pty://activity"]).toBeTruthy());
+    bridge.handlers["pty://activity"]({ payload: { id: "tab-1", state: "active" } });
+    bridge.handlers["sessions://changed"]({ payload: null });
+
+    // Two of those three are being rewritten as you read them, and the third is
+    // "uncommitted changes" on a row where an agent is writing files.
+    await waitFor(async () => expect(await marks("feat")).toEqual([]));
+
+    bridge.handlers["pty://activity"]({ payload: { id: "tab-1", state: "quiet" } });
+    await waitFor(async () => expect((await marks("feat")).length).toBe(3));
+  });
+
   it("passes axe with a tree of rows that have something to report", async () => {
     bridge.sync = {
       [syncKey("main")]: syncOf({ dirty: true }),

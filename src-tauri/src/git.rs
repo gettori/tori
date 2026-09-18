@@ -2358,15 +2358,15 @@ fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
         return (false, sync);
     }
 
-    let tracked = branch.as_deref().and_then(|name| upstream_ref(repo, name));
+    let tracked = branch.as_deref().and_then(|name| sync_ref(repo, name));
     let answered = BranchSync {
         head_committed_at: git_capture(repo, &["log", "-1", "--format=%ct", &tip, "--"])
             .ok()
             .and_then(|t| t.parse().ok())
             .unwrap_or(0),
-        upstream: match (branch.as_deref(), &tracked) {
-            (Some(name), Some(_)) => upstream_sync(repo, name, &tip),
-            _ => UpstreamSync::default(),
+        upstream: match &tracked {
+            Some(remote) => upstream_sync(repo, remote, &tip),
+            None => UpstreamSync::default(),
         },
         base: base_sync(repo, &tip, branch.as_deref(), tracked.as_deref()),
         ..sync
@@ -2443,9 +2443,31 @@ fn is_dirty(repo: &str) -> bool {
 /// upstream sits now, long ago, does not read as rewritten forever.
 const REFLOG_DEPTH: &str = "-n200";
 
-fn upstream_sync(repo: &str, branch: &str, tip: &str) -> UpstreamSync {
-    let range = format!("{branch}...{branch}@{{u}}");
-    let counts = git_capture(repo, &["rev-list", "--left-right", "--count", &range]).unwrap_or_default();
+/// The remote ref a branch's counts are measured against: its configured
+/// upstream, or, failing that, the remote branch of the same name.
+///
+/// The fallback is what keeps a worktree from reading as never pushed.
+/// `git worktree add` creates the local branch with no tracking config at all,
+/// so a `main` sitting exactly on `origin/main` has no `@{u}`, and "unpushed"
+/// is then both alarming and false. Tori's own `.bare` layout makes every
+/// worktree this way, so it is the common case rather than the odd one.
+///
+/// Deliberately not folded into [`upstream_ref`], which answers a different
+/// question for [`push_branch`]: a branch with no tracking config still needs
+/// `--set-upstream` on its next push, whatever refs happen to exist.
+fn sync_ref(repo: &str, branch: &str) -> Option<String> {
+    if let Some(tracked) = upstream_ref(repo, branch) {
+        return Some(tracked);
+    }
+    let same_name = format!("origin/{branch}");
+    git_capture(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/remotes/{same_name}")])
+        .ok()
+        .map(|_| same_name)
+}
+
+fn upstream_sync(repo: &str, tracked: &str, tip: &str) -> UpstreamSync {
+    let range = format!("{tip}...refs/remotes/{tracked}");
+    let counts = git_capture(repo, &["rev-list", "--left-right", "--count", &range, "--"]).unwrap_or_default();
     let mut parts = counts.split_whitespace();
     let ahead = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
     let behind = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
@@ -2457,15 +2479,15 @@ fn upstream_sync(repo: &str, branch: &str, tip: &str) -> UpstreamSync {
         ahead,
         behind,
         has_upstream: true,
-        rewritten: diverged && upstream_tip_in_reflog(repo, branch, tip),
+        rewritten: diverged && upstream_tip_in_reflog(repo, tracked, tip),
     }
 }
 
 /// Whether the upstream's tip is a commit HEAD has stood on before: an amend or
 /// a rebase leaves the old tip in the reflog, a push by somebody else does not.
 /// A heuristic, not a proof, so the chip says "diverged" either way.
-fn upstream_tip_in_reflog(repo: &str, branch: &str, tip: &str) -> bool {
-    let Ok(upstream) = git_capture(repo, &["rev-parse", &format!("{branch}@{{u}}")]) else {
+fn upstream_tip_in_reflog(repo: &str, tracked: &str, tip: &str) -> bool {
+    let Ok(upstream) = git_capture(repo, &["rev-parse", &format!("refs/remotes/{tracked}")]) else {
         return false;
     };
     git_capture(repo, &["log", "-g", "--format=%H", REFLOG_DEPTH, tip, "--"])
@@ -3574,6 +3596,46 @@ diff --git a/f b/f
         );
         assert_eq!(main.base, None, "main is the base");
         assert!(main.head_committed_at > 0);
+
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn branch_sync_measures_an_untracked_branch_against_the_remote_of_its_name() {
+        // What `git worktree add` leaves behind, and what Tori's own `.bare`
+        // layout therefore makes of every worktree: a local branch with no
+        // tracking config at all, sitting exactly on the remote branch it was
+        // cut from. Read as "never pushed" that is alarming and false.
+        let (local, remote) = repo_with_remote();
+        git(&local, &["push", "-q", "origin", "main"]);
+        assert!(
+            upstream_ref(&local.to_string_lossy(), "main").is_none(),
+            "a plain push sets no tracking config"
+        );
+
+        let level = sync_of(&local);
+        assert_eq!(
+            level.upstream,
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+            "on origin/main, so there is nothing to say"
+        );
+
+        commit_file(&local, "later.txt", "ours");
+        assert_eq!(sync_of(&local).upstream.ahead, 1, "counted against origin/main all the same");
+
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn branch_sync_calls_a_branch_with_no_remote_at_all_unpushed() {
+        // The state the mark is actually for: nothing of this branch exists
+        // anywhere but here.
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "ours");
+
+        let sync = sync_of(&local);
+        assert!(!sync.upstream.has_upstream, "no feat anywhere on origin");
+        assert_eq!(sync.upstream.ahead, 0, "nothing to count against");
 
         scrub(&[&local, &remote]);
     }
