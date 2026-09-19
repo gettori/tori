@@ -137,7 +137,7 @@ describe("the marks a row draws for its remote", () => {
           base: { name: "main", ahead: 1, behind: 2, conflicts: ["src/a.ts"] },
         }),
       ),
-    ).toEqual(["conflict", "pull9", "dirty"]);
+    ).toEqual(["conflict1", "pull9", "dirty"]);
   });
 
   it("spends colour on the two states that need a decision", () => {
