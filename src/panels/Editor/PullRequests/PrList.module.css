@@ -1,5 +1,6 @@
-/* Pull Requests panel, hash-scoped, matching SearchPanel's frame so the right
-   pane's modes feel like one surface. */
+/* Every open pull request on a project, in one list. Drawn in two places at two
+   widths: the right pane's Pull Requests mode, and its own tab in the stage. The
+   frame matches SearchPanel's, so the pane's modes feel like one surface. */
 .panel {
   flex: 1;
   display: flex;

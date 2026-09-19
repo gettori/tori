@@ -67,6 +67,7 @@ import CommitDetail from "./CommitDetail";
 import CommitDiffView from "./CommitDiffView";
 import PrDiffView from "./PullRequests/PrDiffView";
 import PrOverviewView from "./PullRequests/PrOverviewView";
+import PrListView from "./PullRequests/PrListView";
 import { pendingFor, prEntry } from "../../utils/prReviewStore";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
@@ -99,6 +100,7 @@ import {
   GitCompare,
   GitGraph,
   GitPullRequest,
+  GitPullRequestArrow,
   TriangleAlert,
   Bug,
   // A call graph, not a telephone: `PhoneCall` reads as telephony.
@@ -384,6 +386,7 @@ const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
   diff: GitCompare,
   shared: FolderSymlink,
   pr: GitPullRequest,
+  prs: GitPullRequestArrow,
 };
 
 function tabIcon(t: FileTab) {
@@ -2730,6 +2733,12 @@ export default function Editor(props: {
                     says it does, and the form the review is submitted from. */}
                 <Show when={t().kind === "pr"}>
                   <PrOverviewView workspace={t().workspace} arg={t().arg} />
+                </Show>
+                {/* The project's open pull requests. The panel beside it is
+                    about the checked-out branch, so this is the only surface
+                    that reaches a pull request on any other one. */}
+                <Show when={t().kind === "prs"}>
+                  <PrListView workspace={t().workspace} />
                 </Show>
                 {/* The other half of the sidebar's Graph section: lanes need
                     width, and the right panel is the narrow column. */}
