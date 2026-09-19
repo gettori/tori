@@ -122,12 +122,20 @@ export function forgeChip(input: {
     // Unpushed is deliberately not ready - the PR cannot be opened from here,
     // and a row that says otherwise is pointing at a button that would fail.
     const ready = (input.offBase ?? 0) > 0 && input.hasUpstream === true;
+    // Only the actionable half draws now. A branch with a pull request grows a
+    // whole second line for it (`PrLine`), so absence reports itself by the
+    // line not being there, and the marker that used to say "no pull request"
+    // was a glyph on the majority of rows in the column to report a state the
+    // column already showed. `readyForPr` survives it because it is not that
+    // state: it says the PR could be opened now, which is a thing to do rather
+    // than a thing to know, and nothing else on the row says it.
+    if (!ready) return { ...NOTHING, kind: "noPr" };
     return {
-      kind: ready ? "readyForPr" : "noPr",
+      kind: "readyForPr",
       pr: {
         state: "none",
         label: "",
-        title: ready ? "No pull request yet, and this branch is ready for one" : "No pull request for this branch",
+        title: "No pull request yet, and this branch is ready for one",
       },
       checks: null,
       review: null,

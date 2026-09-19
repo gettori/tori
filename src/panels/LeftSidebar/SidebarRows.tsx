@@ -87,14 +87,21 @@ export function BranchRow(props: {
   selected?: boolean;
   nested?: boolean;
   end?: JSX.Element;
+  /** A second line under the name, for a branch whose pull request has more to
+   *  say than the end cluster has width for (`PrLine`). Absent leaves the row
+   *  exactly the single-line shape it has always had, which is most rows. */
+  meta?: JSX.Element;
   menu?: MenuItem[];
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
 }) {
+  const name = () => <span class={styles.label}>{props.label}</span>;
+  const end = () => <span class={styles.rowEnd}>{props.end}</span>;
   return (
     <div class={`node ${styles.branchNode}`} classList={{ [styles.attemptNode]: props.nested }}>
       <ContextMenu
         class={`${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""}`}
+        classList={{ [styles.twoLine]: props.meta != null }}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}
         draggable={true}
@@ -102,8 +109,17 @@ export function BranchRow(props: {
         aria-current={props.selected ? "true" : undefined}
       >
         <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
-        <span class={styles.label}>{props.label}</span>
-        <span class={styles.rowEnd}>{props.end}</span>
+        <Show when={props.meta} fallback={<>{name()}{end()}</>}>
+          {(meta) => (
+            <span class={styles.rowStack}>
+              <span class={styles.rowTop}>
+                {name()}
+                {end()}
+              </span>
+              {meta()}
+            </span>
+          )}
+        </Show>
       </ContextMenu>
     </div>
   );
