@@ -38,7 +38,7 @@ export type FileStatus = {
    *  Optional only so a fixture may omit it; the backend always sends it. */
   conflicted?: boolean;
 };
-export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
+export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean; sets_upstream: boolean };
 
 /** `FetchResult` in src-tauri/src/git.rs, as it arrives on the two events. */
 type FetchEvent = { repo?: string; error?: string; quiet?: boolean; fetchedAt?: number };
