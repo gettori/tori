@@ -31,7 +31,7 @@ const keysOf = (v: unknown) => Object.keys(v as object).sort();
 
 /// Reached through `reviewThread` rather than emitted on its own, so the
 /// top-level loop skips it and the nested test below covers it instead.
-const NESTED_ONLY = ["reviewComment", "prCounts", "prReviewCounts"];
+const NESTED_ONLY = ["reviewComment", "prCounts", "prReviewCounts", "checkContext"];
 /// Bare values, not objects, so there are no field names to compare. Their
 /// contents are checked by the enum and auth-state tests below.
 const NOT_OBJECTS = ["reviewDecision", "authStates", "servedProviders"];
@@ -72,6 +72,16 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     const thread = golden.reviewThread;
     expect(thread.comments.length).toBeGreaterThan(0);
     expect(keysOf(thread.comments[0])).toEqual([...FORGE_KEYS.reviewComment].sort());
+  });
+
+  it("agrees on the nested check shape too", () => {
+    // `FORGE_KEYS.checkRollup` compares the rollup's own keys, which says
+    // nothing about the contexts inside it: the panel expands that list into
+    // rows, so a rename in there would blank every one of them.
+    const contexts = golden.checkRollup.contexts;
+    expect(contexts.length).toBeGreaterThan(0);
+    expect(keysOf(contexts[0])).toEqual([...FORGE_KEYS.checkContext].sort());
+    for (const c of contexts) expect(CHECK_STATES).toContain(c.state);
   });
 
   it("agrees on the nested count shapes too", () => {
@@ -194,20 +204,20 @@ describe("needsAttention", () => {
   const unit = (over: Partial<UnitStatus>): UnitStatus => ({
     headRef: "wave-3",
     pullRequest: null,
-    checks: { state: "success", total: 3, failing: 0 },
+    checks: { state: "success", total: 3, failing: 0, contexts: [] },
     reviewDecision: "none",
     ...over,
   });
 
   it("flags a failing check and changes-requested, and nothing else", () => {
-    expect(needsAttention(unit({ checks: { state: "failure", total: 3, failing: 1 } }))).toBe(true);
+    expect(needsAttention(unit({ checks: { state: "failure", total: 3, failing: 1, contexts: [] } }))).toBe(true);
     expect(needsAttention(unit({ reviewDecision: "changesRequested" }))).toBe(true);
 
     // Pending is not a needs-you moment: CI that has not finished is not CI that
     // failed, and treating it as one would fire the tray on every push.
-    expect(needsAttention(unit({ checks: { state: "pending", total: 3, failing: 0 } }))).toBe(false);
+    expect(needsAttention(unit({ checks: { state: "pending", total: 3, failing: 0, contexts: [] } }))).toBe(false);
     // Neither is a repo with no CI at all.
-    expect(needsAttention(unit({ checks: { state: "none", total: 0, failing: 0 } }))).toBe(false);
+    expect(needsAttention(unit({ checks: { state: "none", total: 0, failing: 0, contexts: [] } }))).toBe(false);
     expect(needsAttention(unit({}))).toBe(false);
     expect(needsAttention(unit({ reviewDecision: "reviewRequired" }))).toBe(false);
   });

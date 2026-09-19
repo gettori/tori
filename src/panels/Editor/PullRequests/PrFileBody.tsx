@@ -55,7 +55,7 @@ import { forgeErrorMessage, type DraftComment, type PrFile, type PullRequest, ty
 import DiffRows, { diffRowClasses, rovingHunk } from "../DiffRows";
 import PrThreadCard from "./PrThreadCard";
 import Button from "../../../components/Button/Button";
-import styles from "./PrDetail.module.css";
+import styles from "./PrFileBody.module.css";
 
 /** A blob size as a reader reads it. Rounded, because the point is the shape of
  *  the change and not the byte. */

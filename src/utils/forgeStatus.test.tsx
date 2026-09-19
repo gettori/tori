@@ -122,7 +122,7 @@ function status(head: string, over: Partial<UnitStatus> = {}): UnitStatus {
   return {
     headRef: head,
     pullRequest: null,
-    checks: { state: "success", total: 1, failing: 0 },
+    checks: { state: "success", total: 1, failing: 0, contexts: [] },
     reviewDecision: "none",
     ...over,
   };

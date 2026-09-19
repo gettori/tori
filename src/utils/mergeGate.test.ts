@@ -39,11 +39,26 @@ describe("what a mergeability verdict permits", () => {
     expect(mergeGate("blocked").summary).not.toMatch(/approv|review|check/i);
   });
 
-  it("offers an update only to a branch that is merely behind", () => {
-    // A conflicted branch is the sharp one: update-branch is itself a merge, so
-    // offering it there is offering a button that cannot work.
+  it("offers an update to the two states where the base has moved on", () => {
+    // Including the conflicted one, where it can fail: Tori does not resolve
+    // conflicts, so the choice there is the server's refusal, which names what
+    // is fighting, or a panel with nothing to press at all.
     const updatable = MERGEABLE_STATES.filter((s) => mergeGate(s).canUpdate);
-    expect(updatable).toEqual(["behind"]);
+    expect(updatable.sort()).toEqual(["behind", "dirty"]);
+  });
+
+  it("keeps the control shape down to four while every state keeps its words", () => {
+    // The panel has one row of buttons, so seven verdicts have to collapse into
+    // the four shapes it can draw. What must not collapse with them is the
+    // sentence: `draft` and `unknown` both read `blocked` to the controls and
+    // still say the one thing that would change each of them.
+    expect(mergeGate("draft").condition).toBe("blocked");
+    expect(mergeGate("unknown").condition).toBe("blocked");
+    expect(mergeGate("draft").summary).not.toBe(mergeGate("unknown").summary);
+    // And the only disabled one is the only one that cannot merge from here.
+    const blocking = MERGEABLE_STATES.filter((s) => mergeGate(s).block);
+    const shapes = new Set(blocking.map((s) => mergeGate(s).condition));
+    expect([...shapes].sort()).toEqual(["behind", "blocked", "dirty"]);
   });
 
   it("treats a state it has never seen as ask-again, not as permission", () => {
