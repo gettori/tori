@@ -19,6 +19,10 @@
   font-family: inherit;
   font-size: var(--tori-text-md);
   line-height: 1.4;
+  /* A label is one line. Without this a button in a flex row shrinks to its
+     longest word, so "Add worktree" broke in two the moment a sibling (the
+     branch dialog's path hint) claimed the space. */
+  white-space: nowrap;
   cursor: pointer;
   transition:
     border-color var(--tori-duration-fast) ease,
