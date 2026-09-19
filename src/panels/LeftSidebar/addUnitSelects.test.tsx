@@ -69,6 +69,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       const names = args?.path === PLAIN ? bridge.locals : bridge.worktrees;
       return Promise.resolve(names.map((name) => ({ name, current: name === bridge.current })));
     }
+    if (cmd === "list_remote_branches") return Promise.resolve([]);
     if (cmd === "create_worktree") {
       const branch = String(args?.branch);
       bridge.worktrees.push(branch);
