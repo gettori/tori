@@ -652,9 +652,10 @@ export default function LeftSidebar(props: {
     busy: boolean;
   } | null>(null);
 
-  // The add-branch / add-worktree dialog. `remotes` fills in from the background
-  // fetch (see the `git://fetch-done` handler), which is what `fetching` reports
-  // while it is in flight.
+  // The add-branch / add-worktree dialog. `remotes` is read off disk when it
+  // opens and refreshed by the `git://fetch-done` handler, which is what
+  // `fetching` reports while a fetch this dialog asked for is in flight.
+  // `deleting` is the row whose delete is waiting to be confirmed.
   const [branchReq, setBranchReq] = createSignal<{
     p: Project;
     mode: "branch" | "worktree";
@@ -662,6 +663,7 @@ export default function LeftSidebar(props: {
     remotes: string[];
     taken: string[];
     fetching: boolean;
+    deleting: { branch: string; unpushed: boolean | null; busy: boolean } | null;
     busy: boolean;
   } | null>(null);
 
@@ -1694,6 +1696,7 @@ export default function LeftSidebar(props: {
       remotes,
       taken: p.branchUnits.filter((u) => u.kind === shown && u.branch).map((u) => u.branch as string),
       fetching: false,
+      deleting: null,
       busy: false,
     });
     // Quiet and floored at the schedule's cadence, so opening the picker on a
@@ -1712,6 +1715,42 @@ export default function LeftSidebar(props: {
     if (!req || req.fetching) return;
     setBranchReq({ ...req, fetching: true });
     beginBackgroundFetch(req.p.path);
+  }
+
+  /** Rewrite the armed delete, if it is still the one that asked. */
+  const forDeleting = (branch: string, fn: (d: { branch: string; unpushed: boolean | null; busy: boolean }) => typeof d) =>
+    setBranchReq((r) => (r?.deleting?.branch === branch ? { ...r, deleting: fn(r.deleting) } : r));
+
+  // Arm the picker's delete: the confirm strip goes up at once and the one fact
+  // that decides whether this is safe - commits the remote has never seen -
+  // fills in behind it, exactly as the tree's own removal dialog does it.
+  function askDeleteBranchInPicker(branch: string) {
+    const req = branchReq();
+    if (!req || req.deleting) return;
+    setBranchReq({ ...req, deleting: { branch, unpushed: null, busy: false } });
+    invoke<{ unpushed: boolean; hasRemote: boolean }>("branch_status", { repo: req.p.path, branch })
+      .then((s) => forDeleting(branch, (d) => ({ ...d, unpushed: s.unpushed })))
+      .catch(() => forDeleting(branch, (d) => ({ ...d, unpushed: false })));
+  }
+
+  // Confirmed: `git branch -D` through the same command the tree's removal uses,
+  // then re-read the branch list rather than splicing the row out, because the
+  // delete also prunes the store entry and the truth is cheap to ask for.
+  async function confirmDeleteBranchInPicker() {
+    const req = branchReq();
+    const deleting = req?.deleting;
+    if (!req || !deleting || deleting.busy) return;
+    setBranchReq({ ...req, deleting: { ...deleting, busy: true } });
+    try {
+      await invoke("delete_branch", { repo: req.p.path, branch: deleting.branch });
+    } catch (e) {
+      setBranchReq((r) => (r ? { ...r, deleting: null } : r));
+      return setError(String(e));
+    }
+    const locals = await invoke<Branch[]>("list_branches", { path: req.p.path })
+      .then((bs) => bs.map((b) => b.name))
+      .catch(() => req.locals.filter((name) => name !== deleting.branch));
+    setBranchReq((r) => (r ? { ...r, locals, deleting: null } : r));
   }
 
   /** The container's Shared in worktrees page, as an editor tab. The container
@@ -3312,6 +3351,10 @@ export default function LeftSidebar(props: {
             taken={req().taken}
             fetching={req().fetching}
             onFetch={hasOrigin(req().p) ? () => fetchForBranchDialog() : undefined}
+            deleting={req().deleting}
+            onDeleteAsk={(branch) => askDeleteBranchInPicker(branch)}
+            onDeleteConfirm={() => void confirmDeleteBranchInPicker()}
+            onDeleteCancel={() => setBranchReq((r) => (r ? { ...r, deleting: null } : r))}
             busy={req().busy}
             onConfirm={(pick) => void confirmAddBranch(pick)}
             onCancel={() => setBranchReq(null)}
