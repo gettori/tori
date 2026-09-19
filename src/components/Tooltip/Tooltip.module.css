@@ -33,6 +33,13 @@
      and a 280px cap with no wrapping would clip them. Wrap, and keep an author's
      own newline. */
   white-space: pre-wrap;
+  /* `max-width` only binds where the text can break, and a path is one long
+     token: no browser breaks at `/`, so `src/a/b/c/VeryLongName.tsx` ran
+     straight out of the box while the background stopped at the cap. Anything
+     may break rather than `break-word`, which still refuses inside a word that
+     has nowhere else to go. Paths, branch names and URLs are exactly the
+     labels this surface carries. */
+  overflow-wrap: anywhere;
   /* It follows the pointer around by construction; letting it take the pointer
      back would make the control under it unhoverable at the overlap. */
   pointer-events: none;

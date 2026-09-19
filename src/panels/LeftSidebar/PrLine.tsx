@@ -14,6 +14,7 @@ import {
 } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
 import type { UnitStatus } from "../../utils/forgeTypes";
@@ -95,19 +96,23 @@ export default function PrLine(props: {
   // 12px glyphs, none of them is focusable, and the reader wants the pull
   // request's standing in one place rather than five hovers to assemble it.
   // It is also where the words the rail has no width for go to live.
-  const story = () => {
+  // The title leads, because it is the one thing the line itself cannot show:
+  // `#428` is on screen already and the sentence behind it is not. Everything
+  // after it is the same facts the glyphs carry, spelled out.
+  const storyLead = () => {
     const p = pr();
-    if (!p) return "";
+    return p ? [`#${p.number} ${p.title}`] : [];
+  };
+  const storyRest = () => {
+    const p = pr();
+    if (!p) return [];
     const b = badges();
     return [
-      `#${p.number} ${p.title}`,
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].filter((line): line is string => Boolean(line));
   };
 
   const facts = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
@@ -159,7 +164,7 @@ export default function PrLine(props: {
           as="span"
           class={styles.prLine}
           data-pr-line
-          label={<span class={styles.lines}>{story()}</span>}
+          label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
         >
           {facts(p)}
         </Tooltip>
