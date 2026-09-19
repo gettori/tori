@@ -1,0 +1,94 @@
+/* A branch row's second line: what its pull request is doing. Only a row that
+   has one grows it, which is what pays for the height and what lets the
+   "no pull request" marker leave the first line entirely. */
+.prLine {
+  /* One step under whatever the label above is wearing. GitHub can run its
+     meta line at `muted` because its title is `default`; a Tori branch label
+     is already `muted` when the row is not selected, so the same tone here
+     would flatten the two into one. `.row.branch.sel` raises this to muted
+     when the label goes to default, keeping the one-step gap. */
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  /* Not declared here on purpose: a declaration on this element would outrank
+     the inherited one, and the selected row raises the tone by setting the
+     variable on the stack above (see `.row.branch.sel .rowStack`). The
+     fallback is the unselected value, and what a standalone line wears. */
+  color: var(--pr-line-fg, var(--fg-subtle));
+  font-size: var(--tori-text-2xs);
+  font-variant-numeric: tabular-nums;
+  /* The line is a run of facts, not a sentence, so it clips rather than wraps:
+     a third line would cost every PR row the height of a whole branch. */
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* The size still being chosen. `2xs` matches the badges the row already wears;
+   `xs` is the same line one step up, because `--fg-subtle` is held to a 3.0
+   contrast floor (see theme/contrast.ts) and small text at 3.0 is where
+   "recessive" turns into "unreadable". */
+.xs {
+  font-size: var(--tori-text-xs);
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  flex: none;
+}
+
+/* The glyphs sit a touch under the row's own marks: this line is secondary to
+   the one above it, and a 13px glyph here would out-weigh the 13px glyph in
+   the end cluster it sits below. */
+.item :global(svg) {
+  flex: none;
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
+
+/* GitHub's separator, and the reason the line reads as facts rather than as a
+   sentence. Drawn between adjacent facts rather than emitted by the component,
+   so a fact that is absent takes its separator with it and the line can never
+   end on a dangling dot. Dimmer than the facts it parts, or it competes with
+   them, and its colour is the line's own rather than the tone of whichever
+   fact follows it. */
+.item + .item::before {
+  content: "\00B7";
+  padding-inline: calc(4px * var(--ui-scale));
+  color: var(--pr-line-fg, var(--fg-subtle));
+  opacity: 0.5;
+}
+
+/* The one thing on this line that keeps a colour of its own. The checks and
+   the verdict are what the column is scanned for, and muting them is what
+   would make the second line not worth its height. Same roles the forge chip
+   uses, so a row and a chip cannot disagree about what failing looks like. */
+.good {
+  color: var(--success-fg);
+}
+.bad {
+  color: var(--danger-fg);
+}
+.busy {
+  color: var(--attention-fg);
+}
+.pr_open {
+  color: var(--success-fg);
+}
+.pr_draft {
+  color: var(--fg-muted);
+}
+.pr_merged {
+  color: var(--status-progress);
+}
+.pr_closed {
+  color: var(--danger-fg);
+}
+
+/* The hover text is a run of clauses, one per line, so the reader takes the
+   pull request's standing in at a glance rather than parsing a sentence. */
+.lines {
+  display: block;
+  white-space: pre-line;
+}

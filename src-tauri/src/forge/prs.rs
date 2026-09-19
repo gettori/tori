@@ -214,6 +214,8 @@ mod tests {
             state: PrState::Open,
             is_draft: false,
             author: "skarif2".into(),
+            created_at: "2026-09-17T08:14:00Z".into(),
+            comments: 0,
             head_ref: head.into(),
             base_ref: "main".into(),
             head_sha: "abc".into(),

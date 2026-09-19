@@ -239,24 +239,36 @@ describe("the forge chip on a branch row", () => {
     );
   });
 
-  it("marks a branch the forge answered for and has no PR", async () => {
+  it("draws nothing on a branch the forge answered for and has no PR", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
+    // The tick has to have landed before an absence means anything, and
+    // `shipped` is the row that proves it did: same project, same report.
+    const shipped = await row("shipped");
+    await waitFor(() => expect(shipped.querySelector('[data-forge-state="pr"]')).toBeTruthy());
+
+    // A branch with a PR grows a second line for it, so a branch without one
+    // says so by having neither the line nor a marker. This used to be a glyph
+    // on the majority of rows in the column.
     const fresh = await row("fresh");
-    await waitFor(() => expect(fresh.querySelector('[data-forge-state="noPr"]')).toBeTruthy());
-    // No number, and no checks or verdict hanging off a PR that does not exist.
-    expect(fresh.querySelector('[data-forge-pr="none"]')?.textContent).toBe("");
+    expect(fresh.querySelector("[data-forge-state]")).toBeNull();
     expect(fresh.querySelector("[data-forge-checks]")).toBeNull();
   });
 
-  it("gives an unservable remote an inert row, not a no-PR one", async () => {
+  it("offers an unservable remote a door on its project, and nothing on its branch", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
-    // Discriminating on purpose: the GitHub project's no-PR chip must already be
-    // on screen, so "renders nothing" here cannot pass merely because nothing
-    // has loaded yet.
+    // Discriminating on purpose: a chip the poller drew must already be on
+    // screen, so "renders nothing" below cannot pass merely because nothing has
+    // loaded yet. It used to be `fresh`'s no-PR chip; that state draws nothing
+    // now, so the anchor moved to a row that does draw.
+    //
+    // Inert and no-PR are therefore the same absence on screen, which is what
+    // dropping the no-PR marker chose. The distinction is still real and still
+    // pinned, in `forgeChip.test.ts` and by the door asserted just below:
+    // `readyForPr` is the half of no-PR that still draws, and inert never can.
     await waitFor(async () =>
-      expect((await row("fresh")).querySelector('[data-forge-state="noPr"]')).toBeTruthy(),
+      expect((await row("shipped")).querySelector('[data-forge-state="pr"]')).toBeTruthy(),
     );
 
     // gitlab.com has an adapter, so a repo there with no account is offered one
@@ -432,8 +444,11 @@ describe("clicking a branch's forge chip", () => {
     // (`lesson_probe_the_capability_before_building_its_control`).
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
+    const shipped = await row("shipped");
+    await waitFor(() => expect(shipped.querySelector('[data-forge-state="pr"]')).toBeTruthy());
+
     const fresh = await row("fresh");
-    await waitFor(() => expect(fresh.querySelector('[data-forge-state="noPr"]')).toBeTruthy());
+    expect(fresh.querySelector("[data-forge-state]")).toBeNull();
     expect(fresh.querySelector("button")).toBeNull();
   });
 });

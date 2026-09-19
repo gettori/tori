@@ -21,6 +21,8 @@ const pr = (n: number, over: Partial<PullRequest> = {}): PullRequest => ({
   body: null,
   state: "open",
   isDraft: false,
+  createdAt: "2026-09-17T08:14:00Z",
+  comments: 0,
   author: "skarif2",
   headRef: `branch-${n}`,
   baseRef: "main",

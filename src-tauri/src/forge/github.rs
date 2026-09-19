@@ -193,6 +193,8 @@ fn pr_from_rest(v: &Value) -> Result<PullRequest, ForgeError> {
         state,
         is_draft: v.get("draft").and_then(|d| d.as_bool()).unwrap_or(false),
         author: v.get("user").map(|u| str_at(u, "login")).unwrap_or_default(),
+        created_at: str_at(v, "created_at"),
+        comments: v.get("comments").and_then(|c| c.as_u64()).unwrap_or(0) as u32,
         head_ref: v.get("head").map(|h| str_at(h, "ref")).unwrap_or_default(),
         base_ref: v.get("base").map(|b| str_at(b, "ref")).unwrap_or_default(),
         head_sha: v.get("head").map(|h| str_at(h, "sha")).unwrap_or_default(),
@@ -332,6 +334,12 @@ fn pr_from_graphql(v: &Value) -> PullRequest {
         state,
         is_draft: v.get("isDraft").and_then(|d| d.as_bool()).unwrap_or(false),
         author: v.get("author").map(|a| str_at(a, "login")).unwrap_or_default(),
+        created_at: str_at(v, "createdAt"),
+        comments: v
+            .get("comments")
+            .and_then(|c| c.get("totalCount"))
+            .and_then(|n| n.as_u64())
+            .unwrap_or(0) as u32,
         head_ref: str_at(v, "headRefName"),
         base_ref: str_at(v, "baseRefName"),
         head_sha,
@@ -392,9 +400,10 @@ fn thread_from_graphql(v: &Value) -> ReviewThread {
 /// The PR fields every query needs, so the aliased batch and the single lookup
 /// cannot drift into disagreeing about what a PR is.
 const PR_FIELDS: &str = r#"
-  number title body state isDraft url headRefName baseRefName
+  number title body state isDraft url headRefName baseRefName createdAt
   mergeable
   author { login }
+  comments { totalCount }
   reviewDecision
   commits(last: 1) { nodes { commit {
     oid

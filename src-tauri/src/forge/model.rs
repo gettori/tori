@@ -68,6 +68,16 @@ pub struct PullRequest {
     /// decide whether approve and request-changes are even offerable, because
     /// GitHub rejects both from the PR author with a 422.
     pub author: String,
+    /// When it was opened, as the wire sends it (RFC 3339). Carried as a string
+    /// rather than parsed: the only consumer renders a compact age off it, and
+    /// a timestamp type here would have to be re-serialized to cross to the UI
+    /// anyway.
+    pub created_at: String,
+    /// Conversation comments, which is GitHub's own `comments` count and
+    /// GitLab's `user_notes_count`. Review-thread replies are not in it on
+    /// either host; the sidebar wants "has anyone said anything", and the two
+    /// counts split apart is a distinction the Pull Requests panel makes.
+    pub comments: u32,
     pub head_ref: String,
     pub base_ref: String,
     /// The head commit, used to fetch the PR ref for local gap expansion.
@@ -420,6 +430,8 @@ mod tests {
             state: PrState::Open,
             is_draft: false,
             author: "skarif2".into(),
+            created_at: "2026-09-17T08:14:00Z".into(),
+            comments: 3,
             head_ref: "wave-3".into(),
             base_ref: "main".into(),
             head_sha: "4d95fc3aa0f1b2c3d4e5f60718293a4b5c6d7e8f".into(),

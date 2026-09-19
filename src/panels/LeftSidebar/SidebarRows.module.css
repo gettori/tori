@@ -143,6 +143,49 @@
   background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
+/* ---- The two-line branch row ----
+   Only a branch with a pull request grows one (see `PrLine`), so everything
+   here is scoped to `.twoLine` and the single-line row keeps the exact metrics
+   it has always had. */
+
+/* The icon stops centring once there are two lines: against a 2-line body a
+   centred glyph floats between them and belongs to neither. It sits on the
+   first line instead, where the name it marks is. */
+.row.twoLine {
+  align-items: flex-start;
+}
+.row.twoLine .rowIcon {
+  /* Half the difference between the name's line box and the 16px glyph, so the
+     glyph centres on the first line rather than on the row. */
+  margin-top: calc((1.45em - 16px * var(--ui-scale)) / 2);
+}
+
+/* The name and its marks on one line, the pull request under them, sharing
+   what the icon leaves. `min-width: 0` on both, or the name's ellipsis never
+   engages and the row pushes the column wider. */
+.rowStack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1px * var(--ui-scale));
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  min-width: 0;
+}
+
+/* The selected row raises its label to `--fg-default`, so the line under it
+   goes up a step too and the gap between them stays one step rather than two.
+   Set as a variable because `PrLine` owns its own stylesheet and a descendant
+   selector cannot cross the two. */
+.row.branch.sel .rowStack {
+  --pr-line-fg: var(--fg-muted);
+}
+
 /* The "N more branches" / "Show less" row. It keeps the whole `.branch`
    geometry - rail, pill, glyph slot - because it IS an item in the list, and
    the rail has to run through it. Only the tone differs: its label is an
