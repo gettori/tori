@@ -86,10 +86,3 @@
 .pr_closed {
   color: var(--danger-fg);
 }
-
-/* The hover text is a run of clauses, one per line, so the reader takes the
-   pull request's standing in at a glance rather than parsing a sentence. */
-.lines {
-  display: block;
-  white-space: pre-line;
-}

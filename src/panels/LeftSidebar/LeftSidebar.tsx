@@ -97,9 +97,10 @@ import {
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
-import { markTitle, resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
+import { resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
+import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
@@ -839,6 +840,19 @@ export default function LeftSidebar(props: {
   // *rows* are rendered, which each call site knows.
   function bubbleForUnits(p: Project, us: readonly BranchUnit[]) {
     return bubbleFor((s) => us.some((u) => statusInUnit(s, p, u)));
+  }
+
+  /// The files a catch-up would fight over, for a tooltip rather than a report.
+  ///
+  /// The clause above them already counts them ("3 files would conflict"), so
+  /// listing every one is a second telling that grows without limit: the list
+  /// is unbounded, and twenty of them filled a 280px box twenty lines deep.
+  /// Three names answer "which ones" for the cases where that is answerable at
+  /// a glance, and the rest is a number again.
+  function conflictLines(paths: readonly string[]): string[] {
+    const CAP = 3;
+    if (paths.length <= CAP) return [...paths];
+    return [...paths.slice(0, CAP), `+${paths.length - CAP} more files`];
   }
 
   // The rollup badge, as every row here wants it: an accessor in, a node out.
@@ -2405,14 +2419,17 @@ export default function LeftSidebar(props: {
     // One hover target for the whole run rather than one per glyph: they are
     // 13px each, none of them is focusable, and the reader wants the branch's
     // standing in one place rather than four hovers to assemble it.
-    const story = () =>
-      [
-        markTitle(marks()),
-        sync()?.head_committed_at ? `Last commit ${compactAgo(sync()!.head_committed_at)}` : "",
-        ...(sync()?.base?.conflicts ?? []),
-      ]
-        .filter(Boolean)
-        .join("\n");
+    // What the glyphs mean, and then what the row knows on top of that. The
+    // second half was the same weight as the first, which is what made a
+    // four-fact tooltip read as a dump.
+    const storyLead = () => marks().map((m) => m.title);
+    const storyRest = () => {
+      const out: string[] = [];
+      const at = sync()?.head_committed_at;
+      if (at) out.push(`Last commit ${compactAgo(at)}`);
+      out.push(...conflictLines(sync()?.base?.conflicts ?? []));
+      return out;
+    };
     return (
       <BranchRow
         label={unitLabel(u)}
@@ -2434,7 +2451,10 @@ export default function LeftSidebar(props: {
         }
         end={
           <>
-            <SyncMarks marks={marks()} label={story()} />
+            <SyncMarks
+              marks={marks()}
+              label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
+            />
             <For each={topicsAt(u.folderPath)}>
               {(f) => (
                 <IconButton
