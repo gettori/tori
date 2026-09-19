@@ -152,9 +152,13 @@ export const Drifted: Story = {
 };
 
 /** Every trailing mark a branch row can wear, on one row: the sync run, a Topic
- *  chip, the current-checkout dot, the forge chip and the rollup. They share
- *  one auto margin so they land in the same column on every row instead of
- *  splitting the free space between them. */
+ *  chip, the current-checkout dot, the ready-for-PR mark and the rollup. They
+ *  share one auto margin so they land in the same column on every row instead
+ *  of splitting the free space between them.
+ *
+ *  The pull-request chip is deliberately not here any more. A branch that has
+ *  one reports it on a second line (`PrLine`), so the only forge state left in
+ *  this cluster is `readyForPr`, which has no second line to go to. */
 export const TheEndCluster: Story = {
   decorators: [
     () => (
@@ -171,10 +175,14 @@ export const TheEndCluster: Story = {
               <span class={rows.dot}>●</span>
               <ForgeChipView
                 chip={{
-                  kind: "pr",
-                  pr: { state: "open", label: "#42", title: "Open pull request #42" },
-                  checks: { tone: "bad", title: "2 checks failing" },
-                  review: { tone: "good", title: "Approved" },
+                  kind: "readyForPr",
+                  pr: {
+                    state: "none",
+                    label: "",
+                    title: "No pull request yet, and this branch is ready for one",
+                  },
+                  checks: null,
+                  review: null,
                 }}
                 label="Pull requests for api"
               />

@@ -211,32 +211,39 @@ describe("the forge chip on a branch row", () => {
     );
   });
 
-  it("draws each PR state the poller can report", async () => {
+  it("draws each PR state the poller can report, on the row's second line", async () => {
+    // A branch with a pull request reports it under its name rather than in
+    // the end cluster beside it, so these assertions read `data-pr-*` (PrLine)
+    // where they used to read `data-forge-*` (ForgeChipView). The chip itself
+    // is unchanged and still drawn by the Pull Requests panel.
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
     const shipped = await row("shipped");
-    await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeTruthy());
+    await waitFor(() => expect(shipped.querySelector("[data-pr-line]")).toBeTruthy());
 
-    // Open, all checks green, approved.
-    expect(shipped.querySelector('[data-forge-pr="open"]')?.textContent).toContain("#11");
-    expect(shipped.querySelector('[data-forge-checks="good"]')).toBeTruthy();
-    expect(shipped.querySelector('[data-forge-review="good"]')).toBeTruthy();
+    // Open, all checks green, approved. The score is the line's whole point:
+    // the chip had only a tone, and 3/3 is what the tone was standing in for.
+    expect(shipped.querySelector('[data-pr-state="open"]')?.textContent).toContain("#11");
+    expect(shipped.querySelector('[data-pr-checks="good"]')?.textContent).toContain("3/3");
+    expect(shipped.querySelector('[data-pr-review="good"]')).toBeTruthy();
+    // Nothing of it left beside the name.
+    expect(shipped.querySelector("[data-forge-state]")).toBeNull();
 
     // A draft is its own state, not an open PR with a flag: the row has to read
     // as "not asking for review yet" at a glance.
     const drafting = await row("drafting");
-    expect(drafting.querySelector('[data-forge-pr="draft"]')?.textContent).toContain("#12");
-    expect(drafting.querySelector('[data-forge-checks="busy"]')).toBeTruthy();
-    expect(drafting.querySelector("[data-forge-review]")).toBeNull();
+    expect(drafting.querySelector('[data-pr-state="draft"]')?.textContent).toContain("#12");
+    expect(drafting.querySelector('[data-pr-checks="busy"]')).toBeTruthy();
+    // Running checks carry no score: the total is still moving.
+    expect(drafting.querySelector('[data-pr-checks="busy"]')?.textContent).not.toContain("/");
+    expect(drafting.querySelector("[data-pr-review]")).toBeNull();
 
     // Failing checks and a changes-requested verdict, the two states
     // `needsAttention` counts and Phase 7 will attribute to a session.
     const broken = await row("broken");
-    const checks = broken.querySelector('[data-forge-checks="bad"]');
-    expect(checks?.getAttribute("title")).toBe("2 of 5 checks failing");
-    expect(broken.querySelector('[data-forge-review="bad"]')?.getAttribute("title")).toBe(
-      "Changes requested",
-    );
+    // 5 total, 2 failing, so 3 passed - the number GitHub's own list shows.
+    expect(broken.querySelector('[data-pr-checks="bad"]')?.textContent).toContain("3/5");
+    expect(broken.querySelector('[data-pr-review="bad"]')).toBeTruthy();
   });
 
   it("draws nothing on a branch the forge answered for and has no PR", async () => {
@@ -245,7 +252,7 @@ describe("the forge chip on a branch row", () => {
     // The tick has to have landed before an absence means anything, and
     // `shipped` is the row that proves it did: same project, same report.
     const shipped = await row("shipped");
-    await waitFor(() => expect(shipped.querySelector('[data-forge-state="pr"]')).toBeTruthy());
+    await waitFor(() => expect(shipped.querySelector("[data-pr-line]")).toBeTruthy());
 
     // A branch with a PR grows a second line for it, so a branch without one
     // says so by having neither the line nor a marker. This used to be a glyph
@@ -268,7 +275,7 @@ describe("the forge chip on a branch row", () => {
     // pinned, in `forgeChip.test.ts` and by the door asserted just below:
     // `readyForPr` is the half of no-PR that still draws, and inert never can.
     await waitFor(async () =>
-      expect((await row("shipped")).querySelector('[data-forge-state="pr"]')).toBeTruthy(),
+      expect((await row("shipped")).querySelector("[data-pr-line]")).toBeTruthy(),
     );
 
     // gitlab.com has an adapter, so a repo there with no account is offered one
@@ -319,14 +326,17 @@ describe("the forge chip on a branch row", () => {
   it("stops claiming anything once the account signs out", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
     const shipped = await row("shipped");
-    await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeTruthy());
+    await waitFor(() => expect(shipped.querySelector("[data-pr-line]")).toBeTruthy());
 
     // The statuses are still in the store; what changed is that nothing is
-    // refreshing them, so the row must stop presenting them as current.
+    // refreshing them, so the row must stop presenting them as current. The
+    // second line has to obey this as the chip did: it reads the same
+    // `forgeChip` kind precisely so a stopped poller cannot leave a pull
+    // request ageing silently under a branch name.
     const { noteForgeAccounts } = await import("../../utils/forgeStatus");
     noteForgeAccounts([]);
 
-    await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeNull());
+    await waitFor(() => expect(shipped.querySelector("[data-pr-line]")).toBeNull());
 
     // github.com has no account left, so the repo offers one, once, on the row
     // that is the repo. No branch under it carries a door or a claim.
@@ -334,6 +344,7 @@ describe("the forge chip on a branch row", () => {
     for (const branch of ["shipped", "drafting", "broken", "fresh"]) {
       expect((await row(branch)).querySelector("[data-forge-door]")).toBeNull();
       expect((await row(branch)).querySelector("[data-forge-state]")).toBeNull();
+      expect((await row(branch)).querySelector("[data-pr-line]")).toBeNull();
     }
   });
 });
@@ -379,7 +390,7 @@ describe("a failing check reaching the session that owns the branch", () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
 
     const broken = await row("broken");
-    await waitFor(() => expect(broken.querySelector('[data-forge-checks="bad"]')).toBeTruthy());
+    await waitFor(() => expect(broken.querySelector('[data-pr-checks="bad"]')).toBeTruthy());
 
     // A tab hosting a session is not probed by the folder sweep, so drive the
     // scanner event that does. Until the probe lands the dot is "none", which
@@ -422,13 +433,17 @@ describe("clicking a branch's forge chip", () => {
       <LeftSidebar selected={null} onSelect={(s) => selected.push(s)} liveTabs={[]} />
     ));
 
+    // The control moved with the facts: the chip beside the name used to open
+    // the panel, and now the line under it does. A branch with a PR has to
+    // keep a keyboard-reachable way in, or the row is a div with an onClick
+    // and nothing tabbable in it at all.
     const shipped = await row("shipped");
-    await waitFor(() => expect(shipped.querySelector("button[data-forge-state]")).toBeTruthy());
+    await waitFor(() => expect(shipped.querySelector("button[data-pr-line]")).toBeTruthy());
 
     let detail: unknown = null;
     const handler = (e: Event) => (detail = (e as CustomEvent).detail);
     window.addEventListener("tori:set-right-mode", handler);
-    (shipped.querySelector("button[data-forge-state]") as HTMLButtonElement).click();
+    (shipped.querySelector("button[data-pr-line]") as HTMLButtonElement).click();
     await waitFor(() => expect(detail).toEqual({ mode: "pulls" }));
     window.removeEventListener("tori:set-right-mode", handler);
 
@@ -445,10 +460,11 @@ describe("clicking a branch's forge chip", () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
     const shipped = await row("shipped");
-    await waitFor(() => expect(shipped.querySelector('[data-forge-state="pr"]')).toBeTruthy());
+    await waitFor(() => expect(shipped.querySelector("[data-pr-line]")).toBeTruthy());
 
     const fresh = await row("fresh");
     expect(fresh.querySelector("[data-forge-state]")).toBeNull();
+    expect(fresh.querySelector("[data-pr-line]")).toBeNull();
     expect(fresh.querySelector("button")).toBeNull();
   });
 });
