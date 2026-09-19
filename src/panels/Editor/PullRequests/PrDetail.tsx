@@ -42,11 +42,28 @@ import { findAdapter } from "../../../utils/agents";
 import { agentOffReason } from "../../../utils/agentEnabled";
 import { forgeCapabilities, forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
+  addPending,
+  clearDraft,
+  closeComposer,
+  composerText,
+  ensure,
+  gapLines,
+  gapOpen,
+  noteGapLines,
+  prEntry,
+  refresh,
+  removePending,
+  setComposerText,
+  setGapOpen,
+  setReviewBody,
+  setThreadsError,
+  toDrafts,
+  updateThreads,
+  type DraftAnchor,
+} from "../../../utils/prReviewStore";
+import {
   forgeErrorMessage,
-  type DraftComment,
-  type Paged,
   type PrFile,
-  type MergeableState,
   type MergeMethod,
   type PullRequest,
   type ReviewComment,
@@ -82,41 +99,37 @@ export default function PrDetail(props: {
    *  you just merged still sitting there is the one place the user checks. */
   onLanded: () => void;
 }) {
-  const [files, setFiles] = createSignal<PrFile[]>([]);
-  const [truncated, setTruncated] = createSignal(false);
-  const [loading, setLoading] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
+  // The pull request itself lives in `prReviewStore`, which owns the three
+  // reads and the draft. Only what is about *this view* is held here: which
+  // file is expanded, which rows are picked, which mutation is in flight.
+  const entry = createMemo(() => prEntry(props.root, props.pr.number));
+  const files = () => entry().files;
+  const truncated = () => entry().filesTruncated;
+  const loading = () => entry().filesLoading;
+  const error = () => entry().filesError;
+  const threadsTruncated = () => entry().threadsTruncated;
+  const threadError = () => entry().threadsError;
+  const pending = () => entry().pending;
+  const reviewBody = () => entry().reviewBody;
 
   const [openFile, setOpenFile] = createSignal<string | null>(null);
-  const [openGaps, setOpenGaps] = createSignal<ReadonlySet<string>>(new Set());
-  const [gapLines, setGapLines] = createSignal<Record<string, string[]>>({});
   const [gapError, setGapError] = createSignal<string | null>(null);
 
-  // Review conversations. Their own request, and a failure of it must not take
-  // the diff down with it: a pull request whose threads could not be read is
-  // still a pull request worth reading.
-  const [threads, setThreads] = createSignal<ReviewThread[]>([]);
-  const [threadsTruncated, setThreadsTruncated] = createSignal(false);
-  const [threadError, setThreadError] = createSignal<string | null>(null);
   const [busyThread, setBusyThread] = createSignal<string | null>(null);
-  const grouped = createMemo(() => groupThreads(threads()));
+  const grouped = createMemo(() => groupThreads(entry().threads));
 
-  // The review being written. Held here and posted in one call, because a review
-  // is atomic on the server: posting comments as they are written and the
-  // verdict at the end leaves a half-submitted review behind whenever the last
-  // call fails, with nothing saying which comments already landed.
-  const [pending, setPending] = createSignal<DraftComment[]>([]);
-  const [reviewBody, setReviewBody] = createSignal("");
   const [submitting, setSubmitting] = createSignal(false);
   // Which rows are picked, and in which hunk. One hunk at a time, like the
   // Changes panel's line staging: a comment anchors within a single hunk's
   // numbering, so a selection spanning two of them could not be one comment.
+  //
+  // View state, unlike the composer's words: a highlight belongs to the rows on
+  // screen, and the rows are not on screen once this tab is not.
   const [picked, setPicked] = createSignal<{
     path: string;
     hunk: number;
     lines: ReadonlySet<number>;
   } | null>(null);
-  const [draftBody, setDraftBody] = createSignal("");
   const [reviewOpen, setReviewOpen] = createSignal(false);
 
   const reviewing = () => reviewOpen() || pending().length > 0;
@@ -133,7 +146,7 @@ export default function PrDetail(props: {
   // Landing it. `null` is "nobody has asked yet", which is not `"unknown"`
   // ("GitHub has not decided"): one is a blank the UI must not render as a
   // verdict, the other is a verdict.
-  const [mergeState, setMergeState] = createSignal<MergeableState | null>(null);
+  const mergeState = () => entry().mergeState;
   const [mergeBusy, setMergeBusy] = createSignal(false);
   const [mergeError, setMergeError] = createSignal<string | null>(null);
   const [merged, setMerged] = createSignal(false);
@@ -153,96 +166,24 @@ export default function PrDetail(props: {
   let replySeq = 0;
 
   createEffect(
-    on([() => props.root, () => props.pr.number], async ([root, number]) => {
-      const mine = ++current;
+    on([() => props.root, () => props.pr.number], ([root, number]) => {
+      ++current;
       setOpenFile(null);
-      setOpenGaps(new Set<string>());
-      setGapLines({});
       setGapError(null);
       headFetch = null;
-      setThreads([]);
-      setThreadsTruncated(false);
-      setThreadError(null);
       setBusyThread(null);
-      setPending([]);
-      setReviewBody("");
       setPicked(null);
-      setDraftBody("");
       setReviewOpen(false);
       setSendingThread(null);
       setSendNotes({});
-      setMergeState(null);
       setMergeBusy(false);
       setMergeError(null);
       setMerged(false);
-      setLoading(true);
-      setError(null);
-      try {
-        const page = await invoke<Paged<PrFile>>("forge_pr_files", {
-          projectPath: root,
-          number,
-        });
-        if (mine !== current) return;
-        setFiles(page.items);
-        setTruncated(page.truncated);
-      } catch (e) {
-        if (mine !== current) return;
-        setFiles([]);
-        setTruncated(false);
-        setError(forgeErrorMessage(e));
-      } finally {
-        if (mine === current) setLoading(false);
-      }
-
-      // Independent reads, so neither waits on the other. The merge bar is the
-      // topmost control on the surface, and holding it behind a thread request
-      // it has nothing to do with is latency for nothing.
-      await Promise.all([loadThreads(root, number, mine), loadMergeability(root, number, mine)]);
+      // The store owns the three reads and is idempotent per pull request, so
+      // coming back to one already read costs nothing and shows it at once.
+      ensure(root, number);
     }),
   );
-
-  /// The server's verdict, on its own request and with its own silence on
-  /// failure.
-  ///
-  /// Read here rather than from `props.pr.mergeableState`, even though the list
-  /// carries one: that field came from the listing, and by the time somebody has
-  /// opened a pull request and read its diff the base may have moved twice. The
-  /// merge button is the one control where a stale green light costs something.
-  ///
-  /// A failure leaves the state `null`, which renders as "checking" with the
-  /// button inert. That is the honest shape: not asking and being told "no" are
-  /// different, and only one of them should be dressed as a verdict.
-  async function loadMergeability(root: string, number: number, mine: number) {
-    try {
-      const state = await invoke<MergeableState>("forge_mergeability", {
-        projectPath: root,
-        number,
-      });
-      if (mine === current) setMergeState(state);
-    } catch {
-      // Deliberately silent. The diff and the conversations are worth reading on
-      // a pull request whose mergeability could not be fetched, and an error
-      // banner over all of them would say otherwise.
-    }
-  }
-
-  /** Its own request and its own failure. Threads that will not load must not
-   *  take the diff down with them. Re-run after a submit, whose comments open
-   *  threads this list has never seen. */
-  async function loadThreads(root: string, number: number, mine: number) {
-    try {
-      const page = await invoke<Paged<ReviewThread>>("forge_review_threads", {
-        projectPath: root,
-        number,
-      });
-      if (mine !== current) return;
-      setThreads(page.items);
-      setThreadsTruncated(page.truncated);
-    } catch (e) {
-      if (mine !== current) return;
-      setThreadError(forgeErrorMessage(e));
-    }
-  }
 
   /** Post a reply, showing it at once and then correcting it with what the
    *  server stored. The rollback is the half that matters: a reply left on
@@ -253,8 +194,10 @@ export default function PrDetail(props: {
     // a refusal from the pull request you just navigated away from, posted onto
     // the one now on screen.
     const mine = current;
-    const pending = pendingComment(body, ++replySeq);
-    setThreads((list) => withComment(list, threadId, pending));
+    const optimistic = pendingComment(body, ++replySeq);
+    updateThreads(props.root, props.pr.number, (list) =>
+      withComment(list, threadId, optimistic),
+    );
     try {
       const stored = await invoke<ReviewComment>("forge_reply_to_thread", {
         projectPath: props.root,
@@ -262,11 +205,15 @@ export default function PrDetail(props: {
         body,
       });
       if (mine !== current) return;
-      setThreads((list) => withComment(list, threadId, stored, pending.id));
+      updateThreads(props.root, props.pr.number, (list) =>
+        withComment(list, threadId, stored, optimistic.id),
+      );
     } catch (e) {
       if (mine !== current) return;
-      setThreads((list) => withoutComment(list, threadId, pending.id));
-      setThreadError(forgeErrorMessage(e));
+      updateThreads(props.root, props.pr.number, (list) =>
+        withoutComment(list, threadId, optimistic.id),
+      );
+      setThreadsError(props.root, props.pr.number, forgeErrorMessage(e));
     }
   }
 
@@ -283,11 +230,13 @@ export default function PrDetail(props: {
         resolved,
       });
       if (mine !== current) return;
-      setThreads((list) => withResolved(list, threadId, resolved));
-      setThreadError(null);
+      updateThreads(props.root, props.pr.number, (list) =>
+        withResolved(list, threadId, resolved),
+      );
+      setThreadsError(props.root, props.pr.number, null);
     } catch (e) {
       if (mine !== current) return;
-      setThreadError(forgeErrorMessage(e));
+      setThreadsError(props.root, props.pr.number, forgeErrorMessage(e));
     } finally {
       if (mine === current) setBusyThread(null);
     }
@@ -314,15 +263,11 @@ export default function PrDetail(props: {
   // working tree: the head is usually not checked out, so the file on disk would
   // give the right line numbers over the wrong content.
   async function expandGap(key: string, path: string, gap: Gap) {
-    if (openGaps().has(key)) {
-      setOpenGaps((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+    if (gapOpen(props.root, props.pr.number, key)) {
+      setGapOpen(props.root, props.pr.number, key, false);
       return;
     }
-    if (!gapLines()[key]) {
+    if (!gapLines(props.root, props.pr.number, key)) {
       try {
         await ensureHead();
       } catch (e) {
@@ -343,7 +288,7 @@ export default function PrDetail(props: {
         });
         // Rendered as context, so they carry the leading space a context line
         // in a real diff would have.
-        setGapLines((prev) => ({ ...prev, [key]: lines.map((l) => ` ${l}`) }));
+        noteGapLines(props.root, props.pr.number, key, lines.map((l) => ` ${l}`));
       } catch (e) {
         // A click that visibly does nothing is the worst way to report this.
         setGapError(forgeErrorMessage(e));
@@ -351,7 +296,7 @@ export default function PrDetail(props: {
       }
     }
     setGapError(null);
-    setOpenGaps((prev) => new Set(prev).add(key));
+    setGapOpen(props.root, props.pr.number, key, true);
   }
 
   function toggleColumns() {
@@ -370,7 +315,7 @@ export default function PrDetail(props: {
     const count = gap.end - gap.start + 1;
     return (
       <Show
-        when={openGaps().has(key)}
+        when={gapOpen(props.root, props.pr.number, key)}
         fallback={
           <div
             class={`${diffRowClasses.line} ${styles.diffGap}`}
@@ -380,7 +325,7 @@ export default function PrDetail(props: {
           </div>
         }
       >
-        <For each={gapLines()[key] ?? []}>
+        <For each={gapLines(props.root, props.pr.number, key) ?? []}>
           {(text) =>
             twoColumn() ? (
               <div class={diffRowClasses.sideRow}>
@@ -437,12 +382,16 @@ export default function PrDetail(props: {
   }
 
   /** Hold the drafted line comment. Nothing is posted: it joins the review and
-   *  goes out with the verdict, in one call. */
-  function holdComment(anchor: Omit<DraftComment, "body">) {
-    const body = draftBody().trim();
+   *  goes out with the verdict, in one call.
+   *
+   *  The row it was written against travels with it. A line number alone still
+   *  resolves after the file changes underneath it, so without the text there is
+   *  nothing left to notice that the comment now describes something else. */
+  function holdComment(anchor: DraftAnchor, rowText: string) {
+    const body = composerText(props.root, props.pr.number, anchor).trim();
     if (!body) return;
-    setPending((list) => [...list, { ...anchor, body }]);
-    setDraftBody("");
+    addPending(props.root, props.pr.number, { ...anchor, body, rowText });
+    closeComposer(props.root, props.pr.number, anchor);
     setPicked(null);
   }
 
@@ -455,23 +404,22 @@ export default function PrDetail(props: {
         number: props.pr.number,
         event,
         body: reviewBody(),
-        comments: pending(),
+        comments: toDrafts(pending()),
       });
       if (mine !== current) return;
       // Only now. A failed submit has to hand the whole set back, or the
       // reader loses every comment they wrote to one refusal.
-      setPending([]);
-      setReviewBody("");
+      clearDraft(props.root, props.pr.number);
       setReviewOpen(false);
-      setThreadError(null);
+      setThreadsError(props.root, props.pr.number, null);
       // The verdict the sidebar chip reads is the server's, and it has changed.
       void pollNow("manual");
       // The review's own comments open new threads, which this list has not
-      // seen. Its own request, and its failure is already handled there.
-      void loadThreads(props.root, props.pr.number, mine);
+      // seen. Its own read, and its failure is already handled there.
+      void refresh(props.root, props.pr.number, "threads");
     } catch (e) {
       if (mine !== current) return;
-      setThreadError(forgeErrorMessage(e));
+      setThreadsError(props.root, props.pr.number, forgeErrorMessage(e));
     } finally {
       if (mine === current) setSubmitting(false);
     }
@@ -619,7 +567,7 @@ export default function PrDetail(props: {
       // The verdict is re-read rather than assumed: the update is queued on the
       // server (202), so `behind` may still be the current answer for a moment,
       // and guessing `clean` here would offer a merge the server refuses.
-      () => void loadMergeability(props.root, props.pr.number, current),
+      () => void refresh(props.root, props.pr.number, "summary"),
     );
 
   /// The branch-unit this pull request was built on, if this machine has one.
@@ -732,6 +680,16 @@ export default function PrDetail(props: {
                   selected: [...sel],
                 });
               });
+              // The raw diff line the anchor sits on, index-aligned with the
+              // rows (`reviewThreads.ts` explains why that holds). It travels
+              // with the comment so a later read of the patch can tell an anchor
+              // that still fits from one whose line now says something else.
+              const anchorRow = createMemo(() => {
+                const sel = mine();
+                if (!sel) return "";
+                const last = [...sel].sort((x, y) => x - y).pop()!;
+                return hunk.lines[last] ?? "";
+              });
               // Only while a review is under way. `DiffRows` gives every
               // selectable line a role, a tab stop and a click handler, and a
               // pull request diff runs to thousands of them: handing those out
@@ -767,13 +725,15 @@ export default function PrDetail(props: {
                           rows={2}
                           ref={(el) => queueMicrotask(() => el.focus())}
                           aria-label={`Comment on ${anchorLabel(a())}`}
-                          value={draftBody()}
-                          onInput={(e) => setDraftBody(e.currentTarget.value)}
+                          value={composerText(props.root, props.pr.number, a())}
+                          onInput={(e) =>
+                            setComposerText(props.root, props.pr.number, a(), e.currentTarget.value)
+                          }
                           onKeyDown={(e: KeyboardEvent) => {
                             if (e.key === "Escape") setPicked(null);
                             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                               e.preventDefault();
-                              holdComment(a());
+                              holdComment(a(), anchorRow());
                             }
                           }}
                         />
@@ -781,7 +741,10 @@ export default function PrDetail(props: {
                           <Button variant="ghost" onClick={() => setPicked(null)}>
                             Cancel
                           </Button>
-                          <Button onClick={() => holdComment(a())} disabled={!draftBody().trim()}>
+                          <Button
+                            onClick={() => holdComment(a(), anchorRow())}
+                            disabled={!composerText(props.root, props.pr.number, a()).trim()}
+                          >
                             Add to review
                           </Button>
                         </div>
@@ -958,12 +921,12 @@ export default function PrDetail(props: {
         <ReviewBar
           comments={pending()}
           body={reviewBody()}
-          onBody={setReviewBody}
+          onBody={(body) => setReviewBody(props.root, props.pr.number, body)}
           selfAuthored={selfAuthored()}
           capabilities={capabilities()}
           submitting={submitting()}
           onSubmit={(event) => void submitReview(event)}
-          onRemove={(i) => setPending((list) => list.filter((_, at) => at !== i))}
+          onRemove={(i) => removePending(props.root, props.pr.number, i)}
         />
       </Show>
     </div>

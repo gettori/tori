@@ -168,6 +168,7 @@ const { default: PrDetail } = await import("./PrDetail");
 const { noteForgeAccounts, noteForgeEnabled, resetForgeStatusForTests, resolveForgeRepo } = await import(
   "../../../utils/forgeStatus"
 );
+const { resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
 const { noteForgeUnits, probeBatch, resetSessionActivityForTests } = await import(
   "../../../utils/sessionActivity"
 );
@@ -215,6 +216,7 @@ const signInAs = async (login: string) => {
 
 describe("the pull request detail", () => {
   beforeEach(() => {
+    resetPrReviewStoreForTests();
     bridge.calls.length = 0;
     bridge.files = [];
     bridge.truncated = false;
@@ -452,6 +454,7 @@ describe("the pull request detail", () => {
 // Review conversations, on the diff they were written about.
 describe("review threads on a pull request's diff", () => {
   beforeEach(() => {
+    resetPrReviewStoreForTests();
     bridge.calls.length = 0;
     bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
     bridge.truncated = false;
@@ -687,6 +690,7 @@ describe("review threads on a pull request's diff", () => {
 // call fails, with nothing saying which comments already landed.
 describe("writing and submitting a review", () => {
   beforeEach(async () => {
+    resetPrReviewStoreForTests();
     resetForgeStatusForTests();
     bridge.calls.length = 0;
     bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
@@ -881,6 +885,7 @@ describe("writing and submitting a review", () => {
 
 describe("reading without reviewing", () => {
   beforeEach(() => {
+    resetPrReviewStoreForTests();
     resetForgeStatusForTests();
     bridge.calls.length = 0;
     bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
@@ -956,6 +961,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
     screen.getAllByText("Send to agent").find((n) => n.closest("button"))!.closest("button")!;
 
   beforeEach(async () => {
+    resetPrReviewStoreForTests();
     resetForgeStatusForTests();
     resetSessionActivityForTests();
     resetSessionStoreForTests();
@@ -1125,6 +1131,7 @@ describe("landing a pull request", () => {
   const state = () => document.querySelector("[data-merge-state]")!.getAttribute("data-merge-state");
 
   beforeEach(() => {
+    resetPrReviewStoreForTests();
     resetForgeStatusForTests();
     resetSessionActivityForTests();
     resetSessionStoreForTests();

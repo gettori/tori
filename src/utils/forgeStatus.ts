@@ -214,6 +214,20 @@ export function unitStatus(path: string, branch: string | null): UnitStatus | nu
   return statuses()[key(path, branch)] ?? null;
 }
 
+/** The unit whose pull request carries this number, or null when no tick has
+ *  covered it.
+ *
+ *  By number, because that is all a pull request opened from a list or a tab
+ *  arrives as; the branch this store keys on is one of the things being looked
+ *  up. A number is unique per repo, and every unit here shares one. */
+export function unitStatusForPr(path: string, number: number): UnitStatus | null {
+  const prefix = `${path}\n`;
+  for (const [k, status] of Object.entries(statuses())) {
+    if (k.startsWith(prefix) && status.pullRequest?.number === number) return status;
+  }
+  return null;
+}
+
 /** Units of this project the last tick did not cover. Surfaced rather than
  *  swallowed: a partial answer rendered as a complete one leaves units with no
  *  chip and nothing on screen saying why. */
