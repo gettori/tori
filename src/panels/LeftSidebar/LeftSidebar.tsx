@@ -179,7 +179,7 @@ function UnitIcon(props: { kind: string | undefined; active: boolean }) {
   return (
     <Switch fallback={<Icon icon={Folder} />}>
       <Match when={props.kind === "worktree" || props.kind === "incomplete"}>
-        <WorktreeMark active={props.active} />
+        <WorktreeMark active={props.active} stub={props.kind === "incomplete"} />
       </Match>
       <Match when={props.kind === "plain"}>
         <BranchMark active={props.active} />
@@ -2441,6 +2441,11 @@ export default function LeftSidebar(props: {
       <BranchRow
         label={unitLabel(u)}
         icon={<UnitIcon kind={u.kind} active={rollup().executing > 0} />}
+        iconLabel={
+          u.kind === "incomplete"
+            ? "A .bare with no worktrees (right-click to add one or remove it)"
+            : undefined
+        }
         selected={unitSelected(u)}
         nested={attempt != null}
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
@@ -2466,9 +2471,6 @@ export default function LeftSidebar(props: {
                 />
               )}
             </For>
-            <Show when={u.kind === "incomplete"}>
-              <span class={`${rows.badge} ${rows.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
-            </Show>
             <Show when={u.isCurrent}>
               <span class={rows.dot} title="current checkout">●</span>
             </Show>
