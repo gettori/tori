@@ -127,6 +127,15 @@
   font-size: var(--tori-text-md);
 }
 
+/* A cap the server hit, rather than something going wrong. Same shape as the
+   error line above it, without the colour that would read as a failure. */
+.notice {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
 .body {
   flex: 1;
   overflow: auto;

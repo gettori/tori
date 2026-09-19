@@ -108,10 +108,23 @@ export type PrSummary = {
 /// permanently in flight.
 export type CheckState = "success" | "failure" | "pending" | "none";
 
+/// One check on the head commit, so the panel's checks row can expand into the
+/// checks behind it. `url` is null where the host sent no target: a link to
+/// nowhere is worse than no link.
+export type CheckContext = {
+  name: string;
+  state: CheckState;
+  url: string | null;
+};
+
 export type CheckRollup = {
   state: CheckState;
   total: number;
   failing: number;
+  /// The checks behind the rollup, as far as one read describes them. Capped by
+  /// the query, so it can be shorter than `total`; `state` and `failing` are not
+  /// derived from it for that reason.
+  contexts: CheckContext[];
 };
 
 /// `none` means nobody has reviewed. On a single-owner repo that is the
@@ -448,7 +461,8 @@ export const FORGE_KEYS = {
     "title",
     "url",
   ],
-  checkRollup: ["failing", "state", "total"],
+  checkRollup: ["contexts", "failing", "state", "total"],
+  checkContext: ["name", "state", "url"],
   prSummary: ["counts", "mergeableState", "updatedAt"],
   prCounts: ["additions", "changedFiles", "commits", "deletions", "reviews"],
   prReviewCounts: ["approved", "changesRequested"],

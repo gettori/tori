@@ -24,7 +24,19 @@
     "singleComment": true
   },
   "checkRollup": {
-    "failing": 2,
+    "contexts": [
+      {
+        "name": "build",
+        "state": "failure",
+        "url": "https://github.com/skarif2/tori/runs/1"
+      },
+      {
+        "name": "lint",
+        "state": "success",
+        "url": null
+      }
+    ],
+    "failing": 1,
     "state": "failure",
     "total": 12
   },
@@ -164,7 +176,19 @@
     "statuses": [
       {
         "checks": {
-          "failing": 2,
+          "contexts": [
+            {
+              "name": "build",
+              "state": "failure",
+              "url": "https://github.com/skarif2/tori/runs/1"
+            },
+            {
+              "name": "lint",
+              "state": "success",
+              "url": null
+            }
+          ],
+          "failing": 1,
           "state": "failure",
           "total": 12
         },
@@ -191,7 +215,19 @@
   },
   "unitStatus": {
     "checks": {
-      "failing": 2,
+      "contexts": [
+        {
+          "name": "build",
+          "state": "failure",
+          "url": "https://github.com/skarif2/tori/runs/1"
+        },
+        {
+          "name": "lint",
+          "state": "success",
+          "url": null
+        }
+      ],
+      "failing": 1,
       "state": "failure",
       "total": 12
     },

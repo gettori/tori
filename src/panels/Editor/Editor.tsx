@@ -27,7 +27,7 @@ import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
-import PullRequests from "./PullRequests/PullRequests";
+import PullsPanel from "./PullRequests/PullsPanel";
 import ProblemsPanel from "./ProblemsPanel";
 import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
@@ -3078,7 +3078,7 @@ export default function Editor(props: {
             />
           </Match>
           <Match when={rightMode() === "pulls"}>
-            <PullRequests root={root()} />
+            <PullsPanel root={root()} />
           </Match>
           <Match when={rightMode() === "search"}>
             <SearchPanel

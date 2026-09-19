@@ -164,8 +164,8 @@ const KEPT = new Map<string, Kept>([
     { count: 1, reason: "the `title` prop of a `PanelSection`: the section heading it renders as visible text, never hover text" },
   ],
   ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: ROW_ONCLICK }],
-  ["panels/Editor/PullRequests/PrDetail.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/Editor/PullRequests/PullRequests.tsx", { count: 2, reason: TRUNCATION }],
+  ["panels/Editor/PullRequests/PrList.tsx", { count: 2, reason: TRUNCATION }],
+  ["panels/Editor/PullRequests/PullsPanel.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/Editor/CheckpointTimeline.tsx",
     { count: 5, reason: `three ${TRUNCATION}, one ${ROW_ONCLICK}, and one ${HEADING}` },
@@ -263,8 +263,11 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/LeftSidebar/LeftSidebar.tsx",
     {
-      count: 5,
-      reason: `one ${TRUNCATION} - a branch row's current-checkout dot - and four of ${HEADING}`,
+      count: 4,
+      // Down one: the branch row's current-checkout dot gave its title up when
+      // the status glyphs moved into one shared run, which describes itself
+      // through `Tooltip` rather than the native attribute.
+      reason: `four of ${HEADING}`,
     },
   ],
   [
@@ -331,8 +334,12 @@ const KEPT = new Map<string, Kept>([
  *  Search view's file header div, both dropped by their rebuilds.
  *
  *  **Up one**, and the first `li`: a plugin row in Settings > Agents shows the
- *  plugin's name, and its install path is the line the row has no width for. */
-const RAW_ELEMENT_TITLES = 70;
+ *  plugin's name, and its install path is the line the row has no width for.
+ *
+ *  **Down one**: the pull request detail view is gone. Its branch line moved
+ *  into the Pull requests panel, which still truncates the head ref, and the
+ *  file list it also drew now names its rows through `aria-label`. */
+const RAW_ELEMENT_TITLES = 69;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -462,7 +469,9 @@ describe("the title= guard", () => {
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 15,
       li: 1,
-      span: 54,
+      // Down one span: the pull request detail view went, and the branch line
+      // it truncated is drawn once now, in the panel that replaced it.
+      span: 53,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
