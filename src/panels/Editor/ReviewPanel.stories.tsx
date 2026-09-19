@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import ReviewPanel from "./ReviewPanel";
 import { memberState } from "../../utils/topics";
-import { enterRoots, refreshGit } from "../../utils/gitActions";
+import { enterRoots, refreshGit, type AheadBehind } from "../../utils/gitActions";
 import { spaceHue } from "../../utils/spaceTint";
 import type { MemberRoot } from "../../utils/topicMembers";
 
@@ -36,10 +36,10 @@ const STATUS: Record<string, ReturnType<typeof file>[]> = {
   [DOCS]: [],
 };
 
-const AHEAD: Record<string, { ahead: number; behind: number; has_upstream: boolean }> = {
-  [API]: { ahead: 3, behind: 0, has_upstream: true },
-  [WEB]: { ahead: 0, behind: 0, has_upstream: false },
-  [DOCS]: { ahead: 0, behind: 0, has_upstream: true },
+const AHEAD: Record<string, AheadBehind> = {
+  [API]: { ahead: 3, behind: 0, has_upstream: true, sets_upstream: false },
+  [WEB]: { ahead: 0, behind: 0, has_upstream: false, sets_upstream: true },
+  [DOCS]: { ahead: 0, behind: 0, has_upstream: true, sets_upstream: false },
 };
 
 /** The workshop runs in a plain browser, so every command the panel sends has to

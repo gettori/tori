@@ -2262,33 +2262,40 @@ pub fn git_push(
     Ok(())
 }
 
-/// Ahead/behind counts of the current branch against its upstream, for the
-/// Changes panel header. `has_upstream: false` (branch tracks nothing yet)
-/// renders as an "unpushed branch" state rather than 0/0.
+/// Ahead/behind counts of the current branch, for the Changes panel header.
+/// `has_upstream: false` (nothing to measure against) renders as an "unpushed
+/// branch" state rather than 0/0.
 #[derive(Serialize)]
 pub struct AheadBehind {
     ahead: u32,
     behind: u32,
     has_upstream: bool,
+    /// Whether a push from here would write the tracking config. `push_branch`
+    /// decides that for itself; this is only what the button may promise, and
+    /// it is a separate question from having something to count against.
+    sets_upstream: bool,
 }
 
 #[tauri::command(async)]
 pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
-    // Unborn HEAD or detached: `rev-parse --abbrev-ref HEAD` reports "HEAD"
-    // itself rather than erroring, which then simply fails `has_upstream`
-    // below - reported as the same "unpushed branch" state.
-    let branch = git_capture(&project_path, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    if !has_upstream(&project_path, &branch) {
-        return Ok(AheadBehind { ahead: 0, behind: 0, has_upstream: false });
-    }
-    let counts = git_capture(
-        &project_path,
-        &["rev-list", "--left-right", "--count", &format!("{branch}...{branch}@{{u}}")],
-    )?;
-    let mut parts = counts.split_whitespace();
-    let ahead = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let behind = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    Ok(AheadBehind { ahead, behind, has_upstream: true })
+    // `symbolic-ref` rather than `rev-parse --abbrev-ref HEAD`, which answers
+    // the literal string "HEAD" when detached: `origin/HEAD` is a real ref in
+    // most clones, so the fallback below would measure a detached checkout
+    // against origin's default branch and call the distance news.
+    let branch = git_capture(&project_path, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .ok()
+        .filter(|name| !name.is_empty());
+    let sets_upstream = branch
+        .as_deref()
+        .is_none_or(|name| !has_upstream(&project_path, name));
+    // `sync_ref`, so the header and the sidebar row beside it read one branch
+    // the same way: a worktree's branch carries no tracking config, and calling
+    // it unpushed while it sits on `origin/<name>` is alarming and false.
+    let Some(tracked) = branch.as_deref().and_then(|name| sync_ref(&project_path, name)) else {
+        return Ok(AheadBehind { ahead: 0, behind: 0, has_upstream: false, sets_upstream });
+    };
+    let sync = upstream_sync(&project_path, &tracked, "HEAD");
+    Ok(AheadBehind { ahead: sync.ahead, behind: sync.behind, has_upstream: true, sets_upstream })
 }
 
 /// The PR base branch: `origin/HEAD` when set, else a probe for `origin/main`
