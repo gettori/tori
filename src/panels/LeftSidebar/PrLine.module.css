@@ -15,7 +15,12 @@
      variable on the stack above (see `.row.branch.sel .rowStack`). The
      fallback is the unselected value, and what a standalone line wears. */
   color: var(--pr-line-fg, var(--fg-subtle));
-  font-size: var(--tori-text-2xs);
+  /* Two steps under the 15px name above it. The badges elsewhere on the row
+     sit at 10px, which is a mark's size rather than a line's: `--fg-subtle`
+     is held to a 3.0 contrast floor (theme/contrast.ts), and a run of words
+     and numbers that small at that contrast is where "recessive" turns into
+     "unreadable". The tone carries the hierarchy here, not the size. */
+  font-size: var(--tori-text-md);
   font-variant-numeric: tabular-nums;
   /* The line is a run of facts, not a sentence, so it clips rather than wraps:
      a third line would cost every PR row the height of a whole branch. */
@@ -27,27 +32,28 @@
    already was: what makes it a control is that it is focusable and answers a
    click, not that it looks like a thing to press in a column of rows that are
    not. `text-align` because a button centres its content and the line has to
-   start where every other row's does. */
+   start where every other row's does.
+
+   **Family and weight only, never the `font` shorthand.** This class rides the
+   same element as `.prLine` and is declared after it, so `font: inherit` reset
+   `font-size` (and `font-variant-numeric`) to the row's, and every pull
+   request in the app rendered at the 15px of the branch name above it. Nor can
+   the size be restated here as `inherit`, which means the same wrong thing:
+   the element this inherits from IS the row. The size belongs to `.prLine`
+   and this must leave it alone. */
 .control {
   width: 100%;
   padding: 0;
   border: 0;
   background: none;
-  font: inherit;
+  font-family: inherit;
+  font-weight: inherit;
   text-align: start;
   cursor: pointer;
 }
 
 .control:hover {
   color: var(--fg-default);
-}
-
-/* The size still being chosen. `2xs` matches the badges the row already wears;
-   `xs` is the same line one step up, because `--fg-subtle` is held to a 3.0
-   contrast floor (see theme/contrast.ts) and small text at 3.0 is where
-   "recessive" turns into "unreadable". */
-.xs {
-  font-size: var(--tori-text-xs);
 }
 
 .item {
@@ -57,13 +63,13 @@
   flex: none;
 }
 
-/* The glyphs sit a touch under the row's own marks: this line is secondary to
-   the one above it, and a 13px glyph here would out-weigh the 13px glyph in
-   the end cluster it sits below. */
+/* One step under the 14px marks on the line above, and the same 13px as this
+   line's own text, so a glyph and the number beside it are one object rather
+   than a mark with a caption. */
 .item :global(svg) {
   flex: none;
-  width: calc(12px * var(--ui-scale));
-  height: calc(12px * var(--ui-scale));
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
 }
 
 /* GitHub's separator, and the reason the line reads as facts rather than as a

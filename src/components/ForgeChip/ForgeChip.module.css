@@ -20,10 +20,15 @@
   font-size: var(--tori-text-2xs);
   font-variant-numeric: tabular-nums;
 }
+/* 14px, which is the sidebar's mark size. The chip and `.rowEnd` both target
+   a descendant svg at equal specificity from different stylesheets, so with
+   two different numbers the winner would come down to bundle order; matching
+   the cluster settles it and keeps this the same glyph in both surfaces the
+   component is shared by. */
 .forgeItem :global(svg) {
   flex: none;
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
 }
 
 /* A branch with no PR is the resting state of most branches, so it is drawn at
