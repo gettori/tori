@@ -7,6 +7,12 @@
 // button the server refuses, and the user would learn it will not merge only
 // after asking it to. `mergeGate.ts` is that translation and nothing more.
 //
+// **Four control shapes, one disabled.** Seven verdicts collapse into
+// `ready | behind | dirty | blocked`, and only `blocked` greys the button out,
+// because it is the only one where merging is genuinely impossible from here.
+// Everywhere else the label changes what it promises. A disabled button is a
+// dead end; a button that says what it will try is not.
+//
 // The **method picker offers all three** and lets the server refuse. A repo can
 // forbid squash or rebase, and that setting is not readable from here; hiding a
 // method on a guess would remove the one the user's repo actually requires.
@@ -46,6 +52,9 @@ export default function MergeBar(props: {
   error: string | null;
   /** Set once this pull request has been landed from here. */
   merged: boolean;
+  /** Where the conflict can actually be dealt with, since Tori does not resolve
+   *  one. Only the `dirty` shape offers it. */
+  url: string;
   /** Absent when no branch-unit in this project carries the head, so there is
    *  nothing local to delete. */
   onDeleteBranch?: () => void;
@@ -54,6 +63,11 @@ export default function MergeBar(props: {
 }) {
   const [method, setMethod] = createSignal<MergeMethod>("squash");
   const gate = () => mergeGate(props.state ?? "unknown");
+
+  // Only the ready shape names the method it will use. The others are about to
+  // be refused, and "Squash and merge" on a button that cannot merge promises
+  // the wrong thing twice over.
+  const label = () => (gate().condition === "ready" ? METHOD_LABEL[method()] : "Merge");
 
   return (
     <div class={styles.bar} data-merge-state={props.state ?? "unread"}>
@@ -72,16 +86,20 @@ export default function MergeBar(props: {
           </div>
         }
       >
-        <div class={styles.row}>
-          <span class={styles.summary} data-merge-summary>
-            {props.state === null ? "Checking whether this can merge…" : gate().summary}
-          </span>
-
-          <Show when={gate().canUpdate}>
-            <Button variant="ghost" disabled={props.busy} onClick={() => props.onUpdateBranch()}>
-              Update branch
-            </Button>
-          </Show>
+        {/* The verdict itself is the rollup's line above, not this block's: a
+            320px column carrying the same sentence twice reads as two facts. */}
+        <div class={styles.row} data-merge-condition={gate().condition}>
+          {/* An unread verdict falls through `gate()` to `unknown`, which
+              blocks. That is the same answer for the same reason: nothing has
+              said this can merge, so nothing here may offer to. */}
+          <Button
+            variant={gate().condition === "ready" ? "success" : "default"}
+            class={styles.primary}
+            disabled={props.busy || gate().block}
+            onClick={() => props.onMerge(method())}
+          >
+            {label()}
+          </Button>
 
           <Select
             size="xs"
@@ -92,12 +110,20 @@ export default function MergeBar(props: {
             onChange={(value) => setMethod(value as MergeMethod)}
           />
 
-          {/* An unread verdict falls through `gate()` to `unknown`, which
-              blocks. That is the same answer for the same reason: nothing has
-              said this can merge, so nothing here may offer to. */}
-          <Button disabled={props.busy || gate().block} onClick={() => props.onMerge(method())}>
-            Merge
-          </Button>
+          <Show when={gate().canUpdate}>
+            <Button variant="ghost" disabled={props.busy} onClick={() => props.onUpdateBranch()}>
+              Update branch
+            </Button>
+          </Show>
+
+          {/* Tori has no conflict resolver, and this is the state where the
+              only way forward is somewhere else. Named before the click rather
+              than dressed as an in-app flow. */}
+          <Show when={gate().condition === "dirty"}>
+            <a class={styles.away} href={props.url} target="_blank" rel="noreferrer">
+              Resolve on github.com
+            </a>
+          </Show>
         </div>
       </Show>
 

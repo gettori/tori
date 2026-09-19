@@ -32,3 +32,18 @@
   color: var(--danger-fg);
   font-size: var(--tori-text-2xs);
 }
+
+/* The one control the row is built around, so it takes the room the others
+   leave. Below 220px the picker and the link wrap under it. */
+.primary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Where a conflict is actually dealt with. Named as leaving the app, because
+   it is. */
+.away {
+  flex: none;
+  color: var(--accent-fg);
+  font-size: var(--tori-text-2xs);
+}

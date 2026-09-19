@@ -385,7 +385,7 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model::{CheckRollup, CheckState, ReviewDecision};
+    use model::{CheckRollup, ReviewDecision};
 
     /// A do-nothing provider, kept for one reason: it is the compile-time proof
     /// that [`Forge`] is implementable without dragging GitHub in. If a future
@@ -452,7 +452,7 @@ mod tests {
                 .map(|b| UnitStatus {
                     head_ref: b.clone(),
                     pull_request: None,
-                    checks: CheckRollup { state: CheckState::None, total: 0, failing: 0 },
+                    checks: CheckRollup::none(),
                     review_decision: ReviewDecision::None,
                 })
                 .collect())

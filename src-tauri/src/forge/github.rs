@@ -29,7 +29,7 @@ use super::http::{
     HttpRequest, NestedSpec, Recording, Transport, PAGE_CAP,
 };
 use super::model::{
-    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
+    AuthState, Capabilities, CheckContext, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
     Grant, MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrState, PrSummary,
     PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread,
     UnitStatus, Viewer,
@@ -322,12 +322,50 @@ fn mergeable_from_rest(v: &Value) -> MergeableState {
     }
 }
 
+/// One node of `statusCheckRollup.contexts`, which is either a check run or a
+/// commit status and names itself differently in each.
+///
+/// A `CheckRun` carries a conclusion only once it has finished, so a null one
+/// is a run still going rather than a run that passed.
+fn context_from(node: &Value) -> CheckContext {
+    if node.get("__typename").and_then(|t| t.as_str()) == Some("CheckRun") {
+        return CheckContext {
+            name: str_at(node, "name"),
+            state: match node.get("conclusion").and_then(|c| c.as_str()) {
+                None => CheckState::Pending,
+                Some("FAILURE") | Some("TIMED_OUT") | Some("CANCELLED")
+                | Some("ACTION_REQUIRED") | Some("STARTUP_FAILURE") => CheckState::Failure,
+                _ => CheckState::Success,
+            },
+            url: url_at(node, "detailsUrl"),
+        };
+    }
+    CheckContext {
+        name: str_at(node, "context"),
+        state: match node.get("state").and_then(|s| s.as_str()) {
+            Some("SUCCESS") => CheckState::Success,
+            Some("FAILURE") | Some("ERROR") => CheckState::Failure,
+            _ => CheckState::Pending,
+        },
+        url: url_at(node, "targetUrl"),
+    }
+}
+
+/// A link a row can follow, or nothing. An empty string is GitHub's way of
+/// saying a status carried no target, and a link to nowhere is worse than none.
+fn url_at(node: &Value, field: &str) -> Option<String> {
+    node.get(field)
+        .and_then(|u| u.as_str())
+        .filter(|u| !u.is_empty())
+        .map(str::to_string)
+}
+
 fn checks_from_rollup(rollup: Option<&Value>) -> CheckRollup {
     let Some(rollup) = rollup else {
-        return CheckRollup { state: CheckState::None, total: 0, failing: 0 };
+        return CheckRollup::none();
     };
-    let contexts = rollup.get("contexts");
-    let total = contexts
+    let nodes = rollup.get("contexts");
+    let total = nodes
         .and_then(|c| c.get("totalCount"))
         .and_then(|t| t.as_u64())
         .unwrap_or(0) as u32;
@@ -341,25 +379,16 @@ fn checks_from_rollup(rollup: Option<&Value>) -> CheckRollup {
         _ if total == 0 => CheckState::None,
         _ => CheckState::Pending,
     };
-    let failing = contexts
+    let contexts: Vec<CheckContext> = nodes
         .and_then(|c| c.get("nodes"))
         .and_then(|n| n.as_array())
-        .map(|nodes| {
-            nodes
-                .iter()
-                .filter(|n| {
-                    matches!(
-                        n.get("conclusion").and_then(|c| c.as_str()),
-                        Some("FAILURE") | Some("TIMED_OUT") | Some("CANCELLED") | Some("ACTION_REQUIRED")
-                    ) || matches!(
-                        n.get("state").and_then(|s| s.as_str()),
-                        Some("FAILURE") | Some("ERROR")
-                    )
-                })
-                .count() as u32
-        })
-        .unwrap_or(0);
-    CheckRollup { state, total, failing }
+        .map(|nodes| nodes.iter().map(context_from).collect())
+        .unwrap_or_default();
+    // Counted off the list rather than off a second predicate over the same
+    // nodes: a row the panel prints in red and a count that disagrees with it
+    // are one read answered twice.
+    let failing = contexts.iter().filter(|c| c.state == CheckState::Failure).count() as u32;
+    CheckRollup { state, total, failing, contexts }
 }
 
 fn review_decision_from(v: Option<&str>) -> ReviewDecision {
@@ -469,7 +498,11 @@ const PR_FIELDS: &str = r#"
       state
       contexts(first: 100) {
         totalCount
-        nodes { __typename ... on CheckRun { conclusion } ... on StatusContext { state } }
+        nodes {
+          __typename
+          ... on CheckRun { name conclusion detailsUrl }
+          ... on StatusContext { context state targetUrl }
+        }
       }
     }
   } } }
@@ -669,7 +702,7 @@ impl Forge for GitHubForge {
                     return UnitStatus {
                         head_ref: branch.clone(),
                         pull_request: None,
-                        checks: CheckRollup { state: CheckState::None, total: 0, failing: 0 },
+                        checks: CheckRollup::none(),
                         review_decision: ReviewDecision::None,
                     };
                 };
@@ -1126,7 +1159,7 @@ mod tests {
                       "reviewDecision":"CHANGES_REQUESTED",
                       "commits":{"nodes":[{"commit":{"oid":"s1","statusCheckRollup":{
                         "state":"FAILURE",
-                        "contexts":{"totalCount":3,"nodes":[{"conclusion":"FAILURE"},{"conclusion":"SUCCESS"},{"conclusion":"SUCCESS"}]}
+                        "contexts":{"totalCount":3,"nodes":[{"__typename":"CheckRun","name":"build","conclusion":"FAILURE","detailsUrl":"https://ci.test/1"},{"__typename":"CheckRun","name":"lint","conclusion":"SUCCESS","detailsUrl":""},{"__typename":"StatusContext","context":"coverage","state":"SUCCESS","targetUrl":"https://ci.test/3"}]}
                       }}}]}}]},
                 "u1":{"nodes":[]},
                 "u2":{"nodes":[{"number":7,"state":"OPEN","headRefName":"c","author":{"login":"me"},
@@ -1150,6 +1183,55 @@ mod tests {
 
         // A PR with no CI reads as None, never as permanently pending.
         assert_eq!(statuses[2].checks.state, CheckState::None);
+
+        // The checks by name, which is what the panel expands the row into.
+        // Both node shapes in one list: a check run names itself `name` and a
+        // commit status names itself `context`, and a row that read the wrong
+        // field would render blank rather than fail.
+        let contexts = &statuses[0].checks.contexts;
+        assert_eq!(contexts.len(), 3);
+        assert_eq!(
+            contexts.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["build", "lint", "coverage"],
+        );
+        assert_eq!(contexts[0].state, CheckState::Failure);
+        assert_eq!(contexts[0].url.as_deref(), Some("https://ci.test/1"));
+        assert_eq!(contexts[2].state, CheckState::Success);
+        // An empty target is how GitHub says a check carries no link, and a row
+        // must not offer one that goes nowhere.
+        assert_eq!(contexts[1].url, None);
+
+        // A PR with no CI has no contexts to list, which is not an empty list
+        // of checks that exist.
+        assert!(statuses[2].checks.contexts.is_empty());
+    }
+
+    #[test]
+    fn a_check_still_running_is_pending_rather_than_passing() {
+        // A `CheckRun` carries no conclusion until it finishes. Read as "not a
+        // failure" it would join the passing ones, and the row would say the
+        // build is green while it is still going.
+        let (f, _stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{
+                "u0":{"nodes":[{"number":1,"state":"OPEN","headRefName":"a","author":{"login":"me"},
+                      "reviewDecision":null,
+                      "commits":{"nodes":[{"commit":{"oid":"s1","statusCheckRollup":{
+                        "state":"PENDING",
+                        "contexts":{"totalCount":2,"nodes":[
+                          {"__typename":"CheckRun","name":"build","conclusion":null,"detailsUrl":null},
+                          {"__typename":"CheckRun","name":"lint","conclusion":"TIMED_OUT","detailsUrl":null}]}
+                      }}}]}}]}
+            }}}"#,
+        )]);
+        let statuses = f.unit_statuses(&repo(), &["a".to_string()]).unwrap();
+
+        let checks = &statuses[0].checks;
+        assert_eq!(checks.contexts[0].state, CheckState::Pending);
+        assert_eq!(checks.contexts[1].state, CheckState::Failure);
+        // And the count comes off that same list, so the number under the row
+        // and the rows themselves cannot disagree.
+        assert_eq!(checks.failing, 1);
     }
 
     #[test]

@@ -56,6 +56,7 @@ function status(o: {
       state: o.checks ?? "success",
       total: o.total ?? 4,
       failing: o.failing ?? 0,
+      contexts: [],
     },
     reviewDecision: o.review ?? "reviewRequired",
   };
@@ -64,7 +65,7 @@ function status(o: {
 const NO_PR: UnitStatus = {
   headRef: "main",
   pullRequest: null,
-  checks: { state: "none", total: 0, failing: 0 },
+  checks: { state: "none", total: 0, failing: 0, contexts: [] },
   reviewDecision: "none",
 };
 

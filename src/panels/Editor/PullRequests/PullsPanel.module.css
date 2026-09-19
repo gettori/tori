@@ -1,0 +1,453 @@
+/* The branch's pull request in the right pane. The frame matches PrList's, and
+   through it SearchPanel's, so the pane's modes feel like one surface.
+
+   Nothing here is a bare pixel: the panel is resizable down to 160px and the
+   interface scales, so every size is `calc(n * var(--ui-scale))` and every row
+   that can overflow carries `min-width: 0`. */
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--canvas-card);
+  font-size: var(--tori-text-xl);
+}
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--tori-text-2xs);
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Every reason the panel has nothing to draw, and every truncation. One shape
+   for all of them, so a panel with no pull request in it always says why. */
+.notice {
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-lg);
+}
+.notice.bad {
+  color: var(--danger-fg);
+}
+
+/* --- the states with no pull request to draw ----------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale));
+  min-width: 0;
+}
+
+.headline {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+.detail {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-lg);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* The remote, verbatim. Which one it is is the whole point of the state that
+   draws this, so it breaks rather than truncates. */
+.origin {
+  padding: calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-sm);
+  background: var(--canvas-default, var(--canvas-card));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-2xs);
+  word-break: break-all;
+}
+
+/* --- block 1: which pull request this is --------------------------------- */
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  min-width: 0;
+}
+
+.identityTop {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+}
+
+.pill {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-scale));
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  text-transform: lowercase;
+  font-size: var(--tori-text-2xs);
+}
+.pill[data-pr-state="open"] {
+  color: var(--success-fg);
+}
+.pill[data-pr-state="draft"] {
+  color: var(--fg-muted);
+}
+.pill[data-pr-state="merged"] {
+  color: var(--status-progress);
+}
+.pill[data-pr-state="closed"] {
+  color: var(--danger-fg);
+}
+
+.number {
+  flex: none;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--tori-text-2xs);
+}
+
+/* Wraps to as many lines as it needs. A truncated title is the one line on
+   this surface nobody can reconstruct from what is left. */
+.subject {
+  color: var(--fg-default);
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+.meta {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-2xs);
+}
+
+.branches {
+  display: flex;
+  align-items: baseline;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  font-size: var(--tori-text-2xs);
+}
+
+/* The head loses its *start* when it does not fit. Long branch names share a
+   prefix (`feature/`, `skarif2/`), so cutting the end is cutting the half that
+   identifies it. */
+.headRef {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  color: var(--fg-default);
+}
+
+.into {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+/* The base never truncates: it is short, and it is what the head is being
+   proposed into. */
+.baseRef {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+/* --- block 2: the three verdicts ----------------------------------------- */
+
+.rollup {
+  display: flex;
+  flex-direction: column;
+  padding: calc(4px * var(--ui-scale)) 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* One line each. A badge grid wraps into nonsense at 320px, and the panel goes
+   narrower than that. */
+.verdictRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  padding: calc(3px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--fg-default);
+  font: inherit;
+  text-align: left;
+}
+button.verdictRow:not(:disabled) {
+  cursor: pointer;
+}
+button.verdictRow:not(:disabled):hover {
+  background: var(--neutral-hover);
+}
+.verdictRow[data-tone="good"] {
+  color: var(--success-fg);
+}
+.verdictRow[data-tone="bad"] {
+  color: var(--danger-fg);
+}
+.verdictRow[data-tone="busy"] {
+  color: var(--status-progress);
+}
+.verdictRow[data-tone="blank"],
+.verdictRow[data-decision="unread"] {
+  color: var(--fg-muted);
+}
+.verdictRow[data-decision="approved"] {
+  color: var(--success-fg);
+}
+.verdictRow[data-decision="changesRequested"] {
+  color: var(--danger-fg);
+}
+
+/* The sentence is the answer; the glyph beside it repeats the same verdict in
+   colour, which says it to nobody reading with their ears. */
+.verdictText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+}
+
+.contexts {
+  margin: 0;
+  padding: 0 calc(12px * var(--ui-scale)) calc(4px * var(--ui-scale))
+    calc(30px * var(--ui-scale));
+  list-style: none;
+}
+
+.context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  font-size: var(--tori-text-2xs);
+  color: var(--fg-muted);
+}
+.context[data-check-state="failure"] {
+  color: var(--danger-fg);
+}
+.context[data-check-state="pending"] {
+  color: var(--status-progress);
+}
+
+.contextName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextMore {
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-2xs);
+}
+
+/* --- the drift strip ------------------------------------------------------ */
+
+/* Said out loud and offered a reload rather than silently re-fetching: a diff
+   that rearranges itself under a reader mid-sentence is worse than a stale one
+   that admits it. */
+.drift {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  flex-wrap: wrap;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-left: calc(2px * var(--ui-scale)) solid var(--attention-fg);
+  background: var(--canvas-card);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-2xs);
+}
+
+/* --- block 4: the files -------------------------------------------------- */
+
+/* Sticky inside the panel's scroll, so the count and the totals are readable
+   part-way down a long list. */
+.filesHead {
+  position: sticky;
+  top: calc(26px * var(--ui-scale));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.filesTitle {
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--tori-text-2xs);
+}
+
+.fileCount {
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--tori-text-2xs);
+}
+
+/* One row per file, flat. Grouping costs a header row and an indent level per
+   directory at a width that has neither to spare, and it puts headers in the
+   way of moving through files. */
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: 0 calc(12px * var(--ui-scale));
+  min-height: calc(22px * var(--ui-scale));
+  min-width: 0;
+  cursor: pointer;
+}
+.fileRow:hover {
+  background: var(--neutral-hover);
+}
+.fileRow:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: -2px;
+}
+
+.status {
+  flex: none;
+  width: calc(10px * var(--ui-scale));
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--tori-text-2xs);
+}
+.status[data-file-status="added"] {
+  color: var(--success-fg);
+}
+.status[data-file-status="modified"] {
+  color: var(--attention-fg);
+}
+.status[data-file-status="removed"] {
+  color: var(--danger-fg);
+}
+.status[data-file-status="renamed"] {
+  color: var(--accent-fg);
+}
+
+.path {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.path[data-viewed] .name {
+  color: var(--fg-muted);
+}
+
+/* Truncates from its *start*, so what disappears is the shared prefix rather
+   than the part that says which directory this is. */
+.dir {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--fg-subtle);
+}
+
+/* Never truncated: it is the one part of a path a reader scans for. */
+.name {
+  flex: none;
+  color: var(--fg-default);
+}
+
+.unresolved {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  color: var(--attention-fg);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--tori-text-2xs);
+}
+
+/* Viewed files stay in place. They do not collapse or reorder: a list that
+   rearranges itself as you read it is one you have to re-find your place in. */
+.viewedMark {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+.counts {
+  flex: none;
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+  font-variant-numeric: tabular-nums;
+  font-size: var(--tori-text-2xs);
+}
+.added {
+  color: var(--success-fg);
+}
+.removed {
+  color: var(--danger-fg);
+}
+
+/* --- the footer ---------------------------------------------------------- */
+
+/* Outside the file list rather than at the end of it: a review being written
+   is a fact about the whole pull request, and scrolling past the last file to
+   find the way to submit is scrolling to look for a control. */
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+  background: var(--canvas-card);
+}
+
+.pendingCount {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  color: var(--attention-fg);
+  font-size: var(--tori-text-2xs);
+}

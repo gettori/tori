@@ -1,121 +1,14 @@
-/* One pull request's files, hash-scoped. Shares the list panel's frame so the
-   two read as one surface with a back button between them. */
-.detail {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  background: var(--canvas-card);
-  font-size: var(--tori-text-xl);
-}
+/* One pull request file's diff: the hunks, the gaps between them, the line
+   comment composer, and the conversations placed among the rows.
 
-.head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-card);
-  border-bottom: 1px solid var(--border-default);
-}
-
-.title {
-  display: flex;
-  align-items: baseline;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale)) 0;
-  min-width: 0;
-}
-
-.number {
-  flex: none;
-  color: var(--fg-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.subject {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: var(--fg-default);
-}
-
-.meta {
-  display: flex;
-  gap: calc(10px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-2xs);
-}
-
-.notice {
-  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-lg);
-}
+   Was PrDetail.module.css, named after the 320px column that used to draw all
+   of this. The column draws a file *list* now and the diff is read in a tab,
+   so what is left here belongs to the body rather than to either surface. */
 
 .error {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--danger-fg);
   font-size: var(--tori-text-lg);
-}
-
-.fileRow {
-  display: flex;
-  align-items: baseline;
-  gap: calc(8px * var(--ui-scale));
-  width: calc(100% - 8px * var(--ui-scale));
-  margin: 0 calc(4px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border: none;
-  border-radius: var(--tori-radius-sm);
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.fileRow:hover {
-  background: var(--neutral-hover);
-}
-
-/* The word, not a letter: the API sends "renamed" already, and the row has the
-   room to say it. */
-.status {
-  flex: none;
-  min-width: calc(72px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-}
-.status[data-file-status="added"] {
-  color: var(--diff-added);
-}
-.status[data-file-status="removed"] {
-  color: var(--diff-deleted);
-}
-
-.path {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-default);
-}
-
-.counts {
-  flex: none;
-  display: flex;
-  gap: calc(4px * var(--ui-scale));
-  font-size: var(--tori-text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-.added {
-  color: var(--diff-added);
-}
-.removed {
-  color: var(--diff-deleted);
 }
 
 /* The line-comment composer, under the hunk whose rows are picked. */
@@ -151,18 +44,6 @@
   display: flex;
   justify-content: flex-end;
   gap: calc(6px * var(--ui-scale));
-}
-
-.threadCount {
-  flex: none;
-  color: var(--fg-muted);
-  font-size: var(--tori-text-2xs);
-}
-
-/* Conversations that sit beside no diff row: outdated, or anchored outside the
-   lines this patch renders. */
-.threadGroup {
-  margin: calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 
 .groupTitle {

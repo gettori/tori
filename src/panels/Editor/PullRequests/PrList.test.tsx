@@ -1,16 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "@solidjs/testing-library";
 import type { AuthState, PullRequest } from "../../../utils/forgeTypes";
 
-// The Pull Requests panel.
+// Every open pull request on a project, in one list.
 //
-// Two things it has to get right that a working-looking panel would not show:
+// Drawn in two places and owned by neither: the right pane used to host it, and
+// its own stage tab does now. What a picked row *does* differs between callers
+// and is tested where the caller is; everything here is the list itself.
+//
+// Two things it has to get right that a working-looking list would not show:
 //
 //   1. **A long list must arrive whole.** The API pages at 100, so a repo with
-//      150 open PRs is exactly where a panel silently shows the first page and
+//      150 open PRs is exactly where a list silently shows the first page and
 //      looks perfectly healthy doing it.
 //   2. **Every empty state must say which one it is.** Signed out, switched off,
-//      failed, and genuinely empty all render nothing; a panel that draws the
+//      failed, and genuinely empty all render nothing; a list that draws the
 //      same blank for all four leaves the user with no idea what to do.
 
 const ROOT = "/root/work/gh";
@@ -42,24 +46,9 @@ const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   items: [] as unknown[],
   statuses: [] as unknown[],
-  files: [] as unknown[],
   truncated: false,
   fail: null as { kind: string; message: string } | null,
-  mergeable: "clean" as string,
 }));
-
-/** The detail read, around the one field a test cares about. */
-const summaryOf = (mergeableState: string) => ({
-  mergeableState,
-  updatedAt: "2026-09-18T11:02:00Z",
-  counts: {
-    commits: 2,
-    changedFiles: 1,
-    additions: 1,
-    deletions: 1,
-    reviews: { approved: 0, changesRequested: 0 },
-  },
-});
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -75,10 +64,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         uncovered: 0,
         rate: { remaining: 4800, limit: 5000, resetAt: null },
       });
-    if (cmd === "forge_pr_files")
-      return Promise.resolve({ items: bridge.files, truncated: false });
-    if (cmd === "forge_pr_summary") return Promise.resolve(summaryOf(bridge.mergeable));
-    if (cmd === "forge_merge") return Promise.resolve(null);
     if (cmd === "forge_repo_account")
       return Promise.resolve({
         kind: "account",
@@ -90,10 +75,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { default: PullRequests } = await import("./PullRequests");
+const { default: PrList } = await import("./PrList");
 const { noteForgeAccounts, noteForgeEnabled, noteWatchedProjects, resetForgeStatusForTests, pollNow } =
   await import("../../../utils/forgeStatus");
-const { resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
 const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
 
 /** The one account these tests act as, in this state. Signed out is no account. */
@@ -111,80 +95,13 @@ const signIn = () => {
 
 describe("the pull request list", () => {
   beforeEach(() => {
-    resetPrReviewStoreForTests();
     resetPrListStoreForTests();
     resetForgeStatusForTests();
     bridge.calls.length = 0;
     bridge.items = [];
     bridge.statuses = [];
-    bridge.files = [];
     bridge.truncated = false;
     bridge.fail = null;
-  });
-
-  it("opens a row onto that pull request's files", async () => {
-    // The list is a way in, not a destination. Until this, every row was a
-    // rendered fact with nowhere to go, which is the mirror of a registered
-    // command with no caller (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
-    bridge.items = [pr(31, { headRef: "wave-3", headSha: "abc123" })];
-    bridge.files = [
-      {
-        path: "src/utils/forgeChip.ts",
-        previousPath: null,
-        status: "modified",
-        additions: 4,
-        deletions: 1,
-        patch: "@@ -1,1 +1,1 @@\n-a\n+b",
-      },
-    ];
-    signIn();
-
-    render(() => <PullRequests root={ROOT} />);
-    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
-
-    fireEvent.click(screen.getByText("pull request 31"));
-    await waitFor(() => expect(screen.queryByText("src/utils/forgeChip.ts")).toBeTruthy());
-    expect(bridge.calls.filter((c) => c.cmd === "forge_pr_files")[0].args).toMatchObject({
-      projectPath: ROOT,
-      number: 31,
-    });
-
-    // And back, without re-listing: the list it left is the one it returns to.
-    const listed = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
-    fireEvent.click(screen.getByText("← Pull requests"));
-    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
-    expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(listed);
-  });
-
-  it("re-asks for the list once a pull request has been landed", async () => {
-    // Merging makes the list wrong, and the list is exactly where the user goes
-    // to check it worked. Rust drops its caches on a merge; the array this panel
-    // is holding was fetched before that, so going back would otherwise show the
-    // pull request just merged still sitting open.
-    bridge.items = [pr(31, { headRef: "wave-3", headSha: "abc123" })];
-    bridge.files = [];
-    signIn();
-
-    render(() => <PullRequests root={ROOT} />);
-    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
-    fireEvent.click(screen.getByText("pull request 31"));
-    await waitFor(() => expect(document.querySelector("[data-merge-state]")).toBeTruthy());
-    await waitFor(() =>
-      expect(document.querySelector("[data-merge-state]")!.getAttribute("data-merge-state")).toBe(
-        "clean",
-      ),
-    );
-
-    const listed = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
-    // Landed, and the server no longer has it open.
-    bridge.items = [];
-    fireEvent.click(screen.getAllByText("Merge").find((n) => n.closest("button"))!);
-
-    await waitFor(() =>
-      expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs").length).toBe(listed + 1),
-    );
-    fireEvent.click(screen.getByText("← Pull requests"));
-    await waitFor(() => expect(screen.queryByText("pull request 31")).toBeNull());
   });
 
   it("lists every pull request a paged repo has, not the first page", async () => {
@@ -194,7 +111,7 @@ describe("the pull request list", () => {
     bridge.items = Array.from({ length: 150 }, (_, i) => pr(i + 1));
     signIn();
 
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
 
     await waitFor(() => expect(screen.queryByText("pull request 1")).toBeTruthy());
     expect(screen.queryByText("pull request 150")).toBeTruthy();
@@ -208,7 +125,7 @@ describe("the pull request list", () => {
     bridge.truncated = true;
     signIn();
 
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() =>
       expect(screen.queryByText(/more open pull requests than one listing can carry/)).toBeTruthy(),
     );
@@ -218,24 +135,24 @@ describe("the pull request list", () => {
     // Each of these renders no rows, and each needs a different next action:
     // turn it back on, sign in, sign in again, or nothing at all.
     signIn();
-    const empty = render(() => <PullRequests root={ROOT} />);
+    const empty = render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() => expect(empty.queryByText("No open pull requests.")).toBeTruthy());
     empty.unmount();
 
     noteAuth({ kind: "signedOut" });
-    const out = render(() => <PullRequests root={ROOT} />);
+    const out = render(() => <PrList root={ROOT} onPick={() => {}} />);
     expect(out.queryByText(/Sign in to GitHub in Settings/)).toBeTruthy();
     out.unmount();
 
     noteAuth({ kind: "signedIn", login: "skarif2" });
     noteForgeEnabled(false);
-    const off = render(() => <PullRequests root={ROOT} />);
+    const off = render(() => <PrList root={ROOT} onPick={() => {}} />);
     expect(off.queryByText(/switched off in Settings/)).toBeTruthy();
     off.unmount();
 
     noteForgeEnabled(true);
     noteAuth({ kind: "suspect", login: "skarif2" });
-    const suspect = render(() => <PullRequests root={ROOT} />);
+    const suspect = render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() => expect(suspect.queryByText(/rejected the stored credential/)).toBeTruthy());
     suspect.unmount();
   });
@@ -245,7 +162,7 @@ describe("the pull request list", () => {
     // that costs nothing at all - and the pause is exactly the state where the
     // answer could not be shown even if it arrived.
     noteAuth({ kind: "signedOut" });
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
     await Promise.resolve();
     expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(0);
   });
@@ -257,7 +174,7 @@ describe("the pull request list", () => {
     bridge.fail = { kind: "rateLimited", message: "the GitHub rate limit is spent" };
     signIn();
 
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() => expect(screen.queryByText("the GitHub rate limit is spent")).toBeTruthy());
   });
 
@@ -266,7 +183,7 @@ describe("the pull request list", () => {
     // list is its own request and would keep showing the state before the
     // create until somebody hit Refresh.
     signIn();
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() => expect(screen.queryByText("No open pull requests.")).toBeTruthy());
 
     bridge.items = [pr(31)];
@@ -281,7 +198,7 @@ describe("the pull request list", () => {
     // spends a request to render exactly what is already on screen.
     bridge.items = [pr(1)];
     signIn();
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() => expect(screen.queryByText("pull request 1")).toBeTruthy());
 
     const before = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
@@ -300,14 +217,14 @@ describe("the pull request list", () => {
       {
         headRef: "wave-3",
         pullRequest: pr(7, { headRef: "wave-3" }),
-        checks: { state: "failure", total: 4, failing: 1 },
+        checks: { state: "failure", total: 4, failing: 1, contexts: [] },
         reviewDecision: "changesRequested",
       },
     ];
     signIn();
     noteWatchedProjects([{ path: ROOT, units: [{ branch: "wave-3", visible: true }] }]);
 
-    render(() => <PullRequests root={ROOT} />);
+    render(() => <PrList root={ROOT} onPick={() => {}} />);
     await waitFor(() => expect(screen.queryByText("pull request 7")).toBeTruthy());
     // Nothing has polled yet, so no checks badge: the same honest blank the
     // chip shows for a branch no tick has covered.
@@ -325,26 +242,5 @@ describe("the pull request list", () => {
     expect(
       bridge.calls.slice(before).filter((c) => c.cmd === "forge_list_prs"),
     ).toHaveLength(0);
-  });
-});
-
-// How the panel is reached. A registered command with no caller is not shipped,
-// and the mirror of that is a panel with no way in: the mode strip collapses
-// into an overflow menu on a narrow pane, so the palette is the reliable route
-// (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
-describe("the ways into the panel", () => {
-  it("has a palette command that switches the right pane to it", async () => {
-    const { COMMANDS } = await import("../../../utils/commands");
-    const cmd = COMMANDS.find((c) => c.id === "mode:pulls");
-    expect(cmd, "no palette command opens the Pull Requests panel").toBeTruthy();
-    expect(cmd!.label).toBe("Show Pull requests");
-
-    let detail: unknown = null;
-    const handler = (e: Event) => (detail = (e as CustomEvent).detail);
-    window.addEventListener("tori:set-right-mode", handler);
-    cmd!.run!({} as never);
-    window.removeEventListener("tori:set-right-mode", handler);
-
-    expect(detail).toEqual({ mode: "pulls" });
   });
 });

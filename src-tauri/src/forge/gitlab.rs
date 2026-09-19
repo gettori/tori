@@ -311,10 +311,13 @@ fn checks_from_pipeline(pipeline: Option<&Value>) -> CheckRollup {
         | Some("waiting_for_resource") | Some("scheduled") => CheckState::Pending,
         _ => CheckState::None,
     };
+    // No per-job list for the same reason there are no per-job counts: naming
+    // the one pipeline as a context would be a list of one saying what the
+    // rollup already says.
     match state {
-        CheckState::None => CheckRollup { state, total: 0, failing: 0 },
-        CheckState::Failure => CheckRollup { state, total: 1, failing: 1 },
-        _ => CheckRollup { state, total: 1, failing: 0 },
+        CheckState::None => CheckRollup::none(),
+        CheckState::Failure => CheckRollup { state, total: 1, failing: 1, contexts: Vec::new() },
+        _ => CheckRollup { state, total: 1, failing: 0, contexts: Vec::new() },
     }
 }
 
@@ -573,7 +576,7 @@ impl Forge for GitLabForge {
                     return UnitStatus {
                         head_ref: branch.clone(),
                         pull_request: None,
-                        checks: CheckRollup { state: CheckState::None, total: 0, failing: 0 },
+                        checks: CheckRollup::none(),
                         review_decision: ReviewDecision::None,
                     };
                 };

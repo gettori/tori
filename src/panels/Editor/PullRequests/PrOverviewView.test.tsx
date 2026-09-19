@@ -20,6 +20,7 @@ const bridge = vi.hoisted(() => ({
   report: null as unknown,
   summary: null as unknown,
   capabilities: {} as Record<string, boolean>,
+  submitFails: null as { kind: string; message: string } | null,
 }));
 
 const FULL_CAPS = {
@@ -38,7 +39,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "forge_pr_files") return Promise.resolve({ items: bridge.files, truncated: false });
-    if (cmd === "forge_submit_review") return Promise.resolve(null);
+    if (cmd === "forge_submit_review")
+      return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
     if (cmd === "forge_review_threads") return Promise.resolve({ items: [], truncated: false });
     if (cmd === "forge_pr_summary") return Promise.resolve(bridge.summary);
     if (cmd === "forge_unit_statuses") {
@@ -139,7 +141,7 @@ async function pollWith(over: Partial<PullRequest> = {}) {
       {
         headRef: BRANCH,
         pullRequest: pr(over),
-        checks: { state: "success", total: 1, failing: 0 },
+        checks: { state: "success", total: 1, failing: 0, contexts: [] },
         reviewDecision: "none",
       },
     ],
@@ -175,6 +177,7 @@ beforeEach(() => {
   bridge.calls.length = 0;
   bridge.files = [file()];
   bridge.capabilities = { ...FULL_CAPS };
+  bridge.submitFails = null;
   bridge.report = null;
   bridge.summary = {
     mergeableState: "clean",
@@ -309,5 +312,63 @@ describe("the review submitted from the overview tab", () => {
       expect(cmds("forge_review_threads").length).toBe(threadsBefore + 1),
     );
     expect(cmds("forge_pr_summary").length).toBe(summaryBefore + 1);
+  });
+  it("hands the whole draft back when the one call is refused", async () => {
+    // The reason the review is one call: comments posted as they are written
+    // and a verdict at the end leave a half-submitted review behind whenever
+    // the last call fails, with nothing saying which ones already landed.
+    // Here the set has to survive intact, or the reader loses every comment
+    // they wrote to one refusal.
+    bridge.submitFails = { kind: "forbidden", message: "you cannot review this pull request" };
+    await signIn();
+    await pollWith();
+    openTab();
+    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    holdComment();
+    await waitFor(() => expect(submit().disabled).toBe(false));
+
+    fireEvent.click(submit());
+
+    await waitFor(() =>
+      expect(screen.getByText("you cannot review this pull request")).toBeTruthy(),
+    );
+    expect(prEntry(ROOT, 42).pending).toHaveLength(1);
+  });
+
+  it("refuses a verdict on your own pull request, and says why on screen", async () => {
+    // GitHub answers 422 for approve and request-changes from the author, and
+    // on a single-owner repo that is every pull request. The verdict stays
+    // pickable and the submit is what refuses: a control that vanishes says
+    // nothing, and a disabled one with no visible reason reads as broken.
+    await signIn();
+    await pollWith();
+    openTab();
+    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("radio", { name: /Approve/ }));
+
+    await waitFor(() => expect(submit().disabled).toBe(true));
+    expect(document.querySelector("[data-submit-reason]")!.textContent).toContain(
+      "does not accept this on your own pull request",
+    );
+  });
+
+  it("renders a verdict the host does not have inert rather than absent", async () => {
+    // A missing radio and a refused one are two different noes, and a missing
+    // one says neither.
+    bridge.capabilities = { ...FULL_CAPS, requestChanges: false };
+    await signIn();
+    await pollWith();
+    openTab();
+    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("radio", { name: /Request changes/ }) as HTMLInputElement).disabled,
+      ).toBe(true),
+    );
+    expect((screen.getByRole("radio", { name: /Comment/ }) as HTMLInputElement).disabled).toBe(
+      false,
+    );
   });
 });

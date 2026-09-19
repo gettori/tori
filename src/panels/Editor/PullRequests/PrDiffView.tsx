@@ -191,6 +191,26 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
       <Show when={entry().filesError}>
         {(message) => <div class={styles.error}>{message()}</div>}
       </Show>
+      {/* The conversations' own failure, from a read or from a refused reply or
+          resolve. Its own line because a pull request whose threads will not
+          load is still one worth reading, so this never replaces the diff. */}
+      <Show when={entry().threadsError}>
+        {(message) => <div class={styles.error}>{message()}</div>}
+      </Show>
+      {/* Same shape as every other cap here: a partial answer rendered as a
+          complete one is the failure nobody reports, because the page looks
+          fine. Pull-request-wide rather than about this file, which is why it
+          hands over the pull request's own link. */}
+      <Show when={entry().threadsTruncated && pr()}>
+        {(p) => (
+          <div class={styles.notice}>
+            This pull request has more conversations than one read can carry.{" "}
+            <a href={p().url} target="_blank" rel="noreferrer">
+              See them all on github.com
+            </a>
+          </div>
+        )}
+      </Show>
 
       <Show
         when={pr() && file()}

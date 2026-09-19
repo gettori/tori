@@ -157,12 +157,44 @@ pub enum CheckState {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// One check on the head commit, so a panel can name the failing one.
+///
+/// `state` is the same four values as the rollup's, read per check: a run with
+/// no conclusion yet is `Pending`, which is what keeps "still going" out of the
+/// failing list.
+///
+/// `url` is optional because a status context may carry no target, and a link
+/// to nowhere is worse than no link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckContext {
+    pub name: String,
+    pub state: CheckState,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckRollup {
     pub state: CheckState,
     pub total: u32,
     pub failing: u32,
+    /// The checks behind the rollup, as far as one read describes them.
+    ///
+    /// Capped by the query, so this can be shorter than `total`. `state` and
+    /// `failing` are not derived from it for that reason: the rollup's own
+    /// state covers every context, and a list cut at the cap would understate
+    /// the count it was derived from.
+    pub contexts: Vec<CheckContext>,
+}
+
+impl CheckRollup {
+    /// No checks configured on this head, which is not the same as checks that
+    /// have not finished. One constructor so the five places that answer it
+    /// cannot drift into disagreeing about what a blank rollup is.
+    pub fn none() -> Self {
+        CheckRollup { state: CheckState::None, total: 0, failing: 0, contexts: Vec::new() }
+    }
 }
 
 /// The aggregate review verdict on a PR.
@@ -471,6 +503,25 @@ pub enum AuthState {
 mod tests {
     use super::*;
 
+    /// A failing rollup with its contexts listed, because the mirror can only
+    /// check a field name it has seen: an empty `contexts` would emit the
+    /// array and nothing inside it.
+    fn rollup() -> CheckRollup {
+        CheckRollup {
+            state: CheckState::Failure,
+            total: 12,
+            failing: 1,
+            contexts: vec![
+                CheckContext {
+                    name: "build".into(),
+                    state: CheckState::Failure,
+                    url: Some("https://github.com/skarif2/tori/runs/1".into()),
+                },
+                CheckContext { name: "lint".into(), state: CheckState::Success, url: None },
+            ],
+        }
+    }
+
     /// Writes one sample per type into `dev/fixtures/forge/`, which
     /// `src/utils/forgeTypes.test.ts` then parses.
     ///
@@ -504,14 +555,14 @@ mod tests {
         let unit = UnitStatus {
             head_ref: "wave-3".into(),
             pull_request: Some(pr.clone()),
-            checks: CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
+            checks: rollup(),
             review_decision: ReviewDecision::ChangesRequested,
         };
 
         let samples = serde_json::json!({
             "repoRef": RepoRef { owner: "skarif2".into(), repo: "tori".into() },
             "pullRequest": pr.clone(),
-            "checkRollup": CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
+            "checkRollup": rollup(),
             // The detail read behind the overview tab and the merge control.
             // Both verdict counts are non-zero, so neither field can be dropped
             // without this sample noticing.

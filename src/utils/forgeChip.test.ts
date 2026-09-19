@@ -26,7 +26,7 @@ const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
 const status = (over: Partial<UnitStatus> = {}): UnitStatus => ({
   headRef: "wave-3",
   pullRequest: pull(),
-  checks: { state: "none", total: 0, failing: 0 },
+  checks: { state: "none", total: 0, failing: 0, contexts: [] },
   reviewDecision: "none",
   ...over,
 });
@@ -168,7 +168,7 @@ describe("the pull request badge", () => {
 
 describe("the checks badge", () => {
   const withChecks = (state: CheckState, total: number, failing: number) =>
-    chip({ status: status({ checks: { state, total, failing } }) }).checks;
+    chip({ status: status({ checks: { state, total, failing, contexts: [] } }) }).checks;
 
   it("names how many checks are failing rather than that some are", () => {
     // "Checks failing" sends the user to GitHub to find out how bad it is.
@@ -188,7 +188,7 @@ describe("the checks badge", () => {
   });
 
   it("has nothing to report on a branch with no pull request", () => {
-    const c = chip({ status: status({ pullRequest: null, checks: { state: "failure", total: 1, failing: 1 } }) });
+    const c = chip({ status: status({ pullRequest: null, checks: { state: "failure", total: 1, failing: 1, contexts: [] } }) });
     expect(c.checks).toBeNull();
     expect(c.review).toBeNull();
   });

@@ -335,7 +335,7 @@ pub fn invalidate_repo(repo: &RepoRef) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::forge::model::{CheckRollup, CheckState, ReviewDecision};
+    use crate::forge::model::{CheckRollup, ReviewDecision};
     use std::cell::Cell;
 
     fn repo() -> RepoRef {
@@ -346,7 +346,7 @@ mod tests {
         UnitStatus {
             head_ref: head.into(),
             pull_request: None,
-            checks: CheckRollup { state: CheckState::None, total: 0, failing: 0 },
+            checks: CheckRollup::none(),
             review_decision: ReviewDecision::None,
         }
     }
