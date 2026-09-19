@@ -346,13 +346,6 @@
   height: calc(14px * var(--ui-scale));
 }
 
-/* The "current checkout" mark on a branch row. */
-.dot {
-  color: var(--info-fg);
-  font-size: var(--tori-text-2xs);
-  margin-left: auto;
-}
-
 /* A container whose worktrees did not all get their shared files. Warning hue
    rather than the session states beside it: this is about the project's setup,
    not about anything running in it. */
