@@ -95,6 +95,16 @@
   background: var(--neutral-hover);
 }
 
+/* While the pointer is over the list, the pointer owns the paint. The active
+   row is seeded on the first row before anything is pressed (see `Bridge`), so
+   without this a list you are merely hovering shows two rows wearing the same
+   colour, one of which nothing has ever touched. The keyboard's row comes back
+   the moment the pointer leaves, and the parked row keeps its own colour
+   throughout - it is a choice, not a position. */
+.listbox:hover .item[data-highlighted]:not(:hover):not([data-picked]) {
+  background: transparent;
+}
+
 /* Muted rather than opacity, because a role is theme-correct and an opacity is
    not. Kobalte already blocks activation and skips these rows with the arrow
    keys, so nothing here has to. */

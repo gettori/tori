@@ -43,12 +43,14 @@ export function worktreeFolder(branch: string): string {
  * branch that is genuinely newer than the last sweep.
  *
  * **A branch nothing is standing on can be deleted from its own row.** The
- * trash is a mouse affordance only: a row is an `option`, and a focusable
- * control inside one is both an ARIA violation and unreachable, since the caret
- * never leaves the filter. The keyboard reaches the same action through the
- * header, which acts on the parked row. Rows the tree already has open carry
- * their tag instead, because git refuses to delete a branch that is checked
- * out and an affordance that always fails is worse than none.
+ * trash is a pointer affordance: a row is an `option`, and a focusable control
+ * inside one is both an ARIA violation and unreachable anyway, since the caret
+ * never leaves the filter. It shows on the row under the pointer and on the
+ * parked row, and on nothing else - the active row is seeded on the first entry
+ * before anybody has pressed a key, so keying it to that put a trash on a row
+ * nobody had touched. Rows the tree already has open carry their tag instead,
+ * because git refuses to delete a branch that is checked out and an affordance
+ * that always fails is worse than none.
  *
  * **The fetch is reported in the list header, not in the title.** Appended to
  * the title (`Branch Name · fetching…`) it reflowed the dialog's own heading the
@@ -162,13 +164,6 @@ export default function AddBranchDialog(props: {
     const pick = choice();
     if (props.busy || !pick) return;
     props.onConfirm(pick);
-  };
-
-  // The parked row, when it is one a delete could take. This is what the
-  // header's trash acts on, and the whole of the keyboard's route to it.
-  const parkedDeletable = () => {
-    const parked = picked();
-    return parked && deletable(parked.name) ? parked.name : null;
   };
 
   // A confirmation nobody can answer is worse than none: the press that armed
@@ -320,18 +315,6 @@ export default function AddBranchDialog(props: {
                   <span class={styles.fetchDot} aria-hidden="true" />
                   fetching remote…
                 </span>
-              </Show>
-              <Show when={parkedDeletable()}>
-                {(name) => (
-                  <IconButton
-                    class={styles.listHeadAction}
-                    size="sm"
-                    icon={<Icon icon={Trash2} />}
-                    tooltip={`Delete branch “${name()}”`}
-                    disabled={!!props.deleting}
-                    onClick={() => props.onDeleteAsk?.(name())}
-                  />
-                )}
               </Show>
               <Show when={props.onFetch}>
                 <IconButton
