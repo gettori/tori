@@ -65,6 +65,12 @@ function prIcon(state: PrChipState): LucideIcon {
  */
 export default function PrLine(props: {
   status: UnitStatus;
+  /** Opens the Pull Requests panel onto this branch. The chip on the line
+   *  above used to carry this; with the chip gone for a branch that has a PR,
+   *  the line is the only thing left that could. Absent leaves it inert. */
+  onOpen?: () => void;
+  /** What the control announces. Required in spirit whenever `onOpen` is. */
+  label?: string;
   /** Which size to read it at. */
   size?: "xs" | "2xs";
 }) {
@@ -105,48 +111,81 @@ export default function PrLine(props: {
       .join("\n");
   };
 
+  const facts = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
+    <>
+      <span class={`${styles.item} ${styles[`pr_${state()}`]}`} data-pr-state={state()}>
+        <Icon icon={prIcon(state())} />
+        {`#${p().number}`}
+      </span>
+
+      <Show when={age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
+
+      <Show when={badges().review}>
+        {(r) => (
+          <span class={`${styles.item} ${styles[r().tone]}`} data-pr-review={r().tone}>
+            <Icon icon={REVIEW_ICON[r().tone]} />
+          </span>
+        )}
+      </Show>
+
+      <Show when={badges().checks}>
+        {(c) => (
+          <span class={`${styles.item} ${styles[c().tone]}`} data-pr-checks={c().tone}>
+            <Icon icon={CHECK_ICON[c().tone]} />
+            {/* Running checks have no score yet, so the glyph stands alone
+                rather than claiming a total that is still moving. */}
+            <Show when={c().tone !== "busy"}>{`${passed()}/${checks().total}`}</Show>
+          </span>
+        )}
+      </Show>
+
+      <Show when={p().comments > 0}>
+        <span class={styles.item} data-pr-comments={p().comments}>
+          <Icon icon={MessageSquare} />
+          {p().comments}
+        </span>
+      </Show>
+    </>
+  );
+
   return (
     <Show when={pr()}>
       {(p) => (
-        <Tooltip<HTMLSpanElement>
-          as="span"
-          class={styles.prLine}
-          classList={{ [styles.xs]: props.size === "xs" }}
-          label={<span class={styles.lines}>{story()}</span>}
+        <Show
+          when={props.onOpen}
+          fallback={
+            <Tooltip<HTMLSpanElement>
+              as="span"
+              class={styles.prLine}
+              data-pr-line
+              classList={{ [styles.xs]: props.size === "xs" }}
+              label={<span class={styles.lines}>{story()}</span>}
+            >
+              {facts(p)}
+            </Tooltip>
+          }
         >
-          <span class={`${styles.item} ${styles[`pr_${state()}`]}`}>
-            <Icon icon={prIcon(state())} />
-            {`#${p().number}`}
-          </span>
-
-          <Show when={age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
-
-          <Show when={badges().review}>
-            {(r) => (
-              <span class={`${styles.item} ${styles[r().tone]}`}>
-                <Icon icon={REVIEW_ICON[r().tone]} />
-              </span>
-            )}
-          </Show>
-
-          <Show when={badges().checks}>
-            {(c) => (
-              <span class={`${styles.item} ${styles[c().tone]}`}>
-                <Icon icon={CHECK_ICON[c().tone]} />
-                {/* Running checks have no score yet, so the glyph stands alone
-                    rather than claiming a total that is still moving. */}
-                <Show when={c().tone !== "busy"}>{`${passed()}/${checks().total}`}</Show>
-              </span>
-            )}
-          </Show>
-
-          <Show when={p().comments > 0}>
-            <span class={styles.item}>
-              <Icon icon={MessageSquare} />
-              {p().comments}
-            </span>
-          </Show>
-        </Tooltip>
+          {/* A button rather than a styled span, on the same reasoning
+              `ForgeChipView` gives: this is a real capability, and the row
+              around it is a div with an onClick, so nothing else here is
+              tabbable. `stopPropagation` keeps a click from also selecting the
+              branch and moving the panel off what it just opened. */}
+          <Tooltip<HTMLButtonElement>
+            as="button"
+            type="button"
+            class={`${styles.prLine} ${styles.control}`}
+            data-pr-line
+            classList={{ [styles.xs]: props.size === "xs" }}
+            label={<span class={styles.lines}>{story()}</span>}
+            aria-label={props.label}
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              props.onOpen?.();
+            }}
+          >
+            {facts(p)}
+          </Tooltip>
+        </Show>
       )}
     </Show>
   );
