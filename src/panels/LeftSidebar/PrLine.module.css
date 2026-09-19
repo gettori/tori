@@ -23,6 +23,25 @@
   white-space: nowrap;
 }
 
+/* The control variant. A button's own chrome is stripped back to the line it
+   already was: what makes it a control is that it is focusable and answers a
+   click, not that it looks like a thing to press in a column of rows that are
+   not. `text-align` because a button centres its content and the line has to
+   start where every other row's does. */
+.control {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.control:hover {
+  color: var(--fg-default);
+}
+
 /* The size still being chosen. `2xs` matches the badges the row already wears;
    `xs` is the same line one step up, because `--fg-subtle` is held to a 3.0
    contrast floor (see theme/contrast.ts) and small text at 3.0 is where

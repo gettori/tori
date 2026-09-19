@@ -2410,11 +2410,19 @@ export default function LeftSidebar(props: {
       return r.waitingForApproval + r.waitingForAnswer + r.executing > 0;
     };
     const marks = createMemo(() => (held() ? [] : syncMarks(sync())));
-    // The row's own second line, and only when there is a pull request to put
-    // on it. `chip` below cannot answer this: it reports a *drawable* state,
-    // and the line is about the pull request itself.
+    // Which of the two places a pull request gets reported. The second line
+    // says everything the chip used to and more, so the chip stays only for
+    // the states that have no second line - after `noPr` stopped drawing,
+    // that is `readyForPr` alone.
+    //
+    // Read off `chip().kind` rather than off "is there a PR in the store",
+    // because that kind has already asked every question a row must ask before
+    // it may report anything: the remote is one the API serves, the poller is
+    // running, a tick has landed. Asking the store directly would put a line
+    // on a row whose poller stopped an hour ago and let it age there in
+    // silence, which is the trap `forgeChip` exists to close.
+    const showPr = () => chip().kind === "pr";
     const status = () => unitStatus(p.path, u.branch);
-    const hasPr = () => status()?.pullRequest != null;
     // Memoized, not a bare accessor: the row reads it several times and each
     // read would otherwise re-parse the origin URL.
     const chip = createMemo(() =>
@@ -2457,7 +2465,11 @@ export default function LeftSidebar(props: {
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
-        meta={hasPr() ? <PrLine status={status()!} /> : undefined}
+        meta={
+          showPr()
+            ? <PrLine status={status()!} onOpen={() => void openPullRequests(g, p, u)} label={`Pull requests for ${p.name}`} />
+            : undefined
+        }
         end={
           <>
             <SyncMarks marks={marks()} label={story()} />
@@ -2481,7 +2493,7 @@ export default function LeftSidebar(props: {
             <Show when={u.isCurrent}>
               <span class={rows.dot} title="current checkout">●</span>
             </Show>
-            {forgeChipNode(g, p, u, chip)}
+            <Show when={!showPr()}>{forgeChipNode(g, p, u, chip)}</Show>
             {statusBubble(rollup)}
           </>
         }
