@@ -147,8 +147,7 @@ export type SyncState = {
 const NOTHING: SyncState = { level: "none", tone: "muted", label: "", detail: "", conflicts: [] };
 
 /** One glyph a surface draws for one fact. `count` is null where the fact has
- *  no number: uncommitted work, a branch that has never been pushed, a merge
- *  that would fight. */
+ *  no number: uncommitted work, a branch that has never been pushed. */
 export type SyncMark = {
   kind: "conflict" | "push" | "pull" | "dirty";
   count: number | null;
@@ -182,7 +181,7 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   if (sync.base && fighting.length > 0) {
     marks.push({
       kind: "conflict",
-      count: null,
+      count: fighting.length,
       tone: "danger",
       title: `${sync.base.name} has moved on, and ${plural(fighting.length, "file")} would conflict when you catch up`,
     });
