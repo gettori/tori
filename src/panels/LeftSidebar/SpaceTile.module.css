@@ -1,0 +1,186 @@
+/* The strip's tiles. Lifted out of LeftSidebar.module.css with the component;
+   the bar around them (`.spaceBar`, `.spaceScroll`, `.spaceDivider`) stays
+   there, since it is the sidebar's layout and not the tile's. */
+
+/* A space tile: a rounded square showing the space's icon or initial. Dim by
+   default; the active space is marked by tinting its GLYPH and nothing else.
+
+   The space's own hue arrives as a channel triple in `--space-hue-rgb` (set
+   inline from the swatch it chose, else derived from its name), declared here
+   too so the var always resolves and a tile with no inline hue falls back to
+   the theme's own glow. It is used for exactly one thing - the active glyph's
+   colour. No fill and no coloured border: the tile is a 30px square in a row of
+   them, and giving each one a tinted box turned the bar into a set of competing
+   chips. The hover border stays the brand, as it always was. */
+/* The tile never animates its own width. It is shrink-to-fit, so it follows
+   whatever `.tileName` is doing, and the name animates a plain measured length
+   which every engine interpolates - unlike `width: auto`, which none do, and
+   unlike a grid `fr` track, whose interpolation relayouts the whole strip every
+   frame where it is supported at all.
+   No `overflow: hidden` here on purpose: the name clips itself, and clipping at
+   this level would take the status bubble off the tile's corner with it. */
+.space {
+  --space-hue-rgb: var(--shell-glow-rgb);
+  /* A strip tile opening or closing. Decelerating rather than `ease`, which
+     eases in as well and reads as the box hesitating before it moves. */
+  --tile-ease: cubic-bezier(0.2, 0, 0, 1);
+  position: relative;
+  /* A tile with no name has nothing to give: it is already a square, and
+     letting flex try to take room off it only squashes the glyph. */
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(30px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
+  padding-inline: calc(6px * var(--ui-scale));
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xl);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    padding-inline var(--tori-duration-med) var(--tile-ease),
+    background var(--tori-duration-fast) ease,
+    color var(--tori-duration-fast) ease,
+    border-color var(--tori-duration-fast) ease;
+}
+
+/* The strip is a row of small targets; a tile sliding open under the pointer is
+   the one place here motion earns its keep, and the one place to drop it. */
+@media (prefers-reduced-motion: reduce) {
+  .space,
+  .space .tileName,
+  .space.titled .tileName {
+    transition: none;
+  }
+}
+/* The tile's own glyph (direct child, so a nested bubble's status icons keep
+   their size). CSS-sized so it tracks --ui-scale. */
+.space > :global(svg) {
+  /* The tile shrinks; its glyph does not. A flex item shrinks by default, and
+     a squashed icon is worse than a truncated name. */
+  flex: none;
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+}
+/* The tile is the Tooltip's element, so its menu trigger is the wrapper around
+   it (see `SpaceTile`) and `data-expanded` lands there. */
+.spaceMenu {
+  display: contents;
+}
+.space:hover,
+.spaceMenu[data-expanded] > .space:not(.active) {
+  color: var(--fg-default);
+  border-color: var(--brand-default);
+}
+/* The border half of the rule above, for the active tile: it takes the hover
+   border while its menu is open but keeps its own hue, which is the same trade
+   `.active` after `:hover` makes below. Split out because the descendant
+   selector outranks `.active` and would otherwise win on colour too. */
+.spaceMenu[data-expanded] > .space.active {
+  border-color: var(--brand-default);
+}
+/* The lit tile: the strip's one selection, on a raised fill. Declared after
+   :hover at equal specificity so it keeps its hue while the pointer is over it. */
+.space.active {
+  background: var(--neutral-hover);
+  color: rgb(var(--space-hue-rgb));
+}
+
+/* The pill geometry, separate from the fill: the fill says which tile is lit,
+   this says it has a name to show. */
+.space.titled {
+  /* The one thing in the strip that can give room back, and the first thing
+     asked for it. The huge shrink factor is an ordering trick: flex hands out
+     shrinkage in proportion to factor x basis, so against the scroller's 1 this
+     tile absorbs effectively all of it until it hits its floor, and only then
+     does the space list start to scroll. Without it the squeeze lands on the
+     scroller and the spaces slide away with the name still at full width. */
+  flex-shrink: 1000;
+  /* Padding plus the glyph, stated rather than `min-content`: nowrap text has a
+     min-content width equal to its full width, so `min-content` here would
+     include the whole name and the tile could not shrink at all. At this floor
+     the glyph is centred, so a squeezed-out name leaves a clean square. */
+  min-width: calc(36px * var(--ui-scale));
+  padding-inline: calc(9px * var(--ui-scale));
+}
+
+/* Topics is not a space and has no hue of its own, so when lit it takes the
+   brand rather than a colour it would have to invent. */
+.modeTile.active {
+  color: var(--brand-default);
+}
+
+/* Always in the DOM at zero width, because this element IS the animation: the
+   tile is shrink-to-fit and follows it. Mounting it with the pill would give
+   the opening something to animate and the closing nothing, so the name would
+   pop out and the tile would shrink after it.
+   `--name-w` is that name's own measured width, set per tile by `measureNames`.
+   The stylesheet's cap stands in until the first pass lands, which only costs
+   an opening that finishes early once. */
+.tileName {
+  max-width: 0;
+  /* Flex would otherwise refuse to take it below its text; `overflow: hidden`
+     already zeroes the automatic minimum, and this says so outright. */
+  min-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+  text-transform: capitalize;
+  transition:
+    max-width var(--tori-duration-med) var(--tile-ease),
+    opacity var(--tori-duration-fast) ease;
+}
+
+/* The gap between glyph and name, carried inside the clipped box rather than by
+   the tile. A flex `gap` survives its neighbour shrinking to nothing, so the
+   squeezed-out pill would keep 7px of empty space and sit the glyph off centre;
+   a margin in here is clipped away with the text it belongs to. */
+.tileNameText {
+  margin-inline-start: calc(7px * var(--ui-scale));
+}
+
+/* Opening, the name waits for the box to be most of the way there and then
+   fades in over the rest. Closing, it goes first and fast, so the box is never
+   seen shrinking with text still in it. */
+.space.titled .tileName {
+  /* The cap reaches the measured targets too: the probe measures under this
+     same rule with no `--name-w` of its own, so nothing it reports exceeds it.
+     It is a ceiling, not a floor - the column takes room off this freely. */
+  max-width: var(--name-w, calc(90px * var(--ui-scale)));
+  opacity: 1;
+  transition:
+    max-width var(--tori-duration-med) var(--tile-ease),
+    opacity var(--tori-duration-fast) ease var(--tori-duration-fast);
+}
+
+/* The measuring ruler. Out of flow so it costs the row nothing, `max-content`
+   so the shrink-to-fit of an absolute box cannot squeeze the answer, and
+   declared after `.titled` so that width wins. `.tileName`'s own max-width
+   still caps it, which is the cap the real pill has. */
+.tileProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
+   bar on the side of the tile the drop would land against. */
+.space.dragging {
+  opacity: 0.4;
+}
+.space.dropBefore {
+  box-shadow: inset 2px 0 0 var(--brand-default);
+}
+.space.dropAfter {
+  box-shadow: inset -2px 0 0 var(--brand-default);
+}
