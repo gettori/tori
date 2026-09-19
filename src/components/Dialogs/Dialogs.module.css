@@ -891,6 +891,20 @@
   text-transform: uppercase;
   color: var(--fg-subtle);
 }
+/* The one thing on this surface that goes to the network: the list itself is
+   read off `refs/remotes`, so this is for when what is on disk is not enough.
+   Last in the row, after the pulse that replaces nothing. */
+.listHeadAction {
+  margin-left: auto;
+  /* A control in a caps label must not set the label's height. */
+  margin-block: calc(-4px * var(--ui-scale));
+}
+/* Already pushed right by the pulse when there is one, so it only has the gap
+   to itself. */
+.fetching + .listHeadAction {
+  margin-left: 0;
+}
+
 /* Alongside the count rather than in the title: a fetch that finishes must not
    reflow the dialog's own heading, and this is a fact about the list. */
 .fetching {
