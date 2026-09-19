@@ -58,6 +58,12 @@
   content: "\00B7";
   padding-inline: calc(4px * var(--ui-scale));
   color: var(--pr-line-fg, var(--fg-subtle));
+  /* Bigger than the text it parts, not smaller. A middot is a tiny glyph on a
+     big em box, so at the line's own 13px it all but vanished. `line-height: 0`
+     is what makes 2xl affordable: the glyph is drawn at 16px but contributes
+     no line box, so it cannot grow the row it sits in. */
+  font-size: var(--tori-text-2xl);
+  line-height: 0;
   opacity: 0.5;
 }
 
