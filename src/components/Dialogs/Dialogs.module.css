@@ -979,6 +979,12 @@
   height: var(--control-icon);
   color: var(--fg-subtle);
 }
+/* The picked row trades its glyph for a check (see `glyphFor`), and the check
+   is the one green thing on the surface: it is the only mark here that reports
+   a state rather than naming a thing. */
+.branchGlyphPicked {
+  color: var(--success-fg);
+}
 .branchName {
   flex: 1;
   min-width: 0;
