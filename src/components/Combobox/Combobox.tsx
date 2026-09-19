@@ -1,5 +1,6 @@
-import { createEffect, createMemo, Show, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, Show, type JSX } from "solid-js";
 import { Combobox as Primitive, useComboboxContext } from "../../lib/combobox";
+import OverlayScroll from "../Scrollbar/OverlayScroll";
 import styles from "./Combobox.module.css";
 
 /** One row: the string the app commits, the label the user reads. */
@@ -90,9 +91,16 @@ export default function Combobox(props: {
   onActiveChange?: (value: string | null) => void;
   inputRef?: (el: HTMLInputElement) => void;
   class?: string;
-  /** Layout for the list, as `class` is for the field. */
+  /** Layout for the list, as `class` is for the field. Lands on the scroll
+   *  frame around it rather than on the list itself, so a `max-height` here is
+   *  what decides when the overlay scrollbar appears. */
   listClass?: string;
 }) {
+  // The element Kobalte scrolls to keep the active row in view. Signal rather
+  // than a plain ref, because the effect that reads it runs before the frame
+  // below has mounted.
+  const [scroller, setScroller] = createSignal<HTMLDivElement>();
+
   const hasRows = createMemo(() =>
     (props.options as (ComboboxOption | ComboboxGroup)[]).some((entry) =>
       "options" in entry ? entry.options.length > 0 : true,
@@ -161,6 +169,12 @@ export default function Combobox(props: {
       allowsEmptyCollection
       // Wrapping arrows, which is what both surfaces had by hand.
       shouldFocusWrap
+      // Nothing here closes on a pick - the list *is* the surface - and
+      // Kobalte's close does more than close: it clears the active row. With
+      // this on, clicking row four hundred cleared the highlight, `Bridge`
+      // re-seeded it on the first row, and the listbox scrolled itself back to
+      // the top under the pointer.
+      closeOnSelection={false}
       // The caller has already filtered and ranked; re-filtering here would
       // silently drop rows whose match the caller scored and Kobalte cannot see.
       defaultFilter={() => true}
@@ -220,22 +234,38 @@ export default function Combobox(props: {
             reference and never rebuilds, quietly undoing `keyed`. */}
         <Show when={headings()} keyed>
           {(_signature) => (
-            <Primitive.Listbox
-              class={`${styles.listbox} ${props.listClass ?? ""}`.trim()}
-              aria-label={props.listLabel}
-              // Hover must not move the highlight. Kobalte reads hover-focus as
-              // consent to commit on release over *whatever row is under the
-              // cursor then*, so a list that moves between press and release
-              // (the picker's, as fetched branches land in it) commits a row
-              // nobody pressed. Off, the commit is the click, and a click whose
-              // press and release differ lands on no row at all.
-              shouldFocusOnHover={false}
+            /* The app's own scrollbar, which costs no width, rather than the
+               native one this list used to grow. The caller's `listClass` is
+               what bounds it (a `max-height` on the frame, per OverlayScroll),
+               so the viewport below is the scroller and the list is its
+               content. A surface that sets no bound - the palette, which is
+               scrolled by the dialog body it sits in - is unaffected: a frame
+               with no height to exceed never scrolls. */
+            <OverlayScroll
+              class={props.listClass}
+              viewportRef={setScroller}
               // The rows are not focusable (the listbox is virtual-focus, the
-              // input keeps the caret), so a press on one would hand focus to
-              // the document and take the arrow keys and the typeahead with it.
-              // The commit is the click, which still fires.
+              // input keeps the caret), so a press would hand focus to the
+              // document and take the arrow keys and the typeahead with it. On
+              // the frame rather than the list, so the slack under the last row
+              // is covered too. The commit is the click, which still fires.
               onMouseDown={(e: MouseEvent) => e.preventDefault()}
-            />
+            >
+              <Primitive.Listbox
+                class={styles.listbox}
+                aria-label={props.listLabel}
+                // Which element to keep the active row inside: the viewport,
+                // not the list, now that the list no longer scrolls itself.
+                scrollRef={scroller}
+                // Hover must not move the highlight. Kobalte reads hover-focus as
+                // consent to commit on release over *whatever row is under the
+                // cursor then*, so a list that moves between press and release
+                // (the picker's, as fetched branches land in it) commits a row
+                // nobody pressed. Off, the commit is the click, and a click whose
+                // press and release differ lands on no row at all.
+                shouldFocusOnHover={false}
+              />
+            </OverlayScroll>
           )}
         </Show>
       </Show>
