@@ -79,6 +79,11 @@ export function ProjectRow(props: {
 export function BranchRow(props: {
   label: string;
   icon: JSX.Element;
+  /** What the glyph says, for the one state it carries that the label does not:
+   *  a stub's dashed folder. The mark itself is `aria-hidden`, and the slot
+   *  around it is unreachable by keyboard, so this is hover text on something
+   *  no Tab can land on rather than a tooltip nobody could open. */
+  iconLabel?: string;
   selected?: boolean;
   nested?: boolean;
   end?: JSX.Element;
@@ -96,7 +101,7 @@ export function BranchRow(props: {
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         aria-current={props.selected ? "true" : undefined}
       >
-        <span class={styles.rowIcon}>{props.icon}</span>
+        <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
         <span class={styles.label}>{props.label}</span>
         <span class={styles.rowEnd}>{props.end}</span>
       </ContextMenu>

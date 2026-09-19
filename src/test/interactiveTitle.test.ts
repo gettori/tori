@@ -263,8 +263,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/LeftSidebar/LeftSidebar.tsx",
     {
-      count: 6,
-      reason: `two ${TRUNCATION}, and four of ${HEADING}`,
+      count: 5,
+      reason: `one ${TRUNCATION} - a branch row's current-checkout dot - and four of ${HEADING}`,
     },
   ],
   [
@@ -277,8 +277,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/LeftSidebar/SidebarRows.tsx",
     {
-      count: 2,
-      reason: `one ${ROW_ONCLICK} - a fan-out group's header, whose goal is longer than the column - plus ${TRUNCATION} on its attempt-count badge. Extracted from LeftSidebar.tsx, which held both before the components existed`,
+      count: 3,
+      reason: `one ${ROW_ONCLICK} - a fan-out group's header, whose goal is longer than the column - plus ${TRUNCATION} on its attempt-count badge and on a branch row's icon slot, which now carries the one state its glyph draws and its label does not (a stub's dashed folder). All three came from LeftSidebar.tsx`,
     },
   ],
   [

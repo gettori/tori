@@ -83,12 +83,21 @@ export const BranchMark: Component<GitMarkProps> = (props) => (
   </Frame>
 );
 
-/** A worktree folder, or the .bare stub that is one waiting to happen. */
-export const WorktreeMark: Component<GitMarkProps> = (props) => (
-  <Frame {...props} mark="worktree">
+/** A worktree folder, or the .bare stub that is one waiting to happen.
+ *
+ *  `stub` is that second case drawn rather than labelled: a `.bare` with no
+ *  worktrees still holds its branches, and only the working folder is missing,
+ *  so the folder outline goes to a dashed line and the branch it would contain
+ *  stays solid. The row said this in a `stub` pill before; the pill was a third
+ *  thing in an end cluster that already carries the sync run, the forge chip
+ *  and the rollup, and this says it in the glyph the row has anyway. */
+export const WorktreeMark: Component<GitMarkProps & { stub?: boolean }> = (props) => {
+  const [local, rest] = splitProps(props, ["stub"]);
+  return (
+  <Frame {...rest} mark="worktree" data-stub={local.stub ? "true" : undefined}>
     <g class={styles.base}>
       <path d={WORKTREE_STEM} />
-      <path d={FOLDER_OUTLINE} />
+      <path d={FOLDER_OUTLINE} classList={{ [styles.stub]: local.stub }} />
       <circle cx="13" cy="12" r="2" />
       <circle cx="20" cy="19" r="2" />
     </g>
@@ -100,7 +109,8 @@ export const WorktreeMark: Component<GitMarkProps> = (props) => (
       <circle class={styles.nodeFork} cx="13" cy="12" r="2" fill="currentColor" />
     </g>
   </Frame>
-);
+  );
+};
 
 /** Git's logo, where the tool itself is named. Jason Long's mark, CC BY 3.0
  *  (https://git-scm.com/community/logos), as Simple Icons' 24x24 path. Unlike the
