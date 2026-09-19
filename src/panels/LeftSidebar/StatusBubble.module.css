@@ -1,0 +1,67 @@
+/* The rollup badge shared by the sidebar's rows and its space tiles. Lifted out
+   of LeftSidebar.module.css with the component; nothing in here reads a parent
+   selector, so the move is a straight cut. */
+
+/* CSS-sized status glyph (the numeric Lucide size is dropped) so it tracks
+   --ui-scale. Only the rollup bubble carries one now: a per-session indicator
+   belonged to a session row, and those are the History dropdown's rows. */
+.statusBubbleItem :global(svg) {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+/* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
+   space's nearest rendered ancestor. Shows all four states, each with its own
+   glyph + hue, in priority order: waiting, executing, idle, running. */
+.statusBubble {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.statusBubbleItem {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  /* Sizes the count only (the glyph is a fixed-size `size` prop), now shown as a
+     bare number with no "x" prefix, so a touch larger to stay legible on its own. */
+  font-size: var(--tori-text-md);
+  font-variant-numeric: tabular-nums;
+}
+.statusBubbleItem.waitingForApproval {
+  color: var(--status-needs-you);
+}
+.statusBubbleItem.executing {
+  color: var(--status-progress);
+}
+.statusBubbleItem.idle {
+  color: var(--status-idle);
+}
+.statusBubbleItem.running {
+  color: var(--status-running);
+  opacity: 0.8;
+}
+
+/* Space-tile badge: corner-pinned rollup for sessions hidden inside a
+   non-active space (or a search-filtered-out project of the active space).
+   One state only (see `StatusBubble`): it grows leftward from the corner, and
+   anything wider than the tile runs under the scroller's clipped left edge. */
+.spaceBubble {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  right: calc(-4px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--canvas-default);
+  border-radius: var(--tori-radius-sm, 4px);
+  padding: 1px calc(2px * var(--ui-scale));
+}
+
+.tileCount {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-2xs);
+  font-variant-numeric: tabular-nums;
+}

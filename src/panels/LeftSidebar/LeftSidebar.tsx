@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
-import ContextMenu from "../../components/Menu/ContextMenu";
 import Dropdown from "../../components/Menu/Dropdown";
 import { type MenuItem } from "../../components/Menu/rows";
 import PromptModal from "../../components/Dialogs/PromptModal";
@@ -130,17 +129,12 @@ import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
 import {
   Folder,
-  Layers,
   Ellipsis,
   Search,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
   Tag,
   Tags,
   type LucideIcon,
   Plus,
-  CircleDashed,
   SquareTerminal,
   Unlink,
   Plug,
@@ -148,7 +142,6 @@ import {
   UserRound,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
-import { CheckMark, QuestionMark, WorkingMark } from "../../components/Icon/statusMarks";
 import {
   attemptFolderName,
   groupAttempts,
@@ -160,6 +153,16 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
 import { topicKey, topicSelection, isShellsKey, tabUnderFolder, type Topic } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
+import StatusBubble, { CountBubble } from "./StatusBubble";
+import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
+import {
+  BranchRow,
+  EmptyRow,
+  GroupRow,
+  MoreRow,
+  ProjectRow,
+} from "./SidebarRows";
+import rows from "./SidebarRows.module.css";
 import styles from "./LeftSidebar.module.css";
 
 // Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
@@ -182,27 +185,6 @@ function UnitIcon(props: { kind: string | undefined; active: boolean }) {
         <BranchMark active={props.active} />
       </Match>
     </Switch>
-  );
-}
-
-// Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned to
-// the row's right edge that flips to a chevron-up (rotate 180°) when expanded.
-function RowChevron(props: { open: boolean }) {
-  return (
-    <span class={styles.rowChevron} classList={{ [styles.open]: props.open }}>
-      <Icon icon={ChevronDown} />
-    </span>
-  );
-}
-
-// A project row's disclosure, drawn *in* the icon slot rather than beside it:
-// at rest the row shows what the project is, and under the pointer it shows
-// what clicking does. One slot, two jobs, and the row keeps a single glyph.
-function IconChevron(props: { open: boolean }) {
-  return (
-    <span class={styles.iconChevron} aria-hidden="true">
-      <Icon icon={props.open ? ChevronDown : ChevronRight} />
-    </span>
   );
 }
 
@@ -861,73 +843,10 @@ export default function LeftSidebar(props: {
     return bubbleFor((s) => us.some((u) => statusInUnit(s, p, u)));
   }
 
-  // Rollup badge: Waiting first (it always wins the
-  // row), then Executing, each with an xN count when more than one session
-  // shares the state. Renders nothing when neither count is present.
-  //
-  // An approval and a question share the chip, since both say "this one is
-  // waiting on you", and only the title tells them apart.
-  //
-  // Takes an accessor and reads it inside, so a change of counts updates the
-  // chip in place. Rebuilding it would replay the draw-once marks every time
-  // any session anywhere changed state.
-  //
-  // `tile` is the space tile's corner: a 30px square has room for one state, so
-  // it shows the one that wins and leaves the rest to the title.
-  function statusBubble(get: () => Rollup | null, tile = false) {
-    const r = createMemo(get);
-    const waiting = () => (r()?.waitingForApproval ?? 0) + (r()?.waitingForAnswer ?? 0);
-    const executing = () => r()?.executing ?? 0;
-    const idle = () => r()?.idle ?? 0;
-    const running = () => r()?.running ?? 0;
-    const waitingTitle = () =>
-      r()?.waitingForApproval && r()?.waitingForAnswer
-        ? "Waiting for you"
-        : r()?.waitingForApproval
-          ? "Waiting for approval"
-          : "Waiting for an answer";
-    const counts = () => [waiting(), executing(), idle(), running()];
-    const shown = (at: number) => counts()[at] > 0 && !(tile && counts().slice(0, at).some((n) => n > 0));
-    const tileTitle = () =>
-      ["waiting for you", "executing", "idle", "running"]
-        .map((label, at) => (counts()[at] ? `${counts()[at]} ${label}` : ""))
-        .filter(Boolean)
-        .join(", ");
-    return (
-      <Show when={counts().some((n) => n > 0)}>
-        <span
-          class={styles.statusBubble}
-          classList={{ [styles.spaceBubble]: tile }}
-          title={tile ? tileTitle() : undefined}
-        >
-          <Show when={shown(0)}>
-            <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={tile ? undefined : waitingTitle()}>
-              <QuestionMark animate />
-              <Show when={waiting() > 1}>{waiting()}</Show>
-            </span>
-          </Show>
-          <Show when={shown(1)}>
-            <span class={`${styles.statusBubbleItem} ${styles.executing}`} title={tile ? undefined : "Executing"}>
-              <WorkingMark animate />
-              <Show when={executing() > 1}>{executing()}</Show>
-            </span>
-          </Show>
-          <Show when={shown(2)}>
-            <span class={`${styles.statusBubbleItem} ${styles.idle}`} title={tile ? undefined : "Idle"}>
-              <CheckMark animate />
-              <Show when={idle() > 1}>{idle()}</Show>
-            </span>
-          </Show>
-          <Show when={shown(3)}>
-            <span class={`${styles.statusBubbleItem} ${styles.running}`} title={tile ? undefined : "Running"}>
-              <Icon icon={CircleDashed} />
-              <Show when={running() > 1}>{running()}</Show>
-            </span>
-          </Show>
-        </span>
-      </Show>
-    );
-  }
+  // The rollup badge, as every row here wants it: an accessor in, a node out.
+  // `StatusBubble` owns the states and their order; this is only the shorthand
+  // that keeps a call site reading as the row it belongs to.
+  const statusBubble = (get: () => Rollup | null) => <StatusBubble rollup={get} />;
 
   // The forge chip for one branch-unit: its PR, that PR's checks, and the
   // review verdict, or nothing at all.
@@ -988,7 +907,7 @@ export default function LeftSidebar(props: {
             <Tooltip
               as="button"
               type="button"
-              class={styles.rowGlyph}
+              class={rows.rowGlyph}
               aria-label={`${p.name}: add an account for ${c().host}`}
               label={c().title}
               data-forge-door="connect"
@@ -1009,7 +928,7 @@ export default function LeftSidebar(props: {
             <Tooltip
               as="button"
               type="button"
-              class={styles.rowGlyph}
+              class={rows.rowGlyph}
               aria-label={`${p.name}: ${notice().message}`}
               label={`${notice().message} ${notice().action}.`}
               data-forge-door="orgUnapproved"
@@ -1034,7 +953,7 @@ export default function LeftSidebar(props: {
               <Tooltip
                 as="button"
                 type="button"
-                class={styles.rowGlyph}
+                class={rows.rowGlyph}
                 aria-label={`Pick an account for ${p.name}`}
                 label="Pick which account this repo uses"
                 data-forge-door="pickAccount"
@@ -2519,29 +2438,22 @@ export default function LeftSidebar(props: {
         .filter(Boolean)
         .join("\n");
     return (
-      <div
-        class={`node ${styles.branchNode}`}
-        classList={{
-          [styles.attemptNode]: attempt != null,
-        }}
-      >
-        <ContextMenu
-          class={`${styles.row} ${styles.branch} ${styles.sub1} ${unitSelected(u) ? styles.sel : ""}`}
-          onClick={() => selectUnit(g, p, u)}
-          items={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
-          draggable={true}
-          onDragStart={(e) => startAbsDrag(e, u.folderPath)}
-          aria-current={unitSelected(u) ? "true" : undefined}
-        >
-          <span class={styles.rowIcon}><UnitIcon kind={u.kind} active={rollup().executing > 0} /></span>
-          <span class={styles.label}>{unitLabel(u)}</span>
-          <span class={styles.rowEnd}>
+      <BranchRow
+        label={unitLabel(u)}
+        icon={<UnitIcon kind={u.kind} active={rollup().executing > 0} />}
+        selected={unitSelected(u)}
+        nested={attempt != null}
+        menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
+        onClick={() => selectUnit(g, p, u)}
+        onDragStart={(e) => startAbsDrag(e, u.folderPath)}
+        end={
+          <>
             <SyncMarks marks={marks()} label={story()} />
             <For each={topicsAt(u.folderPath)}>
               {(f) => (
                 <IconButton
                   size="xs"
-                  class={styles.topicChip}
+                  class={rows.topicChip}
                   icon={<Icon icon={Tag} />}
                   aria-label={`Open Topic ${f.name}`}
                   tooltip={f.name}
@@ -2555,16 +2467,16 @@ export default function LeftSidebar(props: {
               )}
             </For>
             <Show when={u.kind === "incomplete"}>
-              <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
+              <span class={`${rows.badge} ${rows.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
             </Show>
             <Show when={u.isCurrent}>
-              <span class={styles.dot} title="current checkout">●</span>
+              <span class={rows.dot} title="current checkout">●</span>
             </Show>
             {forgeChipNode(g, p, u, chip)}
             {statusBubble(rollup)}
-          </span>
-        </ContextMenu>
-      </div>
+          </>
+        }
+      />
     );
   }
 
@@ -2582,27 +2494,17 @@ export default function LeftSidebar(props: {
   function moreNode(g: Space, p: Project, hidden: () => BranchUnit[]) {
     const key = mkey(g, p);
     const open = () => expanded().has(key);
+    // `end`: a hidden branch has no row of its own to report on, so this one
+    // carries the rollup for all of them - the same rule that puts a collapsed
+    // project's rollup on its project row. Without it a running agent on the
+    // 20th branch would surface nowhere.
     return (
-      <div class={`node ${styles.branchNode}`}>
-        <div
-          class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`}
-          onClick={() => toggle(key)}
-        >
-          <span class={styles.rowIcon}>
-            <Icon icon={open() ? ChevronUp : Ellipsis} />
-          </span>
-          <span class={styles.label}>
-            {open()
-              ? "Show less"
-              : `${hidden().length} more branch${hidden().length === 1 ? "" : "es"}`}
-          </span>
-          {/* A hidden branch has no row of its own to report on, so this one
-              carries the rollup for all of them - the same rule that puts a
-              collapsed project's rollup on its project row. Without it a
-              running agent on the 20th branch would surface nowhere. */}
-          {statusBubble(() => (open() ? null : bubbleForUnits(p, hidden())))}
-        </div>
-      </div>
+      <MoreRow
+        count={hidden().length}
+        open={open()}
+        onClick={() => toggle(key)}
+        end={statusBubble(() => (open() ? null : bubbleForUnits(p, hidden())))}
+      />
     );
   }
 
@@ -2633,37 +2535,24 @@ export default function LeftSidebar(props: {
     // Same rollup rule as a project row: everything under a closed group, and
     // nothing under an open one, whose attempt rows each carry their own.
     return (
-      <div class={`node ${styles.branchNode}`}>
-        <div
-          class={`${styles.row} ${styles.branch} ${styles.sub1}`}
-          onClick={() => {
-            toggle(key);
-            // The attempts under it start collapsed, so nothing else would load
-            // their sessions and the group would roll up an empty set.
-            if (open()) for (const u of units()) void fetchSessions(u.folderPath);
-          }}
-          title={grp.goal}
-        >
-          {/* Layers, not a fork: the row names the shared goal, and the forks
-              are the attempt rows nested under it. It carries an icon at all so
-              every branch-level row lines its label up on the same x. */}
-          <span class={styles.rowIcon}><Icon icon={Layers} /></span>
-          <span class={styles.label}>{grp.goal}</span>
-          <span
-            class={`${styles.badge} ${styles.hint}`}
-            title="Independent attempts at one task. Promote one and the rest are discarded."
-          >
-            {grp.members.length === 1 ? "1 attempt" : `${grp.members.length} attempts`}
-          </span>
-          {statusBubble(() => (open() ? null : bubbleForUnits(p, units())))}
-          <RowChevron open={open()} />
-        </div>
+      <GroupRow
+        goal={grp.goal}
+        count={grp.members.length}
+        open={open()}
+        onClick={() => {
+          toggle(key);
+          // The attempts under it start collapsed, so nothing else would load
+          // their sessions and the group would roll up an empty set.
+          if (open()) for (const u of units()) void fetchSessions(u.folderPath);
+        }}
+        end={statusBubble(() => (open() ? null : bubbleForUnits(p, units())))}
+      >
         <Show when={open()}>
           <For each={grp.members}>
             {(m) => unitNode(g, p, attemptUnit(m), m.attempt)}
           </For>
         </Show>
-      </div>
+      </GroupRow>
     );
   }
 
@@ -2904,42 +2793,26 @@ export default function LeftSidebar(props: {
     ),
   );
 
-  // One space tile for the bottom bar: its icon when set, else the name's
-  // initial; active-marked, with its context menu and drag payload (all of the
-  // space's project paths). It carries its own hue too, so the whole set of
-  // spaces is legible at once rather than one switch at a time.
-  //
-  // The one row whose menu trigger cannot be the row itself. `Tooltip` and
-  // `ContextMenu` both render *as* their control - each puts its handlers on the
-  // element, and neither can inject them into an already-built JSX child - so
-  // the tile can only be one of them. It stays the Tooltip's, and the menu takes
-  // a `display: contents` wrapper: layout-neutral, and it still receives the
-  // right-click on its way up. Nothing is lost positionally either, since a
-  // context menu anchors on the cursor and never on its trigger's box.
+  // The strip's tile for one space. `SpaceTile` owns the shape; what is decided
+  // here is the state it wears.
   const spaceTile = (g: Space) => {
     // Lit only while the tree is actually showing this space. In Topics the
     // strip has moved on, and a second lit tile would say the sidebar is
     // showing two things.
     const on = () => mode() === "spaces" && activeSpace()?.name === g.name;
     return (
-    <ContextMenu class={styles.spaceMenu} items={spaceMenu(g)}>
-      <Tooltip
-        as="button"
-        type="button"
-        class={styles.space}
-        style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color), "--name-w": nameTarget(g.name) }}
-        classList={{
-          [styles.active]: on(),
-          [styles.titled]: on(),
-          [styles.dragging]: dragSpace() === g.name,
-          [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
-          [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
-        }}
-        label={g.name}
-        aria-label={g.name}
-        aria-pressed={on()}
+      <SpaceTile
+        name={g.name}
+        icon={g.icon}
+        color={g.color}
+        nameWidth={nameTarget(g.name)}
+        active={on()}
+        dragging={dragSpace() === g.name}
+        dropBefore={dropHint()?.name === g.name && !dropHint()!.after}
+        dropAfter={dropHint()?.name === g.name && dropHint()!.after}
+        menu={spaceMenu(g)}
+        rollup={spaceRollup(g)}
         onClick={() => openSpace(g)}
-        draggable={true}
         onDragStart={(e) => {
           startAbsDrag(e, g.projects.map((p) => p.path));
           setDragSpace(g.name);
@@ -2950,67 +2823,45 @@ export default function LeftSidebar(props: {
           setDragSpace(null);
           setDropHint(null);
         }}
-      >
-        <Show when={resolveIcon(g.icon)} fallback={spaceInitials(g.name)}>
-          {(glyph) => <Icon icon={glyph()} />}
-        </Show>
-        {/* Always mounted; the 0fr track hides it. See .tileName. */}
-        <span class={styles.tileName}><span class={styles.tileNameText}>{g.name}</span></span>
-        {spaceBubble(g)}
-      </Tooltip>
-    </ContextMenu>
+      />
     );
   };
 
   const dockTabCount = () => (props.liveTabs ?? []).filter((t) => isShellsKey(t.workspace)).length;
 
-  // Topics, as a tile in the same strip and on the same rules as a space: bare
-  // glyph at rest, name and pill when the tree is showing it.
-  const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon) => {
-    const on = () => mode() === m;
-    return (
-      <Tooltip
-        as="button"
-        type="button"
-        class={`${styles.space} ${styles.modeTile}`}
-        style={{ "--name-w": nameTarget(label) }}
-        classList={{ [styles.active]: on(), [styles.titled]: on() }}
-        label={label}
-        aria-label={label}
-        aria-pressed={on()}
-        onClick={() => switchMode(m)}
-      >
-        <Icon icon={glyph} />
-        <span class={styles.tileName}><span class={styles.tileNameText}>{label}</span></span>
-      </Tooltip>
-    );
-  };
+  // Topics, as a tile in the same strip and on the same rules as a space.
+  const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon) => (
+    <ModeTile
+      label={label}
+      glyph={glyph}
+      nameWidth={nameTarget(label)}
+      active={mode() === m}
+      onClick={() => switchMode(m)}
+    />
+  );
 
-  // A space tile's own rollup badge: for the inactive spaces, their whole tree
-  // is structurally hidden (Arc-style, only the active space renders), so
-  // every one of their live sessions bubbles here. For the active space, its
+  // A space tile's own rollup: for the inactive spaces, their whole tree is
+  // structurally hidden (Arc-style, only the active space renders), so every
+  // one of their live sessions bubbles to the tile. For the active space, its
   // own rendered project rows already carry their own bubble when collapsed -
   // only a project the search filter hid entirely (never rendered, so no row
   // to bubble to) still needs to surface on the tile.
-  function spaceBubble(g: Space) {
+  function spaceRollup(g: Space) {
     // "Active" here means its tree is on screen. In Topics nothing of it is
     // rendered, so all of its sessions bubble to the tile.
     const isActive = () => mode() === "spaces" && activeSpace()?.name === g.name;
-    return statusBubble(
-      () =>
-        isActive()
-          ? bubbleFor((s) => {
-              if (s.spaceName !== g.name) return false;
-              const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
-              return p != null && !projectVisible(p);
-            })
-          : bubbleFor((s) => s.spaceName === g.name),
-      true,
-    );
+    return () =>
+      isActive()
+        ? bubbleFor((s) => {
+            if (s.spaceName !== g.name) return false;
+            const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
+            return p != null && !projectVisible(p);
+          })
+        : bubbleFor((s) => s.spaceName === g.name);
   }
 
   return (
-    <div class={styles.tree}>
+    <div class={`${styles.tree} ${rows.rowScope}`}>
       <div
         class={styles.treeHead}
         // Focus gone from the head is the filter abandoned. Moving inside it
@@ -3168,73 +3019,62 @@ export default function LeftSidebar(props: {
                 .filter((m) => !m.unit)
                 .map(attemptUnit),
             ];
-            // Rows are clickable `div`s, which window drag cannot tell from
-            // chrome by selector, so the card opts its whole subtree out of it
-            // (utils/windowDrag).
             return (
-              <div class={`node ${styles.projectCard}`} data-no-window-drag>
-                <ContextMenu
-                  class={`${styles.row} ${styles.project}`}
-                  onClick={() => {
-                    if (plainDir()) selectUnit(g, p, folderUnit());
-                    else toggle(pkey(g, p));
-                  }}
-                  items={projectMenu(g, p)}
-                  draggable={true}
-                  onDragStart={(e) => startAbsDrag(e, p.path)}
-                >
-                  <span class={`${styles.rowIcon} ${styles.projectIcon}`}>
-                    <span class={styles.projectIconArt}>
-                      <ProjectIcon
-                        seed={p.path}
-                        icon={p.icon}
-                        iconFile={p.iconFile}
-                        favicon={p.favicon}
-                      />
-                    </span>
-                    {/* The disclosure takes over this slot on hover. A folder
-                        with no branches under it has nothing to disclose, so
-                        it keeps its icon throughout. */}
-                    <Show when={!plainDir()}>
-                      <IconChevron open={popen()} />
+              <ProjectRow
+                name={p.name}
+                icon={
+                  <ProjectIcon
+                    seed={p.path}
+                    icon={p.icon}
+                    iconFile={p.iconFile}
+                    favicon={p.favicon}
+                  />
+                }
+                disclosure={!plainDir()}
+                open={popen()}
+                menu={projectMenu(g, p)}
+                onClick={() => {
+                  if (plainDir()) selectUnit(g, p, folderUnit());
+                  else toggle(pkey(g, p));
+                }}
+                onDragStart={(e) => startAbsDrag(e, p.path)}
+                end={
+                  <>
+                    {/* Lit only when a worktree is missing a shared file, since
+                        a healthy container has nothing to say. Doubles as the
+                        one path to the page that is not a right-click. */}
+                    <Show when={sharedGaps()[p.path]}>
+                      {(n) => (
+                        <IconButton
+                          size="xs"
+                          class={rows.driftMark}
+                          icon={<Icon icon={Unlink} />}
+                          aria-label={`${p.name}: shared files missing from a worktree`}
+                          tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
+                          onClick={(e: MouseEvent) => {
+                            e.stopPropagation();
+                            openSharedFiles(p);
+                          }}
+                        />
+                      )}
                     </Show>
-                  </span>
-                  <span class={styles.label}>{p.name}</span>
-                  <span class={styles.rowEnd}>
-                  {/* Lit only when a worktree is missing a shared file, since a
-                      healthy container has nothing to say. Doubles as the one
-                      path to the page that is not a right-click. */}
-                  <Show when={sharedGaps()[p.path]}>
-                    {(n) => (
-                      <IconButton
-                        size="xs"
-                        class={styles.driftMark}
-                        icon={<Icon icon={Unlink} />}
-                        aria-label={`${p.name}: shared files missing from a worktree`}
-                        tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
-                        onClick={(e: MouseEvent) => {
-                          e.stopPropagation();
-                          openSharedFiles(p);
-                        }}
-                      />
+                    {forgeDoorNode(p)}
+                    {statusBubble(() =>
+                      plainDir()
+                        ? bubbleForUnits(p, [folderUnit()])
+                        : !popen()
+                          ? bubbleForUnits(p, allUnits())
+                          : null,
                     )}
-                  </Show>
-                  {forgeDoorNode(p)}
-                  {statusBubble(() =>
-                    plainDir()
-                      ? bubbleForUnits(p, [folderUnit()])
-                      : !popen()
-                        ? bubbleForUnits(p, allUnits())
-                        : null,
-                  )}
-                  </span>
-                </ContextMenu>
+                  </>
+                }
+              >
                 <Show when={popen() && !plainDir()}>
                   <For
                     each={shown().units}
                     fallback={
                       <Show when={split().groups.length === 0}>
-                        <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no branches</div>
+                        <EmptyRow>no branches</EmptyRow>
                       </Show>
                     }
                   >
@@ -3243,7 +3083,7 @@ export default function LeftSidebar(props: {
                   <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
                   <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
                 </Show>
-              </div>
+              </ProjectRow>
             );
           }}
         </For>
@@ -3251,7 +3091,7 @@ export default function LeftSidebar(props: {
         <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
           <Show
             when={!q() && activeSpace()}
-            fallback={<div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no matches in this space</div>}
+            fallback={<EmptyRow>no matches in this space</EmptyRow>}
           >
             {(g) => (
               <div class="tree-empty">
@@ -3284,13 +3124,12 @@ export default function LeftSidebar(props: {
           state sits behind the first-run modal regardless. */}
       <Show when={config() && hasSpaces()}>
         <div class={styles.spaceBar}>
-          {/* Out of flow and never seen: the ruler `measureNames` runs each
-              candidate name through, wearing the real lit-tile CSS so what it
-              reports is what the row would actually take. */}
-          <span class={`${styles.space} ${styles.titled} ${styles.tileProbe}`} aria-hidden="true" ref={probeEl}>
-            <Icon icon={Tags} />
-            <span class={styles.tileName} ref={probeNameEl}><span class={styles.tileNameText} ref={probeTextEl} /></span>
-          </span>
+          <TileProbe
+            glyph={Tags}
+            ref={(el) => (probeEl = el)}
+            nameRef={(el) => (probeNameEl = el)}
+            textRef={(el) => (probeTextEl = el)}
+          />
           <div class={styles.stripNav}>
             <div class={styles.spaceScroll}>
               <For each={visibleSpaces()}>{(g) => spaceTile(g)}</For>
@@ -3317,9 +3156,7 @@ export default function LeftSidebar(props: {
           >
             <Icon icon={SquareTerminal} />
             <Show when={!dockOpen() && dockTabCount() > 0}>
-              <span class={styles.spaceBubble}>
-                <span class={styles.tileCount}>{dockTabCount()}</span>
-              </span>
+              <CountBubble>{dockTabCount()}</CountBubble>
             </Show>
           </Tooltip>
         </div>

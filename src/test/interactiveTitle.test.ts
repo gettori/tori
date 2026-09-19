@@ -263,8 +263,22 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/LeftSidebar/LeftSidebar.tsx",
     {
-      count: 13,
-      reason: `eight ${TRUNCATION}, one ${ROW_ONCLICK}, and four of ${HEADING}`,
+      count: 6,
+      reason: `two ${TRUNCATION}, and four of ${HEADING}`,
+    },
+  ],
+  [
+    "panels/LeftSidebar/StatusBubble.tsx",
+    {
+      count: 5,
+      reason: `${TRUNCATION} - the rollup badge's four state chips name their state, and on a space tile, where only the winning state is drawn, the badge itself names all of them. Extracted from LeftSidebar.tsx, which held these five before the component existed`,
+    },
+  ],
+  [
+    "panels/LeftSidebar/SidebarRows.tsx",
+    {
+      count: 2,
+      reason: `one ${ROW_ONCLICK} - a fan-out group's header, whose goal is longer than the column - plus ${TRUNCATION} on its attempt-count badge. Extracted from LeftSidebar.tsx, which held both before the components existed`,
     },
   ],
   [
