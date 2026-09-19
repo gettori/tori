@@ -112,29 +112,6 @@ export const AsAControl: Story = {
   },
 };
 
-/** The size question. `--fg-subtle` is held to a 3.0 contrast floor rather
- *  than 4.5 (theme/contrast.ts), which is deliberate for recessive text and
- *  is also where small type stops being readable. Same line, both sizes.
- *  Switch themes in the toolbar: this has to hold in all five. */
-export const SizeCompare: Story = {
-  decorators: [
-    () => (
-      <Tree>
-        <div style={{ display: "flex", "flex-direction": "column", gap: "12px" }}>
-          <div>
-            <div style={{ "font-size": "10px", opacity: 0.5, "margin-bottom": "2px" }}>2xs</div>
-            <PrLine status={status({ number: 7875, comments: 2 })} />
-          </div>
-          <div>
-            <div style={{ "font-size": "10px", opacity: 0.5, "margin-bottom": "2px" }}>xs</div>
-            <PrLine status={status({ number: 7875, comments: 2 })} size="xs" />
-          </div>
-        </div>
-      </Tree>
-    ),
-  ],
-};
-
 /** Every state the line can report, stacked. The checks keep their own colour
  *  and everything else stays recessive, which is the one rule the line has. */
 export const States: Story = {
@@ -182,35 +159,6 @@ export const InTheColumn: Story = {
             meta={<PrLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })} />}
           />
           <BranchRow label="spike/whatever" icon={<WorktreeMark active={false} />} menu={MENU} />
-        </ProjectRow>
-      </Tree>
-    ),
-  ],
-};
-
-/** The same column at `xs`, since the size only really decides itself against
- *  the name above it rather than on a line of its own. */
-export const InTheColumnXs: Story = {
-  decorators: [
-    () => (
-      <Tree>
-        <ProjectRow name="api" icon={<WorktreeMark active={false} />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<WorktreeMark active={false} />} menu={MENU}
-            end={<span class={rows.dot}>●</span>} />
-          <BranchRow
-            label="feat/sideways-scroll"
-            icon={<WorktreeMark active />}
-            menu={MENU}
-            meta={<PrLine status={status({ number: 7875, review: "approved", comments: 2 })} size="xs" />}
-          />
-          <BranchRow label="chore/bump-deps" icon={<WorktreeMark active={false} />} menu={MENU} />
-          <BranchRow
-            label="fix/zoned-sections-tabbed-rundowns"
-            icon={<WorktreeMark active={false} />}
-            selected
-            menu={MENU}
-            meta={<PrLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })} size="xs" />}
-          />
         </ProjectRow>
       </Tree>
     ),
