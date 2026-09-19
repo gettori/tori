@@ -39,6 +39,25 @@ export function fetchRootNow(root: string | null | undefined, now = Date.now() /
 }
 
 /**
+ * The fetch a surface that merely *opened* may ask for, as opposed to one the
+ * user pressed: quiet, and floored at the schedule's own cadence, because
+ * anything fresher than that is exactly what the schedule already promises.
+ *
+ * Nothing at all when the schedule is off. "Off means off" covers a list that
+ * filled itself as much as it covers the timer, and with the schedule off the
+ * only honest way to reach the network is a button.
+ */
+export function fetchRootIfStale(root: string | null | undefined, now = Date.now() / 1000): boolean {
+  const minutes = settings.git.fetchEveryMinutes;
+  if (!root || minutes <= 0) return false;
+  const floor = Math.max(minutes * 60, FLOOR_SECS);
+  const last = gitStateFor(root).lastFetch;
+  if (last && last.at > 0 && now - last.at < floor) return false;
+  void invoke("git_fetch_quiet", { minAgeSecs: floor, only: root }).catch(() => {});
+  return true;
+}
+
+/**
  * Start the background fetch, and return the teardown.
  *
  * Off means off: no interval *and* no fetch on focus. A setting that kept one

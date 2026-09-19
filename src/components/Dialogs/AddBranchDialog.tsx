@@ -1,10 +1,11 @@
 import { createMemo, createSignal, Show } from "solid-js";
-import { Cloud, GitCommitHorizontal, Plus } from "lucide-solid";
+import { Cloud, GitCommitHorizontal, Plus, RefreshCw } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Combobox, { type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
+import IconButton from "../IconButton/IconButton";
 
 /** Where the chosen branch is, which is what says how to add it: a local one is
  *  attached, a remote-only one is tracked, and a name that is neither is made. */
@@ -34,6 +35,13 @@ export function worktreeFolder(branch: string): string {
  * question ("which branch") has one answer either way. A remote a local already
  * covers is simply the local one.
  *
+ * **The list is what is on disk, and the network is a button.** Remote branches
+ * are read out of `refs/remotes` when the dialog opens, which is a ref read and
+ * costs milliseconds; they used to arrive only with a fetch this dialog fired
+ * on every open, so the picker waited on the network for refs it already had,
+ * and showed none at all when that fetch failed. The header's Fetch is for the
+ * branch that is genuinely newer than the last sweep.
+ *
  * **The fetch is reported in the list header, not in the title.** Appended to
  * the title (`Branch Name · fetching…`) it reflowed the dialog's own heading the
  * moment the fetch landed. It is a fact about the list, so it sits on the list.
@@ -59,8 +67,11 @@ export default function AddBranchDialog(props: {
   /** Branches the tree already has open, listed but not an answer to this
    *  question. */
   taken: string[];
-  /** Remote refs are still arriving. */
+  /** A fetch this dialog asked for is still running. */
   fetching: boolean;
+  /** Go and look at the remote now. Withheld when the container has no origin,
+   *  which is what hides the button: there is nowhere for it to look. */
+  onFetch?: () => void;
   busy: boolean;
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
@@ -220,6 +231,16 @@ export default function AddBranchDialog(props: {
                   <span class={styles.fetchDot} aria-hidden="true" />
                   fetching remote…
                 </span>
+              </Show>
+              <Show when={props.onFetch}>
+                <IconButton
+                  class={styles.listHeadAction}
+                  size="sm"
+                  icon={<Icon icon={RefreshCw} />}
+                  tooltip="Fetch branches from the remote"
+                  disabled={props.fetching}
+                  onClick={() => props.onFetch?.()}
+                />
               </Show>
             </div>
           </>

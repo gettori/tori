@@ -58,6 +58,7 @@ import {
   ACTIVATE_SPACE,
   type ActivateSpace,
 } from "../../utils/events";
+import { fetchRootIfStale } from "../../utils/remoteSync";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { projectUnitKind } from "../../utils/topicMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
@@ -1632,13 +1633,19 @@ export default function LeftSidebar(props: {
 
   const hasOrigin = (p: Project) => (origins()[p.path] ?? null) !== null;
 
+  /** Whether a fetch on `repo` is news for the open picker. A container's fetch
+   *  is reported once for the container when Tori ran it and once per folder in
+   *  it when the sweep did, and both mean the same refs moved. */
+  const coversPicker = (req: NonNullable<ReturnType<typeof branchReq>>, repo: string) =>
+    req.p.path === repo || req.p.branchUnits.some((u) => u.folderPath === repo);
+
   // Repos already warned about a missing credential helper, so the notice fires
   // once per session, not on every fetch.
   const helperWarned = new Set<string>();
 
-  // Kick a background fetch for an attach flow: a one-time (per session) warning
-  // when no credential helper will cache the login, then the fetch itself. The
-  // git://fetch-done handler folds any remote-only branches into the open picker.
+  // Kick the loud fetch, the one that may stop and ask: a one-time (per session)
+  // warning when no credential helper will cache the login, then the fetch
+  // itself. The git://fetch-done handler folds what lands into the open picker.
   function beginBackgroundFetch(repo: string) {
     if (!helperWarned.has(repo)) {
       helperWarned.add(repo);
@@ -1653,13 +1660,18 @@ export default function LeftSidebar(props: {
         })
         .catch(() => {});
     }
-    invoke("git_fetch", { repo }).catch((e) => setError(String(e)));
+    invoke("git_fetch", { repo }).catch((e) => {
+      // No thread started, so no done or error event is coming: the picker's
+      // own pulse has to be put out from here or it runs forever.
+      setBranchReq((r) => (r && coversPicker(r, repo) ? { ...r, fetching: false } : r));
+      setError(String(e));
+    });
   }
 
-  // Open the add-branch / add-worktree dialog: list what is already local, then
-  // kick a background fetch so remote-only branches fold into the open list (see
-  // the `git://fetch-done` handler). One dialog for the two menu rows, because
-  // the question is the same and only what is done with the answer differs.
+  // Open the add-branch / add-worktree dialog: list what is local and what the
+  // last fetch left on disk, both of which are ref reads and neither of which
+  // touches the network. One dialog for the two menu rows, because the question
+  // is the same and only what is done with the answer differs.
   async function openBranchDialog(p: Project, mode: "branch" | "worktree") {
     let branches: Branch[];
     try {
@@ -1667,6 +1679,11 @@ export default function LeftSidebar(props: {
     } catch (e) {
       return setError(String(e));
     }
+    // The remote list used to arrive only with `git://fetch-done`, which made
+    // the whole picker wait on a network round trip for refs that were already
+    // in `refs/remotes` - and show nothing at all offline. It is a
+    // `for-each-ref`: hundreds of branches cost milliseconds.
+    const remotes = await invoke<string[]>("list_remote_branches", { repo: p.path }).catch(() => []);
     // A branch the tree already shows is listed but refused: it is still an
     // answer to "which branches are there" and not one to "which do you want".
     const shown = mode === "worktree" ? "worktree" : "plain";
@@ -1674,12 +1691,27 @@ export default function LeftSidebar(props: {
       p,
       mode,
       locals: branches.map((b) => b.name),
-      remotes: [],
+      remotes,
       taken: p.branchUnits.filter((u) => u.kind === shown && u.branch).map((u) => u.branch as string),
-      fetching: hasOrigin(p),
+      fetching: false,
       busy: false,
     });
-    if (hasOrigin(p)) beginBackgroundFetch(p.path);
+    // Quiet and floored at the schedule's cadence, so opening the picker on a
+    // container the sweep just covered costs nothing and can never stop to ask
+    // for a password. What lands folds in; nothing waits on it. The header's
+    // own Fetch is the one that goes and looks properly.
+    if (hasOrigin(p)) fetchRootIfStale(p.path);
+  }
+
+  // The picker's Fetch: the loud one, with the askpass bridge behind it, for
+  // when the branch you are looking for is not in the list. `fetching` is set
+  // here rather than on the quiet fetch above because this is the only one that
+  // is certain to report back.
+  function fetchForBranchDialog() {
+    const req = branchReq();
+    if (!req || req.fetching) return;
+    setBranchReq({ ...req, fetching: true });
+    beginBackgroundFetch(req.p.path);
   }
 
   /** The container's Shared in worktrees page, as an editor tab. The container
@@ -2646,10 +2678,11 @@ export default function LeftSidebar(props: {
     // fetch-done after a cancel or a reopen cannot resurrect or double a list.
     unlistenFetchDone = await listen<{ repo: string; quiet?: boolean }>("git://fetch-done", async (e) => {
       const forThis = (fn: (r: NonNullable<ReturnType<typeof branchReq>>) => typeof r) =>
-        setBranchReq((r) => (r && r.p.path === e.payload.repo ? fn(r) : r));
-      if (branchReq()?.p.path === e.payload.repo) {
+        setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? fn(r) : r));
+      if (branchReq() && coversPicker(branchReq()!, e.payload.repo)) {
+        const repo = branchReq()!.p.path;
         try {
-          const remotes = await invoke<string[]>("list_remote_branches", { repo: e.payload.repo });
+          const remotes = await invoke<string[]>("list_remote_branches", { repo });
           forThis((r) => ({ ...r, remotes, fetching: false }));
         } catch {
           // Leave the local-only list usable; just stop claiming a fetch.
@@ -2673,7 +2706,7 @@ export default function LeftSidebar(props: {
         // line across the sidebar.
         if (e.payload.quiet) return;
         setError(e.payload.error || "Fetch failed");
-        setBranchReq((r) => (r && r.p.path === e.payload.repo ? { ...r, fetching: false } : r));
+        setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? { ...r, fetching: false } : r));
       },
     );
   });
@@ -3278,6 +3311,7 @@ export default function LeftSidebar(props: {
             remotes={req().remotes}
             taken={req().taken}
             fetching={req().fetching}
+            onFetch={hasOrigin(req().p) ? () => fetchForBranchDialog() : undefined}
             busy={req().busy}
             onConfirm={(pick) => void confirmAddBranch(pick)}
             onCancel={() => setBranchReq(null)}
