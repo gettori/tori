@@ -152,9 +152,9 @@ export const Drifted: Story = {
 };
 
 /** Every trailing mark a branch row can wear, on one row: the sync run, a Topic
- *  chip, the stub flag, the current-checkout dot, the forge chip and the
- *  rollup. They share one auto margin so they land in the same column on every
- *  row instead of splitting the free space between them. */
+ *  chip, the current-checkout dot, the forge chip and the rollup. They share
+ *  one auto margin so they land in the same column on every row instead of
+ *  splitting the free space between them. */
 export const TheEndCluster: Story = {
   decorators: [
     () => (
@@ -168,7 +168,6 @@ export const TheEndCluster: Story = {
             <>
               <SyncMarks marks={MARKS.conflict} label="main has moved on" />
               <IconButton size="xs" class={rows.topicChip} icon={<Icon icon={Tag} />} aria-label="Open Topic Billing" tooltip="Billing" />
-              <span class={`${rows.badge} ${rows.hint}`}>stub</span>
               <span class={rows.dot}>●</span>
               <ForgeChipView
                 chip={{
@@ -184,6 +183,48 @@ export const TheEndCluster: Story = {
           }
         />
       </Tree>
+    ),
+  ],
+};
+
+/** A `.bare` with no worktrees. The branches are there and the working folder
+ *  is not, so the folder half of the glyph goes dashed and the branch half
+ *  stays solid. It used to say this in a `stub` pill at the other end of the
+ *  row; the pill was a third thing in a cluster that already carries the sync
+ *  run, the forge chip and the rollup. Shown against a real worktree above it,
+ *  since the whole question is whether the two read apart at 16px. */
+export const Stub: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
+          <BranchRow label="feat/billing" icon={<WorktreeMark active={false} />} menu={MENU}
+            end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
+          <BranchRow
+            label="feat/abandoned"
+            icon={<WorktreeMark active={false} stub />}
+            iconLabel="A .bare with no worktrees (right-click to add one or remove it)"
+            menu={MENU}
+          />
+          <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} end={<span class={rows.dot}>●</span>} />
+        </ProjectRow>
+      </Tree>
+    ),
+  ],
+};
+
+/** The stub mark on its own, at the size the row draws it and at four times
+ *  that, because a dash pattern is the one thing that cannot be judged at
+ *  16px alone. */
+export const StubMarkSizes: Story = {
+  decorators: [
+    () => (
+      <div style={{ display: "flex", "align-items": "center", gap: "24px", color: "var(--fg-muted)" }}>
+        <WorktreeMark active={false} />
+        <WorktreeMark active={false} stub />
+        <WorktreeMark active={false} size={64} />
+        <WorktreeMark active={false} stub size={64} />
+      </div>
     ),
   ],
 };

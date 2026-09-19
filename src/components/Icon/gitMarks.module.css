@@ -19,6 +19,14 @@
     display: none;
   }
 
+  /* A `.bare` with no worktrees: the branches are there, the working folder is
+     not, so the outline that would be that folder is drawn as a gap rather than
+     a line. Only the base outline - the pulse traces the same path with a
+     dasharray of its own, and a stub has no session to pulse for anyway. */
+  .stub {
+    stroke-dasharray: 3 2.5;
+  }
+
   /* The resting glyph is left alone and the pulse rides over it in the selected
      row's foreground, one step brighter than the icon's own `--fg-muted`. A
      working row gains a highlight rather than losing contrast: dimming the base
