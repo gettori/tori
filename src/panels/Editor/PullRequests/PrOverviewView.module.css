@@ -1,0 +1,210 @@
+/* One pull request as a whole. A reading column rather than the full pane
+   width: this is prose, and prose set across a 2,000px stage is unreadable. */
+.overview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  background: var(--canvas-default);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+  width: 100%;
+  max-width: calc(620px * var(--ui-scale));
+  margin: 0 auto;
+  padding: calc(24px * var(--ui-scale));
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.title {
+  flex: 1;
+  margin: 0;
+  color: var(--fg-default);
+  font-size: var(--tori-text-2xl);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.number {
+  margin-right: calc(6px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-weight: 400;
+}
+
+.meta,
+.branches {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+.branches {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+}
+
+.rollup {
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--ui-scale));
+  font-size: var(--tori-text-md);
+}
+
+.counts {
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+}
+.added {
+  color: var(--diff-added);
+}
+.removed {
+  color: var(--diff-deleted);
+}
+
+.verdict {
+  color: var(--fg-muted);
+}
+/* Colour only where the count is not zero: a green "0 approvals" reads as a
+   verdict that has been reached. */
+.verdict[data-verdict="approved"]:not([data-count="0"]) {
+  color: var(--diff-added);
+}
+.verdict[data-verdict="changesRequested"]:not([data-count="0"]) {
+  color: var(--attention-fg);
+}
+
+.rule {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border-default);
+}
+
+.body {
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  line-height: 1.55;
+}
+
+.noBody {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+/* The review being written. The only copy of this form in the app: the diff
+   tabs carry comments, this carries the verdict they go out with. */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+}
+
+.quiet {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+/* Attention, not danger: an unsent review is not a fault, it is work in
+   progress that the reader needs to remember is theirs to finish. */
+.pendingCount {
+  margin: 0;
+  color: var(--attention-fg);
+  font-size: var(--tori-text-md);
+}
+
+.jump {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  min-width: 0;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.jump:hover {
+  background: var(--neutral-hover);
+}
+/* A comment the diff can no longer carry. The border rather than the text,
+   because the text is the reader's own words and recolouring those reads as a
+   remark about what they wrote. */
+.jump[data-anchor-state="stale"],
+.jump[data-anchor-state="moved"] {
+  border-color: var(--attention-fg);
+}
+
+.jumpAnchor {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-2xs);
+}
+
+.jumpBody {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-width: 0;
+  font-size: var(--tori-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jumpFlag {
+  flex: none;
+  color: var(--attention-fg);
+  font-size: var(--tori-text-2xs);
+}
+
+.summary {
+  width: 100%;
+  min-height: calc(64px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-default);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--tori-text-lg);
+  resize: vertical;
+}
+
+.submit {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.hint,
+.reason {
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+}
+
+.error {
+  color: var(--diff-deleted);
+  font-size: var(--tori-text-md);
+}

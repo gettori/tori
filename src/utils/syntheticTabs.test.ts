@@ -4,6 +4,8 @@ import {
   syntheticId,
   parseSyntheticId,
   tabScopePath,
+  parsePrArg,
+  prTabId,
   syntheticTabName,
   prDiffTabId,
   parsePrDiffArg,
@@ -92,5 +94,8 @@ describe("synthetic tab ids", () => {
     // than another pull request's diff.
     expect(parsePrDiffArg("nonsense")).toEqual({ number: 0, file: "" });
     expect(parsePrDiffArg("notanumber:src/a.ts")).toEqual({ number: 0, file: "src/a.ts" });
+    // The overview tab reads the same way, since its whole arg is the number.
+    expect(parsePrArg("nonsense")).toBe(0);
+    expect(syntheticTabName(prTabId(WS, 42))).toBe("#42");
   });
 });

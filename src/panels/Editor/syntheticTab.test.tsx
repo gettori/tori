@@ -85,7 +85,7 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvicted
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, onWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
-const { syntheticId, parseSyntheticId } = await import("../../utils/syntheticTabs");
+const { syntheticId, parseSyntheticId, prTabId } = await import("../../utils/syntheticTabs");
 
 const GRAPH = syntheticId("graph", REPO);
 const FILE = `${REPO}/src/a.ts`;
@@ -210,6 +210,17 @@ describe("a tori:// tab in the editor pane", () => {
     expect(screen.getByText("src/a.ts")).toBeTruthy();
 
     expect(mountedCodeEditor).toBe(0);
+  });
+
+  it("names a pull request tab by its number and marks it with a pull request glyph", async () => {
+    // The title is not in the id, so the number is the whole label until the
+    // store has read the pull request. The glyph is what says the tab is a pull
+    // request rather than the history fallback every unmapped kind takes.
+    await mountEditor();
+    await open(prTabId(REPO, 42));
+
+    const strip = await waitFor(() => tab("#42"));
+    expect(strip.querySelector('[class*="lucide-git-pull-request"]')).toBeTruthy();
   });
 
   it("offers no history for a view, which has none", async () => {

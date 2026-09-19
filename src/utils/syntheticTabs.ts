@@ -122,6 +122,25 @@ export function parsePrDiffArg(arg: string): { number: number; file: string } {
 }
 
 /**
+ * A pull request's own tab: the description, the review being written, and the
+ * verdict it will be submitted with.
+ *
+ * One per pull request rather than per file, so the number alone is the arg.
+ * The form the review is submitted from lives here and nowhere else: a summary
+ * body and a verdict in every diff tab would be one piece of state with as many
+ * copies as there are files open.
+ */
+export function prTabId(workspace: string, number: number): string {
+  return syntheticId("pr", workspace, String(number));
+}
+
+/** Read a pull request tab's arg back. Anything that is not a number reads as
+ *  0, which matches no pull request, so the tab draws its own "nothing here". */
+export function parsePrArg(arg: string): number {
+  return Number(arg) || 0;
+}
+
+/**
  * The path a tab is scoped to, for the folder-prefix sweeps: a synthetic tab
  * answers with its workspace, a file tab with its own path.
  *
@@ -159,6 +178,10 @@ export function syntheticTabName(id: string): string {
     const { file, staged } = parseDiffArg(t.arg);
     return `${file.split("/").pop() || file} (${staged ? "Staged" : "Working tree"})`;
   }
+  // The number alone, because the title is not in the id and a tab that had to
+  // wait for a read to be named would be blank on every restore. The strip
+  // takes the title from `prTabTitle` once the store has the pull request.
+  if (t.kind === "pr") return `#${parsePrArg(t.arg)}`;
   // The number rather than the mode: what tells two pull requests' copies of
   // one file apart, and the `#` is what says it is a pull request at all.
   if (t.kind === "prdiff") {

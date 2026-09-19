@@ -90,6 +90,34 @@ export function isSelfAuthored(pr: PullRequest, viewerLogin: string | null): boo
 
 export type SubmitBlock = { event: ReviewEvent; reason: string };
 
+export const STALE_ANCHOR_REASON =
+  "Some comments no longer match the diff. Fix or remove them first.";
+export const DRIFT_REASON =
+  "This pull request has new commits. Reload the diff before submitting.";
+
+/** Why the review cannot go out at all, whatever verdict it carries.
+ *
+ *  Separate from `submitBlock`, which answers per verdict from what the review
+ *  says. These two are about the *diff underneath it*, so they refuse every
+ *  verdict equally:
+ *
+ *    - **A stale or moved anchor.** `submit_review` sends no `commit_id`, so
+ *      the server re-resolves each anchor against the diff it holds. A comment
+ *      whose line no longer exists is refused outright; one whose line now
+ *      reads differently is accepted and lands as a remark about whatever
+ *      occupies it today, which is the worse half and the reason `moved` blocks
+ *      as hard as `stale` does.
+ *    - **Head drift.** The same failure, one level up: every anchor in hand was
+ *      drawn against a commit that is no longer the head.
+ *
+ *  Refused rather than failed: a submit that throws away a review somebody
+ *  spent an hour writing is not an error message, it is a loss. */
+export function reviewBlock(input: { staleCount: number; drifted: boolean }): string | null {
+  if (input.drifted) return DRIFT_REASON;
+  if (input.staleCount > 0) return STALE_ANCHOR_REASON;
+  return null;
+}
+
 /** Copy for each reason a verdict cannot be submitted. Separate from the check
  *  so the reason travels with the disabled control rather than being re-derived
  *  next to it. */
