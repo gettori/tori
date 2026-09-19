@@ -14,10 +14,15 @@
   gap: calc(2px * var(--ui-scale));
   font-size: var(--tori-text-2xs);
   font-variant-numeric: tabular-nums;
+  /* The count sits beside a 13px glyph, so its line box has to be the glyph's
+     height and not the app's 1.4 leading: a taller box centres the run against
+     the row's text instead of against the glyph. */
+  line-height: 1;
 }
 
 .mark :global(svg) {
   flex: none;
+  display: block;
   width: calc(13px * var(--ui-scale));
   height: calc(13px * var(--ui-scale));
 }
