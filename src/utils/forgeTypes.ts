@@ -60,6 +60,49 @@ export type PullRequest = {
   mergeableState: MergeableState;
 };
 
+/// How many people are currently signing off, and how many are blocking.
+///
+/// One standing verdict per reviewer, from their latest row: a reviewer who
+/// requests changes and then approves has said one thing, and counting the rows
+/// would report them as both at once.
+export type PrReviewCounts = {
+  approved: number;
+  changesRequested: number;
+};
+
+/// How big a pull request is, and where its reviews stand.
+///
+/// One object rather than five fields on `PrSummary`, so "the host answered
+/// some of these" is not a state anything can be in: a provider either
+/// describes a pull request in one read or it does not.
+export type PrCounts = {
+  commits: number;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  /// `null` where more reviews came back than one walk will follow, so the
+  /// verdicts are uncountable rather than counted short.
+  reviews: PrReviewCounts | null;
+};
+
+/// The per-pull-request detail the list endpoint does not carry.
+///
+/// GitHub's pull-request-simple objects (`forge_list_prs`, the per-branch
+/// lookup, and so every `PullRequest` the poll hands out) have no totals, no
+/// commit count and no mergeability. All of it needs the detail read, which
+/// already existed for the merge verdict alone, so this widens that read rather
+/// than adding a second one.
+export type PrSummary = {
+  mergeableState: MergeableState;
+  /// Last touched, RFC 3339 as the wire sends it, same carriage as
+  /// `PullRequest.createdAt`.
+  updatedAt: string;
+  /// `null` on a host that cannot describe a pull request in one read. The
+  /// merge verdict is not behind it, because every provider can answer that one
+  /// and a control depends on it.
+  counts: PrCounts | null;
+};
+
 /// `none` is "no checks configured", which is not `pending` ("checks exist and
 /// have not finished"). Collapsing them makes a repo with no CI look
 /// permanently in flight.
@@ -406,6 +449,9 @@ export const FORGE_KEYS = {
     "url",
   ],
   checkRollup: ["failing", "state", "total"],
+  prSummary: ["counts", "mergeableState", "updatedAt"],
+  prCounts: ["additions", "changedFiles", "commits", "deletions", "reviews"],
+  prReviewCounts: ["approved", "changesRequested"],
   unitStatus: ["checks", "headRef", "pullRequest", "reviewDecision"],
   reviewThread: [
     "comments",

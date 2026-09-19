@@ -31,9 +31,9 @@ import { unitStatusForPr } from "./forgeStatus";
 import {
   forgeErrorMessage,
   type DraftComment,
-  type MergeableState,
   type Paged,
   type PrFile,
+  type PrSummary,
   type PullRequest,
   type ReviewThread,
 } from "./forgeTypes";
@@ -90,7 +90,10 @@ export type PrReviewEntry = {
   threads: ReviewThread[];
   threadsTruncated: boolean;
   threadsError: string | null;
-  mergeState: MergeableState | null;
+  /// Everything the list endpoint does not carry: the merge verdict, the
+  /// totals, and who has signed off. Null until the read lands, which is not a
+  /// verdict and must not render as one.
+  summary: PrSummary | null;
   /** Gap keys the reader has expanded, and the lines fetched for them. */
   openGaps: string[];
   gapLines: Record<string, string[]>;
@@ -119,7 +122,7 @@ const blank = (): PrReviewEntry => ({
   threads: [],
   threadsTruncated: false,
   threadsError: null,
-  mergeState: null,
+  summary: null,
   openGaps: [],
   gapLines: {},
   viewed: [],
@@ -305,12 +308,14 @@ async function loadThreads(root: string, number: number): Promise<void> {
   }
 }
 
-/// The server's verdict, read for the opened pull request rather than taken
-/// from the listing.
+/// This pull request in detail, read for the opened one rather than taken from
+/// the listing.
 ///
 /// A listed `mergeableState` was computed before anyone opened the diff, and by
 /// the time it has been read the base may have moved twice. The merge control is
-/// the one place where a stale green light costs something.
+/// the one place where a stale green light costs something. The totals and the
+/// reviewer counts are not on the listing at all: they exist only on the detail
+/// object this read already fetches.
 ///
 /// A failure leaves it null, which renders as "checking" with the button inert:
 /// not asking and being told no are different, and only one of them is a
@@ -319,11 +324,11 @@ async function loadSummary(root: string, number: number): Promise<void> {
   const k = key(root, number);
   const mine = claim(k, "summary");
   try {
-    const state = await invoke<MergeableState>("forge_mergeability", {
+    const summary = await invoke<PrSummary>("forge_pr_summary", {
       projectPath: root,
       number,
     });
-    if (holds(k, "summary", mine)) setEntries(k, "mergeState", state);
+    if (holds(k, "summary", mine)) setEntries(k, "summary", summary);
   } catch {
     // Deliberately silent, and deliberately not an error banner: the diff and
     // the conversations are worth reading without it.

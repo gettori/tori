@@ -38,7 +38,7 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, DraftComment, Grant, MergeableState, OrgAccess, Paged, PrFile,
+    AuthState, Capabilities, DraftComment, Grant, OrgAccess, Paged, PrFile, PrSummary,
     PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus,
     Viewer,
 };
@@ -309,8 +309,15 @@ pub trait Forge: Send + Sync {
         comment: &DraftComment,
     ) -> Result<(), ForgeError>;
 
-    /// The server's mergeability verdict, not ours.
-    fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError>;
+    /// Everything about one pull request the list endpoint does not carry: the
+    /// server's mergeability verdict, the totals, and who has signed off.
+    ///
+    /// One call rather than a verdict call and a detail call, because they are
+    /// the same GET. The merge verdict has to be asked for (branch protection
+    /// and required checks are invisible from here, so a local verdict renders
+    /// an enabled button the server refuses), and that same response already
+    /// carries every total; only the reviewer counts cost a second read.
+    fn pr_summary(&self, repo: &RepoRef, number: u64) -> Result<PrSummary, ForgeError>;
 
     fn merge(
         &self,
@@ -494,12 +501,8 @@ mod tests {
         ) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
-        fn mergeability(
-            &self,
-            _repo: &RepoRef,
-            _number: u64,
-        ) -> Result<MergeableState, ForgeError> {
-            Ok(MergeableState::Unknown)
+        fn pr_summary(&self, _repo: &RepoRef, _number: u64) -> Result<PrSummary, ForgeError> {
+            Err(ForgeError::NotAuthenticated)
         }
         fn merge(
             &self,
