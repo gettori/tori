@@ -1018,12 +1018,14 @@
 .branchDelete:hover {
   color: var(--danger-fg);
 }
-/* Hover for the pointer, the parked and highlighted rows for everything else.
-   Element and attribute selectors, because the row's own class belongs to
-   `Combobox.module.css` and cannot be named from here. */
+/* The row under the pointer, and the row that was picked. Deliberately *not*
+   `data-highlighted`: that is the seeded keyboard highlight, which sits on the
+   first row from the moment the list paints, so keying on it left a trash
+   showing on a row nobody had touched - and moved it to the next one after a
+   delete. Element and attribute selectors, because the row's own class belongs
+   to `Combobox.module.css` and cannot be named from here. */
 li:hover .branchDelete,
-li[data-picked] .branchDelete,
-li[data-highlighted] .branchDelete {
+li[data-picked] .branchDelete {
   visibility: visible;
 }
 
