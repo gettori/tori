@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
-import { Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
+import { Check, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Combobox, { type ComboboxOption } from "../Combobox/Combobox";
@@ -155,6 +155,16 @@ export default function AddBranchDialog(props: {
     return fresh ? { name: fresh, kind: "new" } : null;
   };
 
+  /** The row drawn as chosen, which is a row and never a typed new name. */
+  const parked = () => (choice()?.kind === "new" ? null : (choice()?.name ?? null));
+
+  // Where the branch is, until it is the one you picked: then the glyph's job
+  // is to say so, and where it came from is already settled.
+  const glyphFor = (name: string) => {
+    if (parked() === name) return Check;
+    return kinds().get(name) === "remote" ? Cloud : GitCommitHorizontal;
+  };
+
   const landing = () => {
     const pick = choice();
     return pick ? `${props.projectPath}/${worktreeFolder(pick.name)}` : "";
@@ -227,7 +237,7 @@ export default function AddBranchDialog(props: {
         }}
         onSelect={press}
         onKeyDown={onKeyDown}
-        picked={choice()?.kind === "new" ? null : (choice()?.name ?? null)}
+        picked={parked()}
         inputRef={(el) => (input = el)}
         placeholder="Filter branches, or type a new name"
         aria-label="Filter branches, or type a new name"
@@ -236,8 +246,9 @@ export default function AddBranchDialog(props: {
         itemComponent={(option) => (
           <>
             <Icon
-              icon={kinds().get(option.value) === "remote" ? Cloud : GitCommitHorizontal}
+              icon={glyphFor(option.value)}
               class={styles.branchGlyph}
+              classList={{ [styles.branchGlyphPicked]: parked() === option.value }}
               aria-hidden="true"
             />
             <span class={styles.branchName}>{option.label}</span>
