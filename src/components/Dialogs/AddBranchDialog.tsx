@@ -97,6 +97,7 @@ export default function AddBranchDialog(props: {
   const [query, setQuery] = createSignal("");
   const [picked, setPicked] = createSignal<BranchPick | null>(null);
   let input: HTMLInputElement | undefined;
+  let primary: HTMLButtonElement | undefined;
   let deleteButton: HTMLButtonElement | undefined;
 
   const taken = createMemo(() => new Set(props.taken));
@@ -155,8 +156,24 @@ export default function AddBranchDialog(props: {
     return fresh ? { name: fresh, kind: "new" } : null;
   };
 
-  /** The row drawn as chosen, which is a row and never a typed new name. */
-  const parked = () => (choice()?.kind === "new" ? null : (choice()?.name ?? null));
+  /** The row drawn as chosen, which is a row and never a typed new name. A
+   *  memo, so the effect below fires on the choice changing rather than on
+   *  every keystroke and every list that lands. */
+  const parked = createMemo(() => (choice()?.kind === "new" ? null : (choice()?.name ?? null)));
+
+  // Picking answers the list's question, so the next thing to press is the one
+  // that commits it. Kobalte hands the filter its focus back as part of
+  // selecting, which is right for a palette that commits on the press and wrong
+  // for a dialog whose confirm is a button. Solid flushes this effect inside
+  // the `setPicked` that triggered it, which is still before that, so the move
+  // waits for the press to finish being handled - otherwise the two take turns
+  // and the primitive has the last one.
+  createEffect(() => {
+    if (!parked()) return;
+    queueMicrotask(() => {
+      if (parked()) primary?.focus();
+    });
+  });
 
   // Where the branch is, until it is the one you picked: then the glyph's job
   // is to say so, and where it came from is already settled.
@@ -217,6 +234,7 @@ export default function AddBranchDialog(props: {
           </Show>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
           <Button
+            ref={(el) => (primary = el)}
             variant="primary"
             disabled={props.busy || !choice()}
             onClick={() => confirm()}
