@@ -356,11 +356,11 @@
 /* A container whose worktrees did not all get their shared files. Warning hue
    rather than the session states beside it: this is about the project's setup,
    not about anything running in it. */
-/* In `.rowEnd` with the rest, so it takes that cluster's box and its 13px
+/* In `.rowEnd` with the rest, so it takes that cluster's box and its 14px
    glyph rather than a control's. */
 .driftMark {
   flex: none;
-  height: calc(13px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
   padding: 0;
   border-color: transparent;
   color: var(--scale-orange);
@@ -374,8 +374,8 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
   padding: 0;
   border: 0;
   background: none;
@@ -410,11 +410,12 @@
 
 /* One glyph box for every mark in the cluster, which is what actually makes a
    column: a 14px glyph beside a 13px one is half a pixel of drift per row, and
-   a padded control beside a bare span is four. A more specific rule still wins,
-   which is how the Tag chip keeps its 12px. */
+   a padded control beside a bare span is four. Every mark on both of a row's
+   lines is now this size, the Tag chip and the second line included, so there
+   is no longer a more specific rule anywhere that opts one of them out. */
 .rowEnd :global(svg) {
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
 }
 
 /* Row flag, pushed to the right: the `stub` mark on an empty .bare container
@@ -447,8 +448,9 @@
 .row .topicChip:hover:not(:disabled) {
   color: var(--brand-strong);
 }
-/* CSS-sized so it tracks --ui-scale, smaller than the control icon. */
+/* CSS-sized so it tracks --ui-scale. On the cluster's own size rather than a
+   control's: it used to be the one mark that sat smaller than its neighbours. */
 .row .topicChip :global(svg) {
-  width: calc(12px * var(--ui-scale));
-  height: calc(12px * var(--ui-scale));
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
 }

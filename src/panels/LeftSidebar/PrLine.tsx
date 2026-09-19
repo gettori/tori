@@ -71,8 +71,6 @@ export default function PrLine(props: {
   onOpen?: () => void;
   /** What the control announces. Required in spirit whenever `onOpen` is. */
   label?: string;
-  /** Which size to read it at. */
-  size?: "xs" | "2xs";
 }) {
   const pr = () => props.status.pullRequest;
   const badges = () => forgeBadges(props.status);
@@ -158,7 +156,6 @@ export default function PrLine(props: {
               as="span"
               class={styles.prLine}
               data-pr-line
-              classList={{ [styles.xs]: props.size === "xs" }}
               label={<span class={styles.lines}>{story()}</span>}
             >
               {facts(p)}
@@ -175,7 +172,6 @@ export default function PrLine(props: {
             type="button"
             class={`${styles.prLine} ${styles.control}`}
             data-pr-line
-            classList={{ [styles.xs]: props.size === "xs" }}
             label={<span class={styles.lines}>{story()}</span>}
             aria-label={props.label}
             onClick={(e: MouseEvent) => {
