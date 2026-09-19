@@ -4,7 +4,6 @@ import { Folder, Tag, Unlink } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
-import ForgeChipView from "../../components/ForgeChip/ForgeChip";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import type { MenuItem } from "../../components/Menu/rows";
@@ -152,13 +151,14 @@ export const Drifted: Story = {
 };
 
 /** Every trailing mark a branch row can wear, on one row: the sync run, a Topic
- *  chip, the current-checkout dot, the ready-for-PR mark and the rollup. They
- *  share one auto margin so they land in the same column on every row instead
- *  of splitting the free space between them.
+ *  chip, the current-checkout dot and the rollup. They share one auto margin
+ *  so they land in the same column on every row instead of splitting the free
+ *  space between them.
  *
- *  The pull-request chip is deliberately not here any more. A branch that has
- *  one reports it on a second line (`PrLine`), so the only forge state left in
- *  this cluster is `readyForPr`, which has no second line to go to. */
+ *  Nothing about the forge is here any more. A branch with a pull request
+ *  reports it on a second line (`PrLine`), and a branch without one reports
+ *  that by not having the line, so the cluster is back to what the branch
+ *  itself is doing. */
 export const TheEndCluster: Story = {
   decorators: [
     () => (
@@ -173,19 +173,6 @@ export const TheEndCluster: Story = {
               <SyncMarks marks={MARKS.conflict} label="main has moved on" />
               <IconButton size="xs" class={rows.topicChip} icon={<Icon icon={Tag} />} aria-label="Open Topic Billing" tooltip="Billing" />
               <span class={rows.dot}>●</span>
-              <ForgeChipView
-                chip={{
-                  kind: "readyForPr",
-                  pr: {
-                    state: "none",
-                    label: "",
-                    title: "No pull request yet, and this branch is ready for one",
-                  },
-                  checks: null,
-                  review: null,
-                }}
-                label="Pull requests for api"
-              />
               {bubble({ waitingForAnswer: 1, executing: 2 })}
             </>
           }

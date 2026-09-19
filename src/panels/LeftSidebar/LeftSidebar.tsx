@@ -98,10 +98,9 @@ import {
   liveSessionStatuses,
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
-import { forgeChip, forgeDoor, type ForgeChip } from "../../utils/forgeChip";
+import { forgeChip, forgeDoor } from "../../utils/forgeChip";
 import { markTitle, resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
-import { compactAge } from "../../utils/compactAge";
-import ForgeChipView from "../../components/ForgeChip/ForgeChip";
+import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
@@ -848,30 +847,6 @@ export default function LeftSidebar(props: {
   // `StatusBubble` owns the states and their order; this is only the shorthand
   // that keeps a call site reading as the row it belongs to.
   const statusBubble = (get: () => Rollup | null) => <StatusBubble rollup={get} />;
-
-  // The forge chip for one branch-unit: its PR, that PR's checks, and the
-  // review verdict, or nothing at all.
-  //
-  // Every decision about *whether* to draw is `forgeChip`'s; what is left here
-  // is glyphs and classes. The kinds that draw nothing (a remote the API cannot
-  // serve, a paused poller, a unit no tick has reached) render no element at
-  // all, so nothing in the tree can be clicked into a capability the repo does
-  // not have - and, equally, so a sidebar full of GitLab checkouts stays as
-  // quiet as it is today.
-  function forgeChipNode(g: Space, p: Project, u: BranchUnit, chip: () => ForgeChip) {
-    // A control only when there is a pull request to open a panel *onto*. A
-    // branch with no PR yet renders the quiet no-PR mark and stays inert: the
-    // panel lists what exists, and a button that opens a list this branch is not
-    // in would be a control that does nothing.
-    const opens = () => chip().kind === "pr";
-    return (
-      <ForgeChipView
-        chip={chip()}
-        label={`Pull requests for ${p.name}`}
-        onActivate={opens() ? () => void openPullRequests(g, p, u) : undefined}
-      />
-    );
-  }
 
   // The one door a repo needs, on the repo's own row: an account for its host,
   // or a choice between the accounts that host already has.
@@ -2410,10 +2385,10 @@ export default function LeftSidebar(props: {
       return r.waitingForApproval + r.waitingForAnswer + r.executing > 0;
     };
     const marks = createMemo(() => (held() ? [] : syncMarks(sync())));
-    // Which of the two places a pull request gets reported. The second line
-    // says everything the chip used to and more, so the chip stays only for
-    // the states that have no second line - after `noPr` stopped drawing,
-    // that is `readyForPr` alone.
+    // Whether this branch reports a pull request at all. Nothing is drawn in
+    // the end cluster for the forge any more: a branch with a PR says so on
+    // its second line, and a branch without one says so by not having the
+    // line.
     //
     // Read off `chip().kind` rather than off "is there a PR in the store",
     // because that kind has already asked every question a row must ask before
@@ -2446,7 +2421,7 @@ export default function LeftSidebar(props: {
     const story = () =>
       [
         markTitle(marks()),
-        sync()?.head_committed_at ? `Last commit ${compactAge(sync()!.head_committed_at)} ago` : "",
+        sync()?.head_committed_at ? `Last commit ${compactAgo(sync()!.head_committed_at)}` : "",
         ...(sync()?.base?.conflicts ?? []),
       ]
         .filter(Boolean)
@@ -2493,7 +2468,6 @@ export default function LeftSidebar(props: {
             <Show when={u.isCurrent}>
               <span class={rows.dot} title="current checkout">●</span>
             </Show>
-            <Show when={!showPr()}>{forgeChipNode(g, p, u, chip)}</Show>
             {statusBubble(rollup)}
           </>
         }
