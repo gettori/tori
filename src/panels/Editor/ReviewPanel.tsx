@@ -1343,7 +1343,7 @@ export default function ReviewPanel(props: {
               type="button"
               class={styles.aheadPill}
               disabled={!canPushIn(viewedRoot())}
-              label={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+              label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
               onClick={() => pushMember(viewedRoot())}
             >
               {pushingIn(viewedRoot())
