@@ -122,24 +122,18 @@ export function forgeChip(input: {
     // Unpushed is deliberately not ready - the PR cannot be opened from here,
     // and a row that says otherwise is pointing at a button that would fail.
     const ready = (input.offBase ?? 0) > 0 && input.hasUpstream === true;
-    // Only the actionable half draws now. A branch with a pull request grows a
-    // whole second line for it (`PrLine`), so absence reports itself by the
-    // line not being there, and the marker that used to say "no pull request"
-    // was a glyph on the majority of rows in the column to report a state the
-    // column already showed. `readyForPr` survives it because it is not that
-    // state: it says the PR could be opened now, which is a thing to do rather
-    // than a thing to know, and nothing else on the row says it.
-    if (!ready) return { ...NOTHING, kind: "noPr" };
-    return {
-      kind: "readyForPr",
-      pr: {
-        state: "none",
-        label: "",
-        title: "No pull request yet, and this branch is ready for one",
-      },
-      checks: null,
-      review: null,
-    };
+    // **Neither half draws.** A branch with a pull request grows a whole
+    // second line for it (`PrLine`), so the absence of one reports itself by
+    // the absence of the line, and any marker here is a glyph on the majority
+    // of rows in the column saying what the column already says.
+    //
+    // `readyForPr` kept a mark for one release on the argument that "you could
+    // open a PR now" is a thing to do rather than a thing to know. On screen it
+    // was an outlined pull-request glyph whose own tooltip opened with "No pull
+    // request yet", so it read as the absence it was meant to be distinct from.
+    // The kind survives because the classification is still true and still
+    // wanted; what it does not have is a glyph on the branch row.
+    return { ...NOTHING, kind: ready ? "readyForPr" : "noPr" };
   }
   const state: PrChipState = pr.state === "open" ? (pr.isDraft ? "draft" : "open") : pr.state;
   return {

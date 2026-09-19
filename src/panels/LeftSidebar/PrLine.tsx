@@ -14,7 +14,7 @@ import {
 } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import { compactAge } from "../../utils/compactAge";
+import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
 import type { UnitStatus } from "../../utils/forgeTypes";
 import styles from "./PrLine.module.css";
@@ -77,9 +77,16 @@ export default function PrLine(props: {
   // RFC 3339 on the wire, epoch seconds here, and nothing at all if the host
   // sent something unparseable: a row that prints `NaNd` is worse than a row
   // that prints no age.
-  const age = () => {
+  const openedAt = () => {
     const at = Date.parse(pr()?.createdAt ?? "");
-    return Number.isNaN(at) ? null : compactAge(at / 1000);
+    return Number.isNaN(at) ? null : at / 1000;
+  };
+  // Bare on the line, where it is one fact in a run, and a phrase in the
+  // tooltip, where it is part of a sentence: `compactAge` bottoms out at "now",
+  // which reads as "opened now ago" the moment a suffix is put on it.
+  const age = () => {
+    const at = openedAt();
+    return at === null ? null : compactAge(at);
   };
   const state = (): PrChipState => {
     const p = pr();
@@ -100,7 +107,7 @@ export default function PrLine(props: {
     const b = badges();
     return [
       `#${p.number} ${p.title}`,
-      age() ? `${p.author} opened ${age()} ago` : `Opened by ${p.author}`,
+      openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
