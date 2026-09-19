@@ -84,6 +84,20 @@
     "previousPath": "src/panels/LeftSidebar/chip.ts",
     "status": "renamed"
   },
+  "prSummary": {
+    "counts": {
+      "additions": 214,
+      "changedFiles": 9,
+      "commits": 7,
+      "deletions": 38,
+      "reviews": {
+        "approved": 1,
+        "changesRequested": 2
+      }
+    },
+    "mergeableState": "blocked",
+    "updatedAt": "2026-09-18T11:02:00Z"
+  },
   "pullRequest": {
     "author": "skarif2",
     "baseRef": "main",

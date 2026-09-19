@@ -43,12 +43,25 @@ const bridge = vi.hoisted(() => ({
   addFails: null as { kind: string; message: string } | null,
 }));
 
+/** The detail read, around the one field a test cares about. */
+const summaryOf = (mergeableState: string) => ({
+  mergeableState,
+  updatedAt: "2026-09-18T11:02:00Z",
+  counts: {
+    commits: 2,
+    changedFiles: 1,
+    additions: 1,
+    deletions: 1,
+    reviews: { approved: 0, changesRequested: 0 },
+  },
+});
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "forge_pr_files") return Promise.resolve({ items: bridge.files, truncated: false });
     if (cmd === "forge_review_threads") return Promise.resolve({ items: bridge.threads, truncated: false });
-    if (cmd === "forge_mergeability") return Promise.resolve("clean");
+    if (cmd === "forge_pr_summary") return Promise.resolve(summaryOf("clean"));
     if (cmd === "forge_unit_statuses") {
       return Promise.resolve(bridge.report ?? { statuses: [], uncovered: 0, rate: RATE });
     }
@@ -438,7 +451,7 @@ describe("a pull request file as a tab in the stage", () => {
     await waitFor(() => expect(cmds("forge_pr_files")).toHaveLength(1));
     // Only the patches. The conversations and the verdict did not move.
     expect(cmds("forge_review_threads")).toHaveLength(0);
-    expect(cmds("forge_mergeability")).toHaveLength(0);
+    expect(cmds("forge_pr_summary")).toHaveLength(0);
   });
 
   it("posts a single comment against the commit its patch came from", async () => {

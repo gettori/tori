@@ -14,8 +14,8 @@ use super::accounts::{
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
-    AuthState, Capabilities, DraftComment, Grant, MergeableState, Paged, PrFile, PullRequest,
-    RepoRef, ReviewComment, ReviewEvent, ReviewThread, StatusReport,
+    AuthState, Capabilities, DraftComment, Grant, Paged, PrFile, PrSummary, PullRequest, RepoRef,
+    ReviewComment, ReviewEvent, ReviewThread, StatusReport,
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
@@ -1385,24 +1385,23 @@ where
     Ok(())
 }
 
-/// Whether this pull request can be landed, as **the server** sees it.
+/// One pull request in detail: whether it can be landed, how big it is, and who
+/// has signed off.
 ///
-/// Asked rather than worked out. Branch protection, required reviewers and
-/// required checks are all invisible from here, so a local verdict renders an
-/// enabled button the server then refuses, which is worse than no button: the
-/// user learns it will not merge only after asking it to.
+/// The verdict is asked rather than worked out. Branch protection, required
+/// reviewers and required checks are all invisible from here, so a local verdict
+/// renders an enabled button the server then refuses, which is worse than no
+/// button: the user learns it will not merge only after asking it to. The
+/// totals come back on that same response, which is why they cost nothing extra.
 ///
 /// Uncached, like the other view-opened reads: the poll layer's pacing exists
 /// for a tick that runs forever, and this is somebody looking at one pull
 /// request. `Unknown` is a real answer (GitHub is still computing it) and means
 /// ask again, never "no".
 #[tauri::command(async)]
-pub fn forge_mergeability(
-    project_path: String,
-    number: u64,
-) -> Result<MergeableState, ForgeErrorDto> {
+pub fn forge_pr_summary(project_path: String, number: u64) -> Result<PrSummary, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    Ok(attempt(&c, |f| f.mergeability(&c.repo, number))?)
+    Ok(attempt(&c, |f| f.pr_summary(&c.repo, number))?)
 }
 
 /// Land the pull request.
@@ -1579,7 +1578,7 @@ mod tests {
             base_ref: "main".into(),
             head_sha: "abc".into(),
             url: "u".into(),
-            mergeable_state: MergeableState::Clean,
+            mergeable_state: super::super::model::MergeableState::Clean,
         }
     }
 

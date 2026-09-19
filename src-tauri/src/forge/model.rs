@@ -86,6 +86,63 @@ pub struct PullRequest {
     pub mergeable_state: MergeableState,
 }
 
+/// How many people have signed off, and how many are blocking.
+///
+/// Counted per reviewer from their **latest** non-dismissed review, not per
+/// review row: a reviewer who requests changes and then approves has one
+/// standing verdict, and summing the rows would report both at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrReviewCounts {
+    pub approved: u32,
+    pub changes_requested: u32,
+}
+
+/// How big a pull request is, and where its reviews stand.
+///
+/// One struct rather than five fields on [`PrSummary`], so "the host answered
+/// some of these" is not a state anything can be in: a provider either
+/// describes a pull request in one read or it does not, and a mapper that
+/// filled three of five would otherwise put zeros on screen as though they were
+/// the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrCounts {
+    pub commits: u32,
+    pub changed_files: u32,
+    pub additions: u32,
+    pub deletions: u32,
+    /// `None` where more reviews came back than one walk will follow. The
+    /// verdicts are then uncountable rather than counted short, which is the
+    /// same rule [`Paged::truncated`] exists for.
+    pub reviews: Option<PrReviewCounts>,
+}
+
+/// The per-pull-request detail the list endpoint does not carry.
+///
+/// GitHub's pull-request-simple objects (what `list_pull_requests` and the
+/// per-branch lookup return) have no totals, no commit count and no
+/// mergeability, so every one of these fields needs the detail read. That read
+/// already existed for the merge verdict alone, which is why this widens it
+/// rather than adding a second request: the caller pays for one GET it was
+/// making anyway, plus one reviews read for the counts.
+///
+/// Deliberately **not** folded into [`PullRequest`]. That type is what the poll
+/// fetches for every unit of a project in one batched query, and these fields
+/// are not in that query's answer at any price.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrSummary {
+    pub mergeable_state: MergeableState,
+    /// Last touched, as the wire sends it (RFC 3339), same carriage as
+    /// [`PullRequest::created_at`].
+    pub updated_at: String,
+    /// `None` on a host that cannot describe a pull request in one read. The
+    /// merge verdict above is the part every provider can answer, and it is the
+    /// one a control depends on, so it is not behind this.
+    pub counts: Option<PrCounts>,
+}
+
 /// The rollup of every check run on a PR's head.
 ///
 /// `None` is "this head has no checks configured", which is not the same as
@@ -455,6 +512,20 @@ mod tests {
             "repoRef": RepoRef { owner: "skarif2".into(), repo: "tori".into() },
             "pullRequest": pr.clone(),
             "checkRollup": CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
+            // The detail read behind the overview tab and the merge control.
+            // Both verdict counts are non-zero, so neither field can be dropped
+            // without this sample noticing.
+            "prSummary": PrSummary {
+                mergeable_state: MergeableState::Blocked,
+                updated_at: "2026-09-18T11:02:00Z".into(),
+                counts: Some(PrCounts {
+                    commits: 7,
+                    changed_files: 9,
+                    additions: 214,
+                    deletions: 38,
+                    reviews: Some(PrReviewCounts { approved: 1, changes_requested: 2 }),
+                }),
+            },
             "reviewDecision": ReviewDecision::ChangesRequested,
             "unitStatus": unit.clone(),
             "reviewThread": ReviewThread {

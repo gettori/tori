@@ -110,6 +110,19 @@ const bridge = vi.hoisted(() => ({
   running: [] as string[],
 }));
 
+/** The detail read, around the one field a test cares about. */
+const summaryOf = (mergeableState: string) => ({
+  mergeableState,
+  updatedAt: "2026-09-18T11:02:00Z",
+  counts: {
+    commits: 2,
+    changedFiles: 1,
+    additions: 1,
+    deletions: 1,
+    reviews: { approved: 0, changesRequested: 0 },
+  },
+});
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
@@ -135,10 +148,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.viewer ? Promise.resolve(bridge.viewer) : Promise.reject(new Error("signed out"));
     if (cmd === "forge_submit_review")
       return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
-    if (cmd === "forge_mergeability")
+    if (cmd === "forge_pr_summary")
       return bridge.mergeableFails
         ? Promise.reject(bridge.mergeableFails)
-        : Promise.resolve(bridge.mergeable);
+        : Promise.resolve(summaryOf(bridge.mergeable));
     if (cmd === "forge_merge")
       return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
     if (cmd === "forge_update_branch")
@@ -303,7 +316,7 @@ describe("the pull request detail", () => {
     // After the reads that opening a pull request makes (the files, the threads
     // and the mergeability verdict), so this counts what *expanding* costs
     // rather than what arriving costs.
-    await waitFor(() => expect(cmds("forge_mergeability")).toHaveLength(1));
+    await waitFor(() => expect(cmds("forge_pr_summary")).toHaveLength(1));
     const before = bridge.calls.length;
     fireEvent.click(gap);
 
@@ -1256,7 +1269,7 @@ describe("landing a pull request", () => {
     fireEvent.click(button("Update branch"));
     await waitFor(() => expect(cmds("forge_update_branch")).toHaveLength(1));
     await waitFor(() => expect(state()).toBe("clean"));
-    expect(cmds("forge_mergeability").length).toBeGreaterThan(1);
+    expect(cmds("forge_pr_summary").length).toBeGreaterThan(1);
   });
 
   it("keeps the button inert while nobody has asked, which is not a verdict", async () => {
