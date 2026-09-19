@@ -50,12 +50,14 @@
   color: var(--fg-watermark);
 }
 
+/* No scrolling of its own: the list is the content of an `OverlayScroll`
+   viewport (see Combobox.tsx), and a scroller inside a scroller is two bars for
+   one list. */
 .listbox {
   margin: 0;
   padding: 0;
   list-style: none;
   outline: none;
-  overflow-y: auto;
 }
 
 .item {

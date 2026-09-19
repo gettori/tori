@@ -379,14 +379,20 @@ describe("PickerModal", () => {
     // Named class rather than a measured height, which jsdom has none of. The
     // rule it stands for: a list still being filled is the size it will end up,
     // so what lands late cannot slide the rows out from under the cursor.
+    //
+    // Asked of the list's scroll frame rather than the list: the bound belongs
+    // to whatever scrolls, and the list is the content of an overlay scroller
+    // now rather than a scroller itself.
+    const reserved = () => screen.getByRole("listbox").closest("[class*='pickerListReserved']");
+
     it("holds the list at its full height when more rows are coming", () => {
       open({ reserve: true });
-      expect(screen.getByRole("listbox").className).toMatch(/pickerListReserved/);
+      expect(reserved()).toBeTruthy();
     });
 
     it("lets a settled list size itself", () => {
       open();
-      expect(screen.getByRole("listbox").className).not.toMatch(/pickerListReserved/);
+      expect(reserved()).toBeNull();
     });
 
     it("pulls the highlight back into range when the filter shortens the list", () => {
