@@ -1347,6 +1347,24 @@ pub fn forge_submit_review(
     Ok(attempt(&c, |f| f.submit_review(&c.repo, number, event, &body, &comments))?)
 }
 
+/// Post one line comment on its own, anchored to the commit the patch came from.
+///
+/// Its own command rather than a one-comment review, because it carries
+/// `commit_id` and a review does not. A caller that has read a patch and then
+/// waited has no way to know the head has not moved; naming the commit is what
+/// turns that into a refusal instead of a comment on a line that has shifted
+/// underneath it.
+#[tauri::command(async)]
+pub fn forge_add_review_comment(
+    project_path: String,
+    number: u64,
+    commit_id: String,
+    comment: DraftComment,
+) -> Result<(), ForgeErrorDto> {
+    let c = gated_client(&project_path)?;
+    Ok(attempt(&c, |f| f.add_review_comment(&c.repo, number, &commit_id, &comment))?)
+}
+
 /// Run a mutation that moves a branch, and drop the caches only if it worked.
 ///
 /// **The whole repo, not the one branch.** Landing a pull request moves the base

@@ -110,6 +110,7 @@ const CAPS = {
   approve: true,
   requestChanges: true,
   commentReview: true,
+  singleComment: true,
 };
 
 describe("projectPause", () => {

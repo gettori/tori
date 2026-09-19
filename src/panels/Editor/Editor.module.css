@@ -150,6 +150,17 @@
   animation: tabEditingPulse 1.2s ease-in-out infinite;
 }
 
+/* A pull request file tab holding comments that have not been submitted. The
+   attention colour, because that is what the panel's pending count uses and a
+   draft review reads as one thing wherever it shows.
+   Not nested under .editorTabs for the same portal reason as .tabTouched. */
+.tabPending {
+  flex: none;
+  color: var(--attention-fg);
+  font-size: var(--tori-text-2xs);
+  line-height: 1;
+}
+
 /* Right panel: Files / Changes toggle + the active panel */
 .rightPanel {
   /* Width is set inline from a drag-resized signal; the Resizer to its left

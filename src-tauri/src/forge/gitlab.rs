@@ -440,6 +440,7 @@ impl Forge for GitLabForge {
             approve: true,
             request_changes: false,
             comment_review: true,
+            single_comment: false,
         }
     }
 
@@ -759,6 +760,22 @@ impl Forge for GitLabForge {
             })?;
         }
         Ok(())
+    }
+
+    fn add_review_comment(
+        &self,
+        _repo: &RepoRef,
+        _number: u64,
+        _commit_id: &str,
+        _comment: &DraftComment,
+    ) -> Result<(), ForgeError> {
+        // Refused rather than approximated with a discussion note. A note has no
+        // commit to anchor against, so it would land wherever the line happens
+        // to be when it arrives, which is the one failure this call exists to
+        // prevent. `capabilities().single_comment` says so before anyone calls.
+        Err(ForgeError::Invalid {
+            message: "GitLab has no single line comment anchored to a commit.".into(),
+        })
     }
 
     fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError> {
@@ -1088,6 +1105,32 @@ mod tests {
             "a base-side comment must not carry a head line: {}",
             sent["position"]
         );
+    }
+
+    #[test]
+    fn a_single_comment_is_refused_rather_than_posted_as_a_note() {
+        // A discussion note has no commit to anchor against, so it would land
+        // wherever the line happens to be when it arrives. That is the one
+        // failure this call exists to prevent, so it must not be faked.
+        let (f, stub) = forge(vec![]);
+        let err = f
+            .add_review_comment(
+                &repo(),
+                7,
+                "abc1234",
+                &DraftComment {
+                    path: "src/a.rs".into(),
+                    line: 3,
+                    side: DiffSide::Right,
+                    start_line: None,
+                    start_side: None,
+                    body: "no".into(),
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(err, ForgeError::Invalid { .. }), "got {err:?}");
+        assert_eq!(stub.request_count(), 0, "a refused call must not reach the wire");
+        assert!(!f.capabilities().single_comment);
     }
 
     #[test]

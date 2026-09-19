@@ -233,6 +233,10 @@ export type Capabilities = {
   approve: boolean;
   requestChanges: boolean;
   commentReview: boolean;
+  /// Posting one line comment on its own, outside a held review. Its own flag
+  /// rather than part of `commentReview`: this call carries a `commit_id` and
+  /// lands immediately, so a host can have the batched form without it.
+  singleComment: boolean;
 };
 
 /// `suspect` is a 401 that has *not* destroyed the token.
@@ -426,6 +430,7 @@ export const FORGE_KEYS = {
     "requestChanges",
     "resolveThreads",
     "reviewThreads",
+    "singleComment",
   ],
   pagedTruncated: ["items", "truncated"],
   rateSnapshot: ["limit", "remaining", "resetAt"],

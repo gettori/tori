@@ -101,6 +101,27 @@ export function parseCommitDiffArg(arg: string): { sha: string; file: string } {
 }
 
 /**
+ * A pull request file's diff: one file of one pull request, its own tab.
+ *
+ * The number goes in front of the path for the same reason a sha does on a
+ * commit's file: two pull requests touching one file are two documents, with
+ * their own patches, their own threads and their own draft comments.
+ */
+export function prDiffTabId(workspace: string, number: number, file: string): string {
+  return syntheticId("prdiff", workspace, `${number}:${file}`);
+}
+
+/** Read a pull request diff's arg back. A number holds no colon, so the first
+ *  one is the split. A malformed arg reads as number 0, which matches no pull
+ *  request and so renders the tab's own "nothing here" rather than someone
+ *  else's diff. */
+export function parsePrDiffArg(arg: string): { number: number; file: string } {
+  const at = arg.indexOf(":");
+  if (at < 0) return { number: 0, file: "" };
+  return { number: Number(arg.slice(0, at)) || 0, file: arg.slice(at + 1) };
+}
+
+/**
  * The path a tab is scoped to, for the folder-prefix sweeps: a synthetic tab
  * answers with its workspace, a file tab with its own path.
  *
@@ -137,6 +158,12 @@ export function syntheticTabName(id: string): string {
   if (t.kind === "diff") {
     const { file, staged } = parseDiffArg(t.arg);
     return `${file.split("/").pop() || file} (${staged ? "Staged" : "Working tree"})`;
+  }
+  // The number rather than the mode: what tells two pull requests' copies of
+  // one file apart, and the `#` is what says it is a pull request at all.
+  if (t.kind === "prdiff") {
+    const { number, file } = parsePrDiffArg(t.arg);
+    return `${file.split("/").pop() || file} (#${number})`;
   }
   // The commit rather than the mode: a file's history tabs are told apart by
   // which commit each one is.

@@ -19,75 +19,37 @@
 
 import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { parseDiffHunks } from "../../../utils/diffHunks";
-import { buildRows, hunkGaps, type DiffRow, type Gap } from "../../../utils/diffView";
-import { fileSkip, fileLabel, type FileSkip } from "../../../utils/prFiles";
-import {
-  groupThreads,
-  newSideLines,
-  oldSideLines,
-  pendingComment,
-  splitByRenderedLines,
-  withComment,
-  withoutComment,
-  withResolved,
-} from "../../../utils/reviewThreads";
-import { anchorFor, anchorLabel, isSelfAuthored } from "../../../utils/pendingReview";
-import { composeThreadAsk } from "../../../utils/threadAsk";
-import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../../utils/safeSend";
-import { branchOwner, projectUnitFor, sessionStatus } from "../../../utils/sessionActivity";
+import { groupThreads } from "../../../utils/reviewThreads";
+import { isSelfAuthored } from "../../../utils/pendingReview";
+import { fileLabel } from "../../../utils/prFiles";
+import { projectUnitFor } from "../../../utils/sessionActivity";
 import { emitWith, REMOVE_BRANCH_UNIT, type RemoveBranchUnit } from "../../../utils/events";
-import { STATUS_LABEL } from "../../../utils/sessionStatus";
-import { findAdapter } from "../../../utils/agents";
-import { agentOffReason } from "../../../utils/agentEnabled";
 import { forgeCapabilities, forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
-  addPending,
   clearDraft,
-  closeComposer,
-  composerText,
   ensure,
-  gapLines,
-  gapOpen,
-  noteGapLines,
   prEntry,
   refresh,
   removePending,
-  setComposerText,
-  setGapOpen,
   setReviewBody,
   setThreadsError,
   toDrafts,
-  updateThreads,
-  type DraftAnchor,
 } from "../../../utils/prReviewStore";
 import {
   forgeErrorMessage,
-  type PrFile,
   type MergeMethod,
   type PullRequest,
-  type ReviewComment,
   type ReviewEvent,
-  type ReviewThread,
 } from "../../../utils/forgeTypes";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
-import DiffRows, { diffRowClasses } from "../DiffRows";
-import ReviewThreadView from "./ReviewThreadView";
+import PrFileBody from "./PrFileBody";
+import PrThreadCard from "./PrThreadCard";
 import ReviewBar from "./ReviewBar";
 import MergeBar from "./MergeBar";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import Tooltip from "../../../components/Tooltip/Tooltip";
 import styles from "./PrDetail.module.css";
-
-/** The sentence for each reason a file shows no diff. Three situations arrive
- *  as the same `patch: null`, and only one of them means something is missing;
- *  see `prFiles.ts` for how they are told apart. */
-const SKIP_COPY: Record<FileSkip, string> = {
-  tooLarge: "This file's diff is larger than the API will send.",
-  moved: "Moved, with no change to its contents.",
-  noText: "No line changes to show (a binary file, or a mode change).",
-};
 
 export default function PrDetail(props: {
   root: string;
@@ -113,35 +75,17 @@ export default function PrDetail(props: {
   const reviewBody = () => entry().reviewBody;
 
   const [openFile, setOpenFile] = createSignal<string | null>(null);
-  const [gapError, setGapError] = createSignal<string | null>(null);
 
-  const [busyThread, setBusyThread] = createSignal<string | null>(null);
   const grouped = createMemo(() => groupThreads(entry().threads));
 
   const [submitting, setSubmitting] = createSignal(false);
-  // Which rows are picked, and in which hunk. One hunk at a time, like the
-  // Changes panel's line staging: a comment anchors within a single hunk's
-  // numbering, so a selection spanning two of them could not be one comment.
-  //
-  // View state, unlike the composer's words: a highlight belongs to the rows on
-  // screen, and the rows are not on screen once this tab is not.
-  const [picked, setPicked] = createSignal<{
-    path: string;
-    hunk: number;
-    lines: ReadonlySet<number>;
-  } | null>(null);
-  const [reviewOpen, setReviewOpen] = createSignal(false);
-
-  const reviewing = () => reviewOpen() || pending().length > 0;
+  // The review bar draws once there is a review to draw. There is no gate in
+   // front of commenting any more: `PrFileBody` explains why the one that
+   // existed bought nothing.
+  const reviewing = () => pending().length > 0;
   const selfAuthored = createMemo(() => isSelfAuthored(props.pr, forgeViewer(props.root)));
   const capabilities = createMemo(() => forgeCapabilities(props.root));
 
-  // Handing a thread back to the agent that wrote the branch. Which thread is in
-  // flight, and how the last attempt on each went. Per thread rather than one
-  // panel-wide line, because a reader who sent three of them needs to know which
-  // one did not land.
-  const [sendingThread, setSendingThread] = createSignal<string | null>(null);
-  const [sendNotes, setSendNotes] = createSignal<Record<string, { text: string; ok: boolean }>>({});
 
   // Landing it. `null` is "nobody has asked yet", which is not `"unknown"`
   // ("GitHub has not decided"): one is a blank the UI must not render as a
@@ -157,25 +101,11 @@ export default function PrDetail(props: {
   // is opened, so a slow answer can land after the one that replaced it and put
   // one PR's files under another's number.
   let current = 0;
-  // Whether the head commit has been made local yet. Once per PR, and lazily:
-  // most readers never expand a gap at all, and a PR on a branch checked out
-  // right here needs no fetch even then.
-  let headFetch: Promise<void> | null = null;
-  // Distinguishes two replies in flight at once, so each reconciles onto its own
-  // optimistic comment rather than onto whichever was appended last.
-  let replySeq = 0;
 
   createEffect(
     on([() => props.root, () => props.pr.number], ([root, number]) => {
       ++current;
       setOpenFile(null);
-      setGapError(null);
-      headFetch = null;
-      setBusyThread(null);
-      setPicked(null);
-      setReviewOpen(false);
-      setSendingThread(null);
-      setSendNotes({});
       setMergeBusy(false);
       setMergeError(null);
       setMerged(false);
@@ -185,124 +115,6 @@ export default function PrDetail(props: {
     }),
   );
 
-  /** Post a reply, showing it at once and then correcting it with what the
-   *  server stored. The rollback is the half that matters: a reply left on
-   *  screen after a refusal is a comment only its author can see. */
-  async function reply(threadId: string, body: string) {
-    // Same staleness guard as the two loads. A stale thread id already matches
-    // nothing in the new list, so it is the *message* that would otherwise land:
-    // a refusal from the pull request you just navigated away from, posted onto
-    // the one now on screen.
-    const mine = current;
-    const optimistic = pendingComment(body, ++replySeq);
-    updateThreads(props.root, props.pr.number, (list) =>
-      withComment(list, threadId, optimistic),
-    );
-    try {
-      const stored = await invoke<ReviewComment>("forge_reply_to_thread", {
-        projectPath: props.root,
-        threadId,
-        body,
-      });
-      if (mine !== current) return;
-      updateThreads(props.root, props.pr.number, (list) =>
-        withComment(list, threadId, stored, optimistic.id),
-      );
-    } catch (e) {
-      if (mine !== current) return;
-      updateThreads(props.root, props.pr.number, (list) =>
-        withoutComment(list, threadId, optimistic.id),
-      );
-      setThreadsError(props.root, props.pr.number, forgeErrorMessage(e));
-    }
-  }
-
-  /** Resolve or unresolve. Not optimistic: unlike a reply there is nothing to
-   *  read while it lands, and a card that flips back on refusal reads as a
-   *  click that did the opposite of what it said. */
-  async function setResolved(threadId: string, resolved: boolean) {
-    const mine = current;
-    setBusyThread(threadId);
-    try {
-      await invoke<void>("forge_set_thread_resolved", {
-        projectPath: props.root,
-        threadId,
-        resolved,
-      });
-      if (mine !== current) return;
-      updateThreads(props.root, props.pr.number, (list) =>
-        withResolved(list, threadId, resolved),
-      );
-      setThreadsError(props.root, props.pr.number, null);
-    } catch (e) {
-      if (mine !== current) return;
-      setThreadsError(props.root, props.pr.number, forgeErrorMessage(e));
-    } finally {
-      if (mine === current) setBusyThread(null);
-    }
-  }
-
-  function toggleFile(path: string) {
-    setOpenFile(openFile() === path ? null : path);
-  }
-
-  /** Put the PR's head commit in the local object store, once. Rust skips the
-   *  network entirely when the commit is already there. */
-  function ensureHead(): Promise<void> {
-    if (!headFetch) {
-      headFetch = invoke<void>("git_fetch_pr_head", {
-        projectPath: props.root,
-        number: props.pr.number,
-        sha: props.pr.headSha,
-      });
-    }
-    return headFetch;
-  }
-
-  // Reveal an unchanged stretch, read from the PR's head rather than from the
-  // working tree: the head is usually not checked out, so the file on disk would
-  // give the right line numbers over the wrong content.
-  async function expandGap(key: string, path: string, gap: Gap) {
-    if (gapOpen(props.root, props.pr.number, key)) {
-      setGapOpen(props.root, props.pr.number, key, false);
-      return;
-    }
-    if (!gapLines(props.root, props.pr.number, key)) {
-      try {
-        await ensureHead();
-      } catch (e) {
-        // No network, or a PR ref the remote will not serve. Only *this* is
-        // reason to forget the fetch: clearing it for a failed read below would
-        // re-fetch a commit that arrived perfectly well.
-        headFetch = null;
-        setGapError(forgeErrorMessage(e));
-        return;
-      }
-      try {
-        const lines = await invoke<string[]>("git_blob_slice", {
-          projectPath: props.root,
-          rev: props.pr.headSha,
-          file: path,
-          start: gap.start,
-          end: gap.end,
-        });
-        // Rendered as context, so they carry the leading space a context line
-        // in a real diff would have.
-        noteGapLines(props.root, props.pr.number, key, lines.map((l) => ` ${l}`));
-      } catch (e) {
-        // A click that visibly does nothing is the worst way to report this.
-        setGapError(forgeErrorMessage(e));
-        return;
-      }
-    }
-    setGapError(null);
-    setGapOpen(props.root, props.pr.number, key, true);
-  }
-
-  function toggleColumns() {
-    writeSideBySide(!sideBySide());
-  }
-
   let paneRef: HTMLDivElement | undefined;
   onMount(() => {
     if (!paneRef) return;
@@ -311,88 +123,12 @@ export default function PrDetail(props: {
     onCleanup(() => ro.disconnect());
   });
 
-  function gapRow(gap: Gap, key: string, path: string) {
-    const count = gap.end - gap.start + 1;
-    return (
-      <Show
-        when={gapOpen(props.root, props.pr.number, key)}
-        fallback={
-          <div
-            class={`${diffRowClasses.line} ${styles.diffGap}`}
-            onClick={() => void expandGap(key, path, gap)}
-          >
-            {`⋯ ${count} unchanged line${count === 1 ? "" : "s"}`}
-          </div>
-        }
-      >
-        <For each={gapLines(props.root, props.pr.number, key) ?? []}>
-          {(text) =>
-            twoColumn() ? (
-              <div class={diffRowClasses.sideRow}>
-                <div class={diffRowClasses.line}>{text || " "}</div>
-                <div class={diffRowClasses.line}>{text || " "}</div>
-              </div>
-            ) : (
-              <div class={diffRowClasses.line}>{text || " "}</div>
-            )
-          }
-        </For>
-      </Show>
-    );
+  function toggleColumns() {
+    writeSideBySide(!sideBySide());
   }
 
-  /** One hunk's rows, cut at every line a thread is anchored to, so the
-   *  conversation sits between the line it is about and the one after it.
-   *
-   *  Cut rather than interleave: `DiffRows` owns the markup and the two-column
-   *  layout, and a card threaded through its grid would have to break out of it.
-   *  Rendering consecutive slices puts the card between two blocks, which lands
-   *  in the same place in both layouts. The cost is that a `-`/`+` pair split
-   *  across a cut renders unpaired side-by-side, which needs a comment on a
-   *  deleted line inside a change block to reach at all. */
-  function hunkSegments(
-    rows: DiffRow[],
-    lines: (number | null)[],
-    shown: Map<number, ReviewThread[]>,
-  ): { rows: DiffRow[]; after: ReviewThread[] }[] {
-    const out: { rows: DiffRow[]; after: ReviewThread[] }[] = [];
-    let from = 0;
-    rows.forEach((_, i) => {
-      const line = lines[i];
-      const at = line === null ? undefined : shown.get(line);
-      if (!at) return;
-      out.push({ rows: rows.slice(from, i + 1), after: at });
-      from = i + 1;
-    });
-    if (from < rows.length) out.push({ rows: rows.slice(from), after: [] });
-    return out;
-  }
-
-  /** Pick or unpick one row of one hunk. Switching hunks starts a fresh
-   *  selection rather than merging: the anchor lives inside a hunk. */
-  function togglePick(path: string, hunk: number, index: number) {
-    setPicked((was) => {
-      const same = was && was.path === path && was.hunk === hunk;
-      const lines = new Set(same ? was!.lines : []);
-      if (lines.has(index)) lines.delete(index);
-      else lines.add(index);
-      if (!lines.size) return null;
-      return { path, hunk, lines };
-    });
-  }
-
-  /** Hold the drafted line comment. Nothing is posted: it joins the review and
-   *  goes out with the verdict, in one call.
-   *
-   *  The row it was written against travels with it. A line number alone still
-   *  resolves after the file changes underneath it, so without the text there is
-   *  nothing left to notice that the comment now describes something else. */
-  function holdComment(anchor: DraftAnchor, rowText: string) {
-    const body = composerText(props.root, props.pr.number, anchor).trim();
-    if (!body) return;
-    addPending(props.root, props.pr.number, { ...anchor, body, rowText });
-    closeComposer(props.root, props.pr.number, anchor);
-    setPicked(null);
+  function toggleFile(path: string) {
+    setOpenFile(openFile() === path ? null : path);
   }
 
   async function submitReview(event: ReviewEvent) {
@@ -410,7 +146,6 @@ export default function PrDetail(props: {
       // Only now. A failed submit has to hand the whole set back, or the
       // reader loses every comment they wrote to one refusal.
       clearDraft(props.root, props.pr.number);
-      setReviewOpen(false);
       setThreadsError(props.root, props.pr.number, null);
       // The verdict the sidebar chip reads is the server's, and it has changed.
       void pollNow("manual");
@@ -431,90 +166,6 @@ export default function PrDetail(props: {
     let n = 0;
     for (const at of grouped().byLine.get(path)?.values() ?? []) n += at.length;
     return n;
-  }
-
-  // --- handing a thread to the agent that owns the branch --------------------
-
-  /// The session a remark about this pull request should reach.
-  ///
-  /// The branch, not the selection. Every other safe-send surface in the app
-  /// composes for whatever session is selected, because it is looking at that
-  /// session's own working tree; this one is looking at a branch, and the
-  /// session that wrote it may not be the one on screen, may be in a different
-  /// worktree, and may have no tab open at all.
-  const owner = createMemo(() => branchOwner(props.root, props.pr.headRef));
-
-  const ownerTarget = createMemo<SessionTarget | null>(() => {
-    const o = owner();
-    if (!o) return null;
-    return {
-      sessionId: o.session.id,
-      agent: o.session.agent ?? "claude",
-      profile: o.session.profile ?? null,
-      folderPath: o.folderPath,
-      sessionCwd: o.session.cwd,
-      sessionPath: o.session.path,
-      sessionTitle: o.session.title,
-      sessionFile: o.session.path,
-    };
-  });
-
-  /// Who would get the thread and how they are doing, or why nobody would.
-  ///
-  /// One memo rather than a label beside a separate refusal, because they are
-  /// the same question asked twice and a pair that could disagree is how a
-  /// reason ends up printed next to a button that still works.
-  ///
-  /// Both refusals are about the target, never about the thread: an outdated or
-  /// resolved conversation is still worth an agent's attention, and withholding
-  /// it would be this panel deciding what the reader meant. The readiness is the
-  /// composed session status, the same one the sidebar row shows, so the two
-  /// cannot disagree about a session mid-turn. `none` is not a refusal: a
-  /// session with nothing running is resumed by safe-send before it writes.
-  const sendTo = createMemo<{ label: string; name: string; ready: boolean }>(() => {
-    const o = owner();
-    if (!o) {
-      const label = `Nothing has run on ${props.pr.headRef} in this project.`;
-      return { label, name: "", ready: false };
-    }
-    const name = o.session.name || o.session.title || o.session.id;
-    // An agent the user turned off first, since that is the refusal they can
-    // act on without leaving the question of what this agent can do.
-    const off = agentOffReason(o.session.agent ?? "claude");
-    if (off) return { label: off, name, ready: false };
-    if (findAdapter(o.session.agent ?? "claude").resume_args.length === 0) {
-      return { label: "This agent's sessions can't be resumed", name, ready: false };
-    }
-    const status = sessionStatus(o.session.id);
-    const how = status === "none" ? "Not running" : STATUS_LABEL[status];
-    return { label: `${name} · ${how}`, name, ready: true };
-  });
-
-  async function sendThread(t: ReviewThread) {
-    const target = ownerTarget();
-    const home = owner();
-    if (!target || !home || !sendTo().ready) return;
-    const mine = current;
-    // Read before the send, not after: the owner can change while a message is
-    // in flight (a newer session appears, the branch moves), and a confirmation
-    // naming whoever owns it *now* would name a session that received nothing.
-    const to = sendTo().name;
-    setSendingThread(t.id);
-    const note = (text: string, ok: boolean) => {
-      if (mine === current) setSendNotes((m) => ({ ...m, [t.id]: { text, ok } }));
-    };
-    try {
-      // The unit's own folder, not `props.root`: a worktree project's units each
-      // have a checkout, and a path resolved against the panel's one would
-      // mention a real file in the wrong copy of the repo.
-      const text = composeThreadAsk(target, home.folderPath, props.pr.number, t);
-      const result = await requestSend({ ...target, text });
-      if (result.kind === "sent") note(`Sent to ${to}.`, true);
-      else if (result.kind === "blocked") note(BLOCKED_REASON, false);
-      else note("Couldn't reach the session, try again.", false);
-    } finally {
-      if (mine === current) setSendingThread(null);
-    }
   }
 
   // --- landing it -----------------------------------------------------------
@@ -590,201 +241,12 @@ export default function PrDetail(props: {
     });
   }
 
-  function threadCard(t: ReviewThread, quoteHunk?: boolean) {
-    return (
-      <ReviewThreadView
-        thread={t}
-        quoteHunk={quoteHunk}
-        busy={busyThread() === t.id}
-        onReply={(body) => void reply(t.id, body)}
-        onResolve={(resolved) => void setResolved(t.id, resolved)}
-        send={{
-          label: sendTo().label,
-          ready: sendTo().ready,
-          busy: sendingThread() === t.id,
-          note: sendNotes()[t.id] ?? null,
-          onSend: () => void sendThread(t),
-        }}
-      />
-    );
-  }
-
-  function fileDiff(f: PrFile) {
-    const hunks = createMemo(() => parseDiffHunks(f.patch ?? ""));
-    const gaps = createMemo(() => hunkGaps(hunks()));
-    const skip = createMemo(() => fileSkip(f));
-    // Every line this file's hunks actually render, so a thread anchored
-    // outside them is held back rather than dropped.
-    const rendered = createMemo(() => hunks().flatMap((h) => newSideLines(h)));
-    const placed = createMemo(() =>
-      splitByRenderedLines(grouped().byLine.get(f.path), rendered()),
-    );
-    return (
-      <div class={styles.fileDiff}>
-        <Show when={skip()} fallback={null}>
-          {(why) => (
-            <div class={styles.skip} data-file-skip={why()}>
-              {SKIP_COPY[why()]}
-              {/* Only the withheld patch is content the reader cannot get here.
-                  A moved or binary file is complete as it stands, and offering
-                  a way out of it would imply otherwise. */}
-              <Show when={why() === "tooLarge"}>
-                {" "}
-                <a href={`${props.pr.url}/files`} target="_blank" rel="noreferrer">
-                  Read it on github.com
-                </a>
-              </Show>
-            </div>
-          )}
-        </Show>
-        <Show when={!skip()}>
-          <For each={gaps().filter((g) => g.afterHunk === -1)}>
-            {(gap) => gapRow(gap, `${f.path}:-1`, f.path)}
-          </For>
-          <For each={hunks()}>
-            {(hunk, hi) => {
-              // Both memoised, and for different reasons. `buildRows` does the
-              // word-level pairing and is the most expensive thing on screen for
-              // a large patch, while being a pure function of text that never
-              // changes; recomputing it on a column toggle or a gap expansion is
-              // pure waste. The segments then change only when a thread appears
-              // at a new line, so the diff's DOM survives everything else.
-              const rows = createMemo(() => buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }));
-              const lines = createMemo(() => newSideLines(hunk));
-              const oldLines = createMemo(() => oldSideLines(hunk));
-              const segments = createMemo(() => {
-                // A deliberate dependency. `DiffRows` reads `selection` once
-                // per row, on purpose (a surface either offers line staging or
-                // it does not), so starting a review has to rebuild the rows
-                // for them to become pickable. One rebuild per explicit click,
-                // which is not the unrelated-render churn the memo exists to
-                // stop.
-                reviewing();
-                return hunkSegments(rows(), lines(), placed().shown);
-              });
-              // The picked rows, when they are this hunk's. `DiffRows` already
-              // owns line selection for the Changes panel's staging, so the
-              // affordance and its keyboard handling come for free.
-              const mine = createMemo(() => {
-                const p = picked();
-                return p && p.path === f.path && p.hunk === hi() ? p.lines : null;
-              });
-              const anchor = createMemo(() => {
-                const sel = mine();
-                if (!sel) return null;
-                return anchorFor({
-                  path: f.path,
-                  rows: rows(),
-                  newLines: lines(),
-                  oldLines: oldLines(),
-                  selected: [...sel],
-                });
-              });
-              // The raw diff line the anchor sits on, index-aligned with the
-              // rows (`reviewThreads.ts` explains why that holds). It travels
-              // with the comment so a later read of the patch can tell an anchor
-              // that still fits from one whose line now says something else.
-              const anchorRow = createMemo(() => {
-                const sel = mine();
-                if (!sel) return "";
-                const last = [...sel].sort((x, y) => x - y).pop()!;
-                return hunk.lines[last] ?? "";
-              });
-              // Only while a review is under way. `DiffRows` gives every
-              // selectable line a role, a tab stop and a click handler, and a
-              // pull request diff runs to thousands of them: handing those out
-              // to a reader who is only reading puts the whole file in the tab
-              // order and makes lines respond to clicks that mean nothing.
-              const selection = () =>
-                reviewing()
-                  ? {
-                      has: (i: number) => mine()?.has(i) ?? false,
-                      toggle: (i: number) => togglePick(f.path, hi(), i),
-                    }
-                  : undefined;
-              return (
-                <div>
-                  <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
-                  <For each={segments()}>
-                    {(seg) => (
-                      <>
-                        <DiffRows rows={seg.rows} path={f.path} twoColumn={twoColumn()} selection={selection()} />
-                        <For each={seg.after}>{(t) => threadCard(t, false)}</For>
-                      </>
-                    )}
-                  </For>
-                  {/* The anchor is spelled out because a selection spanning both
-                      sides narrows to one line, and a silent narrowing is a
-                      comment that lands somewhere other than where it was drawn. */}
-                  <Show when={anchor()}>
-                    {(a) => (
-                      <div class={styles.composer}>
-                        <span class={styles.anchor}>{anchorLabel(a())}</span>
-                        <textarea
-                          class={styles.composerInput}
-                          rows={2}
-                          ref={(el) => queueMicrotask(() => el.focus())}
-                          aria-label={`Comment on ${anchorLabel(a())}`}
-                          value={composerText(props.root, props.pr.number, a())}
-                          onInput={(e) =>
-                            setComposerText(props.root, props.pr.number, a(), e.currentTarget.value)
-                          }
-                          onKeyDown={(e: KeyboardEvent) => {
-                            if (e.key === "Escape") setPicked(null);
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              holdComment(a(), anchorRow());
-                            }
-                          }}
-                        />
-                        <div class={styles.composerActions}>
-                          <Button variant="ghost" onClick={() => setPicked(null)}>
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={() => holdComment(a(), anchorRow())}
-                            disabled={!composerText(props.root, props.pr.number, a()).trim()}
-                          >
-                            Add to review
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </Show>
-                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                    {(gap) => gapRow(gap, `${f.path}:${hi()}`, f.path)}
-                  </For>
-                </div>
-              );
-            }}
-          </For>
-        </Show>
-
-        {/* Current, correct, and on no rendered line: its anchor sits in a
-            stretch the patch does not cover, or the patch was withheld. Held
-            back with its quoted hunk rather than dropped, because a file that
-            visibly has a conversation must not appear to have none. */}
-        <Show when={placed().offDiff.length}>
-          <div class={styles.threadGroup}>
-            <div class={styles.groupTitle}>Not on a line this diff shows</div>
-            <For each={placed().offDiff}>{(t) => threadCard(t, true)}</For>
-          </div>
-        </Show>
-      </div>
-    );
-  }
-
   return (
     <div class={styles.detail} ref={paneRef}>
       <div class={styles.head}>
         <Button variant="ghost" onClick={props.onBack}>
           ← Pull requests
         </Button>
-        <Show when={!reviewing()}>
-          <Button variant="ghost" onClick={() => setReviewOpen(true)}>
-            Review
-          </Button>
-        </Show>
         <IconButton
           size="xs"
           active={twoColumn()}
@@ -829,9 +291,6 @@ export default function PrDetail(props: {
       </Show>
 
       <Show when={error()}>
-        {(message) => <div class={styles.error}>{message()}</div>}
-      </Show>
-      <Show when={gapError()}>
         {(message) => <div class={styles.error}>{message()}</div>}
       </Show>
       <Show when={threadError()}>
@@ -886,7 +345,9 @@ export default function PrDetail(props: {
                 <span class={styles.removed}>-{f.deletions}</span>
               </span>
             </Tooltip>
-            <Show when={openFile() === f.path}>{fileDiff(f)}</Show>
+            <Show when={openFile() === f.path}>
+              <PrFileBody root={props.root} pr={props.pr} file={f} twoColumn={twoColumn()} />
+            </Show>
           </div>
         )}
       </For>
@@ -900,7 +361,9 @@ export default function PrDetail(props: {
           <div class={styles.groupTitle}>
             Outdated conversations ({grouped().outdated.length})
           </div>
-          <For each={grouped().outdated}>{(t) => threadCard(t, true)}</For>
+          <For each={grouped().outdated}>
+            {(t) => <PrThreadCard root={props.root} pr={props.pr} thread={t} quoteHunk />}
+          </For>
         </div>
       </Show>
 

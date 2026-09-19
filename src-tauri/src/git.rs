@@ -353,6 +353,78 @@ pub fn git_blob_slice(
         .collect())
 }
 
+/// How big one file is on each side of a comparison, in bytes.
+///
+/// For the files a patch cannot describe. A binary file's row says nothing at
+/// all without them, and "24 KB before, 31 KB after" is the whole of what a
+/// reader can learn about a change to a PNG.
+///
+/// `None` per side rather than zero, and the distinction is the point: a file
+/// that was added has no base side, and reporting that as `0` bytes would read
+/// as an empty file that grew rather than as a file that did not exist. Read
+/// from the local object store, so the caller fetches the head first
+/// (`git_fetch_pr_head`) and nothing here goes to the network.
+///
+/// The base side is measured at the **merge base**, not at `base` itself. `base`
+/// is a branch that has moved on since the pull request was opened, so its blob
+/// is a file this change never touched: "24 KB before" would be a real number
+/// about the wrong commit, which is worse than the `None` a missing side gets.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlobSizes {
+    pub head: Option<u64>,
+    pub base: Option<u64>,
+}
+
+#[tauri::command(async)]
+pub fn git_blob_sizes(
+    project_path: String,
+    head: String,
+    base: String,
+    path: String,
+) -> Result<BlobSizes, String> {
+    Ok(BlobSizes {
+        head: blob_size(&project_path, &head, &path),
+        base: merge_base(&project_path, &head, &base)
+            .and_then(|at| blob_size(&project_path, &at, &path)),
+    })
+}
+
+/// Where the two sides parted, or `None` when this machine cannot say. A base
+/// ref that was never fetched is the ordinary case for a pull request nobody
+/// has checked out, and it means no base size rather than a wrong one.
+fn merge_base(project_path: &str, head: &str, base: &str) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["merge-base", head, base])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!sha.is_empty()).then_some(sha)
+}
+
+/// One side's size, or `None` when that side has no such blob.
+///
+/// A failure is not reported: every way this can fail (the path is absent from
+/// that commit, the commit is not local yet) means the same thing to the caller,
+/// which is that there is no size to show for that side.
+fn blob_size(project_path: &str, rev: &str, path: &str) -> Option<u64> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["cat-file", "-s", &format!("{rev}:{path}")])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+}
+
 /// Stage or unstage a subset of a file's hunks, never touching the working
 /// tree (`git apply --cached`).
 ///
@@ -4558,6 +4630,46 @@ diff --git a/f b/f
         assert!(default.contains("line 2 EDITED"), "default mode must stay vs HEAD");
         assert!(!git_diff_file_body(p, "f.txt".into(), None).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_file_added_on_the_head_side_reports_one_size_and_not_two() {
+        // The distinction the `Option` exists for. A file that did not exist in
+        // the base has no size there, and answering `0` would read as an empty
+        // file that grew rather than as a file that was added.
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let base = rev_parse(&dir, "HEAD");
+        std::fs::write(dir.join("logo.png"), [0x89u8, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).unwrap();
+        git(&dir, &["add", "logo.png"]);
+        git(&dir, &["commit", "-q", "-m", "add a binary"]);
+        let head = rev_parse(&dir, "HEAD");
+
+        let sizes = git_blob_sizes(p.clone(), head.clone(), base.clone(), "logo.png".into()).unwrap();
+        assert_eq!(sizes.head, Some(8));
+        assert_eq!(sizes.base, None);
+
+        // And a file present on both sides answers for both, so the caller can
+        // tell "no such side" from "this side failed to read".
+        let both = git_blob_sizes(p.clone(), head.clone(), base.clone(), "f.txt".into()).unwrap();
+        assert!(both.head.is_some() && both.base.is_some());
+
+        // The base side is the merge base, not the branch tip. Moving the base
+        // on after the head parted from it must not change what "before" was.
+        let before = both.base;
+        git(&dir, &["checkout", "-q", &base]);
+        std::fs::write(dir.join("f.txt"), "rewritten on the base, much shorter\n").unwrap();
+        git(&dir, &["add", "f.txt"]);
+        git(&dir, &["commit", "-q", "-m", "move the base on"]);
+        let moved = rev_parse(&dir, "HEAD");
+        let after = git_blob_sizes(p, head, moved, "f.txt".into()).unwrap();
+        assert_eq!(after.base, before, "the base side must read the merge base");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn rev_parse(dir: &Path, rev: &str) -> String {
+        let out = Command::new("git").arg("-C").arg(dir).args(["rev-parse", rev]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
     #[test]

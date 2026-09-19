@@ -178,11 +178,38 @@
   overflow-x: auto;
 }
 
-/* A file with no diff to show, and which of the three reasons it is. */
+/* A file with no diff to show, and which of the three reasons it is. Only the
+   withheld patch spends the attention colour: the other two are ordinary
+   outcomes, and colouring them would say something is missing when nothing is. */
 .skip {
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(16px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--tori-text-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(4px * var(--ui-scale));
+}
+.skipTitle {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+.skip[data-file-skip="tooLarge"] .skipTitle {
+  color: var(--attention-fg);
+}
+.skipBody {
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* Conversations this file has and its rows cannot carry, above the first hunk.
+   The attention rule is the whole point: something is here that the diff below
+   does not show, and a reader who scrolls past it has already formed a view. */
+.stranded {
+  margin-bottom: calc(6px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-left: calc(2px * var(--ui-scale)) solid var(--attention-fg);
 }
 
 /* The collapsed-gap row sits in the same column flow as real diff lines, so it

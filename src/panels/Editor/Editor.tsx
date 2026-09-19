@@ -65,6 +65,8 @@ import FileHistory from "./FileHistory";
 import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import CommitDiffView from "./CommitDiffView";
+import PrDiffView from "./PullRequests/PrDiffView";
+import { pendingFor } from "../../utils/prReviewStore";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
@@ -231,6 +233,7 @@ import { renameTabsUnder, repoint } from "./renameTabs";
 import {
   isSyntheticId,
   parseCommitDiffArg,
+  parsePrDiffArg,
   parseDiffArg,
   parseSyntheticId,
   syntheticId,
@@ -388,6 +391,11 @@ function tabIcon(t: FileTab) {
   if (parsed?.kind === "commitdiff") {
     return <FileIcon name={basename(parseCommitDiffArg(parsed.arg).file)} />;
   }
+  // Same for a pull request's file, and the strip tells its tabs apart by the
+  // number in the label.
+  if (parsed?.kind === "prdiff") {
+    return <FileIcon name={basename(parsePrDiffArg(parsed.arg).file)} />;
+  }
   const kind = parsed?.kind ?? "";
   // History is the fallback because most of these views are one: the log, a
   // commit, a file's history, a conflict's three sides.
@@ -396,13 +404,22 @@ function tabIcon(t: FileTab) {
 
 const tabName = (t: FileTab) => searchTabTitle(t.path) ?? t.name;
 
+/** Whether a tab is a pull request file with comments held for it. False for
+ *  every other kind of tab, which is most of them. */
+function prTabHasPending(id: string): boolean {
+  const t = parseSyntheticId(id);
+  if (t?.kind !== "prdiff") return false;
+  const { number, file } = parsePrDiffArg(t.arg);
+  return pendingFor(t.workspace, number, file) > 0;
+}
+
 /** A diff tab's label keeps its bracketed part in view: the name may shorten,
  *  the sha or the mode may not, since it is the one thing saying this tab is
  *  not the file itself. */
 function tabLabel(t: FileTab) {
   const name = tabName(t);
   const kind = parseSyntheticId(t.path)?.kind;
-  if (kind !== "diff" && kind !== "commitdiff") return name;
+  if (kind !== "diff" && kind !== "commitdiff" && kind !== "prdiff") return name;
   const at = name.lastIndexOf(" (");
   if (at < 0) return name;
   return (
@@ -2448,6 +2465,14 @@ export default function Editor(props: {
     const t = asFile(u);
     return (
       <>
+        {/* A pull request file whose draft holds a comment for it. The tab is
+            the only thing on screen while another file is open, so without it
+            a review written across four files has three invisible thirds. */}
+        <Show when={prTabHasPending(t.path)}>
+          <span class={styles.tabPending} aria-label="has pending comments">
+            ●
+          </span>
+        </Show>
         <Show when={isTouched(t.path) || isEditingNow(t.path)}>
           <span
             class={styles.tabTouched}
@@ -2680,6 +2705,12 @@ export default function Editor(props: {
                 </Show>
                 <Show when={t().kind === "commitdiff"}>
                   <CommitDiffView workspace={t().workspace} arg={t().arg} />
+                </Show>
+                {/* One file of a pull request, commentable. The patches, the
+                    conversations and the draft all come from `prReviewStore`,
+                    so several of these open at once are one read of each. */}
+                <Show when={t().kind === "prdiff"}>
+                  <PrDiffView workspace={t().workspace} arg={t().arg} />
                 </Show>
                 {/* The other half of the sidebar's Graph section: lanes need
                     width, and the right panel is the narrow column. */}
