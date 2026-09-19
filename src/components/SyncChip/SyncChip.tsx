@@ -23,11 +23,15 @@ import styles from "./SyncChip.module.css";
 const PATHS_SHOWN = 6;
 
 /** The levels that get words beside the glyphs. A count needs none: the glyph
- *  says which direction and the number says how far. These four need a decision
+ *  says which direction and the number says how far. These three need a decision
  *  rather than a routine pull, and this is the one surface with the room to say
- *  so without a second line or a truncated name. */
+ *  so without a second line or a truncated name.
+ *
+ *  `conflicts` is absent for the opposite reason: its words trailed a run that
+ *  ends in a pull count, so "1 master: 1 conflict" read as one phrase about the
+ *  wrong remote. The red glyph carries the number itself, and the base's name
+ *  is a hover away. */
 const SAYS: Partial<Record<SyncLevel, true>> = {
-  conflicts: true,
   diverged: true,
   baseBehind: true,
   unpushed: true,
