@@ -65,12 +65,6 @@ function prIcon(state: PrChipState): LucideIcon {
  */
 export default function PrLine(props: {
   status: UnitStatus;
-  /** Opens the Pull Requests panel onto this branch. The chip on the line
-   *  above used to carry this; with the chip gone for a branch that has a PR,
-   *  the line is the only thing left that could. Absent leaves it inert. */
-  onOpen?: () => void;
-  /** What the control announces. Required in spirit whenever `onOpen` is. */
-  label?: string;
 }) {
   const pr = () => props.status.pullRequest;
   const badges = () => forgeBadges(props.status);
@@ -156,39 +150,19 @@ export default function PrLine(props: {
   return (
     <Show when={pr()}>
       {(p) => (
-        <Show
-          when={props.onOpen}
-          fallback={
-            <Tooltip<HTMLSpanElement>
-              as="span"
-              class={styles.prLine}
-              data-pr-line
-              label={<span class={styles.lines}>{story()}</span>}
-            >
-              {facts(p)}
-            </Tooltip>
-          }
+        // A span, not a button. The line reports; it is not a way in. The
+        // Pull Requests panel is reached from the command palette and from
+        // the editor's own right-panel tabs, so a control per branch row here
+        // would be a third door into one panel and a tab stop on every row of
+        // a list the keyboard cannot otherwise walk.
+        <Tooltip<HTMLSpanElement>
+          as="span"
+          class={styles.prLine}
+          data-pr-line
+          label={<span class={styles.lines}>{story()}</span>}
         >
-          {/* A button rather than a styled span, on the same reasoning
-              `ForgeChipView` gives: this is a real capability, and the row
-              around it is a div with an onClick, so nothing else here is
-              tabbable. `stopPropagation` keeps a click from also selecting the
-              branch and moving the panel off what it just opened. */}
-          <Tooltip<HTMLButtonElement>
-            as="button"
-            type="button"
-            class={`${styles.prLine} ${styles.control}`}
-            data-pr-line
-            label={<span class={styles.lines}>{story()}</span>}
-            aria-label={props.label}
-            onClick={(e: MouseEvent) => {
-              e.stopPropagation();
-              props.onOpen?.();
-            }}
-          >
-            {facts(p)}
-          </Tooltip>
-        </Show>
+          {facts(p)}
+        </Tooltip>
       )}
     </Show>
   );

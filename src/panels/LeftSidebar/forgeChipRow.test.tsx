@@ -410,9 +410,11 @@ describe("a failing check reaching the session that owns the branch", () => {
   });
 });
 
-// The chip as a way in. Phase 6 made it a status surface; this makes the one
-// with a pull request behind it a control.
-describe("clicking a branch's forge chip", () => {
+// The forge on a branch row reports and nothing more. It was briefly a way in
+// (the chip, then the second line), and both are gone: the Pull Requests panel
+// is reached from the command palette and from the editor's own right-panel
+// tabs, so a control per row would be a third door into one panel.
+describe("a branch row's forge state is not a control", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
@@ -427,44 +429,25 @@ describe("clicking a branch's forge chip", () => {
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/gh"]));
   });
 
-  it("selects the branch and opens the Pull Requests panel", async () => {
-    const selected: unknown[] = [];
-    render(() => (
-      <LeftSidebar selected={null} onSelect={(s) => selected.push(s)} liveTabs={[]} />
-    ));
-
-    // The control moved with the facts: the chip beside the name used to open
-    // the panel, and now the line under it does. A branch with a PR has to
-    // keep a keyboard-reachable way in, or the row is a div with an onClick
-    // and nothing tabbable in it at all.
-    const shipped = await row("shipped");
-    await waitFor(() => expect(shipped.querySelector("button[data-pr-line]")).toBeTruthy());
-
-    let detail: unknown = null;
-    const handler = (e: Event) => (detail = (e as CustomEvent).detail);
-    window.addEventListener("tori:set-right-mode", handler);
-    (shipped.querySelector("button[data-pr-line]") as HTMLButtonElement).click();
-    await waitFor(() => expect(detail).toEqual({ mode: "pulls" }));
-    window.removeEventListener("tori:set-right-mode", handler);
-
-    // The panel is workspace-scoped, so the selection has to land first or it
-    // opens onto whichever project was already showing.
-    expect(selected).toHaveLength(1);
-    expect((selected[0] as { branch: string }).branch).toBe("shipped");
-  });
-
-  it("leaves a branch with no pull request inert", async () => {
-    // There is nothing for the panel to show it: the list carries what exists,
-    // so a button here would look like a control and do nothing visible
-    // (`lesson_probe_the_capability_before_building_its_control`).
+  it("reports a pull request without offering anything to press", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
+    // The row with a PR: the line is there, and it is not a button.
     const shipped = await row("shipped");
     await waitFor(() => expect(shipped.querySelector("[data-pr-line]")).toBeTruthy());
+    expect(shipped.querySelector("button[data-pr-line]")).toBeNull();
 
+    // Nothing else in the row is tabbable either. A branch row is a div with
+    // an onClick and no keyboard path, so a lone focusable descendant would be
+    // a tab stop into a list the keyboard cannot otherwise walk - which is the
+    // whole reason a control here has to be a deliberate decision rather than
+    // something a status surface grows.
+    expect(shipped.querySelector("button")).toBeNull();
+
+    // And the row without one draws no forge state at all.
     const fresh = await row("fresh");
-    expect(fresh.querySelector("[data-forge-state]")).toBeNull();
     expect(fresh.querySelector("[data-pr-line]")).toBeNull();
+    expect(fresh.querySelector("[data-forge-state]")).toBeNull();
     expect(fresh.querySelector("button")).toBeNull();
   });
 });

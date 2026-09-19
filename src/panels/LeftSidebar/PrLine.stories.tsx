@@ -99,19 +99,6 @@ export const Quiet: Story = {
   args: { status: status({ number: 7875, review: "none", checks: "none" }) },
 };
 
-/** As a control. A branch with a pull request has no chip beside its name any
- *  more, so this line is the way into the Pull Requests panel and the only
- *  tabbable thing on the row. It is a button that looks like the line it
- *  already was: what makes it a control is that it focuses and answers a
- *  click, not that it looks pressable in a column of rows that are not. Tab to
- *  it to see the focus ring. */
-export const AsAControl: Story = {
-  args: {
-    onOpen: () => {},
-    label: "Pull requests for api",
-  },
-};
-
 /** Every state the line can report, stacked. The checks keep their own colour
  *  and everything else stays recessive, which is the one rule the line has. */
 export const States: Story = {

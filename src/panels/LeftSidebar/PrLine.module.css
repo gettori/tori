@@ -28,34 +28,7 @@
   white-space: nowrap;
 }
 
-/* The control variant. A button's own chrome is stripped back to the line it
-   already was: what makes it a control is that it is focusable and answers a
-   click, not that it looks like a thing to press in a column of rows that are
-   not. `text-align` because a button centres its content and the line has to
-   start where every other row's does.
-
-   **Family and weight only, never the `font` shorthand.** This class rides the
-   same element as `.prLine` and is declared after it, so `font: inherit` reset
-   `font-size` (and `font-variant-numeric`) to the row's, and every pull
-   request in the app rendered at the 15px of the branch name above it. Nor can
-   the size be restated here as `inherit`, which means the same wrong thing:
-   the element this inherits from IS the row. The size belongs to `.prLine`
-   and this must leave it alone. */
-.control {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: inherit;
-  font-weight: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.control:hover {
-  color: var(--fg-default);
-}
-
+/* One fact: a glyph and the number beside it. */
 .item {
   display: inline-flex;
   align-items: center;
@@ -63,6 +36,9 @@
   flex: none;
 }
 
+/* One step under the 14px marks on the line above, and the same 13px as this
+   line's own text, so a glyph and the number beside it are one object rather
+   than a mark with a caption. */
 /* One step under the 14px marks on the line above, and the same 13px as this
    line's own text, so a glyph and the number beside it are one object rather
    than a mark with a caption. */

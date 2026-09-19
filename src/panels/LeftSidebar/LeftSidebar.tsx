@@ -52,8 +52,6 @@ import {
   type SessionAction,
   OPEN_IN_EDITOR,
   type OpenInEditor,
-  SET_RIGHT_MODE,
-  type SetRightMode,
   TOGGLE_DOCK,
   OPEN_SETTINGS,
   type OpenSettings,
@@ -941,17 +939,6 @@ export default function LeftSidebar(props: {
         </Show>
       </>
     );
-  }
-
-  /// Select the branch-unit, then show the Pull Requests panel for its project.
-  ///
-  /// Selecting first, exactly as "New session" and "Graph" do: the panel is
-  /// workspace-scoped, so one opened into a workspace nobody is looking at would
-  /// be invisible until you happened to switch back.
-  async function openPullRequests(g: Space, p: Project, u: BranchUnit) {
-    if (await selectUnit(g, p, u)) {
-      emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "pulls" });
-    }
   }
 
   // Reverse-lookup a session id to its (space, project, unit, session) tuple
@@ -2442,7 +2429,7 @@ export default function LeftSidebar(props: {
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         meta={
           showPr()
-            ? <PrLine status={status()!} onOpen={() => void openPullRequests(g, p, u)} label={`Pull requests for ${p.name}`} />
+            ? <PrLine status={status()!} />
             : undefined
         }
         end={
