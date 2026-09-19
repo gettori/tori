@@ -95,28 +95,37 @@ export function BranchRow(props: {
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
 }) {
+  const glyph = () => (
+    <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
+  );
   const name = () => <span class={styles.label}>{props.label}</span>;
   const end = () => <span class={styles.rowEnd}>{props.end}</span>;
   return (
     <div class={`node ${styles.branchNode}`} classList={{ [styles.attemptNode]: props.nested }}>
       <ContextMenu
         class={`${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""}`}
-        classList={{ [styles.twoLine]: props.meta != null }}
+        data-two-line={props.meta != null ? "true" : undefined}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}
         draggable={true}
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         aria-current={props.selected ? "true" : undefined}
       >
-        <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
-        <Show when={props.meta} fallback={<>{name()}{end()}</>}>
+        {/* The glyph rides inside the first line rather than beside the pair
+            of them. Centred against the whole stack it belongs to neither
+            line, and centred against the row's top by a computed offset it
+            only ever approximates the label's line box - which has no stated
+            line-height to compute from. In here `.rowTop` IS a single-line
+            row, so the two shapes cannot drift apart. */}
+        <Show when={props.meta} fallback={<>{glyph()}{name()}{end()}</>}>
           {(meta) => (
             <span class={styles.rowStack}>
               <span class={styles.rowTop}>
+                {glyph()}
                 {name()}
                 {end()}
               </span>
-              {meta()}
+              <span class={styles.rowMeta}>{meta()}</span>
             </span>
           )}
         </Show>

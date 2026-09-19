@@ -144,25 +144,17 @@
 }
 
 /* ---- The two-line branch row ----
-   Only a branch with a pull request grows one (see `PrLine`), so everything
-   here is scoped to `.twoLine` and the single-line row keeps the exact metrics
-   it has always had. */
+   Only a branch with a pull request grows one (see `PrLine`). A row without
+   one renders none of these elements at all, so the single-line row keeps the
+   exact metrics it has always had rather than being restored to them by an
+   override. The row carries `data-two-line` for anything that needs to tell
+   the two apart. */
 
-/* The icon stops centring once there are two lines: against a 2-line body a
-   centred glyph floats between them and belongs to neither. It sits on the
-   first line instead, where the name it marks is. */
-.row.twoLine {
-  align-items: flex-start;
-}
-.row.twoLine .rowIcon {
-  /* Half the difference between the name's line box and the 16px glyph, so the
-     glyph centres on the first line rather than on the row. */
-  margin-top: calc((1.45em - 16px * var(--ui-scale)) / 2);
-}
-
-/* The name and its marks on one line, the pull request under them, sharing
-   what the icon leaves. `min-width: 0` on both, or the name's ellipsis never
-   engages and the row pushes the column wider. */
+/* The stack takes the whole row, glyph included, so that `.rowTop` below is
+   the single-line row exactly - same children, same gap, same centring - and
+   the second line hangs under it. Nothing here offsets the glyph, which is the
+   point: the app sets no line-height, so a computed offset would be guessing
+   at the label's line box and would land a pixel or two out. */
 .rowStack {
   flex: 1 1 auto;
   min-width: 0;
@@ -171,11 +163,23 @@
   gap: calc(1px * var(--ui-scale));
 }
 
+/* The first line. Every property here is `.row`'s own, because this IS a row's
+   worth of content and the two must not drift. */
 .rowTop {
   display: flex;
   align-items: center;
   gap: var(--tori-space-3);
   min-width: 0;
+}
+
+/* The second line starts where the name does, not where the glyph does: the
+   pull request belongs to the branch above it, and a full-width line would
+   read as a sibling of the row rather than as part of it. The inset is the
+   glyph's box plus the gap `.rowTop` puts after it. */
+.rowMeta {
+  display: block;
+  min-width: 0;
+  padding-left: calc(16px * var(--ui-scale) + var(--tori-space-3));
 }
 
 /* The selected row raises its label to `--fg-default`, so the line under it

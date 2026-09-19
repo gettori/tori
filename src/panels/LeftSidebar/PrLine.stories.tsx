@@ -204,6 +204,38 @@ export const InTheColumnXs: Story = {
   ],
 };
 
+/** The alignment check. Four rows alternating single-line and two-line, all
+ *  wearing the same glyph: read straight down the icon column and the two
+ *  shapes have to sit on one line. They are not offset into agreement, they
+ *  are the same construction - a two-line row's first line is a single-line
+ *  row, with the second hung underneath it. */
+export const GlyphAlignment: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<WorktreeMark active={false} />} disclosure open menu={MENU}>
+          <BranchRow label="one-line-above" icon={<WorktreeMark active={false} />} menu={MENU} />
+          <BranchRow
+            label="two-line"
+            icon={<WorktreeMark active={false} />}
+            menu={MENU}
+            meta={<PrLine status={status({ number: 7875, review: "approved", comments: 2 })} />}
+          />
+          <BranchRow label="one-line-between" icon={<WorktreeMark active={false} />} menu={MENU} />
+          <BranchRow
+            label="two-line-selected"
+            icon={<WorktreeMark active={false} />}
+            selected
+            menu={MENU}
+            meta={<PrLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3 })} />}
+          />
+          <BranchRow label="one-line-below" icon={<WorktreeMark active={false} />} menu={MENU} />
+        </ProjectRow>
+      </Tree>
+    ),
+  ],
+};
+
 /** A branch with no pull request renders no line at all, gate included: the
  *  component itself refuses rather than trusting every call site to check. */
 export const NoPullRequest: Story = {
