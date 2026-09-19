@@ -151,6 +151,13 @@ export default function Combobox(props: {
       // to the picked row's label, and it is what makes the "no row is ever
       // `aria-selected`" shape below true rather than merely usual.
       value={null}
+      // Kobalte resets the input on blur, and with `value` pinned there is no
+      // selected option for it to reset *to*, so it writes the box back to
+      // empty and reports it as a keystroke: one click on a row wiped the
+      // caller's filter (and, through `onQueryChange`, whatever it derives from
+      // it). These surfaces own their filter text from birth to dismissal, so
+      // nothing but the user may write it.
+      noResetInputOnBlur
       allowsEmptyCollection
       // Wrapping arrows, which is what both surfaces had by hand.
       shouldFocusWrap
@@ -223,6 +230,11 @@ export default function Combobox(props: {
               // nobody pressed. Off, the commit is the click, and a click whose
               // press and release differ lands on no row at all.
               shouldFocusOnHover={false}
+              // The rows are not focusable (the listbox is virtual-focus, the
+              // input keeps the caret), so a press on one would hand focus to
+              // the document and take the arrow keys and the typeahead with it.
+              // The commit is the click, which still fires.
+              onMouseDown={(e: MouseEvent) => e.preventDefault()}
             />
           )}
         </Show>
