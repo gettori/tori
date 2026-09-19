@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -1987,6 +1988,10 @@ pub fn git_fetch(
             None => crate::credential::bridge_all(&mut cmd, &repo, &op_id),
         };
         cmd.arg("fetch");
+        // Prune, so a branch someone deleted on the remote stops being offered
+        // here: the tracking ref outlives the branch otherwise, and the pickers
+        // read the refs, not the remote.
+        cmd.arg("--prune");
         match named {
             Some(r) => cmd.arg(r),
             None => cmd.arg("--all"),
@@ -1998,16 +2003,58 @@ pub fn git_fetch(
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             record_fetch_attempt(&crate::exec::common_dir(&repo));
-            match crate::git_health::run(&mut cmd) {
-                Ok(o) if o.status.success() => (true, String::new()),
-                Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
-                Err(e) => (false, e),
+            let mut outcome = run_fetch(&mut cmd);
+            // Tori's own writes queue on the lock above; another git on the same
+            // repo (an editor's auto-fetch is the usual one) does not, and the
+            // second one to reach a ref fails rather than waits. By the time the
+            // retry runs the winner has deleted the ref for us, and the objects
+            // are already in, so it is a negotiation and no transfer.
+            if lost_the_prune(&outcome) {
+                thread::sleep(Duration::from_millis(400));
+                outcome = run_fetch(&mut cmd);
             }
+            // Twice is not the user's problem: everything fetched, and the ref
+            // that would not die goes on the next fetch.
+            if lost_the_prune(&outcome) { (true, String::new()) } else { outcome }
         };
         let event = if ok { "git://fetch-done" } else { "git://fetch-error" };
         let _ = app.emit(event, FetchResult { repo, ok, error, quiet: false, fetched_at: now_secs() });
     });
     Ok(())
+}
+
+/// One fetch, as the pair the emit is built from.
+fn run_fetch(cmd: &mut Command) -> (bool, String) {
+    match crate::git_health::run(cmd) {
+        Ok(o) if o.status.success() => (true, String::new()),
+        Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
+        Err(e) => (false, e),
+    }
+}
+
+/// A fetch that failed at pruning and nowhere else: every line git called an
+/// error is a ref it could not lock to delete. The transfer itself succeeded,
+/// which is why this is told apart from a fetch that actually failed.
+fn lost_the_prune((ok, error): &(bool, String)) -> bool {
+    if *ok {
+        return false;
+    }
+    let mut saw = false;
+    for line in error.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("error: ").or_else(|| line.strip_prefix("fatal: ")) else {
+            continue;
+        };
+        if rest.starts_with("could not delete references")
+            || rest.starts_with("cannot lock ref")
+            || rest.starts_with("unable to delete")
+        {
+            saw = true;
+        } else {
+            return false;
+        }
+    }
+    saw
 }
 
 /// A `git` that can never ask a human anything. The askpass vars are *unset*
@@ -2046,7 +2093,7 @@ pub fn git_fetch_quiet(
         let min_age = std::time::Duration::from_secs(min_age_secs);
         let mut run = |repo: &str| {
             let mut cmd = quiet_git_command(repo);
-            cmd.args(["fetch", "--all"]);
+            cmd.args(["fetch", "--all", "--prune"]);
             match crate::git_health::run(&mut cmd) {
                 Ok(out) if out.status.success() => Ok(()),
                 Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
