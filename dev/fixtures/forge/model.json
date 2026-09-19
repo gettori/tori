@@ -20,7 +20,8 @@
     "pullRequests": true,
     "requestChanges": true,
     "resolveThreads": true,
-    "reviewThreads": true
+    "reviewThreads": true,
+    "singleComment": true
   },
   "checkRollup": {
     "failing": 2,

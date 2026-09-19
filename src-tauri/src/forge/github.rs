@@ -459,6 +459,7 @@ impl Forge for GitHubForge {
             approve: true,
             request_changes: true,
             comment_review: true,
+            single_comment: true,
         }
     }
 
@@ -751,6 +752,38 @@ mutation($threadId:ID!,$body:String!){
             "comments": comments,
         });
         let path = format!("/repos/{}/{}/pulls/{number}/reviews", repo.owner, repo.repo);
+        self.send(self.rest("POST", &path, Some(payload)))?;
+        Ok(())
+    }
+
+    fn add_review_comment(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        commit_id: &str,
+        comment: &DraftComment,
+    ) -> Result<(), ForgeError> {
+        self.require_token()?;
+        // `commit_id` is the whole reason this is not `submit_review` with one
+        // comment in it. A review sends none, so the server anchors every
+        // comment against the diff it has when the review arrives; naming the
+        // commit the patch on screen came from makes a stale anchor a refusal
+        // instead of a comment on the wrong line.
+        //
+        // Same `line`/`side` form and the same omission of a null `start_line`
+        // as `submit_review`, for the same reasons.
+        let mut payload = serde_json::json!({
+            "body": comment.body,
+            "commit_id": commit_id,
+            "path": comment.path,
+            "line": comment.line,
+            "side": side_wire(comment.side),
+        });
+        if let (Some(start), Some(side)) = (comment.start_line, comment.start_side) {
+            payload["start_line"] = serde_json::json!(start);
+            payload["start_side"] = serde_json::json!(side_wire(side));
+        }
+        let path = format!("/repos/{}/{}/pulls/{number}/comments", repo.owner, repo.repo);
         self.send(self.rest("POST", &path, Some(payload)))?;
         Ok(())
     }
@@ -1222,6 +1255,67 @@ mod tests {
         // null, which GitHub rejects.
         assert!(sent["comments"][1].get("start_line").is_none(), "got {}", sent["comments"][1]);
         assert!(!stub.bodies()[0].contains("position"), "position is deprecated and drifts");
+    }
+
+    #[test]
+    fn a_single_comment_names_the_commit_its_patch_came_from() {
+        // The difference between this and a one-comment review, and the whole
+        // reason it is a separate call. A review carries no commit id, so the
+        // server places every comment against the diff it holds when the review
+        // lands; this one pins the commit the reader was actually looking at, so
+        // an anchor that has moved is refused rather than relocated.
+        let (f, stub) = forge(vec![StubTransport::json(200, r#"{"id":991}"#)]);
+        let sha = "9f1c2a3b4d5e6f708192a3b4c5d6e7f809a1b2c3";
+
+        f.add_review_comment(
+            &repo(),
+            42,
+            sha,
+            &DraftComment {
+                path: "src/a.rs".into(),
+                line: 48,
+                side: DiffSide::Right,
+                start_line: Some(45),
+                start_side: Some(DiffSide::Right),
+                body: "this range".into(),
+            },
+        )
+        .unwrap();
+
+        let sent: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
+        assert_eq!(sent["commit_id"], sha);
+        assert_eq!(sent["path"], "src/a.rs");
+        assert_eq!(sent["line"], 48);
+        assert_eq!(sent["side"], "RIGHT");
+        assert_eq!(sent["start_line"], 45);
+        assert_eq!(sent["start_side"], "RIGHT");
+        assert_eq!(sent["body"], "this range");
+        assert!(!stub.bodies()[0].contains("position"), "position is deprecated and drifts");
+    }
+
+    #[test]
+    fn a_single_line_comment_omits_the_range_rather_than_nulling_it() {
+        // Same rule as a submitted review's comments: GitHub rejects a null
+        // `start_line` on a comment that has no range.
+        let (f, stub) = forge(vec![StubTransport::json(200, r#"{"id":992}"#)]);
+        f.add_review_comment(
+            &repo(),
+            42,
+            "abc1234",
+            &DraftComment {
+                path: "src/b.rs".into(),
+                line: 9,
+                side: DiffSide::Left,
+                start_line: None,
+                start_side: None,
+                body: "one deleted line".into(),
+            },
+        )
+        .unwrap();
+        let sent: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
+        assert!(sent.get("start_line").is_none(), "got {sent}");
+        assert_eq!(sent["side"], "LEFT");
+        assert!(f.capabilities().single_comment);
     }
 
     #[test]

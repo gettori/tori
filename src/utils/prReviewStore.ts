@@ -34,6 +34,7 @@ import {
   type MergeableState,
   type Paged,
   type PrFile,
+  type PullRequest,
   type ReviewThread,
 } from "./forgeTypes";
 
@@ -68,6 +69,14 @@ export type OpenComposer = {
 export type RefreshPart = "files" | "threads" | "summary";
 
 export type PrReviewEntry = {
+  /// The pull request this entry is about, once anything has said.
+  ///
+  /// Held here rather than read per view because there is no read by number:
+  /// the poll knows the pull requests of branches this machine has units for,
+  /// and everything else (a row in the list, a tab restored from a link) has to
+  /// be told. A view that asked the poll directly would show nothing at all for
+  /// a pull request on a branch nobody has checked out.
+  pr: PullRequest | null;
   files: PrFile[];
   filesTruncated: boolean;
   filesLoading: boolean;
@@ -101,6 +110,7 @@ export const PR_REVIEW_DRAFTS_KEY = "tori.prReview.v1";
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 const blank = (): PrReviewEntry => ({
+  pr: null,
   files: [],
   filesTruncated: false,
   filesLoading: false,
@@ -143,6 +153,9 @@ const holds = (k: string, part: RefreshPart, n: number) => seq.get(`${k}\n${part
 /** Keys `ensure` has already loaded, so every consumer can call it on mount. */
 const ensured = new Set<string>();
 
+/** Pull requests whose head commit is already in the local object store. */
+const fetchedHeads = new Map<string, Promise<void>>();
+
 function slot(k: string) {
   if (!entries[k]) setEntries(k, blank());
 }
@@ -154,6 +167,15 @@ function slot(k: string) {
  *  same shape as one whose read failed. */
 export function prEntry(root: string, number: number): PrReviewEntry {
   return entries[key(root, number)] ?? EMPTY;
+}
+
+/** Tell the store which pull request a key is about. Whoever opened the thing
+ *  knows; nothing here can find out on its own. Idempotent, and the newest
+ *  answer wins, since a later read is a fresher one. */
+export function notePr(root: string, number: number, pr: PullRequest): void {
+  const k = key(root, number);
+  slot(k);
+  setEntries(k, "pr", pr);
 }
 
 /** Whether the head has moved since the patches in hand were read.
@@ -186,6 +208,13 @@ export function gapOpen(root: string, number: number, gapKey: string): boolean {
 
 export function gapLines(root: string, number: number, gapKey: string): string[] | undefined {
   return prEntry(root, number).gapLines[gapKey];
+}
+
+/** How many held comments this file carries. What the tab strip's pending mark
+ *  reads, so a review written across four files is visible from any one of
+ *  them. */
+export function pendingFor(root: string, number: number, path: string): number {
+  return prEntry(root, number).pending.filter((c) => c.path === path).length;
 }
 
 export function isViewed(root: string, number: number, path: string): boolean {
@@ -234,13 +263,17 @@ async function loadFiles(root: string, number: number): Promise<void> {
   try {
     const page = await invoke<Paged<PrFile>>("forge_pr_files", { projectPath: root, number });
     if (!holds(k, "files", mine)) return;
+    const covered = unitStatusForPr(root, number)?.pullRequest ?? null;
     setEntries(k, {
+      // Only as a fallback: an opener that already knows is a better source
+      // than a poll that may never have covered this branch at all.
+      pr: entries[k].pr ?? covered,
       files: page.items,
       filesTruncated: page.truncated,
       // Replaced outright, never merged with what a restored draft was written
       // against: this field is what the patches in hand describe, and null for
       // "cannot tell" is the only other thing it may say.
-      headSha: unitStatusForPr(root, number)?.pullRequest?.headSha ?? null,
+      headSha: covered?.headSha ?? null,
     });
     recheckAnchors(k);
   } catch (e) {
@@ -410,6 +443,29 @@ export function setViewedFile(root: string, number: number, path: string, on: bo
 
 // --- gap expansion ----------------------------------------------------------
 
+/// Put this pull request's head commit in the local object store, once.
+///
+/// Here rather than in the view that expands a gap, for the reason every other
+/// per-pull-request fact is here: a reader opening a gap in the fourth file
+/// should not wait on a fetch the first file already did, and a cache living in
+/// a component is a second thing `resetPrReviewStoreForTests` has to remember.
+///
+/// A failure forgets the promise so the next click tries again. Only a failed
+/// *fetch* does: clearing it for a failed read afterwards would re-fetch a
+/// commit that arrived perfectly well.
+export function ensurePrHead(root: string, number: number, sha: string): Promise<void> {
+  const k = key(root, number);
+  let go = fetchedHeads.get(k);
+  if (!go) {
+    go = invoke<void>("git_fetch_pr_head", { projectPath: root, number, sha }).catch((e) => {
+      fetchedHeads.delete(k);
+      throw e;
+    });
+    fetchedHeads.set(k, go);
+  }
+  return go;
+}
+
 export function noteGapLines(root: string, number: number, gapKey: string, lines: string[]): void {
   const k = key(root, number);
   slot(k);
@@ -571,6 +627,7 @@ export function resetPrReviewStoreForTests(): void {
   setEntries(reconcile({}));
   setViewingMap({});
   ensured.clear();
+  fetchedHeads.clear();
   seq.clear();
   cached = null;
   try {

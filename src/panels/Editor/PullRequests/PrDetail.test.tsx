@@ -397,17 +397,19 @@ describe("the pull request detail", () => {
 
     fireEvent.click(screen.getByText("big.json"));
     expect(document.querySelector('[data-file-skip="tooLarge"]')).toBeTruthy();
-    expect(screen.queryByText(/larger than the API will send/)).toBeTruthy();
+    expect(screen.queryByText("Diff too large to load")).toBeTruthy();
     // The one skip where content is genuinely missing is the one that offers a
-    // way to the content.
-    const out = screen.getByText(/Read it on github.com/) as HTMLAnchorElement;
+    // way to the content, and the only one that spends the attention colour.
+    const out = screen.getByText(/View on github.com/) as HTMLAnchorElement;
     expect(out.getAttribute("href")).toBe("https://github.com/skarif2/tori/pull/42/files");
 
     fireEvent.click(screen.getByText("logo.png"));
     expect(document.querySelector('[data-file-skip="noText"]')).toBeTruthy();
+    expect(screen.queryByText("Binary file, nothing to diff")).toBeTruthy();
 
     fireEvent.click(screen.getByText("from.ts → to.ts"));
     expect(document.querySelector('[data-file-skip="moved"]')).toBeTruthy();
+    expect(screen.queryByText("Renamed, contents unchanged")).toBeTruthy();
     // And the two that are complete as they stand offer none: a link out would
     // imply the reader is missing something.
     expect(screen.queryAllByText(/on github.com/)).toHaveLength(0);
@@ -544,7 +546,7 @@ describe("review threads on a pull request's diff", () => {
     await open();
 
     await waitFor(() => expect(screen.queryByText("in the gap")).toBeTruthy());
-    expect(screen.queryByText(/Not on a line this diff shows/)).toBeTruthy();
+    expect(screen.queryByText(/1 conversation is not on a line shown here/)).toBeTruthy();
     // Not in the outdated group either: it is not outdated, it is just not here.
     expect(document.querySelector('[data-group="outdated"]')).toBeNull();
   });
@@ -716,20 +718,15 @@ describe("writing and submitting a review", () => {
     fireEvent.click(document.querySelector("[data-file-status]")!);
   };
 
-  /** Open the diff and start a review, which is what makes lines pickable. */
-  const startReview = async (author = "skarif2") => {
-    await openDiff(author);
-    fireEvent.click(screen.getByText("Review"));
-  };
-
-  /** Pick diff rows by their text and write a line comment on them. */
+  /** Pick diff rows by their text and write a line comment on them. The second
+   *  and later rows extend the range, which is what shift does. */
   const commentOn = async (rowTexts: string[], body: string) => {
-    const rows = Array.from(document.querySelectorAll('[role="checkbox"]'));
-    for (const text of rowTexts) {
+    const rows = Array.from(document.querySelectorAll("[class*=commentable]"));
+    rowTexts.forEach((text, i) => {
       const row = rows.find((r) => r.textContent?.includes(text));
-      expect(row, `no selectable row for ${text}`).toBeTruthy();
-      fireEvent.click(row!);
-    }
+      expect(row, `no commentable row for ${text}`).toBeTruthy();
+      fireEvent.click(row!.querySelector("button")!, { shiftKey: i > 0 });
+    });
     const box = await waitFor(() => screen.getByLabelText(/^Comment on /));
     fireEvent.input(box, { target: { value: body } });
     fireEvent.click(screen.getByText("Add to review"));
@@ -738,7 +735,7 @@ describe("writing and submitting a review", () => {
   it("holds three comments, one of them a multi-line range, and posts nothing", async () => {
     bridge.files = [file({ path: "src/edit.ts", patch: RANGEABLE })];
     await signInAs("skarif2");
-    await startReview();
+    await openDiff();
 
     await commentOn(["+two edited"], "first");
     await commentOn(["-forty one"], "second");
@@ -766,7 +763,7 @@ describe("writing and submitting a review", () => {
     // on a single-owner repo that is every pull request. Hiding the buttons
     // would make this look like a build without the feature.
     await signInAs("skarif2");
-    await startReview("skarif2");
+    await openDiff("skarif2");
     await commentOn(["+two edited"], "a note");
 
     const button = (label: string) =>
@@ -793,7 +790,7 @@ describe("writing and submitting a review", () => {
 
   it("offers both verdicts on somebody else's pull request", async () => {
     await signInAs("skarif2");
-    await startReview("someone-else");
+    await openDiff("someone-else");
     await commentOn(["+two edited"], "a note");
 
     const button = (label: string) =>
@@ -814,7 +811,7 @@ describe("writing and submitting a review", () => {
     // The server accepts a bare "changes requested". A reader receiving one with
     // no word about what to change cannot act on it.
     await signInAs("skarif2");
-    await startReview("someone-else");
+    await openDiff("someone-else");
     await commentOn(["+two edited"], "a note");
 
     const button = (label: string) =>
@@ -835,7 +832,7 @@ describe("writing and submitting a review", () => {
     // requested", so the control says so rather than failing on click.
     bridge.capabilities = { ...FULL_CAPS, requestChanges: false };
     await signInAs("skarif2");
-    await startReview("someone-else");
+    await openDiff("someone-else");
     await commentOn(["+two edited"], "a note");
 
     const button = (label: string) =>
@@ -851,7 +848,7 @@ describe("writing and submitting a review", () => {
     // A reader who loses every comment they wrote to one refusal will not write
     // them again.
     await signInAs("skarif2");
-    await startReview("someone-else");
+    await openDiff("someone-else");
     await commentOn(["+two edited"], "a note");
     bridge.submitFails = { kind: "forbidden", message: "you cannot review this pull request" };
 
@@ -873,7 +870,7 @@ describe("writing and submitting a review", () => {
   it("keeps both verdicts shut while it does not know who you are", async () => {
     // Not-yet-known is not known-different. Offering approve here ships a button
     // whose only outcome is a 422.
-    await startReview("someone-else");
+    await openDiff("someone-else");
     await commentOn(["+two edited"], "a note");
 
     const button = (label: string) =>
@@ -896,19 +893,22 @@ describe("reading without reviewing", () => {
     localStorage.clear();
   });
 
-  it("leaves the diff inert until a review is started", async () => {
-    // `DiffRows` gives every selectable line a role, a tab stop and a click
-    // handler, and its own source says why a read-only diff must not have them:
-    // a five-thousand-line pull request would put five thousand controls in the
-    // tab order, and lines would answer clicks that mean nothing.
+  it("offers a comment on every row while spending one tab stop per hunk", async () => {
+    // What the old "start a review" gate was really for. It was guarding the
+    // tab order, not the review: a five-thousand-line pull request with a stop
+    // per line is a diff you cannot tab out of. Roving answers that directly,
+    // so the affordance no longer has to be hidden behind a button somebody has
+    // to find before they can say anything.
     render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
     fireEvent.click(document.querySelector("[data-file-status]")!);
 
-    expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(0);
-
-    fireEvent.click(screen.getByText("Review"));
-    expect(document.querySelectorAll('[role="checkbox"]').length).toBeGreaterThan(0);
+    const rows = document.querySelectorAll("[class*=commentable]");
+    expect(rows.length).toBeGreaterThan(0);
+    // One per row, and none of them in the tab order.
+    expect(document.querySelectorAll("[class*=commentAdd]")).toHaveLength(rows.length);
+    // Two hunks in the fixture, so two stops, and not one per row.
+    expect(document.querySelectorAll('[class*=diffLine][tabindex="0"]')).toHaveLength(2);
   });
 });
 
@@ -1316,7 +1316,7 @@ describe("landing a pull request", () => {
 describe("the pull request detail, to axe", () => {
   it("has no accessibility violations", async () => {
     render(() => <PrDetail root={ROOT} pr={pr()} onBack={() => {}} onLanded={() => {}} />);
-    await waitFor(() => expect(screen.getByText("Review")).toBeTruthy());
+    await waitFor(() => expect(document.querySelector("[data-file-status]")).toBeTruthy());
 
     // `document.body`, not the render container: a tooltip portals out of it.
     await expectNoAxeViolations(document.body);

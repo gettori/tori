@@ -388,6 +388,11 @@ pub struct Capabilities {
     pub approve: bool,
     pub request_changes: bool,
     pub comment_review: bool,
+    /// Posting one line comment on its own, outside a held review. Its own flag
+    /// and not folded into `comment_review`: this call carries a commit id and
+    /// lands immediately, which is a different thing from a comment batched
+    /// into a review, and a host can have the one without the other.
+    pub single_comment: bool,
 }
 
 /// The three states the credential can be in.
@@ -501,6 +506,7 @@ mod tests {
                 approve: true,
                 request_changes: true,
                 comment_review: true,
+                single_comment: true,
             },
             // All three auth states, because the Settings section renders a
             // distinct surface for each and a mirror that only saw one would

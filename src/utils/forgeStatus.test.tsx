@@ -98,6 +98,7 @@ const CAPS = {
   approve: true,
   requestChanges: true,
   commentReview: true,
+  singleComment: true,
 };
 
 function on(accountId: string): RepoAccount {
