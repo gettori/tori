@@ -103,8 +103,8 @@ export const Open: Story = {
     menu: MENU,
     children: (
       <>
-        <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU}
-          end={<><SyncMarks marks={MARKS.ahead} label="3 commits to push" /><span class={rows.dot}>●</span></>} />
+        <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU}
+          end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
         <BranchRow label="feat/billing" icon={<WorktreeMark active />} selected menu={MENU}
           end={<><SyncMarks marks={MARKS.diverged} label="diverged" />{bubble({ waitingForApproval: 1 })}</>} />
         <BranchRow label="fix/session-leak" icon={<WorktreeMark active={false} />} menu={MENU}
@@ -151,14 +151,13 @@ export const Drifted: Story = {
 };
 
 /** Every trailing mark a branch row can wear, on one row: the sync run, a Topic
- *  chip, the current-checkout dot and the rollup. They share one auto margin
- *  so they land in the same column on every row instead of splitting the free
- *  space between them.
+ *  chip and the rollup. They share one auto margin so they land in the same
+ *  column on every row instead of splitting the free space between them.
  *
- *  Nothing about the forge is here any more. A branch with a pull request
- *  reports it on a second line (`PrLine`), and a branch without one reports
- *  that by not having the line, so the cluster is back to what the branch
- *  itself is doing. */
+ *  Nothing about the forge is here any more, and nothing about the current
+ *  checkout: a branch with a pull request reports it on a second line
+ *  (`PrLine`), and HEAD is drawn in the row's own glyph (see `Current`), so
+ *  the cluster is back to what the branch itself is doing. */
 export const TheEndCluster: Story = {
   decorators: [
     () => (
@@ -172,7 +171,6 @@ export const TheEndCluster: Story = {
             <>
               <SyncMarks marks={MARKS.conflict} label="main has moved on" />
               <IconButton size="xs" class={rows.topicChip} icon={<Icon icon={Tag} />} aria-label="Open Topic Billing" tooltip="Billing" />
-              <span class={rows.dot}>●</span>
               {bubble({ waitingForAnswer: 1, executing: 2 })}
             </>
           }
@@ -201,9 +199,49 @@ export const Stub: Story = {
             iconLabel="A .bare with no worktrees (right-click to add one or remove it)"
             menu={MENU}
           />
-          <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} end={<span class={rows.dot}>●</span>} />
+          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
         </ProjectRow>
       </Tree>
+    ),
+  ],
+};
+
+/** Git's checked-out branch, drawn in the row's own glyph: the branch tip
+ *  fills and the mark steps up out of the muted tone the column rests at. It
+ *  was a teal bullet in the end cluster, which put a colour on a fact that
+ *  never changes while you look at it and cost a slot next to the marks that
+ *  do. Shown against its neighbours, since the only question is whether one
+ *  filled node reads at 16px. */
+export const Current: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
+          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU}
+            end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
+          <BranchRow label="release/26.9" icon={<BranchMark active={false} />} menu={MENU} />
+          <BranchRow label="feat/billing" icon={<WorktreeMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
+          <BranchRow label="fix/session-leak" icon={<WorktreeMark active={false} />} menu={MENU} end={bubble({ idle: 1 })} />
+        </ProjectRow>
+      </Tree>
+    ),
+  ],
+};
+
+/** The fill at four times the row's size, beside the mark it has to be told
+ *  apart from. Under reduced motion an executing row fills BOTH nodes, which
+ *  is the whole margin between "HEAD is here" and "something is running", so
+ *  the two sit next to each other here. */
+export const CurrentMarkSizes: Story = {
+  decorators: [
+    () => (
+      <div style={{ display: "flex", "align-items": "center", gap: "24px", color: "var(--fg-muted)" }}>
+        <BranchMark active={false} />
+        <BranchMark active={false} current />
+        <BranchMark active={false} size={64} />
+        <BranchMark active={false} current size={64} />
+        <WorktreeMark active={false} current size={64} />
+      </div>
     ),
   ],
 };
@@ -233,7 +271,7 @@ export const Truncated: Story = {
     () => (
       <Tree>
         <ProjectRow name="monorepo" icon={<ProjectIcon seed="/w/mono" />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} end={<span class={rows.dot}>●</span>} />
+          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
           <BranchRow label="release/26.9" icon={<BranchMark active={false} />} menu={MENU} />
           <MoreRow count={14} open={false} end={bubble({ executing: 1, idle: 3 })} />
         </ProjectRow>
@@ -319,7 +357,7 @@ export const AColumn: Story = {
       <Tree>
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} end={bubble({ waitingForApproval: 1 })} />
         <ProjectRow name="web" icon={<ProjectIcon seed="/w/web" />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} end={<span class={rows.dot}>●</span>} />
+          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
           <BranchRow label="feat/onboarding" icon={<WorktreeMark active />} selected menu={MENU} end={bubble({ executing: 1 })} />
         </ProjectRow>
         <ProjectRow name="infra" icon={<ProjectIcon seed="/w/infra" />} disclosure menu={MENU} />

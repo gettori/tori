@@ -16,8 +16,9 @@ import styles from "./gitMarks.module.css";
  * Shape is Lucide's (`git-branch`, and a folder-with-branch for a worktree),
  * kept at the same 24x24 box and stroke weight as everything else in the
  * column. At rest the mark is plain `currentColor`, indistinguishable from the
- * static glyphs beside it; only the pulse takes a colour of its own, so a row
- * that is not working never differs from its neighbours in any way.
+ * static glyphs beside it; only the pulse takes a colour of its own. The two
+ * states the mark carries are both drawn in the glyph's own ink: `current`
+ * fills the branch tip and brightens, `stub` dashes the folder outline.
  */
 
 const DEFAULT_STROKE = 1.75;
@@ -36,10 +37,13 @@ export type GitMarkProps = JSX.SvgSVGAttributes<SVGSVGElement> & {
   /** Run the pulse. What counts as working is the caller's question; the mark
    *  only draws the answer. */
   active?: boolean;
+  /** This is git's checked-out branch here: the mark fills its tip node and
+   *  steps out of the column's muted tone. */
+  current?: boolean;
 };
 
 function Frame(props: GitMarkProps & { mark: string; children: JSX.Element }) {
-  const [local, rest] = splitProps(props, ["size", "strokeWidth", "active", "class", "mark", "children"]);
+  const [local, rest] = splitProps(props, ["size", "strokeWidth", "active", "current", "class", "mark", "children"]);
   return (
     <svg
       viewBox="0 0 24 24"
@@ -53,6 +57,7 @@ function Frame(props: GitMarkProps & { mark: string; children: JSX.Element }) {
       aria-hidden="true"
       data-mark={local.mark}
       data-active={local.active ? "true" : "false"}
+      data-current={local.current ? "true" : undefined}
       classList={{ [styles.mark]: true, [local.class ?? ""]: !!local.class }}
       {...rest}
     >
@@ -70,7 +75,7 @@ const WORKTREE_STEM = "M18 19a5 5 0 0 1-5-5v8";
 export const BranchMark: Component<GitMarkProps> = (props) => (
   <Frame {...props} mark="branch">
     <g class={styles.base}>
-      <circle cx="18" cy="18" r="3" />
+      <circle class={styles.tip} cx="18" cy="18" r="3" />
       <circle cx="6" cy="6" r="3" />
       <path d={BRANCH_LINE} />
     </g>
@@ -99,7 +104,7 @@ export const WorktreeMark: Component<GitMarkProps & { stub?: boolean }> = (props
       <path d={WORKTREE_STEM} />
       <path d={FOLDER_OUTLINE} classList={{ [styles.stub]: local.stub }} />
       <circle cx="13" cy="12" r="2" />
-      <circle cx="20" cy="19" r="2" />
+      <circle class={styles.tip} cx="20" cy="19" r="2" />
     </g>
     <g class={styles.pulse}>
       <path class={styles.tail} pathLength="100" d={FOLDER_OUTLINE} />
