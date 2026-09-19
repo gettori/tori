@@ -24,8 +24,8 @@
 use super::http::{classify, paginate_rest, HttpRequest, Recording, Transport, PAGE_CAP};
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
-    MergeableState, OrgAccess, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef,
-    ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    MergeableState, OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest, RateSnapshot,
+    RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -778,10 +778,19 @@ impl Forge for GitLabForge {
         })
     }
 
-    fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError> {
+    fn pr_summary(&self, repo: &RepoRef, number: u64) -> Result<PrSummary, ForgeError> {
         self.require_token()?;
         let v = self.merge_request(repo, number)?;
-        Ok(mergeable_from(&v))
+        Ok(PrSummary {
+            mergeable_state: mergeable_from(&v),
+            updated_at: str_at(&v, "updated_at"),
+            // No counts, rather than zeros. A merge request object carries none
+            // of them: the commit count, the per-side totals and the reviewer
+            // verdicts each need their own endpoint, and "0 commits, +0 -0" on
+            // screen is a sentence nobody wrote. The merge verdict above is the
+            // part GitLab can answer, and it is the one a control depends on.
+            counts: None,
+        })
     }
 
     /// Squash is a parameter; a merge commit is the project's own setting.

@@ -90,7 +90,7 @@ export default function PrDetail(props: {
   // Landing it. `null` is "nobody has asked yet", which is not `"unknown"`
   // ("GitHub has not decided"): one is a blank the UI must not render as a
   // verdict, the other is a verdict.
-  const mergeState = () => entry().mergeState;
+  const mergeState = () => entry().summary?.mergeableState ?? null;
   const [mergeBusy, setMergeBusy] = createSignal(false);
   const [mergeError, setMergeError] = createSignal<string | null>(null);
   const [merged, setMerged] = createSignal(false);

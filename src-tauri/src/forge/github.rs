@@ -30,8 +30,9 @@ use super::http::{
 };
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
-    Grant, MergeableState, OrgAccess, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef,
-    ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    Grant, MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrState, PrSummary,
+    PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread,
+    UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -46,6 +47,12 @@ use serde_json::Value;
 const PR_FILE_CAP: usize = 300;
 const PR_FILES_PER_PAGE: usize = 100;
 const PR_FILE_PAGES: usize = PR_FILE_CAP / PR_FILES_PER_PAGE;
+
+/// How many review rows one page carries, and how many pages are worth
+/// following. A pull request with more than these has been reviewed more times
+/// than any counter needs to be exact about.
+const REVIEWS_PER_PAGE: usize = 100;
+const REVIEW_PAGES: usize = 5;
 
 const GITHUB_WEB: &str = "https://github.com";
 const API_BASE: &str = "https://api.github.com";
@@ -252,6 +259,57 @@ fn side_wire(side: DiffSide) -> &'static str {
 /// `mergeable: null` means it is still being computed, which is `Unknown` and
 /// means "ask again", not "no". Anything unrecognised is also `Unknown`: a new
 /// state string must not read as a green light.
+fn u32_at(v: &Value, key: &str) -> u32 {
+    v.get(key).and_then(|x| x.as_u64()).unwrap_or(0) as u32
+}
+
+/// Who is currently signing off and who is currently blocking.
+///
+/// One standing verdict per reviewer, taken from their latest row: a reviewer
+/// who requests changes and then approves has said one thing, and counting
+/// every row would report them as both at once.
+///
+/// `COMMENTED` and `PENDING` rows are passed over rather than treated as a new
+/// verdict, which is GitHub's own rule: leaving a remark after an approval does
+/// not withdraw the approval, and a pending row is a review nobody has sent
+/// yet. `DISMISSED` does the opposite of being skipped, and has to: it is a
+/// verdict that was taken away, so it clears the reviewer rather than letting
+/// whatever they said before it stand again.
+fn review_counts(rows: &[Value]) -> PrReviewCounts {
+    // Insertion-ordered by reviewer is not needed, only the last word per
+    // reviewer, so a plain map over the rows in the order the API sends them
+    // (oldest first) is enough.
+    let mut standing: std::collections::HashMap<String, Option<bool>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let login = row.get("user").map(|u| str_at(u, "login")).unwrap_or_default();
+        if login.is_empty() {
+            continue;
+        }
+        match row.get("state").and_then(|s| s.as_str()) {
+            Some("APPROVED") => {
+                standing.insert(login, Some(true));
+            }
+            Some("CHANGES_REQUESTED") => {
+                standing.insert(login, Some(false));
+            }
+            Some("DISMISSED") => {
+                standing.insert(login, None);
+            }
+            _ => {}
+        }
+    }
+    let mut counts = PrReviewCounts::default();
+    for verdict in standing.values() {
+        match verdict {
+            Some(true) => counts.approved += 1,
+            Some(false) => counts.changes_requested += 1,
+            None => {}
+        }
+    }
+    counts
+}
+
 fn mergeable_from_rest(v: &Value) -> MergeableState {
     match v.get("mergeable_state").and_then(|m| m.as_str()) {
         Some("clean") => MergeableState::Clean,
@@ -788,14 +846,46 @@ mutation($threadId:ID!,$body:String!){
         Ok(())
     }
 
-    fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError> {
+    fn pr_summary(&self, repo: &RepoRef, number: u64) -> Result<PrSummary, ForgeError> {
         self.require_token()?;
         // Asked, not computed. GitHub accounts for branch protection and
         // required checks that Tori cannot see, so a local verdict would render
-        // an enabled button the server then refuses.
+        // an enabled button the server then refuses. The totals ride the same
+        // response: they exist only on this detail object, never on the
+        // pull-request-simple shape the list and the per-branch lookup return.
         let path = format!("/repos/{}/{}/pulls/{number}", repo.owner, repo.repo);
         let v = self.send(self.rest("GET", &path, None))?;
-        Ok(mergeable_from_rest(&v))
+
+        let path = format!(
+            "/repos/{}/{}/pulls/{number}/reviews?per_page={REVIEWS_PER_PAGE}",
+            repo.owner, repo.repo
+        );
+        // One page in every realistic case, since `paginate_rest` stops as soon
+        // as a response carries no `Link: rel="next"`. Following it at all is
+        // what keeps the counts right: the rows come back oldest first, so a
+        // first-page-only read on a heavily reviewed pull request would report
+        // verdicts that have since been replaced.
+        let (rows, truncated) = paginate_rest(
+            self.transport.as_ref(),
+            self.rest("GET", &path, None),
+            REVIEW_PAGES,
+        )?;
+
+        Ok(PrSummary {
+            mergeable_state: mergeable_from_rest(&v),
+            updated_at: str_at(&v, "updated_at"),
+            counts: Some(PrCounts {
+                commits: u32_at(&v, "commits"),
+                changed_files: u32_at(&v, "changed_files"),
+                additions: u32_at(&v, "additions"),
+                deletions: u32_at(&v, "deletions"),
+                // A walk that was cut short saw the oldest rows and not the
+                // newest, so the standing verdict of every reviewer past the cap
+                // is unknown. Counted short, that renders as "nobody has
+                // approved", which is a verdict rather than a blank.
+                reviews: (!truncated).then(|| review_counts(&rows)),
+            }),
+        })
     }
 
     fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod) -> Result<(), ForgeError> {
@@ -1390,22 +1480,52 @@ mod tests {
         assert!(format!("{err}").contains("merge conflict between base and head"), "got {err}");
     }
 
+    /// The detail response, then the reviews page `pr_summary` reads after it.
+    fn summary_stubs(detail: &str) -> Vec<super::super::http::HttpResponse> {
+        vec![StubTransport::json(200, detail), StubTransport::json(200, "[]")]
+    }
+
     #[test]
     fn mergeability_is_read_from_the_server_including_still_computing() {
-        let (f, _stub) = forge(vec![StubTransport::json(200, r#"{"mergeable":null,"mergeable_state":"unknown"}"#)]);
+        let (f, _stub) = forge(summary_stubs(r#"{"mergeable":null,"mergeable_state":"unknown"}"#));
         // `null` means "still computing", which must read as Unknown (ask
         // again), never as a green light.
-        assert_eq!(f.mergeability(&repo(), 1).unwrap(), MergeableState::Unknown);
+        assert_eq!(f.pr_summary(&repo(), 1).unwrap().mergeable_state, MergeableState::Unknown);
 
-        let (f, _stub) = forge(vec![StubTransport::json(200, r#"{"mergeable":true,"mergeable_state":"behind"}"#)]);
-        assert_eq!(f.mergeability(&repo(), 1).unwrap(), MergeableState::Behind);
+        let (f, _stub) = forge(summary_stubs(r#"{"mergeable":true,"mergeable_state":"behind"}"#));
+        assert_eq!(f.pr_summary(&repo(), 1).unwrap().mergeable_state, MergeableState::Behind);
+    }
+
+    #[test]
+    fn a_reviewer_is_counted_by_their_last_word_and_not_their_rows() {
+        // The three rules the overview tab's numbers rest on, in one pass: a
+        // later verdict replaces an earlier one, a remark left afterwards does
+        // not withdraw it, and a dismissal takes it away rather than letting
+        // whatever came before it stand again.
+        let reviews = r#"[
+            {"user":{"login":"ana"},"state":"CHANGES_REQUESTED"},
+            {"user":{"login":"ana"},"state":"APPROVED"},
+            {"user":{"login":"ana"},"state":"COMMENTED"},
+            {"user":{"login":"bo"},"state":"APPROVED"},
+            {"user":{"login":"bo"},"state":"DISMISSED"},
+            {"user":{"login":"cy"},"state":"CHANGES_REQUESTED"},
+            {"user":{"login":"dee"},"state":"PENDING"}
+        ]"#;
+        let (f, _stub) = forge(vec![
+            StubTransport::json(200, r#"{"mergeable_state":"blocked","commits":7}"#),
+            StubTransport::json(200, reviews),
+        ]);
+        let counts = f.pr_summary(&repo(), 1).unwrap().counts.unwrap();
+        assert_eq!(counts.commits, 7);
+        assert_eq!(counts.reviews.unwrap().approved, 1, "ana approved last; bo was dismissed");
+        assert_eq!(counts.reviews.unwrap().changes_requested, 1, "only cy still blocks");
     }
 
     #[test]
     fn an_unrecognised_mergeable_state_is_unknown_not_clean() {
         // A state string GitHub adds later must not read as a green light.
-        let (f, _stub) = forge(vec![StubTransport::json(200, r#"{"mergeable_state":"something_new"}"#)]);
-        assert_eq!(f.mergeability(&repo(), 1).unwrap(), MergeableState::Unknown);
+        let (f, _stub) = forge(summary_stubs(r#"{"mergeable_state":"something_new"}"#));
+        assert_eq!(f.pr_summary(&repo(), 1).unwrap().mergeable_state, MergeableState::Unknown);
     }
 
     #[test]

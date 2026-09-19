@@ -28,6 +28,19 @@ let threads: unknown[] = [];
 let mergeable = "clean";
 let report: StatusReport | null = null;
 
+/** The detail read, around the one field a test cares about. */
+const summaryOf = (mergeableState: string) => ({
+  mergeableState,
+  updatedAt: "2026-09-18T11:02:00Z",
+  counts: {
+    commits: 2,
+    changedFiles: 1,
+    additions: 1,
+    deletions: 1,
+    reviews: { approved: 0, changesRequested: 0 },
+  },
+});
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
@@ -44,7 +57,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return answer;
     }
     if (cmd === "forge_review_threads") return { items: threads, truncated: false };
-    if (cmd === "forge_mergeability") return mergeable;
+    if (cmd === "forge_pr_summary") return summaryOf(mergeable);
     if (cmd === "forge_unit_statuses") return report ?? { statuses: [], uncovered: 0, rate: RATE };
     if (cmd === "forge_repo_account") {
       return {
@@ -207,7 +220,7 @@ describe("the pull request review store", () => {
 
     expect(cmds("forge_pr_files")).toHaveLength(1);
     expect(cmds("forge_review_threads")).toHaveLength(1);
-    expect(cmds("forge_mergeability")).toHaveLength(1);
+    expect(cmds("forge_pr_summary")).toHaveLength(1);
     expect(prEntry(ROOT, 42).files).toHaveLength(1);
   });
 
@@ -220,7 +233,7 @@ describe("the pull request review store", () => {
 
     expect(cmds("forge_review_threads")).toHaveLength(1);
     expect(cmds("forge_pr_files")).toHaveLength(0);
-    expect(cmds("forge_mergeability")).toHaveLength(0);
+    expect(cmds("forge_pr_summary")).toHaveLength(0);
   });
 
   it("flips to drift when the head moves, and clears it on a files read", async () => {

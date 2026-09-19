@@ -48,6 +48,19 @@ const bridge = vi.hoisted(() => ({
   mergeable: "clean" as string,
 }));
 
+/** The detail read, around the one field a test cares about. */
+const summaryOf = (mergeableState: string) => ({
+  mergeableState,
+  updatedAt: "2026-09-18T11:02:00Z",
+  counts: {
+    commits: 2,
+    changedFiles: 1,
+    additions: 1,
+    deletions: 1,
+    reviews: { approved: 0, changesRequested: 0 },
+  },
+});
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
@@ -64,7 +77,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       });
     if (cmd === "forge_pr_files")
       return Promise.resolve({ items: bridge.files, truncated: false });
-    if (cmd === "forge_mergeability") return Promise.resolve(bridge.mergeable);
+    if (cmd === "forge_pr_summary") return Promise.resolve(summaryOf(bridge.mergeable));
     if (cmd === "forge_merge") return Promise.resolve(null);
     if (cmd === "forge_repo_account")
       return Promise.resolve({
