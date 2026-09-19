@@ -1,0 +1,22 @@
+/* A tooltip body of several clauses. The chrome around it is Tooltip's; what
+   this adds is the one distinction a run of facts needs, which is which of
+   them the pointer was actually asking about. */
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+}
+
+/* What the thing under the pointer says. Tooltip's own `--fg-default`, stated
+   here so the pair below reads as a pair rather than as one styled line and
+   one inherited one. */
+.lead {
+  color: var(--fg-default);
+}
+
+/* Everything the surface volunteered on top: an age, a verdict, the files
+   behind a count. Muted because the reader came for the line above and a flat
+   run of five equal sentences is what makes a tooltip feel like a dump. */
+.rest {
+  color: var(--fg-muted);
+}

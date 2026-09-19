@@ -9,7 +9,7 @@
 // Every decision about *which* marks is `utils/branchSync.ts`'s. What lives
 // here is the icon each one wears and the size it is drawn at.
 
-import { For, Show } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import { ArrowDownToLine, ArrowUpFromLine, FilePen, GitMergeConflict, type LucideIcon } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
@@ -32,9 +32,13 @@ export default function SyncMarks(props: {
    *  attribute. One target for the whole run, because these are 13px glyphs and
    *  a tooltip per glyph is four hover targets inside twenty pixels.
    *
+   *  A string for the surfaces whose answer is one phrase, or a `TooltipLines`
+   *  for the branch row, whose answer is a run of facts that needs telling
+   *  apart.
+   *
    *  Omitted where the surface already has a tooltip of its own, which is the
    *  titlebar chip: its chrome wraps the run and says more than this could. */
-  label?: string;
+  label?: JSX.Element;
   class?: string;
 }) {
   const glyphs = () => (
