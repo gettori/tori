@@ -1,0 +1,407 @@
+/* The sidebar tree's rows: the project card, the branch rows under it, the
+   rail that joins them, and the trailing mark cluster they all end on. Lifted
+   out of LeftSidebar.module.css with the components; the tree around them
+   (`.tree`, `.treeHead`, `.treeScroll`, the strip) stays there.
+
+   `.rowScope` carries the geometry every rule below reads. It lives on the
+   tree's own root in the app, and on a story's wrapper in the workshop, so a
+   row measures the same in both. */
+.rowScope {
+  /* Row height, matching the settings rail's items: their 8px·s block padding
+     around a 16px icon and a 13px·s label. */
+  --row-h: calc(34px * var(--ui-scale));
+  /* A branch row is padded rather than fixed, so its height follows its label. */
+  --branch-row-pad: calc(7px * var(--ui-scale));
+  /* The sidebar's `.tree` declares this too, for its head and its filter, and
+     the whole point of the inset is that all three line up. Same value, two
+     stylesheets, because neither can read the other. */
+  --tree-inset: calc(8px * var(--ui-scale));
+  /* Dead centre of a project row's 16px·s icon slot (8px·s of row padding, then
+     half the slot). The rail is drawn on this line, so the branches hang off
+     the icon of the project they belong to. */
+  --rail-x: calc(16px * var(--ui-scale));
+  /* Where a branch row's CONTENT begins (sub1 indent) - its git-kind glyph,
+     the name right after. One clear indent past the project icon at 8px·s, and
+     far enough right of the rail that the line reads as running beside the
+     glyph column rather than through it. */
+  --branch-label-x: calc(28px * var(--ui-scale));
+  /* One indent level: branch depth to attempt depth. */
+  --nest-step: calc(12px * var(--ui-scale));
+}
+
+/* A project and its branches, no longer boxed. The border and the gap between
+   every card drew fourteen frames down a column that has one job, so what is
+   left is the group's left edge and nothing else. Consecutive collapsed
+   projects now sit on one rhythm, with breathing room added only under an
+   expanded one (see `.branchNode:last-child`). */
+.projectCard {
+  position: relative;
+  margin: 0 0 0 var(--tree-inset);
+}
+
+/* Zeroed here rather than on `.row`, which would also unindent the empty-state
+   rows that have no card. */
+.projectCard .row {
+  margin-left: 0;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  height: var(--row-h);
+  margin: 0 0 0 var(--tree-inset);
+  padding: 0 calc(8px * var(--ui-scale));
+  /* Square on the left like the branch pill, so every list row in this column
+     takes the same shape under the pointer. */
+  border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background var(--tori-duration-fast) ease;
+}
+
+/* [data-expanded] mirrors :hover: it persists on the row a context menu belongs
+   to, so it stays highlighted while the menu is open. Kobalte stamps it on the
+   trigger, which IS the row, so nothing in the sidebar toggles a class for it. */
+.row:hover,
+.row[data-expanded] {
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
+}
+
+.branchNode {
+  position: relative;
+}
+
+/* Under the rows (z-index 2), so a hovered or selected pill paints over the
+   rail rather than having to start clear of it. */
+.branchNode::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-rail);
+  z-index: 0;
+}
+
+/* An expanded project's branches need to end before the next project's name.
+   Two collapsed projects still sit on one unbroken rhythm. */
+.branchNode:last-child {
+  margin-bottom: calc(8px * var(--ui-scale));
+}
+
+/* ---- Attempt groups (one level deeper than a branch) ----
+   A fan-out group is a branch node whose children are branch nodes: the group
+   header sits at branch depth and each attempt one step in. Nothing here
+   re-implements the rail; the branch machinery is variable-driven, so an
+   attempt node re-anchors those two variables one --nest-step to the right and
+   the same rules draw the deeper rail and pill. Declared after .branchNode
+   (equal specificity) so the overrides win. */
+.attemptNode {
+  --rail-x: calc(16px * var(--ui-scale) + var(--nest-step));
+  --branch-label-x: calc(28px * var(--ui-scale) + var(--nest-step));
+}
+
+.attemptNode:last-child {
+  margin-bottom: 0;
+}
+
+/* Hover and selection share one pill: it starts ON the rail so the marker bar
+   lands where the line was, and runs to the column's right edge. The z-index
+   gives the -1 pill a context to sit behind, and lifts the row over the rail. */
+.row.branch {
+  height: auto;
+  padding-block: var(--branch-row-pad);
+  z-index: 2;
+}
+.row.branch::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x);
+  /* Not droppable: with `left` set and `right` auto this shrink-to-fits its own
+     empty content and vanishes. Zero runs it to the row's edge, where the
+     project rows above already paint theirs. */
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  /* Square on the rail, rounded away from it: a rounded left edge would clip
+     the selection's marker bar into a lozenge, and the bar has to run the row's
+     full height to read as the rail thickening. */
+  border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
+  background: transparent;
+}
+.row.branch:hover,
+.row.branch[data-expanded] {
+  background: transparent;
+}
+.row.branch:hover::before,
+.row.branch[data-expanded]::before {
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
+}
+
+/* The "N more branches" / "Show less" row. It keeps the whole `.branch`
+   geometry - rail, pill, glyph slot - because it IS an item in the list, and
+   the rail has to run through it. Only the tone differs: its label is an
+   instruction rather than a name, so it and its glyph take the dimmer subtle
+   tone that the disclosure chevrons already use. */
+.row.moreRow .label,
+.row.moreRow .rowIcon {
+  color: var(--fg-subtle);
+}
+.row.moreRow:hover .label,
+.row.moreRow:hover .rowIcon {
+  color: var(--fg-muted);
+}
+
+/* Selected branch: the hover pill's geometry held in a brand wash that fades
+   out to the right, with the same left bar the settings rail marks its active
+   category with (`.railItemActive::before`). The bar covers the rail rather
+   than sitting beside it, so the line reads as thickening into the selection.
+   Declared AFTER the :hover rule at equal specificity, so hovering a selected
+   row keeps the gold instead of dropping to grey - the same ordering every
+   selected row in this app depends on. */
+.row.branch.sel::before {
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+      var(--tori-border-thick) 100% no-repeat,
+    linear-gradient(to right, var(--brand-subtle), transparent);
+}
+
+.row.project .label {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+/* The selected branch is the one name in the column that reads at project
+   weight: it is what the rest of the window is showing. */
+.row.branch.sel .label {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+.row.branch .label {
+  color: var(--fg-muted);
+}
+
+/* The one indent level left, expressed from --branch-label-x so a nested node
+   (see .attemptNode) shifts its whole subtree by overriding that one variable.
+   At the top level this is 34px·s, as it always was. */
+.row.sub1 {
+  padding-left: var(--branch-label-x);
+}
+
+.row.dim {
+  color: var(--fg-muted);
+  font-style: italic;
+  cursor: default;
+}
+.row.dim:hover {
+  background: transparent;
+}
+
+.row .label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Leading type icon on a project / branch row, boxed to the same 16px
+   slot as `.seti-icon` so labels line up across levels. */
+.rowIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+/* CSS-sized glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.rowIcon :global(svg) {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+}
+
+/* A project row's icon may be an IMAGE (its favicon, or one the user uploaded)
+   rather than a glyph. It gets the full 16px slot - a favicon is drawn to fill
+   its own square, so shrinking it to the 14px glyph box would leave it visibly
+   smaller than every icon around it - and `contain` letterboxes a non-square
+   logo instead of cropping it. Rounded just enough to soften a hard-edged PNG
+   against the row's own radius. */
+.projectIcon img {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  object-fit: contain;
+  border-radius: calc(3px * var(--ui-scale));
+}
+
+/* ---- The icon slot's two states ----
+   At rest the slot says what the project is; under the pointer it says what
+   clicking it does. One slot, cross-faded, so the row keeps a single glyph and
+   the disclosure costs no width at the right edge.
+   `[data-expanded]` mirrors :hover the way every other row here does: it is on
+   the row while its context menu is open. */
+.projectIcon {
+  position: relative;
+}
+
+.projectIconArt,
+.iconChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--tori-duration-fast) ease;
+}
+
+.iconChevron {
+  position: absolute;
+  inset: 0;
+  color: var(--fg-subtle);
+  opacity: 0;
+}
+
+.row.project:hover .projectIconArt,
+.row.project[data-expanded] .projectIconArt {
+  opacity: 0;
+}
+
+.row.project:hover .iconChevron,
+.row.project[data-expanded] .iconChevron {
+  opacity: 1;
+}
+
+/* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
+   that rotates 180° into a chevron-up when the row is expanded. Because the
+   label grows (flex:1), it always sits flush right after any badges/dot.
+   A project row's disclosure moved into its icon slot (see `.iconChevron`);
+   this is what a fan-out group header still uses, having no icon to swap. */
+.rowChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  color: var(--fg-subtle);
+  transition: transform var(--tori-duration-fast) ease;
+}
+.rowChevron.open {
+  transform: rotate(180deg);
+}
+/* CSS-sized chevron (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.rowChevron :global(svg) {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+/* The "current checkout" mark on a branch row. */
+.dot {
+  color: var(--info-fg);
+  font-size: var(--tori-text-2xs);
+  margin-left: auto;
+}
+
+/* A container whose worktrees did not all get their shared files. Warning hue
+   rather than the session states beside it: this is about the project's setup,
+   not about anything running in it. */
+/* In `.rowEnd` with the rest, so it takes that cluster's box and its 13px
+   glyph rather than a control's. */
+.driftMark {
+  flex: none;
+  height: calc(13px * var(--ui-scale));
+  padding: 0;
+  border-color: transparent;
+  color: var(--scale-orange);
+}
+
+/* The forge's one door per repo: add an account for this host, or pick between
+   the ones it has. Sized to the glyph rather than to a control, so it lands in
+   the same column as a branch row's marks directly below it. */
+.rowGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.rowGlyph:hover,
+.rowGlyph:focus-visible {
+  color: var(--brand-default);
+}
+
+/* Everything a row says about itself, in one cluster at its end.
+   Each of these used to push itself right with its own `margin-left: auto`, so
+   a row with two of them split the free space *between* them and the glyphs
+   landed in a different column on every row. One auto margin, one order, one
+   column. */
+.rowEnd {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* The cluster owns the alignment now, so nothing inside it may claim the free
+   space for itself. */
+.rowEnd > * {
+  margin-left: 0;
+}
+
+/* One glyph box for every mark in the cluster, which is what actually makes a
+   column: a 14px glyph beside a 13px one is half a pixel of drift per row, and
+   a padded control beside a bare span is four. A more specific rule still wins,
+   which is how the Tag chip keeps its 12px. */
+.rowEnd :global(svg) {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
+/* Row flag, pushed to the right: the `stub` mark on an empty .bare container
+   and a fan-out group's attempt count. The generic `.hint` variant is the
+   quieter of the two. */
+.row .badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: var(--tori-text-2xs);
+  padding: 0 calc(4px * var(--ui-scale));
+  border-radius: 3px;
+  color: var(--brand-default);
+  background: var(--brand-subtle);
+}
+
+.row .badge.hint {
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
+}
+
+/* The Tag chip on a member unit: an IconButton with its border cleared, so the
+   row reads a glyph rather than a control until the pointer finds it. */
+.row .topicChip,
+.row .topicChip:hover:not(:disabled) {
+  flex: none;
+  margin-left: calc(4px * var(--ui-scale));
+  border-color: transparent;
+  color: var(--brand-default);
+}
+.row .topicChip:hover:not(:disabled) {
+  color: var(--brand-strong);
+}
+/* CSS-sized so it tracks --ui-scale, smaller than the control icon. */
+.row .topicChip :global(svg) {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
