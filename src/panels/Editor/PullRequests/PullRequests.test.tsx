@@ -94,6 +94,7 @@ const { default: PullRequests } = await import("./PullRequests");
 const { noteForgeAccounts, noteForgeEnabled, noteWatchedProjects, resetForgeStatusForTests, pollNow } =
   await import("../../../utils/forgeStatus");
 const { resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
+const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
 
 /** The one account these tests act as, in this state. Signed out is no account. */
 const noteAuth = (auth: AuthState) =>
@@ -111,6 +112,7 @@ const signIn = () => {
 describe("the pull request list", () => {
   beforeEach(() => {
     resetPrReviewStoreForTests();
+    resetPrListStoreForTests();
     resetForgeStatusForTests();
     bridge.calls.length = 0;
     bridge.items = [];
