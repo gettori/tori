@@ -1,0 +1,20 @@
+/* The list given a stage to sit in. A reading column rather than the full pane
+   width: a row is a number, a title and a branch, and stretched across 2,000px
+   the three end up too far apart to read as one row. */
+.stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--canvas-default);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: calc(760px * var(--ui-scale));
+  margin: 0 auto;
+  border-right: 1px solid var(--border-default);
+  border-left: 1px solid var(--border-default);
+}

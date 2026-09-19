@@ -85,7 +85,9 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvicted
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, onWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
-const { syntheticId, parseSyntheticId, prTabId } = await import("../../utils/syntheticTabs");
+const { syntheticId, parseSyntheticId, prTabId, prListTabId } = await import(
+  "../../utils/syntheticTabs",
+);
 
 const GRAPH = syntheticId("graph", REPO);
 const FILE = `${REPO}/src/a.ts`;
@@ -220,7 +222,19 @@ describe("a tori:// tab in the editor pane", () => {
     await open(prTabId(REPO, 42));
 
     const strip = await waitFor(() => tab("#42"));
-    expect(strip.querySelector('[class*="lucide-git-pull-request"]')).toBeTruthy();
+    expect(strip.querySelector(".lucide-git-pull-request")).toBeTruthy();
+  });
+
+  it("opens the project's pull request list as a tab of its own", async () => {
+    // Nobody is signed in here, so what proves the routing is the list saying
+    // why it is empty: an unrouted kind would render an empty tab instead.
+    await mountEditor();
+    await open(prListTabId(REPO));
+
+    await waitFor(() =>
+      expect(screen.getByText("Sign in to GitHub in Settings to see pull requests.")).toBeTruthy(),
+    );
+    expect(mountedCodeEditor).toBe(0);
   });
 
   it("offers no history for a view, which has none", async () => {

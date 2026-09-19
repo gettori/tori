@@ -122,6 +122,14 @@ export function parsePrDiffArg(arg: string): { number: number; file: string } {
 }
 
 /**
+ * Every open pull request on a project, as a tab. One per workspace, so it has
+ * no argument: the list is the project's, the way the commit graph is.
+ */
+export function prListTabId(workspace: string): string {
+  return syntheticId("prs", workspace);
+}
+
+/**
  * A pull request's own tab: the description, the review being written, and the
  * verdict it will be submitted with.
  *
@@ -163,6 +171,7 @@ export function syntheticTabName(id: string): string {
   const t = parseSyntheticId(id);
   if (!t) return id;
   if (t.kind === "graph") return "Graph";
+  if (t.kind === "prs") return "Pull requests";
   if (t.kind === "shared") return "Shared in worktrees";
   // A sha is unreadable past its first few characters, and a file's history is
   // known by the file's name, not by the folders above it.

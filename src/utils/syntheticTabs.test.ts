@@ -5,6 +5,7 @@ import {
   parseSyntheticId,
   tabScopePath,
   parsePrArg,
+  prListTabId,
   prTabId,
   syntheticTabName,
   prDiffTabId,
@@ -57,6 +58,8 @@ describe("synthetic tab ids", () => {
 
   it("names a view for the tab strip", () => {
     expect(syntheticTabName(syntheticId("graph", WS))).toBe("Graph");
+    // One list per project, so it carries no argument and names itself.
+    expect(syntheticTabName(prListTabId(WS))).toBe("Pull requests");
     // A tab is a few characters wide: a sha is cut where it stops being
     // readable, and a file's history is known by the file's own name.
     expect(syntheticTabName(syntheticId("commit", WS, "a1b2c3d4e5f6a7b8"))).toBe("Commit a1b2c3d");
