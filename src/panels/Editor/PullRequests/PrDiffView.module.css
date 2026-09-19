@@ -1,0 +1,137 @@
+/* One pull request file's diff, as a tab. The bar is CommitDiffView's, plus the
+   three things a review needs and reading history does not: where this file sits
+   in the pull request, whether it has been read, and the way to the next one. */
+.prDiff {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  /* The breadcrumb bar's band (Breadcrumbs.module.css says the sum), so a
+     diff tab and a file tab start their content on the same line. */
+  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.status {
+  flex: none;
+  width: calc(16px * var(--ui-scale));
+  color: var(--diff-modified);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+  text-align: center;
+}
+.status[data-file-status="added"],
+.status[data-file-status="copied"] {
+  color: var(--diff-added);
+}
+.status[data-file-status="removed"] {
+  color: var(--diff-deleted);
+}
+
+.name {
+  flex: none;
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dimmed and shrinking before the filename does: the folders are context, the
+   name is what the reader is looking for. */
+.dir {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+.counts {
+  display: flex;
+  flex: none;
+  gap: calc(4px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+}
+.added {
+  color: var(--diff-added);
+}
+.removed {
+  color: var(--diff-deleted);
+}
+
+/* Where this file sits in the review. The one number that says whether there is
+   more to read, which a tab strip cannot show. */
+.position {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.viewed {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.viewed input {
+  accent-color: var(--brand-default);
+  cursor: pointer;
+}
+
+/* The head moved under this diff. Attention rather than danger: nothing is
+   broken, the patches are simply describing a commit that is no longer the
+   head, and the reload is right there. */
+.drift {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+  border-left: calc(2px * var(--ui-scale)) solid var(--attention-fg);
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+}
+
+.error {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--diff-deleted);
+  font-size: var(--tori-text-md);
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: calc(8px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-md);
+  line-height: 1.4;
+}

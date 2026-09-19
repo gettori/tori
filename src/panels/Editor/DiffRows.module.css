@@ -132,3 +132,47 @@
 .diffLine.sideEmpty {
   background: var(--canvas-card);
 }
+
+/* The comment affordance, one per row where the surface offers commenting.
+   In the gutter rather than beside the code: the code column is `white-space:
+   pre`, and anything in that flow shifts every line it sits on. Hidden until
+   the pointer or the focus is on the row, because a plus on every one of four
+   thousand rows is visual noise on a surface people read for minutes. */
+.diffLine.commentable {
+  position: relative;
+}
+.commentAdd {
+  position: absolute;
+  left: calc(1px * var(--ui-scale));
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  padding: 0;
+  border: none;
+  border-radius: calc(3px * var(--ui-scale));
+  background: var(--accent-fg);
+  color: var(--canvas-default);
+  font-family: inherit;
+  font-size: var(--tori-text-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+.diffLine.commentable:hover > .commentAdd,
+.diffLine.commentable:focus-within > .commentAdd,
+.diffLine.commentable:focus-visible > .commentAdd {
+  display: flex;
+}
+.commentAdd:focus-visible {
+  outline: 1px solid var(--accent-fg);
+  outline-offset: 1px;
+}
+/* Roving puts the focus on the row itself, so the row needs the ring the
+   staging model puts on a checkbox. */
+.diffLine.commentable:focus-visible {
+  outline: 1px solid var(--accent-fg);
+  outline-offset: -1px;
+}

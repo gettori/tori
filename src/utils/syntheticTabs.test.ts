@@ -5,6 +5,8 @@ import {
   parseSyntheticId,
   tabScopePath,
   syntheticTabName,
+  prDiffTabId,
+  parsePrDiffArg,
 } from "./syntheticTabs";
 
 const WS = "/Users/me/Projects/app/wave-2";
@@ -64,5 +66,31 @@ describe("synthetic tab ids", () => {
     // A Search Editor's arg is a sequence number, not its query, so the id alone
     // names nothing more; the strip takes the query from `searchTabTitle`.
     expect(syntheticTabName(syntheticId("search", WS, "3"))).toBe("Search");
+  });
+
+  it("tells two pull requests' copies of one file apart", () => {
+    // The number is what distinguishes them, the same way a sha distinguishes
+    // two commits touching one file. Without it, reviewing the same file in two
+    // pull requests would be one tab holding two sets of draft comments.
+    const a = prDiffTabId(WS, 42, "src/utils/forgeChip.ts");
+    const b = prDiffTabId(WS, 43, "src/utils/forgeChip.ts");
+    expect(a).not.toBe(b);
+    expect(parsePrDiffArg(parseSyntheticId(a)!.arg)).toEqual({
+      number: 42,
+      file: "src/utils/forgeChip.ts",
+    });
+    // Two digits, not three: the token checker reads `#412` as a hex colour.
+    expect(syntheticTabName(a)).toBe("forgeChip.ts (#42)");
+    // A path with a colon in it still splits at the first one, which is the
+    // number's, so the rest of the path survives intact.
+    const odd = prDiffTabId(WS, 7, "src/a:b.ts");
+    expect(parsePrDiffArg(parseSyntheticId(odd)!.arg).file).toBe("src/a:b.ts");
+  });
+
+  it("reads an unparseable pull request arg as no pull request", () => {
+    // Number 0 matches nothing, so the tab draws its own "nothing here" rather
+    // than another pull request's diff.
+    expect(parsePrDiffArg("nonsense")).toEqual({ number: 0, file: "" });
+    expect(parsePrDiffArg("notanumber:src/a.ts")).toEqual({ number: 0, file: "src/a.ts" });
   });
 });

@@ -290,6 +290,25 @@ pub trait Forge: Send + Sync {
         comments: &[DraftComment],
     ) -> Result<(), ForgeError>;
 
+    /// Post one line comment on its own, outside any held review.
+    ///
+    /// Separate from [`Forge::submit_review`] rather than a one-comment call to
+    /// it, because of `commit_id`. A submitted review sends none, so the server
+    /// re-resolves every anchor against the diff it has at that moment; this one
+    /// names the commit the patch on screen came from, so a comment written
+    /// while the branch moves underneath lands where it was drawn or is refused,
+    /// never silently elsewhere.
+    ///
+    /// Hosts without it answer [`ForgeError::Unsupported`], and say so through
+    /// [`Capabilities::single_comment`] before anyone calls.
+    fn add_review_comment(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        commit_id: &str,
+        comment: &DraftComment,
+    ) -> Result<(), ForgeError>;
+
     /// The server's mergeability verdict, not ours.
     fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError>;
 
@@ -378,6 +397,7 @@ mod tests {
                 approve: false,
                 request_changes: false,
                 comment_review: false,
+                single_comment: false,
             }
         }
         fn auth_state(&self) -> AuthState {
@@ -462,6 +482,15 @@ mod tests {
             _event: ReviewEvent,
             _body: &str,
             _comments: &[DraftComment],
+        ) -> Result<(), ForgeError> {
+            Err(ForgeError::NotAuthenticated)
+        }
+        fn add_review_comment(
+            &self,
+            _repo: &RepoRef,
+            _number: u64,
+            _commit_id: &str,
+            _comment: &DraftComment,
         ) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
