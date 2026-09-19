@@ -12,6 +12,8 @@ const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
   body: null,
   state: "open",
   isDraft: false,
+  createdAt: "2026-09-17T08:14:00Z",
+  comments: 0,
   author: "skarif2",
   headRef: "wave-3",
   baseRef: "main",

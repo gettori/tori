@@ -287,6 +287,8 @@ fn pr_from(v: &Value) -> Result<PullRequest, ForgeError> {
         state,
         is_draft: v.get("draft").and_then(|d| d.as_bool()).unwrap_or(false),
         author: v.get("author").map(|a| str_at(a, "username")).unwrap_or_default(),
+        created_at: str_at(v, "created_at"),
+        comments: v.get("user_notes_count").and_then(|c| c.as_u64()).unwrap_or(0) as u32,
         head_ref: str_at(v, "source_branch"),
         base_ref: str_at(v, "target_branch"),
         head_sha: str_at(v, "sha"),

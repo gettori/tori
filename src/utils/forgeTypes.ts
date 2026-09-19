@@ -46,6 +46,13 @@ export type PullRequest = {
   /// request-changes are offerable at all: GitHub rejects both from the PR
   /// author with a 422, and on a single-owner repo that is every PR.
   author: string;
+  /// When it was opened, RFC 3339 as the wire sends it. `compactAge` wants
+  /// epoch seconds, so the one consumer converts at the point of use and the
+  /// field keeps the wire's shape.
+  createdAt: string;
+  /// Conversation comments: GitHub's `comments` count, GitLab's
+  /// `user_notes_count`. Review-thread replies are not in it on either host.
+  comments: number;
   headRef: string;
   baseRef: string;
   headSha: string;
@@ -383,6 +390,8 @@ export const FORGE_KEYS = {
     "author",
     "baseRef",
     "body",
+    "comments",
+    "createdAt",
     "headRef",
     "headSha",
     "isDraft",
