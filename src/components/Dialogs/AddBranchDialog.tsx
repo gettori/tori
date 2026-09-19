@@ -1,5 +1,5 @@
-import { createMemo, createSignal, Show } from "solid-js";
-import { Cloud, GitCommitHorizontal, Plus, RefreshCw } from "lucide-solid";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Combobox, { type ComboboxOption } from "../Combobox/Combobox";
@@ -42,6 +42,14 @@ export function worktreeFolder(branch: string): string {
  * and showed none at all when that fetch failed. The header's Fetch is for the
  * branch that is genuinely newer than the last sweep.
  *
+ * **A branch nothing is standing on can be deleted from its own row.** The
+ * trash is a mouse affordance only: a row is an `option`, and a focusable
+ * control inside one is both an ARIA violation and unreachable, since the caret
+ * never leaves the filter. The keyboard reaches the same action through the
+ * header, which acts on the parked row. Rows the tree already has open carry
+ * their tag instead, because git refuses to delete a branch that is checked
+ * out and an affordance that always fails is worse than none.
+ *
  * **The fetch is reported in the list header, not in the title.** Appended to
  * the title (`Branch Name · fetching…`) it reflowed the dialog's own heading the
  * moment the fetch landed. It is a fact about the list, so it sits on the list.
@@ -72,6 +80,14 @@ export default function AddBranchDialog(props: {
   /** Go and look at the remote now. Withheld when the container has no origin,
    *  which is what hides the button: there is nowhere for it to look. */
   onFetch?: () => void;
+  /** The branch whose delete is waiting to be confirmed. `unpushed` is null
+   *  until the backend answers, and the strip says so rather than guessing. */
+  deleting?: { branch: string; unpushed: boolean | null; busy: boolean } | null;
+  /** Ask about deleting `branch`. Withheld by a caller that cannot delete,
+   *  which is what hides every trash on the list. */
+  onDeleteAsk?: (branch: string) => void;
+  onDeleteConfirm?: () => void;
+  onDeleteCancel?: () => void;
   busy: boolean;
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
@@ -79,6 +95,7 @@ export default function AddBranchDialog(props: {
   const [query, setQuery] = createSignal("");
   const [picked, setPicked] = createSignal<BranchPick | null>(null);
   let input: HTMLInputElement | undefined;
+  let deleteButton: HTMLButtonElement | undefined;
 
   const taken = createMemo(() => new Set(props.taken));
   const entries = createMemo<BranchPick[]>(() => {
@@ -100,6 +117,18 @@ export default function AddBranchDialog(props: {
     matches().map((e) => ({ value: e.name, label: e.name, disabled: taken().has(e.name) })),
   );
   const kinds = createMemo(() => new Map(entries().map((e) => [e.name, e.kind])));
+
+  // Local, and nothing standing on it. A remote-only row has no local ref to
+  // delete, and git refuses a branch that is checked out anywhere.
+  const deletable = (name: string) =>
+    !!props.onDeleteAsk && kinds().get(name) === "local" && !taken().has(name);
+
+  // A parked row the list no longer has - its branch was just deleted - is not
+  // an answer to anything.
+  createEffect(() => {
+    const parked = picked();
+    if (parked && !entries().some((e) => e.name === parked.name)) setPicked(null);
+  });
 
   const heading = () => {
     if (query().trim()) return `${matches().length} matching`;
@@ -134,6 +163,19 @@ export default function AddBranchDialog(props: {
     if (props.busy || !pick) return;
     props.onConfirm(pick);
   };
+
+  // The parked row, when it is one a delete could take. This is what the
+  // header's trash acts on, and the whole of the keyboard's route to it.
+  const parkedDeletable = () => {
+    const parked = picked();
+    return parked && deletable(parked.name) ? parked.name : null;
+  };
+
+  // A confirmation nobody can answer is worse than none: the press that armed
+  // this was a mouse on a row, so the answer has to come to the keyboard.
+  createEffect(() => {
+    if (props.deleting) deleteButton?.focus();
+  });
 
   // A row press parks the choice; pressing the row that is already parked is
   // the second half of a double-click, and means "this one, go".
@@ -209,6 +251,22 @@ export default function AddBranchDialog(props: {
                 {props.mode === "worktree" ? "in a worktree" : "checked out"}
               </span>
             </Show>
+            <Show when={deletable(option.value)}>
+              {/* Not a button: see the note about `option` above. Hidden from
+                  the accessibility tree because the header carries the same
+                  action for everyone who is not holding a mouse. */}
+              <span
+                class={styles.branchDelete}
+                aria-hidden="true"
+                onClick={(e) => {
+                  // The row's own click commits a pick, and this is not one.
+                  e.stopPropagation();
+                  props.onDeleteAsk?.(option.value);
+                }}
+              >
+                <Icon icon={Trash2} />
+              </span>
+            </Show>
           </>
         )}
         aboveList={
@@ -224,6 +282,37 @@ export default function AddBranchDialog(props: {
                 </div>
               )}
             </Show>
+            {/* One at a time, and in front of the create row: a delete waiting
+                for an answer is the only thing on this surface that can lose
+                work. */}
+            <Show when={props.deleting}>
+              {(del) => (
+                <div class={styles.deleteRow} role="group" aria-label={`Delete ${del().branch}`}>
+                  <Icon icon={Trash2} aria-hidden="true" />
+                  <span class={styles.createLead}>Delete branch</span>
+                  <span class={styles.createName}>{del().branch}</span>
+                  <span class={styles.deleteState}>
+                    {del().unpushed === null
+                      ? "checking…"
+                      : del().unpushed
+                        ? "has commits the remote does not"
+                        : "pushed"}
+                  </span>
+                  <Button size="xs" onClick={() => props.onDeleteCancel?.()}>
+                    Cancel
+                  </Button>
+                  <Button
+                    ref={(el) => (deleteButton = el)}
+                    size="xs"
+                    variant="danger"
+                    disabled={del().busy}
+                    onClick={() => props.onDeleteConfirm?.()}
+                  >
+                    {del().busy ? "Deleting…" : "Delete"}
+                  </Button>
+                </div>
+              )}
+            </Show>
             <div class={styles.listHead}>
               <span>{heading()}</span>
               <Show when={props.fetching}>
@@ -231,6 +320,18 @@ export default function AddBranchDialog(props: {
                   <span class={styles.fetchDot} aria-hidden="true" />
                   fetching remote…
                 </span>
+              </Show>
+              <Show when={parkedDeletable()}>
+                {(name) => (
+                  <IconButton
+                    class={styles.listHeadAction}
+                    size="sm"
+                    icon={<Icon icon={Trash2} />}
+                    tooltip={`Delete branch “${name()}”`}
+                    disabled={!!props.deleting}
+                    onClick={() => props.onDeleteAsk?.(name())}
+                  />
+                )}
               </Show>
               <Show when={props.onFetch}>
                 <IconButton
