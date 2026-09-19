@@ -66,7 +66,8 @@ import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import CommitDiffView from "./CommitDiffView";
 import PrDiffView from "./PullRequests/PrDiffView";
-import { pendingFor } from "../../utils/prReviewStore";
+import PrOverviewView from "./PullRequests/PrOverviewView";
+import { pendingFor, prEntry } from "../../utils/prReviewStore";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
@@ -233,6 +234,7 @@ import { renameTabsUnder, repoint } from "./renameTabs";
 import {
   isSyntheticId,
   parseCommitDiffArg,
+  parsePrArg,
   parsePrDiffArg,
   parseDiffArg,
   parseSyntheticId,
@@ -381,6 +383,7 @@ const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
   graph: GitGraph,
   diff: GitCompare,
   shared: FolderSymlink,
+  pr: GitPullRequest,
 };
 
 function tabIcon(t: FileTab) {
@@ -402,7 +405,18 @@ function tabIcon(t: FileTab) {
   return <Icon icon={SYNTHETIC_ICONS[kind] ?? History} />;
 }
 
-const tabName = (t: FileTab) => searchTabTitle(t.path) ?? t.name;
+/** A pull request tab's label once the store knows which pull request it is.
+ *  The title is not in the id, so the strip opens on `#412` and gains the rest
+ *  when the read lands. Null for every other kind of tab. */
+function prTabTitle(id: string): string | null {
+  const t = parseSyntheticId(id);
+  if (t?.kind !== "pr") return null;
+  const number = parsePrArg(t.arg);
+  const title = prEntry(t.workspace, number).pr?.title;
+  return title ? `#${number} ${title}` : null;
+}
+
+const tabName = (t: FileTab) => searchTabTitle(t.path) ?? prTabTitle(t.path) ?? t.name;
 
 /** Whether a tab is a pull request file with comments held for it. False for
  *  every other kind of tab, which is most of them. */
@@ -2711,6 +2725,11 @@ export default function Editor(props: {
                     so several of these open at once are one read of each. */}
                 <Show when={t().kind === "prdiff"}>
                   <PrDiffView workspace={t().workspace} arg={t().arg} />
+                </Show>
+                {/* The pull request itself rather than one of its files: what it
+                    says it does, and the form the review is submitted from. */}
+                <Show when={t().kind === "pr"}>
+                  <PrOverviewView workspace={t().workspace} arg={t().arg} />
                 </Show>
                 {/* The other half of the sidebar's Graph section: lanes need
                     width, and the right panel is the narrow column. */}
