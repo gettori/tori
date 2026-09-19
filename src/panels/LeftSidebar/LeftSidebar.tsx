@@ -174,17 +174,34 @@ import styles from "./LeftSidebar.module.css";
 // The two git kinds animate while a session under them is executing, so a
 // scan down the column finds the working folder without reading a chip; a
 // non-git folder has no sessions to report and stays the static Lucide glyph.
-function UnitIcon(props: { kind: string | undefined; active: boolean }) {
+//
+// `current` is git's checked-out branch, which the row used to say in a teal
+// bullet at its right edge. The glyph draws a branch and its tip, so it can
+// say where HEAD is in the ink it already has, and the end cluster keeps its
+// width for the things that change.
+function UnitIcon(props: { kind: string | undefined; active: boolean; current: boolean }) {
   return (
     <Switch fallback={<Icon icon={Folder} />}>
       <Match when={props.kind === "worktree" || props.kind === "incomplete"}>
-        <WorktreeMark active={props.active} stub={props.kind === "incomplete"} />
+        <WorktreeMark active={props.active} current={props.current} stub={props.kind === "incomplete"} />
       </Match>
       <Match when={props.kind === "plain"}>
-        <BranchMark active={props.active} />
+        <BranchMark active={props.active} current={props.current} />
       </Match>
     </Switch>
   );
+}
+
+// Hover text for the glyph, which is the one thing on the row that says these
+// two without words: a filled branch tip for the current checkout, a dashed
+// folder for a .bare with nothing in it.
+function iconLabel(u: BranchUnit): string | undefined {
+  const parts: string[] = [];
+  if (u.isCurrent) parts.push("Current checkout");
+  if (u.kind === "incomplete") {
+    parts.push("A .bare with no worktrees (right-click to add one or remove it)");
+  }
+  return parts.length ? parts.join(". ") : undefined;
 }
 
 // Mark a drag from a sidebar row as carrying one or more absolute paths, which
@@ -2433,12 +2450,8 @@ export default function LeftSidebar(props: {
     return (
       <BranchRow
         label={unitLabel(u)}
-        icon={<UnitIcon kind={u.kind} active={rollup().executing > 0} />}
-        iconLabel={
-          u.kind === "incomplete"
-            ? "A .bare with no worktrees (right-click to add one or remove it)"
-            : undefined
-        }
+        icon={<UnitIcon kind={u.kind} active={rollup().executing > 0} current={u.isCurrent} />}
+        iconLabel={iconLabel(u)}
         selected={unitSelected(u)}
         nested={attempt != null}
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
@@ -2472,9 +2485,6 @@ export default function LeftSidebar(props: {
                 />
               )}
             </For>
-            <Show when={u.isCurrent}>
-              <span class={rows.dot} title="current checkout">●</span>
-            </Show>
             {statusBubble(rollup)}
           </>
         }

@@ -19,6 +19,24 @@
     display: none;
   }
 
+  /* The repo's checked-out branch, said in the row's own glyph instead of in a
+     coloured bullet at the row's end: the branch tip fills in, and the whole
+     mark steps up out of the column's muted tone. Two readings of one state,
+     because at 16px a filled r=3 node beside a 1.75-stroke hollow one is a
+     difference of a pixel or two of ink. Kept in `currentColor` rather than
+     taking a hue, so the pulse stays the one thing in this column that does.
+
+     Under reduced motion `active` fills BOTH nodes (see the bottom of this
+     file), which is what keeps the two apart: one node is where HEAD is, two
+     is a session mid-turn. */
+  .mark[data-current="true"] {
+    color: var(--fg-default);
+  }
+
+  .mark[data-current="true"] .tip {
+    fill: currentColor;
+  }
+
   /* A `.bare` with no worktrees: the branches are there, the working folder is
      not, so the outline that would be that folder is drawn as a gap rather than
      a line. Only the base outline - the pulse traces the same path with a

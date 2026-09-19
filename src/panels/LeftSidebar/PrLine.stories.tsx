@@ -128,8 +128,7 @@ export const InTheColumn: Story = {
     () => (
       <Tree>
         <ProjectRow name="api" icon={<WorktreeMark active={false} />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<WorktreeMark active={false} />} menu={MENU}
-            end={<span class={rows.dot}>●</span>} />
+          <BranchRow label="main" icon={<WorktreeMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
           <BranchRow
             label="feat/sideways-scroll"
             icon={<WorktreeMark active />}
