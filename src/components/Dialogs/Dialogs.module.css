@@ -881,6 +881,27 @@
   flex: none;
   max-width: calc(180px * var(--ui-scale));
 }
+.baseName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The base list hanging off that button. Wider than the button it opens from,
+   because it is holding branch names and the button is holding one. */
+.basePop {
+  width: calc(280px * var(--ui-scale));
+  padding: var(--tori-space-3);
+}
+.baseList {
+  max-height: calc(220px * var(--ui-scale));
+  margin-top: var(--tori-space-3);
+}
+/* The surface suppresses selection for the rows it usually holds; a filter is
+   a text field, and one whose text cannot be selected is broken. */
+.basePop input {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 .createName {
   font-family: var(--tori-font-mono);

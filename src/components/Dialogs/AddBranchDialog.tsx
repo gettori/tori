@@ -1,12 +1,12 @@
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
-import { Check, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
+import { Check, ChevronsUpDown, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
-import Combobox, { type ComboboxOption } from "../Combobox/Combobox";
+import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
-import Select, { type SelectGroup, type SelectOption } from "../Select/Select";
+import Popover from "../Popover/Popover";
 
 /** Where the chosen branch is, which is what says how to add it: a local one is
  *  attached, a remote-only one is tracked, and a name that is neither is made. */
@@ -68,8 +68,8 @@ export function worktreeFolder(branch: string): string {
  * be the backend's guess (origin's default, or the matching remote branch) and
  * nothing on screen said so, which was wrong every time the branch belonged on
  * top of the one in front of you. It sits in the create row because that is the
- * row that writes a ref, and it is a `Select` rather than a second filter: the
- * answer is nearly always the default, so it costs one glance and no keystrokes.
+ * row that writes a ref, and it reads as the default until somebody opens it
+ * (`BasePicker`).
  *
  * **Picking is a state, confirming is a button.** A row press parks the choice
  * and the action bar shows where it would land; a second press on the same row,
@@ -149,21 +149,6 @@ export default function AddBranchDialog(props: {
     matches().map((e) => ({ value: e.name, label: e.name, disabled: taken().has(e.name) })),
   );
   const kinds = createMemo(() => new Map(entries().map((e) => [e.name, e.kind])));
-
-  // Every branch this repo knows, as a base. Headed only when both kinds are
-  // there: a list is grouped or flat and never mixed (see `Select`), and a
-  // heading over the only run there is names nothing.
-  const baseOptions = createMemo<SelectOption[] | SelectGroup[]>(() => {
-    const row = (name: string) => ({ value: name, label: name });
-    const locals = props.locals.map(row);
-    const remotes = entries().filter((e) => e.kind === "remote").map((e) => row(e.name));
-    if (!locals.length) return remotes;
-    if (!remotes.length) return locals;
-    return [
-      { label: "Local", options: locals },
-      { label: "Remote", options: remotes },
-    ];
-  });
 
   // Local, and nothing standing on it. A remote-only row has no local ref to
   // delete, and git refuses a branch that is checked out anywhere.
@@ -367,15 +352,7 @@ export default function AddBranchDialog(props: {
                   <span class={styles.createLead}>Create branch</span>
                   <span class={styles.createName}>{name()}</span>
                   <span class={styles.createFrom}>from</span>
-                  <Select
-                    class={styles.createBase}
-                    size="xs"
-                    aria-label="Base branch"
-                    placeholder="current HEAD"
-                    options={baseOptions()}
-                    value={base()}
-                    onChange={setBase}
-                  />
+                  <BasePicker value={base()} branches={entries()} onChange={setBase} />
                 </div>
               )}
             </Show>
@@ -433,5 +410,105 @@ export default function AddBranchDialog(props: {
         }
       />
     </Dialog>
+  );
+}
+
+/**
+ * Where a new branch starts: a button that says which branch, and a filtered
+ * list behind it.
+ *
+ * **A filter, because the choices are the repo's branches.** This is the same
+ * list the dialog itself is filtering, and on a repo with hundreds of them a
+ * plain listbox is a scroll and a guess. Kobalte's select has nowhere to put a
+ * text field - its listbox holds the keyboard - so the surface is `Popover`
+ * over the shared `Combobox`, which is that pair already and brings the arrow
+ * keys, the active row and the empty state with it.
+ *
+ * **Escape closes the list and leaves the dialog open.** Both are dismissable
+ * layers and only the topmost answers the key, so nothing here has to say so.
+ *
+ * **The filter is cleared on every open.** The button already carries the
+ * answer the last one gave, so reopening on last time's query would hide most
+ * of the list behind text the user did not type this time.
+ */
+function BasePicker(props: {
+  /** The base as it stands, or "" when the repo offered nothing to start from. */
+  value: string;
+  branches: { name: string; kind: BranchKind }[];
+  onChange: (base: string) => void;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [query, setQuery] = createSignal("");
+  const [anchor, setAnchor] = createSignal<HTMLButtonElement>();
+  let field: HTMLInputElement | undefined;
+
+  const matches = createMemo(() => {
+    const q = query().trim().toLowerCase();
+    return q ? props.branches.filter((b) => b.name.toLowerCase().includes(q)) : props.branches;
+  });
+
+  // Headed only when the result holds both kinds: a list is grouped or flat and
+  // never mixed (see `Combobox`), and a heading over the only run there is
+  // names nothing. The glyph does this job in the dialog's own list, where the
+  // two kinds are interleaved by the filter rather than stacked.
+  const options = createMemo<ComboboxOption[] | ComboboxGroup[]>(() => {
+    const row = (b: { name: string }) => ({ value: b.name, label: b.name });
+    const locals = matches().filter((b) => b.kind === "local").map(row);
+    const remotes = matches().filter((b) => b.kind === "remote").map(row);
+    if (!locals.length) return remotes;
+    if (!remotes.length) return locals;
+    return [
+      { label: "Local", options: locals },
+      { label: "Remote", options: remotes },
+    ];
+  });
+
+  const label = () => props.value || "current HEAD";
+
+  return (
+    <>
+      <Button
+        ref={setAnchor}
+        class={styles.createBase}
+        size="xs"
+        iconRight={<Icon icon={ChevronsUpDown} />}
+        aria-haspopup="listbox"
+        aria-expanded={open()}
+        aria-label={`Base branch: ${label()}`}
+        onClick={() => {
+          setQuery("");
+          setOpen((was) => !was);
+        }}
+      >
+        <span class={styles.baseName}>{label()}</span>
+      </Button>
+      <Show when={open()}>
+        <Popover
+          anchorEl={anchor()}
+          placement="bottom-end"
+          class={styles.basePop}
+          aria-label="Base branch"
+          initialFocus={() => field}
+          onClose={() => setOpen(false)}
+        >
+          <Combobox
+            options={options()}
+            query={query()}
+            onQueryChange={setQuery}
+            onSelect={(name) => {
+              props.onChange(name);
+              setOpen(false);
+            }}
+            picked={props.value}
+            listClass={styles.baseList}
+            inputRef={(el) => (field = el)}
+            placeholder="Filter branches"
+            aria-label="Filter branches"
+            listLabel="Base branch"
+            emptyLabel="No branch matches"
+          />
+        </Popover>
+      </Show>
+    </>
   );
 }
