@@ -22,6 +22,7 @@
 import { createEffect, createMemo, on, onCleanup, For, Show } from "solid-js";
 import { onWith, PR_OPENED, type PrOpened } from "../../../utils/events";
 import { forgeBadges } from "../../../utils/forgeChip";
+import { projectPathFor } from "../../../utils/sessionActivity";
 import ForgeChipView from "../../../components/ForgeChip/ForgeChip";
 import {
   forgePause,
@@ -63,6 +64,10 @@ export default function PrList(props: {
   /// *replaces* this view, so state held here would be re-fetched on the way
   /// back and a merge landed over there would have nobody to tell.
   const entry = createMemo(() => prListEntry(props.root ?? ""));
+  /// What the poll filed this project under. Not the folder on screen when that
+  /// folder is a worktree checkout, and reading the statuses under it instead
+  /// leaves every row with the blank that means "no tick covered this".
+  const pollRoot = () => (props.root ? (projectPathFor(props.root) ?? props.root) : null);
   const loading = () => entry().loading;
   const paused = () => forgePause(props.root);
 
@@ -108,7 +113,10 @@ export default function PrList(props: {
   );
 
   const shown = () => entry().items;
-  const uncovered = () => (props.root ? uncoveredUnits(props.root) : 0);
+  const uncovered = () => {
+    const root = pollRoot();
+    return root ? uncoveredUnits(root) : 0;
+  };
 
   return (
     <div class={styles.panel}>
@@ -139,7 +147,7 @@ export default function PrList(props: {
             // The same badges the sidebar chip is built from, minus the PR
             // glyph: this row already says `#12` in its own title.
             const chip = createMemo(() =>
-              forgeBadges(props.root ? unitStatus(props.root, pr.headRef) : null),
+              forgeBadges(pollRoot() ? unitStatus(pollRoot()!, pr.headRef) : null),
             );
             return (
               <div
