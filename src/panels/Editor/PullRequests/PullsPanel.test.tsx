@@ -21,14 +21,10 @@ import type { Selection } from "../../LeftSidebar/LeftSidebar";
 const ROOT = "/root/work/gh";
 const BRANCH = "wave-3";
 
-/// The pane resizes down to 160px, and what a row drops on the way is part of
-/// the contract. jsdom computes no layout, so the width is driven by hand.
-let paneWidth = 320;
+/// jsdom implements no ResizeObserver, and components the panel mounts ask for
+/// one. Nothing here reads a width, so it never reports.
 globalThis.ResizeObserver = class {
-  constructor(private cb: (e: { contentRect: { width: number } }[]) => void) {}
-  observe() {
-    this.cb([{ contentRect: { width: paneWidth } }]);
-  }
+  observe() {}
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
@@ -301,7 +297,6 @@ const mergeButton = () =>
 
 beforeEach(() => {
   bridge.calls.length = 0;
-  paneWidth = 320;
   selection = null;
   for (const key of Object.keys(handlers)) delete handlers[key];
   restBridge();
@@ -584,17 +579,20 @@ describe("the file rows", () => {
     );
   });
 
-  it("drops the counts before the name when the pane gets narrow", async () => {
-    // The letter and the filename are what a row is for, and they have to
-    // survive the 160px the pane resizes down to.
-    paneWidth = 160;
+  it("keeps a row to its folder, its name, its letter and its box", async () => {
+    // The line counts came off the rows: the pane resizes down to 160px, and a
+    // row carrying a name, a status and two numbers carries none of them.
     signIn();
     await open({ statuses: [unit()], files: [file()] });
     await pollNow("manual");
 
     await waitFor(() => expect(screen.getByText("forgeChip.ts")).toBeTruthy());
-    expect(screen.queryByText("+84")).toBeNull();
     expect(screen.getByText("src/utils")).toBeTruthy();
+    expect(screen.getByText("M")).toBeTruthy();
+    expect(
+      screen.getByRole("checkbox", { name: "Viewed, src/utils/forgeChip.ts" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("+84")).toBeNull();
   });
 
   it("hands the store the pull request before opening the file's tab", async () => {

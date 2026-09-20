@@ -357,22 +357,20 @@ button.verdictRow:not(:disabled):hover {
   color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-xs);
 }
 
+/* Readable at a glance rather than a footnote on the header: how many files
+   there are is the first thing anyone asks of a pull request. */
 .fileCount {
   color: var(--fg-subtle);
   font-variant-numeric: tabular-nums;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-md);
 }
 
-/* A file, under the folders that hold it. Everything but the leading edge is
-   shared with a folder row, so the two read as one list.
-
-   Four pixels further in than its folder, which is the difference between the
-   chevron the row does not have and the status letter it does: it puts a
-   filename under the name of the folder beside it rather than under its
-   chevron. */
+/* A file, under the folders that hold it. Both rows are the same shape: the
+   depth, the Viewed box, then the one control that opens a file or a folder, so
+   the boxes line up in a column whatever the row is. */
 .fileRow,
 .dirRow {
   display: flex;
@@ -380,32 +378,50 @@ button.verdictRow:not(:disabled):hover {
   gap: calc(6px * var(--ui-scale));
   padding-right: calc(12px * var(--ui-scale));
   padding-left: calc(12px * var(--ui-scale));
-  min-height: calc(22px * var(--ui-scale));
+  min-height: calc(24px * var(--ui-scale));
   min-width: 0;
-  cursor: pointer;
-}
-.fileRow {
-  padding-left: calc(16px * var(--ui-scale));
 }
 
 /* One per level of the tree, so the depth is in the markup and the row's
-   background still reaches both edges of the panel. */
+   background still reaches both edges of the panel. Narrow, because a 320px
+   column spends its width on names: the chevrons already say where a level
+   begins, and the step only has to be big enough to follow. */
 .rung {
   flex: none;
-  width: calc(12px * var(--ui-scale));
+  width: calc(6px * var(--ui-scale));
 }
 .fileRow:hover,
 .dirRow:hover {
   background: var(--neutral-hover);
 }
-.fileRow:focus-visible,
-.dirRow:focus-visible {
-  outline: 2px solid var(--accent-fg);
-  outline-offset: -2px;
+
+.viewedBox {
+  flex: none;
 }
 
-.dirRow {
-  gap: calc(4px * var(--ui-scale));
+/* One column for the chevron, kept by the file rows that have none, which is
+   what puts a file's box under the box of a folder beside it. */
+.chevronSlot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  width: calc(16px * var(--ui-scale));
+  cursor: pointer;
+}
+
+/* What opens the row: everything except the box, so the box beside it is not a
+   second thing the same press could mean. */
+.rowOpen {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  cursor: pointer;
+}
+.rowOpen:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: -2px;
 }
 
 /* Quieter than the filenames under it: a folder row is where a file is, and
@@ -425,13 +441,16 @@ button.verdictRow:not(:disabled):hover {
   color: var(--fg-muted);
 }
 
+/* The row's last column, where the counts were. A column of letters down the
+   right edge is one glance; the same letters between the box and the name are
+   read one row at a time. */
 .status {
   flex: none;
-  width: calc(10px * var(--ui-scale));
+  width: calc(12px * var(--ui-scale));
   text-align: center;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-md);
 }
 .status[data-file-status="added"] {
   color: var(--success-fg);
@@ -471,19 +490,14 @@ button.verdictRow:not(:disabled):hover {
   font-size: var(--tori-text-2xs);
 }
 
-/* Viewed files stay in place. They do not collapse or reorder: a list that
-   rearranges itself as you read it is one you have to re-find your place in. */
-.viewedMark {
-  flex: none;
-  color: var(--fg-subtle);
-}
-
+/* The header's totals and a row's own. A size under the filename beside it,
+   which is what says these are about the name rather than beside it. */
 .counts {
   flex: none;
   display: flex;
   gap: calc(4px * var(--ui-scale));
   font-variant-numeric: tabular-nums;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-md);
 }
 .added {
   color: var(--success-fg);

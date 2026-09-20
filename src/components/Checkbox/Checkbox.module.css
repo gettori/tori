@@ -45,7 +45,14 @@
     background var(--tori-duration-fast) ease;
 }
 
-.control[data-checked] {
+/* A list row is two dozen pixels tall, so the form's box would be most of it. */
+.control.sm {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
+.control[data-checked],
+.control[data-indeterminate] {
   border-color: var(--brand-default);
   background: var(--brand-default);
   color: var(--brand-on);
