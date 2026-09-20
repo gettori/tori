@@ -69,6 +69,7 @@ import {
 import { forgeChip, forgeDoor } from "../../../utils/forgeChip";
 import { gitStateFor } from "../../../utils/gitActions";
 import { createPrFlow } from "../../../utils/prCreateFlow";
+import { stepKeys } from "../../../utils/keyNav";
 import { fileRowName } from "../../../utils/prFiles";
 import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
@@ -436,6 +437,15 @@ export default function PullsPanel(props: {
     onCleanup(() => ro.disconnect());
   });
 
+  /// `j` and `k` down and up the file list, while the focus is in the panel.
+  ///
+  /// Attached here rather than to the window, which is what makes a bare letter
+  /// safe at all: a `j` pressed anywhere else in the app is somebody typing.
+  /// The same goes for the create-PR form inside this panel, which `bareKey`
+  /// holds harmless. Enter and Space are the rows' own, since each one is a
+  /// button and that is what a button does with them.
+  const onKeyDown = stepKeys(() => paneRef, "[data-file-row]", "j", "k");
+
   /// How many of this file's conversations are still open.
   ///
   /// Unresolved only: a resolved thread is still reachable in the diff, and a
@@ -607,7 +617,7 @@ export default function PullsPanel(props: {
   }
 
   return (
-    <div class={styles.panel} ref={paneRef}>
+    <div class={styles.panel} ref={paneRef} onKeyDown={onKeyDown}>
       <div class={styles.head}>
         <span class={styles.title}>Pull request</span>
         <span class={styles.spacer} />
@@ -859,6 +869,7 @@ export default function PullsPanel(props: {
                 {(f) => (
                   <div
                     class={styles.fileRow}
+                    data-file-row={f.path}
                     role="button"
                     tabIndex={0}
                     aria-label={fileRowName(f, unresolvedIn(f.path), isViewed(props.root!, s().number, f.path))}

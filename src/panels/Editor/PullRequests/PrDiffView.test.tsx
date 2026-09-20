@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../../test/axe";
 import type { ForgeAccount, PrFile, PullRequest, ReviewThread, StatusReport } from "../../../utils/forgeTypes";
 
 // One pull request file, read where there is room to read it.
@@ -535,5 +536,87 @@ describe("a pull request file as a tab in the stage", () => {
     await waitFor(() => expect(screen.queryByText("Renamed, contents unchanged")).toBeTruthy());
     expect(screen.queryByText(/from.ts → to.ts/)).toBeTruthy();
     expect(screen.queryAllByText(/github.com/)).toHaveLength(0);
+  });
+});
+
+describe("moving between a diff's conversations", () => {
+  beforeEach(async () => {
+    bridge.calls.length = 0;
+    paneWidth = 2000;
+    observers.length = 0;
+    bridge.files = [
+      file({ patch: ["@@ -1,5 +1,5 @@", " one", "-two", "+two edited", " three", " four", " five"].join("\n") }),
+    ];
+    bridge.threads = [
+      thread({ id: "PRRT_a", line: 2 }),
+      thread({ id: "PRRT_b", line: 4, comments: [{ id: "C2", author: "reviewer", body: "and this one", createdAt: "" }] }),
+    ];
+    bridge.report = null;
+    bridge.addFails = null;
+    bridge.capabilities = { ...FULL_CAPS };
+    bridge.sessions = [];
+    localStorage.clear();
+    resetPrReviewStoreForTests();
+    resetForgeStatusForTests();
+    resetSessionActivityForTests();
+    await signIn();
+    await pollWith();
+  });
+
+  const cards = () => [...document.querySelectorAll<HTMLElement>("[data-thread-id]")];
+  const pane = () => document.querySelector<HTMLElement>("[class*=prDiff]")!;
+
+  it("steps through them on n and p, and stops at both ends", async () => {
+    openTab();
+    await waitFor(() => expect(cards()).toHaveLength(2));
+
+    // Focusable without being a tab stop: a card per conversation in the Tab
+    // order would put a stop in front of every reply box in a long diff.
+    expect(cards()[0].getAttribute("tabindex")).toBe("-1");
+
+    fireEvent.keyDown(pane(), { key: "n" });
+    expect(document.activeElement).toBe(cards()[0]);
+    fireEvent.keyDown(pane(), { key: "n" });
+    expect(document.activeElement).toBe(cards()[1]);
+    // The end of the conversations is a fact worth arriving at, so it clamps.
+    fireEvent.keyDown(pane(), { key: "n" });
+    expect(document.activeElement).toBe(cards()[1]);
+    fireEvent.keyDown(pane(), { key: "p" });
+    expect(document.activeElement).toBe(cards()[0]);
+  });
+
+  it("has an accessible name for everything the tab draws in colour or a glyph", async () => {
+    // The header's icon buttons, the Viewed checkbox, the drift strip, the
+    // conversations and the composer, all at once: axe over the tab rather than
+    // over its body, which `PrFileBody.test.tsx` already covers.
+    openTab();
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    // The head moving after the patches were read is what puts the drift strip
+    // on screen, so the poll has to land second.
+    await pollWith(SHA_B);
+    await waitFor(() => expect(screen.queryByText(/new commits since you read this/)).toBeTruthy());
+    fireEvent.keyDown(rowFor("+two edited"), { key: "c" });
+    await waitFor(() => expect(screen.getByLabelText(/^Comment on /)).toBeTruthy());
+
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("leaves the letters alone inside the composer", async () => {
+    openTab();
+    await waitFor(() => expect(cards()).toHaveLength(2));
+
+    // A comment with the word "not" in it is the whole reason this guard is
+    // here: `n` typed into text is text, so the composer keeps both the key and
+    // the focus.
+    fireEvent.keyDown(rowFor("+two edited"), { key: "c" });
+    const box = await waitFor(() => screen.getByLabelText(/^Comment on /));
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    fireEvent.keyDown(box, { key: "n" });
+    expect(document.activeElement).toBe(box);
+
+    // And a modifier says the key was aimed at the app, not at this diff.
+    fireEvent.keyDown(pane(), { key: "n", metaKey: true });
+    expect(document.activeElement).toBe(box);
   });
 });

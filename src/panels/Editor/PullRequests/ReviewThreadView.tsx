@@ -63,8 +63,12 @@ export default function ReviewThreadView(props: {
   }
 
   return (
+    // `tabIndex={-1}`: focusable, never a tab stop. `n` and `p` move between
+    // conversations by focusing one, and a card that took a Tab of its own
+    // would put a stop in front of every reply box in a long diff.
     <div
       class={styles.thread}
+      tabIndex={-1}
       data-thread-id={props.thread.id}
       data-resolved={props.thread.isResolved ? "yes" : "no"}
       data-outdated={props.thread.isOutdated ? "yes" : "no"}
