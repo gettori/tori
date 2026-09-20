@@ -1845,8 +1845,8 @@ mod tests {
         // Codex names two versions because two binaries are involved, and the
         // one health.rs compares against `codex --version` has to come first.
         let codex = find("codex").verified_against.clone().expect("codex is measured");
-        assert!(codex.starts_with("codex-cli 0.147.0"), "{codex}");
-        assert!(codex.contains("codex-acp 1.2.0"), "{codex}");
+        assert!(codex.starts_with("codex-cli 0.155.1"), "{codex}");
+        assert!(codex.contains("codex-acp 1.12.0"), "{codex}");
     }
 
     /// **Codex is the one adapter whose chat binary is not its launch binary.**
@@ -1864,7 +1864,7 @@ mod tests {
         assert_eq!(codex.program, "codex");
         let chat = codex.chat.as_ref().expect("codex ships a chat table");
         assert_eq!(chat.program, "npx");
-        assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.2.0"]);
+        assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.12.0"]);
         // Everything else comes off the handshake, so there is nothing to declare.
         assert!(chat.modes.is_empty());
         assert!(chat.effort_extras.is_empty(), "nothing measured on a agent nobody has probed");

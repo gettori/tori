@@ -175,7 +175,7 @@ export function distinctModelCount(catalog: ModelCatalog | undefined): number {
  *  bump that lands in one language fails rather than half-applying.
  *
  *  Exported for that test alone; nothing else has any business comparing it. */
-export const CACHE_SHAPE = 6;
+export const CACHE_SHAPE = 7;
 
 /** Whether what is remembered no longer describes what this Tori reads.
  *

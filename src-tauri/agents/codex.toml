@@ -3,14 +3,15 @@ id = "codex"
 label = "Codex"
 icon = "codex"
 
-# Measured against this pair with `node dev/acp-probe.mjs --agent codex-acp`,
-# `node dev/codex-probe.mjs` and a live turn, 2026-08-14. Two versions because
+# Measured against this pair with
+# `node dev/acp-probe.mjs --agent codex-acp --per-model`, most recently
+# 2026-09-20. Two versions because
 # two binaries are involved: the PTY tab runs the `codex` a user installed, and
 # the chat surface runs the ACP wrapper below, which drives that same `codex`
 # underneath. `verified_against` is compared against `codex --version`, and
 # health.rs reads the first semver-looking token, so the `codex-cli` version has
 # to come first.
-verified_against = "codex-cli 0.147.0 with @agentclientprotocol/codex-acp 1.2.0"
+verified_against = "codex-cli 0.155.1 with @agentclientprotocol/codex-acp 1.12.0"
 
 [launch]
 program = "codex"
@@ -90,8 +91,8 @@ transport = "acp"
 program = "npx"
 # Pinned to the version measured, matching how the ACP catalog pins its own
 # rows. `npx -y @agentclientprotocol/codex-acp` unpinned would silently move the
-# agent underneath a `verified_against` that names 1.2.0.
-base_args = ["-y", "@agentclientprotocol/codex-acp@1.2.0"]
+# agent underneath a `verified_against` that names 1.12.0.
+base_args = ["-y", "@agentclientprotocol/codex-acp@1.12.0"]
 
 # All empty because ACP has no command line for any of it, not because Codex
 # lacks the feature. Measured on the handshake instead:
@@ -132,9 +133,9 @@ add_dir_args = []
 
 # No [[chat.models]].
 #
-# Measured 2026-08-14: the handshake advertises four (`gpt-5.6-terra`,
-# `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4-mini`), and `model/list` over the native
-# app-server signed in returns the same four. There is no shortfall to publish,
+# Measured 2026-09-20: the handshake advertises five (`gpt-5.6-sol`,
+# `gpt-6-astra`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`). There is no
+# shortfall to publish,
 # and the list is per account: signed *out*, the same call returned seven, which
 # is a reminder that a catalogue measured without an account is not this user's.
 # A bundled table would be a guess about somebody else's entitlement, and the
