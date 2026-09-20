@@ -318,6 +318,7 @@ pub fn run() {
             config::get_config,
             config::list_branches,
             config::list_remote_branches,
+            config::repo_default_branch,
             config::config_watch_start,
             config::pick_folder,
             config::set_root,

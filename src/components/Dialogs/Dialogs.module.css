@@ -858,7 +858,9 @@
   border: var(--tori-border-thin) solid var(--brand-default);
   border-radius: var(--tori-radius-md);
 }
-.createRow svg {
+/* Direct children only: the base picker inside this row brings its own caret,
+   which is the Select's to size and to colour. */
+.createRow > svg {
   flex: none;
   width: var(--control-icon);
   height: var(--control-icon);
@@ -868,10 +870,25 @@
   font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
+/* Where a new branch starts, pushed to the right edge so the name it is making
+   keeps the room it needs. */
+.createFrom {
+  margin-left: auto;
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
+}
+.createBase {
+  flex: none;
+  max-width: calc(180px * var(--ui-scale));
+}
+
 .createName {
   font-family: var(--tori-font-mono);
   font-size: var(--tori-text-sm);
   color: var(--brand-strong);
+  /* Auto is a flex item's own min-width, so the ellipsis below only engages
+     once the name is allowed to shrink past its content. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

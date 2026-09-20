@@ -182,14 +182,42 @@ pub(crate) fn remote_branch_exists(repo: &str, name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Start point for a brand-new branch's worktree: the matching remote branch
-/// (so `-b <name> origin/<name>` tracks it) when present, else origin's default
-/// (`origin/<default>`), else None so `worktree add -b` bases on HEAD.
+/// Start point for a brand-new branch's worktree when the caller named none:
+/// the matching remote branch (so `-b <name> origin/<name>` tracks it) when
+/// present, else origin's default (`origin/<default>`), else None so
+/// `worktree add -b` bases on HEAD.
 fn new_branch_start_point(repo: &str, branch: &str) -> Option<String> {
     if remote_branch_exists(repo, branch) {
         Some(format!("origin/{branch}"))
     } else {
         origin_default(repo).map(|def| format!("origin/{def}"))
+    }
+}
+
+/// A base the caller named, as a ref a branch can start at: a local branch by
+/// its own name, a remote-only one through `origin/` (which is how the picker
+/// lists it, prefix stripped), and anything else - a tag, a sha - as written.
+/// Refused here rather than by git, whose failure for an unknown start point
+/// names the worktree it did not make and not the base that was wrong.
+pub(crate) fn resolve_base(repo: &str, base: &str) -> Result<String, String> {
+    let base = base.trim();
+    if branch_exists(repo, base) {
+        return Ok(base.to_string());
+    }
+    if remote_branch_exists(repo, base) {
+        return Ok(format!("origin/{base}"));
+    }
+    let known = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--verify", "--quiet", &format!("{base}^{{commit}}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if known {
+        Ok(base.to_string())
+    } else {
+        Err(format!("No branch, tag or commit named \"{base}\" to base on."))
     }
 }
 
@@ -253,19 +281,20 @@ pub(crate) fn link_shared(container: &Path, worktree: &Path) {
 }
 
 /// Create a worktree for `branch` under the bare container `repo_path`. Reuses an
-/// existing branch (and its worktree if any); for a new branch, fetches first and
-/// bases it on `origin/<branch>` when that remote branch exists (tracking it, so
-/// attaching a remote branch works), else origin's default. Folder name is
+/// existing branch (and its worktree if any); a new branch starts at `base` when
+/// the caller named one, and otherwise fetches first and falls back to
+/// `origin/<branch>` when that remote branch exists (tracking it, so attaching a
+/// remote branch works), else origin's default. Folder name is
 /// collision-safe (see
 /// `pick_worktree_folder`); shared `.shared/` files are linked in afterward.
 /// Answers the worktree's folder path, so the caller can move the selection onto
 /// the thing it just made (a reused worktree answers its existing path).
 #[tauri::command]
-pub async fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<String, String> {
-    crate::exec::git_write("create_worktree", repo_path.clone(), move || create_worktree_body(app, repo_path, branch)).await
+pub async fn create_worktree(app: AppHandle, repo_path: String, branch: String, base: Option<String>) -> Result<String, String> {
+    crate::exec::git_write("create_worktree", repo_path.clone(), move || create_worktree_body(app, repo_path, branch, base)).await
 }
 
-pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: String) -> Result<String, String> {
+pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: String, base: Option<String>) -> Result<String, String> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
@@ -276,7 +305,7 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
         return Ok(existing.path);
     }
 
-    let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path))?;
+    let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path), base.as_deref())?;
     let target_str = target.to_string_lossy().into_owned();
     // Tori created this folder: adopt it so reusing a path that held old sessions
     // does not surface them as historical.
@@ -290,7 +319,12 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
 /// branch that already has a worktree yields that worktree's path, except the
 /// main checkout of a plain repo, which is the user's own and never adopted.
 /// No adopt, no emit: the caller decides what the new folder means.
-pub(crate) fn create_worktree_in(repo: &str, branch: &str, container: &Path) -> Result<PathBuf, String> {
+pub(crate) fn create_worktree_in(
+    repo: &str,
+    branch: &str,
+    container: &Path,
+    base: Option<&str>,
+) -> Result<PathBuf, String> {
     let branch = branch.trim();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
@@ -309,15 +343,23 @@ pub(crate) fn create_worktree_in(repo: &str, branch: &str, container: &Path) -> 
     if branch_exists(repo, branch) {
         git_ok(repo, &["worktree", "add", &target_str, branch])?;
     } else {
-        // New branch: refresh origin so remote refs are current (best-effort: a
-        // repo without a remote simply has no fetch to do), then base off the
-        // matching remote branch when one exists (so attaching origin/<name>
-        // tracks it), else origin's default, else HEAD.
-        let _ = Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .arg("fetch")
-            .output();
+        // New branch. A base the caller named is resolved against what is
+        // already on disk, so no fetch: the user picked it out of a list this
+        // repo could draw. Without one, refresh origin so the guess below reads
+        // current refs (best-effort: a repo without a remote has no fetch to
+        // do), then base off the matching remote branch when one exists (so
+        // attaching origin/<name> tracks it), else origin's default, else HEAD.
+        let start = match base.map(str::trim).filter(|b| !b.is_empty()) {
+            Some(b) => Some(resolve_base(repo, b)?),
+            None => {
+                let _ = Command::new("git")
+                    .arg("-C")
+                    .arg(repo)
+                    .arg("fetch")
+                    .output();
+                new_branch_start_point(repo, branch)
+            }
+        };
         let mut args: Vec<String> = vec![
             "worktree".into(),
             "add".into(),
@@ -325,7 +367,7 @@ pub(crate) fn create_worktree_in(repo: &str, branch: &str, container: &Path) -> 
             branch.to_string(),
             target_str.clone(),
         ];
-        if let Some(start) = new_branch_start_point(repo, branch) {
+        if let Some(start) = start {
             args.push(start);
         }
         let argrefs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -938,17 +980,17 @@ mod tests {
         std::fs::create_dir_all(&container).unwrap();
         crate::git::exclude_from_repo(&repo_s, ".tori");
 
-        let made = create_worktree_in(&repo_s, "feat/x", &container).unwrap();
+        let made = create_worktree_in(&repo_s, "feat/x", &container, None).unwrap();
         assert_eq!(made, container.join("x"));
         assert!(made.join("a.txt").is_file());
         let status = Command::new("git").arg("-C").arg(&repo).args(["status", "--porcelain"]).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&status.stdout).trim(), "", "the plain repo stays clean");
 
         // A second call reuses the worktree it made.
-        assert_eq!(create_worktree_in(&repo_s, "feat/x", &container).unwrap(), made);
+        assert_eq!(create_worktree_in(&repo_s, "feat/x", &container, None).unwrap(), made);
 
         // The branch checked out in place is the user's checkout, not a reuse.
-        let err = create_worktree_in(&repo_s, "main", &container).unwrap_err();
+        let err = create_worktree_in(&repo_s, "main", &container, None).unwrap_err();
         assert!(err.contains("checked out in the repository itself"), "{err}");
 
         std::fs::remove_dir_all(&tmp).ok();
