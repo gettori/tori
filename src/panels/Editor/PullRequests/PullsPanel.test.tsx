@@ -4,6 +4,7 @@ import { expectNoAxeViolations } from "../../../test/axe";
 import { pointerClick } from "../../../test/menus";
 import type { AuthState, PullRequest } from "../../../utils/forgeTypes";
 import type { BranchSync } from "../../../utils/gitActions";
+import type { Selection } from "../../LeftSidebar/LeftSidebar";
 
 // The Pull requests panel, scoped to the branch this pane has checked out.
 //
@@ -76,6 +77,11 @@ const bridge = vi.hoisted(() => ({
   summaryFails: null as { kind: string; message: string } | null,
   mergeFails: null as { kind: string; message: string } | null,
   updateFails: null as { kind: string; message: string } | null,
+  aheadBehind: { ahead: 0, behind: 0, has_upstream: true } as unknown,
+  createdPr: null as unknown,
+  createFails: null as { kind: string; message: string } | null,
+  accountPending: false,
+  branchPaths: [] as string[],
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -86,6 +92,12 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "git_branch_sync") return Promise.resolve(bridge.sync);
     if (cmd === "git_origin") return Promise.resolve(bridge.origin);
     if (cmd === "git_default_base_branch") return Promise.resolve(bridge.base);
+    if (cmd === "git_ahead_behind") return Promise.resolve(bridge.aheadBehind);
+    if (cmd === "git_branch_paths") return Promise.resolve(bridge.branchPaths);
+    if (cmd === "forge_push_and_create_pr")
+      return bridge.createFails
+        ? Promise.reject(bridge.createFails)
+        : Promise.resolve(bridge.createdPr);
     if (cmd === "forge_pr_for_branch") return Promise.resolve(bridge.directPr);
     if (cmd === "forge_unit_statuses")
       return Promise.resolve({
@@ -109,15 +121,29 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve({ items: bridge.threads, truncated: false });
     if (cmd === "forge_list_prs") return Promise.resolve({ items: [], truncated: false });
     if (cmd === "forge_repo_account")
-      return Promise.resolve({
-        kind: "account",
-        accountId: "personal",
-        host: "github.com",
-        auth: { kind: "signedIn", login: "skarif2" },
-        capabilities: {},
-      });
+      return bridge.accountPending
+        ? new Promise(() => {})
+        : Promise.resolve({
+            kind: "account",
+            accountId: "personal",
+            host: "github.com",
+            auth: { kind: "signedIn", login: "skarif2" },
+            capabilities: {},
+          });
     return Promise.resolve(null);
   },
+}));
+
+// `push()` in `gitActions` resolves on a Tauri event rather than on its own
+// command, so a push in a test that never fires one hangs. Real `listen` would
+// reach for an IPC bridge that is not here at all.
+const handlers: Record<string, ((e: { payload: unknown }) => void)[]> = {};
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, fn: (e: { payload: unknown }) => void) => {
+    (handlers[name] ??= []).push(fn);
+    return Promise.resolve(() => {});
+  },
+  emit: () => Promise.resolve(),
 }));
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
@@ -139,7 +165,8 @@ const {
 const { addPending, notePr, prEntry, resetPrReviewStoreForTests, setViewingPr, viewingPr } =
   await import("../../../utils/prReviewStore");
 const { prDiffTabId, prTabId } = await import("../../../utils/syntheticTabs");
-const { onWith, OPEN_IN_EDITOR } = await import("../../../utils/events");
+const { onWith, ADD_BRANCH_UNIT, OPEN_IN_EDITOR, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } =
+  await import("../../../utils/events");
 const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
 const { enterRoots, refreshMeta } = await import("../../../utils/gitActions");
 const { noteForgeUnits, resetSessionActivityForTests } = await import(
@@ -186,6 +213,11 @@ const noteAuth = (auth: AuthState) =>
         ],
   );
 
+/// What the create form's draft button writes to. Null in every test but the
+/// one about that button: the panel is mounted beside a session picker it does
+/// not own, and "nobody is picked" is the resting state.
+let selection: Selection | null = null;
+
 const signIn = () => {
   noteAuth({ kind: "signedIn", login: "skarif2" });
   noteForgeEnabled(true);
@@ -209,6 +241,11 @@ function restBridge() {
   bridge.summaryFails = null;
   bridge.mergeFails = null;
   bridge.updateFails = null;
+  bridge.aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
+  bridge.createdPr = null;
+  bridge.createFails = null;
+  bridge.accountPending = false;
+  bridge.branchPaths = [];
 }
 
 /// Put the branch in the git store, render, and let every read settle. The
@@ -220,8 +257,12 @@ async function open(over: Partial<typeof bridge> = {}) {
   noteWatchedProjects([{ path: ROOT, units: [{ branch: BRANCH, visible: true }] }]);
   enterRoots([ROOT]);
   await refreshMeta(ROOT);
-  await resolveForgeRepo(ROOT);
-  const view = render(() => <PullsPanel root={ROOT} />);
+  // Not awaited where the account read is deliberately left hanging: that is
+  // the window this panel can be in before anything knows which account serves
+  // the repo, and awaiting it would never return.
+  if (bridge.accountPending) void resolveForgeRepo(ROOT);
+  else await resolveForgeRepo(ROOT);
+  const view = render(() => <PullsPanel root={ROOT} selected={selection} />);
   for (let i = 0; i < 8; i++) await Promise.resolve();
   return view;
 }
@@ -244,6 +285,8 @@ const mergeButton = () =>
 beforeEach(() => {
   bridge.calls.length = 0;
   paneWidth = 320;
+  selection = null;
+  for (const key of Object.keys(handlers)) delete handlers[key];
   restBridge();
   localStorage.clear();
   resetPrReviewStoreForTests();
@@ -813,6 +856,159 @@ describe("the header and the footer", () => {
     fireEvent.click(screen.getByText("Finish review"));
     off();
     expect(opened).toEqual([prTabId(ROOT, 42)]);
+  });
+});
+
+describe("starting a pull request from the panel", () => {
+  // Every one of these states says there is no pull request. What separates
+  // them is what to do about it, and a panel that draws four different
+  // sentences over the same absent button has only told you the bad news.
+  const UNPUSHED: BranchSync = {
+    ...SYNC,
+    upstream: { ahead: 3, behind: 0, has_upstream: true, rewritten: false },
+  };
+
+  const button = (label: string) =>
+    screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+
+  it("hands a new branch to the sidebar rather than cutting one here", async () => {
+    // The sidebar owns the branch-unit list and the dialog that adds to it, and
+    // the project's kind decides whether that is a worktree or a branch. A
+    // second create path here would be a second place to get that wrong.
+    signIn();
+    await open({ branch: "main", sync: { ...SYNC, base: null } });
+    await waitFor(() =>
+      expect(document.querySelector('[data-panel-state="onBase"]')).toBeTruthy(),
+    );
+
+    const asked: unknown[] = [];
+    const off = onWith(ADD_BRANCH_UNIT, (d) => asked.push(d));
+    fireEvent.click(button("New branch from base"));
+    off();
+
+    expect(asked).toEqual([{ projectPath: ROOT, base: "main" }]);
+  });
+
+  it("opens the form in place on a host this account can serve", async () => {
+    signIn();
+    await open({ sync: UNPUSHED });
+    await waitFor(() =>
+      expect(document.querySelector('[data-panel-state="noPrUnpushed"]')).toBeTruthy(),
+    );
+
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+    fireEvent.click(button("Push and open a pull request"));
+
+    await waitFor(() => expect(screen.getByPlaceholderText("What this branch does")).toBeTruthy());
+    // Nothing has been pushed and no browser tab was opened: the push is the
+    // create command's own first half, and it happens on confirm.
+    expect(cmds("git_push")).toHaveLength(0);
+    expect(opened).not.toHaveBeenCalled();
+    opened.mockRestore();
+  });
+
+  it("pushes and stops there when that is all that was asked for", async () => {
+    // Its own button, because a branch can be worth having on origin long
+    // before it is worth reviewing, and the other button cannot be undone by
+    // closing a dialog.
+    signIn();
+    await open({ sync: UNPUSHED });
+    await waitFor(() =>
+      expect(document.querySelector('[data-panel-state="noPrUnpushed"]')).toBeTruthy(),
+    );
+
+    fireEvent.click(button("Push only"));
+    await waitFor(() => expect(cmds("git_push")).toHaveLength(1));
+    expect(cmds("git_push")[0].args).toMatchObject({ repo: ROOT, remote: "origin", branch: BRANCH });
+    expect(screen.queryByPlaceholderText("What this branch does")).toBeNull();
+    expect(cmds("forge_push_and_create_pr")).toHaveLength(0);
+    // Let the push settle, or its promise outlives the test.
+    handlers["git://push-done"]?.forEach((fn) => fn({ payload: { repo: ROOT } }));
+  });
+
+  it("shows the pull request it just opened, with nobody pressing Refresh", async () => {
+    // `forge_pr_for_branch` is deliberately still answering null here, which is
+    // what a forge that has not caught up with its own create looks like. The
+    // panel holds what the create handed back rather than the older answer.
+    signIn();
+    await open({ sync: SYNC, directPr: null, createdPr: pr({ number: 77 }) });
+    await waitFor(() =>
+      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
+    );
+
+    fireEvent.click(button("Open a pull request"));
+    const title = await screen.findByPlaceholderText("What this branch does");
+    fireEvent.input(title, { target: { value: "Scope the panel to this branch" } });
+    fireEvent.click(button("Open pull request"));
+
+    await waitFor(() => expect(cmds("forge_push_and_create_pr")).toHaveLength(1));
+    expect(cmds("forge_push_and_create_pr")[0].args).toMatchObject({
+      projectPath: ROOT,
+      newPr: { head: BRANCH, base: "main", draft: false },
+    });
+    await waitFor(() => expect(screen.getByText("#77")).toBeTruthy());
+  });
+
+  it("asks the agent about the branch's own files, not the working tree", async () => {
+    // The Changes panel's copy of this request names what is uncommitted,
+    // because that is what it is about. Here the work is already in commits and
+    // the tree is usually clean, so naming it would tell the session this
+    // branch changed nothing.
+    signIn();
+    selection = { sessionId: "s1", agent: "claude", profile: null, folderPath: ROOT } as Selection;
+    await open({
+      directPr: null,
+      branchPaths: ["src/panels/Editor/PullRequests/PullsPanel.tsx"],
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
+    );
+    fireEvent.click(button("Open a pull request"));
+    await screen.findByPlaceholderText("What this branch does");
+
+    const sent: string[] = [];
+    const onSend = (e: Event) => {
+      const d = (e as CustomEvent<{ requestId: string; text: string }>).detail;
+      sent.push(d.text);
+      window.dispatchEvent(
+        new CustomEvent(SEND_TO_SESSION_RESULT, {
+          detail: { requestId: d.requestId, result: "sent" },
+        }),
+      );
+    };
+    window.addEventListener(SEND_TO_SESSION, onSend);
+    fireEvent.click(button("Ask agent to draft"));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    window.removeEventListener(SEND_TO_SESSION, onSend);
+
+    // Against `origin/main`, never the local ref: a local base is whatever was
+    // last pulled.
+    expect(cmds("git_branch_paths")[0].args).toMatchObject({
+      projectPath: ROOT,
+      base: "origin/main",
+    });
+    expect(sent[0]).toContain("PullsPanel.tsx");
+    expect(sent[0]).toContain(BRANCH);
+    expect(sent[0]).toContain("main");
+  });
+
+  it("names the browser when a form is not the route it would take", async () => {
+    // The window before this repo's account has resolved: nothing is paused, so
+    // the states still render, but `prPath` cannot promise a form yet. The
+    // label follows that decision rather than being written once and hoped for.
+    signIn();
+    await open({ accountPending: true, directPr: null });
+    await waitFor(() =>
+      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
+    );
+
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+    fireEvent.click(button("Open compare on github.com"));
+
+    await waitFor(() => expect(opened).toHaveBeenCalled());
+    expect(String(opened.mock.calls[0][0])).toContain("/compare/main...wave-3");
+    expect(screen.queryByPlaceholderText("What this branch does")).toBeNull();
+    opened.mockRestore();
   });
 });
 

@@ -38,7 +38,9 @@ import {
   NEW_CHAT_AT,
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
+  ADD_BRANCH_UNIT,
   REMOVE_BRANCH_UNIT,
+  type AddBranchUnit,
   type RemoveBranchUnit,
   type OpenJob,
   type NewSession,
@@ -665,6 +667,7 @@ export default function LeftSidebar(props: {
     fetching: boolean;
     deleting: { branch: string; unpushed: boolean | null; busy: boolean } | null;
     busy: boolean;
+    prefill?: string;
   } | null>(null);
 
   // Drag-to-reorder state for the space tiles.
@@ -1100,6 +1103,26 @@ export default function LeftSidebar(props: {
         }
       }
       setError(`No branch unit named "${d.branch}" is open in this project.`);
+    }),
+  );
+  // "New branch from base" in the Pull Requests panel. Routed here for the same
+  // reason the removal is: this owns the branch-unit list, and the project's own
+  // kind is what says whether it gets a worktree or a branch.
+  onCleanup(
+    onWith<AddBranchUnit>(ADD_BRANCH_UNIT, (d) => {
+      for (const g of config()?.spaces ?? []) {
+        for (const p of g.projects) {
+          if (p.path !== d.projectPath) continue;
+          const kind = projectUnitKind(p);
+          if (kind !== "plain" && kind !== "worktree" && kind !== "incomplete") {
+            setError(`"${p.name}" has no branches to add to.`);
+            return;
+          }
+          void openBranchDialog(p, kind === "plain" ? "branch" : "worktree", d.base ?? undefined);
+          return;
+        }
+      }
+      setError(`No project at "${d.projectPath}" is open here.`);
     }),
   );
   onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
@@ -1674,7 +1697,7 @@ export default function LeftSidebar(props: {
   // last fetch left on disk, both of which are ref reads and neither of which
   // touches the network. One dialog for the two menu rows, because the question
   // is the same and only what is done with the answer differs.
-  async function openBranchDialog(p: Project, mode: "branch" | "worktree") {
+  async function openBranchDialog(p: Project, mode: "branch" | "worktree", prefill?: string) {
     let branches: Branch[];
     try {
       branches = await invoke<Branch[]>("list_branches", { path: p.path });
@@ -1698,6 +1721,7 @@ export default function LeftSidebar(props: {
       fetching: false,
       deleting: null,
       busy: false,
+      prefill,
     });
     // Quiet and floored at the schedule's cadence, so opening the picker on a
     // container the sweep just covered costs nothing and can never stop to ask
@@ -3356,6 +3380,7 @@ export default function LeftSidebar(props: {
             onDeleteConfirm={() => void confirmDeleteBranchInPicker()}
             onDeleteCancel={() => setBranchReq((r) => (r ? { ...r, deleting: null } : r))}
             busy={req().busy}
+            prefill={req().prefill}
             onConfirm={(pick) => void confirmAddBranch(pick)}
             onCancel={() => setBranchReq(null)}
           />

@@ -108,7 +108,13 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/ConfirmDialog.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ConfirmDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/CreatePrDialog.test.tsx", { count: 1, reason: FIXTURE }],
-  ["components/Dialogs/CreatePrDialog.tsx", { count: 1, reason: HEADING }],
+  [
+    "components/Dialogs/CreatePrDialog.tsx",
+    {
+      count: 2,
+      reason: `one ${HEADING}, and one handing this dialog its own \`title\` prop from \`createPrFlow\` - the pull request's title, which is a form field's value and never hover text`,
+    },
+  ],
   ["components/Dialogs/DebugTargetDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/TopicWorktreeSweepDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/InitGitDialog.tsx", { count: 1, reason: HEADING }],
@@ -198,7 +204,7 @@ const KEPT = new Map<string, Kept>([
   ],
   [
     "panels/Editor/ReviewPanel.tsx",
-    { count: 5, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and two of ${HEADING}` },
+    { count: 4, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and one ${HEADING}` },
   ],
   [
     "panels/Editor/SessionPanel.tsx",
