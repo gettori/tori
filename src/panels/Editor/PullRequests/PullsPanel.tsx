@@ -36,7 +36,6 @@ import {
   createSignal,
   on,
   onCleanup,
-  onMount,
   For,
   Match,
   Show,
@@ -44,7 +43,6 @@ import {
 } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  Check,
   ChevronDown,
   ChevronUp,
   CircleCheck,
@@ -77,7 +75,7 @@ import { gitStateFor } from "../../../utils/gitActions";
 import { createPrFlow } from "../../../utils/prCreateFlow";
 import { stepKeys } from "../../../utils/keyNav";
 import { fileRowName } from "../../../utils/prFiles";
-import { baseName, folderTree, type FolderNode } from "../../../utils/pathTree";
+import { baseName, filesUnder, folderTree, type FolderNode } from "../../../utils/pathTree";
 import { prMetaParts } from "../../../utils/prMeta";
 import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
@@ -103,6 +101,7 @@ import {
   notePr,
   prEntry,
   refresh,
+  setViewedFile,
   setViewingPr,
   viewingPr,
 } from "../../../utils/prReviewStore";
@@ -121,6 +120,8 @@ import IconButton from "../../../components/IconButton/IconButton";
 import Tooltip from "../../../components/Tooltip/Tooltip";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
+import Checkbox from "../../../components/Checkbox/Checkbox";
+import FileIcon from "../../../seti/FileIcon";
 import Resizer from "../../../components/Resizer/Resizer";
 import { chromeScale } from "../../Settings/settingsStore";
 import ReviewForm from "./ReviewForm";
@@ -154,10 +155,6 @@ function checksLine(
       return null;
   }
 }
-
-/// Below this the counts come off the row. The letter and the filename are what
-/// a row is for, and they have to survive the 160px the pane resizes down to.
-const COUNTS_MIN_WIDTH = 220;
 
 export default function PullsPanel(props: {
   root: string | null;
@@ -437,9 +434,6 @@ export default function PullsPanel(props: {
     return root && s ? unitStatus(root, s.pr.headRef) : null;
   });
 
-  const [paneWidth, setPaneWidth] = createSignal(Infinity);
-  const wide = () => paneWidth() >= COUNTS_MIN_WIDTH;
-
   let paneRef: HTMLDivElement | undefined;
   let stackEl: HTMLDivElement | undefined;
 
@@ -449,13 +443,6 @@ export default function PullsPanel(props: {
   const maxH = () => (stackEl?.clientHeight ?? 0) - 160 * chromeScale();
   const detailOpen = () => prLayout.open("detail");
   const detailHeight = () => prLayout.size("detail") * chromeScale();
-
-  onMount(() => {
-    if (!paneRef) return;
-    const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
-    ro.observe(paneRef);
-    onCleanup(() => ro.disconnect());
-  });
 
   /// `j` and `k` down and up the file list, while the focus is in the panel.
   ///
@@ -566,6 +553,18 @@ export default function PullsPanel(props: {
   /// band full width, which an indented row loses.
   const rungs = (depth: number) => Array.from({ length: depth }, (_, i) => i);
 
+  /// Whether the whole folder has been read, some of it, or none.
+  const dirViewed = (node: FolderNode<PrFile>, number: number): "all" | "some" | "none" => {
+    const files = filesUnder(node);
+    const read = files.filter((f) => isViewed(props.root!, number, f.path)).length;
+    if (!read) return "none";
+    return read === files.length ? "all" : "some";
+  };
+
+  const setDirViewed = (node: FolderNode<PrFile>, number: number, on: boolean) => {
+    for (const f of filesUnder(node)) setViewedFile(props.root!, number, f.path, on);
+  };
+
   function TreeRows(p: { node: FolderNode<PrFile>; number: number; depth: number }) {
     return (
       <>
@@ -583,26 +582,45 @@ export default function PullsPanel(props: {
     const open = () => dirOpen(p.node.path);
     return (
       <>
-        <div
-          class={styles.dirRow}
-          role="button"
-          tabIndex={0}
-          aria-expanded={open()}
-          onClick={() => toggleDir(p.node.path)}
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key !== "Enter" && e.key !== " ") return;
-            e.preventDefault();
-            toggleDir(p.node.path);
-          }}
-        >
+        <div class={styles.dirRow}>
           <For each={rungs(p.depth)}>{() => <span class={styles.rung} aria-hidden="true" />}</For>
-          <Chevron open={open()} />
-          {/* Isolated for the same reason the branch name is: the box is
-              right-to-left so the ellipsis lands at the front, and a folder
-              whose name starts with a number would be reordered with it. */}
-          <span class={styles.dirName}>
-            <bdi>{p.node.name}</bdi>
+          {/* A mouse affordance rather than a control: the row beside it
+              already opens and closes the folder, and two buttons doing one
+              thing is one of them in the tab order for nothing. */}
+          <span class={styles.chevronSlot} aria-hidden="true" onClick={() => toggleDir(p.node.path)}>
+            <Chevron open={open()} />
           </span>
+          {/* Between the chevron and the name, and outside the control beside
+              it: a checkbox within something that is itself a button is two
+              controls the keyboard cannot tell apart. Everything under the
+              folder in one press, which is how a reader clears a directory. */}
+          <Checkbox
+            size="sm"
+            class={styles.viewedBox}
+            checked={dirViewed(p.node, p.number) === "all"}
+            indeterminate={dirViewed(p.node, p.number) === "some"}
+            aria-label={`Viewed, everything under ${p.node.path}`}
+            onChange={(on) => setDirViewed(p.node, p.number, on)}
+          />
+          <div
+            class={styles.rowOpen}
+            role="button"
+            tabIndex={0}
+            aria-expanded={open()}
+            onClick={() => toggleDir(p.node.path)}
+            onKeyDown={(e: KeyboardEvent) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              toggleDir(p.node.path);
+            }}
+          >
+            {/* Isolated for the same reason the branch name is: the box is
+                right-to-left so the ellipsis lands at the front, and a folder
+                whose name starts with a number would be reordered with it. */}
+            <span class={styles.dirName}>
+              <bdi>{p.node.name}</bdi>
+            </span>
+          </div>
         </div>
         <Show when={open()}>
           <TreeRows node={p.node} number={p.number} depth={p.depth + 1} />
@@ -614,49 +632,56 @@ export default function PullsPanel(props: {
   function FileRow(p: { file: PrFile; number: number; depth: number }) {
     const viewed = () => isViewed(props.root!, p.number, p.file.path);
     return (
-      <div
-        class={styles.fileRow}
-        data-file-row={p.file.path}
-        role="button"
-        tabIndex={0}
-        aria-label={fileRowName(p.file, unresolvedIn(p.file.path), viewed())}
-        onClick={() => openFile(p.file.path)}
-        onKeyDown={(e: KeyboardEvent) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          openFile(p.file.path);
-        }}
-      >
+      <div class={styles.fileRow}>
         <For each={rungs(p.depth)}>{() => <span class={styles.rung} aria-hidden="true" />}</For>
-        {/* A letter survives a 160px panel; an icon plus a word does not. The
-            row's accessible name spells it out. */}
-        <span class={styles.status} data-file-status={p.file.status} aria-hidden="true">
-          {p.file.status.slice(0, 1).toUpperCase()}
-        </span>
-        <span class={styles.name} data-viewed={viewed() || undefined}>
-          {baseName(p.file.path)}
-        </span>
-        {/* Unresolved only, and zero renders nothing rather than a `0`.
-            Resolved threads are still reachable in the diff. */}
-        <Show when={unresolvedIn(p.file.path)}>
-          {(n) => (
-            <span class={styles.unresolved} aria-hidden="true">
-              <Icon icon={MessageSquare} size={12} />
-              {n()}
-            </span>
-          )}
-        </Show>
-        <Show when={viewed()}>
-          <Icon icon={Check} size={13} class={styles.viewedMark} aria-hidden="true" />
-        </Show>
-        {/* First thing dropped when the pane gets narrow: the letter and the
-            filename are what a row is for. */}
-        <Show when={wide()}>
-          <span class={styles.counts} aria-hidden="true">
-            <span class={styles.added}>+{p.file.additions}</span>
-            <span class={styles.removed}>-{p.file.deletions}</span>
+        {/* The slot a folder's chevron sits in, empty here, so a file's box
+            lines up with the box of a folder beside it. */}
+        <span class={styles.chevronSlot} aria-hidden="true" />
+        {/* Marked as the review goes, which is what the reader is doing while
+            they walk the list. Outside the row's own control, where it would be
+            a second thing Enter could mean. */}
+        <Checkbox
+          size="sm"
+          class={styles.viewedBox}
+          checked={viewed()}
+          aria-label={`Viewed, ${p.file.path}`}
+          onChange={(on) => setViewedFile(props.root!, p.number, p.file.path, on)}
+        />
+        <div
+          class={styles.rowOpen}
+          data-file-row={p.file.path}
+          role="button"
+          tabIndex={0}
+          aria-label={fileRowName(p.file, unresolvedIn(p.file.path), viewed())}
+          onClick={() => openFile(p.file.path)}
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            openFile(p.file.path);
+          }}
+        >
+          <FileIcon name={baseName(p.file.path)} />
+          <span class={styles.name} data-viewed={viewed() || undefined}>
+            {baseName(p.file.path)}
           </span>
-        </Show>
+          {/* Unresolved only, and zero renders nothing rather than a `0`.
+              Resolved threads are still reachable in the diff. */}
+          <Show when={unresolvedIn(p.file.path)}>
+            {(n) => (
+              <span class={styles.unresolved} aria-hidden="true">
+                <Icon icon={MessageSquare} size={12} />
+                {n()}
+              </span>
+            )}
+          </Show>
+          {/* At the end of the row, where the counts used to be: a column of
+              letters down the right edge is one glance, where the same letters
+              between the checkbox and the name are read one row at a time. The
+              row's accessible name spells the word out. */}
+          <span class={styles.status} data-file-status={p.file.status} aria-hidden="true">
+            {p.file.status.slice(0, 1).toUpperCase()}
+          </span>
+        </div>
       </div>
     );
   }
