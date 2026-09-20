@@ -46,6 +46,7 @@ describe("the canonical binding table", () => {
         "debug-toggle-breakpoint",
         "editor-new-scratch",
         "filter-sidebar",
+        "focus-pr-review",
         "focus-terminal",
         "focus-toasts",
         "lsp-code-action",
