@@ -13,12 +13,11 @@
 import { createSignal } from "solid-js";
 import { createSectionLayout } from "./sectionLayout";
 
-export type PrTab = "review" | "conversation" | "checks" | "merge";
+export type PrTab = "checks" | "review" | "merge";
 
 export const PR_TABS: { id: PrTab; label: string }[] = [
-  { id: "review", label: "Review" },
-  { id: "conversation", label: "Conversation" },
   { id: "checks", label: "Checks" },
+  { id: "review", label: "Review" },
   { id: "merge", label: "Merge" },
 ];
 
