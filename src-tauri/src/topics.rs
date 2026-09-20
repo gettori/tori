@@ -452,7 +452,7 @@ fn build_member(store: &Store, topic_id: &str, repo: &str, branch: &str) -> Resu
         match existing {
             Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
             Some(w) => Ok(PathBuf::from(w.path)),
-            None => topic_container(repo).and_then(|c| create_worktree_in(repo, branch, &c)),
+            None => topic_container(repo).and_then(|c| create_worktree_in(repo, branch, &c, None)),
         }
     };
     store.mutate(|file| {

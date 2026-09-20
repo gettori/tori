@@ -6,11 +6,19 @@ import Combobox, { type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
+import Select, { type SelectGroup, type SelectOption } from "../Select/Select";
 
 /** Where the chosen branch is, which is what says how to add it: a local one is
  *  attached, a remote-only one is tracked, and a name that is neither is made. */
 export type BranchKind = "local" | "remote" | "new";
-export type BranchPick = { name: string; kind: BranchKind };
+export type BranchPick = {
+  name: string;
+  kind: BranchKind;
+  /** Where a new branch starts, as the short name the list shows (`main`, not
+   *  `origin/main`): the backend resolves a remote-only one. Only ever set on
+   *  a `new` pick, and absent when the repo offered nothing to base on. */
+  base?: string;
+};
 
 /** The folder a worktree for `branch` would get, matching `pick_worktree_folder`
  *  on the Rust side: the branch's last segment. That name can already be taken,
@@ -56,6 +64,13 @@ export function worktreeFolder(branch: string): string {
  * the title (`Branch Name · fetching…`) it reflowed the dialog's own heading the
  * moment the fetch landed. It is a fact about the list, so it sits on the list.
  *
+ * **A new branch says where it starts, and that is editable.** The base used to
+ * be the backend's guess (origin's default, or the matching remote branch) and
+ * nothing on screen said so, which was wrong every time the branch belonged on
+ * top of the one in front of you. It sits in the create row because that is the
+ * row that writes a ref, and it is a `Select` rather than a second filter: the
+ * answer is nearly always the default, so it costs one glance and no keystrokes.
+ *
  * **Picking is a state, confirming is a button.** A row press parks the choice
  * and the action bar shows where it would land; a second press on the same row,
  * or the primary, commits it. The shared `Combobox` draws the parked row, which
@@ -95,6 +110,11 @@ export default function AddBranchDialog(props: {
    *  has it. A caller outside the tree knows where the user is standing, and
    *  that is the row the answer is usually next to. */
   prefill?: string;
+  /** What a new branch starts on until the user says otherwise: the repo's
+   *  default branch, or where HEAD is when there is no origin to ask. A name
+   *  neither list has leaves the picker empty, and the backend keeps its own
+   *  guess. */
+  baseDefault?: string;
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
 }) {
@@ -104,6 +124,7 @@ export default function AddBranchDialog(props: {
       ? { name: props.prefill, kind: "local" }
       : null,
   );
+  const [base, setBase] = createSignal(props.baseDefault ?? "");
   let input: HTMLInputElement | undefined;
   let primary: HTMLButtonElement | undefined;
   let deleteButton: HTMLButtonElement | undefined;
@@ -128,6 +149,21 @@ export default function AddBranchDialog(props: {
     matches().map((e) => ({ value: e.name, label: e.name, disabled: taken().has(e.name) })),
   );
   const kinds = createMemo(() => new Map(entries().map((e) => [e.name, e.kind])));
+
+  // Every branch this repo knows, as a base. Headed only when both kinds are
+  // there: a list is grouped or flat and never mixed (see `Select`), and a
+  // heading over the only run there is names nothing.
+  const baseOptions = createMemo<SelectOption[] | SelectGroup[]>(() => {
+    const row = (name: string) => ({ value: name, label: name });
+    const locals = props.locals.map(row);
+    const remotes = entries().filter((e) => e.kind === "remote").map((e) => row(e.name));
+    if (!locals.length) return remotes;
+    if (!remotes.length) return locals;
+    return [
+      { label: "Local", options: locals },
+      { label: "Remote", options: remotes },
+    ];
+  });
 
   // Local, and nothing standing on it. A remote-only row has no local ref to
   // delete, and git refuses a branch that is checked out anywhere.
@@ -161,7 +197,7 @@ export default function AddBranchDialog(props: {
     const parked = picked();
     if (parked) return parked;
     const fresh = newName();
-    return fresh ? { name: fresh, kind: "new" } : null;
+    return fresh ? { name: fresh, kind: "new", base: base() || undefined } : null;
   };
 
   /** The row drawn as chosen, which is a row and never a typed new name. A
@@ -330,6 +366,16 @@ export default function AddBranchDialog(props: {
                   <Icon icon={Plus} aria-hidden="true" />
                   <span class={styles.createLead}>Create branch</span>
                   <span class={styles.createName}>{name()}</span>
+                  <span class={styles.createFrom}>from</span>
+                  <Select
+                    class={styles.createBase}
+                    size="xs"
+                    aria-label="Base branch"
+                    placeholder="current HEAD"
+                    options={baseOptions()}
+                    value={base()}
+                    onChange={setBase}
+                  />
                 </div>
               )}
             </Show>
