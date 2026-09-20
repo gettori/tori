@@ -322,7 +322,7 @@ import { registerKind } from "../../tabs/registry";
 import { isKindHome, kindHomePane, paneActiveId, paneTabs, panesWithKind } from "../../tabs/paneTabs";
 import { focusedPaneId } from "../../layout/layoutStore";
 import { paneMenuItems } from "../../tabs/paneTabs";
-import { forgetTab, setPaneActive } from "../../layout/tabPlacement";
+import { forgetTab, setPaneActive, stampOrder } from "../../layout/tabPlacement";
 import { editorStageId, stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 import patterns from "../../styles/patterns.module.css";
@@ -1427,6 +1427,56 @@ export default function Editor(props: {
     if (pane && pane !== SOLO_PANE) setPaneActive(ws(), pane, path);
   }
 
+  let slotBusy: Promise<void> = Promise.resolve();
+
+  /**
+   * Open `path` into the pane's one replaceable slot (a preview tab).
+   *
+   * Close and open, never a repoint: dirty flags, render choices, wrap, pane
+   * placement and the reopen stack are all keyed by path, and a tab that
+   * changed its own path underneath them would leave every one of those maps
+   * pointing at a file nobody has open. Where the old tab sat is the only thing
+   * about it worth keeping, and that is put back afterwards.
+   *
+   * A path already open is simply revealed. It has a tab of its own, and taking
+   * the replaceable slot for it would put the same file on screen twice.
+   *
+   * One at a time, because two dispatched in a single task would both read the
+   * strip before the first close had touched it, find the same tab to replace,
+   * and leave two behind. A refusal releases the slot rather than wedging it.
+   */
+  function openPreview(path: string): Promise<void> {
+    slotBusy = slotBusy.then(() => takePreviewSlot(path)).catch(() => {});
+    return slotBusy;
+  }
+
+  async function takePreviewSlot(path: string) {
+    if (tabs().some((t) => t.path === path)) return openFile(path);
+    const pane = focusedEditorPane();
+    const here =
+      pane && pane !== SOLO_PANE ? paneTabs(ws(), pane).map((t) => t.id) : tabs().map(tabId);
+    const old = tabs().find((t) => t.transient && here.includes(t.path));
+    const slot = old ? tabs().findIndex((t) => t.path === old.path) : -1;
+    if (old) await closeTab(old.path);
+    openFile(path);
+    // Into the slot, not onto the end: a reader clicking down a file list
+    // watches one tab change in place, where a tab that jumped to the end on
+    // every click would be somewhere new each time. Both orderings, because a
+    // strip drawn straight from this list and one drawn through `orderInPane`
+    // would otherwise disagree about where it went.
+    const list = tabs();
+    const at = list.findIndex((t) => t.path === path);
+    const next = list.map((t) => (t.path === path ? { ...t, transient: true } : t));
+    if (slot >= 0 && at >= 0 && at !== slot) next.splice(slot, 0, ...next.splice(at, 1));
+    setTabs(next);
+    if (old) stampOrder(ws(), here.map((id) => (id === old.path ? path : id)));
+  }
+
+  function pinTab(id: string) {
+    if (!tabs().some((t) => tabId(t) === id && t.transient)) return;
+    setTabs(tabs().map((t) => (tabId(t) === id ? { ...t, transient: undefined } : t)));
+  }
+
   /** The pane a file tab is already in, which is not always its kind's home:
    *  a hand-moved tab has to be revealed where it actually sits. */
   const paneHoldingFile = (id: string) =>
@@ -1830,6 +1880,10 @@ export default function Editor(props: {
     // each document change, so counting them all would score a file by how much
     // was typed into it rather than by how often it was worked in.
     if (isDirty && !dirty()[path]) noteTouch(path, "edit");
+    // Typing into a file is the plainest statement there is that it is not
+    // passing through, and the alternative is the next open throwing away a
+    // buffer somebody was editing.
+    if (isDirty) pinTab(path);
     setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
     // A breakpoint in an unsaved buffer names a line the adapter has never seen,
     // so it waits. The clean edge is the moment it can be armed, and it arrives
@@ -2343,8 +2397,9 @@ export default function Editor(props: {
     });
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
       if (!d?.path) return;
-      openFile(d.path);
-      if (d.preview && !previewOn().has(d.path)) togglePreviewOf(d.path);
+      if (d.preview) void openPreview(d.path);
+      else openFile(d.path);
+      if (d.rendered && !previewOn().has(d.path)) togglePreviewOf(d.path);
       if (d.side) emitWith<SplitPane>(SPLIT_PANE, { dir: "row", tabId: d.path, kind: "file" });
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
       // The one place arrivals are recorded. Go-to-definition, a search hit and
@@ -2909,6 +2964,8 @@ export default function Editor(props: {
     trailingEdge: editorFiletreeReveal,
     activate: (u) => setActiveId(u.id),
     close: (u) => void closeTab(u.id),
+    transient: (u) => !!asFile(u).transient,
+    onDoubleClick: (u) => pinTab(u.id),
     // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
     // strip and adopts the one shared editor stage; every workspace's tabs
     // render into it, so the pane never needs a host per file.
