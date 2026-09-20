@@ -20,6 +20,7 @@ import {
   pendingFor,
   type ComposerKey,
 } from "../../utils/chatCompose";
+import type { ChatCapabilities } from "../../utils/chatTypes";
 
 /** A pasted or dropped file, as the composer read it. */
 export type UploadFile = { name: string; bytes: Uint8Array };
@@ -58,6 +59,7 @@ export function composerAttachments(
   key: () => ComposerKey,
   cwd: () => string,
   tier: () => ChatTier,
+  capabilities: () => ChatCapabilities | null | undefined,
   onRejected: (reason: string) => void,
 ): ComposerAttachments {
   // A path the agent already has. Labelled by kind so the prose can name it,
@@ -67,7 +69,7 @@ export function composerAttachments(
     const verdict = checkAttachment(
       { name, mediaType: "", bytes: null },
       pendingFor(key()).length,
-      attachmentSources(tier()).mentions,
+      attachmentSources(tier(), capabilities()).mentions,
     );
     if (!verdict.ok) {
       onRejected(verdict.reason);
@@ -96,6 +98,13 @@ export function composerAttachments(
       const labels: string[] = [];
       for (const file of files) {
         const kind = attachmentKind(file.name) ?? "file";
+        // ACP image input is bytes on the prompt itself. Keeping it inline is
+        // both what the agent advertised and what avoids asking it to read a
+        // path under Tori's private app-data directory.
+        if (kind === "image" && capabilities()?.imageInput) {
+          offerToComposer(key(), [{ type: "image", mediaType: imageMediaType(file.name), data: base64(file.bytes) }]);
+          continue;
+        }
         try {
           const path = await invoke<string>("store_attachment", file.bytes, {
             headers: { [ATTACHMENT_NAME_HEADER]: encodeURIComponent(file.name) },
@@ -110,4 +119,22 @@ export function composerAttachments(
       return labels;
     },
   };
+}
+
+function imageMediaType(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "gif") return "image/gif";
+  if (ext === "webp") return "image/webp";
+  return "image/png";
+}
+
+/** Browser-safe base64 without spreading a multi-megabyte image onto the stack. */
+function base64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }

@@ -64,6 +64,9 @@ export type Catalogue = {
   // for a composer with no session to ask. Optional for a cache written before
   // the field existed, which reads as none rather than as an agent with none.
   commands?: SlashCommand[];
+  // Capabilities advertised by the same initialize handshake. Optional for
+  // caches written before this field existed.
+  capabilities?: ChatCapabilities | null;
 };
 
 export type ModelCatalog = {
@@ -175,7 +178,7 @@ export function distinctModelCount(catalog: ModelCatalog | undefined): number {
  *  bump that lands in one language fails rather than half-applying.
  *
  *  Exported for that test alone; nothing else has any business comparing it. */
-export const CACHE_SHAPE = 7;
+export const CACHE_SHAPE = 8;
 
 /** Whether what is remembered no longer describes what this Tori reads.
  *

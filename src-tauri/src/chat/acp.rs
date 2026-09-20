@@ -360,6 +360,7 @@ pub fn capabilities(init: &InitializeResponse) -> ChatCapabilities {
     ChatCapabilities {
         load_session: init.agent_capabilities.load_session,
         list_sessions: sessions.list.is_some(),
+        image_input: init.agent_capabilities.prompt_capabilities.image,
     }
 }
 
@@ -1422,6 +1423,7 @@ mod tests {
         let caps = capabilities(&silent);
         assert!(!caps.load_session, "an agent that says nothing claims nothing");
         assert!(!caps.list_sessions);
+        assert!(!caps.image_input);
 
         let mut advertised = InitializeResponse::new(ProtocolVersion::V1);
         let mut agent_caps = AgentCapabilities::default();
@@ -1429,10 +1431,12 @@ mod tests {
         let mut sessions = SessionCapabilities::default();
         sessions.list = Some(Default::default());
         agent_caps.session_capabilities = sessions;
+        agent_caps.prompt_capabilities.image = true;
         advertised.agent_capabilities = agent_caps;
         let caps = capabilities(&advertised);
         assert!(caps.load_session);
         assert!(caps.list_sessions);
+        assert!(caps.image_input);
     }
 
     #[test]

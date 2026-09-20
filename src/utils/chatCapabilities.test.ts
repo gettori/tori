@@ -262,6 +262,16 @@ describe("what each agent can be handed", () => {
     expect(acp.uploads.gap).toMatch(/outside its project/);
     expect(unavailableCapabilities(chatTier("acp")).map((g) => g.key)).toContain("attachmentUploads");
   });
+
+  it("adds only image uploads when an ACP agent advertises image input", () => {
+    const advertised = { loadSession: true, listSessions: true, imageInput: true };
+    expect(attachmentSources(chatTier("acp"), advertised).uploads).toEqual({ kinds: ["image"], gap: null });
+    expect(publishedCapabilities(chatTier("acp"), advertised)).toContainEqual({
+      key: "attachmentUploads",
+      value: "image",
+      label: "attachmentUploads: image",
+    });
+  });
 });
 
 describe("the ACP tier", () => {
@@ -363,14 +373,14 @@ describe("the ACP tier", () => {
     expect(floor).not.toContain("history");
     expect(floor).not.toContain("sessions");
 
-    const rich = publishedCapabilities(tier, { loadSession: true, listSessions: true });
+    const rich = publishedCapabilities(tier, { loadSession: true, listSessions: true, imageInput: false });
     expect(rich.map((c) => c.key)).toEqual([...floor, "history", "sessions"]);
     expect(rich.find((c) => c.key === "history")?.label).toBe("history: session/load");
 
     // An agent that advertises nothing publishes nothing extra, and null (a
     // agent whose capabilities are measured rather than asked for) is the
     // same as absent.
-    const bare = { loadSession: false, listSessions: false };
+    const bare = { loadSession: false, listSessions: false, imageInput: false };
     expect(publishedCapabilities(tier, bare).map((c) => c.key)).toEqual(floor);
     expect(publishedCapabilities(tier, null).map((c) => c.key)).toEqual(floor);
   });

@@ -51,7 +51,10 @@ use crate::agents::{AgentAdapter, ChatEffortExtra, ChatTransport};
 use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::{self, ClaudeMapper};
-use crate::chat::model::{ChatAccount, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo, SlashCommand};
+use crate::chat::model::{
+    ChatAccount, ChatCapabilities, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo,
+    SlashCommand,
+};
 use crate::chat::transport::{build_command, StartSpec};
 
 /// How long one agent gets to answer before the probe gives up on it.
@@ -210,7 +213,7 @@ pub struct CatalogModel {
 ///   that was never switchable. The first bump for a field *removed* rather than
 ///   added, which is the same rule read the other way: the cache describes a
 ///   shape this Tori no longer reads.
-pub const CACHE_SHAPE: u32 = 7;
+pub const CACHE_SHAPE: u32 = 8;
 
 /// How many models one probe switches through to read their own option sets.
 ///
@@ -280,6 +283,10 @@ pub struct Catalogue {
     /// completion source rather than a second one for skills.
     #[serde(default)]
     pub commands: Vec<SlashCommand>,
+    /// What the agent advertised during the same initialize handshake. Cached
+    /// so a draft can offer prompt inputs before it has opened a session.
+    #[serde(default)]
+    pub capabilities: Option<ChatCapabilities>,
 }
 
 /// What a catalogue carrying no account is: the shape from before accounts
@@ -611,6 +618,7 @@ fn probe_claude(
             // set an ACP handshake publishes, which claude has none of.
             options: Vec::new(),
             account,
+            capabilities: None,
         }),
         Ok(None) => Err(ProbeFailure::now(FailureReason::NoAnswer, tail.take())),
         Err(_) => Err(ProbeFailure::now(FailureReason::TimedOut, tail.take())),
@@ -758,6 +766,7 @@ fn acp_catalogue(
     options: Vec<SessionConfigOption>,
     per_model: HashMap<String, Vec<SessionConfigOption>>,
     commands: Vec<SlashCommand>,
+    capabilities: ChatCapabilities,
 ) -> Catalogue {
     let models = acp::model_catalogue(&options)
         .into_iter()
@@ -798,6 +807,7 @@ fn acp_catalogue(
         // which also means the surface's "whose answer is this" line correctly
         // says nothing for an ACP agent.
         account: None,
+        capabilities: Some(capabilities),
     }
 }
 
@@ -929,7 +939,7 @@ fn probe_acp(
                 // ACP probe whether or not the agent sends any.
                 async_io::Timer::after(COMMANDS_GRACE).await;
 
-                Ok((options, per_model))
+                Ok((options, per_model, acp::capabilities(&init)))
             },
         );
         futures::pin_mut!(work);
@@ -946,9 +956,9 @@ fn probe_acp(
     abandon_group(&mut child);
 
     let failed = match answer {
-        Some(Ok((options, per_model))) => {
+        Some(Ok((options, per_model, capabilities))) => {
             let published = commands.lock().map(|c| c.clone()).unwrap_or_default();
-            return Ok(acp_catalogue(version, options, per_model, published));
+            return Ok(acp_catalogue(version, options, per_model, published, capabilities));
         }
         // `None` is the deadline, `Some(Err(_))` is the agent's own refusal.
         other => other,
@@ -1380,6 +1390,7 @@ mod tests {
                 argument_hint: None,
                 aliases: Vec::new(),
             }],
+            capabilities: None,
         }
     }
 
@@ -1888,7 +1899,13 @@ mod tests {
 
         // No per-model measurement, which is the refused-switch path: every row
         // falls back to the session's opening set.
-        let catalogue = acp_catalogue(Some("1.18.3".into()), options, HashMap::new(), Vec::new());
+        let catalogue = acp_catalogue(
+            Some("1.18.3".into()),
+            options,
+            HashMap::new(),
+            Vec::new(),
+            ChatCapabilities::default(),
+        );
 
         assert_eq!(catalogue.models.len(), 1, "the model selector still becomes the model list");
         assert_eq!(catalogue.models[0].info.value, "sonnet");
@@ -1935,7 +1952,13 @@ mod tests {
             ),
         ]);
 
-        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model, Vec::new());
+        let catalogue = acp_catalogue(
+            Some("1.2.0".into()),
+            opening,
+            per_model,
+            Vec::new(),
+            ChatCapabilities::default(),
+        );
         let levels = |value: &str| {
             catalogue
                 .models
@@ -1970,7 +1993,13 @@ mod tests {
         // Only terra answered.
         let per_model = HashMap::from([("terra".to_string(), opening.clone())]);
 
-        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model, Vec::new());
+        let catalogue = acp_catalogue(
+            Some("1.2.0".into()),
+            opening,
+            per_model,
+            Vec::new(),
+            ChatCapabilities::default(),
+        );
         let mini = catalogue.models.iter().find(|m| m.info.value == "mini").expect("mini is listed");
         assert_eq!(mini.info.supported_effort_levels, ["low"]);
         assert!(!mini.options.is_empty(), "a refused switch is not an agent that publishes nothing");
@@ -1987,6 +2016,7 @@ mod tests {
             vec![select_option("web-search", None, &[("on", "On"), ("off", "Off")])],
             HashMap::new(),
             Vec::new(),
+            ChatCapabilities::default(),
         )));
         save_to(&root, &written).expect("the file should write");
 
@@ -2146,6 +2176,10 @@ mod tests {
             catalogue.models
         );
         assert_eq!(catalogue.modes.len(), 3, "read-only, agent, agent-full-access");
+        assert!(
+            catalogue.capabilities.is_some_and(|c| c.image_input),
+            "Codex advertises ACP image input"
+        );
 
         let uncategorized: Vec<&str> = catalogue
             .options

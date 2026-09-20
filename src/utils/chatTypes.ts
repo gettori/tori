@@ -275,6 +275,8 @@ export type ChatCapabilities = {
   /// promise of rows: `opencode acp` 1.18.3 advertises it and can answer with
   /// nothing.
   listSessions: boolean;
+  /** The agent accepts an ACP image content block in a prompt. */
+  imageInput: boolean;
 };
 
 /// Who the session is signed in as, from the `initialize` handshake, which is

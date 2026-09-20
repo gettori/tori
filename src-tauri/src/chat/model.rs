@@ -639,6 +639,8 @@ pub struct ChatCapabilities {
     /// advertisement, never a promise of rows: `opencode acp` 1.18.3 advertises
     /// it and can answer with nothing.
     pub list_sessions: bool,
+    /// The agent accepts an ACP image content block in a prompt.
+    pub image_input: bool,
 }
 
 // Session **fork** is deliberately absent, and the reason is worth keeping.
@@ -1622,7 +1624,11 @@ mod tests {
                     organization: "Acme".into(),
                     api_provider: "firstParty".into(),
                 }),
-                capabilities: Some(ChatCapabilities { load_session: true, list_sessions: true }),
+                capabilities: Some(ChatCapabilities {
+                    load_session: true,
+                    list_sessions: true,
+                    image_input: true,
+                }),
             },
             ChatEvent::TurnStarted {
                 session_id: "s1".into(),

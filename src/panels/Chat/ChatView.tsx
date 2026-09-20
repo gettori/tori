@@ -1759,7 +1759,7 @@ export default function ChatView(props: {
 
   // Shared with the draft surface, so what an `@` mention resolves to cannot
   // differ between a chat and the draft it grew out of.
-  const attachments = composerAttachments(composerKey, () => props.cwd, tier, (reason) =>
+  const attachments = composerAttachments(composerKey, () => props.cwd, tier, () => state.capabilities, (reason) =>
     emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
   );
 
@@ -2178,7 +2178,7 @@ export default function ChatView(props: {
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
-        uploads={attachmentSources(tier()).uploads}
+        uploads={attachmentSources(tier(), state.capabilities).uploads}
         attachLongPastes={settings.chatDefaults.attachLongPastes}
         fileExists={(path) => invoke<boolean>("file_exists", { path })}
         handle={(h) => (composer = h)}
