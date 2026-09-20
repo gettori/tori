@@ -85,6 +85,16 @@ describe("what a branch's sync facts are worth saying", () => {
     expect(state.tone).toBe("muted");
   });
 
+  it("counts commits unique to the base as work to publish before the first push", () => {
+    const state = syncState(sync({
+      upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false },
+      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+    }));
+    expect(state.level).toBe("unpushed");
+    expect(state.label).toBe("↑3");
+    expect(state.detail).toContain("3 commits to publish");
+  });
+
   it("resolves the loudest level when several hold at once", () => {
     // Diverged from the upstream *and* behind a base that would conflict.
     const loud = sync({
@@ -155,6 +165,15 @@ describe("the marks a row draws for its remote", () => {
     const never = syncMarks(upstream({ has_upstream: false }));
     expect(never.map((m) => `${m.kind}${m.count ?? ""}`)).toEqual(["push"]);
     expect(never[0].title).toContain("no upstream");
+  });
+
+  it("counts unpublished commits against the base before an upstream exists", () => {
+    const never = syncMarks(sync({
+      upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false },
+      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+    }));
+    expect(never.map((m) => `${m.kind}${m.count ?? ""}`)).toEqual(["push3"]);
+    expect(never[0].title).toBe("3 commits to publish");
   });
 
   it("puts the force-push warning in the tooltip, not on the row", () => {
