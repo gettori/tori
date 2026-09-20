@@ -112,11 +112,11 @@
 
 .pill {
   flex: none;
-  padding: 0 calc(5px * var(--ui-scale));
+  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border-radius: 999px;
   border: 1px solid currentColor;
   text-transform: lowercase;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-sm);
 }
 .pill[data-pr-state="open"] {
   color: var(--success-fg);
@@ -131,20 +131,35 @@
   color: var(--danger-fg);
 }
 
+/* The way out to github.com, and the only one on this block now that the icon
+   beside it is gone. Quiet at rest so it reads as the pull request's number,
+   and a link under the pointer so it also reads as the way out. */
 .number {
   flex: none;
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-lg);
+  text-decoration: none;
+}
+.number:hover,
+.number:focus-visible {
+  color: var(--accent-fg);
+  text-decoration: underline;
 }
 
-/* Wraps to as many lines as it needs. A truncated title is the one line on
-   this surface nobody can reconstruct from what is left. */
+/* One line, always, sharing it with the state and the number however narrow
+   the pane gets. A zero basis rather than `auto`: the flex base of `auto` is the
+   title's own full width, which is what pushes the number off the row. The rest
+   of a long title is behind the pointer. */
 .subject {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
   color: var(--fg-default);
   font-weight: 600;
   line-height: 1.35;
-  text-wrap: pretty;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta {
