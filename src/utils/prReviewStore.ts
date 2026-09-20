@@ -35,6 +35,7 @@ import {
   type PrFile,
   type PrSummary,
   type PullRequest,
+  type ReviewEvent,
   type ReviewThread,
 } from "./forgeTypes";
 
@@ -111,6 +112,10 @@ export type PrReviewEntry = {
   composers: OpenComposer[];
   pending: PendingComment[];
   reviewBody: string;
+  /// Which verdict the review goes out with. Here rather than in the form,
+  /// because the form is mounted twice: a verdict in a local signal would let
+  /// the panel say "Approve" while the tab beside it says "Comment".
+  verdict: ReviewEvent;
 };
 
 /** Where a draft survives a relaunch. Exported so a test can stand in for a
@@ -139,6 +144,7 @@ const blank = (): PrReviewEntry => ({
   composers: [],
   pending: [],
   reviewBody: "",
+  verdict: "comment",
 });
 
 const EMPTY = blank();
@@ -440,13 +446,21 @@ export function setReviewBody(root: string, number: number, body: string): void 
   saveDraft(root, number);
 }
 
+export function setReviewVerdict(root: string, number: number, event: ReviewEvent): void {
+  const k = key(root, number);
+  slot(k);
+  setEntries(k, "verdict", event);
+}
+
 /** Give up the whole draft, which only a landed submit may do. A failed one
  *  hands the set back, or the reader loses every comment they wrote to one
  *  refusal. */
 export function clearDraft(root: string, number: number): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, { pending: [], reviewBody: "", composers: [] });
+  // The verdict goes with it: the next review of this pull request starts from
+  // the same place the first one did, not from the answer that just went out.
+  setEntries(k, { pending: [], reviewBody: "", composers: [], verdict: "comment" });
   saveDraft(root, number);
 }
 

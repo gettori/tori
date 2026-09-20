@@ -1,0 +1,99 @@
+/* The review being written, in the pull request's tab and in the panel. The
+   diff tabs carry the comments; this carries the verdict they go out with. */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.quiet {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+/* Attention, not danger: an unsent review is not a fault, it is work in
+   progress that the reader needs to remember is theirs to finish. */
+.pendingCount {
+  margin: 0;
+  color: var(--attention-fg);
+  font-size: var(--tori-text-md);
+}
+
+.jump {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  min-width: 0;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.jump:hover {
+  background: var(--neutral-hover);
+}
+/* A comment the diff can no longer carry. The border rather than the text,
+   because the text is the reader's own words and recolouring those reads as a
+   remark about what they wrote. */
+.jump[data-anchor-state="stale"],
+.jump[data-anchor-state="moved"] {
+  border-color: var(--attention-fg);
+}
+
+.jumpAnchor {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-2xs);
+}
+
+.jumpBody {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-width: 0;
+  font-size: var(--tori-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jumpFlag {
+  flex: none;
+  color: var(--attention-fg);
+  font-size: var(--tori-text-2xs);
+}
+
+.summary {
+  width: 100%;
+  min-height: calc(64px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-default);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--tori-text-lg);
+  resize: vertical;
+}
+
+.submit {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.hint,
+.reason {
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+}
+
+.error {
+  color: var(--diff-deleted);
+  font-size: var(--tori-text-md);
+}

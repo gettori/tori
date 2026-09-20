@@ -21,6 +21,15 @@
 //
 // **The merge control lives here and nowhere else.** Two buttons that merge is
 // two places for a stale verdict to offer it.
+//
+// ## The column and the detail
+//
+// The column answers where the branch stands: which pull request, three verdict
+// lines, and the files it changes. Everything behind those lines is a tab in the
+// section at the bottom (the review, the conversations, the checks, the merge,
+// the description), the way the Files tab stacks Scripts, Outline and TODOs
+// under its tree. A verdict row is the way into its own tab, so the summary and
+// the detail cannot be two separate things to find.
 
 import {
   createEffect,
@@ -34,16 +43,16 @@ import {
   Show,
   Switch,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Check,
   ChevronDown,
-  ChevronRight,
+  ChevronUp,
   CircleCheck,
   CircleDot,
   CircleX,
   FileStack,
+  FileText,
   GitMerge,
   List,
   Loader,
@@ -75,6 +84,8 @@ import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
 import { pullsPanelState, type DirectRead } from "../../../utils/pullsPanelState";
 import { prAllTabId, prDiffTabId, prListTabId, prTabId } from "../../../utils/syntheticTabs";
+import { PR_TABS, prLayout, prTab, revealPrTab } from "../../../utils/prSections";
+import { SECTION_MIN_H } from "../../../utils/sectionLayout";
 import { reloadPrList } from "../../../utils/prListStore";
 import { projectUnitFor } from "../../../utils/sessionActivity";
 import {
@@ -111,6 +122,10 @@ import IconButton from "../../../components/IconButton/IconButton";
 import Tooltip from "../../../components/Tooltip/Tooltip";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
+import Resizer from "../../../components/Resizer/Resizer";
+import { chromeScale } from "../../Settings/settingsStore";
+import PrThreadCard from "./PrThreadCard";
+import ReviewForm from "./ReviewForm";
 import styles from "./PullsPanel.module.css";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -162,7 +177,6 @@ export default function PullsPanel(props: {
   const [base, setBase] = createSignal<string | null>(null);
   const [direct, setDirect] = createSignal<DirectRead>({ kind: "idle" });
 
-  const [checksOpen, setChecksOpen] = createSignal(false);
   const [mergeBusy, setMergeBusy] = createSignal(false);
   const [mergeError, setMergeError] = createSignal<string | null>(null);
   const [merged, setMerged] = createSignal(false);
@@ -399,7 +413,6 @@ export default function PullsPanel(props: {
   createEffect(
     on([() => props.root, () => shown()?.number], ([root, number]) => {
       ++landing;
-      setChecksOpen(false);
       setMergeBusy(false);
       setMergeError(null);
       setMerged(false);
@@ -430,6 +443,15 @@ export default function PullsPanel(props: {
   const wide = () => paneWidth() >= COUNTS_MIN_WIDTH;
 
   let paneRef: HTMLDivElement | undefined;
+  let stackEl: HTMLDivElement | undefined;
+
+  /// Room above the detail for the pull request itself, whatever the drag asks
+  /// for: a section dragged to the full height answers "which pull request is
+  /// this" with a form.
+  const maxH = () => (stackEl?.clientHeight ?? 0) - 160 * chromeScale();
+  const detailOpen = () => prLayout.open("detail");
+  const detailHeight = () => prLayout.size("detail") * chromeScale();
+
   onMount(() => {
     if (!paneRef) return;
     const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
@@ -497,24 +519,27 @@ export default function PullsPanel(props: {
     void pollNow("manual");
   }
 
-  /// Open one file where there is room to read it.
+  /// Open one of this pull request's tabs in the stage. Every route out of the
+  /// panel goes through here.
   ///
-  /// `notePr` first, because the tab reads the store on mount and there is no
+  /// `notePr` first, because a tab reads the store on mount and there is no
   /// read by number: a pull request the poll never covered would otherwise
-  /// render as no pull request at all over a diff it was holding all along.
-  function openFile(path: string) {
+  /// render as no pull request at all over a diff it was holding all along,
+  /// and the strip would label it with its number and nothing else.
+  function openInStage(id: (root: string, number: number) => string, preview = false) {
     const root = props.root;
     const s = shown();
     if (!root || !s) return;
     notePr(root, s.number, s.pr);
-    // Transient, and the only opener that asks for it: reading a pull request
-    // is walking a list of files, and a tab per row leaves a strip nobody can
-    // read by the time the review is written. Double click keeps one.
-    emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
-      path: prDiffTabId(root, s.number, path),
-      preview: true,
-    });
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: id(root, s.number), preview });
   }
+
+  /// Open one file where there is room to read it. Transient, and the only
+  /// opener that asks for it: reading a pull request is walking a list of
+  /// files, and a tab per row leaves a strip nobody can read by the time the
+  /// review is written. Double click keeps one.
+  const openFile = (path: string) =>
+    openInStage((root, number) => prDiffTabId(root, number, path), true);
 
   const drifted = () => {
     const root = props.root;
@@ -742,6 +767,14 @@ export default function PullsPanel(props: {
         <Show when={shown()}>
           {(s) => (
             <>
+              {/* Prose wants a page, not a 320px column, and the pull
+                  request's own tab opens on it. */}
+              <IconButton
+                size="xs"
+                icon={<Icon icon={FileText} size={14} />}
+                tooltip="Open the description in the editor"
+                onClick={() => openInStage(prTabId)}
+              />
               {/* The stacked half of the per-file tabs. Beside Refresh
                   because it is the same kind of control: about this pull
                   request, wherever in it the reader currently is. */}
@@ -749,12 +782,7 @@ export default function PullsPanel(props: {
                 size="xs"
                 icon={<Icon icon={FileStack} size={14} />}
                 tooltip="Review all files in one tab"
-                onClick={() =>
-                  props.root &&
-                  emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
-                    path: prAllTabId(props.root, s().number),
-                  })
-                }
+                onClick={() => openInStage(prAllTabId)}
               />
               <IconButton
                 size="xs"
@@ -781,290 +809,398 @@ export default function PullsPanel(props: {
         </Show>
       </div>
 
-      {/* On top of whatever else is drawn. A tick that did not reach every unit
-          is a partial answer, and the states below would each read as complete
-          without it. */}
-      <Show when={uncovered() > 0}>
-        <div class={styles.notice}>
-          Checks are not shown for {uncovered()} branch{uncovered() === 1 ? "" : "es"} this poll did
-          not cover.
-        </div>
-      </Show>
+      <div class={styles.stack} ref={stackEl}>
+        <div class={styles.scroll}>
+          {/* On top of whatever else is drawn. A tick that did not reach every
+              unit is a partial answer, and the states below would each read as
+              complete without it. */}
+          <Show when={uncovered() > 0}>
+            <div class={styles.notice}>
+              Checks are not shown for {uncovered()} branch{uncovered() === 1 ? "" : "es"} this poll
+              did not cover.
+            </div>
+          </Show>
 
-      <Switch>
-        <Match when={shown()}>
-          {(s) => (
-            <div class={styles.body}>
-              {/* Block 1: which pull request this is. */}
-              <div class={styles.identity}>
-                <div class={styles.identityTop}>
-                  <span
-                    class={styles.pill}
-                    data-pr-state={s().pr.isDraft ? "draft" : s().pr.state}
-                  >
-                    {s().pr.isDraft ? "draft" : s().pr.state}
-                  </span>
-                  {/* One line, with the rest of it behind the pointer. Tori's
-                      own tooltip rather than the native `title`, which the
-                      webview does not draw: a truncated label whose full text
-                      nothing shows is a truncated label. */}
-                  <Tooltip<HTMLSpanElement>
-                    as="span"
-                    class={styles.subject}
-                    label={s().pr.title}
-                  >
-                    {s().pr.title}
-                  </Tooltip>
-                  {/* The number is the way out to github.com, rather than an
-                      icon beside it saying the same thing. An anchor and not a
-                      button, so the middle click and the Cmd+click that every
-                      other link in the app answers work here too; its own name
-                      is spelled out, since the number alone tells a screen
-                      reader nothing about where it goes. */}
-                  <a
-                    class={styles.number}
-                    href={s().pr.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Open pull request ${s().pr.number} on github.com`}
-                  >
-                    #{s().pr.number}
-                  </a>
-                </div>
-                <div class={styles.meta}>{metaLine(s().pr, summary()?.updatedAt ?? null)}</div>
-                <div class={styles.branches}>
-                  {/* The head loses its *start* when it does not fit: a long
-                      branch name is prefixed with the part every branch shares. */}
-                  <span class={styles.headRef} title={s().pr.headRef}>
-                    {s().pr.headRef}
-                  </span>
-                  <span class={styles.into} aria-hidden="true">
-                    -&gt;
-                  </span>
-                  <span class={styles.baseRef}>{s().pr.baseRef}</span>
-                </div>
-              </div>
-
-              {/* Block 2: the three verdicts, one line each. A badge grid wraps
-                  into nonsense at 320px. */}
-              <div class={styles.rollup}>
-                <Show
-                  when={polled()}
-                  fallback={
-                    <div class={styles.verdictRow} data-verdict="checks" data-tone="blank">
-                      <Icon icon={CircleDot} size={14} aria-hidden="true" />
-                      <span>No checks read for this branch.</span>
+          <Switch>
+            <Match when={shown()}>
+              {(s) => (
+                <div class={styles.body}>
+                  {/* Block 1: which pull request this is. */}
+                  <div class={styles.identity}>
+                    <div class={styles.identityTop}>
+                      <span
+                        class={styles.pill}
+                        data-pr-state={s().pr.isDraft ? "draft" : s().pr.state}
+                      >
+                        {s().pr.isDraft ? "draft" : s().pr.state}
+                      </span>
+                      {/* One line, with the rest of it behind the pointer. Tori's
+                          own tooltip rather than the native `title`, which the
+                          webview does not draw: a truncated label whose full text
+                          nothing shows is a truncated label. */}
+                      <Tooltip<HTMLSpanElement>
+                        as="span"
+                        class={styles.subject}
+                        label={s().pr.title}
+                      >
+                        {s().pr.title}
+                      </Tooltip>
+                      {/* The number is the way out to github.com, rather than an
+                          icon beside it saying the same thing. An anchor and not a
+                          button, so the middle click and the Cmd+click that every
+                          other link in the app answers work here too; its own name
+                          is spelled out, since the number alone tells a screen
+                          reader nothing about where it goes. */}
+                      <a
+                        class={styles.number}
+                        href={s().pr.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open pull request ${s().pr.number} on github.com`}
+                      >
+                        #{s().pr.number}
+                      </a>
                     </div>
-                  }
-                >
-                  {(unit) => (
-                    <Show when={checksLine(unit().checks)}>
-                      {(line) => (
-                        <>
-                          {/* A rollup the read described nothing of has
-                              nothing to expand, so it is a line rather than a
-                              button: a disabled control with no reason beside
-                              it reads as a broken one. */}
-                          <Dynamic
-                            component={unit().checks.contexts.length ? "button" : "div"}
-                            type={unit().checks.contexts.length ? "button" : undefined}
-                            class={styles.verdictRow}
-                            data-verdict="checks"
-                            data-tone={line().tone}
-                            aria-expanded={unit().checks.contexts.length ? checksOpen() : undefined}
-                            onClick={
-                              unit().checks.contexts.length
-                                ? () => setChecksOpen(!checksOpen())
-                                : undefined
-                            }
-                          >
-                            <Icon icon={line().icon} size={14} aria-hidden="true" />
-                            <span class={styles.verdictText}>{line().text}</span>
-                            <Show when={unit().checks.contexts.length}>
-                              <Icon icon={checksOpen() ? ChevronDown : ChevronRight} size={14} aria-hidden="true" />
-                            </Show>
-                          </Dynamic>
-                          <Show when={checksOpen()}>
-                            <ul class={styles.contexts}>
-                              <For each={unit().checks.contexts}>
-                                {(c) => (
-                                  <li class={styles.context} data-check-state={c.state}>
-                                    <span class={styles.contextName}>{c.name}</span>
-                                    <Show when={c.url}>
-                                      {(url) => (
-                                        <a href={url()} target="_blank" rel="noreferrer">
-                                          Details
-                                        </a>
-                                      )}
-                                    </Show>
-                                  </li>
-                                )}
-                              </For>
-                              {/* The query caps the node list, so a long rollup
-                                  lists fewer checks than it counts. */}
-                              <Show when={unit().checks.contexts.length < unit().checks.total}>
-                                <li class={styles.contextMore}>
-                                  {unit().checks.total - unit().checks.contexts.length} more not
-                                  described by this read.
-                                </li>
-                              </Show>
-                            </ul>
-                          </Show>
-                        </>
+                    <div class={styles.meta}>{metaLine(s().pr, summary()?.updatedAt ?? null)}</div>
+                    <div class={styles.branches}>
+                      {/* The head loses its *start* when it does not fit: a long
+                          branch name is prefixed with the part every branch shares. */}
+                      <span class={styles.headRef} title={s().pr.headRef}>
+                        {s().pr.headRef}
+                      </span>
+                      <span class={styles.into} aria-hidden="true">
+                        -&gt;
+                      </span>
+                      <span class={styles.baseRef}>{s().pr.baseRef}</span>
+                    </div>
+                  </div>
+
+                  {/* Block 2: the three verdicts, one line each. A badge grid wraps
+                      into nonsense at 320px. Each line leads to the tab that
+                      holds what is behind it. */}
+                  <div class={styles.rollup}>
+                    <Show
+                      when={polled()}
+                      fallback={
+                        <div class={styles.verdictRow} data-verdict="checks" data-tone="blank">
+                          <Icon icon={CircleDot} size={14} aria-hidden="true" />
+                          <span>No checks read for this branch.</span>
+                        </div>
+                      }
+                    >
+                      {(unit) => (
+                        <Show when={checksLine(unit().checks)}>
+                          {(line) => (
+                            <button
+                              type="button"
+                              class={styles.verdictRow}
+                              data-verdict="checks"
+                              data-tone={line().tone}
+                              onClick={() => revealPrTab("checks")}
+                            >
+                              <Icon icon={line().icon} size={14} aria-hidden="true" />
+                              <span class={styles.verdictText}>{line().text}</span>
+                            </button>
+                          )}
+                        </Show>
                       )}
                     </Show>
-                  )}
-                </Show>
 
-                {/* The counts are the summary's and the colour is the poll's,
-                    the same source the chip uses. Absent rather than zeroed
-                    until the summary lands: "nobody has approved" is a verdict,
-                    and nobody has reached it. */}
-                <div
-                  class={styles.verdictRow}
-                  data-verdict="reviews"
-                  data-decision={polled()?.reviewDecision ?? "unread"}
-                >
-                  <Icon icon={MessageSquare} size={14} aria-hidden="true" />
-                  <span class={styles.verdictText}>{reviewsLine(summary()?.counts?.reviews ?? null)}</span>
-                </div>
+                    {/* The counts are the summary's and the colour is the poll's,
+                        the same source the chip uses. Absent rather than zeroed
+                        until the summary lands: "nobody has approved" is a verdict,
+                        and nobody has reached it. */}
+                    <button
+                      type="button"
+                      class={styles.verdictRow}
+                      data-verdict="reviews"
+                      data-decision={polled()?.reviewDecision ?? "unread"}
+                      onClick={() => revealPrTab("conversation")}
+                    >
+                      <Icon icon={MessageSquare} size={14} aria-hidden="true" />
+                      <span class={styles.verdictText}>{reviewsLine(summary()?.counts?.reviews ?? null)}</span>
+                    </button>
 
-                <div class={styles.verdictRow} data-verdict="merge">
-                  <Icon icon={GitMerge} size={14} aria-hidden="true" />
-                  <span class={styles.verdictText}>
-                    {summary() ? mergeGate(summary()!.mergeableState).summary : "Checking whether this can merge…"}
-                  </span>
-                </div>
-              </div>
+                    <button
+                      type="button"
+                      class={styles.verdictRow}
+                      data-verdict="merge"
+                      onClick={() => revealPrTab("merge")}
+                    >
+                      <Icon icon={GitMerge} size={14} aria-hidden="true" />
+                      <span class={styles.verdictText}>
+                        {summary() ? mergeGate(summary()!.mergeableState).summary : "Checking whether this can merge…"}
+                      </span>
+                    </button>
+                  </div>
 
-              {/* Block 3: the one merge control in the app. */}
-              <Show when={s().pr.state === "open"}>
-                <MergeBar
-                  state={summary()?.mergeableState ?? null}
-                  busy={mergeBusy()}
-                  error={mergeError()}
-                  merged={merged()}
-                  url={s().pr.url}
-                  onMerge={(method) => void mergePr(method)}
-                  onUpdateBranch={() => void updateBranch()}
-                  onDeleteBranch={localUnit() ? askToDeleteBranch : undefined}
-                />
-              </Show>
-
-              {/* The head has moved since the patches in hand were read, so
-                  every anchor in every open diff tab describes a file the
-                  server no longer has. */}
-              <Show when={drifted()}>
-                <div class={styles.drift}>
-                  <span>This pull request has new commits since you read it.</span>
-                  <Button
-                    variant="ghost"
-                    onClick={() => props.root && void refresh(props.root, s().number, "files")}
-                  >
-                    Reload the diff
-                  </Button>
-                </div>
-              </Show>
-
-              <Show when={entry()?.filesError}>
-                {(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}
-              </Show>
-
-              {/* Block 4: the files, as folders. `j` and `k` walk the file
-                  rows only, so a shut directory is a directory the keyboard
-                  skips rather than one it walks through invisibly. */}
-              <div class={styles.filesHead}>
-                <span class={styles.filesTitle}>Files</span>
-                <span class={styles.fileCount}>{filesCount()}</span>
-                <span class={styles.spacer} />
-                <Show when={totals()}>
-                  {(n) => (
-                    <span class={styles.counts}>
-                      <span class={styles.added}>+{n().additions}</span>
-                      <span class={styles.removed}>-{n().deletions}</span>
-                    </span>
-                  )}
-                </Show>
-              </div>
-
-              <Show when={entry()?.filesLoading}>
-                <div class={styles.notice}>Loading files…</div>
-              </Show>
-
-              <TreeRows node={fileTree()} number={s().number} depth={0} />
-
-              {/* GitHub's own ceiling, not a budget of ours: past it the server
-                  stops describing the pull request, so the honest thing is to
-                  say so and hand over the link. */}
-              <Show when={entry()?.filesTruncated}>
-                <div class={styles.notice}>
-                  This pull request changes more files than the API will describe.{" "}
-                  <a href={`${s().pr.url}/files`} target="_blank" rel="noreferrer">
-                    See all of them on github.com
-                  </a>
-                </div>
-              </Show>
-
-              {/* Hidden entirely at zero pending. A permanent submit bar over a
-                  pull request nobody is reviewing is chrome on every diff in
-                  the app. */}
-              <Show when={pending().length}>
-                <div class={styles.footer}>
-                  <span class={styles.pendingCount} data-pending={pending().length}>
-                    <Icon icon={SquarePen} size={13} aria-hidden="true" />
-                    {pendingLabel()}
-                  </span>
-                  <span class={styles.spacer} />
-                  <Button
-                    variant="primary"
-                    size="xs"
-                    onClick={() =>
-                      props.root &&
-                      emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
-                        path: prTabId(props.root, s().number),
-                      })
-                    }
-                  >
-                    Finish review
-                  </Button>
-                </div>
-              </Show>
-            </div>
-          )}
-        </Match>
-
-        <Match when={say()}>
-          {(s) => (
-            <div class={styles.empty} data-panel-state={s().kind}>
-              <div class={styles.headline}>{s().headline}</div>
-              <Show when={s().detail}>
-                <p class={styles.detail}>{s().detail}</p>
-              </Show>
-              {/* The remote verbatim, because which one it is is the whole
-                  point of this state. */}
-              <Show when={s().kind === "inert" ? origin() : null}>
-                {(url) => <code class={styles.origin}>{url()}</code>}
-              </Show>
-              <Show when={actions().length}>
-                <div class={styles.emptyActions}>
-                  <For each={actions()}>
-                    {(act) => (
+                  {/* The head has moved since the patches in hand were read, so
+                      every anchor in every open diff tab describes a file the
+                      server no longer has. */}
+                  <Show when={drifted()}>
+                    <div class={styles.drift}>
+                      <span>This pull request has new commits since you read it.</span>
                       <Button
-                        variant={act.primary ? "primary" : "ghost"}
-                        size="sm"
-                        disabled={act.busy && prFlow.busy()}
-                        onClick={act.run}
+                        variant="ghost"
+                        onClick={() => props.root && void refresh(props.root, s().number, "files")}
                       >
-                        {act.label}
+                        Reload the diff
                       </Button>
+                    </div>
+                  </Show>
+
+                  <Show when={entry()?.filesError}>
+                    {(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}
+                  </Show>
+
+                  {/* Block 4: the files, as folders. `j` and `k` walk the file
+                      rows only, so a shut directory is a directory the keyboard
+                      skips rather than one it walks through invisibly. */}
+                  <div class={styles.filesHead}>
+                    <span class={styles.filesTitle}>Files</span>
+                    <span class={styles.fileCount}>{filesCount()}</span>
+                    <span class={styles.spacer} />
+                    <Show when={totals()}>
+                      {(n) => (
+                        <span class={styles.counts}>
+                          <span class={styles.added}>+{n().additions}</span>
+                          <span class={styles.removed}>-{n().deletions}</span>
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+
+                  <Show when={entry()?.filesLoading}>
+                    <div class={styles.notice}>Loading files…</div>
+                  </Show>
+
+                  <TreeRows node={fileTree()} number={s().number} depth={0} />
+
+                  {/* GitHub's own ceiling, not a budget of ours: past it the server
+                      stops describing the pull request, so the honest thing is to
+                      say so and hand over the link. */}
+                  <Show when={entry()?.filesTruncated}>
+                    <div class={styles.notice}>
+                      This pull request changes more files than the API will describe.{" "}
+                      <a href={`${s().pr.url}/files`} target="_blank" rel="noreferrer">
+                        See all of them on github.com
+                      </a>
+                    </div>
+                  </Show>
+
+                  {/* Hidden entirely at zero pending. A permanent submit bar over a
+                      pull request nobody is reviewing is chrome on every diff in
+                      the app. */}
+                  <Show when={pending().length}>
+                    <div class={styles.footer}>
+                      <span class={styles.pendingCount} data-pending={pending().length}>
+                        <Icon icon={SquarePen} size={13} aria-hidden="true" />
+                        {pendingLabel()}
+                      </span>
+                      <span class={styles.spacer} />
+                      <Button variant="primary" size="xs" onClick={() => openInStage(prTabId)}>
+                        Finish review
+                      </Button>
+                    </div>
+                  </Show>
+                </div>
+              )}
+            </Match>
+
+            <Match when={say()}>
+              {(s) => (
+                <div class={styles.empty} data-panel-state={s().kind}>
+                  <div class={styles.headline}>{s().headline}</div>
+                  <Show when={s().detail}>
+                    <p class={styles.detail}>{s().detail}</p>
+                  </Show>
+                  {/* The remote verbatim, because which one it is is the whole
+                      point of this state. */}
+                  <Show when={s().kind === "inert" ? origin() : null}>
+                    {(url) => <code class={styles.origin}>{url()}</code>}
+                  </Show>
+                  <Show when={actions().length}>
+                    <div class={styles.emptyActions}>
+                      <For each={actions()}>
+                        {(act) => (
+                          <Button
+                            variant={act.primary ? "primary" : "ghost"}
+                            size="sm"
+                            disabled={act.busy && prFlow.busy()}
+                            onClick={act.run}
+                          >
+                            {act.label}
+                          </Button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              )}
+            </Match>
+          </Switch>
+        </div>
+
+        {/* The detail, one tab at a time, the way the Files tab stacks Scripts,
+            Outline and TODOs under its tree. The strip is the section's header:
+            collapsed, it is all that is left of it, pinned to the bottom.
+
+            The rows above are the summary and these are what is behind them, so
+            a verdict row's click lands here rather than expanding in place. */}
+        <Show when={shown()}>
+          {(s) => (
+            <section
+              class={styles.views}
+              classList={{ [styles.viewsOpen]: detailOpen() }}
+              style={detailOpen() ? { flex: `0 1 ${detailHeight()}px` } : undefined}
+              data-section="detail"
+            >
+              <Show when={detailOpen()}>
+                <div class={styles.sash}>
+                  <Resizer
+                    axis="y"
+                    side="after"
+                    value={detailHeight()}
+                    min={SECTION_MIN_H * chromeScale()}
+                    max={Math.max(SECTION_MIN_H * chromeScale(), maxH())}
+                    onInput={(h) => prLayout.setSize("detail", h / chromeScale())}
+                    onCommit={prLayout.saveSizes}
+                  />
+                </div>
+              </Show>
+              <div class={styles.tabStrip}>
+                {/* Scrolls rather than wraps: five labels do not fit a 320px
+                    column, and a strip that becomes two rows moves the control
+                    beside it every time the pane is resized. */}
+                <div class={styles.tabs} role="tablist" aria-label="Pull request detail">
+                  <For each={PR_TABS}>
+                    {(t) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        id={`pr-tab-${t.id}`}
+                        class={styles.tab}
+                        aria-selected={prTab() === t.id}
+                        aria-controls={`pr-panel-${t.id}`}
+                        onClick={() => revealPrTab(t.id)}
+                      >
+                        {t.label}
+                      </button>
                     )}
                   </For>
                 </div>
+                <span class={styles.spacer} />
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={detailOpen() ? ChevronDown : ChevronUp} />}
+                  aria-expanded={detailOpen()}
+                  tooltip={detailOpen() ? "Collapse" : "Expand"}
+                  onClick={() => prLayout.setOpen("detail", !detailOpen())}
+                />
+              </div>
+              <Show when={detailOpen()}>
+                <div
+                  id={`pr-panel-${prTab()}`}
+                  role="tabpanel"
+                  aria-labelledby={`pr-tab-${prTab()}`}
+                  class={styles.tabPanel}
+                >
+                  <Switch>
+                    <Match when={prTab() === "review"}>
+                      <ReviewForm workspace={props.root!} number={s().number} />
+                    </Match>
+
+                    <Match when={prTab() === "conversation"}>
+                      <Show when={entry()?.threadsError}>
+                        {(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}
+                      </Show>
+                      <Show
+                        when={entry()?.threads.length}
+                        fallback={<div class={styles.notice}>No conversations on this pull request yet.</div>}
+                      >
+                        <For each={entry()?.threads ?? []}>
+                          {(t) => (
+                            <PrThreadCard root={props.root!} pr={s().pr} thread={t} quoteHunk />
+                          )}
+                        </For>
+                      </Show>
+                      {/* Review threads only. The conversation tab on github.com
+                          also carries comments made on the pull request itself,
+                          which nothing here reads. */}
+                      <Show when={s().pr.comments}>
+                        <div class={styles.notice}>
+                          {plural(s().pr.comments, "comment")} on the pull request itself.{" "}
+                          <a href={s().pr.url} target="_blank" rel="noreferrer">
+                            Read them on {originHost(origin() ?? "") ?? "the host"}
+                          </a>
+                        </div>
+                      </Show>
+                    </Match>
+
+                    <Match when={prTab() === "checks"}>
+                      <Show
+                        when={polled()?.checks.contexts.length}
+                        fallback={
+                          <div class={styles.notice}>
+                            {polled() ? "This read described no checks." : "No checks read for this branch."}
+                          </div>
+                        }
+                      >
+                        <ul class={styles.contexts}>
+                          <For each={polled()!.checks.contexts}>
+                            {(c) => (
+                              <li class={styles.context} data-check-state={c.state}>
+                                <span class={styles.contextName}>{c.name}</span>
+                                <Show when={c.url}>
+                                  {(url) => (
+                                    <a href={url()} target="_blank" rel="noreferrer">
+                                      Details
+                                    </a>
+                                  )}
+                                </Show>
+                              </li>
+                            )}
+                          </For>
+                          {/* The query caps the node list, so a long rollup lists
+                              fewer checks than it counts. */}
+                          <Show when={polled()!.checks.contexts.length < polled()!.checks.total}>
+                            <li class={styles.contextMore}>
+                              {polled()!.checks.total - polled()!.checks.contexts.length} more not
+                              described by this read.
+                            </li>
+                          </Show>
+                        </ul>
+                      </Show>
+                    </Match>
+
+                    {/* The one merge control in the app, in a tab rather than in
+                        the column: it is the last thing a review does, and it
+                        was taking the room the review itself needs. */}
+                    <Match when={prTab() === "merge"}>
+                      <Show
+                        when={s().pr.state === "open"}
+                        fallback={<div class={styles.notice}>This pull request is {s().pr.state}.</div>}
+                      >
+                        <MergeBar
+                          state={summary()?.mergeableState ?? null}
+                          busy={mergeBusy()}
+                          error={mergeError()}
+                          merged={merged()}
+                          url={s().pr.url}
+                          onMerge={(method) => void mergePr(method)}
+                          onUpdateBranch={() => void updateBranch()}
+                          onDeleteBranch={localUnit() ? askToDeleteBranch : undefined}
+                        />
+                      </Show>
+                    </Match>
+
+                  </Switch>
+                </div>
               </Show>
-            </div>
+            </section>
           )}
-        </Match>
-      </Switch>
+        </Show>
+      </div>
 
       <Show when={prFlow.formOpen()}>
         <CreatePrFlowDialog flow={prFlow} />
