@@ -76,9 +76,8 @@ export default function PrLine(props: {
     const at = Date.parse(pr()?.createdAt ?? "");
     return Number.isNaN(at) ? null : at / 1000;
   };
-  // Bare on the line, where it is one fact in a run, and a phrase in the
-  // tooltip, where it is part of a sentence: `compactAge` bottoms out at "now",
-  // which reads as "opened now ago" the moment a suffix is put on it.
+  // Bare on the line, where it is one fact in a run, and with an "ago" suffix
+  // in the tooltip, where it is part of a sentence.
   const age = () => {
     const at = openedAt();
     return at === null ? null : compactAge(at);
