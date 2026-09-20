@@ -8,6 +8,104 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.920.0-alpha
+
+Pull requests are read in Tori now. The sidebar says which branches have one,
+the panel says where the one in front of you stands, and the review itself,
+the files, the conversations, the checks and the verdict, happens in tabs with
+room to read them.
+
+### Pull requests
+
+- The Pull requests panel is about the branch in front of you: one pull
+  request, where its checks, its reviews and its merge stand, and its files.
+  The project's whole list has a tab of its own, and picking a row there opens
+  it, including a pull request on somebody else's branch.
+- The review happens in the panel. Review, Conversation, Checks and Merge sit
+  in a collapsible section at the bottom, at a height that survives a relaunch,
+  and each verdict line above opens the one it belongs to.
+- A file opens as a diff tab in the stage, with its conversations between the
+  rows they are anchored to and a composer under them. File rows take one
+  replaceable slot, so walking a forty file pull request does not leave forty
+  tabs behind; a double click or the first edit keeps the one worth keeping.
+- All files stacks every file into one scroll, for reading a change in order.
+  The first ten open on arrival and the rest when you open them.
+- The files are a tree, the shape the review on github.com uses, and every row
+  carries a Viewed box. A folder's box marks everything under it, and shows a
+  dash where only some of its files have been read.
+- Checks group by outcome, worst first, with the count and the colour on the
+  heading rather than on the name of somebody's job.
+- A draft review survives a relaunch. Each held comment remembers the diff row
+  it was written against, and the submit is refused if that line has moved or
+  now reads differently, or if the branch has moved since the patches were
+  read.
+- Approve, request changes or comment from the panel or from the pull request's
+  own tab. They are one review, not two half-written ones.
+- `j` and `k` walk the panel's files, `n` and `p` walk a diff's conversations,
+  and `Cmd+Shift+R` opens the tab the review is sent from. These are the app's
+  first bare letters, so they stand down while you are typing.
+- Merging is still in one place, the panel's merge control, and still gated on
+  the server's own verdict.
+- A branch with no pull request says which kind of nothing it is, and the four
+  you can act on carry the button that does it: push and open one, push only,
+  open one, or cut a branch when you are standing on the base.
+- Asking an agent to draft the description names what the branch changed,
+  measured against the base rather than against everything the base has gained
+  since you forked.
+
+### The sidebar
+
+- A branch with a pull request grows a second line for it: the number, the
+  state, the checks, the comments and the age, with the title behind a tooltip.
+  The marker that said a branch has none is gone, because the missing line says
+  it.
+- The row's glyph says where you are standing. The branch tip fills and the
+  mark brightens, in place of the teal dot beside it.
+- A bare repo with no worktrees dashes the folder half of its glyph instead of
+  wearing a `stub` pill.
+- The conflict count sits on the red mark, so a branch that is both behind and
+  conflicting no longer reads `1 master: 1 conflict`.
+- The sync chip is rounded like every other control, and its text sits on the
+  glyph's line.
+
+### Branches and worktrees
+
+- The add branch dialog fills from what is on disk and opens at once. The
+  network is behind a Reload button, and the fetch on open is the scheduled
+  quiet one rather than seconds of ssh with nothing on screen.
+- Creating a branch or a worktree says where it starts. The base defaults to
+  the repo's default branch and is picked from a filtered list rather than a
+  scroll of hundreds.
+- A local branch nothing is standing on can be deleted from the picker. It asks
+  first, and says whether the branch has commits the remote has never seen.
+- The picked row keeps its colour and wears a green check, the trash shows
+  where the pointer is rather than where Enter goes, and the filter survives a
+  click.
+
+### Changes
+
+- The Changes tab carries the number of changed files whenever another pane is
+  in front of it, and drops it when its own panel is open and saying it better.
+- A worktree's branch is no longer called unpushed in the Changes header while
+  the sidebar row counts it. Both measure against the remote branch of the same
+  name.
+
+### Fixes
+
+- A fetch that loses a ref to another git on the same repo is no longer
+  reported as a dead remote, and a failed fetch's tooltip is clamped to six
+  lines instead of carrying the whole of git's output off the screen.
+- A tooltip can hold a path without it running out of the box, and the conflict
+  list inside one stops at three and a remainder.
+- "Last commit now ago" says "just now".
+- A branch named like `2427-message-thread` no longer reorders itself to
+  `message-thread-2427` when it is truncated from the front.
+- Checks on a worktree checkout are found. The panel was looking the poll's
+  status up under the worktree folder rather than the project that holds it,
+  and reported that nothing had covered the branch.
+- A long base name stays inside its button, and Add worktree no longer breaks
+  in two when the path hint claims the row.
+
 ## 26.918.0-alpha
 
 A fresh Tori opens a setup window instead of an empty sidebar. It shows a
