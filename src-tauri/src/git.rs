@@ -2859,12 +2859,36 @@ pub struct PullResult {
     pub error: String,
 }
 
-/// The remote a bare `git pull` here would talk to: the current branch's
-/// upstream, which is the only place git resolves one from.
-fn pull_remote(repo: &str) -> Option<String> {
+/// Where a pull here goes: the remote to bridge credentials for, and the branch
+/// to name on the command line when the branch's own config names none.
+///
+/// A worktree git made carries no tracking config at all, which is the common
+/// case in Tori's `.bare` layout and the same fact [`sync_ref`] exists for. So
+/// the branch the chip says is thirty-three behind is a branch a bare `git pull`
+/// refuses to guess at, answering with "there is no tracking information for the
+/// current branch" and a quote from the manual. Naming `origin/<branch>` where
+/// that ref exists is what makes the pull agree with the count that asked for
+/// it, and it is the same ref the count was measured against.
+///
+/// None where neither exists: there is genuinely nothing to pull, and git's own
+/// refusal says so better than a guess would.
+fn pull_target(repo: &str) -> Option<(String, Option<String>)> {
     let branch = git_capture(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).ok()?;
-    let remote = git_capture(repo, &["config", "--get", &format!("branch.{branch}.remote")]).ok()?;
-    (!remote.is_empty()).then_some(remote)
+    // A detached HEAD reads back as the word itself, and `origin/HEAD` exists in
+    // most clones: without this, a pull from a detached HEAD would quietly take
+    // origin's default branch.
+    if branch.is_empty() || branch == "HEAD" {
+        return None;
+    }
+    if let Some(remote) = git_capture(repo, &["config", "--get", &format!("branch.{branch}.remote")])
+        .ok()
+        .filter(|r| !r.is_empty())
+    {
+        return Some((remote, None));
+    }
+    git_capture(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{branch}")])
+        .ok()
+        .map(|_| ("origin".to_string(), Some(branch)))
 }
 
 /// Background `git pull`, a sibling of `git_fetch` and `git_push`. Emits
@@ -2885,10 +2909,16 @@ pub fn git_pull(
     let op_id = next_op_id();
     thread::spawn(move || {
         let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
-        let _bridge =
-            pull_remote(&repo).and_then(|r| crate::credential::bridge(&mut cmd, &repo, &r, &op_id));
+        let target = pull_target(&repo);
+        let _bridge = target
+            .as_ref()
+            .and_then(|(remote, _)| crate::credential::bridge(&mut cmd, &repo, remote, &op_id));
         cmd.arg("pull");
         cmd.arg(if rebase.unwrap_or(false) { "--rebase" } else { "--no-rebase" });
+        if let Some((remote, Some(branch))) = target {
+            cmd.arg(remote);
+            cmd.arg(branch);
+        }
         let (ok, error) = {
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -3271,8 +3301,11 @@ diff --git a/f b/f
     }
 
     fn repo_with_two_branches() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("tori_checkout_test_{n}"));
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("tori_checkout_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -3301,6 +3334,44 @@ diff --git a/f b/f
         assert!(!has_upstream(&p, "main"));
         git(&local, &["push", "-u", "origin", "main"]);
         assert!(has_upstream(&p, "main"));
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn pull_target_uses_the_configured_upstream_remote_without_naming_a_branch() {
+        let (local, remote) = repo_with_remote();
+        git(&local, &["push", "-u", "origin", "main"]);
+
+        assert_eq!(pull_target(&local.to_string_lossy()), Some(("origin".into(), None)));
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn pull_target_falls_back_to_the_matching_origin_branch_without_tracking_config() {
+        let (local, remote) = repo_with_remote();
+        git(&local, &["push", "-u", "origin", "main"]);
+        git(&local, &["config", "--unset", "branch.main.remote"]);
+        git(&local, &["config", "--unset", "branch.main.merge"]);
+
+        assert_eq!(
+            pull_target(&local.to_string_lossy()),
+            Some(("origin".into(), Some("main".into())))
+        );
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn pull_target_does_not_guess_for_a_detached_head_or_missing_remote_ref() {
+        let (local, remote) = repo_with_remote();
+        git(&local, &["push", "origin", "main"]);
+        git(&local, &["checkout", "--detach", "-q"]);
+        assert_eq!(pull_target(&local.to_string_lossy()), None);
+
+        git(&local, &["checkout", "-q", "feature"]);
+        assert_eq!(pull_target(&local.to_string_lossy()), None);
         std::fs::remove_dir_all(&local).ok();
         std::fs::remove_dir_all(&remote).ok();
     }
