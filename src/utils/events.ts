@@ -401,7 +401,13 @@ export type OpenInEditor = {
   path: string;
   line?: number;
   col?: number;
-  /** Open a Markdown or SVG file rendered rather than as source. */
+  /** Open a Markdown or SVG file rendered rather than as source.
+   *
+   *  Not `preview`: a tab slot the next open replaces is called that everywhere
+   *  else, and one word covering both is how a caller asks for the wrong one. */
+  rendered?: boolean;
+  /** Land in the pane's one replaceable slot: the next such open takes it over,
+   *  and a double click or an edit keeps it. */
   preview?: boolean;
   /** Carry the tab into a new pane split off to the right. */
   side?: boolean;

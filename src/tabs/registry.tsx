@@ -37,6 +37,13 @@ export type TabDescriptor = {
   trailingEdge?: () => JSX.Element;
   activate: (t: UnifiedTab) => void;
   close: (t: UnifiedTab, e: Event) => void;
+  /** A tab the next open of its kind replaces, drawn so it reads as one. */
+  transient?: (t: UnifiedTab) => boolean;
+  /** Double click, which every editor with a replaceable tab uses to keep it.
+   *  Here rather than in `wrapTab` because the handler belongs on the tab
+   *  itself, and a wrapper around it would take the click for the strip's
+   *  padding too. */
+  onDoubleClick?: (t: UnifiedTab) => void;
   /** The tab's surface on the stage (the render component of the kind). */
   stage?: (t: UnifiedTab) => JSX.Element;
   /** Pane hosting (plan phase 7): how a pane pinned to this kind fills itself.
@@ -123,6 +130,8 @@ export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripP
         d.onDragStart?.(t, e);
       }}
       onDragEnd={() => endTabDrag()}
+      onDblClick={() => d.onDoubleClick?.(t)}
+      data-transient={d.transient?.(t) ? "" : undefined}
       icon={d.icon(t)}
       trailing={d.dots?.(t)}
       onClose={(e) => d.close(t, e)}

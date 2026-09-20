@@ -656,7 +656,7 @@ function TreeNode(props: {
     );
     group(
       !e.is_dir && { label: "Open to the Side", onClick: open({ side: true }) },
-      !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ preview: true }) },
+      !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ rendered: true }) },
       { label: "Reveal in Finder", onClick: () => revealEntry(e, ctx) },
       {
         label: "Open in Integrated Terminal",

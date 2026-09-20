@@ -516,7 +516,13 @@ export default function PullsPanel(props: {
     const s = shown();
     if (!root || !s) return;
     notePr(root, s.number, s.pr);
-    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: prDiffTabId(root, s.number, path) });
+    // Transient, and the only opener that asks for it: reading a pull request
+    // is walking a list of files, and a tab per row leaves a strip nobody can
+    // read by the time the review is written. Double click keeps one.
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
+      path: prDiffTabId(root, s.number, path),
+      preview: true,
+    });
   }
 
   const drifted = () => {

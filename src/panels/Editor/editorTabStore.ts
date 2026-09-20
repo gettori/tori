@@ -7,7 +7,14 @@ import type { ClosedStore } from "./reopenStack";
 // Every editor tab is a file now that the transcript viewer is gone, so a tab
 // *is* its path: `tabId` and `FileTab.path` are the same string, and the tab
 // bar's `idOf` is what still names the mapping.
-export type FileTab = { path: string; name: string };
+export type FileTab = {
+  path: string;
+  name: string;
+  /** The pane's one replaceable tab. A transient open takes this slot over
+   *  rather than adding a tab, so reading twenty files leaves one behind
+   *  instead of twenty. Absent once it is kept. */
+  transient?: boolean;
+};
 
 // Tabs belong to a workspace (branch-unit folder), not to the editor: a file
 // open in one worktree has no meaning in another, and usually does not exist

@@ -94,6 +94,13 @@
   max-width: calc(160px * var(--ui-scale));
 }
 
+/* The replaceable tab. Italic rather than a glyph or a dimming: the strip
+   already spends its trailing space on dirty and status dots, and dimming a tab
+   is what this one says about every unselected tab beside it. */
+.tab[data-transient] .label {
+  font-style: italic;
+}
+
 /* Trailing close: a small quiet glyph that brightens on hover. A sibling of the
    tab button rather than a child, so it is its own hit area and clicking it
    never selects the tab. Pointer-only, and hidden from assistive tech; see the
