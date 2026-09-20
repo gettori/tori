@@ -177,17 +177,24 @@
   white-space: nowrap;
 }
 
+/* The same line the pull request's own tab draws, at the same size: two
+   surfaces saying one sentence in two sizes read as two different sentences. */
 .meta {
   color: var(--fg-muted);
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-md);
 }
 
+/* Both refs as the pull request's own tab draws them: monospace, muted, the
+   head and the base the same weight. What the panel keeps for itself is the
+   truncation, since this row has 320px and that one has a column. */
 .branches {
   display: flex;
   align-items: baseline;
   gap: calc(4px * var(--ui-scale));
   min-width: 0;
-  font-size: var(--tori-text-2xs);
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
 }
 
 /* The head loses its *start* when it does not fit. Long branch names share a
@@ -201,7 +208,6 @@
   white-space: nowrap;
   direction: rtl;
   text-align: left;
-  color: var(--fg-default);
 }
 
 .into {
@@ -213,7 +219,6 @@
    proposed into. */
 .baseRef {
   flex: none;
-  color: var(--fg-muted);
 }
 
 /* --- block 2: the three verdicts ----------------------------------------- */
@@ -565,8 +570,8 @@ button.verdictRow:not(:disabled):hover {
   border-bottom: 1px solid var(--border-default);
 }
 
-/* Five labels do not fit a 320px column. The strip scrolls sideways rather than
-   wrapping, which would move the collapse button on every resize. */
+/* The strip scrolls sideways rather than wrapping when the labels outrun the
+   column, which would move the collapse button on every resize. */
 .tabs {
   display: flex;
   align-items: center;

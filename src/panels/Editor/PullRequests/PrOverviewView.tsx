@@ -11,7 +11,7 @@
 
 import { createEffect, createMemo, on, Show } from "solid-js";
 import { ExternalLink, FileStack } from "lucide-solid";
-import { compactAgo } from "../../../utils/compactAge";
+import { prMetaParts } from "../../../utils/prMeta";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
 import { parsePrArg, prAllTabId } from "../../../utils/syntheticTabs";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
@@ -40,25 +40,9 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
   /// request in one read. Null on GitLab, and null until the read lands.
   const counts = () => entry().summary?.counts ?? null;
 
-  /// Who opened it and when, then how big it is.
-  ///
-  /// Two halves because they arrive separately: the author and the date ride
-  /// the `PullRequest` every list already has, while the counts exist only on
-  /// the detail read. Rendering the line only once both had landed would leave
-  /// it blank for a request nobody needs to wait for.
   const meta = createMemo(() => {
     const p = pr();
-    if (!p) return [];
-    const opened = Date.parse(p.createdAt);
-    const parts = [
-      p.author,
-      Number.isNaN(opened) ? null : `opened ${compactAgo(opened / 1000)}`,
-    ];
-    const c = counts();
-    if (c) {
-      parts.push(plural(c.commits, "commit"), plural(c.changedFiles, "file"));
-    }
-    return parts.filter((part): part is string => part !== null);
+    return p ? prMetaParts(p, entry().summary?.updatedAt ?? null, counts()) : [];
   });
 
   createEffect(
