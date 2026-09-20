@@ -1,0 +1,215 @@
+/* Every file of a pull request, stacked. The bar is PrDiffView's, about the
+   pull request rather than about one of its files; below it, a section per file
+   whose header is a disclosure and whose body is the same diff the per-file tab
+   draws. */
+.allFiles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  /* The breadcrumb bar's band (Breadcrumbs.module.css says the sum), so a
+     stacked tab and a file tab start their content on the same line. */
+  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.number {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-md);
+}
+
+/* Shrinks before anything else in the bar: the counts and the file count are
+   short and fixed, a title is neither. */
+.name {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.position {
+  flex: none;
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+  white-space: nowrap;
+}
+
+.counts {
+  display: flex;
+  flex: none;
+  gap: calc(4px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+}
+.added {
+  color: var(--diff-added);
+}
+.removed {
+  color: var(--diff-deleted);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* The head moved under these diffs. Attention rather than danger: nothing is
+   broken, the patches simply describe a commit that is no longer the head. */
+.drift {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+  border-left: calc(2px * var(--ui-scale)) solid var(--attention-fg);
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+}
+
+.error {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--diff-deleted);
+  font-size: var(--tori-text-md);
+}
+
+/* A cap the server hit, rather than something going wrong. Same shape as the
+   error line above it, without the colour that would read as a failure. */
+.notice {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: calc(8px * var(--ui-scale));
+}
+
+.file {
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* Sticky, so the file a reader is in the middle of is still named when they are
+   forty rows into it. One scroll is one review, and the alternative is scrolling
+   back up to find out what they are looking at.
+
+   A heading for navigation, not for size: the row is a dense list item, and a
+   browser's default h2 ramp would make it four times the height. */
+.fileHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  min-height: calc(26px * var(--ui-scale));
+  background: var(--canvas-head);
+  border-bottom: 1px solid var(--border-default);
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.fileToggle {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: none;
+  border: 0;
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--tori-text-md);
+  text-align: left;
+  cursor: pointer;
+}
+.fileToggle:hover {
+  background: var(--canvas-card);
+}
+
+.chevron {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+.status {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  color: var(--diff-modified);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+  text-align: center;
+}
+.status[data-file-status="added"],
+.status[data-file-status="copied"] {
+  color: var(--diff-added);
+}
+.status[data-file-status="removed"] {
+  color: var(--diff-deleted);
+}
+
+/* The path in one line: the directory shrinks from its start, the filename
+   never does. */
+.path {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-md);
+}
+.path[data-viewed] {
+  color: var(--fg-subtle);
+}
+
+.dir {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+.fileName {
+  flex: none;
+  white-space: nowrap;
+}
+
+.unresolved {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+}
+
+.viewedMark {
+  flex: none;
+  color: var(--success-fg);
+}
+
+.fileBody {
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-md);
+  line-height: 1.4;
+}

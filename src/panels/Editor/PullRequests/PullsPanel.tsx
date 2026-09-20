@@ -44,6 +44,7 @@ import {
   CircleDot,
   CircleX,
   ExternalLink,
+  FileStack,
   GitMerge,
   List,
   Loader,
@@ -68,10 +69,11 @@ import {
 import { forgeChip, forgeDoor } from "../../../utils/forgeChip";
 import { gitStateFor } from "../../../utils/gitActions";
 import { createPrFlow } from "../../../utils/prCreateFlow";
+import { fileRowName } from "../../../utils/prFiles";
 import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
 import { pullsPanelState, type DirectRead } from "../../../utils/pullsPanelState";
-import { prDiffTabId, prListTabId, prTabId } from "../../../utils/syntheticTabs";
+import { prAllTabId, prDiffTabId, prListTabId, prTabId } from "../../../utils/syntheticTabs";
 import { reloadPrList } from "../../../utils/prListStore";
 import { projectUnitFor } from "../../../utils/sessionActivity";
 import {
@@ -97,7 +99,6 @@ import {
   forgeErrorMessage,
   type CheckRollup,
   type MergeMethod,
-  type PrFile,
   type PullRequest,
 } from "../../../utils/forgeTypes";
 import type { Selection } from "../../LeftSidebar/LeftSidebar";
@@ -143,26 +144,6 @@ const fileDir = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/"
 /// Below this the counts come off the row. The letter and the filename are what
 /// a row is for, and they have to survive the 160px the pane resizes down to.
 const COUNTS_MIN_WIDTH = 220;
-
-/// What a row says out loud.
-///
-/// Everything the row encodes in colour or a glyph, spelled out: the status
-/// letter, the counts and the unresolved mark are each a fact a screen reader
-/// would otherwise get as a letter, two numbers and nothing.
-function rowName(file: PrFile, unresolved: number, viewed: boolean): string {
-  const parts = [
-    `${file.status[0].toUpperCase()}${file.status.slice(1)}`,
-    // Both halves of a rename. The row itself shows the new path, which is what
-    // a reader scans for; without the old one said here, a rename is a new file
-    // beside a deleted one, which is two changes where there was one.
-    file.previousPath ? `${file.previousPath} to ${file.path}` : file.path,
-    `${file.additions} added`,
-    `${file.deletions} removed`,
-  ];
-  if (unresolved) parts.push(plural(unresolved, "unresolved comment"));
-  if (viewed) parts.push("viewed");
-  return parts.join(", ");
-}
 
 export default function PullsPanel(props: {
   root: string | null;
@@ -639,12 +620,28 @@ export default function PullsPanel(props: {
         </Show>
         <Show when={shown()}>
           {(s) => (
-            <IconButton
-              size="xs"
-              icon={<Icon icon={RefreshCw} size={14} />}
-              tooltip="Re-read this pull request"
-              onClick={() => refreshAll(s().number)}
-            />
+            <>
+              {/* The stacked half of the per-file tabs. Beside Refresh
+                  because it is the same kind of control: about this pull
+                  request, wherever in it the reader currently is. */}
+              <IconButton
+                size="xs"
+                icon={<Icon icon={FileStack} size={14} />}
+                tooltip="Review all files in one tab"
+                onClick={() =>
+                  props.root &&
+                  emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
+                    path: prAllTabId(props.root, s().number),
+                  })
+                }
+              />
+              <IconButton
+                size="xs"
+                icon={<Icon icon={RefreshCw} size={14} />}
+                tooltip="Re-read this pull request"
+                onClick={() => refreshAll(s().number)}
+              />
+            </>
           )}
         </Show>
         {/* The list lives in the stage now, so the panel is where the route to
@@ -864,7 +861,7 @@ export default function PullsPanel(props: {
                     class={styles.fileRow}
                     role="button"
                     tabIndex={0}
-                    aria-label={rowName(f, unresolvedIn(f.path), isViewed(props.root!, s().number, f.path))}
+                    aria-label={fileRowName(f, unresolvedIn(f.path), isViewed(props.root!, s().number, f.path))}
                     onClick={() => openFile(f.path)}
                     onKeyDown={(e: KeyboardEvent) => {
                       if (e.key !== "Enter" && e.key !== " ") return;

@@ -5,6 +5,7 @@ import {
   parseSyntheticId,
   tabScopePath,
   parsePrArg,
+  prAllTabId,
   prListTabId,
   prTabId,
   syntheticTabName,
@@ -100,5 +101,12 @@ describe("synthetic tab ids", () => {
     // The overview tab reads the same way, since its whole arg is the number.
     expect(parsePrArg("nonsense")).toBe(0);
     expect(syntheticTabName(prTabId(WS, 42))).toBe("#42");
+  });
+
+  it("names the stacked tab for what it holds, and the pull request it is from", () => {
+    // Two labels that must not read as each other: the overview tab is the
+    // pull request, this one is every file of it.
+    expect(syntheticTabName(prAllTabId(WS, 42))).toBe("All files #42");
+    expect(prAllTabId(WS, 42)).not.toBe(prTabId(WS, 42));
   });
 });

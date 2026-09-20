@@ -149,6 +149,18 @@ export function parsePrArg(arg: string): number {
 }
 
 /**
+ * Every file of one pull request, stacked in a single tab.
+ *
+ * The other half of the per-file tabs: those are for reading one file closely,
+ * this is for reading the change in order, where reaching the bottom is what
+ * says the review is done. One per pull request rather than per file, so the
+ * number alone is the arg and `parsePrArg` reads it back.
+ */
+export function prAllTabId(workspace: string, number: number): string {
+  return syntheticId("prall", workspace, String(number));
+}
+
+/**
  * The path a tab is scoped to, for the folder-prefix sweeps: a synthetic tab
  * answers with its workspace, a file tab with its own path.
  *
@@ -191,6 +203,9 @@ export function syntheticTabName(id: string): string {
   // wait for a read to be named would be blank on every restore. The strip
   // takes the title from `prTabTitle` once the store has the pull request.
   if (t.kind === "pr") return `#${parsePrArg(t.arg)}`;
+  // "All files" rather than the title, which is what tells this tab from the
+  // overview's beside it; the number is what tells two pull requests apart.
+  if (t.kind === "prall") return `All files #${parsePrArg(t.arg)}`;
   // The number rather than the mode: what tells two pull requests' copies of
   // one file apart, and the `#` is what says it is a pull request at all.
   if (t.kind === "prdiff") {

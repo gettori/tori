@@ -37,3 +37,22 @@ export function fileSkip(f: PrFile): FileSkip | null {
 export function fileLabel(f: PrFile): string {
   return f.previousPath ? `${f.previousPath} → ${f.path}` : f.path;
 }
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** What a file's row says out loud: everything it encodes in colour or a glyph,
+ *  which a screen reader would otherwise get as a letter and two numbers. */
+export function fileRowName(file: PrFile, unresolved: number, viewed: boolean): string {
+  const parts = [
+    `${file.status[0].toUpperCase()}${file.status.slice(1)}`,
+    // Both halves of a rename. The row itself shows the new path, which is what
+    // a reader scans for; without the old one said here, a rename is a new file
+    // beside a deleted one, which is two changes where there was one.
+    file.previousPath ? `${file.previousPath} to ${file.path}` : file.path,
+    `${file.additions} added`,
+    `${file.deletions} removed`,
+  ];
+  if (unresolved) parts.push(plural(unresolved, "unresolved comment"));
+  if (viewed) parts.push("viewed");
+  return parts.join(", ");
+}

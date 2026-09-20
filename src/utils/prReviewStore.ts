@@ -94,6 +94,15 @@ export type PrReviewEntry = {
   /// totals, and who has signed off. Null until the read lands, which is not a
   /// verdict and must not render as one.
   summary: PrSummary | null;
+  /// Which files' rows the stacked tab has mounted, or null for "nobody has
+  /// picked yet".
+  ///
+  /// Null rather than an array seeded with the default, because the default is
+  /// a rule about files that land after the tab does: an effect seeding it on
+  /// arrival would race the reader's first click, and a tab opened before the
+  /// read would seed from an empty list. `fileExpanded` applies the rule while
+  /// this is null, and the first toggle writes the rule's answer out.
+  expandedFiles: string[] | null;
   /** Gap keys the reader has expanded, and the lines fetched for them. */
   openGaps: string[];
   gapLines: Record<string, string[]>;
@@ -123,6 +132,7 @@ const blank = (): PrReviewEntry => ({
   threadsTruncated: false,
   threadsError: null,
   summary: null,
+  expandedFiles: null,
   openGaps: [],
   gapLines: {},
   viewed: [],
@@ -203,6 +213,42 @@ export function viewingPr(root: string): number | null {
 
 export function setViewingPr(root: string, number: number | null): void {
   setViewingMap((m) => ({ ...m, [root]: number }));
+}
+
+/// How many of the stacked tab's sections are open on arrival.
+///
+/// Enough that a small pull request is one scroll, few enough that a
+/// three-hundred-file one does not lay out three hundred diffs to show its
+/// first: `PrFileBody` does word-level pairing per hunk, so a mounted body is
+/// real work whether or not anybody scrolls to it.
+const EXPANDED_ON_OPEN = 10;
+
+/** Whether the stacked tab has this file's rows mounted. Falls back to the
+ *  first few files while nobody has picked, so the default needs no seeding
+ *  pass and cannot land before the files do. */
+export function fileExpanded(root: string, number: number, path: string): boolean {
+  const e = prEntry(root, number);
+  if (e.expandedFiles !== null) return e.expandedFiles.includes(path);
+  return e.files.slice(0, EXPANDED_ON_OPEN).some((f) => f.path === path);
+}
+
+export function setFileExpanded(
+  root: string,
+  number: number,
+  path: string,
+  on: boolean,
+): void {
+  const k = key(root, number);
+  slot(k);
+  const e = entries[k];
+  // The first toggle is also what settles the default: past here the list says
+  // exactly which sections are open, including the ones nobody has touched.
+  const now = e.expandedFiles ?? e.files.slice(0, EXPANDED_ON_OPEN).map((f) => f.path);
+  setEntries(
+    k,
+    "expandedFiles",
+    on ? (now.includes(path) ? now : [...now, path]) : now.filter((p) => p !== path),
+  );
 }
 
 export function gapOpen(root: string, number: number, gapKey: string): boolean {
