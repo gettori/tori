@@ -282,29 +282,49 @@ button.verdictRow:not(:disabled):hover {
   color: var(--fg-default);
 }
 
+/* What each group holds. The tab's own padding sets the left edge, so a row
+   lines up with the heading above it. */
 .contexts {
   margin: 0;
-  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  padding: 0;
   list-style: none;
 }
 
+/* How many, and how they came out. The colour is on the heading and its glyph
+   rather than on the rows, which carry the names of things that failed and read
+   as being blamed when they are red. */
+.checkHead {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin: calc(4px * var(--ui-scale)) 0 calc(2px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+}
+.checkHead[data-check-state="failure"] {
+  color: var(--danger-fg);
+}
+.checkHead[data-check-state="pending"] {
+  color: var(--status-progress);
+}
+.checkHead[data-check-state="success"] {
+  color: var(--success-fg);
+}
+
 /* A row of its own in a tab with room for it, rather than the footnote it was
-   under the rollup line. */
+   under the rollup line. The name is the name of somebody's job, in the colour
+   every other name is. */
 .context {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: calc(6px * var(--ui-scale));
+  padding-left: calc(19px * var(--ui-scale));
   min-height: calc(22px * var(--ui-scale));
   min-width: 0;
   font-size: var(--tori-text-md);
-  color: var(--fg-muted);
-}
-.context[data-check-state="failure"] {
-  color: var(--danger-fg);
-}
-.context[data-check-state="pending"] {
-  color: var(--status-progress);
+  color: var(--fg-default);
 }
 
 .contextName {
@@ -316,8 +336,9 @@ button.verdictRow:not(:disabled):hover {
 }
 
 .contextMore {
+  padding-top: calc(4px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-xs);
 }
 
 /* --- the drift strip ------------------------------------------------------ */
@@ -632,8 +653,8 @@ button.verdictRow:not(:disabled):hover {
   gap: calc(8px * var(--ui-scale));
 }
 
-/* The checks list brings its own padding, being a list of rows rather than a
-   block of prose. */
-.tabPanel:has(> .contexts) {
-  padding: 0;
+/* The checks stack as headings and the rows under them, which carry their own
+   spacing: the panel's gap would sit between a heading and what it heads. */
+.tabPanel:has(.checkHead) {
+  gap: 0;
 }

@@ -108,6 +108,7 @@ import {
 import {
   forgeErrorMessage,
   type CheckRollup,
+  type CheckState,
   type MergeMethod,
   type PrFile,
   type PullRequest,
@@ -486,6 +487,16 @@ export default function PullsPanel(props: {
   /// until it lands rather than summed from the files in hand, since those are
   /// capped and the sum would be quietly short.
   const totals = () => summary()?.counts ?? null;
+
+  /// Only the groups that have something in them: an empty "0 failing checks"
+  /// is a heading that says nothing happened, which is not what a reader asks.
+  const checkGroups = () => {
+    const list = polled()?.checks.contexts ?? [];
+    return CHECK_GROUPS.map((g) => ({
+      ...g,
+      items: list.filter((c) => c.state === g.state),
+    })).filter((g) => g.items.length > 0);
+  };
 
   const pending = () => entry()?.pending ?? [];
 
@@ -1164,30 +1175,44 @@ export default function PullsPanel(props: {
                           </div>
                         }
                       >
-                        <ul class={styles.contexts}>
-                          <For each={polled()!.checks.contexts}>
-                            {(c) => (
-                              <li class={styles.context} data-check-state={c.state}>
-                                <span class={styles.contextName}>{c.name}</span>
-                                <Show when={c.url}>
-                                  {(url) => (
-                                    <a href={url()} target="_blank" rel="noreferrer">
-                                      Details
-                                    </a>
+                        {/* Grouped by how each one came out, worst first, the
+                            way the host's own page reads: what fails is what a
+                            reader came for, and a run of green rows is one
+                            sentence rather than twenty. */}
+                        <For each={checkGroups()}>
+                          {(group) => (
+                            <>
+                              <h3 class={styles.checkHead} data-check-state={group.state}>
+                                <Icon icon={group.icon} size={13} aria-hidden="true" />
+                                {group.title(group.items.length)}
+                              </h3>
+                              <ul class={styles.contexts}>
+                                <For each={group.items}>
+                                  {(c) => (
+                                    <li class={styles.context} data-check-state={c.state}>
+                                      <span class={styles.contextName}>{c.name}</span>
+                                      <Show when={c.url}>
+                                        {(url) => (
+                                          <a href={url()} target="_blank" rel="noreferrer">
+                                            Details
+                                          </a>
+                                        )}
+                                      </Show>
+                                    </li>
                                   )}
-                                </Show>
-                              </li>
-                            )}
-                          </For>
-                          {/* The query caps the node list, so a long rollup lists
-                              fewer checks than it counts. */}
-                          <Show when={polled()!.checks.contexts.length < polled()!.checks.total}>
-                            <li class={styles.contextMore}>
-                              {polled()!.checks.total - polled()!.checks.contexts.length} more not
-                              described by this read.
-                            </li>
-                          </Show>
-                        </ul>
+                                </For>
+                              </ul>
+                            </>
+                          )}
+                        </For>
+                        {/* The query caps the node list, so a long rollup lists
+                            fewer checks than it counts. */}
+                        <Show when={polled()!.checks.contexts.length < polled()!.checks.total}>
+                          <div class={styles.contextMore}>
+                            {polled()!.checks.total - polled()!.checks.contexts.length} more not
+                            described by this read.
+                          </div>
+                        </Show>
                       </Show>
                     </Match>
 
@@ -1226,6 +1251,22 @@ export default function PullsPanel(props: {
     </div>
   );
 }
+
+/// How the checks tab stacks them: worst first, each group headed by what it is.
+///
+/// The host's own page reads this way, and for the reason a reader has: a
+/// failure is what they opened the tab for, and twenty passing rows are one
+/// sentence they never have to read twice.
+const CHECK_GROUPS: {
+  state: CheckState;
+  icon: LucideIcon;
+  title: (n: number) => string;
+}[] = [
+  { state: "failure", icon: CircleX, title: (n) => `${plural(n, "failing check")}` },
+  { state: "pending", icon: Loader, title: (n) => `${plural(n, "check")} running` },
+  { state: "success", icon: CircleCheck, title: (n) => `${plural(n, "successful check")}` },
+  { state: "none", icon: CircleDot, title: (n) => `${plural(n, "check")} with no result` },
+];
 
 /// The standing verdicts, or the fact that nobody has counted them.
 ///
