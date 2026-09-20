@@ -2180,10 +2180,20 @@ pub fn git_fetch_quiet(
         let mut run = |repo: &str| {
             let mut cmd = quiet_git_command(repo);
             cmd.args(["fetch", "--all", "--prune"]);
-            match crate::git_health::run(&mut cmd) {
-                Ok(out) if out.status.success() => Ok(()),
-                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
-                Err(e) => Err(e),
+            let outcome = match crate::git_health::run(&mut cmd) {
+                Ok(out) if out.status.success() => (true, String::new()),
+                Ok(out) => (false, String::from_utf8_lossy(&out.stderr).trim().to_string()),
+                Err(e) => (false, e),
+            };
+            // Same forgiveness the interactive fetch grants, and the sweep needs
+            // it more: it runs on a timer against every container at once, so it
+            // is the one most likely to meet another git mid-prune. No retry
+            // though - the ref that would not die goes on the next sweep, and
+            // this one has nobody waiting on it.
+            if outcome.0 || lost_the_prune(&outcome) {
+                Ok(())
+            } else {
+                Err(outcome.1)
             }
         };
         for event in quiet_sweep(&config, only.as_deref(), min_age, &mut run) {

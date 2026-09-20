@@ -104,7 +104,9 @@ export default function SyncChip(props: { root: string | null }) {
                   {/* The only place a quiet failure is ever said out loud. A
                       repo behind a credential prompt fails every sweep, and a
                       toast per sweep would be the feature uninstalling itself. */}
-                  <Show when={f().error}>{(e) => <div>{`Last fetch failed: ${e()}`}</div>}</Show>
+                  <Show when={f().error}>
+                    {(e) => <div class={styles.failure}>{`Last fetch failed: ${e()}`}</div>}
+                  </Show>
                 </div>
               )}
             </Show>
