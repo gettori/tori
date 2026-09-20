@@ -161,6 +161,18 @@
   line-height: 1;
 }
 
+/* How many files are waiting behind the Changes tab, shown only while its pane
+   is not the one in front. Plain digits rather than the pill the panel's own
+   section headers wear: this sits on a tab that is already marked by its fill,
+   and a second filled shape beside the icon would compete with it. */
+.tabCount {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
 /* Right panel: Files / Changes toggle + the active panel */
 .rightPanel {
   /* Width is set inline from a drag-resized signal; the Resizer to its left

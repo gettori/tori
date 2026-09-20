@@ -678,6 +678,14 @@ export default function Editor(props: {
     }
   }
   const rightTabs = () => modeOrder().filter(modeAvailable).map((m) => RIGHT_MODE_TABS[m]);
+  // How many files the Changes panel would list, over the same roots it draws
+  // sections for. Counted off `files` rather than off staged + unstaged, which
+  // would count a partly staged file twice: porcelain v2 sends one entry per
+  // path carrying both flags.
+  const changeCount = () => {
+    const roots = treeRoots()?.map((r) => r.path) ?? (root() ? [root()!] : []);
+    return roots.reduce((n, r) => n + gitStateFor(r).files.length, 0);
+  };
   // This workspace's problems. The store now spans every warm project (the
   // servers stay up across a switch), so what the tab and the panel show has to
   // be scoped here, or one worktree's errors would badge another's tree. Inside
@@ -3104,18 +3112,31 @@ export default function Editor(props: {
           onActivate={(id) => setRightMode(id as RightMode)}
           onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
           trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
-          renderTab={(t) => (
-            <Tab
-              value={t.mode}
-              icon={<Icon icon={t.icon} />}
-              tooltip={t.label}
-              // The one `aria-label` on a tooltipped `Tab` in the app. A label
-              // normally *replaces* a tab's visible text as its name, which is
-              // why the guard forbids it - but this tab is icon-only, so the
-              // label is the only name it has.
-              aria-label={t.label}
-            />
-          )}
+          renderTab={(t) => {
+            // The Changes tab carries its count only while another pane is in
+            // front: open, the panel below says it better than a badge can.
+            const badge = () =>
+              t.mode === "changes" && rightMode() !== "changes" ? changeCount() : 0;
+            const name = () =>
+              badge() ? `${t.label}, ${badge()} changed file${badge() === 1 ? "" : "s"}` : t.label;
+            return (
+              <Tab
+                value={t.mode}
+                icon={<Icon icon={t.icon} />}
+                tooltip={name()}
+                // The one `aria-label` on a tooltipped `Tab` in the app. A label
+                // normally *replaces* a tab's visible text as its name, which is
+                // why the guard forbids it - but this tab is icon-only, so the
+                // label is the only name it has.
+                aria-label={name()}
+                trailing={
+                  <Show when={badge()}>
+                    <span class={styles.tabCount}>{badge()}</span>
+                  </Show>
+                }
+              />
+            );
+          }}
           renderMenuItem={(t) => (
             <>
               <Icon icon={t.icon} />
