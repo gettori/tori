@@ -877,11 +877,20 @@
   font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
+/* A branch name is as long as somebody made it and this row has a fixed edge,
+   so the button is capped and everything in the chain is allowed to shrink:
+   flex items refuse to go below their content, and an inline box ignores
+   `overflow` entirely, which is why the name is a block. */
 .createBase {
-  flex: none;
-  max-width: calc(180px * var(--ui-scale));
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(240px * var(--ui-scale));
+}
+.createBase span {
+  min-width: 0;
 }
 .baseName {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
