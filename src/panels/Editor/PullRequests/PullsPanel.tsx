@@ -43,7 +43,6 @@ import {
   CircleCheck,
   CircleDot,
   CircleX,
-  ExternalLink,
   FileStack,
   GitMerge,
   List,
@@ -107,6 +106,7 @@ import MergeBar from "./MergeBar";
 import { CreatePrFlowDialog } from "../../../components/Dialogs/CreatePrDialog";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
+import Tooltip from "../../../components/Tooltip/Tooltip";
 import Icon from "../../../components/Icon/Icon";
 import styles from "./PullsPanel.module.css";
 
@@ -693,18 +693,33 @@ export default function PullsPanel(props: {
                   >
                     {s().pr.isDraft ? "draft" : s().pr.state}
                   </span>
-                  <span class={styles.number}>#{s().pr.number}</span>
-                  <span class={styles.spacer} />
-                  <IconButton
-                    size="xs"
-                    icon={<Icon icon={ExternalLink} size={14} />}
-                    tooltip={`Open pull request ${s().pr.number} on github.com`}
-                    onClick={() => window.open(s().pr.url, "_blank", "noreferrer")}
-                  />
+                  {/* One line, with the rest of it behind the pointer. Tori's
+                      own tooltip rather than the native `title`, which the
+                      webview does not draw: a truncated label whose full text
+                      nothing shows is a truncated label. */}
+                  <Tooltip<HTMLSpanElement>
+                    as="span"
+                    class={styles.subject}
+                    label={s().pr.title}
+                  >
+                    {s().pr.title}
+                  </Tooltip>
+                  {/* The number is the way out to github.com, rather than an
+                      icon beside it saying the same thing. An anchor and not a
+                      button, so the middle click and the Cmd+click that every
+                      other link in the app answers work here too; its own name
+                      is spelled out, since the number alone tells a screen
+                      reader nothing about where it goes. */}
+                  <a
+                    class={styles.number}
+                    href={s().pr.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Open pull request ${s().pr.number} on github.com`}
+                  >
+                    #{s().pr.number}
+                  </a>
                 </div>
-                {/* Wraps to as many lines as it needs. A truncated title is the
-                    one line on this surface nobody can reconstruct. */}
-                <div class={styles.subject}>{s().pr.title}</div>
                 <div class={styles.meta}>{metaLine(s().pr, summary()?.updatedAt ?? null)}</div>
                 <div class={styles.branches}>
                   {/* The head loses its *start* when it does not fit: a long
