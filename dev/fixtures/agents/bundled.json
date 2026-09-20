@@ -193,13 +193,13 @@
     "pty_quiet_ms": 2000,
     "needs_you": false,
     "hooks": false,
-    "verified_against": "codex-cli 0.147.0 with @agentclientprotocol/codex-acp 1.2.0",
+    "verified_against": "codex-cli 0.155.1 with @agentclientprotocol/codex-acp 1.12.0",
     "chat": {
       "transport": "acp",
       "program": "npx",
       "base_args": [
         "-y",
-        "@agentclientprotocol/codex-acp@1.2.0"
+        "@agentclientprotocol/codex-acp@1.12.0"
       ],
       "session_id_args": [],
       "resume_args": [],
