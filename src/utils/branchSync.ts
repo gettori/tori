@@ -174,6 +174,7 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   if (!sync || sync.detached) return [];
   const { ahead, behind, has_upstream, rewritten } = sync.upstream;
   const fighting = sync.base?.conflicts ?? [];
+  const unpublished = !has_upstream ? (sync.base?.ahead ?? 0) : 0;
   const marks: SyncMark[] = [];
 
   // First, so the one red glyph in a column keeps the same place in the run and
@@ -192,6 +193,16 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   const tone: SyncTone = diverged ? "warn" : "muted";
   if (ahead > 0) {
     marks.push({ kind: "push", count: ahead, tone, title: `${plural(ahead, "commit")} to push` });
+  } else if (unpublished > 0) {
+    // Before the first push there is no remote branch to count against. The
+    // commits unique to this branch relative to its base are what that first
+    // push will publish.
+    marks.push({
+      kind: "push",
+      count: unpublished,
+      tone: "muted",
+      title: `${plural(unpublished, "commit")} to publish`,
+    });
   } else if (!has_upstream) {
     // The same fact without a number to put on it: nothing is pushed, so
     // everything is pending. One glyph fewer to learn than a state of its own.
@@ -345,12 +356,16 @@ export function syncState(sync: BranchSync | null | undefined): SyncState {
   // Only without an upstream, and only on a branch: "never pushed" is a state
   // of a branch, and a detached HEAD is not one.
   if (!has_upstream) {
+    const unpublished = base?.ahead ?? 0;
     return {
       ...NOTHING,
       level: "unpushed",
       tone: "muted",
-      label: "unpushed",
-      detail: "This branch has no upstream yet.",
+      label: unpublished > 0 ? `${UP}${unpublished}` : "unpushed",
+      detail:
+        unpublished > 0
+          ? `${plural(unpublished, "commit")} to publish. The remote branch will be created on first push.`
+          : "This branch has no upstream yet.",
     };
   }
 
