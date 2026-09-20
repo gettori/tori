@@ -11,10 +11,10 @@
 
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink } from "lucide-solid";
+import { ExternalLink, FileStack } from "lucide-solid";
 import { compactAgo } from "../../../utils/compactAge";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
-import { parsePrArg, prDiffTabId } from "../../../utils/syntheticTabs";
+import { parsePrArg, prAllTabId, prDiffTabId } from "../../../utils/syntheticTabs";
 import { forgeCapabilities, forgeViewer, pollNow, unitStatusForPr } from "../../../utils/forgeStatus";
 import { anchorLabel, isSelfAuthored, reviewBlock, submitBlock } from "../../../utils/pendingReview";
 import {
@@ -208,6 +208,21 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
                 <span class={styles.number}>#{p().number}</span>
                 {p().title}
               </h1>
+              {/* The other way to read the diff: one scrolling tab instead of
+                  a tab per file. Here rather than only in the panel, because
+                  this is the tab a review is started from. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Icon icon={FileStack} size={14} />}
+                onClick={() =>
+                  emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
+                    path: prAllTabId(props.workspace, number()),
+                  })
+                }
+              >
+                Review all files
+              </Button>
               <IconButton
                 size="sm"
                 icon={<Icon icon={ExternalLink} />}

@@ -67,6 +67,7 @@ import CommitDetail from "./CommitDetail";
 import CommitDiffView from "./CommitDiffView";
 import PrDiffView from "./PullRequests/PrDiffView";
 import PrOverviewView from "./PullRequests/PrOverviewView";
+import PrAllFilesView from "./PullRequests/PrAllFilesView";
 import PrListView from "./PullRequests/PrListView";
 import { pendingFor, prEntry } from "../../utils/prReviewStore";
 import ConflictView from "./ConflictView";
@@ -95,6 +96,7 @@ import {
   FileCodeCorner,
   FileTypeCorner,
   FileHeart,
+  FileStack,
   Files,
   FolderSymlink,
   GitCompare,
@@ -386,6 +388,7 @@ const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
   diff: GitCompare,
   shared: FolderSymlink,
   pr: GitPullRequest,
+  prall: FileStack,
   prs: GitPullRequestArrow,
 };
 
@@ -2788,6 +2791,12 @@ export default function Editor(props: {
                     says it does, and the form the review is submitted from. */}
                 <Show when={t().kind === "pr"}>
                   <PrOverviewView workspace={t().workspace} arg={t().arg} />
+                </Show>
+                {/* The same diffs as the `prdiff` tabs, in one scroll rather
+                    than a tab each: the change read in order, where reaching
+                    the bottom is what says the review is done. */}
+                <Show when={t().kind === "prall"}>
+                  <PrAllFilesView workspace={t().workspace} arg={t().arg} />
                 </Show>
                 {/* The project's open pull requests. The panel beside it is
                     about the checked-out branch, so this is the only surface
