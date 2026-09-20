@@ -585,7 +585,7 @@ describe("the file rows", () => {
 
     await waitFor(() => expect(screen.getByText("forgeChip.ts")).toBeTruthy());
     expect(screen.queryByText("+84")).toBeNull();
-    expect(screen.getByText("src/utils/")).toBeTruthy();
+    expect(screen.getByText("src/utils")).toBeTruthy();
   });
 
   it("hands the store the pull request before opening the file's tab", async () => {
@@ -654,7 +654,10 @@ describe("the file rows", () => {
     const statuses = Array.from(document.querySelectorAll("[data-file-status]")).map((n) =>
       n.getAttribute("data-file-status"),
     );
-    expect(statuses).toEqual(["added", "removed", "modified", "renamed"]);
+    // By name inside the directory, not in the order the API sent them: the
+    // rows are a tree now, and a tree that kept the server's order would put
+    // the same four files somewhere else on the next read.
+    expect(statuses).toEqual(["modified", "removed", "added", "renamed"]);
     // The row shows the new path; both halves are in the name it says out loud.
     expect(
       screen.getByRole("button", {

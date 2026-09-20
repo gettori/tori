@@ -344,24 +344,63 @@ button.verdictRow:not(:disabled):hover {
   font-size: var(--tori-text-2xs);
 }
 
-/* One row per file, flat. Grouping costs a header row and an indent level per
-   directory at a width that has neither to spare, and it puts headers in the
-   way of moving through files. */
-.fileRow {
+/* A file, under the folders that hold it. Everything but the leading edge is
+   shared with a folder row, so the two read as one list.
+
+   Four pixels further in than its folder, which is the difference between the
+   chevron the row does not have and the status letter it does: it puts a
+   filename under the name of the folder beside it rather than under its
+   chevron. */
+.fileRow,
+.dirRow {
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  padding: 0 calc(12px * var(--ui-scale));
+  padding-right: calc(12px * var(--ui-scale));
+  padding-left: calc(12px * var(--ui-scale));
   min-height: calc(22px * var(--ui-scale));
   min-width: 0;
   cursor: pointer;
 }
-.fileRow:hover {
+.fileRow {
+  padding-left: calc(16px * var(--ui-scale));
+}
+
+/* One per level of the tree, so the depth is in the markup and the row's
+   background still reaches both edges of the panel. */
+.rung {
+  flex: none;
+  width: calc(12px * var(--ui-scale));
+}
+.fileRow:hover,
+.dirRow:hover {
   background: var(--neutral-hover);
 }
-.fileRow:focus-visible {
+.fileRow:focus-visible,
+.dirRow:focus-visible {
   outline: 2px solid var(--accent-fg);
   outline-offset: -2px;
+}
+
+.dirRow {
+  gap: calc(4px * var(--ui-scale));
+}
+
+/* Quieter than the filenames under it: a folder row is where a file is, and
+   the file is what the reader came for.
+
+   A chain of directories holding nothing else is one row ("src/panels/Editor"),
+   so this is the one place a name here can be long. It truncates from its
+   *start*, so what goes is the shared prefix rather than the segment that says
+   which directory this is. */
+.dirName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--fg-muted);
 }
 
 .status {
@@ -385,34 +424,19 @@ button.verdictRow:not(:disabled):hover {
   color: var(--accent-fg);
 }
 
-.path {
+/* The filename on its own, since the folders above it carry the rest of the
+   path. Truncated at its end rather than its start: two files in one directory
+   differ at the front, which is the opposite of two directories. */
+.name {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  align-items: baseline;
   overflow: hidden;
+  color: var(--fg-default);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.path[data-viewed] .name {
+.name[data-viewed] {
   color: var(--fg-muted);
-}
-
-/* Truncates from its *start*, so what disappears is the shared prefix rather
-   than the part that says which directory this is. */
-.dir {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
-  color: var(--fg-subtle);
-}
-
-/* Never truncated: it is the one part of a path a reader scans for. */
-.name {
-  flex: none;
-  color: var(--fg-default);
 }
 
 .unresolved {

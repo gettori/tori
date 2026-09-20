@@ -70,7 +70,7 @@ import {
   type SearchSection,
   type ToggleKey,
 } from "../../utils/searchOptions";
-import { baseName, dirName, filesUnder, folderPaths, folderTree, groupByFile, type FileGroup, type FolderNode } from "../../utils/searchTree";
+import { baseName, dirName, filesUnder, folderPaths, folderTree, groupByFile, type FileGroup, type FolderNode } from "../../utils/pathTree";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { resolveMemberRestriction, type MemberRoot, type TintedMember } from "../../utils/topicMembers";
 import {
