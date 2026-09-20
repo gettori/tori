@@ -595,8 +595,10 @@ describe("what a branch row says about its remote", () => {
 
     await waitFor(async () => expect(await marks("main")).toEqual(["dirty"]));
     // The conflict leads, so the one red glyph in a column keeps its place and
-    // never sits against the forge's own marks at the row's other end.
-    expect(await marks("feat")).toEqual(["conflict"]);
+    // never sits against the forge's own marks at the row's other end. It
+    // carries how many files would fight, the way the push and pull marks
+    // carry their own counts.
+    expect(await marks("feat")).toEqual(["conflict2"]);
   });
 
   it("keeps every row to one line, whatever it has to report", async () => {
