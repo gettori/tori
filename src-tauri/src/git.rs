@@ -1322,6 +1322,20 @@ pub struct DiffStat {
     pub deletions: u32,
 }
 
+/// The paths this branch changed against `base`, for a request that names them.
+///
+/// Three dots, so this is the branch's own work: a two-dot diff against a base
+/// that has moved on also names every file the base gained since the fork, and
+/// none of those belong in a description of this branch. Callers pass
+/// `origin/<base>` for the reason `git_blob_sizes` does, a local `main` is
+/// whatever was last pulled.
+#[tauri::command(async)]
+pub fn git_branch_paths(project_path: String, base: String) -> Result<Vec<String>, String> {
+    let range = format!("{base}...HEAD");
+    let out = git_capture(&project_path, &["diff", "--name-only", &range])?;
+    Ok(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
+}
+
 /// What a commit would hold: the index with `staged`, the working tree without.
 /// `--numstat` rather than `--shortstat`, whose wording follows the locale.
 #[tauri::command(async)]

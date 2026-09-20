@@ -451,3 +451,12 @@ button.verdictRow:not(:disabled):hover {
   color: var(--attention-fg);
   font-size: var(--tori-text-2xs);
 }
+
+/* Wraps rather than truncates: these labels say what the press will do, and a
+   cut-off one is the half of the sentence that does not. */
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(6px * var(--ui-scale));
+  margin-top: calc(4px * var(--ui-scale));
+}

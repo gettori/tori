@@ -601,6 +601,18 @@ export type PurgeWorkspace = { workspace: string; roots?: string[] };
 export const REMOVE_BRANCH_UNIT = "tori:remove-branch-unit";
 export type RemoveBranchUnit = { projectPath: string; branch: string };
 
+// Payload-carrying event: ask the sidebar to open its own add-branch dialog.
+// Emitted by the Pull Requests panel from the state where the pane is standing
+// on the base branch, which is the one place a review starts with a branch that
+// does not exist yet.
+//
+// Same reason as `REMOVE_BRANCH_UNIT`: the sidebar owns the branch-unit list and
+// the dialog that adds to it, so it also decides which of the two kinds the
+// project gets. `base` is what the filter opens on, since a new branch cut here
+// starts from the commit the pane is standing on.
+export const ADD_BRANCH_UNIT = "tori:add-branch-unit";
+export type AddBranchUnit = { projectPath: string; base?: string | null };
+
 // Payload-carrying event: surface a toast from anywhere. components/Toasts owns
 // the stack (ToastRegion listens, pushToast writes), so panels emit this instead
 // of holding their own notifier.

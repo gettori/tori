@@ -378,6 +378,7 @@ pub fn run() {
             git::git_commit,
             git::git_head_message,
             git::git_log,
+            git::git_branch_paths,
             git::git_diff_stat,
             shared::shared_overview,
             shared::shared_drift,
