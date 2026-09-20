@@ -290,6 +290,10 @@ const unit = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** The merge control and the checks list are tabs of the panel's detail
+ *  section now, so a test about either picks its tab before it looks. */
+const showTab = async (name: string) => fireEvent.click(await screen.findByRole("tab", { name }));
+
 const mergeButton = () =>
   screen
     .getAllByRole("button")
@@ -422,6 +426,7 @@ describe("the three verdict rows", () => {
     // And the merge row still works off the same summary: the verdict is the
     // part every provider answers, so it is not behind the option.
     expect(screen.getByText("Ready to merge.")).toBeTruthy();
+    await showTab("Merge");
     expect(mergeButton().hasAttribute("disabled")).toBe(false);
   });
 
@@ -467,6 +472,7 @@ describe("landing it", () => {
     await open({ statuses: [unit()], summary: summaryOf("clean") });
     await pollNow("manual");
 
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
     expect(mergeButton().hasAttribute("disabled")).toBe(false);
   });
@@ -482,6 +488,7 @@ describe("landing it", () => {
     await waitFor(() =>
       expect(screen.getByText("A rule on the base branch is holding this merge.")).toBeTruthy(),
     );
+    await showTab("Merge");
     expect(mergeButton().textContent).toBe("Merge");
     expect(mergeButton().hasAttribute("disabled")).toBe(true);
   });
@@ -512,6 +519,7 @@ describe("landing it", () => {
       mergeFails: { kind: "forbidden", message: "At least 1 approving review is required" },
     });
     await pollNow("manual");
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
 
     fireEvent.click(mergeButton());
@@ -528,6 +536,7 @@ describe("landing it", () => {
     signIn();
     await open({ statuses: [unit()], summary: summaryOf("clean") });
     await pollNow("manual");
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
 
     const listed = cmds("forge_list_prs").length;
@@ -692,6 +701,7 @@ describe("landing it, once it has landed", () => {
     signIn();
     await open({ statuses: [unit()], summary: summaryOf("clean") });
     await pollNow("manual");
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
 
     const picker = () => screen.getByLabelText("How to merge") as HTMLButtonElement;
@@ -710,6 +720,7 @@ describe("landing it, once it has landed", () => {
     signIn();
     await open({ statuses: [unit()], summary: summaryOf("clean") });
     await pollNow("manual");
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
 
     pointerClick(screen.getByLabelText("How to merge"));
@@ -744,6 +755,7 @@ describe("landing it, once it has landed", () => {
     signIn();
     await open({ statuses: [unit()], summary: summaryOf("clean") });
     await pollNow("manual");
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
     fireEvent.click(mergeButton());
     await waitFor(() => expect(screen.getByText("Merged.")).toBeTruthy());
@@ -763,6 +775,7 @@ describe("landing it, once it has landed", () => {
     signIn();
     await open({ statuses: [unit()], summary: summaryOf("clean") });
     await pollNow("manual");
+    await showTab("Merge");
     await waitFor(() => expect(mergeButton().textContent).toBe("Squash and merge"));
     fireEvent.click(mergeButton());
 

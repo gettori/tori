@@ -421,7 +421,7 @@ function prTabTitle(id: string): string | null {
   if (t?.kind !== "pr") return null;
   const number = parsePrArg(t.arg);
   const title = prEntry(t.workspace, number).pr?.title;
-  return title ? `#${number} ${title}` : null;
+  return title ? `#${number}: ${title}` : null;
 }
 
 const tabName = (t: FileTab) => searchTabTitle(t.path) ?? prTabTitle(t.path) ?? t.name;

@@ -8,15 +8,30 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--canvas-card);
   font-size: var(--tori-text-xl);
 }
 
+/* The panel's own scroll, under the head and above the review section, so the
+   review keeps its place while the pull request above it is read. Same shape
+   the Files tab stacks its sections in. */
+.stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
@@ -264,18 +279,20 @@ button.verdictRow:not(:disabled):hover {
 
 .contexts {
   margin: 0;
-  padding: 0 calc(12px * var(--ui-scale)) calc(4px * var(--ui-scale))
-    calc(30px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
   list-style: none;
 }
 
+/* A row of its own in a tab with room for it, rather than the footnote it was
+   under the rollup line. */
 .context {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: calc(6px * var(--ui-scale));
+  min-height: calc(22px * var(--ui-scale));
   min-width: 0;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 .context[data-check-state="failure"] {
@@ -321,7 +338,7 @@ button.verdictRow:not(:disabled):hover {
    part-way down a long list. */
 .filesHead {
   position: sticky;
-  top: calc(26px * var(--ui-scale));
+  top: 0;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -502,4 +519,102 @@ button.verdictRow:not(:disabled):hover {
   flex-wrap: wrap;
   gap: calc(6px * var(--ui-scale));
   margin-top: calc(4px * var(--ui-scale));
+}
+
+/* --- the detail section -------------------------------------------------- */
+
+/* The strip and whatever it is showing, pinned under the pull request. Same
+   shape as the Files tab's Scripts / Outline / TODOs section, down to the drag
+   handle sitting over the top border rather than beside it. */
+.views {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  margin-top: auto;
+  min-height: calc(36px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+}
+
+.views.viewsOpen {
+  min-height: calc(90px * var(--ui-scale));
+}
+
+.sash {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: calc(8px * var(--ui-scale));
+}
+
+.tabStrip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  height: calc(36px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+}
+
+/* The rule under the tabs, only while there is something under them. */
+.viewsOpen .tabStrip {
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* Five labels do not fit a 320px column. The strip scrolls sideways rather than
+   wrapping, which would move the collapse button on every resize. */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* A tab is a pill only while it is the one showing; the rest are muted text, so
+   the strip reads as one control rather than five buttons. */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: none;
+  border: none;
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--fg-default);
+}
+.tab[aria-selected="true"] {
+  background: var(--neutral-subtle);
+  color: var(--fg-default);
+}
+
+.tabPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  gap: calc(8px * var(--ui-scale));
+}
+
+/* The checks list brings its own padding, being a list of rows rather than a
+   block of prose. */
+.tabPanel:has(> .contexts) {
+  padding: 0;
 }
