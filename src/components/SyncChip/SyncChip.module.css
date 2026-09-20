@@ -1,8 +1,8 @@
-/* The branch-sync chip, built on the toolbar's `.member` recipe: a small tinted
-   box whose hue is the whole message. The four tones are written out rather
-   than routed through one custom property, because `color-mix()` fed from a
-   `var()` is dropped whole by some engines (see the note on --space-tint-rgb in
-   App.css) and the tone is a class here anyway. */
+/* The branch-sync chip: coloured text on the crumb, in a box that only exists
+   under the pointer. The four tones are written out rather than routed through
+   one custom property, because `color-mix()` fed from a `var()` is dropped
+   whole by some engines (see the note on --space-tint-rgb in App.css) and the
+   tone is a class here anyway. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -10,7 +10,12 @@
   flex: 0 0 auto;
   height: calc(20px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale));
-  border: 1px solid;
+  /* A native button paints `buttonface` unless something says otherwise, and
+     the tones no longer do: at rest they set a colour and nothing else. */
+  background: none;
+  /* Declared and transparent, so the box that appears on hover costs no reflow
+     in the crumb it sits at the end of. */
+  border: 1px solid transparent;
   border-radius: var(--tori-radius-md);
   font: inherit;
   font-size: var(--tori-text-2xs);
@@ -22,8 +27,16 @@
   cursor: pointer;
 }
 
+/* The tone is the colour of the text, and the box around it is a hover
+   affordance. At rest this is a reading on the crumb rather than a control
+   offering itself, which is what a tinted pill parked permanently at the end of
+   the branch name read as. The fill and the border are the same values the
+   resting pill used to carry, moved onto :hover. */
 .danger {
   color: var(--danger-fg);
+}
+.danger:hover,
+.danger:focus-visible {
   background: color-mix(in srgb, var(--danger-fg) 14%, transparent);
   border-color: color-mix(in srgb, var(--danger-fg) 45%, transparent);
 }
@@ -32,36 +45,31 @@
    being behind: one needs a decision about history, the other needs a pull. */
 .warn {
   color: var(--attention-emphasis);
+}
+.warn:hover,
+.warn:focus-visible {
   background: color-mix(in srgb, var(--attention-emphasis) 14%, transparent);
   border-color: color-mix(in srgb, var(--attention-emphasis) 45%, transparent);
 }
 
 .attention {
   color: var(--attention-fg);
+}
+.attention:hover,
+.attention:focus-visible {
   background: color-mix(in srgb, var(--attention-fg) 14%, transparent);
   border-color: color-mix(in srgb, var(--attention-fg) 45%, transparent);
 }
 
-/* No fill at all. These states are facts about a branch that is working
-   normally, and a tinted box for each would put three pills on a healthy bar. */
+/* Grey has no tone to tint with, so it hovers to the neutral surface every
+   other quiet control in the app uses. */
 .muted {
   color: var(--fg-muted);
-  background: none;
-  border-color: transparent;
 }
-
-/* The border, not the fill. A flat hover background outranks the tone blocks
-   above and turns a conflicts chip grey at the exact moment it is being reached
-   for, which is the one moment its colour is doing work. */
-.chip:hover,
-.chip:focus-visible {
-  border-color: currentColor;
-}
-
-/* The untinted tones have no fill to brighten, so they get one here. */
 .muted:hover,
 .muted:focus-visible {
   background: var(--neutral-subtle);
+  border-color: var(--border-default);
 }
 
 /* The unreachable-remote glyph, which stands alone where the marks would be:
@@ -85,4 +93,17 @@
 .fetched {
   margin-top: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
+}
+
+/* Whatever git said, in the room a tooltip has. A failed fetch carries its
+   whole stderr, which for a `--prune` that lost a race is a line per ref it
+   dropped: unbounded, that drew a tooltip taller than the window and off the
+   bottom of the screen. The reason git failed is in the first lines; the rest
+   is the report. */
+.failure {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
 }
