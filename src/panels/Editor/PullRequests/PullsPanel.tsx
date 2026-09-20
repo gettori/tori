@@ -84,7 +84,7 @@ import { prAllTabId, prDiffTabId, prListTabId, prTabId } from "../../../utils/sy
 import { PR_TABS, prLayout, prTab, revealPrTab } from "../../../utils/prSections";
 import { SECTION_MIN_H } from "../../../utils/sectionLayout";
 import { reloadPrList } from "../../../utils/prListStore";
-import { projectUnitFor } from "../../../utils/sessionActivity";
+import { projectPathFor, projectUnitFor } from "../../../utils/sessionActivity";
 import {
   forgeHosts,
   forgePause,
@@ -291,10 +291,18 @@ export default function PullsPanel(props: {
     },
   });
 
+  /// What the poll filed this project under, which is not the folder on screen
+  /// when the pane is looking at a worktree: the poll keys a project, and a
+  /// worktree checkout is one unit inside it. Reading the statuses under the
+  /// folder instead is a pull request with no checks and no verdict, from a
+  /// tick that covered both.
+  const pollRoot = () => (props.root ? (projectPathFor(props.root) ?? props.root) : null);
+
   const state = createMemo(() => {
     const root = props.root;
+    const polling = pollRoot();
     const on = branch();
-    const unit = root && on ? unitStatus(root, on) : null;
+    const unit = polling && on ? unitStatus(polling, on) : null;
     const seen = root ? viewingPr(root) : null;
     return pullsPanelState({
       chip: forgeChip({
@@ -421,7 +429,10 @@ export default function PullsPanel(props: {
     return root && s ? prEntry(root, s.number) : null;
   });
   const summary = () => entry()?.summary ?? null;
-  const uncovered = () => (props.root ? uncoveredUnits(props.root) : 0);
+  const uncovered = () => {
+    const root = pollRoot();
+    return root ? uncoveredUnits(root) : 0;
+  };
 
   /// The poll's record for whichever pull request is on screen.
   ///
@@ -429,7 +440,7 @@ export default function PullsPanel(props: {
   /// for, which is the honest blank those rows already show: the poll never
   /// covered it, and nothing else knows its checks.
   const polled = createMemo(() => {
-    const root = props.root;
+    const root = pollRoot();
     const s = shown();
     return root && s ? unitStatus(root, s.pr.headRef) : null;
   });

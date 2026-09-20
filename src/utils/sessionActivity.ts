@@ -244,19 +244,27 @@ function unitWantsAttention(folderPath: string | undefined, branch: string | und
   return siblings.some((u) => u.attention && belongsToUnit({ branch }, u, siblings));
 }
 
-/// The branch-unit of `root`'s project that carries `branch`, or null.
+/// The project `root` belongs to, or null when no unit list places it.
 ///
 /// `root` is whatever directory the caller happens to be looking at. For a plain
 /// project that is the project's own path; for a worktree project it is one
-/// unit's checkout, which is *not* the project path, so the project is found
-/// through the unit list rather than assumed to equal `root`.
-export function projectUnitFor(root: string, branch: string): ForgeUnit | null {
+/// unit's checkout, which is *not* the project path. Everything keyed per
+/// project (the poll's statuses, its uncovered count) has to be looked up under
+/// this rather than under the directory on screen, or a worktree checkout reads
+/// as a project nothing has ever polled.
+export function projectPathFor(root: string): string | null {
   const all = forgeUnits();
-  const projectPath =
+  return (
     all.find((u) => u.folderPath === root)?.projectPath ??
-    (all.some((u) => u.projectPath === root) ? root : null);
+    (all.some((u) => u.projectPath === root) ? root : null)
+  );
+}
+
+/// The branch-unit of `root`'s project that carries `branch`, or null.
+export function projectUnitFor(root: string, branch: string): ForgeUnit | null {
+  const projectPath = projectPathFor(root);
   if (projectPath === null || !branch) return null;
-  return all.find((u) => u.projectPath === projectPath && u.branch === branch) ?? null;
+  return forgeUnits().find((u) => u.projectPath === projectPath && u.branch === branch) ?? null;
 }
 
 /** One branch-unit and the session that speaks for it. */
