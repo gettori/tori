@@ -1,5 +1,5 @@
 import { Show, type JSX } from "solid-js";
-import { Check } from "lucide-solid";
+import { Check, Minus } from "lucide-solid";
 import { Checkbox as Primitive } from "../../lib/checkbox";
 import Icon from "../Icon/Icon";
 import styles from "./Checkbox.module.css";
@@ -27,8 +27,15 @@ import styles from "./Checkbox.module.css";
 export default function Checkbox(props: {
   checked: boolean;
   onChange: (checked: boolean) => void;
+  /** Some of what this box stands for, not all of it: a folder whose files are
+   *  half read. Drawn as a dash, since a tick for "some" is a lie the reader
+   *  acts on. */
+  indeterminate?: boolean;
   /** The visible label. Omit it only when `aria-label` names the control. */
   label?: JSX.Element;
+  /** `sm` is the box for a dense list row, where the form-sized one reads as a
+   *  control with a list around it. Everything else stays the default. */
+  size?: "sm";
   disabled?: boolean;
   class?: string;
   "aria-label"?: string;
@@ -38,6 +45,7 @@ export default function Checkbox(props: {
     <Primitive.Root
       class={[styles.root, props.class].filter(Boolean).join(" ")}
       checked={props.checked}
+      indeterminate={props.indeterminate}
       onChange={props.onChange}
       disabled={props.disabled}
     >
@@ -46,13 +54,19 @@ export default function Checkbox(props: {
         aria-label={props["aria-label"]}
         aria-describedby={props["aria-describedby"]}
       />
-      <Primitive.Control class={styles.control}>
+      <Primitive.Control
+        class={[styles.control, props.size === "sm" && styles.sm].filter(Boolean).join(" ")}
+      >
         {/* Always mounted: Kobalte's mount-on-check runs the tick through
             solid-presence, whose lazily computed style under jsdom 30 reads a
             document the element has left, and an uncheck inside a Dialog throws.
             CSS hides it instead. */}
         <Primitive.Indicator class={styles.indicator} forceMount>
-          <Icon icon={Check} size={15} strokeWidth={3} />
+          <Icon
+            icon={props.indeterminate ? Minus : Check}
+            size={props.size === "sm" ? 11 : 15}
+            strokeWidth={3}
+          />
         </Primitive.Indicator>
       </Primitive.Control>
       <Show when={props.label !== undefined}>
