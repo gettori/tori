@@ -584,6 +584,21 @@ describe("what a branch row says about its remote", () => {
     await waitFor(async () => expect(await marks("feat")).toEqual(["push"]));
   });
 
+  it("counts commits to publish before a branch's first push", async () => {
+    bridge.sync = {
+      [syncKey("feat")]: syncOf({
+        upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false },
+        base: { name: "main", ahead: 2, behind: 0, conflicts: [] },
+      }),
+    };
+    mount(["p:work/repo"]);
+
+    await waitFor(async () => expect(await marks("feat")).toEqual(["push2"]));
+    const run = (await node("feat")).querySelector("[data-sync-marks]")!;
+    fireEvent.pointerEnter(run);
+    expect((await screen.findByRole("tooltip")).textContent).toContain("2 commits to publish");
+  });
+
   it("marks uncommitted work, and a base that would fight", async () => {
     bridge.sync = {
       [syncKey("main")]: syncOf({ dirty: true }),
