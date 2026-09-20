@@ -210,7 +210,7 @@ pub struct CatalogModel {
 ///   that was never switchable. The first bump for a field *removed* rather than
 ///   added, which is the same rule read the other way: the cache describes a
 ///   shape this Tori no longer reads.
-pub const CACHE_SHAPE: u32 = 6;
+pub const CACHE_SHAPE: u32 = 7;
 
 /// How many models one probe switches through to read their own option sets.
 ///
