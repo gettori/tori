@@ -826,6 +826,14 @@ pub fn list_remote_branches(repo: String) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+/// The repo's default branch (origin/HEAD's target), for the picker to offer as
+/// the base of a new branch. None when origin/HEAD is unset, which leaves the
+/// caller to fall back to where HEAD is.
+#[tauri::command(async)]
+pub fn repo_default_branch(repo: String) -> Result<Option<String>, String> {
+    Ok(default_branch(&PathBuf::from(&repo)))
+}
+
 /// Pure seed step: attach `seed` (only when it is a local branch) exactly once per
 /// repo, and never against an empty repo (the flag stays unset so a later probe
 /// still seeds). Returns whether the state changed (so the caller persists). Pure,
@@ -898,9 +906,10 @@ pub fn attach_branch(
     Ok(())
 }
 
-/// Create `branch` at HEAD and attach it (the frontend then switches to it, a
-/// same-commit checkout that needs no working-tree confirm). Creation is
-/// independent of that switch, so the branch appears even if the switch is skipped.
+/// Create `branch` at `base` (HEAD when the caller named none) and attach it.
+/// The frontend then switches to it, which is a working-tree change whenever the
+/// base is not where HEAD already is. Creation is independent of that switch, so
+/// the branch appears even if the switch is skipped.
 /// Order: create → write store → evict cache → emit.
 #[tauri::command(async)]
 pub fn new_branch(
@@ -908,6 +917,7 @@ pub fn new_branch(
     index: State<ProjectIndex>,
     repo: String,
     branch: String,
+    base: Option<String>,
 ) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
@@ -925,10 +935,18 @@ pub fn new_branch(
     if local_branches(&path).contains(name) {
         return Err(format!("Branch \"{name}\" already exists."));
     }
+    let start = match base.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => Some(crate::worktree::resolve_base(&repo, b)?),
+        None => None,
+    };
+    let mut args = vec!["branch", name];
+    if let Some(start) = start.as_deref() {
+        args.push(start);
+    }
     let out = Command::new("git")
         .arg("-C")
         .arg(&path)
-        .args(["branch", name])
+        .args(&args)
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {

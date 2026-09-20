@@ -668,6 +668,7 @@ export default function LeftSidebar(props: {
     deleting: { branch: string; unpushed: boolean | null; busy: boolean } | null;
     busy: boolean;
     prefill?: string;
+    baseDefault?: string;
   } | null>(null);
 
   // Drag-to-reorder state for the space tiles.
@@ -1709,6 +1710,13 @@ export default function LeftSidebar(props: {
     // in `refs/remotes` - and show nothing at all offline. It is a
     // `for-each-ref`: hundreds of branches cost milliseconds.
     const remotes = await invoke<string[]>("list_remote_branches", { repo: p.path }).catch(() => []);
+    // What a new branch starts on. Origin's default is the answer nearly every
+    // time; a repo with no origin has none, and where HEAD is standing is the
+    // next best thing (and what creating a branch did before it was asked).
+    const fallback = branches.find((b) => b.current)?.name;
+    const baseDefault =
+      (await invoke<string | null>("repo_default_branch", { repo: p.path }).catch(() => null)) ??
+      fallback;
     // A branch the tree already shows is listed but refused: it is still an
     // answer to "which branches are there" and not one to "which do you want".
     const shown = mode === "worktree" ? "worktree" : "plain";
@@ -1722,6 +1730,7 @@ export default function LeftSidebar(props: {
       deleting: null,
       busy: false,
       prefill,
+      baseDefault,
     });
     // Quiet and floored at the schedule's cadence, so opening the picker on a
     // container the sweep just covered costs nothing and can never stop to ask
@@ -1787,7 +1796,7 @@ export default function LeftSidebar(props: {
   // Confirmed. Where the branch was found is what says how to add it, and the
   // dialog carries that rather than this re-deriving it from the name: a local
   // branch attaches, a remote-only one attaches with tracking, and a name that
-  // is neither is created at HEAD and checked out.
+  // is neither is created on the base the dialog names and checked out.
   async function confirmAddBranch(pick: BranchPick) {
     const req = branchReq();
     if (!req) return;
@@ -1797,12 +1806,14 @@ export default function LeftSidebar(props: {
       if (mode === "worktree") {
         // create_worktree DWIMs the target itself (an existing local checks out,
         // a remote-only name is tracked, a brand-new name starts a branch off
-        // origin's default), so the kind is the dialog's business here and not
-        // this command's. It answers the folder it made, which is the only thing
-        // that tells one worktree row from another.
+        // `base`, or off origin's default when there is none), so the kind is
+        // the dialog's business here and not this command's. It answers the
+        // folder it made, which is the only thing that tells one worktree row
+        // from another.
         const folder = await invoke<string>("create_worktree", {
           repoPath: p.path,
           branch: pick.name,
+          base: pick.base ?? null,
         });
         setBranchReq(null);
         await loadConfig();
@@ -1815,7 +1826,7 @@ export default function LeftSidebar(props: {
       } else if (pick.kind === "local") {
         await invoke("attach_branch", { repo: p.path, branch: pick.name });
       } else {
-        await invoke("new_branch", { repo: p.path, branch: pick.name });
+        await invoke("new_branch", { repo: p.path, branch: pick.name, base: pick.base ?? null });
         await invoke("git_checkout", { repoPath: p.path, branch: pick.name });
       }
       setBranchReq(null);
@@ -3381,6 +3392,7 @@ export default function LeftSidebar(props: {
             onDeleteCancel={() => setBranchReq((r) => (r ? { ...r, deleting: null } : r))}
             busy={req().busy}
             prefill={req().prefill}
+            baseDefault={req().baseDefault}
             onConfirm={(pick) => void confirmAddBranch(pick)}
             onCancel={() => setBranchReq(null)}
           />
