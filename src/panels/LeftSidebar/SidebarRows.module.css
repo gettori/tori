@@ -160,7 +160,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: calc(3px * var(--ui-scale));
+  gap: 1px;
 }
 
 /* The first line. Every property here is `.row`'s own, because this IS a row's

@@ -15,6 +15,7 @@
      variable on the stack above (see `.row.branch.sel .rowStack`). The
      fallback is the unselected value, and what a standalone line wears. */
   color: var(--pr-line-fg, var(--fg-subtle));
+  font-weight: 200;
   /* Two steps under the 15px name above it. The badges elsewhere on the row
      sit at 10px, which is a mark's size rather than a line's: `--fg-subtle`
      is held to a 3.0 contrast floor (theme/contrast.ts), and a run of words
