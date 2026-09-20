@@ -25,11 +25,10 @@
 // ## The column and the detail
 //
 // The column answers where the branch stands: which pull request, three verdict
-// lines, and the files it changes. Everything behind those lines is a tab in the
-// section at the bottom (the review, the conversations, the checks, the merge,
-// the description), the way the Files tab stacks Scripts, Outline and TODOs
-// under its tree. A verdict row is the way into its own tab, so the summary and
-// the detail cannot be two separate things to find.
+// lines, and the files it changes. What is behind those lines is a tab in the
+// section at the bottom (the checks, the review, the merge), the way the Files
+// tab stacks Scripts, Outline and TODOs under its tree. A verdict row is the way
+// into its own tab, so the summary and the detail are not two things to find.
 
 import {
   createEffect,
@@ -61,7 +60,6 @@ import {
   SquarePen,
   type LucideIcon,
 } from "lucide-solid";
-import { compactAgo } from "../../../utils/compactAge";
 import {
   emitWith,
   onWith,
@@ -80,6 +78,7 @@ import { createPrFlow } from "../../../utils/prCreateFlow";
 import { stepKeys } from "../../../utils/keyNav";
 import { fileRowName } from "../../../utils/prFiles";
 import { baseName, folderTree, type FolderNode } from "../../../utils/pathTree";
+import { prMetaParts } from "../../../utils/prMeta";
 import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
 import { pullsPanelState, type DirectRead } from "../../../utils/pullsPanelState";
@@ -124,7 +123,6 @@ import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
 import Resizer from "../../../components/Resizer/Resizer";
 import { chromeScale } from "../../Settings/settingsStore";
-import PrThreadCard from "./PrThreadCard";
 import ReviewForm from "./ReviewForm";
 import styles from "./PullsPanel.module.css";
 
@@ -599,7 +597,12 @@ export default function PullsPanel(props: {
         >
           <For each={rungs(p.depth)}>{() => <span class={styles.rung} aria-hidden="true" />}</For>
           <Chevron open={open()} />
-          <span class={styles.dirName}>{p.node.name}</span>
+          {/* Isolated for the same reason the branch name is: the box is
+              right-to-left so the ellipsis lands at the front, and a folder
+              whose name starts with a number would be reordered with it. */}
+          <span class={styles.dirName}>
+            <bdi>{p.node.name}</bdi>
+          </span>
         </div>
         <Show when={open()}>
           <TreeRows node={p.node} number={p.number} depth={p.depth + 1} />
@@ -861,12 +864,20 @@ export default function PullsPanel(props: {
                         #{s().pr.number}
                       </a>
                     </div>
-                    <div class={styles.meta}>{metaLine(s().pr, summary()?.updatedAt ?? null)}</div>
+                    <div class={styles.meta}>
+                      {prMetaParts(s().pr, summary()?.updatedAt ?? null, totals()).join(", ")}
+                    </div>
                     <div class={styles.branches}>
                       {/* The head loses its *start* when it does not fit: a long
-                          branch name is prefixed with the part every branch shares. */}
+                          branch name is prefixed with the part every branch
+                          shares. The `bdi` is what keeps the name itself in the
+                          order it was typed: the right-to-left box that moves
+                          the ellipsis to the front also reorders a name whose
+                          first run is a number, so `2427-message-thread` reads
+                          as `message-thread-2427`. Isolated, the box truncates
+                          from the start and the text inside it does not move. */}
                       <span class={styles.headRef} title={s().pr.headRef}>
-                        {s().pr.headRef}
+                        <bdi>{s().pr.headRef}</bdi>
                       </span>
                       <span class={styles.into} aria-hidden="true">
                         -&gt;
@@ -877,7 +888,7 @@ export default function PullsPanel(props: {
 
                   {/* Block 2: the three verdicts, one line each. A badge grid wraps
                       into nonsense at 320px. Each line leads to the tab that
-                      holds what is behind it. */}
+                      holds what is behind it, where there is one. */}
                   <div class={styles.rollup}>
                     <Show
                       when={polled()}
@@ -910,16 +921,14 @@ export default function PullsPanel(props: {
                         the same source the chip uses. Absent rather than zeroed
                         until the summary lands: "nobody has approved" is a verdict,
                         and nobody has reached it. */}
-                    <button
-                      type="button"
+                    <div
                       class={styles.verdictRow}
                       data-verdict="reviews"
                       data-decision={polled()?.reviewDecision ?? "unread"}
-                      onClick={() => revealPrTab("conversation")}
                     >
                       <Icon icon={MessageSquare} size={14} aria-hidden="true" />
                       <span class={styles.verdictText}>{reviewsLine(summary()?.counts?.reviews ?? null)}</span>
-                    </button>
+                    </div>
 
                     <button
                       type="button"
@@ -1110,33 +1119,6 @@ export default function PullsPanel(props: {
                       <ReviewForm workspace={props.root!} number={s().number} />
                     </Match>
 
-                    <Match when={prTab() === "conversation"}>
-                      <Show when={entry()?.threadsError}>
-                        {(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}
-                      </Show>
-                      <Show
-                        when={entry()?.threads.length}
-                        fallback={<div class={styles.notice}>No conversations on this pull request yet.</div>}
-                      >
-                        <For each={entry()?.threads ?? []}>
-                          {(t) => (
-                            <PrThreadCard root={props.root!} pr={s().pr} thread={t} quoteHunk />
-                          )}
-                        </For>
-                      </Show>
-                      {/* Review threads only. The conversation tab on github.com
-                          also carries comments made on the pull request itself,
-                          which nothing here reads. */}
-                      <Show when={s().pr.comments}>
-                        <div class={styles.notice}>
-                          {plural(s().pr.comments, "comment")} on the pull request itself.{" "}
-                          <a href={s().pr.url} target="_blank" rel="noreferrer">
-                            Read them on {originHost(origin() ?? "") ?? "the host"}
-                          </a>
-                        </div>
-                      </Show>
-                    </Match>
-
                     <Match when={prTab() === "checks"}>
                       <Show
                         when={polled()?.checks.contexts.length}
@@ -1207,19 +1189,6 @@ export default function PullsPanel(props: {
       </Show>
     </div>
   );
-}
-
-/// Who opened it and when, then how recently it moved.
-///
-/// Two halves because they arrive separately: the author rides the
-/// `PullRequest` the poll already has, and `updatedAt` exists only on the
-/// detail read. Waiting for both would leave the line blank for a fact nobody
-/// needs to wait for.
-function metaLine(pr: PullRequest, updatedAt: string | null): string {
-  const parts = [pr.author];
-  const at = updatedAt ? Date.parse(updatedAt) : NaN;
-  if (!Number.isNaN(at)) parts.push(`updated ${compactAgo(at / 1000)}`);
-  return parts.join(", ");
 }
 
 /// The standing verdicts, or the fact that nobody has counted them.
