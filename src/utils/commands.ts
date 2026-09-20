@@ -28,6 +28,7 @@ import {
   DEBUG_PICK,
   type DebugPick,
   FOCUS_PROJECT_SEARCH,
+  FOCUS_PR_REVIEW,
   TAB_JUMP,
   TAB_CYCLE,
   CLOSE_TAB,
@@ -275,6 +276,18 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: cmdShift("t"),
     run: () => emit(EDITOR_REOPEN_CLOSED),
+  },
+  {
+    // `window`, like its neighbours: it acts on the editor's tab strip, and a
+    // program in the terminal keeps its own Cmd+Shift+R.
+    id: "focus-pr-review",
+    keys: ["⌘", "⇧", "R"],
+    label: "Go to the pull request review form",
+    group: "git",
+    scope: "window",
+    match: cmdShift("r"),
+    run: () => emit(FOCUS_PR_REVIEW),
+    requires: ["editorTab"],
   },
   {
     id: "filter-sidebar",

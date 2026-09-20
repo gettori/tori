@@ -82,6 +82,11 @@ const bridge = vi.hoisted(() => ({
   createFails: null as { kind: string; message: string } | null,
   accountPending: false,
   branchPaths: [] as string[],
+  directPrFails: null as { kind: string; message: string } | null,
+  directPrPending: false,
+  /** What `forge_repo_account` answers. `pick` is the one pause reason that is
+   *  about the repo rather than about the account. */
+  repoAccount: null as unknown,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -98,7 +103,12 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.createFails
         ? Promise.reject(bridge.createFails)
         : Promise.resolve(bridge.createdPr);
-    if (cmd === "forge_pr_for_branch") return Promise.resolve(bridge.directPr);
+    if (cmd === "forge_pr_for_branch") {
+      if (bridge.directPrPending) return new Promise(() => {});
+      return bridge.directPrFails
+        ? Promise.reject(bridge.directPrFails)
+        : Promise.resolve(bridge.directPr);
+    }
     if (cmd === "forge_unit_statuses")
       return Promise.resolve({
         statuses: bridge.statuses,
@@ -123,7 +133,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "forge_repo_account")
       return bridge.accountPending
         ? new Promise(() => {})
-        : Promise.resolve({
+        : Promise.resolve(bridge.repoAccount ?? {
             kind: "account",
             accountId: "personal",
             host: "github.com",
@@ -246,6 +256,9 @@ function restBridge() {
   bridge.createFails = null;
   bridge.accountPending = false;
   bridge.branchPaths = [];
+  bridge.directPrFails = null;
+  bridge.directPrPending = false;
+  bridge.repoAccount = null;
 }
 
 /// Put the branch in the git store, render, and let every read settle. The
@@ -1016,6 +1029,174 @@ describe("starting a pull request from the panel", () => {
 // and the mirror of that is a panel with no way in: the mode strip collapses
 // into an overflow menu on a narrow pane, so the palette is the reliable route
 // (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
+
+describe("the keyboard", () => {
+  const rows = () => [...document.querySelectorAll<HTMLElement>("[data-file-row]")];
+  const panel = () => document.querySelector<HTMLElement>("[class*=panel]")!;
+
+  async function threeFiles() {
+    signIn();
+    await open({
+      statuses: [unit()],
+      files: [
+        file(),
+        file({ path: "src/utils/forgeStatus.ts" }),
+        file({ path: "src/utils/prUrl.ts" }),
+      ],
+    });
+    await pollNow("manual");
+    await waitFor(() => expect(rows()).toHaveLength(3));
+  }
+
+  it("walks the file list on j and k, and stops at both ends", async () => {
+    await threeFiles();
+
+    // Nothing focused yet, so the first press lands on the first row rather
+    // than doing nothing: a key that appears dead is a key nobody presses twice.
+    fireEvent.keyDown(panel(), { key: "j" });
+    expect(document.activeElement).toBe(rows()[0]);
+    fireEvent.keyDown(panel(), { key: "j" });
+    expect(document.activeElement).toBe(rows()[1]);
+    fireEvent.keyDown(panel(), { key: "k" });
+    expect(document.activeElement).toBe(rows()[0]);
+
+    // Clamped, not wrapped. A list that jumps from its last row back to its
+    // first gives a reader holding j no way to feel the end of the review.
+    fireEvent.keyDown(panel(), { key: "k" });
+    expect(document.activeElement).toBe(rows()[0]);
+    for (let i = 0; i < 5; i++) fireEvent.keyDown(panel(), { key: "j" });
+    expect(document.activeElement).toBe(rows()[2]);
+  });
+
+  it("opens the focused row on Enter and on Space", async () => {
+    await threeFiles();
+    fireEvent.keyDown(panel(), { key: "j" });
+    fireEvent.keyDown(panel(), { key: "j" });
+
+    const opened: string[] = [];
+    const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (e) => opened.push(e.path));
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    fireEvent.keyDown(document.activeElement!, { key: " " });
+    off();
+
+    // Both, and both the focused row's: the row is a button, and Enter and
+    // Space are what a button does.
+    expect(opened).toEqual([
+      prDiffTabId(ROOT, 42, "src/utils/forgeStatus.ts"),
+      prDiffTabId(ROOT, 42, "src/utils/forgeStatus.ts"),
+    ]);
+  });
+
+  it("leaves j and k alone when they are being typed, or carry a modifier", async () => {
+    await threeFiles();
+    fireEvent.keyDown(panel(), { key: "j" });
+    const first = document.activeElement;
+
+    // Every review surface holds a text box, so a bare letter that moved the
+    // focus while somebody was writing would be unusable. The panel's own
+    // create-PR form is inside this element.
+    const box = document.createElement("textarea");
+    panel().appendChild(box);
+    fireEvent.keyDown(box, { key: "j" });
+    expect(document.activeElement).toBe(first);
+    box.remove();
+
+    // And Cmd+J belongs to the app, not to a list of files.
+    fireEvent.keyDown(panel(), { key: "j", metaKey: true });
+    expect(document.activeElement).toBe(first);
+  });
+});
+
+describe("accessibility", () => {
+  /// Every state the panel can be in, and the least that puts it there.
+  ///
+  /// A table rather than a test each, because what is being checked is the same
+  /// thing about all of them: a state that draws a headline nobody can reach, a
+  /// button with no name, or a colour carrying a fact on its own is a state that
+  /// looks finished. The empty states share one block of markup, so the part
+  /// that actually differs between these rows is which controls it offers.
+  const STATES: { state: string; go: () => ReturnType<typeof open> }[] = [
+    { state: "paused", go: async () => { noteForgeEnabled(false); noteAuth({ kind: "signedIn", login: "skarif2" }); return open(); } },
+    { state: "paused", go: async () => { noteAuth({ kind: "signedOut" }); return open(); } },
+    { state: "paused", go: async () => { noteAuth({ kind: "suspect", login: "skarif2" }); noteForgeEnabled(true); return open(); } },
+    { state: "paused", go: async () => { signIn(); return open({ repoAccount: { kind: "pick", host: "github.com", candidates: [] } }); } },
+    { state: "noBranch", go: async () => { signIn(); return open({ branch: null }); } },
+    { state: "noRemote", go: async () => { signIn(); return open({ origin: null }); } },
+    { state: "inert", go: async () => { signIn(); return open({ origin: "git@bitbucket.org:skarif2/tori.git" }); } },
+    { state: "onBase", go: async () => { signIn(); return open({ branch: "main", sync: { ...SYNC, base: null } }); } },
+    {
+      state: "noPrUnpushed",
+      go: async () => {
+        signIn();
+        return open({ sync: { ...SYNC, upstream: { ahead: 3, behind: 0, has_upstream: true, rewritten: false } } });
+      },
+    },
+    { state: "noPrPushed", go: async () => { signIn(); return open(); } },
+    { state: "error", go: async () => { signIn(); return open({ directPrFails: { kind: "http", message: "GitHub said no." } }); } },
+    // The direct read left hanging, which is the window every branch the poll
+    // has not reached yet sits in.
+    { state: "loading", go: async () => { signIn(); return open({ directPrPending: true }); } },
+  ];
+
+  it("gives every empty state a name a screen reader can read", async () => {
+    for (const { state, go } of STATES) {
+      resetForgeStatusForTests();
+      noteForgeEnabled(true);
+      const view = await go();
+      await waitFor(() =>
+        expect(
+          document.querySelector(`[data-panel-state="${state}"]`),
+          `expected the panel to be in ${state}`,
+        ).toBeTruthy(),
+      );
+      // `document.body`, not the render container: a tooltip portals out of it.
+      await expectNoAxeViolations(document.body);
+      view.unmount();
+    }
+  });
+
+  it("gives the loaded panel one, with its files, checks and merge control", async () => {
+    // The state with every control in it: the three verdict rows, the expanded
+    // checks list, the merge bar, the file rows and the review footer. The
+    // others are one block of markup with different sentences in it.
+    signIn();
+    notePr(ROOT, 42, pr());
+    addPending(ROOT, 42, {
+      path: "src/utils/forgeChip.ts",
+      line: 1,
+      side: "RIGHT",
+      startLine: null,
+      startSide: null,
+      body: "a held remark",
+      rowText: "+b",
+    });
+    await open({
+      statuses: [
+        unit({
+          reviewDecision: "changesRequested",
+          checks: {
+            state: "failure",
+            total: 2,
+            failing: 1,
+            contexts: [{ name: "build", state: "failure", url: "https://ci.test/1" }],
+          },
+        }),
+      ],
+      files: [file()],
+      summary: summaryOf("dirty"),
+      threads: [
+        { id: "t1", path: "src/utils/forgeChip.ts", line: 4, startLine: null, diffHunk: "", isResolved: false, isOutdated: false, comments: [] },
+      ],
+    });
+    await pollNow("manual");
+    await waitFor(() => expect(screen.getByText("#42")).toBeTruthy());
+    fireEvent.click(screen.getByText(/of 2 checks failing/));
+    await waitFor(() => expect(screen.getByText("build")).toBeTruthy());
+
+    await expectNoAxeViolations(document.body);
+  });
+});
+
 describe("the ways into the panel", () => {
   it("has a palette command that switches the right pane to it", async () => {
     const { COMMANDS } = await import("../../../utils/commands");

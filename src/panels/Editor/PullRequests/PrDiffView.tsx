@@ -14,6 +14,7 @@ import { ArrowDown, Columns2, ExternalLink, FileCode } from "lucide-solid";
 import { emitWith, OPEN_IN_EDITOR } from "../../../utils/events";
 import { parsePrDiffArg, prDiffTabId } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
+import { stepKeys } from "../../../utils/keyNav";
 import { projectUnitFor } from "../../../utils/sessionActivity";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
 import { ensure, headDrift, isViewed, prEntry, refresh, setViewedFile } from "../../../utils/prReviewStore";
@@ -76,8 +77,16 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
     onCleanup(() => ro.disconnect());
   });
 
+  /// `n` and `p` between this pull request's conversations.
+  ///
+  /// On the tab rather than on the cards, because the reader is usually in the
+  /// rows and not in a conversation when they want the next one. `bareKey`
+  /// holds the composer and every reply box harmless: a letter typed into text
+  /// is text.
+  const onKeyDown = stepKeys(() => paneRef, "[data-thread-id]", "n", "p");
+
   return (
-    <div class={styles.prDiff} ref={paneRef}>
+    <div class={styles.prDiff} ref={paneRef} onKeyDown={onKeyDown}>
       <div class={styles.topBar}>
         <Show when={file()}>
           {(f) => (

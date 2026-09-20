@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { tab, closeOf } from "../../test/tabs";
+import { tab, tabs, closeOf } from "../../test/tabs";
 import { pointerClick, rightClick } from "../../test/menus";
 
 // A `tori://` tab is a view, not a file, and the whole point of the convention
@@ -84,10 +84,11 @@ vi.mock("./CodeEditor", () => ({
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { emitWith, onWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
-const { syntheticId, parseSyntheticId, prTabId, prListTabId } = await import(
-  "../../utils/syntheticTabs",
+const { emit, emitWith, onWith, FOCUS_PR_REVIEW, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import(
+  "../../utils/events",
 );
+const { syntheticId, parseSyntheticId, prAllTabId, prDiffTabId, prTabId, prListTabId } =
+  await import("../../utils/syntheticTabs");
 
 const GRAPH = syntheticId("graph", REPO);
 const FILE = `${REPO}/src/a.ts`;
@@ -223,6 +224,39 @@ describe("a tori:// tab in the editor pane", () => {
 
     const strip = await waitFor(() => tab("#42"));
     expect(strip.querySelector(".lucide-git-pull-request")).toBeTruthy();
+  });
+
+  it("goes from a pull request's file to the tab its review is submitted from", async () => {
+    // Cmd+Shift+R is pressed while reading a diff, so the number comes from the
+    // active tab and not from the panel, which is not always mounted.
+    await mountEditor();
+    await open(prDiffTabId(REPO, 42, "src/a.ts"));
+    await waitFor(() => expect(tab(/a\.ts/)).toBeTruthy());
+
+    emit(FOCUS_PR_REVIEW);
+    await waitFor(() => expect(tab("#42")).toBeTruthy());
+  });
+
+  it("answers the same from the stacked tab", async () => {
+    await mountEditor();
+    await open(prAllTabId(REPO, 42));
+    await waitFor(() => expect(tab(/All files/)).toBeTruthy());
+
+    emit(FOCUS_PR_REVIEW);
+    await waitFor(() => expect(tab("#42")).toBeTruthy());
+  });
+
+  it("has no review to go to from an ordinary file, so opens nothing", async () => {
+    // The alternative is guessing at which pull request was meant, and a tab
+    // that appears out of a key nobody aimed at a pull request is worse than a
+    // key that did nothing.
+    await mountEditor();
+    await open(FILE);
+
+    emit(FOCUS_PR_REVIEW);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(tabs(/#42/)).toHaveLength(0);
+    expect(tab("a.ts")).toBeTruthy();
   });
 
   it("opens the project's pull request list as a tab of its own", async () => {

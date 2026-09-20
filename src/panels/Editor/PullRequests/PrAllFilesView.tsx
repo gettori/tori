@@ -22,6 +22,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import { Check, ChevronDown, ChevronRight, ExternalLink, MessageSquare } from "lucide-solid";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
+import { bareKey, stepFocus } from "../../../utils/keyNav";
 import { fileRowName } from "../../../utils/prFiles";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
 import {
@@ -92,8 +93,57 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
     onCleanup(() => ro.disconnect());
   });
 
+  /// The next file past the focused one that holds a conversation and is not
+  /// open, or null once there is none in that direction.
+  function nextFileWithThread(delta: 1 | -1): string | null {
+    const held = new Set(entry().threads.map((t) => t.path));
+    const order = files().map((f) => f.path);
+    const inside = (document.activeElement as HTMLElement | null)
+      ?.closest("[data-file-section]")
+      ?.getAttribute("data-file-section");
+    // Nothing focused yet means the walk starts outside the list, so the first
+    // candidate in the direction of travel is the one wanted.
+    const from = inside ? order.indexOf(inside) : delta === 1 ? -1 : order.length;
+    for (let i = from + delta; i >= 0 && i < order.length; i += delta) {
+      if (held.has(order[i])) return order[i];
+    }
+    return null;
+  }
+
+  /// `n` and `p` between this pull request's conversations.
+  ///
+  /// On the tab rather than on the cards, because the reader is usually in the
+  /// rows and not in a conversation when they want the next one. `bareKey`
+  /// holds the composer and every reply box harmless: a letter typed into text
+  /// is text.
+  ///
+  /// **A collapsed section renders no cards**, which is why this cannot just
+  /// step through what is on screen the way the per-file tab does: past the ten
+  /// sections that open on arrival, a reader walking `n` would reach the end of
+  /// a three-hundred-file pull request having passed most of its conversations
+  /// without a word. So running out opens the next file that holds one.
+  function onKeyDown(e: KeyboardEvent) {
+    if (!paneRef) return;
+    if (!bareKey(e, "n", "p")) return;
+    const delta = e.key === "n" ? 1 : -1;
+    if (stepFocus(paneRef, "[data-thread-id]", delta)) {
+      e.preventDefault();
+      return;
+    }
+    const next = nextFileWithThread(delta);
+    if (!next) return;
+    e.preventDefault();
+    setFileExpanded(props.workspace, number(), next, true);
+    // Found by walking rather than by an attribute selector: a path is not a
+    // CSS string and quoting one is a rule with an escape in it.
+    const section = [...paneRef.querySelectorAll<HTMLElement>("[data-file-section]")].find(
+      (el) => el.dataset.fileSection === next,
+    );
+    if (section) stepFocus(section, "[data-thread-id]", delta);
+  }
+
   return (
-    <div class={styles.allFiles} ref={paneRef}>
+    <div class={styles.allFiles} ref={paneRef} onKeyDown={onKeyDown}>
       <div class={styles.topBar}>
         <Show when={pr()}>
           {(p) => (

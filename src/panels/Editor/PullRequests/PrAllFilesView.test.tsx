@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { expectNoAxeViolations } from "../../../test/axe";
 import type { ForgeAccount, PrFile, PullRequest, ReviewThread, StatusReport } from "../../../utils/forgeTypes";
 
 // Every file of a pull request in one tab.
@@ -196,6 +197,8 @@ const bodies = () => document.querySelectorAll("[data-file-body]");
 const toggleFor = (path: string) =>
   document.querySelector<HTMLButtonElement>(`[data-file-section="${path}"] button`)!;
 
+const pane = () => document.querySelector<HTMLElement>("[class*=allFiles]")!;
+
 const rowFor = (text: string) =>
   Array.from(document.querySelectorAll("[class*=commentable]")).find((r) =>
     r.textContent?.includes(text),
@@ -277,6 +280,46 @@ describe("a pull request's files stacked in one tab", () => {
       line: 2,
       body: "inside a section",
     });
+  });
+
+  it("opens a collapsed file to reach the conversation in it", async () => {
+    // Past the ten that open on arrival, stepping through only what is mounted
+    // would walk a reader to the end of the pull request having passed most of
+    // its conversations without a word.
+    bridge.files = Array.from({ length: 12 }, (_, i) => file({ path: `src/f${i}.ts` }));
+    bridge.threads = [thread({ id: "PRRT_late", path: "src/f11.ts" })];
+    openTab();
+    await waitFor(() => expect(sections()).toHaveLength(12));
+
+    // The one conversation is in the twelfth file, which is collapsed, so
+    // nothing on screen carries it.
+    expect(bodies()).toHaveLength(10);
+    expect(document.querySelector("[data-thread-id]")).toBeNull();
+
+    fireEvent.keyDown(pane(), { key: "n" });
+    await waitFor(() => expect(toggleFor("src/f11.ts").getAttribute("aria-expanded")).toBe("true"));
+    expect((document.activeElement as HTMLElement).dataset.threadId).toBe("PRRT_late");
+
+    // And the end is still the end: nothing further to reach, nothing opens.
+    fireEvent.keyDown(pane(), { key: "n" });
+    expect((document.activeElement as HTMLElement).dataset.threadId).toBe("PRRT_late");
+  });
+
+  it("names every section header, open or collapsed", async () => {
+    // A collapsed section is a disclosure whose state is not in its text, and
+    // the counts and the unresolved mark beside it are a glyph and two numbers.
+    bridge.threads = [thread()];
+    bridge.files = [file(), file({ path: "src/other.ts", additions: 4, deletions: 0 })];
+    openTab();
+    await waitFor(() => expect(bodies()).toHaveLength(2));
+    fireEvent.click(toggleFor("src/other.ts"));
+    await waitFor(() => expect(bodies()).toHaveLength(1));
+
+    expect(toggleFor("src/edit.ts").getAttribute("aria-label")).toBe(
+      "Modified, src/edit.ts, 1 added, 1 removed, 1 unresolved comment",
+    );
+    // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
   });
 
   it("gives a file with no patch its own sentence rather than an empty section", async () => {

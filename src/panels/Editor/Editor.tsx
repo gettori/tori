@@ -151,6 +151,7 @@ import {
   EDITOR_NAV_BACK,
   EDITOR_NAV_FORWARD,
   EDITOR_REOPEN_CLOSED,
+  FOCUS_PR_REVIEW,
   GIT_STAGE_ACTIVE,
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
@@ -242,6 +243,7 @@ import {
   parsePrDiffArg,
   parseDiffArg,
   parseSyntheticId,
+  prTabId,
   syntheticId,
   syntheticTabName,
 } from "../../utils/syntheticTabs";
@@ -1710,6 +1712,29 @@ export default function Editor(props: {
     openFile(taken.path);
   }
 
+  /**
+   * Go from whichever part of a pull request is open to the one surface its
+   * review is submitted from.
+   *
+   * Taken from the active tab rather than from the panel, which is not always
+   * mounted: the key is pressed while reading a diff. All three pull request
+   * tabs answer, including the overview itself, so pressing it there is a
+   * no-op rather than a mystery. Any other tab has no review to go to, which is
+   * why this does nothing instead of guessing at one.
+   */
+  function focusPrReview() {
+    const t = parseSyntheticId(activeId() ?? "");
+    if (!t) return;
+    const number =
+      t.kind === "prdiff"
+        ? parsePrDiffArg(t.arg).number
+        : t.kind === "pr" || t.kind === "prall"
+          ? parsePrArg(t.arg)
+          : 0;
+    if (!number) return;
+    openFile(prTabId(t.workspace, number));
+  }
+
   // Agent-touched markers: the selected session's written files, refreshed on
   // turn end. `sessions://changed` already covers every registered adapter's
   // discovery dir (sessions.rs `watch_dirs`), so it is the only trigger needed.
@@ -2339,6 +2364,7 @@ export default function Editor(props: {
         if (d?.kind) void openDebugPicker(d.kind);
       }),
       onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
+      onEvent(FOCUS_PR_REVIEW, focusPrReview),
       onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
       onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
       onEvent(GIT_COMMIT, () => void commitFromPrompt()),

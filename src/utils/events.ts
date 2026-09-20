@@ -177,6 +177,12 @@ export const REFIT_PANES = "tori:refit-panes";
 export const PR_OPENED = "tori:pr-opened";
 export type PrOpened = { projectPath: string };
 
+/// Go to the tab a pull request's review is submitted from. Consumed by
+/// Editor.tsx, which is the only thing that knows which tab is active, and that
+/// is where the pull request is read from: the key is pressed while reading a
+/// diff, and the panel beside it is not always mounted.
+export const FOCUS_PR_REVIEW = "tori:focus-pr-review";
+
 export const SET_RIGHT_MODE = "tori:set-right-mode";
 export type SetRightMode = {
   mode: "files" | "changes" | "pulls" | "search" | "session" | "debug";
