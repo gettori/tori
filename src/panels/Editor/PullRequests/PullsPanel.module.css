@@ -25,11 +25,15 @@
   border-bottom: 1px solid var(--border-default);
 }
 
+/* The tab's name, in the recipe every right-pane tab opens with: Search's
+   "Search" and the Changes tab's "Source Control" are this exact rule. A
+   panel whose title is smaller than the rows under it reads as a caption on
+   somebody else's surface. */
 .title {
+  padding-left: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
 }
 
 .spacer {
