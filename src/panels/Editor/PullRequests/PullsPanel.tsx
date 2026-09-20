@@ -70,6 +70,7 @@ import { gitStateFor } from "../../../utils/gitActions";
 import { createPrFlow } from "../../../utils/prCreateFlow";
 import { stepKeys } from "../../../utils/keyNav";
 import { fileRowName } from "../../../utils/prFiles";
+import { baseName, folderTree, type FolderNode } from "../../../utils/pathTree";
 import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
 import { pullsPanelState, type DirectRead } from "../../../utils/pullsPanelState";
@@ -99,6 +100,7 @@ import {
   forgeErrorMessage,
   type CheckRollup,
   type MergeMethod,
+  type PrFile,
   type PullRequest,
 } from "../../../utils/forgeTypes";
 import type { Selection } from "../../LeftSidebar/LeftSidebar";
@@ -108,6 +110,7 @@ import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import Tooltip from "../../../components/Tooltip/Tooltip";
 import Icon from "../../../components/Icon/Icon";
+import Chevron from "../../../components/Chevron/Chevron";
 import styles from "./PullsPanel.module.css";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -138,9 +141,6 @@ function checksLine(
       return null;
   }
 }
-
-const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-const fileDir = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
 /// Below this the counts come off the row. The letter and the filename are what
 /// a row is for, and they have to survive the 160px the pane resizes down to.
@@ -522,6 +522,117 @@ export default function PullsPanel(props: {
     return !!root && !!s && headDrift(root, s.number);
   };
 
+  // --- the file tree --------------------------------------------------------
+
+  /// The changed files as folders. Flat was the first cut, on the theory that a
+  /// 320px column has no indent level to spare; what settled it the other way
+  /// is a branch under one deep directory, where the shared prefix was most of
+  /// every row.
+  const fileTree = createMemo(() => folderTree(entry()?.files ?? []));
+
+  /// Everything starts open, so closing one is what gets recorded. Never swept:
+  /// a directory shut by hand stays shut when its files are re-read.
+  const [closedDirs, setClosedDirs] = createSignal<readonly string[]>([]);
+  const dirOpen = (path: string) => !closedDirs().includes(path);
+  const toggleDir = (path: string) =>
+    setClosedDirs((now) => (now.includes(path) ? now.filter((d) => d !== path) : [...now, path]));
+
+  /// One empty span per level, rather than an indent in a `style` attribute:
+  /// that attribute is what axe's `avoid-inline-spacing` selects on, and jsdom
+  /// throws computing the style of a row carrying one. It also keeps the hover
+  /// band full width, which an indented row loses.
+  const rungs = (depth: number) => Array.from({ length: depth }, (_, i) => i);
+
+  function TreeRows(p: { node: FolderNode<PrFile>; number: number; depth: number }) {
+    return (
+      <>
+        <For each={p.node.folders}>
+          {(f) => <DirRow node={f} number={p.number} depth={p.depth} />}
+        </For>
+        <For each={p.node.files}>
+          {(f) => <FileRow file={f} number={p.number} depth={p.depth} />}
+        </For>
+      </>
+    );
+  }
+
+  function DirRow(p: { node: FolderNode<PrFile>; number: number; depth: number }) {
+    const open = () => dirOpen(p.node.path);
+    return (
+      <>
+        <div
+          class={styles.dirRow}
+          role="button"
+          tabIndex={0}
+          aria-expanded={open()}
+          onClick={() => toggleDir(p.node.path)}
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            toggleDir(p.node.path);
+          }}
+        >
+          <For each={rungs(p.depth)}>{() => <span class={styles.rung} aria-hidden="true" />}</For>
+          <Chevron open={open()} />
+          <span class={styles.dirName}>{p.node.name}</span>
+        </div>
+        <Show when={open()}>
+          <TreeRows node={p.node} number={p.number} depth={p.depth + 1} />
+        </Show>
+      </>
+    );
+  }
+
+  function FileRow(p: { file: PrFile; number: number; depth: number }) {
+    const viewed = () => isViewed(props.root!, p.number, p.file.path);
+    return (
+      <div
+        class={styles.fileRow}
+        data-file-row={p.file.path}
+        role="button"
+        tabIndex={0}
+        aria-label={fileRowName(p.file, unresolvedIn(p.file.path), viewed())}
+        onClick={() => openFile(p.file.path)}
+        onKeyDown={(e: KeyboardEvent) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          openFile(p.file.path);
+        }}
+      >
+        <For each={rungs(p.depth)}>{() => <span class={styles.rung} aria-hidden="true" />}</For>
+        {/* A letter survives a 160px panel; an icon plus a word does not. The
+            row's accessible name spells it out. */}
+        <span class={styles.status} data-file-status={p.file.status} aria-hidden="true">
+          {p.file.status.slice(0, 1).toUpperCase()}
+        </span>
+        <span class={styles.name} data-viewed={viewed() || undefined}>
+          {baseName(p.file.path)}
+        </span>
+        {/* Unresolved only, and zero renders nothing rather than a `0`.
+            Resolved threads are still reachable in the diff. */}
+        <Show when={unresolvedIn(p.file.path)}>
+          {(n) => (
+            <span class={styles.unresolved} aria-hidden="true">
+              <Icon icon={MessageSquare} size={12} />
+              {n()}
+            </span>
+          )}
+        </Show>
+        <Show when={viewed()}>
+          <Icon icon={Check} size={13} class={styles.viewedMark} aria-hidden="true" />
+        </Show>
+        {/* First thing dropped when the pane gets narrow: the letter and the
+            filename are what a row is for. */}
+        <Show when={wide()}>
+          <span class={styles.counts} aria-hidden="true">
+            <span class={styles.added}>+{p.file.additions}</span>
+            <span class={styles.removed}>-{p.file.deletions}</span>
+          </span>
+        </Show>
+      </div>
+    );
+  }
+
   // --- landing it -----------------------------------------------------------
 
   /// Run a mutation that lands or moves the branch, and report the server's own
@@ -859,9 +970,9 @@ export default function PullsPanel(props: {
                 {(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}
               </Show>
 
-              {/* Block 4: the files, flat. At 320px a tree spends a header row
-                  and an indent level per directory to save nothing, and it puts
-                  headers in the way of moving through files. */}
+              {/* Block 4: the files, as folders. `j` and `k` walk the file
+                  rows only, so a shut directory is a directory the keyboard
+                  skips rather than one it walks through invisibly. */}
               <div class={styles.filesHead}>
                 <span class={styles.filesTitle}>Files</span>
                 <span class={styles.fileCount}>{filesCount()}</span>
@@ -880,61 +991,7 @@ export default function PullsPanel(props: {
                 <div class={styles.notice}>Loading files…</div>
               </Show>
 
-              <For each={entry()?.files ?? []}>
-                {(f) => (
-                  <div
-                    class={styles.fileRow}
-                    data-file-row={f.path}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={fileRowName(f, unresolvedIn(f.path), isViewed(props.root!, s().number, f.path))}
-                    onClick={() => openFile(f.path)}
-                    onKeyDown={(e: KeyboardEvent) => {
-                      if (e.key !== "Enter" && e.key !== " ") return;
-                      e.preventDefault();
-                      openFile(f.path);
-                    }}
-                  >
-                    {/* A letter survives a 160px panel; an icon plus a word
-                        does not. The row's accessible name spells it out. */}
-                    <span class={styles.status} data-file-status={f.status} aria-hidden="true">
-                      {f.status.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span
-                      class={styles.path}
-                      data-viewed={isViewed(props.root!, s().number, f.path) || undefined}
-                    >
-                      {/* The directory truncates from its *start*, so the
-                          filename is never what disappears. */}
-                      <Show when={fileDir(f.path)}>
-                        <span class={styles.dir}>{fileDir(f.path)}/</span>
-                      </Show>
-                      <span class={styles.name}>{fileName(f.path)}</span>
-                    </span>
-                    {/* Unresolved only, and zero renders nothing rather than a
-                        `0`. Resolved threads are still reachable in the diff. */}
-                    <Show when={unresolvedIn(f.path)}>
-                      {(n) => (
-                        <span class={styles.unresolved} aria-hidden="true">
-                          <Icon icon={MessageSquare} size={12} />
-                          {n()}
-                        </span>
-                      )}
-                    </Show>
-                    <Show when={isViewed(props.root!, s().number, f.path)}>
-                      <Icon icon={Check} size={13} class={styles.viewedMark} aria-hidden="true" />
-                    </Show>
-                    {/* First thing dropped when the pane gets narrow: the
-                        letter and the filename are what a row is for. */}
-                    <Show when={wide()}>
-                      <span class={styles.counts} aria-hidden="true">
-                        <span class={styles.added}>+{f.additions}</span>
-                        <span class={styles.removed}>-{f.deletions}</span>
-                      </span>
-                    </Show>
-                  </div>
-                )}
-              </For>
+              <TreeRows node={fileTree()} number={s().number} depth={0} />
 
               {/* GitHub's own ceiling, not a budget of ours: past it the server
                   stops describing the pull request, so the honest thing is to
