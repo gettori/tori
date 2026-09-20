@@ -299,10 +299,21 @@ export const NO_CHAT_TIER: ChatTier = {
 
 /** The two sources as `checkAttachment` reads them, with the tier's own words
  *  for a refused one. */
-export function attachmentSources(tier: ChatTier): { mentions: AttachmentSource; uploads: AttachmentSource } {
+export function attachmentSources(
+  tier: ChatTier,
+  advertised?: ChatCapabilities | null,
+): { mentions: AttachmentSource; uploads: AttachmentSource } {
+  const uploadKinds = advertised?.imageInput && !tier.attachmentUploads.includes("image")
+    ? ["image" as const, ...tier.attachmentUploads]
+    : tier.attachmentUploads;
   return {
     mentions: { kinds: tier.attachmentMentions, gap: tier.gaps.attachmentMentions ?? null },
-    uploads: { kinds: tier.attachmentUploads, gap: tier.gaps.attachmentUploads ?? null },
+    uploads: {
+      kinds: uploadKinds,
+      // A partial capability should explain a refused PDF/file by listing the
+      // image kind it does accept, not by claiming it accepts no uploads.
+      gap: uploadKinds.length ? null : (tier.gaps.attachmentUploads ?? null),
+    },
   };
 }
 
@@ -365,7 +376,8 @@ export function publishedCapabilities(
   // The kinds themselves, so the listing says what can be attached rather
   // than that something can.
   if (tier.attachmentMentions.length) add("attachmentMentions", tier.attachmentMentions.join(", "));
-  if (tier.attachmentUploads.length) add("attachmentUploads", tier.attachmentUploads.join(", "));
+  const uploads = attachmentSources(tier, live).uploads.kinds;
+  if (uploads.length) add("attachmentUploads", uploads.join(", "));
   // Derived from the running agent's own handshake rather than from the
   // transport, because one generic transport carries agents that differ: the
   // same `acp` tier sits behind an agent that reopens conversations and one

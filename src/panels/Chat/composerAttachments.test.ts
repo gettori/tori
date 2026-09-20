@@ -12,12 +12,21 @@ const claude = composerAttachments(
   () => KEY,
   () => "/work/repo",
   () => chatTier("claude_stream_json"),
+  () => null,
   (reason) => rejected.push(reason),
 );
 const acp = composerAttachments(
   () => KEY,
   () => "/work/repo",
   () => chatTier("acp"),
+  () => null,
+  (reason) => rejected.push(reason),
+);
+const acpImages = composerAttachments(
+  () => KEY,
+  () => "/work/repo",
+  () => chatTier("acp"),
+  () => ({ loadSession: true, listSessions: true, imageInput: true }),
   (reason) => rejected.push(reason),
 );
 let rejected: string[] = [];
@@ -65,6 +74,22 @@ describe("a pasted file becomes a labelled path", () => {
     await claude.onAttachUploads([{ name: "a.png", bytes: new Uint8Array() }]);
     expect(rejected).toEqual(["a.png could not be saved: disk full"]);
     expect(pendingFor(KEY)).toEqual([]);
+  });
+});
+
+describe("an ACP agent that advertises image input", () => {
+  it("keeps image bytes inline instead of writing a private path", async () => {
+    await acpImages.onAttachUploads([{ name: "shot.png", bytes: new Uint8Array([1, 2, 3]) }]);
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(pendingFor(KEY).map((p) => p.block)).toEqual([
+      { type: "image", mediaType: "image/png", data: "AQID" },
+    ]);
+  });
+
+  it("preserves the supported image media type", async () => {
+    await acpImages.onAttachUploads([{ name: "photo.jpg", bytes: new Uint8Array([255, 216]) }]);
+    expect(pendingFor(KEY)[0]?.block).toEqual({ type: "image", mediaType: "image/jpeg", data: "/9g=" });
   });
 });
 

@@ -95,6 +95,7 @@ export default function ChatDraft(props: {
     () => props.tabId,
     () => props.cwd,
     tier,
+    () => catalogFor(props.agentId, props.profile)?.catalogue?.capabilities,
     (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
   );
 
@@ -288,7 +289,7 @@ export default function ChatDraft(props: {
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
-        uploads={attachmentSources(tier()).uploads}
+        uploads={attachmentSources(tier(), catalog()?.catalogue?.capabilities).uploads}
         onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onDropAttachment={(id) => dropPending(props.tabId, id)}
