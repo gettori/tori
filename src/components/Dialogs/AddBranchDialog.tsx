@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { Check, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
@@ -91,11 +91,19 @@ export default function AddBranchDialog(props: {
   onDeleteConfirm?: () => void;
   onDeleteCancel?: () => void;
   busy: boolean;
+  /** The branch the dialog opens on: in the filter, and picked where the list
+   *  has it. A caller outside the tree knows where the user is standing, and
+   *  that is the row the answer is usually next to. */
+  prefill?: string;
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
 }) {
-  const [query, setQuery] = createSignal("");
-  const [picked, setPicked] = createSignal<BranchPick | null>(null);
+  const [query, setQuery] = createSignal(props.prefill ?? "");
+  const [picked, setPicked] = createSignal<BranchPick | null>(
+    props.prefill && props.locals.includes(props.prefill)
+      ? { name: props.prefill, kind: "local" }
+      : null,
+  );
   let input: HTMLInputElement | undefined;
   let primary: HTMLButtonElement | undefined;
   let deleteButton: HTMLButtonElement | undefined;
@@ -167,13 +175,21 @@ export default function AddBranchDialog(props: {
   // for a dialog whose confirm is a button. Solid flushes this effect inside
   // the `setPicked` that triggered it, which is still before that, so the move
   // waits for the press to finish being handled - otherwise the two take turns
-  // and the primitive has the last one.
-  createEffect(() => {
-    if (!parked()) return;
-    queueMicrotask(() => {
-      if (parked()) primary?.focus();
-    });
-  });
+  // and the primitive has the last one. Deferred, because a row the dialog
+  // *opened* on is not a pick: a `prefill` parks one before anybody has pressed
+  // anything, and someone about to type a new name wants the filter.
+  createEffect(
+    on(
+      parked,
+      (name) => {
+        if (!name) return;
+        queueMicrotask(() => {
+          if (parked()) primary?.focus();
+        });
+      },
+      { defer: true },
+    ),
+  );
 
   // Where the branch is, until it is the one you picked: then the glyph's job
   // is to say so, and where it came from is already settled.
@@ -187,9 +203,16 @@ export default function AddBranchDialog(props: {
     return pick ? `${props.projectPath}/${worktreeFolder(pick.name)}` : "";
   };
 
+  // A pick the tree already has open. Reachable only through `prefill`: every
+  // other route is a row press, and `Combobox` refuses a disabled row.
+  const already = () => {
+    const pick = choice();
+    return !!pick && pick.kind !== "new" && taken().has(pick.name);
+  };
+
   const confirm = () => {
     const pick = choice();
-    if (props.busy || !pick) return;
+    if (props.busy || !pick || already()) return;
     props.onConfirm(pick);
   };
 
@@ -236,7 +259,7 @@ export default function AddBranchDialog(props: {
           <Button
             ref={(el) => (primary = el)}
             variant="primary"
-            disabled={props.busy || !choice()}
+            disabled={props.busy || !choice() || already()}
             onClick={() => confirm()}
           >
             {props.busy ? "Working…" : `Add ${noun()}`}
@@ -250,6 +273,10 @@ export default function AddBranchDialog(props: {
         options={options()}
         query={query()}
         onQueryChange={(q) => {
+          // Kobalte echoes a value written into the field back as an input
+          // change, so without this a prefill would clear the pick it opened on
+          // before anybody touched the keyboard.
+          if (q === query()) return;
           setQuery(q);
           setPicked(null);
         }}

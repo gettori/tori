@@ -3,6 +3,7 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import { submitBlockedReason } from "../../utils/createPr";
+import type { PrCreateFlow } from "../../utils/prCreateFlow";
 import Checkbox from "../Checkbox/Checkbox";
 
 // Open a pull request without leaving the app. Reached only when the remote is
@@ -167,5 +168,27 @@ export default function CreatePrDialog(props: {
         </Show>
       </div>
     </Dialog>
+  );
+}
+
+/// The dialog wired to a `createPrFlow`, so the two panels that open one do not
+/// each keep their own copy of the same fifteen lines of prop plumbing.
+export function CreatePrFlowDialog(props: { flow: PrCreateFlow }) {
+  return (
+    <CreatePrDialog
+      head={props.flow.head() ?? ""}
+      base={props.flow.base()}
+      busy={props.flow.busy()}
+      drafting={props.flow.drafting()}
+      draftDisabledReason={props.flow.draftBlockedReason()}
+      title={props.flow.title()}
+      body={props.flow.body()}
+      onTitleChange={props.flow.setTitle}
+      onBodyChange={props.flow.setBody}
+      onBaseChange={props.flow.setBase}
+      onDraft={() => void props.flow.draftWithAgent()}
+      onConfirm={(opts) => void props.flow.submit(opts)}
+      onCancel={props.flow.closeForm}
+    />
   );
 }

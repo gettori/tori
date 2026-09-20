@@ -8,10 +8,8 @@ import {
   AGENT_WRITE_DEBOUNCE_MS,
   OPEN_IN_EDITOR,
   OPEN_SETTINGS,
-  PR_OPENED,
   TOAST,
   type OpenSettings,
-  type PrOpened,
   type AgentFilesWritten,
   type ToastEvent,
   type FsChanged,
@@ -44,17 +42,12 @@ import { compactAge } from "../../utils/compactAge";
 import { copyText } from "../../utils/clipboard";
 import { mentionPath } from "../../utils/pathScope";
 import { mayRewrite } from "../../utils/gitGuard";
-import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/safeSend";
+import { requestSend, type SessionTarget } from "../../utils/safeSend";
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
-import { comparePrUrl } from "../../utils/prUrl";
-import { composeDraftRequest, connectHost, prPath } from "../../utils/createPr";
-import {
-  forgeAccountName,
-  forgeErrorMessage,
-  type AuthState,
-  type PullRequest,
-} from "../../utils/forgeTypes";
+import { connectHost } from "../../utils/createPr";
+import { createPrFlow } from "../../utils/prCreateFlow";
+import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
 import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/topics";
@@ -80,7 +73,7 @@ import type { Selection } from "../LeftSidebar/LeftSidebar";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import GraphSection from "./GraphSection";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
-import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
+import { CreatePrFlowDialog } from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
@@ -209,26 +202,9 @@ export default function ReviewPanel(props: {
   const [asking, setAsking] = createSignal<ReadonlySet<string>>(new Set());
   const [origin, setOrigin] = createSignal<string | null>(null);
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
-  const [openingPr, setOpeningPr] = createSignal(false);
-  // The in-app create-PR form. Only reachable on a signed-in, registered host;
-  // every other case still opens the provider's compare page (see `prPath`).
-  const [prForm, setPrForm] = createSignal(false);
-  const [prTitle, setPrTitle] = createSignal("");
-  const [prBody, setPrBody] = createSignal("");
-  // The form's own base, seeded from the repo default when the form opens.
-  // Separate from `baseBranch` on purpose: that one is what
-  // `git_default_base_branch` reported, and the compare-URL fallback reads it
-  // too, so letting the dialog write to it would leave a cancelled edit
-  // retargeting the compare page.
-  const [prBase, setPrBase] = createSignal("");
-  const [prDrafting, setPrDrafting] = createSignal(false);
   // The account "Open PR" acts as, read through the poll store so a pick made
   // from the sidebar lands here too.
   const forgeAccount = () => forgeRepo(viewedRoot());
-  const accountAuth = (): AuthState => {
-    const repo = forgeAccount();
-    return repo?.kind === "account" ? repo.auth : { kind: "signedOut" };
-  };
   const pickState = () => {
     const repo = forgeAccount();
     return repo?.kind === "pick" ? repo : null;
@@ -816,20 +792,16 @@ export default function ReviewPanel(props: {
     ),
   );
 
-  // The decision lives in `prPath` so the button and the submit cannot disagree
-  // about it.
-  async function openPr() {
-    const org = origin();
-    if (openingPr()) return;
-    if (prPath(org, forgeHosts(), accountAuth(), settings.forge.enabled) === "form") {
-      setPrTitle("");
-      setPrBody("");
-      setPrBase(baseBranch() ?? "");
-      setPrForm(true);
-      return;
-    }
-    await openCompare();
-  }
+  const prFlow = createPrFlow({
+    root: viewedRoot,
+    origin,
+    baseBranch,
+    ask: {
+      selected: () => props.selected ?? null,
+      paths: () =>
+        [...stagedFiles(viewedRoot()), ...changedFiles(viewedRoot())].map((f) => f.path),
+    },
+  });
 
   async function pickAccount(accountId: string) {
     const root = viewedRoot();
@@ -838,95 +810,6 @@ export default function ReviewPanel(props: {
       await pickForgeAccount(root, accountId);
     } catch (e) {
       emitWith<ToastEvent>(TOAST, { message: forgeErrorMessage(e), kind: "error" });
-    }
-  }
-
-  // The unauthenticated path, unchanged: push first if the branch is unpushed or
-  // ahead, then open the provider's compare/new-MR/new-PR page for branch -> base.
-  async function openCompare() {
-    const root = viewedRoot();
-    const branchName = branch();
-    const org = origin();
-    const base = baseBranch();
-    if (!root || !branchName || !org || !base) return;
-    const url = comparePrUrl(org, base, branchName, forgeHosts());
-    if (!url) {
-      toastError("This origin isn't a recognized GitHub/GitLab/Bitbucket host.");
-      return;
-    }
-    setOpeningPr(true);
-    const ab = aheadBehind();
-    const needsPush = !ab || !ab.has_upstream || ab.ahead > 0;
-    if (needsPush && !(await pushToOrigin(root, branchName))) {
-      setOpeningPr(false);
-      return;
-    }
-    setOpeningPr(false);
-    window.open(url, "_blank");
-  }
-
-  // Asks the agent for a title and body, through the same safe-send gate the
-  // commit-message draft uses. Insert-only: the agent proposes at its own
-  // prompt, unsubmitted, and the user copies what they want into the form.
-  async function askAgentToDraftPr() {
-    const t = target();
-    const branchName = branch();
-    // The form's base, not the repo default: a title for "wave-3 into main" is
-    // a different sentence from one for "wave-3 into release".
-    const base = prBase();
-    if (!t || disabledReason() || !branchName || !base || prDrafting()) return;
-    setPrDrafting(true);
-    const paths = [...stagedFiles(viewedRoot()), ...changedFiles(viewedRoot())].map((f) => f.path);
-    const result = await requestSend({ ...t, text: composeDraftRequest(branchName, base, paths) });
-    setPrDrafting(false);
-    // A blocked session is refused outright rather than queued: the user has to
-    // answer that permission prompt first, and saying so is the difference
-    // between a gate and a button that silently did nothing.
-    if (result.kind === "blocked") {
-      emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
-    } else if (result.kind === "timeout") {
-      emitWith<ToastEvent>(TOAST, { message: "Couldn't reach the session, try again.", kind: "error" });
-    }
-  }
-
-  // Pushes, then creates. Always through the push-then-create command rather
-  // than checking ahead/behind first: an up-to-date push is a no-op, while a
-  // stale ahead/behind reading would open a PR against a head the remote has
-  // never seen.
-  async function submitPr(opts: { draft: boolean }) {
-    const root = viewedRoot();
-    const branchName = branch();
-    const base = prBase().trim();
-    if (!root || !branchName || !base || openingPr()) return;
-    setOpeningPr(true);
-    try {
-      const pr = await invoke<PullRequest>("forge_push_and_create_pr", {
-        projectPath: root,
-        remote: "origin",
-        newPr: {
-          title: prTitle().trim(),
-          body: prBody().trim(),
-          head: branchName,
-          base,
-          draft: opts.draft,
-        },
-      });
-      setPrForm(false);
-      emitWith<ToastEvent>(TOAST, { message: `Opened #${pr.number}`, kind: "info" });
-      // The Pull Requests panel holds its own listing, so the write-through that
-      // makes the sidebar chip flip does not reach it. Without this the PR the
-      // user just opened is absent from the list until they hit Refresh.
-      emitWith<PrOpened>(PR_OPENED, { projectPath: root });
-      await refreshMeta(root);
-    } catch (e) {
-      // The form stays open with the typed title and body intact: most of these
-      // failures are fixable in place (a base that does not exist, a PR that is
-      // already open), and losing the description to retype it is its own insult.
-      // `forgeErrorMessage` because a rejected forge command hands back an
-      // object, which `String(e)` would render as "[object Object]".
-      emitWith<ToastEvent>(TOAST, { message: forgeErrorMessage(e), kind: "error" });
-    } finally {
-      setOpeningPr(false);
     }
   }
 
@@ -1358,10 +1241,10 @@ export default function ReviewPanel(props: {
           <IconButton
             size="sm"
             icon={<Icon icon={GitPullRequestArrow} />}
-            disabled={openingPr()}
+            disabled={prFlow.busy()}
             aria-label="Open PR"
-            tooltip={openingPr() ? "Opening a pull request" : "Open a pull request"}
-            onClick={openPr}
+            tooltip={prFlow.busy() ? "Opening a pull request" : "Open a pull request"}
+            onClick={() => void prFlow.openPr()}
           />
         </Show>
         <Show when={pickState()}>
@@ -1821,22 +1704,8 @@ export default function ReviewPanel(props: {
           }}
         />
       </Show>
-      <Show when={prForm()}>
-        <CreatePrDialog
-          head={branch() ?? ""}
-          base={prBase()}
-          busy={openingPr()}
-          drafting={prDrafting()}
-          draftDisabledReason={disabledReason()}
-          title={prTitle()}
-          body={prBody()}
-          onTitleChange={setPrTitle}
-          onBodyChange={setPrBody}
-          onBaseChange={setPrBase}
-          onDraft={() => void askAgentToDraftPr()}
-          onConfirm={(opts) => void submitPr(opts)}
-          onCancel={() => setPrForm(false)}
-        />
+      <Show when={prFlow.formOpen()}>
+        <CreatePrFlowDialog flow={prFlow} />
       </Show>
     </div>
   );

@@ -3078,7 +3078,7 @@ export default function Editor(props: {
             />
           </Match>
           <Match when={rightMode() === "pulls"}>
-            <PullsPanel root={root()} />
+            <PullsPanel root={root()} selected={props.selected} />
           </Match>
           <Match when={rightMode() === "search"}>
             <SearchPanel

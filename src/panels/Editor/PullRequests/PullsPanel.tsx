@@ -56,15 +56,19 @@ import { compactAgo } from "../../../utils/compactAge";
 import {
   emitWith,
   onWith,
+  ADD_BRANCH_UNIT,
   OPEN_IN_EDITOR,
   PR_OPENED,
   REMOVE_BRANCH_UNIT,
+  type AddBranchUnit,
   type OpenInEditor,
   type PrOpened,
   type RemoveBranchUnit,
 } from "../../../utils/events";
 import { forgeChip, forgeDoor } from "../../../utils/forgeChip";
 import { gitStateFor } from "../../../utils/gitActions";
+import { createPrFlow } from "../../../utils/prCreateFlow";
+import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
 import { pullsPanelState, type DirectRead } from "../../../utils/pullsPanelState";
 import { prDiffTabId, prListTabId, prTabId } from "../../../utils/syntheticTabs";
@@ -96,7 +100,9 @@ import {
   type PrFile,
   type PullRequest,
 } from "../../../utils/forgeTypes";
+import type { Selection } from "../../LeftSidebar/LeftSidebar";
 import MergeBar from "./MergeBar";
+import { CreatePrFlowDialog } from "../../../components/Dialogs/CreatePrDialog";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
@@ -158,7 +164,11 @@ function rowName(file: PrFile, unresolved: number, viewed: boolean): string {
   return parts.join(", ");
 }
 
-export default function PullsPanel(props: { root: string | null }) {
+export default function PullsPanel(props: {
+  root: string | null;
+  /** Who the "Ask agent to draft" button in the create form writes to. */
+  selected: Selection | null;
+}) {
   const paused = () => forgePause(props.root);
   const git = () => gitStateFor(props.root);
   const branch = () => git().branch;
@@ -268,6 +278,28 @@ export default function PullsPanel(props: { root: string | null }) {
     }),
   );
 
+  const prFlow = createPrFlow({
+    root: () => props.root,
+    origin: () => origin() ?? null,
+    baseBranch: base,
+    ask: {
+      selected: () => props.selected,
+      // What the branch changed, not what the working tree holds. Nothing here
+      // is committed yet on the Changes panel's side of this; here the work is
+      // already in commits, and naming a clean tree's zero files would tell the
+      // agent the branch changed nothing.
+      paths: () => branchPaths(),
+    },
+    // The counter bump is the point. `submit` emits `PR_OPENED` first, and the
+    // re-read that starts can come back from a forge that has not caught up
+    // with its own create, landing "no pull request" over one just opened.
+    onOpened: (pr) => {
+      if (props.root) notePr(props.root, pr.number, pr);
+      ++current;
+      setDirect({ kind: "done", pr });
+    },
+  });
+
   const state = createMemo(() => {
     const root = props.root;
     const on = branch();
@@ -308,6 +340,69 @@ export default function PullsPanel(props: { root: string | null }) {
   const say = createMemo(() => {
     const s = state();
     return s.kind === "loaded" ? null : s;
+  });
+
+  /// What to press in a state that has no pull request in it.
+  ///
+  /// Which of the two routes the primary takes is `prPath`'s, never a second
+  /// reading of the same facts here: a form this cannot submit and a compare
+  /// page it sends you to instead are one decision, and the button has to be
+  /// named for the one that will actually happen.
+  const actions = createMemo<
+    { label: string; run: () => void; primary?: boolean; busy?: boolean }[]
+  >(() => {
+    const s = say();
+    const root = props.root;
+    if (!s || !root) return [];
+    // Named for where it lands. A button that says "Open a pull request" and
+    // opens a browser tab on another host has told you the wrong thing about
+    // what it is going to do.
+    const away = {
+      label: `Open compare on ${originHost(origin() ?? "") ?? "the remote"}`,
+      primary: true,
+      busy: true,
+      run: () => void prFlow.openCompare(),
+    };
+    const inApp = prFlow.path() !== "compare";
+    switch (s.kind) {
+      case "onBase":
+        return [
+          {
+            label: "New branch from base",
+            primary: true,
+            run: () =>
+              emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: root, base: s.branch }),
+          },
+        ];
+      case "noPrUnpushed":
+        return [
+          inApp
+            ? {
+                label: "Push and open a pull request",
+                primary: true,
+                busy: true,
+                run: () => void prFlow.openPr(),
+              }
+            : away,
+          // Its own button, because pushing and proposing are two decisions and
+          // a branch can be worth having on origin long before it is worth
+          // reviewing.
+          { label: "Push only", busy: true, run: () => void prFlow.pushBranch() },
+        ];
+      case "noPrPushed":
+        return [
+          inApp
+            ? {
+                label: "Open a pull request",
+                primary: true,
+                busy: true,
+                run: () => void prFlow.openPr(),
+              }
+            : away,
+        ];
+      default:
+        return [];
+    }
   });
 
   /// Everything that was about the pull request on screen rather than about
@@ -492,6 +587,25 @@ export default function PullsPanel(props: { root: string | null }) {
     const s = shown();
     return root && s ? projectUnitFor(root, s.pr.headRef) : null;
   });
+
+  /// The files this branch changed, read only when the draft button asks.
+  ///
+  /// `origin/<base>` rather than the local ref, for the reason the command's
+  /// own doc gives. A failed read is an empty list: the request still names the
+  /// branch and its base, which is more than a refusal would.
+  async function branchPaths(): Promise<string[]> {
+    const root = props.root;
+    const to = base();
+    if (!root || !to) return [];
+    try {
+      return await invoke<string[]>("git_branch_paths", {
+        projectPath: root,
+        base: `origin/${to}`,
+      });
+    } catch {
+      return [];
+    }
+  }
 
   function askToDeleteBranch() {
     const unit = localUnit();
@@ -845,10 +959,30 @@ export default function PullsPanel(props: { root: string | null }) {
               <Show when={s().kind === "inert" ? origin() : null}>
                 {(url) => <code class={styles.origin}>{url()}</code>}
               </Show>
+              <Show when={actions().length}>
+                <div class={styles.emptyActions}>
+                  <For each={actions()}>
+                    {(act) => (
+                      <Button
+                        variant={act.primary ? "primary" : "ghost"}
+                        size="sm"
+                        disabled={act.busy && prFlow.busy()}
+                        onClick={act.run}
+                      >
+                        {act.label}
+                      </Button>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </div>
           )}
         </Match>
       </Switch>
+
+      <Show when={prFlow.formOpen()}>
+        <CreatePrFlowDialog flow={prFlow} />
+      </Show>
     </div>
   );
 }
