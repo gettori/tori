@@ -127,7 +127,7 @@
             "type": "string"
           },
           "uniqueItems": true,
-          "description": "Server ids the editor never offers to install, such as \"python\". Settings > Servers can still install them.",
+          "description": "Server ids the editor never offers to install, such as \"python\". Settings > LSP can still install them.",
           "default": []
         }
       }
