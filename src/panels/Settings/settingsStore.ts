@@ -284,6 +284,8 @@ export type Settings = {
   /** The palette rows each project allows, keyed by project path: see
    *  `utils/projectAgents`. */
   projectAgents?: Record<string, AgentRow[]>;
+  /** Mirrors `Lsp` in src-tauri/src/settings.rs. */
+  lsp: { disabled: string[] };
 };
 
 /** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
@@ -353,6 +355,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chat: {},
   editor: {},
   projectAgents: {},
+  lsp: { disabled: [] },
 };
 
 /**

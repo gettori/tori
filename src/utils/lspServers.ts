@@ -37,8 +37,15 @@ export type LspServer = {
   verified_against: string | null;
   /** Refused by `lsp_start` in a project the user has not trusted. */
   runs_project_code: boolean;
+  role: "primary" | "secondary";
+  priority: number;
+  features: ("diagnostics" | "code_action" | "format")[];
+  activation_markers: string[];
   source: string;
 };
+
+/** Mirrors `lsp::Resolution`: the servers one file gets, by id. */
+export type Resolution = { primary: string | null; secondaries: string[] };
 
 // Empty until `lsp_registry` resolves, and empty is a *correct* state rather
 // than a degraded one: no server claims anything, so nothing gets a plugin, so
@@ -86,11 +93,76 @@ function extensionOf(path: string): string | null {
   return dot > 0 ? file.slice(dot + 1).toLowerCase() : null;
 }
 
-/** The server claiming this path's extension, or null when none does. */
-export function serverForPath(path: string): LspServer | null {
+/** Whether any registered server claims this path's extension. */
+export function hasServerFor(path: string): boolean {
   const ext = extensionOf(path);
-  if (!ext) return null;
-  return servers().find((s) => ext in s.languages) ?? null;
+  return !!ext && servers().some((s) => ext in s.languages);
+}
+
+/** Every primary claiming this path's extension: what a caller that cannot wait
+ *  for `resolveServers` has to choose among. */
+export function primariesClaiming(path: string): LspServer[] {
+  const ext = extensionOf(path);
+  return ext ? servers().filter((s) => s.role === "primary" && ext in s.languages) : [];
+}
+
+/** The registered server with this id, or null. */
+export function serverById(id: string): LspServer | null {
+  return servers().find((s) => s.id === id) ?? null;
+}
+
+// Keyed by directory and extension, which is all a resolution depends on apart
+// from settings and markers, and those clear it through `forgetResolutions`.
+const resolutions = new Map<string, Resolution>();
+let forgotten = 0;
+
+function resolutionKey(path: string): string {
+  return `${path.slice(0, path.lastIndexOf("/"))}\u0000${extensionOf(path)}`;
+}
+
+/** Which servers `path` gets, asked of the backend once per directory and
+ *  extension. `fresh` says the answer was not cached before this call. */
+export async function resolveServers(
+  path: string,
+  projectPath: string,
+): Promise<{ resolution: Resolution; fresh: boolean }> {
+  const key = resolutionKey(path);
+  const cached = resolutions.get(key);
+  if (cached) return { resolution: cached, fresh: false };
+  const before = forgotten;
+  const resolution = await invoke<Resolution>("lsp_resolve", { filePath: path, projectPath });
+  // Cleared while this was in flight: the answer may predate the marker or
+  // setting that caused the clear, so it is asked again rather than cached.
+  if (forgotten !== before) return resolveServers(path, projectPath);
+  resolutions.set(key, resolution);
+  return { resolution, fresh: true };
+}
+
+/** The cached primary for `path`: null when it has none, undefined when its
+ *  directory has not been resolved yet. */
+export function resolvedPrimary(path: string): LspServer | null | undefined {
+  const resolution = resolutions.get(resolutionKey(path));
+  if (!resolution) return undefined;
+  return resolution.primary ? serverById(resolution.primary) : null;
+}
+
+/** Drop cached resolutions for directories at or under `dir`, or all of them. */
+export function forgetResolutions(dir?: string): void {
+  forgotten += 1;
+  if (dir === undefined) {
+    resolutions.clear();
+    return;
+  }
+  for (const key of [...resolutions.keys()]) {
+    const keyDir = key.slice(0, key.indexOf("\u0000"));
+    if (keyDir === dir || keyDir.startsWith(`${dir}/`)) resolutions.delete(key);
+  }
+}
+
+/** Whether creating or deleting this file can change what some file resolves to. */
+export function isActivationMarker(path: string): boolean {
+  const name = path.split("/").pop() ?? "";
+  return servers().some((s) => s.activation_markers.includes(name));
 }
 
 /** The LSP language id to open this path as, for its claiming server.
