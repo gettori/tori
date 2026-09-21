@@ -65,7 +65,7 @@ installed by you, with a hint on its card saying how.
 | `zig` | `zls` | You: the release that matches your Zig |
 | `haskell` | `haskell-language-server-wrapper` | You: `ghcup install hls` |
 | `ocaml` | `ocamllsp` | You: `opam install ocaml-lsp-server` |
-| `elixir` | `elixir-ls` | You: `brew install elixir-ls` |
+| `elixir` | `elixir-ls` | You: `brew install elixir-ls`. Starts only under a `mix.exs` |
 | `dart` | `dart language-server` | Ships with the Dart and Flutter SDKs |
 | `terraform` | `terraform-ls` | You: `brew install hashicorp/tap/terraform-ls` |
 | `scala` | `metals` | You: `cs install metals` |
