@@ -577,15 +577,17 @@ describe("what a turn's usage means", () => {
 describe("replaying the captured fixture", () => {
   it("produces one item per rendered event, in arrival order", () => {
     const s = replay(FIXTURE);
-    // the replayed user turn, the compaction notice, then the second one the
-    // compaction *lifecycle* pair leaves behind (a start that the failure
-    // settles in place), text, thinking, then a card each for toolu_1
-    // (started), toolu_2 (fileEdit) and toolu_3 (permissionRequest), then
-    // toolu_4's question, then the error and end notices, and last the hook
-    // frame (the fixture lists it after the lifecycle events).
+    // the replayed user turn, the compaction notice, what a client-side
+    // command printed, then the second notice the compaction *lifecycle* pair
+    // leaves behind (a start that the failure settles in place), text,
+    // thinking, then a card each for toolu_1 (started), toolu_2 (fileEdit) and
+    // toolu_3 (permissionRequest), then toolu_4's question, then the error and
+    // end notices, and last the hook frame (the fixture lists it after the
+    // lifecycle events).
     expect(kinds(s)).toEqual([
       "user",
       "notice",
+      "command",
       "notice",
       "text",
       "thinking",
@@ -602,9 +604,12 @@ describe("replaying the captured fixture", () => {
     const boundary = s.items[1] as { text: string; details?: string };
     expect(boundary.text).toBe("Compacted manually (247k to 9k).");
     expect(boundary.details).toContain("continued from a previous conversation");
+    // What a client-side command printed, labelled with the invocation the
+    // transcript recorded beside it.
+    expect(s.items[2]).toMatchObject({ kind: "command", command: "/usage" });
     // And the pair after it: the start row, settled by the failure that
     // follows it in the fixture, so one row carries both.
-    expect((s.items[2] as { text: string }).text).toBe("Compaction failed: Not enough messages to compact.");
+    expect((s.items[3] as { text: string }).text).toBe("Compaction failed: Not enough messages to compact.");
     expect(s.items.filter((i): i is ToolItem => i.kind === "tool").map((t) => t.toolUseId)).toEqual([
       "toolu_1",
       "toolu_2",

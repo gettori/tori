@@ -1460,6 +1460,56 @@ button.diffHunkHeader:hover {
   outline-offset: 1px;
 }
 
+/* ---- client-side command output ---- */
+
+/* What `/usage` or `/context` printed. Bordered and filled like `.toolPre` and
+   `.hunk` rather than styled as prose, because it belongs to the same family:
+   a payload the client produced, sitting in a transcript that is otherwise two
+   people talking. The fill is what says nobody said this. */
+.command {
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  background: var(--neutral-subtle);
+  overflow: hidden;
+}
+
+.commandName {
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  color: var(--fg-subtle);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+}
+
+/* Markdown, not monospace: `/context` answers with a table and `/usage` with
+   headed sections, so rendering it as terminal output would throw away the one
+   structure these commands actually carry. */
+.commandBody {
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-default);
+  font-size: var(--chat-font-size);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.commandBody > :global(:first-child) {
+  margin-top: 0;
+}
+
+.commandBody > :global(:last-child) {
+  margin-bottom: 0;
+}
+
+/* `/usage` indents the rows under each period header by two spaces, which is
+   the only thing marking them as its rows rather than more prose. The renderer
+   keeps those spaces and HTML would collapse them, so the paragraph holds its
+   own whitespace. Safe on the paragraph and nowhere wider: line breaks inside
+   one are `<br>`, so nothing here turns the newlines *between* blocks into
+   blank lines. */
+.commandBody :global(p) {
+  white-space: pre-wrap;
+}
+
 /* ---- notices and banners ---- */
 
 /* `--fg-muted` for the same reason as `.thinkingToggle`: a notice is news about

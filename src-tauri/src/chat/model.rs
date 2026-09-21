@@ -1095,6 +1095,34 @@ pub enum ChatEvent {
         summary: Option<String>,
     },
 
+    /// What a client-side slash command printed: `/usage`, `/context`, `/cost`.
+    ///
+    /// Neither speaker wrote it. The CLI runs these itself, never sends them to
+    /// a model, and tells the model to ignore the result - so filing the output
+    /// as the agent's own prose would credit it with words it never said, and
+    /// filing it under the user would count a command as a prompt.
+    ///
+    /// Measured on claude 2.1.268, and the two readers see two different
+    /// shapes. On the wire it is a top-level `assistant` frame with
+    /// `message.model` set to the literal `<synthetic>` and the output repeated
+    /// on `local_command_source`, with **no `stream_event` twin** - which is
+    /// the detail that matters, because every other top-level `assistant` frame
+    /// is a duplicate of one and is dropped for it. On disk it is a
+    /// `system`/`local_command` record whose `content` is the same output
+    /// wrapped in `<local-command-stdout>`.
+    ///
+    /// `command` is the invocation that produced it, recovered from the
+    /// envelope record filed beside the output. `None` live, where the wire
+    /// frame names no command and the user's own prompt is already the row
+    /// above.
+    LocalCommand {
+        session_id: String,
+        turn_id: String,
+        #[serde(default)]
+        command: Option<String>,
+        output: String,
+    },
+
     /// The commands this session takes, republished whenever the agent's list
     /// changes.
     ///
@@ -1656,6 +1684,12 @@ mod tests {
                 post_tokens: Some(9444),
                 summary: Some("This session is being continued from a previous conversation".into()),
             },
+            ChatEvent::LocalCommand {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                command: Some("/usage".into()),
+                output: "Current session: 31% used".into(),
+            },
             ChatEvent::SlashCommands {
                 session_id: "s1".into(),
                 commands: vec![SlashCommand {
@@ -2210,6 +2244,7 @@ mod tests {
                 ChatEvent::ModeRefused { .. } => "modeRefused",
                 ChatEvent::UserMessage { .. } => "userMessage",
                 ChatEvent::Compacted { .. } => "compacted",
+                ChatEvent::LocalCommand { .. } => "localCommand",
                 ChatEvent::SlashCommands { .. } => "slashCommands",
                 ChatEvent::CompactionStarted { .. } => "compactionStarted",
                 ChatEvent::CompactionFailed { .. } => "compactionFailed",

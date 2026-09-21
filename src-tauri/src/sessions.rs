@@ -226,6 +226,35 @@ fn command_prompt(text: &str) -> Option<String> {
     }
 }
 
+/// One half of a client-side command, as a turn of its own: the invocation
+/// (`/usage`) or what it printed. `None` for anything that is neither.
+///
+/// Role `"command"` and not `"user"`, which is the whole point. The markup is
+/// something the agent wrote for its own consumption, so replaying it as a
+/// message puts words in the person's mouth and counts a command as a prompt,
+/// which is the damage [`is_command_envelope`] exists to prevent. A third role
+/// keeps the output on screen without reopening either.
+///
+/// The two halves stay separate here because this function sees one line at a
+/// time and [`tail_turns`] depends on that staying true. [`events_from_turns`]
+/// joins them.
+fn local_command_turn(text: &str, ts: u64) -> Option<TranscriptTurn> {
+    let block = if is_local_command_output(text) {
+        let body = tag_body(text, "local-command-stdout")
+            .or_else(|| tag_body(text, "local-command-stderr"))
+            .unwrap_or(text);
+        if body.trim().is_empty() {
+            return None;
+        }
+        text_block("command_output", body.to_string())
+    } else if is_command_invocation(text) {
+        text_block("command", command_prompt(text)?)
+    } else {
+        return None;
+    };
+    Some(TranscriptTurn { role: "command".into(), ts, blocks: vec![block] })
+}
+
 pub(crate) fn clean_title(raw: &str) -> String {
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
@@ -2252,6 +2281,14 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                     if let Some(outcome) = task_notification(s) {
                         return Some(TranscriptTurn { role: "subagent".into(), ts, blocks: vec![subagent_block(outcome)] });
                     }
+                    // Both halves of a client-side command, each on its own
+                    // role so neither can be mistaken for a prompt again. They
+                    // are paired back together one layer up, which is also
+                    // where an invocation with no output (a skill, `/clear`)
+                    // goes back to being dropped.
+                    if let Some(turn) = local_command_turn(s, ts) {
+                        return Some(turn);
+                    }
                     if !s.trim().is_empty() && !is_command_envelope(s) {
                         blocks.push(text_block("text", s.to_string()));
                     }
@@ -2304,6 +2341,13 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                 }
             }
             (!blocks.is_empty()).then(|| TranscriptTurn { role: "user".into(), ts, blocks })
+        }
+        // Where the current CLI files a client-side command's output: under
+        // `system`, because neither speaker produced it. Older transcripts put
+        // the same text under the user's role wearing the same
+        // `<local-command-stdout>` wrapper, which the branch above catches.
+        Some("system") if v.get("subtype").and_then(|s| s.as_str()) == Some("local_command") => {
+            local_command_turn(v.get("content").and_then(|c| c.as_str())?, ts)
         }
         // A compaction boundary, kept as its own turn so a replayed
         // transcript shows where its middle went rather than silently
@@ -2385,7 +2429,13 @@ pub enum TailState {
 /// short, or a tool result awaiting the agent's next reply) is working - the
 /// agent hasn't reached a resting state either way.
 fn classify_tail(turns: &[TranscriptTurn]) -> TailState {
-    let Some(last) = turns.last() else { return TailState::Working };
+    // A client-side command ran in the client, so it says nothing about what
+    // the agent is doing. Skipped rather than classified: before these were
+    // turns at all they were invisible here, and letting a trailing `/usage`
+    // count would report a finished session as working.
+    let Some(last) = turns.iter().rev().find(|t| t.role != "command") else {
+        return TailState::Working;
+    };
     if last.role != "assistant" {
         return TailState::Working;
     }
