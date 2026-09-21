@@ -1,0 +1,27 @@
+# Ruff's language server, from the project's own virtualenv or the login PATH.
+# See LSP-SERVERS.md.
+#
+# Diagnostics are pulled. Fix-all and organize imports come back without their
+# edit and are filled in through `codeAction/resolve`.
+
+schema_version = 1
+id = "ruff"
+label = "Ruff"
+role = "secondary"
+
+# One session per repo: Ruff finds each file's own config.
+root_markers = [".git"]
+
+activation_markers = ["ruff.toml", ".ruff.toml"]
+activation_keys = [{ file = "pyproject.toml", key = "tool.ruff" }]
+
+verified_against = "ruff 0.16.8"
+
+[languages]
+py = "python"
+pyi = "python"
+
+[launch]
+kind = "project_bin"
+program = "ruff"
+args = ["server"]

@@ -9,7 +9,7 @@ deliberately so, down to the override and error-handling rules.
 
 ## Supported servers
 
-These seven are the core set: four ship bundled, one is expected on your PATH, and two run from the project's own install:
+These eight are the core set: four ship bundled, one is expected on your PATH, and three run from the project's own install:
 
 | id | Server | Launch | Notes |
 |---|---|---|---|
@@ -20,6 +20,7 @@ These seven are the core set: four ship bundled, one is expected on your PATH, a
 | `rust` | `rust-analyzer` | `path` | Not bundled: rustup already manages it, and a stale bundled copy would fight the toolchain the project builds with. |
 | `biome` | `biome lsp-proxy` | `project_bin` | A secondary started only under a `biome.json` or `biome.jsonc`, in a trusted project, using the project's own Biome so its version matches CI. |
 | `oxlint` | `oxlint --lsp` | `project_bin` | A secondary started only under an oxlint config (`.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlint.config.ts`, `oxlint.config.mts`), in a trusted project, using the project's own oxlint. |
+| `ruff` | `ruff server` | `project_bin` | A secondary beside `python`, started only under a `ruff.toml`, `.ruff.toml` or a `[tool.ruff]` table in `pyproject.toml`, in a trusted project, using the Ruff in the project's virtualenv, else the one on your PATH. Formatting stays with the `ruff` formatter (see FORMATTERS.md). |
 
 A language with no server is a supported state, not a broken one. Tori has
 grammars for far more languages than it has servers for; those files open,
@@ -161,6 +162,11 @@ except_features = ["format"]
 # the file and the project root for this server to start there.
 activation_markers = ["some.config.json"]
 
+# optional: keys in a .json or .toml file that activate it the same way, as a
+# dot separated path (`tool.ruff` is the `[tool.ruff]` table). The key only has
+# to exist.
+activation_keys = [{ file = "pyproject.toml", key = "tool.some" }]
+
 # --- tables below this line; nothing top-level may follow them ---
 
 # required: which file extensions this server claims, and the LSP language id
@@ -222,7 +228,7 @@ leave someone debugging.
 |---|---|---|
 | `path` | `program`, `args` | Resolves `program` on the **login-shell** PATH, never the GUI process PATH. A server installed via rustup, mise, asdf or nvm is invisible to a naive lookup from a Finder-launched app. |
 | `bundled_node` | `entry`, `args` | Runs `entry` (relative to the app's resource dir, with a dev-tree fallback) using the user's system `node`. For servers Tori ships. |
-| `project_bin` | `program`, `args` | Runs the project's own `program` from the nearest `node_modules/.bin` between the server's root and the project directory, else from the login-shell PATH, the same lookup the project formatter uses. Always counts as `runs_project_code`, and its health card reads "runs per project". |
+| `project_bin` | `program`, `args` | Runs the project's own `program` from the nearest `node_modules/.bin`, `.venv/bin` or `venv/bin` between the server's root and the project directory, else from the login-shell PATH, the same lookup the project formatter uses. Always counts as `runs_project_code`, and its health card reads "runs per project". |
 | `managed` | `program`, `args`, `runtime` | Runs `program` from the login-shell PATH, else the copy Tori installed from `[install]`. `runtime` is `node` (Tori's copy is a script, run with the user's `node`) or `native`. Needs an `[install]` of kind `npm` or `github_release`. |
 
 For a `bundled_node` server the binary that has to exist on the user's machine
@@ -311,10 +317,10 @@ A file with no marker anywhere above it falls back to the project directory.
 ### Which servers a file gets
 
 Every server claiming the file's extension is a candidate. A candidate drops
-out if its id is in `lsp.disabled`, or if it names `activation_markers` and
-none of them sits between the file and the project root. That walk stops at
-the project root, the same way root resolution does, so a marker above the
-project never switches a server on.
+out if its id is in `lsp.disabled`, or if it names `activation_markers` or
+`activation_keys` and none of them is found between the file and the project
+root. That walk stops at the project root, the same way root resolution does,
+so a marker above the project never switches a server on.
 
 Of what is left, the file gets one primary and every secondary:
 
@@ -324,10 +330,10 @@ Of what is left, the file gets one primary and every secondary:
   takes `.ts` files inside Deno packages, and TypeScript keeps the rest.
 - Secondaries only add to the primary. Today Tori resolves them but does not
   start them yet.
-- Two primaries with no `activation_markers` at the same `priority` claiming
-  the same extension is a load error. The file loaded later is refused and
-  logged, and user files load in filename order, so which one is refused does
-  not depend on the filesystem.
+- Two primaries with no `activation_markers` or `activation_keys` at the same
+  `priority` claiming the same extension is a load error. The file loaded later
+  is refused and logged, and user files load in filename order, so which one is
+  refused does not depend on the filesystem.
 
 Creating or deleting an activation marker while Tori is open re-resolves the
 open files under it, with no restart.

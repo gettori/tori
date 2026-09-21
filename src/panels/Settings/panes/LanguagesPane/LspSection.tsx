@@ -97,7 +97,7 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
             Runs per project, in projects with one of <code>{s().activationMarkers.join(", ")}</code>.
           </Match>
           <Match when={s().runsPerProject}>
-            Runs per project, from the project's own <code>node_modules</code> or your PATH.
+            Runs per project, from the project's own <code>node_modules</code> or <code>.venv</code>, or your PATH.
           </Match>
           <Match when={s().detail}>{(detail) => <>{detail()}</>}</Match>
           <Match when={pending() === "install"}>

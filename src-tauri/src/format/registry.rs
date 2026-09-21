@@ -8,7 +8,7 @@
 // the id keeps its previous entry, and a closed `launch.kind`.
 
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -21,8 +21,8 @@ const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 /// Where the formatter binary is looked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchKind {
-    /// The nearest `node_modules/.bin` from the config's directory up to the
-    /// project, then the login PATH.
+    /// The nearest `node_modules/.bin` or Python virtualenv from the config's
+    /// directory up to the project, then the login PATH.
     ProjectBin,
     /// The login PATH only.
     Path,
@@ -30,7 +30,7 @@ pub enum LaunchKind {
 
 /// A key inside a structured file, such as `prettier` in `package.json` or
 /// `tool.ruff` in `pyproject.toml`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct KeyMarker {
     pub file: String,
     pub path: Vec<String>,
@@ -144,7 +144,7 @@ impl DirScan {
         self.names().iter().any(|n| n.starts_with(prefix))
     }
 
-    fn has_key(&mut self, marker: &KeyMarker) -> bool {
+    pub fn has_key(&mut self, marker: &KeyMarker) -> bool {
         let dir = &self.dir;
         let doc = self.parsed.entry(marker.file.clone()).or_insert_with(|| {
             let text = std::fs::read_to_string(dir.join(&marker.file)).ok()?;
@@ -194,9 +194,18 @@ struct MarkersToml {
 }
 
 #[derive(Debug, Deserialize)]
-struct KeyMarkerToml {
+pub(crate) struct KeyMarkerToml {
     file: String,
     key: String,
+}
+
+impl KeyMarkerToml {
+    pub(crate) fn validate(self, field: &str, source: &str) -> Result<KeyMarker, String> {
+        if !(self.file.ends_with(".json") || self.file.ends_with(".toml")) {
+            return Err(format!("{source}: {field} can only read a .json or .toml file, not `{}`", self.file));
+        }
+        Ok(KeyMarker { file: self.file, path: self.key.split('.').map(str::to_string).collect() })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -276,12 +285,7 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
         .markers
         .keys
         .into_iter()
-        .map(|k| {
-            if !(k.file.ends_with(".json") || k.file.ends_with(".toml")) {
-                return Err(format!("{source}: markers.keys can only read a .json or .toml file, not `{}`", k.file));
-            }
-            Ok(KeyMarker { file: k.file, path: k.key.split('.').map(str::to_string).collect() })
-        })
+        .map(|k| k.validate("markers.keys", source))
         .collect::<Result<Vec<_>, _>>()?;
     let markers = Markers { files: raw.markers.files, prefixes: raw.markers.prefixes, keys };
 
@@ -318,6 +322,7 @@ pub(crate) const BUILTINS: &[(&str, &str)] = &[
     ("bundled:prettier", include_str!("../../formatters/prettier.toml")),
     ("bundled:oxfmt", include_str!("../../formatters/oxfmt.toml")),
     ("bundled:ruff", include_str!("../../formatters/ruff.toml")),
+    ("bundled:black", include_str!("../../formatters/black.toml")),
     ("bundled:gofmt", include_str!("../../formatters/gofmt.toml")),
     ("bundled:shfmt", include_str!("../../formatters/shfmt.toml")),
     ("bundled:stylua", include_str!("../../formatters/stylua.toml")),
