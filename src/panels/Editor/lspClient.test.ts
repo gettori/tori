@@ -80,6 +80,10 @@ let startFails = false;
 
 let untrusted = new Set<string>();
 
+// Servers Tori could install but has not, and whether installing one fails.
+let notInstalled = new Set<string>();
+let installFails: string | null = null;
+
 type Resolution = { primary: string | null; secondaries: string[] };
 
 function claimantOf(filePath: string): Resolution {
@@ -121,6 +125,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       started.push({ serverId: a.serverId, filePath: a.filePath, projectPath: a.projectPath });
       if (startFails) return Promise.reject(new Error("`rust-analyzer` was not found on your PATH"));
       if (untrusted.has(a.serverId)) return Promise.reject("untrusted");
+      if (notInstalled.has(a.serverId)) return Promise.reject("not_installed");
       const result = { serverId: a.serverId, root: resolveRoot(a) };
       return holdStart ? holdStart.then(() => result) : Promise.resolve(result);
     }
@@ -135,6 +140,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       });
     }
     if (cmd === "trust_project") return Promise.resolve(args?.path);
+    if (cmd === "lsp_install") {
+      if (installFails) return Promise.reject(installFails);
+      notInstalled.delete(args?.serverId as string);
+    }
     if (cmd === "lsp_resolve") return Promise.resolve(resolve(args?.filePath as string));
     if (cmd === "lsp_stop_all") stopped.push("all");
     if (cmd === "lsp_stop") stopped.push((args?.handle as { serverId: string }).serverId);
@@ -236,6 +245,8 @@ beforeEach(() => {
   resolveRoot = (a) => a.projectPath;
   startFails = false;
   untrusted = new Set();
+  notInstalled = new Set();
+  installFails = null;
   resolve = claimantOf;
   holdStart = null;
 });
@@ -1445,6 +1456,47 @@ describe("project trust", () => {
       expect(toasts).toHaveLength(0);
     } finally {
       off();
+      offBuffers();
+    }
+  });
+});
+
+describe("install prompt", () => {
+  it("offers once for every open file, and installing attaches them all without reopening", async () => {
+    const m = await freshModule();
+    const install = await import("../../utils/serverInstall");
+    const offBuffers = await openBuffers(["/proj/i/a.ts", "/proj/i/b.ts"]);
+    notInstalled.add("typescript");
+    try {
+      await m.ensureLspFor("/proj/i/a.ts", "/proj/i");
+      await m.ensureLspFor("/proj/i/b.ts", "/proj/i");
+      expect(install.offerFor("/proj/i/a.ts")?.files).toEqual(["/proj/i/a.ts", "/proj/i/b.ts"]);
+      expect(m.lspPluginFor("/proj/i/a.ts")).toEqual([]);
+
+      await install.installServer("typescript");
+      await vi.waitFor(() => expect(m.lspPluginFor("/proj/i/a.ts")).not.toEqual([]));
+      expect(m.lspPluginFor("/proj/i/b.ts")).not.toEqual([]);
+      expect(install.offerFor("/proj/i/a.ts")).toBeNull();
+    } finally {
+      offBuffers();
+    }
+  });
+
+  it("a failed install keeps the offer with its error, and other servers still start", async () => {
+    const m = await freshModule();
+    const install = await import("../../utils/serverInstall");
+    const offBuffers = await openBuffers(["/proj/f/a.ts", "/proj/f/lib.rs"]);
+    notInstalled.add("typescript");
+    installFails = "npm was not found on your PATH";
+    try {
+      await m.ensureLspFor("/proj/f/a.ts", "/proj/f");
+      await expect(install.installServer("typescript")).rejects.toBe(installFails);
+      expect(install.offerFor("/proj/f/a.ts")).toMatchObject({ status: "failed", error: installFails });
+      expect(m.lspPluginFor("/proj/f/a.ts")).toEqual([]);
+
+      await m.ensureLspFor("/proj/f/lib.rs", "/proj/f");
+      expect(m.lspPluginFor("/proj/f/lib.rs")).not.toEqual([]);
+    } finally {
       offBuffers();
     }
   });

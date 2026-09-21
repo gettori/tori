@@ -269,6 +269,15 @@ bin = "bin/lua-language-server"
 ```
 
 Install, Update and Remove live on the server's card in Settings > Languages.
+Opening a file whose server Tori can install, but has not, also offers it in a
+banner above the file: Install, Not now (asked again next session), or Never
+for this language, which adds the id to `lsp.neverOffer` in
+`~/.config/tori/settings.json`. The card can still install it.
+
+```json
+{ "lsp": { "neverOffer": ["python"] } }
+```
+
 An install is built beside the real directory and moved into place only when
 it is complete, so a failed download or a checksum mismatch leaves the
 previous install, or nothing. Versions are pinned in the config and move with

@@ -665,11 +665,14 @@ impl Default for Git {
 
 /// Language server preferences. `disabled` names server ids that never start;
 /// a workspace's own `lsp.disabled` adds to it and cannot take anything away.
+/// `never_offer` names servers the editor never offers to install.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Lsp {
     #[serde(default)]
     pub disabled: Vec<String>,
+    #[serde(default)]
+    pub never_offer: Vec<String>,
 }
 
 /// Formatter choices. `by_extension` maps an extension to a formatter id, used
@@ -1213,6 +1216,24 @@ mod tests {
         // Written under its camelCase name, which is what the frontend sends.
         let raw = std::fs::read_to_string(&p).unwrap();
         assert!(raw.contains("organizeImportsOnSave"), "serialized under the name the frontend uses");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn never_offer_survives_a_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"lsp":{"disabled":["eslint"]}}"#).unwrap();
+        let mut s = load_from(&p);
+        assert!(s.lsp.never_offer.is_empty(), "a file written before the field existed offers everything");
+
+        s.lsp.never_offer = vec!["python".into()];
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.lsp.never_offer, vec!["python".to_string()]);
+        assert_eq!(back.lsp.disabled, vec!["eslint".to_string()]);
+
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("neverOffer"), "serialized under the name the frontend uses");
         let _ = std::fs::remove_file(&p);
     }
 

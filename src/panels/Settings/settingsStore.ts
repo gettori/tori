@@ -289,7 +289,7 @@ export type Settings = {
    *  `utils/projectAgents`. */
   projectAgents?: Record<string, AgentRow[]>;
   /** Mirrors `Lsp` in src-tauri/src/settings.rs. */
-  lsp: { disabled: string[] };
+  lsp: { disabled: string[]; neverOffer: string[] };
   /** Mirrors `Format` in src-tauri/src/settings.rs. */
   format: { byExtension: Record<string, string> };
 };
@@ -362,7 +362,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chat: {},
   editor: {},
   projectAgents: {},
-  lsp: { disabled: [] },
+  lsp: { disabled: [], neverOffer: [] },
   format: { byExtension: {} },
 };
 
@@ -705,6 +705,15 @@ export function setFetchEveryMinutes(minutes: number): void {
  *  value to flip to, which is what `EditorToggleKey` says in the type. */
 export function toggleEditorDefault(key: EditorToggleKey): void {
   setEditorDefault(key, !editorDefaults()[key]);
+}
+
+/** Never offer to install this server again. Swallowed on failure for the same
+ *  reason a chat pick is: the offer is already gone for this session. */
+export function neverOfferInstall(serverId: string): void {
+  const never = settings.lsp?.neverOffer ?? [];
+  if (never.includes(serverId)) return;
+  const next: Settings = { ...settings, lsp: { ...settings.lsp, neverOffer: [...never, serverId] } };
+  void saveSettings(next).catch(() => {});
 }
 
 /** Remember this project's format-on-save answer. Swallowed on failure for the

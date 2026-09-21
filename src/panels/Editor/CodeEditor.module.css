@@ -32,8 +32,9 @@
   pointer-events: none;
 }
 
-/* External-change conflict banner */
-.reloadBanner {
+/* Pane banners: the external-change conflict, and a server install offer */
+.reloadBanner,
+.installBanner {
   display: flex;
   align-items: center;
   gap: calc(10px * var(--ui-scale));

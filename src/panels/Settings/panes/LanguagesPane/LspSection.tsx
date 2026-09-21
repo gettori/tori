@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
+import { installServer } from "../../../../utils/serverInstall";
 import { overlayRoot } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
@@ -64,9 +65,12 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
     s().installedVersion !== null && s().availableVersion !== null && s().installedVersion !== s().availableVersion;
   const installable = () => s().installedVersion === null && s().status === "notFound" && s().availableVersion !== null;
 
+  // Install goes through `installServer` so files already open in the editor
+  // pick the server up.
   const run = (verb: string, command: "lsp_install" | "lsp_uninstall") => {
     setPending(command === "lsp_install" ? "install" : "remove");
-    invoke(command, { serverId: s().id })
+    const done = command === "lsp_install" ? installServer(s().id) : invoke(command, { serverId: s().id });
+    done
       .then(() => props.onChange(), (e) =>
         emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} ${s().label}: ${String(e)}` }),
       )
