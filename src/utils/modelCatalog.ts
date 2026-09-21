@@ -8,7 +8,14 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agentVersion, asProfileId } from "./agentHealth";
-import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo, SlashCommand } from "./chatTypes";
+import type {
+  ChatAccount,
+  ChatCapabilities,
+  ChatConfigOption,
+  ChatModeInfo,
+  ChatModelInfo,
+  SlashCommand,
+} from "./chatTypes";
 
 // Which of the three things a agent's catalogue currently is.
 //
