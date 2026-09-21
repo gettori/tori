@@ -64,6 +64,18 @@ pub fn events_from_turns(
             continue;
         }
 
+        // The invocation and its output are two records, so they are two turns
+        // by the time they reach here, and only together are they worth a row.
+        // An invocation with nothing after it is a skill or a `/clear`: no
+        // output was ever printed, and it goes back to being dropped, which is
+        // what it has always been.
+        if turn.role == "command" {
+            if let Some(ev) = local_command(turns, at, session_id, &turn_id) {
+                events.push(ev);
+            }
+            continue;
+        }
+
         for block in &turn.blocks {
             match block.kind.as_str() {
                 // An attachment was sent as a text block naming its path, so
@@ -287,6 +299,50 @@ fn expand_subagent(
 
 fn is_compaction(turn: &TranscriptTurn) -> bool {
     turn.blocks.iter().any(|b| b.kind == "compaction")
+}
+
+/// The client-side command at `at`, rebuilt from the one or two turns the
+/// transcript split it across.
+///
+/// An invocation takes the output straight after it, which is the pairing rule
+/// the CLI's own records imply: it writes the envelope and then what the
+/// command printed, with nothing in between. An invocation with no output after
+/// it printed nothing (a skill, whose text is the prompt the agent expanded it
+/// into, or a `/clear`) and is not a row, so it returns `None` and the caller
+/// drops it. Output with no invocation before it is the head of a transcript
+/// read from partway in, worth showing unlabelled rather than losing.
+fn local_command(
+    turns: &[TranscriptTurn],
+    at: usize,
+    session_id: &str,
+    turn_id: &str,
+) -> Option<ChatEvent> {
+    let block = turns[at].blocks.first()?;
+    let (command, output) = match block.kind.as_str() {
+        "command" => {
+            let next = turns.get(at + 1).filter(|t| t.role == "command")?;
+            let out = next.blocks.first().filter(|b| b.kind == "command_output")?;
+            (block.text.clone(), out.text.clone()?)
+        }
+        // Consumed by the invocation before it, when there was one.
+        "command_output" => {
+            let after_invocation = at
+                .checked_sub(1)
+                .and_then(|prev| turns.get(prev))
+                .is_some_and(|t| t.blocks.first().is_some_and(|b| b.kind == "command"));
+            if after_invocation {
+                return None;
+            }
+            (None, block.text.clone()?)
+        }
+        _ => return None,
+    };
+    Some(ChatEvent::LocalCommand {
+        session_id: session_id.to_string(),
+        turn_id: turn_id.to_string(),
+        command,
+        output,
+    })
 }
 
 /// The summary the agent wrote for the compaction at `at`: the text of the
@@ -555,6 +611,7 @@ mod tests {
                 ChatEvent::ThinkingDelta { .. } => "thinking",
                 ChatEvent::ToolCallStarted { .. } => "started",
                 ChatEvent::ToolCallCompleted { .. } => "completed",
+                ChatEvent::LocalCommand { .. } => "command",
                 _ => "other",
             })
             .collect()
@@ -861,6 +918,11 @@ mod tests {
     /// stdout) and none of them is something the person typed. Replaying them
     /// showed the agent's markup as the user's own messages, and counted each
     /// one as a prompt - a session with two real prompts reporting five.
+    ///
+    /// The command itself is a row now, since dropping it outright was how
+    /// `/usage` came to print nothing. What it must not become is a *user*
+    /// message, which is what this still pins: two prompts, and the command
+    /// beside them rather than among them.
     #[test]
     fn a_slash_command_is_not_replayed_as_something_the_user_typed() {
         let dir = std::env::temp_dir().join(format!("tori-cmd-{}", std::process::id()));
@@ -885,7 +947,16 @@ mod tests {
 
         let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
         let events = events_from_turns("s1", &turns, &[]);
-        assert_eq!(kinds(&events), ["user", "user"]);
+        assert_eq!(kinds(&events), ["user", "command", "user"]);
+        // Labelled with what was typed, not with the markup it was filed under.
+        let command = events.iter().find_map(|e| match e {
+            ChatEvent::LocalCommand { command, output, .. } => Some((command.clone(), output.clone())),
+            _ => None,
+        });
+        assert_eq!(
+            command,
+            Some((Some("/model haiku".into()), "Set model to haiku (claude-haiku-4-5-20251001)".into()))
+        );
         let texts: Vec<_> = events
             .iter()
             .filter_map(|e| match e {

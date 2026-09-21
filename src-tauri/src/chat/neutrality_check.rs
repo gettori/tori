@@ -472,6 +472,7 @@ mod tests {
             ChatEvent::ModeRefused { .. } => "modeRefused",
             ChatEvent::UserMessage { .. } => "userMessage",
             ChatEvent::Compacted { .. } => "compacted",
+            ChatEvent::LocalCommand { .. } => "localCommand",
             ChatEvent::SlashCommands { .. } => "slashCommands",
             ChatEvent::CompactionStarted { .. } => "compactionStarted",
             ChatEvent::CompactionFailed { .. } => "compactionFailed",

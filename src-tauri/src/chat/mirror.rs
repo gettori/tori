@@ -233,6 +233,7 @@ fn keep(event: &ChatEvent) -> Keep {
         ChatEvent::TurnStarted { .. }
         | ChatEvent::UserMessage { .. }
         | ChatEvent::Compacted { .. }
+        | ChatEvent::LocalCommand { .. }
         | ChatEvent::CompactionStarted { .. }
         | ChatEvent::CompactionFailed { .. }
         | ChatEvent::ToolCallStarted { .. }
@@ -269,6 +270,7 @@ pub(super) fn is_conversation(event: &ChatEvent) -> bool {
             | ChatEvent::ToolCallCompleted { .. }
             | ChatEvent::SubagentStarted { .. }
             | ChatEvent::Compacted { .. }
+            | ChatEvent::LocalCommand { .. }
     )
 }
 

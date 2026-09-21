@@ -154,6 +154,12 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(ev.trigger).toBe("manual");
           expect(ev.summary).toContain("continued from a previous conversation");
           break;
+        case "localCommand":
+          // Both halves, because the label and the payload come from two
+          // different records and only the replay path has the first one.
+          expect(ev.command).toBe("/usage");
+          expect(ev.output).toContain("31% used");
+          break;
         case "userMessage":
           // History's counterpart to the composer's own push, so it carries the
           // same block shapes a sent turn does.

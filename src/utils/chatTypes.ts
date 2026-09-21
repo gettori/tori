@@ -470,6 +470,11 @@ export type ChatEvent =
       postTokens: number | null;
       summary: string | null;
     }
+  /// What a client-side slash command printed. `/usage` and `/context` never
+  /// reach a model: the CLI runs them and reports the result itself, so this is
+  /// neither speaker's words. `command` is the invocation, null live, where the
+  /// wire frame names none and the user's own prompt is the row above.
+  | { type: "localCommand"; sessionId: string; turnId: string; command: string | null; output: string }
   /// The commands this session takes. Its own event because for an ACP agent
   /// they arrive after the handshake, on a notification of their own: measured
   /// on pi-acp 0.0.33, `session/new` answers with the models and the modes and
@@ -648,6 +653,7 @@ export const CHAT_EVENT_TYPES = [
   "turnStarted",
   "userMessage",
   "compacted",
+  "localCommand",
   "slashCommands",
   "compactionStarted",
   "compactionFailed",
@@ -736,6 +742,7 @@ export const CHAT_COMMAND_TYPES = [
 export const CONVERSATION_EVENTS = [
   "userMessage",
   "compacted",
+  "localCommand",
   "textDelta",
   "thinkingDelta",
   "toolCallStarted",
@@ -798,6 +805,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   compacted: {
     required: ["sessionId", "turnId", "trigger", "preTokens", "postTokens", "summary"],
   },
+  localCommand: { required: ["sessionId", "turnId", "command", "output"] },
   slashCommands: { required: ["sessionId", "commands"] },
   compactionStarted: { required: ["sessionId", "turnId"] },
   compactionFailed: { required: ["sessionId", "turnId", "error"] },
