@@ -6,6 +6,7 @@
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
 import { createSignal, For, Show, type JSX } from "solid-js";
+import { Check, Copy } from "lucide-solid";
 import { copyText } from "../../../utils/clipboard";
 import { hintRanges, labelRanges, segments, type Range } from "../utils/searchHighlight";
 import {
@@ -18,6 +19,8 @@ import {
   type EditorToggleKey,
 } from "../../../utils/settingsCatalog";
 import Button from "../../../components/Button/Button";
+import Icon from "../../../components/Icon/Icon";
+import IconButton from "../../../components/IconButton/IconButton";
 import {
   settings,
   saveSettings,
@@ -243,6 +246,30 @@ export function CmdLine(props: { text: string }) {
       <button type="button" class={styles.cmdCopy} onClick={() => void copy()}>
         {copied() ? "copied" : "copy"}
       </button>
+    </div>
+  );
+}
+
+/** A command in a read-only field, with a copy button at its end. A field
+ *  rather than `CmdLine` where the command is a detail beside a button that
+ *  runs it, so it can scroll when a card is too narrow to show all of it. */
+export function CmdField(props: { text: string }) {
+  const [copied, setCopied] = createSignal(false);
+  const copy = async () => {
+    if (!(await copyText(props.text))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div class={styles.cmdField}>
+      <input class={styles.cmdFieldText} readOnly value={props.text} aria-label="Command" spellcheck={false} />
+      <IconButton
+        size="sm"
+        icon={<Icon icon={copied() ? Check : Copy} />}
+        tooltip={copied() ? "Copied" : "Copy"}
+        aria-label="Copy command"
+        onClick={() => void copy()}
+      />
     </div>
   );
 }
