@@ -1,0 +1,75 @@
+# Bundled ESLint server, `vscode-eslint-language-server` from the
+# `vscode-langservers-extracted` package. Installed by `pnpm lsp:install`. See
+# LSP-SERVERS.md.
+
+schema_version = 1
+id = "eslint"
+label = "ESLint"
+role = "secondary"
+
+# One session per repo: the server finds each file's own config.
+root_markers = [".git"]
+
+activation_markers = [
+  "eslint.config.js",
+  "eslint.config.mjs",
+  "eslint.config.cjs",
+  "eslint.config.ts",
+  "eslint.config.mts",
+  "eslint.config.cts",
+  ".eslintrc",
+  ".eslintrc.js",
+  ".eslintrc.cjs",
+  ".eslintrc.json",
+  ".eslintrc.yaml",
+  ".eslintrc.yml",
+]
+
+verified_against = "vscode-langservers-extracted 4.10.0"
+
+# Loads the project's own `eslint`, its config and its plugins.
+runs_project_code = true
+
+[languages]
+ts = "typescript"
+mts = "typescript"
+cts = "typescript"
+tsx = "typescriptreact"
+js = "javascript"
+mjs = "javascript"
+cjs = "javascript"
+jsx = "javascriptreact"
+
+[launch]
+kind = "bundled_node"
+entry = "resources/lsp/node_modules/vscode-langservers-extracted/bin/vscode-eslint-language-server"
+args = ["--stdio"]
+
+# The server applies no defaults to these and throws on several when absent:
+# `nodePath` has to be set (TOML has no null, so the empty string), and
+# `rulesCustomizations`, `experimental`, `problems` and `codeAction` are read unguarded.
+[settings]
+validate = "on"
+run = "onType"
+nodePath = ""
+format = false
+quiet = false
+onIgnoredFiles = "off"
+useESLintClass = false
+rulesCustomizations = []
+
+[settings.experimental]
+useFlatConfig = false
+
+[settings.problems]
+shortenToSingleLine = false
+
+[settings.codeAction.disableRuleComment]
+enable = true
+location = "separateLine"
+
+[settings.codeAction.showDocumentation]
+enable = true
+
+[settings.codeActionOnSave]
+mode = "all"

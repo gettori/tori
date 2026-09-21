@@ -9,13 +9,14 @@ deliberately so, down to the override and error-handling rules.
 
 ## Supported servers
 
-Three ship bundled, one is expected on your PATH:
+Four ship bundled, one is expected on your PATH:
 
 | id | Server | Launch | Notes |
 |---|---|---|---|
 | `typescript` | `typescript-language-server` | `bundled_node` | Ships inside the app; run `pnpm lsp:install` in a dev tree. |
 | `json` | `vscode-json-languageserver` | `bundled_node` | The server behind VS Code's own JSON support. Schemas come from SchemaStore, fed in by Tori. |
 | `yaml` | `yaml-language-server` | `bundled_node` | The server behind Red Hat's VS Code YAML extension. Brings its own SchemaStore support. |
+| `eslint` | `vscode-eslint-language-server` | `bundled_node` | A secondary beside `typescript`, started only under an ESLint config in a trusted project. Ships through `vscode-langservers-extracted`, which packages the server behind VS Code's ESLint extension. That server only answers diagnostics when asked (`textDocument/diagnostic`), so Tori pulls them after each change. |
 | `rust` | `rust-analyzer` | `path` | Not bundled: rustup already manages it, and a stale bundled copy would fight the toolchain the project builds with. |
 
 A language with no server is a supported state, not a broken one. Tori has
