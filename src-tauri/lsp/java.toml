@@ -1,0 +1,23 @@
+# Java via `jdtls`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "java"
+label = "Java"
+root_markers = ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", ".git"]
+request_timeout_ms = 120000
+
+# Imports the project through its Maven or Gradle build.
+runs_project_code = true
+
+[languages]
+java = "java"
+
+[launch]
+kind = "path"
+program = "jdtls"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `brew install jdtls`."

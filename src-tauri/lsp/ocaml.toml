@@ -1,0 +1,23 @@
+# OCaml via `ocamllsp`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "ocaml"
+label = "OCaml"
+root_markers = ["dune-project", "dune-workspace", ".git"]
+
+# Reads what dune builds, and ppx rewriters run during that build.
+runs_project_code = true
+
+[languages]
+ml = "ocaml"
+mli = "ocaml.interface"
+
+[launch]
+kind = "path"
+program = "ocamllsp"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `opam install ocaml-lsp-server`."

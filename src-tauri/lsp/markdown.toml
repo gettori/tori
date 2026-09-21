@@ -1,0 +1,33 @@
+# Markdown via Marksman: links, headings and references across a folder of
+# notes. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "markdown"
+label = "Markdown (Marksman)"
+root_markers = [".marksman.toml", ".git"]
+
+runs_project_code = false
+
+[languages]
+md = "markdown"
+markdown = "markdown"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "marksman"
+args = ["server"]
+
+# One universal binary for both architectures, not an archive.
+[install]
+kind = "github_release"
+repo = "artempyanykh/marksman"
+version = "2026-02-08"
+
+[install.assets.macos-aarch64]
+file = "marksman-macos"
+sha256 = "6a801c17b5ac0dba69787c5282b3b3bd416e66c96253fae098d311c6bbd1833b"
+
+[install.assets.macos-x86_64]
+file = "marksman-macos"
+sha256 = "6a801c17b5ac0dba69787c5282b3b3bd416e66c96253fae098d311c6bbd1833b"

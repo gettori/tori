@@ -1,0 +1,35 @@
+# TOML via Tombi. Not Taplo: its npm build ships without the language server,
+# and its release binaries are bare gzip files with no checksum published. See
+# LSP-SERVERS.md.
+
+schema_version = 1
+id = "toml"
+label = "TOML (Tombi)"
+root_markers = ["tombi.toml", ".git"]
+
+# Validates against SchemaStore schemas; it may download them, but runs nothing.
+runs_project_code = false
+
+[languages]
+toml = "toml"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "tombi"
+args = ["lsp"]
+
+[install]
+kind = "github_release"
+repo = "tombi-toml/tombi"
+version = "v1.5.5"
+
+[install.assets.macos-aarch64]
+file = "tombi-cli-1.5.5-aarch64-apple-darwin.tar.gz"
+sha256 = "460b3269414d2ca26e05863908764f118bea3b4a52068081af6a3dae03c1320e"
+bin = "tombi-cli-1.5.5-aarch64-apple-darwin/tombi"
+
+[install.assets.macos-x86_64]
+file = "tombi-cli-1.5.5-x86_64-apple-darwin.tar.gz"
+sha256 = "9276c456e4a0217e95fb84ac3cde29d281d7b53e5eb168d83cb038ec07e2083d"
+bin = "tombi-cli-1.5.5-x86_64-apple-darwin/tombi"

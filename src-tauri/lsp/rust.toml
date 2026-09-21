@@ -29,3 +29,7 @@ rs = "rust"
 kind = "path"
 program = "rust-analyzer"
 args = []
+
+[install]
+kind = "hint"
+text = "Install it with `rustup component add rust-analyzer`."

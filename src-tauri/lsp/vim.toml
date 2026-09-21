@@ -1,0 +1,22 @@
+# Vim script via vim-language-server. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "vim"
+label = "Vim script"
+root_markers = [".git"]
+
+runs_project_code = false
+
+[languages]
+vim = "vim"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "vim-language-server"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "vim-language-server"
+version = "2.3.1"

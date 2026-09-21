@@ -1,0 +1,24 @@
+# Kotlin via `kotlin-language-server`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "kotlin"
+label = "Kotlin"
+root_markers = ["settings.gradle.kts", "settings.gradle", "build.gradle.kts", "build.gradle", "pom.xml", ".git"]
+request_timeout_ms = 120000
+
+# Resolves the classpath through the project's Gradle or Maven build.
+runs_project_code = true
+
+[languages]
+kt = "kotlin"
+kts = "kotlin"
+
+[launch]
+kind = "path"
+program = "kotlin-language-server"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `brew install kotlin-language-server`."
