@@ -29,6 +29,7 @@ const { default: LspSection } = await import("./LspSection");
 const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   id: "typescript",
   label: "TypeScript / JavaScript",
+  role: "primary",
   program: "node",
   status: "versionUnknown",
   path: "/usr/bin/node",
@@ -38,6 +39,7 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   detail: null,
   overridePath: null,
   disabled: false,
+  disabledByWorkspace: false,
   activationMarkers: [],
   runsPerProject: false,
   hint: null,
@@ -183,7 +185,7 @@ describe("LspSection", () => {
     render(() => <LspSection />);
 
     const remove = await screen.findByRole("button", { name: "Remove Python (pyright)" });
-    expect(screen.queryByRole("button", { name: /Update|Install/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Update|Install) / })).toBeNull();
 
     remove.click();
     await waitFor(() => expect(calls).toContainEqual(["lsp_uninstall", { serverId: "python" }]));

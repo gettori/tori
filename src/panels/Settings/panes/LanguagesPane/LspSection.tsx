@@ -1,10 +1,12 @@
 import { For, Show, Switch, Match, createResource, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
+import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
 import { installServer } from "../../../../utils/serverInstall";
-import { overlayRoot } from "../../settingsStore";
+import { CmdLine } from "../../components/paneKit";
+import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
@@ -22,6 +24,7 @@ type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDri
 export type LspHealth = {
   id: string;
   label: string;
+  role: "primary" | "secondary";
   program: string;
   status: BinaryStatus;
   path: string | null;
@@ -35,6 +38,8 @@ export type LspHealth = {
   detail: string | null;
   overridePath: string | null;
   disabled: boolean;
+  // Only the workspace's list names it, and your settings cannot undo that.
+  disabledByWorkspace: boolean;
   activationMarkers: string[];
   runsPerProject: boolean;
   hint: string | null;
@@ -55,15 +60,39 @@ const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
-// Hints mark commands with backticks, the way the server TOMLs write them.
-const withCode = (text: string) => text.split("`").map((part, i) => (i % 2 ? <code>{part}</code> : part));
+// A hint names its command in backticks, the way the server TOMLs write it.
+const commandIn = (hint: string | null) => hint?.match(/`([^`]+)`/)?.[1] ?? null;
+
+type Tab = "ready" | "installable" | "manual" | "perProject";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "ready", label: "Ready" },
+  { id: "installable", label: "Installable" },
+  { id: "manual", label: "Manual" },
+  { id: "perProject", label: "Per project" },
+];
+
+// By what the user can do about it, not by whether it runs right now: a server
+// turned off stays in its tab with its switch off.
+function tabOf(s: LspHealth): Tab {
+  if (s.activationMarkers.length > 0 || s.runsPerProject) return "perProject";
+  if (s.installedVersion !== null || s.status !== "notFound") return "ready";
+  return s.availableVersion !== null ? "installable" : "manual";
+}
+
+const kindOf = (s: LspHealth) => (s.role === "secondary" ? "Linter" : "LSP");
 
 function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> }) {
   const s = () => props.server;
   const [pending, setPending] = createSignal<"install" | "remove" | null>(null);
+  // Flipped here as soon as it is saved, rather than after `lsp_health`
+  // answers, which probes every binary again.
+  const [turnedOff, setTurnedOff] = createSignal<boolean | null>(null);
+  const off = () => turnedOff() ?? s().disabled;
   const outdated = () =>
     s().installedVersion !== null && s().availableVersion !== null && s().installedVersion !== s().availableVersion;
   const installable = () => s().installedVersion === null && s().status === "notFound" && s().availableVersion !== null;
+  const command = () => (s().status === "notFound" ? commandIn(s().hint) : null);
 
   // Install goes through `installServer` so files already open in the editor
   // pick the server up.
@@ -77,20 +106,41 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
       .finally(() => setPending(null));
   };
 
-  return (
-    <div class={styles.card}>
-      <div class={styles.cardHead}>
-        <span class={`${styles.dot} ${s().disabled ? styles.dotOff : TONE[s().status]}`} />
-        <span class={styles.cardTitle}>{s().label}</span>
-        <code class={styles.cardProgram}>{s().program}</code>
-      </div>
+  const use = (on: boolean) => {
+    setTurnedOff(!on);
+    setServerDisabled(s().id, !on).catch((e) => {
+      setTurnedOff(null);
+      emitWith<ToastEvent>(TOAST, { message: `Could not turn ${on ? "on" : "off"} ${s().label}: ${String(e)}` });
+    });
+  };
 
-      <div class={styles.cardStatus}>
+  return (
+    <div class={styles.toolCard}>
+      <div class={styles.toolHead}>
+        <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[s().status]}`} />
+        <span class={styles.toolName} classList={{ [styles.toolNameOff]: off() }}>
+          {s().label}
+        </span>
+        <span class={styles.kindTag}>{kindOf(s())}</span>
+        <Toggle
+          class={styles.toolSwitch}
+          checked={!off()}
+          disabled={s().disabledByWorkspace}
+          aria-label={`Use ${s().label}`}
+          onChange={use}
+        />
+      </div>
+      <code class={styles.toolProgram}>{s().program}</code>
+
+      <div class={styles.toolStatus}>
         <Switch>
           {/* Most specific first: a bundled server can be "not found" while its
               interpreter is present, and naming the interpreter there would
               send the user off installing something they already have. */}
-          <Match when={s().disabled}>Disabled by <code>lsp.disabled</code> in settings.</Match>
+          <Match when={s().disabledByWorkspace}>
+            Disabled by <code>lsp.disabled</code> in this project's <code>.tori/settings.json</code>.
+          </Match>
+          <Match when={off()}>Disabled by <code>lsp.disabled</code> in settings.</Match>
           {/* Settings has no project to look in, so a probe here cannot say
               whether such a server would be found where it actually starts. */}
           <Match when={s().activationMarkers.length > 0}>
@@ -114,9 +164,8 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
           <Match when={installable()}>
             Available, not installed. Tori can install version {s().availableVersion}.
           </Match>
-          <Match when={s().status === "notFound" && s().hint}>
-            {(hint) => <>Not installed. {withCode(hint())}</>}
-          </Match>
+          <Match when={command()}>Not installed. Run this, then reopen Tori to pick it up.</Match>
+          <Match when={s().status === "notFound" && s().hint}>{(hint) => <>Not installed. {hint()}</>}</Match>
           <Match when={s().status === "notFound"}>
             Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
           </Match>
@@ -134,14 +183,14 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
         </Switch>
       </div>
 
-      <div class={styles.chips}>
-        <For each={s().extensions}>
-          {(ext) => <span class={styles.chip}>.{ext}</span>}
-        </For>
+      <Show when={command()}>{(cmd) => <CmdLine text={cmd()} />}</Show>
+
+      <div class={styles.toolExts}>
+        <For each={s().extensions}>{(ext) => <span>.{ext}</span>}</For>
       </div>
 
-      <Show when={!s().disabled && (installable() || s().installedVersion)}>
-        <div class={styles.cardActions}>
+      <Show when={!off() && (installable() || s().installedVersion)}>
+        <div class={styles.toolActions}>
           <Show when={installable()}>
             <Button
               variant="primary"
@@ -179,7 +228,7 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
       </Show>
 
       <Show when={s().overridePath}>
-        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
+        {(path) => <div class={styles.toolMeta}>Overridden by {path()}</div>}
       </Show>
     </div>
   );
@@ -238,12 +287,53 @@ function TrustedProjects() {
 
 export default function LspSection() {
   const [health, { refetch }] = createResource(() => invoke<LspHealth[]>("lsp_health", { root: overlayRoot() }));
+  const [picked, setPicked] = createSignal<Tab | null>(null);
+  const [query, setQuery] = createSignal("");
+
+  const q = () => query().trim().toLowerCase();
+  const count = (tab: Tab) => (health() ?? []).filter((s) => tabOf(s) === tab).length;
+  // Until one is picked, the first tab with anything in it, so a machine with
+  // nothing ready does not open on an empty list.
+  const tab = () => picked() ?? TABS.find((t) => count(t.id) > 0)?.id ?? "ready";
+  // A search looks in every tab, the way the settings search looks in every
+  // pane, so a server is never hidden behind the tab it is not in.
+  const matches = (s: LspHealth) =>
+    [s.label, s.program, kindOf(s), ...s.extensions.map((e) => `.${e}`)].some((f) => f.toLowerCase().includes(q()));
+  const shown = () => (health() ?? []).filter((s) => (q() ? matches(s) : tabOf(s) === tab()));
+
+  const pick = (t: Tab) => {
+    setPicked(t);
+    setQuery("");
+  };
 
   return (
     <section class={styles.section}>
       <div class={styles.sectionTitle}>
         <span>Language servers</span>
         <span class={styles.sectionRule} />
+        <div class={styles.groupTabs} role="group" aria-label="Show language servers">
+          <For each={TABS}>
+            {(t) => (
+              <button
+                type="button"
+                class={styles.groupTab}
+                aria-pressed={!q() && tab() === t.id}
+                onClick={() => pick(t.id)}
+              >
+                {t.label}
+                <span class={styles.groupTabCount}>{count(t.id)}</span>
+              </button>
+            )}
+          </For>
+        </div>
+        <input
+          type="text"
+          class={styles.tableFilter}
+          placeholder="Search"
+          aria-label="Search language servers"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+        />
       </div>
       <Switch>
         <Match when={health.state === "pending"}>
@@ -253,9 +343,20 @@ export default function LspSection() {
           <div class={styles.note}>Could not check language servers: {String(health.error)}</div>
         </Match>
         <Match when={health()}>
-          <div class={styles.cardStack}>
-            <For each={health()}>{(server) => <LspCard server={server} onChange={() => Promise.resolve(refetch())} />}</For>
-          </div>
+          <Show
+            when={shown().length > 0}
+            fallback={
+              <div class={styles.note}>
+                {q() ? `No language server matches "${query().trim()}".` : "No language server here."}
+              </div>
+            }
+          >
+            <div class={styles.toolGrid}>
+              <For each={shown()}>
+                {(server) => <LspCard server={server} onChange={() => Promise.resolve(refetch())} />}
+              </For>
+            </div>
+          </Show>
           <div class={styles.note}>
             A language with no server still opens and edits normally, it just has no completion or
             diagnostics. Add one with a TOML file in <code>~/.config/tori/lsp/</code>; see

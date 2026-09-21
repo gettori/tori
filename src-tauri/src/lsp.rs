@@ -326,6 +326,8 @@ pub async fn lsp_schema_dir(app: AppHandle) -> Option<String> {
 pub struct LspHealth {
     pub id: String,
     pub label: String,
+    /// A secondary is a linter beside the language's own server.
+    pub role: registry::Role,
     /// The binary that has to exist on this machine: the server itself for a
     /// `path` server, `node` for a bundled one.
     pub program: String,
@@ -344,6 +346,9 @@ pub struct LspHealth {
     pub override_path: Option<String>,
     /// Named in `lsp.disabled`, the user's or the workspace's.
     pub disabled: bool,
+    /// Named only in the workspace's list, which the user's settings cannot
+    /// switch back on.
+    pub disabled_by_workspace: bool,
     /// Whether it starts depends on the project, so a probe from Settings,
     /// which has no project, cannot say it is missing. A key reads as
     /// `pyproject.toml [tool.ruff]`.
@@ -398,6 +403,7 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
     LspHealth {
         id: server.id.clone(),
         label: server.label.clone(),
+        role: server.role,
         program,
         status,
         path: resolved.map(|p| p.to_string_lossy().into_owned()),
@@ -407,6 +413,7 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
         detail,
         override_path: server.is_override().then(|| server.source.clone()),
         disabled: false,
+        disabled_by_workspace: false,
         activation_markers: server
             .activation_markers
             .iter()
@@ -429,7 +436,8 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
 /// Settings open rather than after a restart.
 #[tauri::command]
 pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> {
-    let disabled = disabled_servers(crate::settings::get_settings().lsp.disabled, root.as_deref());
+    let user = crate::settings::get_settings().lsp.disabled;
+    let disabled = disabled_servers(user.clone(), root.as_deref());
     let servers_dir = managed::servers_dir();
     registry::registry()
         .iter()
@@ -439,7 +447,11 @@ pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> 
                 Launch::Path { .. } | Launch::ProjectBin { .. } | Launch::Managed { .. } => false,
             };
             let installed = managed::installed(&servers_dir, &server.id);
-            LspHealth { disabled: disabled.contains(&server.id), ..check(server, missing, installed) }
+            LspHealth {
+                disabled: disabled.contains(&server.id),
+                disabled_by_workspace: disabled.contains(&server.id) && !user.contains(&server.id),
+                ..check(server, missing, installed)
+            }
         })
         .collect()
 }

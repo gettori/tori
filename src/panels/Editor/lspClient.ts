@@ -30,6 +30,7 @@ import {
   hasServerFor,
   isActivationMarker,
   languageIdFor,
+  onLspDisabledChange,
   primariesClaiming,
   resolvedPrimary,
   resolvedServerIds,
@@ -195,6 +196,8 @@ function reask(wanted: (file: string, projectPath: string) => boolean): void {
 export function lspSettingsChanged(): void {
   void reresolve(() => true, () => forgetResolutions());
 }
+
+onLspDisabledChange(lspSettingsChanged);
 
 // A server that just lost an open file is stopped once no open file under its
 // root still resolves to it, so a disabled one does not idle until a restart.

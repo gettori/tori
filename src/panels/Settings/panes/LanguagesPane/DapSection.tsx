@@ -38,14 +38,15 @@ const TONE: Record<BinaryStatus, string> = {
 function DapCard(props: { adapter: DapHealth }) {
   const a = () => props.adapter;
   return (
-    <div class={styles.card}>
-      <div class={styles.cardHead}>
+    <div class={styles.toolCard}>
+      <div class={styles.toolHead}>
         <span class={`${styles.dot} ${TONE[a().status]}`} />
-        <span class={styles.cardTitle}>{a().label}</span>
-        <code class={styles.cardProgram}>{a().program}</code>
+        <span class={styles.toolName}>{a().label}</span>
+        <span class={styles.kindTag}>Debug</span>
       </div>
+      <code class={styles.toolProgram}>{a().program}</code>
 
-      <div class={styles.cardStatus}>
+      <div class={styles.toolStatus}>
         <Switch>
           {/* Most specific first: the bundle can be missing while `node` is
               present, and naming `node` there sends someone off installing
@@ -65,8 +66,8 @@ function DapCard(props: { adapter: DapHealth }) {
         </Switch>
       </div>
 
-      <div class={styles.chips}>
-        <For each={a().extensions}>{(ext) => <span class={styles.chip}>.{ext}</span>}</For>
+      <div class={styles.toolExts}>
+        <For each={a().extensions}>{(ext) => <span>.{ext}</span>}</For>
       </div>
     </div>
   );
@@ -89,7 +90,7 @@ export default function DapSection() {
           <div class={styles.note}>Could not check debuggers: {String(health.error)}</div>
         </Match>
         <Match when={health()}>
-          <div class={styles.cardStack}>
+          <div class={styles.toolGrid}>
             <For each={health()}>{(adapter) => <DapCard adapter={adapter} />}</For>
           </div>
           <div class={styles.note}>
