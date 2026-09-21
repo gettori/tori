@@ -141,6 +141,19 @@ pub fn trusted_projects() -> Vec<String> {
     load_or_seed(&store_path(), crate::config::discovered_project_dirs).trusted
 }
 
+/// Every discovered project the store does not cover, where servers that run
+/// project code stay off.
+#[tauri::command(async)]
+pub fn untrusted_projects() -> Vec<String> {
+    let _guard = lock();
+    let store = load_or_seed(&store_path(), crate::config::discovered_project_dirs);
+    crate::config::discovered_project_dirs()
+        .into_iter()
+        .filter(|p| !covers(&store, p))
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
 /// Trust the project `path` belongs to, returning the path that was trusted.
 #[tauri::command(async)]
 pub fn trust_project(path: String) -> Result<String, String> {

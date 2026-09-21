@@ -431,6 +431,7 @@ pub fn run() {
             lsp::lsp_install,
             lsp::lsp_uninstall,
             trust::trusted_projects,
+            trust::untrusted_projects,
             trust::trust_project,
             trust::revoke_project,
             dap::dap_start,
