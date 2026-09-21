@@ -9,12 +9,23 @@
    here. Container-level choices (padding, background, how the body scrolls)
    stay with the panel; only what makes a *row* a row lives here. */
 
+/* Typography read off the editor's tokens rather than the UI's, so a diff
+   tracks the font and size the user set for buffers, and a line here is the
+   same height as the same line in a file tab. Line height is CodeMirror's
+   own default. */
 .diffLine {
   white-space: pre;
-  padding: 0 calc(8px * var(--ui-scale));
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-md);
+  padding-inline: calc(8px * var(--ui-scale));
+  font-family: var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace);
+  font-size: var(--editor-font-size, 13px);
   line-height: 1.4;
+}
+/* The editor's `lineWrapping` rules, so a wrapped diff breaks where the buffer
+   would. */
+.diffLine.wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .diffLine.add {
@@ -60,7 +71,7 @@
 .diffLine.selectable {
   cursor: pointer;
 }
-/* Deliberately not --canvas-card: that is what an empty side-by-side cell
+/* Deliberately not --canvas-default: that is what an empty side-by-side cell
    already uses, so hovering a changed line would make it read as a cell with
    nothing in it. */
 .diffLine.selectable:hover {
@@ -128,9 +139,11 @@
 .sideRow > .diffLine.numbered::after {
   content: none;
 }
-/* A cell with no counterpart on this side: present but visibly not a line. */
+/* A cell with no counterpart on this side: present but visibly not a line.
+   The surfaces paint on --canvas-card, the buffer's colour, so the hole is the
+   darker canvas beneath it. */
 .diffLine.sideEmpty {
-  background: var(--canvas-card);
+  background: var(--canvas-default);
 }
 
 /* The comment affordance, one per row where the surface offers commenting.

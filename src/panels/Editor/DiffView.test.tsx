@@ -230,11 +230,9 @@ describe("line-level staging", () => {
     fireEvent.click(screen.getByText("+TWO"));
     await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Discard hunk"));
-    // Two now say it: the header's control and the confirm dialog's button.
-    const confirm = await screen.findAllByText("Discard hunk");
-    expect(confirm).toHaveLength(2);
-    fireEvent.click(confirm[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Throw away this hunk" }));
+    // The header's control is an icon; the word appears once, on the confirm.
+    fireEvent.click(await screen.findByText("Discard hunk"));
     await waitFor(() => expect(discardArgs).toHaveLength(1));
     expect(discardArgs[0].args).toMatchObject({ hunkIndices: [0] });
     expect(applyLineArgs).toEqual([]);
@@ -259,7 +257,7 @@ describe("hunk staging", () => {
 
   it("sends the fingerprint of the hunk as rendered", async () => {
     await mountDiff();
-    fireEvent.click(screen.getByText("Stage hunk"));
+    fireEvent.click(screen.getByRole("button", { name: "Stage this hunk" }));
     await waitFor(() => expect(applyHunkArgs).toHaveLength(1));
     expect(applyHunkArgs[0]).toMatchObject({
       projectPath: "/proj",
@@ -272,7 +270,7 @@ describe("hunk staging", () => {
 
   it("reverses the apply on the staged half", async () => {
     await mountDiff(true);
-    fireEvent.click(screen.getByText("Unstage hunk"));
+    fireEvent.click(screen.getByRole("button", { name: "Unstage this hunk" }));
     await waitFor(() => expect(applyHunkArgs).toHaveLength(1));
     expect(applyHunkArgs[0]).toMatchObject({ reverse: true });
   });
@@ -281,7 +279,7 @@ describe("hunk staging", () => {
     // A staged file's changes are safe in the index, so there is nothing here
     // to destroy.
     await mountDiff(true);
-    expect(screen.queryByText("Discard hunk")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Throw away this hunk" })).toBeNull();
   });
 });
 
@@ -319,7 +317,7 @@ describe("staging from the editor layout", () => {
     diffText = TWO_HUNKS;
     fileLines = ["one", "TWO", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "ELEVEN", "twelve"];
     await mountDiff();
-    fireEvent.click(screen.getAllByText("Stage hunk")[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Stage this hunk" })[1]);
     await waitFor(() => expect(applyHunkArgs).toHaveLength(1));
 
     await remountAsBuffer();

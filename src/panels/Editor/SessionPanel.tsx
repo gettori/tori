@@ -243,7 +243,7 @@ export default function SessionPanel(props: {
               {(hunk) => (
                 <div>
                   <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
-                    <span>{hunk.header}</span>
+                    <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
                     <HunkCommentInput
                       target={target()}
                       disabledReason={disabledReason()}

@@ -135,8 +135,8 @@
 }
 
 .touchDiff {
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-md);
+  font-family: var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace);
+  font-size: var(--editor-font-size, 13px);
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
@@ -145,7 +145,7 @@
 
 .touchDiff .diffLine {
   white-space: pre;
-  padding: 0 calc(8px * var(--ui-scale));
+  padding-inline: calc(8px * var(--ui-scale));
 }
 
 .touchDiff .diffLine.add {
