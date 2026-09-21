@@ -21,3 +21,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `dotnet tool install --global csharp-ls`."
+update = "dotnet tool update --global csharp-ls"
+uninstall = "dotnet tool uninstall --global csharp-ls"

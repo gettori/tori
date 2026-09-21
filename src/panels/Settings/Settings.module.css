@@ -847,6 +847,13 @@
     flex: none;
     margin-left: auto;
   }
+  .toolControls {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--tori-space-2);
+    margin-left: auto;
+  }
   .toolProgram,
   .toolExts {
     font-family: var(--tori-font-mono);
@@ -878,11 +885,6 @@
   .toolCard .cmd {
     margin-top: 0;
     padding: var(--tori-space-2) var(--tori-space-3);
-  }
-  .toolActions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--tori-space-2);
   }
   .toolMeta {
     font-size: var(--tori-text-2xs);

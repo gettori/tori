@@ -21,3 +21,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `brew install jdtls`."
+update = "brew upgrade jdtls"
+uninstall = "brew uninstall jdtls"

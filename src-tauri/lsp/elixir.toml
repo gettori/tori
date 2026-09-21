@@ -22,3 +22,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `brew install elixir-ls`."
+update = "brew upgrade elixir-ls"
+uninstall = "brew uninstall elixir-ls"

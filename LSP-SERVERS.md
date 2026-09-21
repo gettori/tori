@@ -243,7 +243,7 @@ set, and a kind Tori does not implement is a load error:
 |---|---|---|
 | `npm` | `package`, `version` | `npm install --ignore-scripts <package>@<version>`. `version` is one exact version; a range or `latest` is a load error. |
 | `github_release` | `repo`, `version`, `[install.assets.<platform>]` | Downloads `https://github.com/<repo>/releases/download/<version>/<file>` over HTTPS only, and checks its `sha256` before anything is written. `version` is the release tag. |
-| `hint` | `text` | Nothing is installed; the health card shows `text`. For a server its own toolchain manages. |
+| `hint` | `text`, optional `update`, `uninstall` | For a server its own toolchain manages. The card shows `text`, and Install runs the first backticked command in it. Once the server is found, Update and Uninstall run `update` and `uninstall`. |
 
 `npm` and `github_release` need `launch.kind = "managed"`, and `managed` needs
 one of them: Tori installs into `~/.config/tori/servers/<id>/`, and only
@@ -274,7 +274,21 @@ sha256 = "0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c"
 bin = "bin/lua-language-server"
 ```
 
-Install, Update and Remove live on the server's card in Settings > LSP.
+Install, Update and Remove live on the server's card in Settings > LSP. For a
+`hint` server the card runs the command in a terminal inside Settings, through
+`/bin/sh -c` with your login PATH, and asks before an uninstall. Tori does not
+know how a server it finds was installed, so an `uninstall` that does not match
+fails in that terminal and changes nothing. It also cannot tell whether an
+update exists: Update runs the command either way.
+
+```toml
+[install]
+kind = "hint"
+text = "Install it with `brew install jdtls`."
+update = "brew upgrade jdtls"
+uninstall = "brew uninstall jdtls"
+```
+
 Opening a file whose server Tori can install, but has not, also offers it in a
 banner above the file: Install, Not now (asked again next session), or Never
 for this language, which adds the id to `lsp.neverOffer` in

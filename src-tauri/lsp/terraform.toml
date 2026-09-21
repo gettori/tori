@@ -21,3 +21,5 @@ args = ["serve"]
 [install]
 kind = "hint"
 text = "Install it with `brew install hashicorp/tap/terraform-ls`."
+update = "brew upgrade hashicorp/tap/terraform-ls"
+uninstall = "brew uninstall hashicorp/tap/terraform-ls"

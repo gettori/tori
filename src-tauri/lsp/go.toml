@@ -21,3 +21,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `go install golang.org/x/tools/gopls@latest`."
+update = "go install golang.org/x/tools/gopls@latest"
+uninstall = 'gobin="$(go env GOBIN)"; rm "${gobin:-$(go env GOPATH)/bin}/gopls"'

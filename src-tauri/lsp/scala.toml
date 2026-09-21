@@ -23,3 +23,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `cs install metals` (Coursier)."
+update = "cs update metals"
+uninstall = "cs uninstall metals"

@@ -22,3 +22,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `gem install ruby-lsp`."
+update = "gem update ruby-lsp"
+uninstall = "gem uninstall --all --executables ruby-lsp"

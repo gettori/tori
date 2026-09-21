@@ -46,6 +46,8 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   hint: null,
   availableVersion: null,
   installedVersion: null,
+  update: null,
+  uninstall: null,
   ...over,
 });
 
