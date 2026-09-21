@@ -42,7 +42,6 @@
   font-weight: 600;
   cursor: pointer;
   transition:
-    padding-inline var(--tori-duration-med) var(--tile-ease),
     background var(--tori-duration-fast) ease,
     color var(--tori-duration-fast) ease,
     border-color var(--tori-duration-fast) ease;
@@ -100,12 +99,10 @@
      does the space list start to scroll. Without it the squeeze lands on the
      scroller and the spaces slide away with the name still at full width. */
   flex-shrink: 1000;
-  /* Padding plus the glyph, stated rather than `min-content`: nowrap text has a
-     min-content width equal to its full width, so `min-content` here would
-     include the whole name and the tile could not shrink at all. At this floor
-     the glyph is centred, so a squeezed-out name leaves a clean square. */
-  min-width: calc(36px * var(--ui-scale));
-  padding-inline: calc(9px * var(--ui-scale));
+  /* No padding of its own: the glyph sits where it sat at rest, so opening and
+     closing move the name and nothing else. The pill's extra room on the text
+     side is carried by `.tileNameText`, inside the clip. The rest floor already
+     equals padding plus glyph, so a squeezed-out name leaves the same square. */
 }
 
 /* Topics is not a space and has no hue of its own, so when lit it takes the
@@ -139,12 +136,14 @@
     opacity var(--tori-duration-fast) ease;
 }
 
-/* The gap between glyph and name, carried inside the clipped box rather than by
-   the tile. A flex `gap` survives its neighbour shrinking to nothing, so the
-   squeezed-out pill would keep 7px of empty space and sit the glyph off centre;
-   a margin in here is clipped away with the text it belongs to. */
+/* The gap between glyph and name, and the pill's extra room after the name,
+   carried inside the clipped box rather than by the tile. A flex `gap` or a
+   tile padding survives its neighbour shrinking to nothing, so the squeezed-out
+   pill would keep empty space and sit the glyph off centre; margins in here are
+   clipped away with the text they belong to. */
 .tileNameText {
   margin-inline-start: calc(7px * var(--ui-scale));
+  margin-inline-end: calc(3px * var(--ui-scale));
 }
 
 /* Opening, the name waits for the box to be most of the way there and then

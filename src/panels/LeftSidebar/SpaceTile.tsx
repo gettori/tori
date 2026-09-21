@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, untrack, Show } from "solid-js";
 import { type LucideIcon } from "lucide-solid";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
@@ -10,6 +10,30 @@ import { spaceInitials } from "../../utils/names";
 import type { Rollup } from "../../utils/sessionStatus";
 import StatusBubble from "./StatusBubble";
 import styles from "./SpaceTile.module.css";
+
+/** `active`, seen on the first quiet frame after it changed. The click that
+ *  lights a tile also switches the worktree, which re-renders the whole app in
+ *  that same frame; a layout transition started there freezes until the frame
+ *  ends. So the fill flips at once and the pill's opening waits two frames,
+ *  which is after that render has painted. Closing waits the same, so the two
+ *  tiles still move together. Starts true for a tile mounted lit: nothing to
+ *  animate from. */
+function afterPaint(active: () => boolean | undefined): () => boolean {
+  const [seen, setSeen] = createSignal(!!untrack(active));
+  createEffect(
+    on(
+      active,
+      (v) => {
+        let raf = requestAnimationFrame(() => {
+          raf = requestAnimationFrame(() => setSeen(!!v));
+        });
+        onCleanup(() => cancelAnimationFrame(raf));
+      },
+      { defer: true },
+    ),
+  );
+  return seen;
+}
 
 /**
  * One space tile for the bottom bar: its icon when set, else the name's
@@ -46,6 +70,7 @@ export default function SpaceTile(props: {
   onDrop?: (e: DragEvent) => void;
   onDragEnd?: () => void;
 }) {
+  const titled = afterPaint(() => props.active);
   return (
     <ContextMenu class={styles.spaceMenu} items={props.menu ?? []}>
       <Tooltip
@@ -58,7 +83,7 @@ export default function SpaceTile(props: {
         }}
         classList={{
           [styles.active]: props.active,
-          [styles.titled]: props.active,
+          [styles.titled]: titled(),
           [styles.dragging]: props.dragging,
           [styles.dropBefore]: props.dropBefore,
           [styles.dropAfter]: props.dropAfter,
@@ -95,13 +120,14 @@ export function ModeTile(props: {
   active?: boolean;
   onClick?: () => void;
 }) {
+  const titled = afterPaint(() => props.active);
   return (
     <Tooltip
       as="button"
       type="button"
       class={`${styles.space} ${styles.modeTile}`}
       style={{ "--name-w": props.nameWidth }}
-      classList={{ [styles.active]: props.active, [styles.titled]: props.active }}
+      classList={{ [styles.active]: props.active, [styles.titled]: titled() }}
       label={props.label}
       aria-label={props.label}
       aria-pressed={props.active}
