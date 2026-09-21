@@ -127,7 +127,7 @@
             "type": "string"
           },
           "uniqueItems": true,
-          "description": "Server ids the editor never offers to install, such as \"python\". Settings > Languages can still install them.",
+          "description": "Server ids the editor never offers to install, such as \"python\". Settings > Servers can still install them.",
           "default": []
         }
       }
@@ -144,6 +144,15 @@
           },
           "description": "Your formatter per file extension, such as { \"py\": \"ruff\" }, for files the project's own config names no formatter for. The ids are the file names in FORMATTERS.md.",
           "default": {}
+        },
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Formatter ids that never run, such as \"biome\". A file one would have formatted goes on to the next formatter that applies.",
+          "default": []
         }
       }
     }

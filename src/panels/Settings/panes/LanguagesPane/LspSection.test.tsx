@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
-import { createResource } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import type { LspHealth } from "./LspSection";
 
 // What the language-server cards must say, driven through the real component.
@@ -28,12 +26,6 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const { default: LspSection } = await import("./LspSection");
 const { default: TrustedProjects } = await import("./TrustedProjects");
-
-const show = () =>
-  render(() => {
-    const [servers, { refetch }] = createResource(() => invoke<LspHealth[]>("lsp_health"));
-    return <LspSection health={servers} onChange={() => Promise.resolve(refetch())} />;
-  });
 
 const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   id: "typescript",
@@ -80,7 +72,7 @@ beforeEach(() => {
 describe("LspSection", () => {
   it("renders one card per registered server", async () => {
     health = [server(), server({ id: "rust", label: "Rust", program: "rust-analyzer", extensions: ["rs"] })];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText("TypeScript / JavaScript")).toBeTruthy());
     expect(screen.getByText("Rust")).toBeTruthy();
@@ -97,7 +89,7 @@ describe("LspSection", () => {
         detail: "the bundled server is not installed (run `pnpm lsp:install`)",
       }),
     ];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/pnpm lsp:install/)).toBeTruthy());
     // It must NOT fall through to the generic missing-binary copy, which would
@@ -107,14 +99,14 @@ describe("LspSection", () => {
 
   it("tells the user how to fix a genuinely missing server", async () => {
     health = [server({ id: "rust", label: "Rust", program: "rust-analyzer", status: "notFound", path: null, version: null })];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/Not installed\./)).toBeTruthy());
   });
 
   it("reports a version-less install as installed, not as a problem", async () => {
     health = [server({ version: null, path: "/usr/bin/node" })];
-    show();
+    render(() => <LspSection />);
 
     // Neither bundled config declares a `verified_against`, so this is the
     // common case and must read neutrally rather than as a warning.
@@ -123,14 +115,14 @@ describe("LspSection", () => {
 
   it("says a language with no server still works", async () => {
     health = [server()];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/still opens and edits normally/)).toBeTruthy());
   });
 
   it("shows which user file overrode a bundled server", async () => {
     health = [server({ overridePath: "/home/me/.config/tori/lsp/typescript.toml" })];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() =>
       expect(screen.getByText(/\/home\/me\/.config\/tori\/lsp\/typescript.toml/)).toBeTruthy(),
@@ -139,7 +131,7 @@ describe("LspSection", () => {
 
   it("says a server named in lsp.disabled is disabled", async () => {
     health = [server({ disabled: true })];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/Disabled by/)).toBeTruthy());
   });
@@ -156,7 +148,7 @@ describe("LspSection", () => {
         activationMarkers: ["deno.json", "deno.jsonc"],
       }),
     ];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/Runs per project/)).toBeTruthy());
     expect(screen.getByText("deno.json, deno.jsonc")).toBeTruthy();
@@ -167,7 +159,7 @@ describe("LspSection", () => {
     health = [
       server({ id: "biome", label: "Biome", program: "biome", status: "notFound", path: null, version: null, runsPerProject: true }),
     ];
-    show();
+    render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/Runs per project, from the project's own/)).toBeTruthy());
     expect(screen.queryByText(/Not installed/)).toBeNull();
@@ -175,7 +167,7 @@ describe("LspSection", () => {
 
   it("offers Install for a server Tori can install, and asks again for health once it is in", async () => {
     health = [pyright()];
-    show();
+    render(() => <LspSection />);
 
     const install = await screen.findByRole("button", { name: "Install Python (pyright)" });
     expect(screen.getByText(/Available, not installed/)).toBeTruthy();
@@ -191,7 +183,7 @@ describe("LspSection", () => {
 
   it("offers Remove, and no Update, for a current install", async () => {
     health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.414", installedVersion: "1.1.414" })];
-    show();
+    render(() => <LspSection />);
 
     const remove = await screen.findByRole("button", { name: "Remove Python (pyright)" });
     expect(screen.queryByRole("button", { name: /^(Update|Install) / })).toBeNull();
@@ -202,7 +194,7 @@ describe("LspSection", () => {
 
   it("offers Update beside Remove when Tori now pins a newer version", async () => {
     health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.400", installedVersion: "1.1.400" })];
-    show();
+    render(() => <LspSection />);
 
     const update = await screen.findByRole("button", { name: "Update Python (pyright)" });
     expect(screen.getByText(/Version 1.1.414 is available/)).toBeTruthy();

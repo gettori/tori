@@ -74,7 +74,7 @@ describe("counting the settings a query matches, per row and per tab", () => {
     // section, so the badge counts one, not one per agent installed.
     const m = matchingEntries("Which debug adapters are installed")!;
     expect(m.ids).toEqual(new Set(["debuggers"]));
-    expect(m.counts.languages).toBe(1);
+    expect(m.counts.debuggers).toBe(1);
   });
 
   it("counts a matched row exactly once, in exactly one tab", () => {

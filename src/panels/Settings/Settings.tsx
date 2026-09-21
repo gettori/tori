@@ -10,7 +10,22 @@ import {
   type Component,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
-import { Bot, Braces, Columns2, FileCode, FolderCog, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
+import {
+  Bot,
+  Braces,
+  Bug,
+  Columns2,
+  FileCode,
+  FolderCog,
+  ListChecks,
+  MessageSquare,
+  Palette,
+  Plug,
+  ShieldCheck,
+  WandSparkles,
+  X,
+  type LucideIcon,
+} from "lucide-solid";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
@@ -27,7 +42,13 @@ import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
 import PanesPane from "./panes/PanesPane/PanesPane";
-import LanguagesPane from "./panes/LanguagesPane/LanguagesPane";
+import {
+  DebuggersPane,
+  FormattersPane,
+  LintersPane,
+  ProjectsPane,
+  ServersPane,
+} from "./panes/LanguagesPane/LanguagesPane";
 import { overlayRoot } from "./settingsStore";
 import { rowDomId, workspaceName, type PaneProps } from "./components/paneKit";
 import styles from "./Settings.module.css";
@@ -50,6 +71,10 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   "message-square": MessageSquare,
   "file-code": FileCode,
   braces: Braces,
+  bug: Bug,
+  "list-checks": ListChecks,
+  "wand-sparkles": WandSparkles,
+  "shield-check": ShieldCheck,
   palette: Palette,
   plug: Plug,
   "columns-2": Columns2,
@@ -60,7 +85,11 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   agents: AgentsPane,
   chat: ChatPane,
   editor: EditorPane,
-  languages: LanguagesPane,
+  servers: ServersPane,
+  debuggers: DebuggersPane,
+  linters: LintersPane,
+  formatters: FormattersPane,
+  projects: ProjectsPane,
   appearance: AppearancePane,
   panes: PanesPane,
   integrations: IntegrationsPane,

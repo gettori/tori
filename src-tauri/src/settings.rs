@@ -677,12 +677,15 @@ pub struct Lsp {
 
 /// Formatter choices. `by_extension` maps an extension to a formatter id, used
 /// when the project's own config names no formatter for the file. A
-/// workspace's own map outranks the project's config instead.
+/// workspace's own map outranks the project's config instead. `disabled` names
+/// formatter ids that never run.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Format {
     #[serde(default)]
     pub by_extension: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub disabled: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]

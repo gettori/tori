@@ -148,15 +148,15 @@ describe("Enter, the one keystroke that does navigate", () => {
   });
 
   it("resolves a tie to the earliest category in rail order", () => {
-    // "adapters" ties Agents and Languages at one hint match each. The rule
+    // "adapters" ties Agents and Debuggers at one hint match each. The rule
     // falls out of a `>` scan keeping the first maximum; a `>=` would silently
     // turn it into "whichever category happened to be scanned last", which is
-    // Languages here - so the fixture has to be a tie the two rules disagree
+    // Debuggers here - so the fixture has to be a tie the two rules disagree
     // about.
     render(() => <Settings onClose={() => {}} />);
     type("adapters");
     expect(SETTING_TABS.findIndex((t) => t.id === "agents")).toBeLessThan(
-      SETTING_TABS.findIndex((t) => t.id === "languages"),
+      SETTING_TABS.findIndex((t) => t.id === "debuggers"),
     );
 
     enter();
@@ -301,7 +301,7 @@ describe("a command that deep links to one row", () => {
     render(() => <Settings onClose={() => {}} query="Debuggers" entry="debuggers" />);
 
     await waitFor(() => expect(row("debuggers")).toBeTruthy());
-    expect(activeTab()).toBe("Languages");
+    expect(activeTab()).toBe("Debuggers");
   });
 
   it("does not put focus inside a card section", async () => {

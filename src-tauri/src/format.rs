@@ -230,11 +230,12 @@ impl FormatResult {
 }
 
 /// `format.byExtension` from each settings file: extension (lowercase, no dot)
-/// to formatter id.
+/// to formatter id. `disabled` is your `format.disabled`.
 #[derive(Debug, Default)]
 pub struct Choices {
     pub workspace: BTreeMap<String, String>,
     pub user: BTreeMap<String, String>,
+    pub disabled: Vec<String>,
 }
 
 fn by_extension(pairs: impl IntoIterator<Item = (String, String)>) -> BTreeMap<String, String> {
@@ -282,7 +283,7 @@ fn format_with(formatters: &[Formatter], path: &str, text: String, root: &Path, 
                 return FormatResult::refused(text, &id, error);
             }
         };
-        if tried.contains(&formatter.id.as_str()) {
+        if tried.contains(&formatter.id.as_str()) || choices.disabled.contains(&formatter.id) {
             continue;
         }
         tried.push(&formatter.id);
@@ -311,9 +312,11 @@ fn format_with(formatters: &[Formatter], path: &str, text: String, root: &Path, 
 /// the language server instead.
 #[tauri::command(async)]
 pub fn format_document(path: String, text: String, project_path: String) -> FormatResult {
+    let format = crate::settings::get_settings().format;
     let choices = Choices {
         workspace: workspace_choices(&project_path),
-        user: by_extension(crate::settings::get_settings().format.by_extension),
+        user: by_extension(format.by_extension),
+        disabled: format.disabled,
     };
     format_with(registry::registry(), &path, text, Path::new(&project_path), &choices)
 }
@@ -337,11 +340,14 @@ pub struct FormatterHealth {
     /// Found in the project's own install before the PATH, so a probe from
     /// Settings, which has no project, cannot say it is missing.
     pub runs_per_project: bool,
+    /// Named in your `format.disabled`.
+    pub disabled: bool,
 }
 
 /// Health for every registered formatter.
 #[tauri::command(async)]
 pub fn formatter_health() -> Vec<FormatterHealth> {
+    let disabled = crate::settings::get_settings().format.disabled;
     registry::registry()
         .iter()
         .map(|f| {
@@ -367,6 +373,7 @@ pub fn formatter_health() -> Vec<FormatterHealth> {
                     .chain(markers.keys.iter().map(|k| format!("{} [{}]", k.file, k.path.join("."))))
                     .collect(),
                 runs_per_project: f.launch == LaunchKind::ProjectBin,
+                disabled: disabled.contains(&f.id),
             }
         })
         .collect()
@@ -882,7 +889,7 @@ mod tests {
         let mut formatters = bundled();
         formatters.push(formatter("first", "", "[not_applicable]\nexit_code = 3"));
         formatters.push(formatter("last", "", "[not_applicable]\nexit_code = 3"));
-        let choices = Choices { workspace: choose(&[("rs", "first")]), user: choose(&[("rs", "last")]) };
+        let choices = Choices { workspace: choose(&[("rs", "first")]), user: choose(&[("rs", "last")]), ..Choices::default() };
         let out = format(&formatters, &root.join("main.rs"), "fn main(){}\n", &root, &choices);
         assert_eq!(out, FormatResult::none("fn main(){}\n".into()));
 
@@ -936,7 +943,8 @@ mod tests {
         touch(&root.join(".prettierrc"), "{}");
         let log = root.join("calls");
         stub(&root.join("node_modules/.bin"), "prettier", &format!("echo x >> '{}'\n{DECLINE}", log.display()));
-        let choices = Choices { workspace: choose(&[("rs", "prettier")]), user: choose(&[("rs", "prettier")]) };
+        let choices =
+            Choices { workspace: choose(&[("rs", "prettier")]), user: choose(&[("rs", "prettier")]), ..Choices::default() };
         format(&bundled(), &root.join("a.rs"), "x\n", &root, &choices);
         assert_eq!(std::fs::read_to_string(&log).unwrap().lines().count(), 1);
         std::fs::remove_dir_all(&root).ok();

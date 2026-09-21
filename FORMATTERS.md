@@ -68,6 +68,14 @@ are formatter ids. A project with no formatter config gets no command line
 formatter unless you name one: formatting with a tool's defaults puts a surprise
 diff in somebody's pull request.
 
+A formatter id in your `format.disabled` never runs. Wherever it would have
+been asked, the file goes on to the next formatter on the chain. The switch on
+its card in Settings > Formatters writes it.
+
+```json
+{ "format": { "disabled": ["biome"] } }
+```
+
 The walk in rung 2 never rises above the project directory, so a stray
 `~/.prettierrc` formats nothing. A file outside the project, or no project at
 all, gets nothing from rungs 1 to 3.
