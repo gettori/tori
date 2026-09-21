@@ -39,6 +39,7 @@ let registry: unknown[] = [
     schema_associations: false,
     verified_against: null,
     role: "primary",
+    features: ["diagnostics", "code_action", "format"],
     activation_markers: [],
     source: "bundled:typescript",
   },
@@ -54,6 +55,7 @@ let registry: unknown[] = [
     schema_associations: false,
     verified_against: null,
     role: "primary",
+    features: ["diagnostics", "code_action", "format"],
     activation_markers: [],
     source: "bundled:rust",
   },
@@ -1519,5 +1521,22 @@ describe("secondary servers", () => {
     expect(diagnostics()["/proj/a/a.ts"]).toBeUndefined();
     expect(diagnosticsIn("file:///proj/a/a.ts", "eslint", r)).toEqual([]);
     expect(m.lspPluginFor("/proj/a/a.ts")).toEqual([]);
+  });
+
+  async function formatterFor(eslintFeatures: string[]) {
+    registry = registry.map((s) => ((s as { id: string }).id === "eslint" ? { ...(s as object), features: eslintFeatures } : s));
+    const m = await freshModule();
+    const { formattingTarget } = await import("./lspFormatting");
+    await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
+    clients[clients.length - 1].serverCapabilities = { documentFormattingProvider: true };
+    const initialize = { jsonrpc: "2.0", id: 1, result: { capabilities: { documentFormattingProvider: true } } };
+    channels[channels.length - 1].onmessage?.(JSON.stringify(initialize));
+    return (await formattingTarget("/proj/a/a.ts"))?.serverId;
+  }
+
+  it("formats through a secondary before the primary, and not one whose config drops format", async () => {
+    withEslint();
+    expect(await formatterFor(["diagnostics", "code_action", "format"])).toBe("eslint");
+    expect(await formatterFor(["diagnostics", "code_action"])).toBe("typescript");
   });
 });

@@ -1,5 +1,6 @@
-// Organize-on-save, wired: the setting reaches the save path, the server is
-// asked for the right kind, and what lands on disk is what the server sent back.
+// Organize-on-save and fix-all-on-save, wired: the setting reaches the save
+// path, the server is asked for the right kind, and what lands on disk is what
+// the server sent back.
 //
 // The decisions themselves are unit-tested in `organizeOnSave.test.ts`. What is
 // left to get wrong is everything between them and a ⌘S, which is exactly the
@@ -9,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, waitFor } from "@solidjs/testing-library";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
+import { EditorView } from "@codemirror/view";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -54,6 +56,9 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}
 
 let client: LSPClient;
 
+/** Servers running beside the file's own, as `lspTargetsFor` hands them out. */
+let secondaries: unknown[] = [];
+
 function fakeServer(): Transport {
   let receive: ((msg: string) => void) | null = null;
   return {
@@ -78,21 +83,24 @@ function fakeServer(): Transport {
 
 vi.mock("./lspClient", async () => {
   const { pathToUri: toUri } = await import("./toriWorkspace");
+  const target = () => ({
+    root: REPO,
+    serverId: "typescript",
+    ready: client.initializing.then(
+      () => {},
+      () => {},
+    ),
+    supports: (cap: string) => !!(client.serverCapabilities as Record<string, unknown>)?.[cap],
+    capability: (name: string) => (client.serverCapabilities as Record<string, unknown>)?.[name],
+    sync: () => client.sync(),
+    request: (method: string, params: unknown) => client.request(method, params),
+  });
   return {
     claimedByLsp: () => true,
     ensureLspFor: () => Promise.resolve(),
     lspPluginFor: (path: string) => client.plugin(toUri(path), "typescript"),
-    lspTargetFor: () => ({
-      root: REPO,
-      ready: client.initializing.then(
-        () => {},
-        () => {},
-      ),
-      supports: (cap: string) => !!(client.serverCapabilities as Record<string, unknown>)?.[cap],
-      capability: (name: string) => (client.serverCapabilities as Record<string, unknown>)?.[name],
-      sync: () => client.sync(),
-      request: (method: string, params: unknown) => client.request(method, params),
-    }),
+    lspTargetFor: target,
+    lspTargetsFor: () => [target(), ...secondaries],
     lspTargets: () => [],
     executeServerCommand: () => Promise.resolve(null),
     notifyLspFileChanged: () => {},
@@ -106,7 +114,10 @@ vi.mock("./lspClient", async () => {
 const { default: CodeEditor } = await import("./CodeEditor");
 const { pathToUri } = await import("./toriWorkspace");
 const { emit, EDITOR_SAVE } = await import("../../utils/events");
-const { saveSettings, DEFAULT_SETTINGS } = await import("../Settings/settingsStore");
+const { saveSettings, DEFAULT_SETTINGS: STORE_DEFAULTS } = await import("../Settings/settingsStore");
+// Copied before any save: the store proxies its defaults object, so a save
+// rewrites it and a reset from it would carry the last test's settings over.
+const DEFAULT_SETTINGS = structuredClone(STORE_DEFAULTS);
 
 /** The whole-file replacement a server answers organize-imports with. */
 const sortedAction = () => ({
@@ -151,6 +162,7 @@ const setOrganizeOnSave = (on: boolean) =>
   });
 
 beforeEach(async () => {
+  secondaries = [];
   asked = [];
   written = [];
   organizeEdit = sortedAction();
@@ -227,5 +239,77 @@ describe("with the setting on", () => {
 
     await waitFor(() => expect(written).toHaveLength(1), { timeout: 4000 });
     expect(written[0].contents, "the file the user had, saved on time").toBe(DISK);
+  });
+});
+
+describe("fix all on save", () => {
+  const FIXED = "import { b } from './b';\nimport { a } from './a';\n";
+  const semi = (line: number) => ({ range: { start: { line, character: 23 }, end: { line, character: 23 } }, newText: ";" });
+
+  /** An ESLint beside the primary whose fix-all adds the missing semicolons, and
+   *  which answers only when `release` is called if `held`. */
+  function eslint(held = false) {
+    const asked: { method: string; params: unknown }[] = [];
+    let answer: (() => void) | null = null;
+    const reply = [
+      {
+        title: "Fix all fixable ESLint issues",
+        kind: "source.fixAll.eslint",
+        edit: { documentChanges: [{ textDocument: { uri: pathToUri(FILE), version: 0 }, edits: [semi(0), semi(1)] }] },
+      },
+    ];
+    return {
+      asked,
+      release: () => answer?.(),
+      root: REPO,
+      serverId: "eslint",
+      ready: Promise.resolve(),
+      supports: (cap: string) => cap === "codeActionProvider",
+      capability: () => ({ codeActionKinds: ["quickfix", "source.fixAll.eslint"] }),
+      sync: () => {},
+      request: (method: string, params: unknown) => {
+        asked.push({ method, params });
+        const result = method === "textDocument/codeAction" ? reply : null;
+        return held ? new Promise((r) => (answer = () => r(result))) : Promise.resolve(result);
+      },
+    };
+  }
+
+  const setFixAllOnSave = () =>
+    saveSettings({
+      ...structuredClone(DEFAULT_SETTINGS),
+      editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, codeActionsOnSave: true },
+    });
+
+  it("writes the linter's autofix, having asked every server for source.fixAll", async () => {
+    const lint = eslint();
+    secondaries = [lint];
+    await setFixAllOnSave();
+    await mount();
+
+    emit(EDITOR_SAVE);
+
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(written[0].contents).toBe(FIXED);
+    for (const log of [asked, lint.asked]) {
+      const request = log.find((a) => a.method === "textDocument/codeAction")!;
+      expect((request.params as { context: { only: string[] } }).context.only).toEqual(["source.fixAll"]);
+    }
+  });
+
+  it("drops the fix when the file is typed into while the server answers", async () => {
+    const lint = eslint(true);
+    secondaries = [lint];
+    await setFixAllOnSave();
+    await mount();
+
+    emit(EDITOR_SAVE);
+    await waitFor(() => expect(lint.asked).toHaveLength(1));
+    const view = EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement)!;
+    view.dispatch({ changes: { from: 0, insert: "// x\n" } });
+    lint.release();
+
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(written[0].contents, "what is on screen, not the fix").toBe(`// x\n${DISK}`);
   });
 });

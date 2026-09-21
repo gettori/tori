@@ -9,6 +9,7 @@ import type { ChatDefaults, EditorDefaults } from "../settingsStore";
 const DEFAULTS: EditorDefaults = {
   formatOnSave: false,
   organizeImportsOnSave: false,
+  codeActionsOnSave: false,
   codeLens: false,
   vimMode: false,
   indentGuides: true,

@@ -19,6 +19,11 @@
           "description": "Organize imports on save. Asks the language server to sort this file's imports and drop the unused ones, just before the formatter runs.",
           "default": false
         },
+        "codeActionsOnSave": {
+          "type": "boolean",
+          "description": "Fix all on save. Applies every language server's fix-all to the file (ESLint, Biome and oxlint autofixes among them) before imports are organized and the formatter runs.",
+          "default": false
+        },
         "codeLens": {
           "type": "boolean",
           "description": "Code lens. Draws the language server's reference and implementation counts above the lines they describe.",

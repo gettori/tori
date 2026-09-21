@@ -17,7 +17,7 @@ import {
   signatureHelp,
   type Transport,
 } from "@codemirror/lsp-client";
-import type { Extension } from "@codemirror/state";
+import { ChangeSet, type Extension, type Text } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
@@ -35,6 +35,7 @@ import {
   resolveServers,
   serverById,
   setRegistryListener,
+  type LspFeature,
   type LspServer,
   type Resolution,
 } from "../../utils/lspServers";
@@ -43,6 +44,7 @@ import { callHierarchyClientCapabilities } from "../../utils/callHierarchy";
 import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
+import { toDoc } from "./docDiff";
 import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
 import { codeActionClientCapabilities } from "./lspCodeActions";
 import { codeLensClientCapabilities } from "./lspCodeLens";
@@ -54,11 +56,11 @@ import {
   dropDiagnosticContextUnder,
   rememberDiagnostics,
 } from "./lspDiagnosticContext";
-import { changesToNow, publishFrom, serverDiagnosticsFor, toEditorDiagnostics } from "./lspDiagnostics";
+import { changesToNow, offsetIn, publishFrom, serverDiagnosticsFor, toEditorDiagnostics } from "./lspDiagnostics";
 import { SecondaryClient, feedFor, secondaryFeed, type FeedTarget, type Publish } from "./secondaryClient";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
-import { pathToUri, ToriWorkspace } from "./toriWorkspace";
+import { pathToUri, ToriWorkspace, uriToPath } from "./toriWorkspace";
 import { clearWarmRoots, touchWarmRoot, underWarmRoot } from "./lspWarmRoots";
 import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
 
@@ -364,6 +366,10 @@ async function startFor(
       settings: server.settings,
       initializationOptions: server.initialization_options,
       onDiagnostics: (publish) => showSecondaryDiagnostics(server.id, client, publish),
+      applyEdit: (params) =>
+        answerApplyEdit(params, secondaryApplyDeps(client, "lsp.applyEdit"), (message) =>
+          emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
+        ),
     });
     handlers.push((msg) => client.receive(msg));
     addSession({ kind: "secondary", handle, client, server });
@@ -672,6 +678,56 @@ function applyDepsFor(handle: LspHandle): ApplyDeps | null {
   };
 }
 
+// A secondary has no `ToriWorkspace`: its positions are in the doc it was last
+// sent, carried onto the text the edit lands on, and a file it never opened was
+// read from what the editor or the disk holds.
+function secondaryApplyDeps(client: SecondaryClient, userEvent: string): ApplyDeps {
+  const landing = new Map<string, Text>();
+  return {
+    requestFile: async (uri) => {
+      const path = uriToPath(uri);
+      if (!path) return null;
+      const feed = feedFor(path);
+      const text = feed ? null : (liveBufferText(path) ?? (await invoke<string>("fs_read_file", { path }).catch(() => null)));
+      const doc = feed?.doc ?? (text === null ? null : toDoc(text));
+      if (!doc) return null;
+      landing.set(path, doc);
+      return { uri, doc, getView: () => feedFor(path)?.view ?? null };
+    },
+    retainMapping: () => () => {},
+    makeMapping: () => ({
+      mapPosition: (uri, pos, assoc) => {
+        const path = uriToPath(uri);
+        const feed = path && feedFor(path);
+        const doc = feed ? feed.doc : path && landing.get(path);
+        if (!path || !doc) throw new Error(`${uri} was not read for this edit`);
+        const held = client.held(path) ?? doc;
+        const toNow = feed
+          ? changesToNow(held, feed.synced, feed.unsynced.desc, doc)
+          : changesToNow(held, doc, ChangeSet.empty(doc.length).desc, doc);
+        const at = offsetIn(held, pos);
+        if (at === null) throw new Error("the edit names no position");
+        return toNow.mapPos(at, assoc);
+      },
+      destroy: () => {},
+    }),
+    dirtyBuffers,
+    adoptBufferText,
+    writeFiles: writeFilesSuppressingEcho,
+    notifyWritten: (paths) => {
+      for (const p of paths) notifyLspFileChanged(p);
+    },
+    dispatch: (view, changes) => view.dispatch({ changes, userEvent }),
+  };
+}
+
+/** How to apply an edit from the secondary `serverId` on `path`, or null when
+ *  no such server is live for it. */
+export function secondaryEditDeps(path: string, serverId: string, userEvent: string): ApplyDeps | null {
+  const session = secondariesFor(path).find((s) => s.server.id === serverId);
+  return session ? secondaryApplyDeps(session.client, userEvent) : null;
+}
+
 /** Route one inbound frame, replying on the same session it arrived on.
  *  Returns whether the frame was consumed. */
 function interceptServerRequest(handle: LspHandle, msg: string): boolean {
@@ -754,6 +810,31 @@ function targetOf(session: PrimarySession): LspTarget {
 export function lspTargetFor(path: string): LspTarget | null {
   const session = answeringSession(path);
   return session ? targetOf(session) : null;
+}
+
+function secondaryTargetOf(session: SecondarySession, path: string): LspTarget {
+  const { client } = session;
+  return {
+    root: session.handle.root,
+    serverId: session.server.id,
+    ready: client.initializing,
+    supports: (capability) => !!client.capability(capability),
+    capability: (name) => client.capability(name) as ServerCapabilities[typeof name] | undefined,
+    sync: () => feedFor(path)?.flush(),
+    request: (method, params) => client.request(method, params),
+  };
+}
+
+/** Every live server on `path` whose config lets it be asked for `feature`,
+ *  the primary first. */
+export function lspTargetsFor(path: string, feature: LspFeature): LspTarget[] {
+  const primary = answeringSession(path);
+  return [
+    ...(primary?.server.features.includes(feature) ? [targetOf(primary)] : []),
+    ...secondariesFor(path)
+      .filter((s) => s.server.features.includes(feature))
+      .map((s) => secondaryTargetOf(s, path)),
+  ];
 }
 
 /** Every live server. What a workspace-wide question asks: `workspace/symbol`

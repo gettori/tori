@@ -420,6 +420,10 @@ pub struct EditorDefaults {
     /// through being written.
     #[serde(default)]
     pub organize_imports_on_save: bool,
+    /// Apply every language server's fix-all before organizing and formatting.
+    /// Off because an autofix rewrites code the user did not touch.
+    #[serde(default)]
+    pub code_actions_on_save: bool,
     /// Draw the language server's lenses (reference counts, implementations)
     /// above the lines they describe. Off because it is the one language
     /// feature nobody asks for: it costs a round trip per file per edit
@@ -481,6 +485,7 @@ impl Default for EditorDefaults {
         Self {
             format_on_save: false,
             organize_imports_on_save: false,
+            code_actions_on_save: false,
             code_lens: false,
             vim_mode: false,
             indent_guides: true,
