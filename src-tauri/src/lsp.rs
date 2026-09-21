@@ -68,7 +68,7 @@ fn bundled_entry(app: &AppHandle, rel: &str) -> Option<PathBuf> {
 
 /// Build the spawn command for a server, resolving whichever executable its
 /// launch kind implies.
-fn command_for(app: &AppHandle, server: &LspServer) -> Result<Command, String> {
+fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path) -> Result<Command, String> {
     match &server.launch {
         Launch::BundledNode { entry, args } => {
             let path = bundled_entry(app, entry).ok_or_else(|| {
@@ -85,6 +85,14 @@ fn command_for(app: &AppHandle, server: &LspServer) -> Result<Command, String> {
             // the user chasing a problem that is not there.
             let path = crate::env::resolve_binary(program).ok_or_else(|| {
                 format!("{}: `{program}` was not found on your PATH", server.id)
+            })?;
+            let mut cmd = Command::new(path);
+            cmd.args(args);
+            Ok(cmd)
+        }
+        Launch::ProjectBin { program, args } => {
+            let path = crate::format::project_bin(program, root, project).ok_or_else(|| {
+                format!("{}: `{program}` is not installed in this project or on your PATH", server.id)
             })?;
             let mut cmd = Command::new(path);
             cmd.args(args);
@@ -225,7 +233,7 @@ pub fn lsp_start(
     // every other session's sends behind. The cost is that two concurrent
     // starts for one handle can both get here, which `install_session`
     // settles.
-    let cmd = command_for(&app, server)?;
+    let cmd = command_for(&app, server, &root, Path::new(&project_path))?;
     let (session, stdout) = spawn_session(cmd, &handle.root)?;
     pump_frames(stdout, move |body| {
         let _ = on_message.send(body);
@@ -339,6 +347,9 @@ pub struct LspHealth {
     /// Whether it starts depends on the project, so a probe from Settings,
     /// which has no project, cannot say it is missing.
     pub activation_markers: Vec<String>,
+    /// Started only in some projects, or from the project's own install, so the
+    /// same holds as for `activation_markers`.
+    pub runs_per_project: bool,
 }
 
 /// Build one server's health card.
@@ -378,6 +389,8 @@ fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
         override_path: server.is_override().then(|| server.source.clone()),
         disabled: false,
         activation_markers: server.activation_markers.clone(),
+        runs_per_project: !server.activation_markers.is_empty()
+            || matches!(server.launch, Launch::ProjectBin { .. }),
     }
 }
 
@@ -393,7 +406,7 @@ pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> 
         .map(|server| {
             let missing = match &server.launch {
                 Launch::BundledNode { entry, .. } => bundled_entry(&app, entry).is_none(),
-                Launch::Path { .. } => false,
+                Launch::Path { .. } | Launch::ProjectBin { .. } => false,
             };
             LspHealth { disabled: disabled.contains(&server.id), ..check(server, missing) }
         })
@@ -563,6 +576,10 @@ mod tests {
 
         let rs = cards.iter().find(|c| c.id == "rust").expect("bundled Rust server");
         assert_eq!(rs.program, "rust-analyzer");
+
+        // Settings has no project to find the project's own `biome` in.
+        let biome = cards.iter().find(|c| c.id == "biome").expect("bundled Biome config");
+        assert!(biome.runs_per_project);
 
         // The invariant that must hold on every machine, whatever is
         // installed: a card only says "not found" when something really is

@@ -37,6 +37,7 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   overridePath: null,
   disabled: false,
   activationMarkers: [],
+  runsPerProject: false,
   ...over,
 });
 
@@ -129,6 +130,16 @@ describe("LspSection", () => {
 
     await waitFor(() => expect(screen.getByText(/Runs per project/)).toBeTruthy());
     expect(screen.getByText("deno.json, deno.jsonc")).toBeTruthy();
+    expect(screen.queryByText(/Not installed/)).toBeNull();
+  });
+
+  it("calls a server launched from the project's own install per project, not missing", async () => {
+    health = [
+      server({ id: "biome", label: "Biome", program: "biome", status: "notFound", path: null, version: null, runsPerProject: true }),
+    ];
+    render(() => <LspSection />);
+
+    await waitFor(() => expect(screen.getByText(/Runs per project, from the project's own/)).toBeTruthy());
     expect(screen.queryByText(/Not installed/)).toBeNull();
   });
 

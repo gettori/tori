@@ -35,6 +35,7 @@ export type LspHealth = {
   overridePath: string | null;
   disabled: boolean;
   activationMarkers: string[];
+  runsPerProject: boolean;
 };
 
 // Identical mapping to the agent cards, and for the same reason: the dot
@@ -68,6 +69,9 @@ function LspCard(props: { server: LspHealth }) {
               whether such a server would be found where it actually starts. */}
           <Match when={s().activationMarkers.length > 0}>
             Runs per project, in projects with one of <code>{s().activationMarkers.join(", ")}</code>.
+          </Match>
+          <Match when={s().runsPerProject}>
+            Runs per project, from the project's own <code>node_modules</code> or your PATH.
           </Match>
           <Match when={s().detail}>{(detail) => <>{detail()}</>}</Match>
           <Match when={s().status === "notFound"}>

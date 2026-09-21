@@ -1,0 +1,32 @@
+# oxlint's language server, from the project's own `oxlint` install. See
+# LSP-SERVERS.md.
+#
+# Diagnostics are pulled (`textDocument/diagnostic`), and code actions arrive
+# with their edits.
+
+schema_version = 1
+id = "oxlint"
+label = "oxlint"
+role = "secondary"
+
+# One session per repo: oxlint finds each file's own config.
+root_markers = [".git"]
+
+activation_markers = [".oxlintrc.json", ".oxlintrc.jsonc", "oxlint.config.ts", "oxlint.config.mts"]
+
+verified_against = "oxlint 1.85.0"
+
+[languages]
+ts = "typescript"
+mts = "typescript"
+cts = "typescript"
+tsx = "typescriptreact"
+js = "javascript"
+mjs = "javascript"
+cjs = "javascript"
+jsx = "javascriptreact"
+
+[launch]
+kind = "project_bin"
+program = "oxlint"
+args = ["--lsp"]

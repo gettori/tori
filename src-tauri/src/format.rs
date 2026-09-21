@@ -132,7 +132,13 @@ pub fn detect(file: &Path, project_root: &Path) -> Option<Detected> {
 /// installed Prettier one major behind would reformat the whole file on the
 /// first save and put the diff in somebody's pull request.
 fn resolve(formatter: Formatter, from: &Path, project_root: &Path) -> Option<PathBuf> {
-    let program = formatter.program();
+    project_bin(formatter.program(), from, project_root)
+}
+
+/// `program` from the nearest `node_modules/.bin` between `from` and
+/// `project_root`, else the login PATH. The resolver behind both a formatter and
+/// a `project_bin` language server.
+pub fn project_bin(program: &str, from: &Path, project_root: &Path) -> Option<PathBuf> {
     let mut dir = Some(from);
     while let Some(current) = dir {
         let candidate = current.join("node_modules/.bin").join(program);
@@ -468,6 +474,19 @@ mod tests {
         let local = stub(&root.join("node_modules/.bin"), "prettier", "cat");
         assert_eq!(resolve(Formatter::Prettier, &root, &root), Some(local));
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_project_copy_beats_a_login_path_copy_of_the_same_program() {
+        // `sh` is on every PATH, so the project copy winning is the order, not luck.
+        let root = tmp_tree();
+        let local = stub(&root.join("node_modules/.bin"), "sh", "exit 0");
+        assert_eq!(project_bin("sh", &root, &root), Some(local));
+        let bare = tmp_tree();
+        assert_eq!(project_bin("sh", &bare, &bare), crate::env::resolve_binary("sh"));
+        assert!(project_bin("sh", &bare, &bare).is_some());
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&bare).ok();
     }
 
     #[test]

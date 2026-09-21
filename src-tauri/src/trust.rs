@@ -182,6 +182,20 @@ mod tests {
     }
 
     #[test]
+    fn an_untrusted_project_refuses_a_server_from_its_own_node_modules() {
+        let dir = temp_dir("project_bin");
+        let project = dir.join("projects/work/repo");
+        std::fs::create_dir_all(&project).unwrap();
+        let biome = bundled(
+            "schema_version = 1\nid = \"biome\"\nlabel = \"Biome\"\nroot_markers = [\".git\"]\n\
+             runs_project_code = false\n[languages]\nts = \"typescript\"\n\
+             [launch]\nkind = \"project_bin\"\nprogram = \"biome\"\n",
+            "biome",
+        );
+        assert_eq!(gate_at(&dir.join("trusted.json"), Vec::new, &biome, &project), Err(UNTRUSTED.to_string()));
+    }
+
+    #[test]
     fn an_untrusted_project_refuses_only_the_servers_that_run_its_code() {
         let dir = temp_dir("gate");
         let store = dir.join("trusted.json");

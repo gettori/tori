@@ -9,7 +9,7 @@ deliberately so, down to the override and error-handling rules.
 
 ## Supported servers
 
-Four ship bundled, one is expected on your PATH:
+Four ship bundled, one is expected on your PATH, and two run from the project's own install:
 
 | id | Server | Launch | Notes |
 |---|---|---|---|
@@ -18,6 +18,8 @@ Four ship bundled, one is expected on your PATH:
 | `yaml` | `yaml-language-server` | `bundled_node` | The server behind Red Hat's VS Code YAML extension. Brings its own SchemaStore support. |
 | `eslint` | `vscode-eslint-language-server` | `bundled_node` | A secondary beside `typescript`, started only under an ESLint config in a trusted project. Ships through `vscode-langservers-extracted`, which packages the server behind VS Code's ESLint extension. That server only answers diagnostics when asked (`textDocument/diagnostic`), so Tori pulls them after each change. |
 | `rust` | `rust-analyzer` | `path` | Not bundled: rustup already manages it, and a stale bundled copy would fight the toolchain the project builds with. |
+| `biome` | `biome lsp-proxy` | `project_bin` | A secondary started only under a `biome.json` or `biome.jsonc`, in a trusted project, using the project's own Biome so its version matches CI. |
+| `oxlint` | `oxlint --lsp` | `project_bin` | A secondary started only under an oxlint config (`.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlint.config.ts`, `oxlint.config.mts`), in a trusted project, using the project's own oxlint. |
 
 A language with no server is a supported state, not a broken one. Tori has
 grammars for several languages it has no server for (Python, CSS, HTML); those
@@ -168,6 +170,7 @@ leave someone debugging.
 |---|---|---|
 | `path` | `program`, `args` | Resolves `program` on the **login-shell** PATH, never the GUI process PATH. A server installed via rustup, mise, asdf or nvm is invisible to a naive lookup from a Finder-launched app. |
 | `bundled_node` | `entry`, `args` | Runs `entry` (relative to the app's resource dir, with a dev-tree fallback) using the user's system `node`. For servers Tori ships. |
+| `project_bin` | `program`, `args` | Runs the project's own `program` from the nearest `node_modules/.bin` between the server's root and the project directory, else from the login-shell PATH, the same lookup the project formatter uses. Always counts as `runs_project_code`, and its health card reads "runs per project". |
 
 For a `bundled_node` server the binary that has to exist on the user's machine
 is `node`, so that is what the health card probes.
