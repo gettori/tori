@@ -27,6 +27,7 @@ export function problemsFromState(state: EditorState): Problem[] {
       column: from - line.from + 1,
       severity: (d.severity ?? "error") as Severity,
       message: d.message,
+      source: d.source,
     });
   });
   return list;

@@ -190,7 +190,7 @@ export async function requestCodeActions(
         // so an unfiltered request over the whole file comes back without the
         // organize-imports the caller is there for.
         ...(only ? { only: [...only] } : {}),
-        diagnostics: diagnosticsIn(uri, range),
+        diagnostics: diagnosticsIn(uri, target.serverId, range),
         // 1 is Invoked: a person asked. The other value is Automatic, which
         // licenses a server to answer more cheaply and skip the expensive
         // refactors, and every request Tori makes is the result of a keystroke

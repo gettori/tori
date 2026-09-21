@@ -1478,3 +1478,46 @@ describe("activation markers", () => {
     }
   });
 });
+
+describe("secondary servers", () => {
+  const real = registry;
+  afterEach(() => {
+    registry = real;
+  });
+
+  function withEslint() {
+    registry = [
+      ...real,
+      { ...(real[0] as object), id: "eslint", label: "ESLint", role: "secondary", source: "bundled:eslint" },
+    ];
+    resolve = (filePath) => ({ ...claimantOf(filePath), secondaries: filePath.endsWith(".ts") ? ["eslint"] : [] });
+  }
+
+  it("stops a project's secondary with its primary on eviction, and drops what it published", async () => {
+    withEslint();
+    const m = await freshModule();
+    const { publishDiagnostics, diagnostics } = await import("../../utils/diagnostics");
+    const { diagnosticsIn } = await import("./lspDiagnosticContext");
+    await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
+    expect(started.map((s) => s.serverId)).toEqual(["typescript", "eslint"]);
+    publishDiagnostics("/proj/a/a.ts", [{ line: 1, endLine: 1, column: 1, severity: "warning", message: "unused" }]);
+    const r = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+    channels[1].onmessage?.(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "textDocument/publishDiagnostics",
+        params: { uri: "file:///proj/a/a.ts", diagnostics: [{ range: r, message: "unused" }] },
+      }),
+    );
+    expect(diagnosticsIn("file:///proj/a/a.ts", "eslint", r)).toHaveLength(1);
+
+    await m.ensureLspFor("/proj/b/a.ts", "/proj/b");
+    await m.ensureLspFor("/proj/c/a.ts", "/proj/c");
+    await m.ensureLspFor("/proj/d/a.ts", "/proj/d");
+
+    expect(stopped).toEqual(["typescript", "eslint"]);
+    expect(diagnostics()["/proj/a/a.ts"]).toBeUndefined();
+    expect(diagnosticsIn("file:///proj/a/a.ts", "eslint", r)).toEqual([]);
+    expect(m.lspPluginFor("/proj/a/a.ts")).toEqual([]);
+  });
+});

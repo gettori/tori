@@ -146,6 +146,14 @@ export function resolvedPrimary(path: string): LspServer | null | undefined {
   return resolution.primary ? serverById(resolution.primary) : null;
 }
 
+/** Every server the cached resolution for `path` names, primary first:
+ *  undefined when its directory has not been resolved yet. */
+export function resolvedServerIds(path: string): string[] | undefined {
+  const resolution = resolutions.get(resolutionKey(path));
+  if (!resolution) return undefined;
+  return resolution.primary ? [resolution.primary, ...resolution.secondaries] : resolution.secondaries;
+}
+
 /** Drop cached resolutions for directories at or under `dir`, or all of them. */
 export function forgetResolutions(dir?: string): void {
   forgotten += 1;
