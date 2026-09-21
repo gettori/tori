@@ -5,8 +5,10 @@
 import { ChangeSet, type ChangeDesc, type Text } from "@codemirror/state";
 import { ViewPlugin, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { diffChanges } from "./docDiff";
+import { codeActionClientCapabilities } from "./lspCodeActions";
 import { configurationClientCapabilities, configurationFor } from "./lspConfiguration";
 import type { RawDiagnostic } from "./lspDiagnosticContext";
+import { workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
 import { pathToUri, uriToPath } from "./toriWorkspace";
 import { VersionTrail } from "./versionTrail";
@@ -18,6 +20,7 @@ export type SecondaryOptions = {
   settings: Record<string, unknown> | null;
   initializationOptions: unknown;
   onDiagnostics: (publish: Publish) => void;
+  applyEdit: (params: unknown) => Promise<unknown>;
 };
 
 export type Publish = { uri: string; path: string; version: number | null; diagnostics: RawDiagnostic[] };
@@ -28,11 +31,21 @@ type OpenDoc = { uri: string; version: number; doc: Text; trail: VersionTrail; p
 
 type Frame = { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: unknown };
 
-// Both ways of getting diagnostics: the ESLint server only answers pulls.
-const CAPABILITIES = {
-  textDocument: { publishDiagnostics: { versionSupport: true }, diagnostic: { dynamicRegistration: false } },
-  workspace: { ...configurationClientCapabilities.clientCapabilities.workspace, diagnostics: { refreshSupport: true } },
-};
+// Both ways of getting diagnostics: the ESLint server only answers pulls. The
+// ESLint server offers code actions only to a client declaring literal support.
+// Built per client, since `lspCodeActions` sits in an import cycle with this.
+const capabilities = () => ({
+  textDocument: {
+    publishDiagnostics: { versionSupport: true },
+    diagnostic: { dynamicRegistration: false },
+    ...codeActionClientCapabilities.clientCapabilities.textDocument,
+  },
+  workspace: {
+    ...configurationClientCapabilities.clientCapabilities.workspace,
+    ...workspaceEditClientCapabilities.clientCapabilities.workspace,
+    diagnostics: { refreshSupport: true },
+  },
+});
 
 const METHOD_NOT_FOUND = -32601;
 
@@ -67,13 +80,15 @@ const answerRequest = createRequestRouter<SecondaryClient>({
   "window/workDoneProgress/create": () => {},
   "workspace/configuration": (params, client) => configurationFor(client.settings, params),
   "workspace/diagnostic/refresh": (_params, client) => client.pullAll(),
+  "workspace/applyEdit": (params, client) => client.applyEdit(params),
   "eslint/*": () => {},
 });
 
 export class SecondaryClient {
   readonly initializing: Promise<void>;
   readonly settings: Record<string, unknown> | null;
-  private capabilities: { textDocumentSync?: unknown; diagnosticProvider?: unknown } | null = null;
+  readonly applyEdit: SecondaryOptions["applyEdit"];
+  private capabilities: Record<string, unknown> | null = null;
   // Built at flush rather than at post, so a change queued before `initialize`
   // is answered is still encoded the way the server asked for.
   private outbox: (() => string | null)[] | null = [];
@@ -84,15 +99,16 @@ export class SecondaryClient {
 
   constructor(private opts: SecondaryOptions) {
     this.settings = opts.settings;
+    this.applyEdit = opts.applyEdit;
     this.initializing = this.call("initialize", {
       processId: null,
       clientInfo: { name: "tori" },
       rootUri: opts.rootUri,
-      capabilities: CAPABILITIES,
+      capabilities: capabilities(),
       initializationOptions: opts.initializationOptions ?? undefined,
     }).then(
       (result) => {
-        this.capabilities = (result as { capabilities?: SecondaryClient["capabilities"] } | null)?.capabilities ?? {};
+        this.capabilities = (result as { capabilities?: Record<string, unknown> } | null)?.capabilities ?? {};
         opts.send(notification("initialized", {}));
         if (opts.settings) opts.send(notification("workspace/didChangeConfiguration", { settings: opts.settings }));
         const queued = this.outbox ?? [];
@@ -181,6 +197,15 @@ export class SecondaryClient {
 
   since(path: string, version: number | null): { doc: Text; changes: ChangeDesc } | null {
     return this.docs.get(path)?.trail.since(version) ?? null;
+  }
+
+  /** What the server advertised under `name`, undefined before `initialize` is answered. */
+  capability(name: string): unknown {
+    return this.capabilities?.[name];
+  }
+
+  request<R>(method: string, params: unknown): Promise<R> {
+    return this.initializing.then(() => this.call(method, params) as Promise<R>);
   }
 
   receive(msg: string): void {

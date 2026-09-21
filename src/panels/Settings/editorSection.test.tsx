@@ -39,7 +39,7 @@ beforeEach(() => {
  *  `codeLens` joined them for a related but distinct reason: it is the one
  *  editor setting whose cost is paid whether or not anybody looks at what it
  *  draws, so the row has to be able to say that. */
-const OWN_ROW: (keyof EditorDefaults)[] = ["formatOnSave", "organizeImportsOnSave", "codeLens", "vimMode"];
+const OWN_ROW: (keyof EditorDefaults)[] = ["formatOnSave", "organizeImportsOnSave", "codeActionsOnSave", "codeLens", "vimMode"];
 
 /** Every comfort key of `EditorDefaults` that is a switch, read off the defaults
  *  so a key added to the type shows up here rather than as a silent gap on

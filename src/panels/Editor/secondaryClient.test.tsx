@@ -27,6 +27,7 @@ function fakeServer(capabilities: Record<string, unknown> = { textDocumentSync: 
     settings: { validate: "on" },
     initializationOptions: null,
     onDiagnostics: (p) => published.push(p),
+    applyEdit: () => Promise.resolve({ applied: true }),
   });
   return { client, wire, published };
 }

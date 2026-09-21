@@ -9,10 +9,14 @@
 // run are decisions worth testing without a mounted editor. The gutter and the
 // menu live beside this, not in it.
 
-import { lspTargetFor } from "./lspClient";
+import { ChangeSet, type Text } from "@codemirror/state";
+import { serverById } from "../../utils/lspServers";
+import { diffChanges } from "./docDiff";
+import { lspTargetsFor, type LspTarget } from "./lspClient";
 import { diagnosticsIn, type LspRange } from "./lspDiagnosticContext";
-import { pathToUri } from "./toriWorkspace";
-import type { WorkspaceEdit } from "./workspaceEdit";
+import { offsetIn } from "./lspDiagnostics";
+import { pathToUri, uriToPath } from "./toriWorkspace";
+import { editsByUri, type LspTextEdit, type WorkspaceEdit } from "./workspaceEdit";
 
 /** The action kinds Tori asks for, and the order the menu groups them in.
  *
@@ -87,6 +91,8 @@ export type CodeAction = {
   edit?: WorkspaceEdit;
   command?: LspCommand;
   data?: unknown;
+  /** The server that offered it, which is the one to resolve and run it. */
+  serverId?: string;
   /** The object the server actually sent, kept so `codeAction/resolve` can be
    *  handed its own item back verbatim. The spec's round trip is "return the
    *  action you were given, filled in", and a server is entitled to read fields
@@ -153,14 +159,17 @@ export function normalizeCodeActions(res: unknown): CodeAction[] {
 // -------------------------------------------------------------- asking for it
 
 /**
- * What the server offers for `range` in `path`, or null when there is nothing
+ * What the servers on `path` offer for `range`, or null when there is nothing
  * to ask.
  *
  * Null covers the three states that are the same to a caller: no server claims
- * this file, the server claims it but advertises no `codeActionProvider`, or
- * the request failed. All three mean "no actions here", and every surface
+ * this file, the servers claim it but advertise no `codeActionProvider`, or
+ * every request failed. All three mean "no actions here", and every surface
  * hides itself rather than showing an empty menu that reads as "the server
  * looked and found nothing".
+ *
+ * Every server whose config allows code actions is asked, the primary's answer
+ * first, and each action is tagged with the server that offered it.
  *
  * `await ready` before `supports`, because `supports` is false until
  * `initialize` is answered and refusing then would make the first ⌘⌥A after
@@ -174,8 +183,32 @@ export async function requestCodeActions(
   range: LspRange,
   only?: readonly string[],
 ): Promise<CodeAction[] | null> {
-  const target = lspTargetFor(path);
-  if (!target) return null;
+  const answers = await Promise.all(
+    lspTargetsFor(path, "code_action").map((target) => {
+      const answer = askTarget(target, path, range, only);
+      return serverById(target.serverId)?.role === "secondary" ? briefly(answer) : answer;
+    }),
+  );
+  const answered = answers.filter((a) => a !== null);
+  return answered.length ? answered.flat() : null;
+}
+
+// A server beside the file's own is waited on only this long, so a slow linter
+// cannot hold the menu open for its whole request timeout.
+const SECONDARY_WAIT_MS = 2000;
+
+function briefly<T>(answer: Promise<T | null>): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), SECONDARY_WAIT_MS)));
+  return Promise.race([answer, late]).finally(() => clearTimeout(timer));
+}
+
+async function askTarget(
+  target: LspTarget,
+  path: string,
+  range: LspRange,
+  only?: readonly string[],
+): Promise<CodeAction[] | null> {
   await target.ready;
   if (!target.supports("codeActionProvider")) return null;
   target.sync();
@@ -198,11 +231,17 @@ export async function requestCodeActions(
         triggerKind: 1,
       },
     });
-    return normalizeCodeActions(res);
+    return normalizeCodeActions(res).map((a) => ({ ...a, serverId: target.serverId }));
   } catch (e) {
     console.error("codeAction failed", path, e);
     return null;
   }
+}
+
+/** The live server `serverId` on `path`, which is where an action it offered
+ *  is resolved and run, or null once it is gone. */
+export function codeActionTarget(path: string, serverId: string | undefined): LspTarget | null {
+  return lspTargetsFor(path, "code_action").find((t) => t.serverId === serverId) ?? null;
 }
 
 /**
@@ -230,6 +269,60 @@ export async function requestSourceAction(
   // arriving in answer to "organize imports" would be a different edit under
   // the command's name.
   return actions.find((a) => a.kind === kind || a.kind?.startsWith(`${kind}.`)) ?? null;
+}
+
+/**
+ * Every server's fix-all for `path`, as one list of edits against `doc`, or null
+ * when none offers one.
+ *
+ * All of them answer about the same text, so their edits are merged rather than
+ * applied in turn. A server whose edits touch text an earlier one already
+ * changed is left out whole: two fixes to one range would apply both.
+ */
+export async function requestFixAllEdits(path: string, doc: Text, wholeFile: LspRange): Promise<LspTextEdit[] | null> {
+  const kind = "source.fixAll";
+  const lists = await Promise.all(
+    lspTargetsFor(path, "code_action").map(async (target) => {
+      const actions = await askTarget(target, path, wholeFile, [kind]);
+      const action = actions?.find((a) => a.kind === kind || a.kind?.startsWith(`${kind}.`));
+      const full = action && (action.edit ? action : await resolveCodeAction(path, action));
+      return editsByUri(full?.edit).find((t) => uriToPath(t.uri) === path)?.edits ?? [];
+    }),
+  );
+  let merged = ChangeSet.empty(doc.length);
+  for (const edits of lists) {
+    const set = changeSetOf(doc, edits);
+    if (set && !touches(merged, set)) merged = merged.compose(set.map(merged));
+  }
+  if (merged.empty) return null;
+  const at = (offset: number) => {
+    const line = doc.lineAt(offset);
+    return { line: line.number - 1, character: offset - line.from };
+  };
+  const out: LspTextEdit[] = [];
+  merged.iterChanges((fromA, toA, _fromB, _toB, inserted) =>
+    out.push({ range: { start: at(fromA), end: at(toA) }, newText: inserted.toString() }),
+  );
+  return out;
+}
+
+function changeSetOf(doc: Text, edits: LspTextEdit[]): ChangeSet | null {
+  const changes = [];
+  for (const e of edits) {
+    const from = offsetIn(doc, e.range.start);
+    const to = offsetIn(doc, e.range.end);
+    if (from === null || to === null || to < from) return null;
+    changes.push({ from, to, insert: e.newText });
+  }
+  // Down to the text that actually changed: Biome answers with the whole
+  // document, which would otherwise overlap every other server's fix.
+  return changes.length ? diffChanges(doc, ChangeSet.of(changes, doc.length).apply(doc)) : null;
+}
+
+function touches(done: ChangeSet, next: ChangeSet): boolean {
+  let clash = false;
+  next.iterChangedRanges((from, to) => (clash ||= done.touchesRange(from, to) !== false));
+  return clash;
 }
 
 // ----------------------------------------------------------- ordering a menu
@@ -290,7 +383,7 @@ export async function resolveCodeAction(path: string, action: CodeAction): Promi
   // Nothing to fill in, or nothing to fill it in from. `data` is the token the
   // server round-trips; without one there is no resolve to make.
   if (action.edit || action.data === undefined) return action;
-  const target = lspTargetFor(path);
+  const target = codeActionTarget(path, action.serverId);
   if (!target) return action;
   await target.ready;
   const provider = target.capability("codeActionProvider");
@@ -303,7 +396,7 @@ export async function resolveCodeAction(path: string, action: CodeAction): Promi
   try {
     const res = await target.request<unknown>("codeAction/resolve", action.raw ?? action);
     const [resolved] = normalizeCodeActions([res]);
-    return resolved ?? action;
+    return resolved ? { ...resolved, serverId: action.serverId } : action;
   } catch (e) {
     console.error("codeAction/resolve failed", action.title, e);
     return action;

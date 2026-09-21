@@ -71,21 +71,24 @@ function fakeServer(): Transport {
 
 vi.mock("./lspClient", async () => {
   const { pathToUri: toUri } = await import("./toriWorkspace");
+  const target = () => ({
+    root: REPO,
+    serverId: "typescript",
+    ready: client.initializing.then(
+      () => {},
+      () => {},
+    ),
+    supports: (cap: string) => !!(client.serverCapabilities as Record<string, unknown>)?.[cap],
+    capability: (name: string) => (client.serverCapabilities as Record<string, unknown>)?.[name],
+    sync: () => client.sync(),
+    request: (method: string, params: unknown) => client.request(method, params),
+  });
   return {
     claimedByLsp: () => true,
     ensureLspFor: () => Promise.resolve(),
     lspPluginFor: (path: string) => client.plugin(toUri(path), "typescript"),
-    lspTargetFor: () => ({
-      root: REPO,
-      ready: client.initializing.then(
-        () => {},
-        () => {},
-      ),
-      supports: (cap: string) => !!(client.serverCapabilities as Record<string, unknown>)?.[cap],
-      capability: (name: string) => (client.serverCapabilities as Record<string, unknown>)?.[name],
-      sync: () => client.sync(),
-      request: (method: string, params: unknown) => client.request(method, params),
-    }),
+    lspTargetFor: target,
+    lspTargetsFor: () => [target()],
     lspTargets: () => [],
     executeServerCommand: () => Promise.resolve(null),
     notifyLspFileChanged: () => {},

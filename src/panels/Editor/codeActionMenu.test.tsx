@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
+import { pointerClick } from "../../test/menus";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -22,6 +23,7 @@ const FILE = `${REPO}/a.ts`;
 /** What the fake server offers, per test. */
 let offered: unknown[] = [];
 let provider: unknown = true;
+let commands: unknown = undefined;
 let asked: { method: string; params: unknown }[] = [];
 /** With this on, code-action replies are held until a test releases them, so
  *  two requests can be in flight at once. */
@@ -57,7 +59,7 @@ function fakeServer() {
       asked.push({ method: msg.method!, params: msg.params });
       const result =
         msg.method === "initialize"
-          ? { capabilities: { codeActionProvider: provider } }
+          ? { capabilities: { codeActionProvider: provider, executeCommandProvider: commands } }
           : msg.method === "textDocument/codeAction"
             ? offered
             : null;
@@ -71,29 +73,39 @@ function fakeServer() {
   return transport;
 }
 
-const { pathToUri } = await import("./toriWorkspace");
+const { pathToUri, ToriWorkspace } = await import("./toriWorkspace");
 
 let client: LSPClient;
 
+/** Servers running beside the file's own, as `lspTargetsFor` hands them out. */
+let secondaries: unknown[] = [];
+
 vi.mock("./lspClient", async () => {
   const { pathToUri: toUri } = await import("./toriWorkspace");
+  const target = () => ({
+    root: REPO,
+    serverId: "typescript",
+    ready: client.initializing.then(
+      () => {},
+      () => {},
+    ),
+    supports: (cap: string) => !!(client.serverCapabilities as Record<string, unknown>)?.[cap],
+    capability: (name: string) => (client.serverCapabilities as Record<string, unknown>)?.[name],
+    sync: () => client.sync(),
+    request: (method: string, params: unknown) => client.request(method, params),
+  });
   return {
     claimedByLsp: () => true,
     ensureLspFor: () => Promise.resolve(),
     lspPluginFor: (path: string) => client.plugin(toUri(path), "typescript"),
-    lspTargetFor: () => ({
-      root: REPO,
-      ready: client.initializing.then(
-        () => {},
-        () => {},
-      ),
-      supports: (cap: string) => !!(client.serverCapabilities as Record<string, unknown>)?.[cap],
-      capability: (name: string) => (client.serverCapabilities as Record<string, unknown>)?.[name],
-      sync: () => client.sync(),
-      request: (method: string, params: unknown) => client.request(method, params),
-    }),
+    lspTargetFor: target,
+    lspTargetsFor: () => [target(), ...secondaries],
     lspTargets: () => [],
-    executeServerCommand: () => Promise.resolve(null),
+    executeServerCommand: (
+      t: { request: (method: string, params: unknown) => Promise<unknown> },
+      command: string,
+      args?: unknown[],
+    ) => t.request("workspace/executeCommand", { command, arguments: args }),
     notifyLspFileChanged: () => {},
     onLspChange: () => () => {},
     setSemanticRefreshListener: () => () => {},
@@ -124,6 +136,14 @@ async function mount() {
   client = new LSPClient({
     rootUri: pathToUri(REPO),
     extensions: [...languageServerExtensions()],
+    // Tori's own, since running an action needs the workspace it applies through.
+    workspace: (c) =>
+      new ToriWorkspace(c, {
+        bufferText: () => null,
+        diskText: () => Promise.resolve(null),
+        languageId: () => "typescript",
+        requestOpen: () => {},
+      }),
   }).connect(fakeServer());
 
   const dirty: string[] = [];
@@ -151,6 +171,8 @@ const openMenu = async () => {
 beforeEach(() => {
   offered = [];
   provider = true;
+  commands = undefined;
+  secondaries = [];
   asked = [];
   hold = false;
   held = [];
@@ -241,6 +263,53 @@ describe("the code-action menu", () => {
     expect(params.textDocument.uri).toBe(pathToUri(FILE));
     expect(params.range.start.line).toBe(0);
     expect(params.context.triggerKind).toBe(1);
+  });
+});
+
+describe("a linter running beside the file's own server", () => {
+  function eslint(actions: unknown[]) {
+    const asked: { method: string; params: unknown }[] = [];
+    const caps: Record<string, unknown> = { codeActionProvider: true, executeCommandProvider: { commands: [] } };
+    return {
+      asked,
+      root: REPO,
+      serverId: "eslint",
+      ready: Promise.resolve(),
+      supports: (cap: string) => !!caps[cap],
+      capability: (name: string) => caps[name],
+      sync: () => {},
+      request: (method: string, params: unknown) => {
+        asked.push({ method, params });
+        return Promise.resolve(method === "textDocument/codeAction" ? actions : null);
+      },
+    };
+  }
+
+  const ran = (log: { method: string; params: unknown }[]) =>
+    log.filter((a) => a.method === "workspace/executeCommand").map((a) => (a.params as { command: string }).command);
+
+  it("lists both servers' fixes in one menu, and runs each on the server that offered it", async () => {
+    commands = { commands: ["_typescript.applyCodeAction"] };
+    offered = [
+      { title: "Add import from './b'", kind: "quickfix", command: { title: "t", command: "_typescript.applyCodeAction" } },
+    ];
+    const lint = eslint([
+      { title: "Fix this no-unused-vars problem", kind: "quickfix", command: { title: "e", command: "eslint.applySingleFix" } },
+    ]);
+    secondaries = [lint];
+    await mount();
+
+    await openMenu();
+    const lintFix = await screen.findByRole("menuitem", { name: "Fix this no-unused-vars problem" });
+    expect(screen.getByRole("menuitem", { name: "Add import from './b'" })).toBeTruthy();
+    pointerClick(lintFix);
+    await waitFor(() => expect(ran(lint.asked)).toEqual(["eslint.applySingleFix"]));
+    expect(ran(asked), "the primary is not sent the linter's command").toEqual([]);
+
+    emit(EDITOR_LSP_CODE_ACTION);
+    pointerClick(await screen.findByRole("menuitem", { name: "Add import from './b'" }));
+    await waitFor(() => expect(ran(asked)).toEqual(["_typescript.applyCodeAction"]));
+    expect(ran(lint.asked)).toEqual(["eslint.applySingleFix"]);
   });
 });
 

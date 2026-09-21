@@ -308,6 +308,13 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Asks the language server to sort this file's imports and drop the unused ones, just before the formatter runs. Off by default: it removes imports nothing references yet, which is what a file looks like halfway through being written.",
   },
   {
+    id: "code-actions-on-save",
+    section: "editor",
+    label: "Fix all on save",
+    toggles: "codeActionsOnSave",
+    hint: "Applies every language server's fix-all to the file (ESLint, Biome and oxlint autofixes among them) before imports are organized and the formatter runs. Off by default: an autofix rewrites code you did not touch.",
+  },
+  {
     id: "code-lens",
     section: "editor",
     label: "Code lens",

@@ -172,6 +172,10 @@ export type EditorDefaults = {
    *  imports nothing references yet, which is exactly the state a file is in
    *  halfway through being written. (Wave 7) */
   organizeImportsOnSave: boolean;
+  /** Apply every language server's fix-all to this file before organizing and
+   *  formatting it. Off by default: an autofix rewrites code the user did not
+   *  touch, on a save they made for something else. */
+  codeActionsOnSave: boolean;
   /** Draw the language server's lenses (reference counts, implementations)
    *  above the lines they describe. Off by default, and the only editor setting
    *  whose cost is paid whether or not anybody reads it: a lens is not an answer
@@ -332,6 +336,7 @@ export const DEFAULT_SETTINGS: Settings = {
   editorDefaults: {
     formatOnSave: false,
     organizeImportsOnSave: false,
+    codeActionsOnSave: false,
     codeLens: false,
     vimMode: false,
     indentGuides: true,
@@ -641,6 +646,12 @@ export function formatOnSaveFor(projectPath: string | null): boolean {
  *  on every save is a habit, and the person who has it has it everywhere. */
 export function organizeImportsOnSaveFor(projectPath: string | null): boolean {
   return editorDefaultsFor(projectPath).organizeImportsOnSave ?? false;
+}
+
+/** Whether a save should apply the language servers' fix-all first. A habit, as
+ *  `organizeImportsOnSaveFor` reads it. */
+export function codeActionsOnSaveFor(projectPath: string | null): boolean {
+  return editorDefaultsFor(projectPath).codeActionsOnSave ?? false;
 }
 
 /** Whether the code editor is in vim mode, in the workspace in force. */

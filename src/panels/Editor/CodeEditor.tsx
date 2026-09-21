@@ -57,11 +57,13 @@ import {
   onCodeActionsChange,
   refreshCodeActions,
   requestCodeActions,
+  requestFixAllEdits,
   requestSourceAction,
   resolveCodeAction,
   sameRange,
   type CodeAction,
 } from "./lspCodeActions";
+import { formatWithServer } from "./lspFormatting";
 import type { LspRange } from "./lspDiagnosticContext";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
@@ -77,7 +79,7 @@ import { uriToPath } from "./toriWorkspace";
 import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
 import { clearCallRoots, dropCallRoots, setCallFetcher } from "../../utils/callHierarchy";
-import { formatDocument, jumpToDefinition, findReferences } from "@codemirror/lsp-client";
+import { jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { fallbackCompletion } from "./fallbackCompletion";
 import { fromDisk, type DiskText } from "./lineEndings";
 import { rememberClosed, reviveClosed } from "./closedBuffers";
@@ -107,7 +109,15 @@ import {
 import { requestSend, composeSelectionMention, type SessionTarget } from "../../utils/safeSend";
 import { selectionBlocks } from "../../utils/chatCompose";
 import { findAdapter } from "../../utils/agents";
-import { settings, zoom, editorDefaults, formatOnSaveFor, organizeImportsOnSaveFor, vimModeOn } from "../Settings/settingsStore";
+import {
+  settings,
+  zoom,
+  editorDefaults,
+  codeActionsOnSaveFor,
+  formatOnSaveFor,
+  organizeImportsOnSaveFor,
+  vimModeOn,
+} from "../Settings/settingsStore";
 import { vimExtension } from "./vimMode";
 import {
   on as onEvent,
@@ -802,6 +812,17 @@ export default function CodeEditor(props: {
     },
   };
 
+  /** Every server's fix-all, through the same bounded, identity-guarded round
+   *  trip as organizing. */
+  const fixAllDeps: OrganizeDeps = {
+    current: formatDeps.current,
+    organize: async (path) => {
+      const doc = docFor(path);
+      if (!view || path !== shown || !doc) return null;
+      return requestFixAllEdits(path, doc, wholeFileRange(view));
+    },
+  };
+
   /** Put formatted text into that file's buffer as a minimal change, so the
    *  caret stays on the line it was on. A whole-document replacement maps every
    *  position to the end of the change, which would move the cursor on every
@@ -831,13 +852,20 @@ export default function CodeEditor(props: {
     // answers a different question for every CRLF file, which is what makes the
     // bytes written below the buffer's own (see lineEndings.ts).
     let text = authority.sliceDoc();
+    // First, so organizing and the formatter tidy up after what a fix changed.
+    if (codeActionsOnSaveFor(props.projectRoot)) {
+      const outcome = await organizeForSave(fixAllDeps, path, { text, id: authority.doc });
+      if (outcome.kind === "gone") return;
+      if (outcome.kind === "organized") applyFormatted(path, outcome.text);
+      text = outcome.text;
+    }
     // Before the formatter, not after: organizing rewrites the import block and
     // the formatter is what decides how that block is laid out, so the other
     // order would leave the file formatted the way it was *before* the rewrite.
     // Bounded inside `organizeForSave`, because this one asks a language server
     // and a server can simply not answer.
     if (organizeImportsOnSaveFor(props.projectRoot)) {
-      const outcome = await organizeForSave(organizeDeps, path, { text, id: authority.doc });
+      const outcome = await organizeForSave(organizeDeps, path, { text, id: authorityState(path)?.doc ?? authority.doc });
       if (outcome.kind === "gone") return;
       if (outcome.kind === "organized") applyFormatted(path, outcome.text);
       text = outcome.text;
@@ -2354,7 +2382,7 @@ export default function CodeEditor(props: {
     // formatter at all: a detected one that refused has already said why, and
     // reformatting with a different tool on top of that would be worse than
     // doing nothing.
-    if (!outcome.formatter && view) formatDocument(view);
+    if (!outcome.formatter && view) await formatWithServer(view, path, () => shown === path && !!view);
   }
 
   // What running a code action needs from the app: the same question the rename
