@@ -18,7 +18,8 @@ told to fix the file in place would format the version about to be overwritten.
 | `biome` | `biome format` | `project_bin` | `biome.json`, `biome.jsonc` |
 | `oxfmt` | `oxfmt` | `project_bin` | `.oxfmtrc.json`, `.oxfmtrc.jsonc`, `oxfmt.config.ts`, `oxfmt.config.mts` |
 | `prettier` | `prettier` | `project_bin` | `.prettierrc*`, `prettier.config.*`, or a `prettier` key in `package.json` |
-| `ruff` | `ruff format` | `path` | `ruff.toml`, `.ruff.toml`, or a `[tool.ruff]` table in `pyproject.toml` |
+| `black` | `black` | `project_bin` | A `[tool.black]` table in `pyproject.toml` |
+| `ruff` | `ruff format` | `project_bin` | `ruff.toml`, `.ruff.toml`, or a `[tool.ruff]` table in `pyproject.toml` |
 | `stylua` | `stylua` | `path` | `stylua.toml`, `.stylua.toml` |
 | `gofmt` | `gofmt` | `path` | Nothing. It runs only when `format.byExtension` names it. |
 | `shfmt` | `shfmt` | `path` | Nothing, the same. |
@@ -27,6 +28,12 @@ told to fix the file in place would format the version about to be overwritten.
 The last three have no file that says a repo formats with them. gofmt has no
 config at all, and a `go.mod` says a directory is Go, not how it is formatted.
 shfmt reads `.editorconfig`, which says nothing about shfmt.
+
+A `pyproject.toml` with both `[tool.black]` and `[tool.ruff]` formats with
+Black, whose `priority` is higher: a project that sets up both usually lints
+with Ruff and formats with Black. Black keeps its settings in `pyproject.toml`
+only, so a project running Black on its defaults has no table to find. Name it
+in `format.byExtension`.
 
 ### Vite+
 
@@ -154,7 +161,7 @@ table. The key only has to exist. A path segment cannot itself contain a dot.
 
 | kind | Behaviour |
 |---|---|
-| `project_bin` | The project's own `program` from the nearest `node_modules/.bin` between the config's directory and the project directory, else the login shell PATH. A repo pins its formatter's version so everyone's output matches. |
+| `project_bin` | The project's own `program` from the nearest `node_modules/.bin`, `.venv/bin` or `venv/bin` between the config's directory and the project directory, else the login shell PATH. A repo pins its formatter's version so everyone's output matches. Poetry and pipenv keep their virtualenvs outside the project by default, so a tool installed there comes from the PATH. |
 | `path` | `program` on the login shell PATH, never the GUI process PATH. |
 
 `{file}` in any argument is replaced with the file's absolute path, which is how

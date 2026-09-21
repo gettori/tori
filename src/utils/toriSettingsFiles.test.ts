@@ -20,6 +20,7 @@ const json: LspServer = {
   priority: 0,
   features: ["diagnostics", "code_action", "format"],
   activation_markers: [],
+  activation_keys: [],
   source: "bundled:json",
 };
 

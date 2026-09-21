@@ -11,6 +11,7 @@
 // implementation is a load error, never a silent no-op, because a server that
 // fails to spawn looks exactly like a language with no support at all.
 
+use crate::format::registry::{DirScan, KeyMarker, KeyMarkerToml};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -180,6 +181,9 @@ pub struct LspServer {
     /// Filenames one of which must sit between the file and the project root
     /// for this server to start there. Empty means it always starts.
     pub activation_markers: Vec<String>,
+    /// Keys inside a `.json` or `.toml` file that start it the same way, such as
+    /// `tool.ruff` in `pyproject.toml`.
+    pub activation_keys: Vec<KeyMarker>,
     pub install: Option<Install>,
     /// `"bundled:<id>"` for a built-in, or the absolute path of the user TOML
     /// that defined (or whole-replaced) it, so a forgotten override is visible.
@@ -190,6 +194,11 @@ impl LspServer {
     /// True when this config came from a user TOML rather than a built-in.
     pub fn is_override(&self) -> bool {
         !self.source.starts_with("bundled:")
+    }
+
+    /// True when it starts only where one of its activation markers or keys is.
+    pub fn needs_activation(&self) -> bool {
+        !self.activation_markers.is_empty() || !self.activation_keys.is_empty()
     }
 
     /// The LSP language id for a path's extension, or `None` when this server
@@ -244,6 +253,8 @@ struct ServerToml {
     except_features: Option<Vec<String>>,
     #[serde(default)]
     activation_markers: Vec<String>,
+    #[serde(default)]
+    activation_keys: Vec<KeyMarkerToml>,
     #[serde(default)]
     install: Option<InstallToml>,
 }
@@ -312,6 +323,7 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "features",
     "except_features",
     "activation_markers",
+    "activation_keys",
     "install",
 ];
 
@@ -458,6 +470,12 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
     // Same conversion, same reason: what the frontend sends as the
     // `didChangeConfiguration` payload and as each `workspace/configuration`
     // section is this value verbatim.
+    let activation_keys = raw
+        .activation_keys
+        .into_iter()
+        .map(|k| k.validate("activation_keys", source))
+        .collect::<Result<Vec<_>, _>>()?;
+
     let settings = match raw.settings {
         Some(v) => Some(
             serde_json::to_value(v)
@@ -482,6 +500,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         priority: raw.priority,
         features,
         activation_markers: raw.activation_markers,
+        activation_keys,
         install,
         source: source.to_string(),
     })
@@ -585,6 +604,7 @@ const BUILTINS: &[(&str, &str)] = &[
     ("bundled:prisma", include_str!("../../lsp/prisma.toml")),
     ("bundled:python", include_str!("../../lsp/python.toml")),
     ("bundled:ruby", include_str!("../../lsp/ruby.toml")),
+    ("bundled:ruff", include_str!("../../lsp/ruff.toml")),
     ("bundled:scala", include_str!("../../lsp/scala.toml")),
     ("bundled:svelte", include_str!("../../lsp/svelte.toml")),
     ("bundled:swift", include_str!("../../lsp/swift.toml")),
@@ -643,7 +663,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
 /// Add `server`, whole-replacing any entry with its id, unless it and another
 /// server would both be the unconditional primary for the same files.
 fn admit(list: &mut Vec<LspServer>, server: LspServer) -> Result<(), String> {
-    let unconditional = |s: &LspServer| s.role == Role::Primary && s.activation_markers.is_empty();
+    let unconditional = |s: &LspServer| s.role == Role::Primary && !s.needs_activation();
     if unconditional(&server) {
         for other in list.iter().filter(|o| o.id != server.id && unconditional(o) && o.priority == server.priority) {
             if let Some(ext) = server.languages.keys().find(|ext| other.languages.contains_key(*ext)) {
@@ -679,7 +699,7 @@ pub fn find(id: &str) -> Option<&'static LspServer> {
 
 /// The servers that should run for `file`: the winning primary, and every
 /// secondary. A server qualifies when it claims the extension, is not in
-/// `disabled`, and, if it names `activation_markers`, finds one between the
+/// `disabled`, and, if it names activation markers or keys, finds one between the
 /// file and `project`.
 ///
 /// No primary is the normal, supported state, not a degraded one: a language
@@ -699,7 +719,7 @@ pub fn resolve<'a>(
     // On equal priority a primary that needed a marker is the more specific
     // answer, so it beats one that is always on; the id only keeps it stable.
     let primary = active.iter().copied().filter(|s| s.role == Role::Primary).max_by_key(|s| {
-        (s.priority, !s.activation_markers.is_empty(), std::cmp::Reverse(s.id.as_str()))
+        (s.priority, s.needs_activation(), std::cmp::Reverse(s.id.as_str()))
     });
     let secondaries = active.into_iter().filter(|s| s.role == Role::Secondary).collect();
     (primary, secondaries)
@@ -708,22 +728,23 @@ pub fn resolve<'a>(
 // The same walk as `format::detect`, including its refusal to search for a file
 // outside the project: a marker above the project must not switch a server on.
 fn activated(server: &LspServer, file: &Path, project: &Path) -> bool {
-    server.activation_markers.is_empty()
+    !server.needs_activation()
         || (!project.as_os_str().is_empty()
-            && nearest_marker_dir(&server.activation_markers, file, project).is_some())
+            && nearest_marker_dir(&server.activation_markers, &server.activation_keys, file, project).is_some())
 }
 
 /// The nearest directory from `file` up to `project` (inclusive) holding one of
-/// `markers`. `None` for a file outside the project, which has no ancestor
-/// chain worth searching (a shared file, a worktree's `.shared/`).
-fn nearest_marker_dir(markers: &[String], file: &Path, project: &Path) -> Option<PathBuf> {
+/// `markers` or `keys`. `None` for a file outside the project, which has no
+/// ancestor chain worth searching (a shared file, a worktree's `.shared/`).
+fn nearest_marker_dir(markers: &[String], keys: &[KeyMarker], file: &Path, project: &Path) -> Option<PathBuf> {
     let start = if file.is_dir() { file } else { file.parent().unwrap_or(project) };
     if !start.starts_with(project) {
         return None;
     }
     let mut dir = Some(start);
     while let Some(current) = dir {
-        if markers.iter().any(|m| current.join(m).exists()) {
+        let mut scan = DirScan::new(current);
+        if markers.iter().any(|m| current.join(m).exists()) || keys.iter().any(|k| scan.has_key(k)) {
             return Some(current.to_path_buf());
         }
         if current == project {
@@ -743,7 +764,7 @@ fn nearest_marker_dir(markers: &[String], file: &Path, project: &Path) -> Option
 /// stopping at the project boundary is also what keeps the resolved root
 /// inside the tree the editor already scopes to.
 pub fn root_for(server: &LspServer, file_path: &Path, project_path: &Path) -> PathBuf {
-    nearest_marker_dir(&server.root_markers, file_path, project_path)
+    nearest_marker_dir(&server.root_markers, &[], file_path, project_path)
         .unwrap_or_else(|| project_path.to_path_buf())
 }
 
@@ -877,7 +898,7 @@ program = "demo-server"
         for ext in extensions {
             let always_on: Vec<&&LspServer> = primaries
                 .iter()
-                .filter(|s| s.languages.contains_key(ext) && s.activation_markers.is_empty())
+                .filter(|s| s.languages.contains_key(ext) && !s.needs_activation())
                 .collect();
             let top = always_on.iter().map(|s| s.priority).max().unwrap_or_default();
             let winners: Vec<&str> = always_on.iter().filter(|s| s.priority == top).map(|s| s.id.as_str()).collect();

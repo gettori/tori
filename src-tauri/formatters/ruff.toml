@@ -1,4 +1,5 @@
-# Ruff's formatter, from the login PATH. See FORMATTERS.md.
+# Ruff's formatter, from the project's own virtualenv or the login PATH. See
+# FORMATTERS.md.
 
 schema_version = 1
 id = "ruff"
@@ -12,7 +13,7 @@ files = ["ruff.toml", ".ruff.toml"]
 keys = [{ file = "pyproject.toml", key = "tool.ruff" }]
 
 [launch]
-kind = "path"
+kind = "project_bin"
 program = "ruff"
 # `--stdin-filename` is what finds the config and the per-file settings.
 args = ["format", "--stdin-filename", "{file}", "-"]

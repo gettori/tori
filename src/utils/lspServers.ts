@@ -45,6 +45,7 @@ export type LspServer = {
   priority: number;
   features: LspFeature[];
   activation_markers: string[];
+  activation_keys: { file: string; path: string[] }[];
   source: string;
 };
 
@@ -171,10 +172,10 @@ export function forgetResolutions(dir?: string): void {
   }
 }
 
-/** Whether creating or deleting this file can change what some file resolves to. */
+/** Whether a change to this file can change what some file resolves to. */
 export function isActivationMarker(path: string): boolean {
   const name = path.split("/").pop() ?? "";
-  return servers().some((s) => s.activation_markers.includes(name));
+  return servers().some((s) => s.activation_markers.includes(name) || s.activation_keys.some((k) => k.file === name));
 }
 
 /** The LSP language id to open this path as, for its claiming server.

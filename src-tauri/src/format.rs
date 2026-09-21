@@ -101,14 +101,17 @@ fn resolve(formatter: &Formatter, from: &Path, project_root: &Path) -> Option<Pa
     }
 }
 
-/// `program` from the nearest `node_modules/.bin` between `from` and
-/// `project_root`, else the login PATH. The resolver behind both a formatter and
-/// a `project_bin` language server.
+// The names uv and `python -m venv` use. Poetry and pipenv keep theirs outside
+// the project by default, so their tools come from the PATH.
+const PROJECT_BIN_DIRS: [&str; 3] = ["node_modules/.bin", ".venv/bin", "venv/bin"];
+
+/// `program` from the nearest `node_modules/.bin` or Python virtualenv between
+/// `from` and `project_root`, else the login PATH. The resolver behind both a
+/// formatter and a `project_bin` language server.
 pub fn project_bin(program: &str, from: &Path, project_root: &Path) -> Option<PathBuf> {
     let mut dir = Some(from);
     while let Some(current) = dir {
-        let candidate = current.join("node_modules/.bin").join(program);
-        if candidate.is_file() {
+        if let Some(candidate) = PROJECT_BIN_DIRS.iter().map(|d| current.join(d).join(program)).find(|c| c.is_file()) {
             return Some(candidate);
         }
         if current == project_root {
@@ -558,11 +561,12 @@ mod tests {
         assert_eq!(args("prettier", "/p/a.ts"), vec!["--stdin-filepath", "/p/a.ts"]);
         assert_eq!(args("oxfmt", "/p/a.ts"), vec!["--stdin-filepath", "/p/a.ts"]);
         assert_eq!(args("ruff", "/p/a.py"), vec!["format", "--stdin-filename", "/p/a.py", "-"]);
+        assert_eq!(args("black", "/p/a.py"), vec!["--quiet", "--stdin-filename", "/p/a.py", "-"]);
         assert_eq!(args("gofmt", "/p/a.go"), Vec::<String>::new());
         assert_eq!(args("shfmt", "/p/a.sh"), vec!["--filename", "/p/a.sh"]);
         assert_eq!(args("stylua", "/p/a.lua"), vec!["--stdin-filepath", "/p/a.lua", "-"]);
         assert_eq!(args("vite-plus", "/p/a.ts"), vec!["fmt", "--stdin-filepath", "/p/a.ts"]);
-        assert_eq!(bundled().len(), 8, "a bundled formatter with no args line here");
+        assert_eq!(bundled().len(), 9, "a bundled formatter with no args line here");
     }
 
     #[test]
