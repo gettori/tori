@@ -2,7 +2,10 @@ import { createSignal, Show } from "solid-js";
 import { requestSend, composeHunkComment, type SessionTarget } from "../../utils/safeSend";
 import { hunkCommentBlocks } from "../../utils/chatCompose";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { MessageSquare } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import IconButton from "../../components/IconButton/IconButton";
+import Icon from "../../components/Icon/Icon";
 import styles from "./HunkCommentInput.module.css";
 
 /** A per-hunk "comment on this" affordance shared by ReviewPanel and
@@ -58,16 +61,15 @@ export default function HunkCommentInput(props: {
   return (
     <>
       {/* `tooltipWhenDisabled`: the hint is the reason it is greyed out. */}
-      <Button
-        size="xs"
-        variant="ghost"
+      <IconButton
+        size="sm"
+        icon={<Icon icon={MessageSquare} />}
+        active={open()}
         disabled={disabled()}
         tooltipWhenDisabled
         tooltip={hint()}
         onClick={toggle}
-      >
-        Comment
-      </Button>
+      />
       <Show when={open()}>
         <div class={styles.commentBox}>
           <input

@@ -5,7 +5,7 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  background: var(--canvas-default);
+  background: var(--canvas-card);
 }
 
 .topBar {
@@ -90,8 +90,8 @@
 .body {
   flex: 1;
   overflow: auto;
-  padding-bottom: calc(8px * var(--ui-scale));
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-md);
+  padding: calc(4px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+  font-family: var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace);
+  font-size: var(--editor-font-size, 13px);
   line-height: 1.4;
 }

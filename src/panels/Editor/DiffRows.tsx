@@ -1,6 +1,7 @@
 import { createMemo, createSignal, mergeProps, onCleanup, For, Show } from "solid-js";
 import { changedRange, toSideBySide, type DiffRow } from "../../utils/diffView";
 import { overlay, paintRows, type Span } from "../../utils/syntaxRows";
+import { editorDefaults } from "../Settings/settingsStore";
 import styles from "./DiffRows.module.css";
 
 // One hunk's rows, rendered the same way wherever a diff appears.
@@ -175,7 +176,7 @@ export default function DiffRows(allProps: {
           selectable ? styles.selectable : ""
         } ${picked() ? styles.selected : ""} ${spans() ? styles.painted : ""} ${numbered() ? styles.numbered : ""} ${
           commentable ? styles.commentable : ""
-        }`}
+        } ${editorDefaults().softWrap ? styles.wrap : ""}`}
         ref={(el) => {
           if (index === null || !row) return;
           const key = props.offset + index;

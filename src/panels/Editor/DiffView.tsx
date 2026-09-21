@@ -599,11 +599,13 @@ export default function DiffView(props: {
                       identically inline and side-by-side, so per-hunk actions
                       land in one place in both modes. */}
                   <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
-                    <span>{hunk.header}</span>
+                    <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
                     <Show when={canStage()}>
-                      <Button
-                        size="xs"
-                        variant="ghost"
+                      {/* The same glyphs the top bar uses for the whole file, one
+                          level down. */}
+                      <IconButton
+                        size="sm"
+                        icon={<Icon icon={staged() ? Minus : Plus} />}
                         disabled={applying()}
                         tooltip={staged() ? "Unstage this hunk" : "Stage this hunk"}
                         onClick={() =>
@@ -612,16 +614,14 @@ export default function DiffView(props: {
                           // hunk before applying it.
                           void applyHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))
                         }
-                      >
-                        {staged() ? "Unstage hunk" : "Stage hunk"}
-                      </Button>
+                      />
                       {/* Only while this hunk has lines picked, so the header stays
                           the width it always was until there is something to act
                           on. */}
                       <Show when={picked()?.hunk === hi() ? picked() : null}>
                         {(sel) => (
                           <Button
-                            size="xs"
+                            size="sm"
                             disabled={applying()}
                             tooltip={staged() ? "Unstage only the selected lines" : "Stage only the selected lines"}
                             onClick={() =>
@@ -637,15 +637,13 @@ export default function DiffView(props: {
                         )}
                       </Show>
                       <Show when={!staged()}>
-                        <Button
-                          size="xs"
-                          variant="ghost"
+                        <IconButton
+                          size="sm"
+                          icon={<Icon icon={Undo2} />}
                           disabled={applying()}
                           tooltip="Throw away this hunk"
                           onClick={() => void discardHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))}
-                        >
-                          Discard hunk
-                        </Button>
+                        />
                       </Show>
                     </Show>
                     <HunkCommentInput
