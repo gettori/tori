@@ -11,9 +11,15 @@ import type { LspHealth } from "./LspSection";
 // node, which they plainly already have.
 
 let health: LspHealth[] = [];
+let trusted: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => (cmd === "lsp_health" ? Promise.resolve(health) : Promise.resolve(null)),
+  invoke: (cmd: string, args?: { path?: string }) => {
+    if (cmd === "lsp_health") return Promise.resolve(health);
+    if (cmd === "trusted_projects") return Promise.resolve(trusted);
+    if (cmd === "revoke_project") trusted = trusted.filter((p) => p !== args?.path);
+    return Promise.resolve(null);
+  },
 }));
 
 const { default: LspSection } = await import("./LspSection");
@@ -35,6 +41,7 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
 beforeEach(() => {
   cleanup();
   health = [];
+  trusted = [];
 });
 
 describe("LspSection", () => {
@@ -95,5 +102,16 @@ describe("LspSection", () => {
     await waitFor(() =>
       expect(screen.getByText(/\/home\/me\/.config\/tori\/lsp\/typescript.toml/)).toBeTruthy(),
     );
+  });
+
+  it("lists trusted projects, and Revoke takes one off the list", async () => {
+    trusted = ["/work/repo", "/work/other"];
+    render(() => <LspSection />);
+
+    const revoke = await screen.findByRole("button", { name: "Revoke /work/repo" });
+    revoke.click();
+
+    await waitFor(() => expect(screen.queryByText("/work/repo")).toBeNull());
+    expect(screen.getByText("/work/other")).toBeTruthy();
   });
 });

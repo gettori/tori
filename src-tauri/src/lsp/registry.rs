@@ -83,6 +83,9 @@ pub struct LspServer {
     /// The server version this config's conventions were captured against.
     /// `None` is normal and renders neutral, never as drift.
     pub verified_against: Option<String>,
+    /// Whether this server executes code from the project it serves, which is
+    /// what makes `lsp_start` refuse it in a project the user has not trusted.
+    pub runs_project_code: bool,
     /// `"bundled:<id>"` for a built-in, or the absolute path of the user TOML
     /// that defined (or whole-replaced) it, so a forgotten override is visible.
     pub source: String,
@@ -139,10 +142,18 @@ struct ServerToml {
     schema_associations: bool,
     #[serde(default)]
     verified_against: Option<String>,
+    #[serde(default = "default_runs_project_code")]
+    runs_project_code: bool,
 }
 
 fn default_timeout_ms() -> u64 {
     20_000
+}
+
+// A config that does not say is assumed to run project code: a wrongly gated
+// server costs one trust click, a wrongly ungated one runs a stranger's code.
+fn default_runs_project_code() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,6 +179,7 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "settings",
     "schema_associations",
     "verified_against",
+    "runs_project_code",
 ];
 
 const REQUIRED_TOP_LEVEL: &[&str] = &["schema_version", "id", "label", "languages", "root_markers", "launch"];
@@ -275,6 +287,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         settings,
         schema_associations: raw.schema_associations,
         verified_against: raw.verified_against,
+        runs_project_code: raw.runs_project_code,
         source: source.to_string(),
     })
 }

@@ -15,6 +15,7 @@ const json: LspServer = {
   settings: null,
   schema_associations: true,
   verified_against: null,
+  runs_project_code: false,
   source: "bundled:json",
 };
 

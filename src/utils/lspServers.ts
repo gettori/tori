@@ -35,6 +35,8 @@ export type LspServer = {
    *  config rather than handed to everything. */
   schema_associations: boolean;
   verified_against: string | null;
+  /** Refused by `lsp_start` in a project the user has not trusted. */
+  runs_project_code: boolean;
   source: string;
 };
 

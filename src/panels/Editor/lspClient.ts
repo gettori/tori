@@ -22,6 +22,7 @@ import type { Extension } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { noteRefused, onTrustChange, trustProject, UNTRUSTED } from "../../utils/projectTrust";
 import { dropDiagnosticsUnder } from "../../utils/diagnostics";
 import {
   ensureLspServersLoaded,
@@ -148,6 +149,40 @@ const starting = new Map<string, Promise<unknown>>();
 // that has already been killed.
 let generation = 0;
 
+// A buffer asks for its server once, on open, so a trust change has to ask
+// again on behalf of every file still open under the project it touched.
+const requested = new Map<string, string>();
+
+onTrustChange(({ path, trusted }) => {
+  if (trusted) reaskUnder(path);
+  else void stopLspUnder(path).then(() => reaskUnder(path));
+});
+
+function pruneClosed(): void {
+  for (const file of requested.keys()) if (liveBufferText(file) === null) requested.delete(file);
+}
+
+function reaskUnder(scope: string): void {
+  pruneClosed();
+  for (const [file, projectPath] of requested) {
+    if (isUnderPath(projectPath, scope)) void ensureLspFor(file, projectPath);
+  }
+}
+
+function askToTrust(projectPath: string): void {
+  emitWith<ToastEvent>(TOAST, {
+    kind: "info",
+    message: "Language servers that run this project's code stay off until you trust it.",
+    action: {
+      label: "Trust",
+      run: () =>
+        void trustProject(projectPath).catch((e) =>
+          emitWith<ToastEvent>(TOAST, { message: `Could not trust this project: ${String(e)}` }),
+        ),
+    },
+  });
+}
+
 /** Ensure a server is running for `path`, starting one if this is the first
  *  file of its language under that root. Resolves to the session that will
  *  answer for the path, or null when no server claims it.
@@ -164,6 +199,8 @@ export async function ensureLspFor(path: string, projectPath: string): Promise<v
   // No server for this language is the normal case, not a failure.
   if (!server) return;
   if (!isUnderPath(path, projectPath)) return;
+  pruneClosed();
+  requested.set(path, projectPath);
   for (const r of touchWarmRoot(projectPath)) void stopLspUnder(r);
 
   const prev = starting.get(server.id) ?? Promise.resolve();
@@ -211,6 +248,10 @@ async function startFor(
       onMessage: channel,
     });
   } catch (e) {
+    if (e === UNTRUSTED) {
+      if (noteRefused(projectPath)) askToTrust(projectPath);
+      return;
+    }
     console.error("lsp_start failed", server.id, e);
     return;
   }

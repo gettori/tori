@@ -15,6 +15,10 @@ root_markers = ["tsconfig.json", "jsconfig.json", "package.json", ".git"]
 # which is too tight for the first request after a project opens.
 request_timeout_ms = 20000
 
+# The server prefers the workspace's own `node_modules/typescript` to the
+# bundled one and loads tsconfig `plugins`, so opening a file runs project code.
+runs_project_code = true
+
 [languages]
 ts = "typescript"
 mts = "typescript"

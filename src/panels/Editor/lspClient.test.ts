@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { ToastEvent } from "../../utils/events";
 
 // The client's lifecycle signal, and which session answers for a given file.
 // Everything below the module (Tauri and @codemirror/lsp-client) is stubbed:
@@ -71,6 +72,8 @@ let resolveRoot: (args: StartArgs) => string = (a) => a.projectPath;
 // is the state `lsp_health` reports as `notFound`.
 let startFails = false;
 
+let untrusted = new Set<string>();
+
 // When set, lsp_start blocks on this until the test releases it, so a teardown
 // can be interleaved with a start that is already in flight.
 let holdStart: Promise<void> | null = null;
@@ -100,6 +103,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       const a = args as unknown as StartArgs;
       started.push({ serverId: a.serverId, filePath: a.filePath, projectPath: a.projectPath });
       if (startFails) return Promise.reject(new Error("`rust-analyzer` was not found on your PATH"));
+      if (untrusted.has(a.serverId)) return Promise.reject("untrusted");
       const result = { serverId: a.serverId, root: resolveRoot(a) };
       return holdStart ? holdStart.then(() => result) : Promise.resolve(result);
     }
@@ -113,6 +117,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         message: args?.message as string,
       });
     }
+    if (cmd === "trust_project") return Promise.resolve(args?.path);
     if (cmd === "lsp_stop_all") stopped.push("all");
     if (cmd === "lsp_stop") stopped.push((args?.handle as { serverId: string }).serverId);
     return Promise.resolve();
@@ -212,6 +217,7 @@ beforeEach(() => {
   associations = [];
   resolveRoot = (a) => a.projectPath;
   startFails = false;
+  untrusted = new Set();
   holdStart = null;
 });
 
@@ -1333,5 +1339,94 @@ describe("claimedByLsp", () => {
     await m.ensureLspFor("/proj/k/src/a.ts", "/proj/k");
     expect(m.claimedByLsp("/proj/k/notes.txt")).toBe(false);
     expect(m.claimedByLsp("/elsewhere/notes/a.ts")).toBe(false);
+  });
+});
+
+describe("project trust", () => {
+  beforeEach(() => vi.stubGlobal("window", new EventTarget()));
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function openBuffers(paths: string[]) {
+    const { setBufferAccess } = await import("./liveBuffers");
+    return setBufferAccess({
+      textOf: (p: string) => (paths.includes(p) ? "" : null),
+      isDirty: () => false,
+      adopt: () => {},
+      patch: () => "absent" as const,
+    });
+  }
+
+  async function collectToasts() {
+    const { onWith, TOAST } = await import("../../utils/events");
+    const toasts: ToastEvent[] = [];
+    const off = onWith<ToastEvent>(TOAST, (t) => toasts.push(t));
+    return { toasts, off };
+  }
+
+  it("asks once, and Trust attaches every open buffer without reopening it", async () => {
+    const m = await freshModule();
+    const trust = await import("../../utils/projectTrust");
+    const { toasts, off } = await collectToasts();
+    const offBuffers = await openBuffers(["/proj/t/a.ts", "/proj/t/b.ts"]);
+    untrusted.add("typescript");
+    try {
+      await m.ensureLspFor("/proj/t/a.ts", "/proj/t");
+      await m.ensureLspFor("/proj/t/b.ts", "/proj/t");
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].action?.label).toBe("Trust");
+      expect(m.lspPluginFor("/proj/t/a.ts")).toEqual([]);
+
+      untrusted.clear();
+      let fired = 0;
+      const offChange = m.onLspChange(() => (fired += 1));
+      toasts[0].action?.run();
+      await vi.waitFor(() => expect(m.lspPluginFor("/proj/t/a.ts")).not.toEqual([]));
+      expect(m.lspPluginFor("/proj/t/b.ts")).not.toEqual([]);
+      expect(fired).toBeGreaterThan(0);
+      expect(trust.refusedProjects()).toEqual([]);
+      offChange();
+    } finally {
+      off();
+      offBuffers();
+    }
+  });
+
+  it("leaves a dismissed project off, listed for Settings, and does not ask again", async () => {
+    const m = await freshModule();
+    const trust = await import("../../utils/projectTrust");
+    const { toasts, off } = await collectToasts();
+    untrusted.add("typescript");
+    try {
+      await m.ensureLspFor("/proj/n/a.ts", "/proj/n");
+      expect(toasts).toHaveLength(1);
+
+      await m.ensureLspFor("/proj/n/b.ts", "/proj/n");
+      expect(toasts).toHaveLength(1);
+      expect(m.lspPluginFor("/proj/n/b.ts")).toEqual([]);
+      expect(trust.refusedProjects()).toEqual(["/proj/n"]);
+    } finally {
+      off();
+    }
+  });
+
+  it("Revoke stops the project's servers without asking about the refusal it causes", async () => {
+    const m = await freshModule();
+    const trust = await import("../../utils/projectTrust");
+    const offBuffers = await openBuffers(["/proj/v/a.ts"]);
+    await m.ensureLspFor("/proj/v/a.ts", "/proj/v");
+    expect(m.lspPluginFor("/proj/v/a.ts")).not.toEqual([]);
+
+    const { toasts, off } = await collectToasts();
+    untrusted.add("typescript");
+    try {
+      await trust.revokeProject("/proj/v");
+      await vi.waitFor(() => expect(started.filter((s) => s.serverId === "typescript")).toHaveLength(2));
+      expect(stopped).toContain("typescript");
+      expect(m.lspPluginFor("/proj/v/a.ts")).toEqual([]);
+      expect(toasts).toHaveLength(0);
+    } finally {
+      off();
+      offBuffers();
+    }
   });
 });
