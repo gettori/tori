@@ -1,5 +1,8 @@
-import { For, Show, Switch, Match, createResource } from "solid-js";
+import { For, Show, Switch, Match, createResource, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import Button from "../../../../components/Button/Button";
+import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
+import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
 import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
@@ -88,6 +91,57 @@ function LspCard(props: { server: LspHealth }) {
   );
 }
 
+function TrustedProjects() {
+  const [trusted, { refetch }] = createResource(() => invoke<string[]>("trusted_projects"));
+  onCleanup(onTrustChange(() => void refetch()));
+
+  const run = (verb: string, change: Promise<void>) =>
+    void change.catch((e) =>
+      emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} this project: ${String(e)}` }),
+    );
+
+  return (
+    <div class={styles.card}>
+      <div class={styles.cardHead}>
+        <span class={styles.cardTitle}>Trusted projects</span>
+      </div>
+      <div class={styles.cardStatus}>
+        Servers that run a project's own code, like TypeScript and Rust, only start in these.
+      </div>
+      <For each={refusedProjects()}>
+        {(path) => (
+          <div class={styles.cardActions}>
+            <code class={styles.cardProgram}>{path}</code>
+            <Button
+              variant="primary"
+              size="xs"
+              aria-label={`Trust ${path}`}
+              onClick={() => run("trust", trustProject(path))}
+            >
+              Trust
+            </Button>
+          </div>
+        )}
+      </For>
+      <For each={trusted() ?? []}>
+        {(path) => (
+          <div class={styles.cardActions}>
+            <code class={styles.cardProgram}>{path}</code>
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label={`Revoke ${path}`}
+              onClick={() => run("revoke", revokeProject(path))}
+            >
+              Revoke
+            </Button>
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
 export default function LspSection() {
   const [health] = createResource(() => invoke<LspHealth[]>("lsp_health"));
 
@@ -115,6 +169,7 @@ export default function LspSection() {
           </div>
         </Match>
       </Switch>
+      <TrustedProjects />
     </section>
   );
 }

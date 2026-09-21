@@ -205,6 +205,7 @@ pub fn lsp_start(
 ) -> Result<LspHandle, String> {
     let server =
         registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
+    crate::trust::gate(server, Path::new(&project_path))?;
 
     let root = registry::root_for(server, Path::new(&file_path), Path::new(&project_path));
     let handle = LspHandle {
