@@ -1,0 +1,34 @@
+# LaTeX via TexLab. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "latex"
+label = "LaTeX (TexLab)"
+root_markers = [".latexmkrc", "latexmkrc", ".texlabroot", "texlabroot", "Tectonic.toml", ".git"]
+
+# Builds only when asked to, which Tori never does.
+runs_project_code = false
+
+[languages]
+tex = "latex"
+sty = "latex"
+cls = "latex"
+bib = "bibtex"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "texlab"
+args = []
+
+[install]
+kind = "github_release"
+repo = "latex-lsp/texlab"
+version = "v5.26.0"
+
+[install.assets.macos-aarch64]
+file = "texlab-aarch64-macos.tar.gz"
+sha256 = "af7972ffd230711ba04ada9b69cc32ce9111d9196ba69538062872faefdbee56"
+
+[install.assets.macos-x86_64]
+file = "texlab-x86_64-macos.tar.gz"
+sha256 = "6091611f756b28e1a57612b130c196df4b0bb6e22dde5cf5d890578513397daf"

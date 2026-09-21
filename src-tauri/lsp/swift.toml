@@ -1,0 +1,23 @@
+# Swift via `sourcekit-lsp`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "swift"
+label = "Swift"
+root_markers = ["Package.swift", ".git"]
+request_timeout_ms = 60000
+
+# Builds `Package.swift`, which is Swift code.
+runs_project_code = true
+
+[languages]
+swift = "swift"
+
+[launch]
+kind = "path"
+program = "sourcekit-lsp"
+args = []
+
+[install]
+kind = "hint"
+text = "It ships with Xcode and with the Swift toolchain."

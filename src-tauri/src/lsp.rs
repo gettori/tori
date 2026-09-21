@@ -29,6 +29,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::env::augmented_path;
 
+pub mod managed;
 pub mod registry;
 pub mod schemastore;
 
@@ -98,6 +99,7 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
             cmd.args(args);
             Ok(cmd)
         }
+        Launch::Managed { .. } => managed::command(server, &managed::servers_dir()),
     }
 }
 
@@ -213,9 +215,13 @@ pub fn lsp_start(
 ) -> Result<LspHandle, String> {
     let server =
         registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
+    let root = registry::root_for(server, Path::new(&file_path), Path::new(&project_path));
+    // Before the trust gate, so a missing server fails as missing, not as a trust
+    // prompt. No lock: a login-shell lookup is too slow to hold every other send
+    // behind, and `install_session` settles two starts that race to one handle.
+    let cmd = command_for(&app, server, &root, Path::new(&project_path))?;
     crate::trust::gate(server, Path::new(&project_path))?;
 
-    let root = registry::root_for(server, Path::new(&file_path), Path::new(&project_path));
     let handle = LspHandle {
         server_id: server_id.clone(),
         root: root.to_string_lossy().into_owned(),
@@ -228,12 +234,6 @@ pub fn lsp_start(
         }
     }
 
-    // The lock is deliberately not held across the spawn: `command_for` can
-    // resolve a binary through a login shell, which is far too slow to block
-    // every other session's sends behind. The cost is that two concurrent
-    // starts for one handle can both get here, which `install_session`
-    // settles.
-    let cmd = command_for(&app, server, &root, Path::new(&project_path))?;
     let (session, stdout) = spawn_session(cmd, &handle.root)?;
     pump_frames(stdout, move |body| {
         let _ = on_message.send(body);
@@ -350,16 +350,34 @@ pub struct LspHealth {
     /// Started only in some projects, or from the project's own install, so the
     /// same holds as for `activation_markers`.
     pub runs_per_project: bool,
+    /// How to install it, for a server its own toolchain manages.
+    pub hint: Option<String>,
+    /// The version Tori can install on this machine.
+    pub available_version: Option<String>,
+    /// The version of Tori's own copy, when that is the one that runs: a copy
+    /// on the login PATH wins, and then this is `None`.
+    pub installed_version: Option<String>,
 }
 
 /// Build one server's health card.
 ///
 /// `bundled_entry_missing` is passed in rather than resolved here so this stays
 /// free of `AppHandle` and testable off a real Tauri app.
-fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
+fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(PathBuf, managed::Installed)>) -> LspHealth {
     let program = server.launch.program().to_string();
-    let resolved = crate::env::resolve_binary(&program);
-    let version = resolved.as_deref().and_then(crate::health::run_version);
+    let on_path = crate::env::resolve_binary(&program);
+    // Tori's copy only counts when nothing on the PATH shadows it, and its
+    // version comes from the manifest: `--version` on a script started without
+    // its runtime would report nothing.
+    let installed = installed.filter(|_| on_path.is_none());
+    let (resolved, version) = match (on_path, &installed) {
+        (Some(path), _) => {
+            let version = crate::health::run_version(&path);
+            (Some(path), version)
+        }
+        (None, Some((bin, manifest))) => (Some(bin.clone()), Some(manifest.version.clone())),
+        (None, None) => (None, None),
+    };
 
     let detail = bundled_entry_missing
         .then(|| "the bundled server is not installed (run `pnpm lsp:install`)".to_string());
@@ -391,6 +409,12 @@ fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
         activation_markers: server.activation_markers.clone(),
         runs_per_project: !server.activation_markers.is_empty()
             || matches!(server.launch, Launch::ProjectBin { .. }),
+        hint: match &server.install {
+            Some(registry::Install::Hint { text }) => Some(text.clone()),
+            _ => None,
+        },
+        available_version: server.install.as_ref().and_then(|i| i.available_version()).map(str::to_string),
+        installed_version: installed.map(|(_, manifest)| manifest.version),
     }
 }
 
@@ -401,16 +425,34 @@ fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
 #[tauri::command]
 pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> {
     let disabled = disabled_servers(crate::settings::get_settings().lsp.disabled, root.as_deref());
+    let servers_dir = managed::servers_dir();
     registry::registry()
         .iter()
         .map(|server| {
             let missing = match &server.launch {
                 Launch::BundledNode { entry, .. } => bundled_entry(&app, entry).is_none(),
-                Launch::Path { .. } | Launch::ProjectBin { .. } => false,
+                Launch::Path { .. } | Launch::ProjectBin { .. } | Launch::Managed { .. } => false,
             };
-            LspHealth { disabled: disabled.contains(&server.id), ..check(server, missing) }
+            let installed = managed::installed(&servers_dir, &server.id);
+            LspHealth { disabled: disabled.contains(&server.id), ..check(server, missing, installed) }
         })
         .collect()
+}
+
+/// Install Tori's own copy of a `managed` server, or replace it with the
+/// version this build pins.
+#[tauri::command(async)]
+pub fn lsp_install(server_id: String) -> Result<(), String> {
+    let server =
+        registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
+    managed::install(server, &managed::servers_dir()).map(|_| ())
+}
+
+/// Remove Tori's own copy of a server.
+#[tauri::command(async)]
+pub fn lsp_uninstall(server_id: String) -> Result<(), String> {
+    registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
+    managed::remove(&managed::servers_dir(), &server_id)
 }
 
 /// Which servers should run for one file, by id.
@@ -565,7 +607,7 @@ mod tests {
     #[test]
     fn health_reports_one_card_per_registered_server() {
         let cards =
-            registry::registry().iter().map(|s| check(s, false)).collect::<Vec<_>>();
+            registry::registry().iter().map(|s| check(s, false, None)).collect::<Vec<_>>();
         assert_eq!(cards.len(), registry::registry().len());
 
         let ts = cards.iter().find(|c| c.id == "typescript").expect("bundled TS server");
@@ -613,7 +655,7 @@ mod tests {
         // call this healthy. It is not: without the entry script every
         // `lsp_start` fails, and a card that says "found" sends the user
         // chasing the wrong problem.
-        let missing = check(ts, true);
+        let missing = check(ts, true, None);
         assert_eq!(missing.status, crate::health::BinaryStatus::NotFound);
         assert!(
             missing.detail.as_deref().unwrap_or_default().contains("lsp:install"),
@@ -622,12 +664,12 @@ mod tests {
         );
 
         // With the entry present the same server stops reporting a problem.
-        let present = check(ts, false);
+        let present = check(ts, false, None);
         assert!(present.detail.is_none());
         assert_ne!(present.status, crate::health::BinaryStatus::NotFound);
 
         // A `path` server has no entry script, so it can never be in this state.
-        assert!(check(registry::find("rust").unwrap(), false).detail.is_none());
+        assert!(check(registry::find("rust").unwrap(), false, None).detail.is_none());
     }
 
     #[test]

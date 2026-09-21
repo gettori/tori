@@ -1,0 +1,24 @@
+# Elixir via `elixir-ls`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "elixir"
+label = "Elixir"
+root_markers = ["mix.exs", ".git"]
+request_timeout_ms = 120000
+
+# Compiles the project with mix, and macros run at compile time.
+runs_project_code = true
+
+[languages]
+ex = "elixir"
+exs = "elixir"
+
+[launch]
+kind = "path"
+program = "elixir-ls"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `brew install elixir-ls`."

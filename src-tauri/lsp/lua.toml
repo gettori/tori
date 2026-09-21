@@ -1,0 +1,33 @@
+# Lua via LuaLS (lua-language-server). See LSP-SERVERS.md.
+
+schema_version = 1
+id = "lua"
+label = "Lua"
+root_markers = [".luarc.json", ".luarc.jsonc", ".git"]
+
+# A `.luarc.json` can name a plugin script from the project, which it runs.
+runs_project_code = true
+
+[languages]
+lua = "lua"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "lua-language-server"
+args = []
+
+[install]
+kind = "github_release"
+repo = "LuaLS/lua-language-server"
+version = "3.19.1"
+
+[install.assets.macos-aarch64]
+file = "lua-language-server-3.19.1-darwin-arm64.tar.gz"
+sha256 = "0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c"
+bin = "bin/lua-language-server"
+
+[install.assets.macos-x86_64]
+file = "lua-language-server-3.19.1-darwin-x64.tar.gz"
+sha256 = "eb373c159cbe556711d7cd316315de2dce969bfd54b31edb7eb9cab2937f2cca"
+bin = "bin/lua-language-server"

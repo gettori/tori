@@ -1,0 +1,23 @@
+# Dart via `dart`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "dart"
+label = "Dart"
+root_markers = ["pubspec.yaml", ".git"]
+request_timeout_ms = 60000
+
+# Loads analyzer plugins named by the project.
+runs_project_code = true
+
+[languages]
+dart = "dart"
+
+[launch]
+kind = "path"
+program = "dart"
+args = ["language-server", "--protocol=lsp"]
+
+[install]
+kind = "hint"
+text = "It ships with the Dart and Flutter SDKs."

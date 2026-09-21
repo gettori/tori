@@ -1,0 +1,23 @@
+# fish via fish-lsp. It needs `fish` itself on the PATH. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "fish"
+label = "fish"
+root_markers = [".git"]
+
+# Runs `fish` over the files it serves.
+runs_project_code = true
+
+[languages]
+fish = "fish"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "fish-lsp"
+args = ["start"]
+
+[install]
+kind = "npm"
+package = "fish-lsp"
+version = "1.1.4"

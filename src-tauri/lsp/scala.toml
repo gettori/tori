@@ -1,0 +1,25 @@
+# Scala via `metals`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "scala"
+label = "Scala"
+root_markers = ["build.sbt", "build.sc", "build.mill", ".git"]
+request_timeout_ms = 120000
+
+# Imports the build through sbt, Mill or Bloop, which run build code.
+runs_project_code = true
+
+[languages]
+scala = "scala"
+sc = "scala"
+sbt = "scala"
+
+[launch]
+kind = "path"
+program = "metals"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `cs install metals` (Coursier)."

@@ -1,0 +1,28 @@
+# Python via pyright. The id is `python` so the example in LSP-SERVERS.md,
+# which a user may already have in ~/.config/tori/lsp/, whole-replaces this one
+# instead of being refused as a second primary for .py.
+
+schema_version = 1
+id = "python"
+label = "Python (pyright)"
+root_markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pyrightconfig.json", ".git"]
+request_timeout_ms = 30000
+
+# Asks the project's interpreter for its search paths, which runs its site
+# hooks and `.pth` files.
+runs_project_code = true
+
+[languages]
+py = "python"
+pyi = "python"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "pyright-langserver"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "pyright"
+version = "1.1.414"

@@ -1,0 +1,22 @@
+# Nix via `nil`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "nix"
+label = "Nix"
+root_markers = ["flake.nix", ".git"]
+
+# Can evaluate the flake it is pointed at.
+runs_project_code = true
+
+[languages]
+nix = "nix"
+
+[launch]
+kind = "path"
+program = "nil"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `nix profile install nixpkgs#nil`."

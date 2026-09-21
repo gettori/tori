@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createResource, onCleanup } from "solid-js";
+import { For, Show, Switch, Match, createResource, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
@@ -36,6 +36,11 @@ export type LspHealth = {
   disabled: boolean;
   activationMarkers: string[];
   runsPerProject: boolean;
+  hint: string | null;
+  // The version Tori can install on this machine.
+  availableVersion: string | null;
+  // Tori's own copy, set only when that is the one that runs.
+  installedVersion: string | null;
 };
 
 // Identical mapping to the agent cards, and for the same reason: the dot
@@ -49,8 +54,25 @@ const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
-function LspCard(props: { server: LspHealth }) {
+// Hints mark commands with backticks, the way the server TOMLs write them.
+const withCode = (text: string) => text.split("`").map((part, i) => (i % 2 ? <code>{part}</code> : part));
+
+function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> }) {
   const s = () => props.server;
+  const [pending, setPending] = createSignal<"install" | "remove" | null>(null);
+  const outdated = () =>
+    s().installedVersion !== null && s().availableVersion !== null && s().installedVersion !== s().availableVersion;
+  const installable = () => s().installedVersion === null && s().status === "notFound" && s().availableVersion !== null;
+
+  const run = (verb: string, command: "lsp_install" | "lsp_uninstall") => {
+    setPending(command === "lsp_install" ? "install" : "remove");
+    invoke(command, { serverId: s().id })
+      .then(() => props.onChange(), (e) =>
+        emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} ${s().label}: ${String(e)}` }),
+      )
+      .finally(() => setPending(null));
+  };
+
   return (
     <div class={styles.card}>
       <div class={styles.cardHead}>
@@ -74,6 +96,23 @@ function LspCard(props: { server: LspHealth }) {
             Runs per project, from the project's own <code>node_modules</code> or your PATH.
           </Match>
           <Match when={s().detail}>{(detail) => <>{detail()}</>}</Match>
+          <Match when={pending() === "install"}>
+            Installing {s().label}. A large server can take a minute to download.
+          </Match>
+          <Match when={s().installedVersion}>
+            {(version) => (
+              <>
+                Installed by Tori, version {version()}.
+                <Show when={outdated()}> Version {s().availableVersion} is available.</Show>
+              </>
+            )}
+          </Match>
+          <Match when={installable()}>
+            Available, not installed. Tori can install version {s().availableVersion}.
+          </Match>
+          <Match when={s().status === "notFound" && s().hint}>
+            {(hint) => <>Not installed. {withCode(hint())}</>}
+          </Match>
           <Match when={s().status === "notFound"}>
             Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
           </Match>
@@ -96,6 +135,44 @@ function LspCard(props: { server: LspHealth }) {
           {(ext) => <span class={styles.chip}>.{ext}</span>}
         </For>
       </div>
+
+      <Show when={!s().disabled && (installable() || s().installedVersion)}>
+        <div class={styles.cardActions}>
+          <Show when={installable()}>
+            <Button
+              variant="primary"
+              size="xs"
+              aria-label={`Install ${s().label}`}
+              disabled={pending() !== null}
+              onClick={() => run("install", "lsp_install")}
+            >
+              Install
+            </Button>
+          </Show>
+          <Show when={outdated()}>
+            <Button
+              variant="primary"
+              size="xs"
+              aria-label={`Update ${s().label}`}
+              disabled={pending() !== null}
+              onClick={() => run("update", "lsp_install")}
+            >
+              Update
+            </Button>
+          </Show>
+          <Show when={s().installedVersion}>
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label={`Remove ${s().label}`}
+              disabled={pending() !== null}
+              onClick={() => run("remove", "lsp_uninstall")}
+            >
+              Remove
+            </Button>
+          </Show>
+        </div>
+      </Show>
 
       <Show when={s().overridePath}>
         {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
@@ -156,7 +233,7 @@ function TrustedProjects() {
 }
 
 export default function LspSection() {
-  const [health] = createResource(() => invoke<LspHealth[]>("lsp_health", { root: overlayRoot() }));
+  const [health, { refetch }] = createResource(() => invoke<LspHealth[]>("lsp_health", { root: overlayRoot() }));
 
   return (
     <section class={styles.section}>
@@ -165,7 +242,7 @@ export default function LspSection() {
         <span class={styles.sectionRule} />
       </div>
       <Switch>
-        <Match when={health.loading}>
+        <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which language servers are installed…</div>
         </Match>
         <Match when={health.error}>
@@ -173,7 +250,7 @@ export default function LspSection() {
         </Match>
         <Match when={health()}>
           <div class={styles.cardStack}>
-            <For each={health()}>{(server) => <LspCard server={server} />}</For>
+            <For each={health()}>{(server) => <LspCard server={server} onChange={() => Promise.resolve(refetch())} />}</For>
           </div>
           <div class={styles.note}>
             A language with no server still opens and edits normally, it just has no completion or

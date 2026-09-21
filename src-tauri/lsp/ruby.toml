@@ -1,0 +1,24 @@
+# Ruby via `ruby-lsp`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "ruby"
+label = "Ruby"
+root_markers = ["Gemfile", ".git"]
+
+# Boots the project's bundle to read its gems.
+runs_project_code = true
+
+[languages]
+rb = "ruby"
+rake = "ruby"
+gemspec = "ruby"
+
+[launch]
+kind = "path"
+program = "ruby-lsp"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `gem install ruby-lsp`."

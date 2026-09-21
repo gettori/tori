@@ -1,0 +1,23 @@
+# Terraform via `terraform-ls`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "terraform"
+label = "Terraform"
+root_markers = [".terraform", ".git"]
+
+# Asks the project's providers for their schemas, which runs them.
+runs_project_code = true
+
+[languages]
+tf = "terraform"
+tfvars = "terraform-vars"
+
+[launch]
+kind = "path"
+program = "terraform-ls"
+args = ["serve"]
+
+[install]
+kind = "hint"
+text = "Install it with `brew install hashicorp/tap/terraform-ls`."

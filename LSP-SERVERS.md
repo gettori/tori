@@ -9,7 +9,7 @@ deliberately so, down to the override and error-handling rules.
 
 ## Supported servers
 
-Four ship bundled, one is expected on your PATH, and two run from the project's own install:
+These seven are the core set: four ship bundled, one is expected on your PATH, and two run from the project's own install:
 
 | id | Server | Launch | Notes |
 |---|---|---|---|
@@ -22,9 +22,56 @@ Four ship bundled, one is expected on your PATH, and two run from the project's 
 | `oxlint` | `oxlint --lsp` | `project_bin` | A secondary started only under an oxlint config (`.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlint.config.ts`, `oxlint.config.mts`), in a trusted project, using the project's own oxlint. |
 
 A language with no server is a supported state, not a broken one. Tori has
-grammars for several languages it has no server for (Python, CSS, HTML); those
-files open, edit, highlight and save exactly as before, they just get no
-language intelligence.
+grammars for far more languages than it has servers for; those files open,
+edit, highlight and save exactly as before, they just get no language
+intelligence.
+
+### The catalog
+
+Beyond the core set, Tori knows how to run one server for each of these
+languages. Each is a primary, and each is either bundled, installed by Tori
+from Settings > Languages at a pinned version (see "Installing servers"), or
+installed by you, with a hint on its card saying how.
+
+| id | Server | How it gets there |
+|---|---|---|
+| `css` | `vscode-css-language-server` | Bundled, from `vscode-langservers-extracted`. |
+| `html` | `vscode-html-language-server` | Bundled, from `vscode-langservers-extracted`. |
+| `python` | `pyright-langserver` | npm `pyright` |
+| `bash` | `bash-language-server` | npm `bash-language-server` |
+| `svelte` | `svelteserver` | npm `svelte-language-server` |
+| `php` | `intelephense` | npm `intelephense` |
+| `vim` | `vim-language-server` | npm `vim-language-server` |
+| `elm` | `elm-language-server` | npm `@elm-tooling/elm-language-server` (needs `elm`) |
+| `prisma` | `prisma-language-server` | npm `@prisma/language-server` |
+| `perl` | `perlnavigator` | npm `perlnavigator-server` |
+| `graphql` | `graphql-lsp` | npm `graphql-language-service-cli` |
+| `fish` | `fish-lsp` | npm `fish-lsp` (needs `fish`) |
+| `clangd` | `clangd` | GitHub release; Xcode's command line tools already ship one |
+| `lua` | `lua-language-server` | GitHub release |
+| `markdown` | `marksman` | GitHub release |
+| `latex` | `texlab` | GitHub release |
+| `xml` | LemMinX | GitHub release |
+| `typst` | `tinymist` | GitHub release |
+| `toml` | `tombi` | GitHub release |
+| `clojure` | `clojure-lsp` | GitHub release |
+| `go` | `gopls` | You: `go install golang.org/x/tools/gopls@latest` |
+| `ruby` | `ruby-lsp` | You: `gem install ruby-lsp` |
+| `java` | `jdtls` | You: `brew install jdtls` |
+| `kotlin` | `kotlin-language-server` | You: `brew install kotlin-language-server` |
+| `swift` | `sourcekit-lsp` | Ships with Xcode and the Swift toolchain |
+| `csharp` | `csharp-ls` | You: `dotnet tool install --global csharp-ls` |
+| `zig` | `zls` | You: the release that matches your Zig |
+| `haskell` | `haskell-language-server-wrapper` | You: `ghcup install hls` |
+| `ocaml` | `ocamllsp` | You: `opam install ocaml-lsp-server` |
+| `elixir` | `elixir-ls` | You: `brew install elixir-ls` |
+| `dart` | `dart language-server` | Ships with the Dart and Flutter SDKs |
+| `terraform` | `terraform-ls` | You: `brew install hashicorp/tap/terraform-ls` |
+| `scala` | `metals` | You: `cs install metals` |
+| `nix` | `nil` | You: `nix profile install nixpkgs#nil` |
+
+A server Tori can install still prefers your own copy: if its program is on
+your login PATH, that one runs.
 
 ### Schemas for JSON and YAML
 
@@ -129,6 +176,11 @@ kind = "path"
 program = "some-language-server"
 args = ["--stdio"]
 
+# optional: how the server gets onto the machine. See "Installing servers" below.
+[install]
+kind = "hint"
+text = "Install it with `brew install some-language-server`."
+
 # optional: passed to the server as `initializationOptions`, verbatim.
 [initialization_options]
 someServerSpecificFlag = true
@@ -171,9 +223,60 @@ leave someone debugging.
 | `path` | `program`, `args` | Resolves `program` on the **login-shell** PATH, never the GUI process PATH. A server installed via rustup, mise, asdf or nvm is invisible to a naive lookup from a Finder-launched app. |
 | `bundled_node` | `entry`, `args` | Runs `entry` (relative to the app's resource dir, with a dev-tree fallback) using the user's system `node`. For servers Tori ships. |
 | `project_bin` | `program`, `args` | Runs the project's own `program` from the nearest `node_modules/.bin` between the server's root and the project directory, else from the login-shell PATH, the same lookup the project formatter uses. Always counts as `runs_project_code`, and its health card reads "runs per project". |
+| `managed` | `program`, `args`, `runtime` | Runs `program` from the login-shell PATH, else the copy Tori installed from `[install]`. `runtime` is `node` (Tori's copy is a script, run with the user's `node`) or `native`. Needs an `[install]` of kind `npm` or `github_release`. |
 
 For a `bundled_node` server the binary that has to exist on the user's machine
 is `node`, so that is what the health card probes.
+
+### Installing servers
+
+`[install]` says how a server gets onto the machine. Its `kind` is a closed
+set, and a kind Tori does not implement is a load error:
+
+| kind | Fields | Behaviour |
+|---|---|---|
+| `npm` | `package`, `version` | `npm install --ignore-scripts <package>@<version>`. `version` is one exact version; a range or `latest` is a load error. |
+| `github_release` | `repo`, `version`, `[install.assets.<platform>]` | Downloads `https://github.com/<repo>/releases/download/<version>/<file>` over HTTPS only, and checks its `sha256` before anything is written. `version` is the release tag. |
+| `hint` | `text` | Nothing is installed; the health card shows `text`. For a server its own toolchain manages. |
+
+`npm` and `github_release` need `launch.kind = "managed"`, and `managed` needs
+one of them: Tori installs into `~/.config/tori/servers/<id>/`, and only
+`managed` looks there.
+
+Each release asset is keyed by platform, `<os>-<arch>` as Rust names them
+(`macos-aarch64`, `macos-x86_64`), and names its `file`, its `sha256`, and
+optionally `bin`, the server binary's path inside the install, which defaults
+to `program`. A `.zip` or `.tar` archive is unpacked with the system `tar`,
+which refuses an entry that would land outside the install; any other file is
+the binary itself.
+
+```toml
+[launch]
+kind = "managed"
+runtime = "native"
+program = "lua-language-server"
+args = []
+
+[install]
+kind = "github_release"
+repo = "LuaLS/lua-language-server"
+version = "3.19.1"
+
+[install.assets.macos-aarch64]
+file = "lua-language-server-3.19.1-darwin-arm64.tar.gz"
+sha256 = "0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c"
+bin = "bin/lua-language-server"
+```
+
+Install, Update and Remove live on the server's card in Settings > Languages.
+An install is built beside the real directory and moved into place only when
+it is complete, so a failed download or a checksum mismatch leaves the
+previous install, or nothing. Versions are pinned in the config and move with
+Tori releases; when Tori pins a newer one, the card offers Update.
+
+The checksum and the URL sit in the same file, so the checksum proves the
+bytes that arrived are the bytes this config named. It proves nothing about a
+config someone else wrote.
 
 ### Root resolution
 
@@ -258,8 +361,9 @@ Until you do, the project still highlights, edits and saves, and servers with
 
 ## Example: a from-scratch third-party server
 
-A complete config for Python via `pyright`, which Tori does not ship. Drop this
-at `~/.config/tori/lsp/python.toml` and restart:
+A complete config for Python via a `pyright` you installed yourself. Tori's
+catalog has a `python` server too, so this file, dropped at
+`~/.config/tori/lsp/python.toml`, whole-replaces it. Restart after adding it:
 
 ```toml
 schema_version = 1

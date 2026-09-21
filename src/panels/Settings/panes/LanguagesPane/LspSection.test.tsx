@@ -12,9 +12,11 @@ import type { LspHealth } from "./LspSection";
 
 let health: LspHealth[] = [];
 let trusted: string[] = [];
+let calls: [string, unknown][] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { path?: string }) => {
+    calls.push([cmd, args]);
     if (cmd === "lsp_health") return Promise.resolve(health);
     if (cmd === "trusted_projects") return Promise.resolve(trusted);
     if (cmd === "revoke_project") trusted = trusted.filter((p) => p !== args?.path);
@@ -38,13 +40,30 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   disabled: false,
   activationMarkers: [],
   runsPerProject: false,
+  hint: null,
+  availableVersion: null,
+  installedVersion: null,
   ...over,
 });
+
+const pyright = (over: Partial<LspHealth> = {}) =>
+  server({
+    id: "python",
+    label: "Python (pyright)",
+    program: "pyright-langserver",
+    status: "notFound",
+    path: null,
+    version: null,
+    extensions: ["py", "pyi"],
+    availableVersion: "1.1.414",
+    ...over,
+  });
 
 beforeEach(() => {
   cleanup();
   health = [];
   trusted = [];
+  calls = [];
 });
 
 describe("LspSection", () => {
@@ -141,6 +160,45 @@ describe("LspSection", () => {
 
     await waitFor(() => expect(screen.getByText(/Runs per project, from the project's own/)).toBeTruthy());
     expect(screen.queryByText(/Not installed/)).toBeNull();
+  });
+
+  it("offers Install for a server Tori can install, and asks again for health once it is in", async () => {
+    health = [pyright()];
+    render(() => <LspSection />);
+
+    const install = await screen.findByRole("button", { name: "Install Python (pyright)" });
+    expect(screen.getByText(/Available, not installed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+
+    health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.414", installedVersion: "1.1.414" })];
+    install.click();
+
+    await waitFor(() => expect(screen.getByText(/Installed by Tori, version 1.1.414\./)).toBeTruthy());
+    expect(calls).toContainEqual(["lsp_install", { serverId: "python" }]);
+    expect(calls.filter(([cmd]) => cmd === "lsp_health")).toHaveLength(2);
+  });
+
+  it("offers Remove, and no Update, for a current install", async () => {
+    health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.414", installedVersion: "1.1.414" })];
+    render(() => <LspSection />);
+
+    const remove = await screen.findByRole("button", { name: "Remove Python (pyright)" });
+    expect(screen.queryByRole("button", { name: /Update|Install/ })).toBeNull();
+
+    remove.click();
+    await waitFor(() => expect(calls).toContainEqual(["lsp_uninstall", { serverId: "python" }]));
+  });
+
+  it("offers Update beside Remove when Tori now pins a newer version", async () => {
+    health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.400", installedVersion: "1.1.400" })];
+    render(() => <LspSection />);
+
+    const update = await screen.findByRole("button", { name: "Update Python (pyright)" });
+    expect(screen.getByText(/Version 1.1.414 is available/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove Python (pyright)" })).toBeTruthy();
+
+    update.click();
+    await waitFor(() => expect(calls).toContainEqual(["lsp_install", { serverId: "python" }]));
   });
 
   it("lists trusted projects, and Revoke takes one off the list", async () => {

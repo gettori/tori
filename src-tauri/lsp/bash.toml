@@ -1,0 +1,24 @@
+# Bash via bash-language-server. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "bash"
+label = "Bash"
+root_markers = [".git"]
+
+# Parses scripts and hands them to shellcheck; it runs none of them.
+runs_project_code = false
+
+[languages]
+sh = "shellscript"
+bash = "shellscript"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "bash-language-server"
+args = ["start"]
+
+[install]
+kind = "npm"
+package = "bash-language-server"
+version = "5.8.1"

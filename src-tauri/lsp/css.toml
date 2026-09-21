@@ -1,0 +1,21 @@
+# CSS, SCSS and Less, from `vscode-langservers-extracted`, which Tori already
+# ships for ESLint. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "css"
+label = "CSS"
+
+root_markers = [".git"]
+
+# Reads only the stylesheets it is handed.
+runs_project_code = false
+
+[languages]
+css = "css"
+scss = "scss"
+less = "less"
+
+[launch]
+kind = "bundled_node"
+entry = "resources/lsp/node_modules/vscode-langservers-extracted/bin/vscode-css-language-server"
+args = ["--stdio"]

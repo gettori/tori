@@ -1,0 +1,24 @@
+# Perl via Perl Navigator. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "perl"
+label = "Perl"
+root_markers = [".git"]
+
+# Checks files with `perl -c`, which runs their BEGIN blocks and `use` imports.
+runs_project_code = true
+
+[languages]
+pl = "perl"
+pm = "perl"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "perlnavigator"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "perlnavigator-server"
+version = "0.8.20"

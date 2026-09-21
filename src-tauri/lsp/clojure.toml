@@ -1,0 +1,35 @@
+# Clojure via clojure-lsp. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "clojure"
+label = "Clojure"
+root_markers = ["deps.edn", "project.clj", "shadow-cljs.edn", "bb.edn", ".git"]
+request_timeout_ms = 60000
+
+# Asks the project's build tool (clojure, lein) for its classpath.
+runs_project_code = true
+
+[languages]
+clj = "clojure"
+cljs = "clojure"
+cljc = "clojure"
+edn = "clojure"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "clojure-lsp"
+args = []
+
+[install]
+kind = "github_release"
+repo = "clojure-lsp/clojure-lsp"
+version = "2026.07.06-14.34.19"
+
+[install.assets.macos-aarch64]
+file = "clojure-lsp-native-macos-aarch64.zip"
+sha256 = "dd9a8e36add53b8d8166bb3d7580c6e5563401aea87b62600786af2e7d37ccde"
+
+[install.assets.macos-x86_64]
+file = "clojure-lsp-native-macos-amd64.zip"
+sha256 = "0449f7f8fc975157cb4e5cdcf365bcd43bcf1fa47b99256427e7a86e4c17fc3f"

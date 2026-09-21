@@ -1,0 +1,23 @@
+# Go via `gopls`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "go"
+label = "Go"
+root_markers = ["go.work", "go.mod", ".git"]
+request_timeout_ms = 60000
+
+# Loads packages through `go list`, which can fetch the toolchain go.mod names.
+runs_project_code = true
+
+[languages]
+go = "go"
+
+[launch]
+kind = "path"
+program = "gopls"
+args = []
+
+[install]
+kind = "hint"
+text = "Install it with `go install golang.org/x/tools/gopls@latest`."

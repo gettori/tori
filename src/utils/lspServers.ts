@@ -12,7 +12,8 @@ import { isToriSettingsFile } from "./toriSettingsFiles";
 export type LspLaunch =
   | { kind: "bundled_node"; entry: string; args: string[] }
   | { kind: "path"; program: string; args: string[] }
-  | { kind: "project_bin"; program: string; args: string[] };
+  | { kind: "project_bin"; program: string; args: string[] }
+  | { kind: "managed"; program: string; args: string[]; runtime: "node" | "native" };
 
 export type LspFeature = "diagnostics" | "code_action" | "format";
 

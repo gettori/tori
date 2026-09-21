@@ -1,0 +1,23 @@
+# Svelte via svelte-language-server. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "svelte"
+label = "Svelte"
+root_markers = ["svelte.config.js", "package.json", ".git"]
+
+# Loads the project's `svelte.config.js` and its preprocessors.
+runs_project_code = true
+
+[languages]
+svelte = "svelte"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "svelteserver"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "svelte-language-server"
+version = "0.18.4"

@@ -1,0 +1,22 @@
+# Prisma schema via @prisma/language-server. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "prisma"
+label = "Prisma"
+root_markers = ["package.json", ".git"]
+
+runs_project_code = false
+
+[languages]
+prisma = "prisma"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "prisma-language-server"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "@prisma/language-server"
+version = "31.12.10"

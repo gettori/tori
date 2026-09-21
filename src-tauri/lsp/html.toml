@@ -1,0 +1,20 @@
+# HTML, from `vscode-langservers-extracted`, which Tori already ships for
+# ESLint. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "html"
+label = "HTML"
+
+root_markers = [".git"]
+
+# Reads only the documents it is handed.
+runs_project_code = false
+
+[languages]
+html = "html"
+htm = "html"
+
+[launch]
+kind = "bundled_node"
+entry = "resources/lsp/node_modules/vscode-langservers-extracted/bin/vscode-html-language-server"
+args = ["--stdio"]

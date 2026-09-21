@@ -1,0 +1,23 @@
+# PHP via Intelephense (the free tier). See LSP-SERVERS.md.
+
+schema_version = 1
+id = "php"
+label = "PHP (Intelephense)"
+root_markers = ["composer.json", ".git"]
+
+# Static analysis only.
+runs_project_code = false
+
+[languages]
+php = "php"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "intelephense"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "intelephense"
+version = "1.18.5"

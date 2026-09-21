@@ -1,0 +1,24 @@
+# Haskell via `haskell-language-server-wrapper`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "haskell"
+label = "Haskell"
+root_markers = ["hie.yaml", "stack.yaml", "cabal.project", "package.yaml", ".git"]
+request_timeout_ms = 120000
+
+# Compiles the project, and Template Haskell runs at compile time.
+runs_project_code = true
+
+[languages]
+hs = "haskell"
+lhs = "lhaskell"
+
+[launch]
+kind = "path"
+program = "haskell-language-server-wrapper"
+args = ["--lsp"]
+
+[install]
+kind = "hint"
+text = "Install it with `ghcup install hls`."

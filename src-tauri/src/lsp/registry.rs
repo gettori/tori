@@ -1,6 +1,6 @@
 // Language-server registry: what used to be one hard-coded
-// `typescript-language-server` in lsp.rs is now data. Four servers ship bundled
-// (`lsp/{typescript,rust,json,yaml}.toml`, embedded at compile time); a user
+// `typescript-language-server` in lsp.rs is now data. Every `lsp/*.toml` ships
+// bundled (embedded at compile time); a user
 // can add or whole-replace one by dropping a `schema_version = 1` TOML file
 // into `~/.config/tori/lsp/`. See LSP-SERVERS.md for the schema.
 //
@@ -43,6 +43,9 @@ pub enum Launch {
     /// The project's own copy from `node_modules/.bin`, nearest the session
     /// root first, then the login PATH. Always runs project code.
     ProjectBin { program: String, args: Vec<String> },
+    /// The user's own copy on the login PATH, else the one Tori installed from
+    /// `[install]` under `~/.config/tori/servers/<id>/`.
+    Managed { program: String, args: Vec<String>, runtime: Runtime },
 }
 
 impl Launch {
@@ -52,9 +55,62 @@ impl Launch {
     pub fn program(&self) -> &str {
         match self {
             Launch::BundledNode { .. } => "node",
-            Launch::Path { program, .. } | Launch::ProjectBin { program, .. } => program,
+            Launch::Path { program, .. } | Launch::ProjectBin { program, .. } | Launch::Managed { program, .. } => {
+                program
+            }
         }
     }
+}
+
+/// What Tori's own copy of a `managed` server is run with: `node` for a script,
+/// nothing for a native binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Runtime {
+    Node,
+    Native,
+}
+
+/// How a server gets onto the machine. A closed set like the launch kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Install {
+    /// `npm install --ignore-scripts <package>@<version>`, at an exact version.
+    Npm { package: String, version: String },
+    /// One release asset per platform, checked against its sha256 before it
+    /// is unpacked. `version` is the release tag.
+    GithubRelease { repo: String, version: String, assets: BTreeMap<String, Asset> },
+    /// Text only, for a server its own toolchain installs.
+    Hint { text: String },
+}
+
+impl Install {
+    /// The version Tori would install on this machine, or `None` when it
+    /// installs nothing here: a hint, or a release with no build for it.
+    pub fn available_version(&self) -> Option<&str> {
+        match self {
+            Install::Npm { version, .. } => Some(version),
+            Install::GithubRelease { version, assets, .. } => assets.contains_key(&platform()).then_some(version),
+            Install::Hint { .. } => None,
+        }
+    }
+}
+
+/// One platform's release asset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Asset {
+    /// The asset's filename in the release. A `.zip` or `.tar*` is unpacked,
+    /// anything else is the binary itself.
+    pub file: String,
+    pub sha256: String,
+    /// The server binary, relative to the install directory.
+    pub bin: String,
+}
+
+/// The key a release asset is filed under for this machine, e.g.
+/// `macos-aarch64`.
+pub fn platform() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
 /// Whether a server owns a file or runs beside the one that does. A file gets
@@ -124,6 +180,7 @@ pub struct LspServer {
     /// Filenames one of which must sit between the file and the project root
     /// for this server to start there. Empty means it always starts.
     pub activation_markers: Vec<String>,
+    pub install: Option<Install>,
     /// `"bundled:<id>"` for a built-in, or the absolute path of the user TOML
     /// that defined (or whole-replaced) it, so a forgotten override is visible.
     pub source: String,
@@ -187,6 +244,8 @@ struct ServerToml {
     except_features: Option<Vec<String>>,
     #[serde(default)]
     activation_markers: Vec<String>,
+    #[serde(default)]
+    install: Option<InstallToml>,
 }
 
 fn default_timeout_ms() -> u64 {
@@ -208,6 +267,31 @@ struct LaunchToml {
     program: Option<String>,
     #[serde(default)]
     args: Vec<String>,
+    #[serde(default)]
+    runtime: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallToml {
+    kind: String,
+    #[serde(default)]
+    package: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    assets: BTreeMap<String, AssetToml>,
+    #[serde(default)]
+    text: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetToml {
+    file: String,
+    sha256: String,
+    #[serde(default)]
+    bin: Option<String>,
 }
 
 const KNOWN_TOP_LEVEL: &[&str] = &[
@@ -228,6 +312,7 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "features",
     "except_features",
     "activation_markers",
+    "install",
 ];
 
 const REQUIRED_TOP_LEVEL: &[&str] = &["schema_version", "id", "label", "languages", "root_markers", "launch"];
@@ -281,23 +366,48 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
             })?;
             Launch::BundledNode { entry, args: raw.launch.args }
         }
-        kind @ ("path" | "project_bin") => {
+        kind @ ("path" | "project_bin" | "managed") => {
             let program = raw
                 .launch
                 .program
                 .ok_or_else(|| format!("{source}: launch.kind = \"{kind}\" requires `program`"))?;
-            if kind == "path" {
-                Launch::Path { program, args: raw.launch.args }
-            } else {
-                Launch::ProjectBin { program, args: raw.launch.args }
+            match kind {
+                "path" => Launch::Path { program, args: raw.launch.args },
+                "project_bin" => Launch::ProjectBin { program, args: raw.launch.args },
+                _ => {
+                    let runtime = match raw.launch.runtime.as_deref() {
+                        Some("node") => Runtime::Node,
+                        Some("native") => Runtime::Native,
+                        Some(other) => {
+                            return Err(format!(
+                                "{source}: unknown launch.runtime `{other}` (tori implements: node, native)"
+                            ))
+                        }
+                        None => return Err(format!("{source}: launch.kind = \"managed\" requires `runtime`")),
+                    };
+                    Launch::Managed { program, args: raw.launch.args, runtime }
+                }
             }
         }
         other => {
             return Err(format!(
-                "{source}: unknown launch.kind `{other}` (tori implements: bundled_node, path, project_bin)"
+                "{source}: unknown launch.kind `{other}` (tori implements: bundled_node, path, project_bin, managed)"
             ))
         }
     };
+
+    let install = raw.install.map(|table| load_install(table, launch.program(), source)).transpose()?;
+    // Tori installs into `~/.config/tori/servers/<id>/`, and only `managed`
+    // looks there, so either one without the other is a server that can never
+    // run what was installed for it.
+    let installs = matches!(install, Some(Install::Npm { .. } | Install::GithubRelease { .. }));
+    let managed = matches!(launch, Launch::Managed { .. });
+    if managed && !installs {
+        return Err(format!("{source}: launch.kind = \"managed\" needs an [install] of kind npm or github_release"));
+    }
+    if installs && !managed {
+        return Err(format!("{source}: [install] of kind npm or github_release needs launch.kind = \"managed\""));
+    }
 
     let runs_project_code = raw.runs_project_code || matches!(launch, Launch::ProjectBin { .. });
 
@@ -372,8 +482,64 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         priority: raw.priority,
         features,
         activation_markers: raw.activation_markers,
+        install,
         source: source.to_string(),
     })
+}
+
+fn load_install(raw: InstallToml, program: &str, source: &str) -> Result<Install, String> {
+    let required = |value: Option<String>, field: &str| {
+        value.ok_or_else(|| format!("{source}: [install] kind = \"{}\" requires `{field}`", raw.kind))
+    };
+    match raw.kind.as_str() {
+        "npm" => {
+            let package = required(raw.package, "package")?;
+            let version = pinned(required(raw.version, "version")?, source)?;
+            Ok(Install::Npm { package, version })
+        }
+        "github_release" => {
+            let repo = required(raw.repo, "repo")?;
+            let version = required(raw.version, "version")?;
+            if raw.assets.is_empty() {
+                return Err(format!("{source}: [install] kind = \"github_release\" requires [install.assets]"));
+            }
+            let mut assets = BTreeMap::new();
+            for (platform, asset) in raw.assets {
+                if asset.file.contains('/') {
+                    return Err(format!("{source}: asset `{platform}`: `file` is a filename, not a path"));
+                }
+                if asset.sha256.len() != 64 || !asset.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err(format!("{source}: asset `{platform}`: `sha256` must be 64 hex digits"));
+                }
+                let bin = asset.bin.unwrap_or_else(|| program.to_string());
+                if !inside(Path::new(&bin)) {
+                    return Err(format!("{source}: asset `{platform}`: `bin` must be a relative path inside the install"));
+                }
+                assets.insert(platform, Asset { file: asset.file, sha256: asset.sha256.to_lowercase(), bin });
+            }
+            Ok(Install::GithubRelease { repo, version, assets })
+        }
+        "hint" => Ok(Install::Hint { text: required(raw.text, "text")? }),
+        other => Err(format!("{source}: unknown [install] kind `{other}` (tori implements: npm, github_release, hint)")),
+    }
+}
+
+// Pinned means one exact version: a range or a tag like `latest` would install
+// whatever the registry says today, which nobody has checked.
+fn pinned(version: String, source: &str) -> Result<String, String> {
+    static EXACT: OnceLock<regex::Regex> = OnceLock::new();
+    let exact = EXACT.get_or_init(|| regex::Regex::new(r"^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$").unwrap());
+    if exact.is_match(&version) {
+        Ok(version)
+    } else {
+        Err(format!("{source}: [install] version `{version}` is not one exact version"))
+    }
+}
+
+/// True when `path` is relative and never climbs out with `..`.
+pub fn inside(path: &Path) -> bool {
+    path.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
+        && path.components().next().is_some()
 }
 
 const BUILTIN_TYPESCRIPT: &str = include_str!("../../lsp/typescript.toml");
@@ -383,6 +549,52 @@ const BUILTIN_YAML: &str = include_str!("../../lsp/yaml.toml");
 const BUILTIN_ESLINT: &str = include_str!("../../lsp/eslint.toml");
 const BUILTIN_BIOME: &str = include_str!("../../lsp/biome.toml");
 const BUILTIN_OXLINT: &str = include_str!("../../lsp/oxlint.toml");
+
+/// Every bundled config. `every_bundled_toml_is_embedded` keeps this in step
+/// with the directory.
+const BUILTINS: &[(&str, &str)] = &[
+    ("bundled:typescript", BUILTIN_TYPESCRIPT),
+    ("bundled:rust", BUILTIN_RUST),
+    ("bundled:json", BUILTIN_JSON),
+    ("bundled:yaml", BUILTIN_YAML),
+    ("bundled:eslint", BUILTIN_ESLINT),
+    ("bundled:biome", BUILTIN_BIOME),
+    ("bundled:oxlint", BUILTIN_OXLINT),
+    ("bundled:bash", include_str!("../../lsp/bash.toml")),
+    ("bundled:clangd", include_str!("../../lsp/clangd.toml")),
+    ("bundled:clojure", include_str!("../../lsp/clojure.toml")),
+    ("bundled:csharp", include_str!("../../lsp/csharp.toml")),
+    ("bundled:css", include_str!("../../lsp/css.toml")),
+    ("bundled:dart", include_str!("../../lsp/dart.toml")),
+    ("bundled:elixir", include_str!("../../lsp/elixir.toml")),
+    ("bundled:elm", include_str!("../../lsp/elm.toml")),
+    ("bundled:fish", include_str!("../../lsp/fish.toml")),
+    ("bundled:go", include_str!("../../lsp/go.toml")),
+    ("bundled:graphql", include_str!("../../lsp/graphql.toml")),
+    ("bundled:haskell", include_str!("../../lsp/haskell.toml")),
+    ("bundled:html", include_str!("../../lsp/html.toml")),
+    ("bundled:java", include_str!("../../lsp/java.toml")),
+    ("bundled:kotlin", include_str!("../../lsp/kotlin.toml")),
+    ("bundled:latex", include_str!("../../lsp/latex.toml")),
+    ("bundled:lua", include_str!("../../lsp/lua.toml")),
+    ("bundled:markdown", include_str!("../../lsp/markdown.toml")),
+    ("bundled:nix", include_str!("../../lsp/nix.toml")),
+    ("bundled:ocaml", include_str!("../../lsp/ocaml.toml")),
+    ("bundled:perl", include_str!("../../lsp/perl.toml")),
+    ("bundled:php", include_str!("../../lsp/php.toml")),
+    ("bundled:prisma", include_str!("../../lsp/prisma.toml")),
+    ("bundled:python", include_str!("../../lsp/python.toml")),
+    ("bundled:ruby", include_str!("../../lsp/ruby.toml")),
+    ("bundled:scala", include_str!("../../lsp/scala.toml")),
+    ("bundled:svelte", include_str!("../../lsp/svelte.toml")),
+    ("bundled:swift", include_str!("../../lsp/swift.toml")),
+    ("bundled:terraform", include_str!("../../lsp/terraform.toml")),
+    ("bundled:toml", include_str!("../../lsp/toml.toml")),
+    ("bundled:typst", include_str!("../../lsp/typst.toml")),
+    ("bundled:vim", include_str!("../../lsp/vim.toml")),
+    ("bundled:xml", include_str!("../../lsp/xml.toml")),
+    ("bundled:zig", include_str!("../../lsp/zig.toml")),
+];
 
 fn user_lsp_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/lsp")
@@ -396,15 +608,7 @@ fn user_lsp_dir() -> PathBuf {
 fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
     let mut list: Vec<LspServer> = Vec::new();
 
-    for (source, text) in [
-        ("bundled:typescript", BUILTIN_TYPESCRIPT),
-        ("bundled:rust", BUILTIN_RUST),
-        ("bundled:json", BUILTIN_JSON),
-        ("bundled:yaml", BUILTIN_YAML),
-        ("bundled:eslint", BUILTIN_ESLINT),
-        ("bundled:biome", BUILTIN_BIOME),
-        ("bundled:oxlint", BUILTIN_OXLINT),
-    ] {
+    for &(source, text) in BUILTINS {
         if let Err(e) = load_server_str(text, source).and_then(|s| admit(&mut list, s)) {
             eprintln!("tori: ERROR loading built-in lsp server {source}: {e}");
         }
@@ -643,9 +847,140 @@ program = "demo-server"
     #[test]
     fn bundled_servers_load_with_no_user_dir() {
         let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
-        let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, vec!["biome", "eslint", "json", "oxlint", "rust", "typescript", "yaml"]);
+        // Equal lengths mean `admit` refused none of them.
+        assert_eq!(list.len(), BUILTINS.len());
+        for id in ["biome", "eslint", "json", "oxlint", "python", "rust", "typescript", "yaml"] {
+            assert!(list.iter().any(|s| s.id == id), "{id} is missing");
+        }
         assert!(list.iter().all(|s| !s.is_override()));
+    }
+
+    #[test]
+    fn every_bundled_toml_is_embedded() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("lsp");
+        let mut on_disk: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.strip_suffix(".toml").map(|n| format!("bundled:{n}")))
+            .collect();
+        on_disk.sort();
+        let mut embedded: Vec<String> = BUILTINS.iter().map(|(source, _)| source.to_string()).collect();
+        embedded.sort();
+        assert_eq!(on_disk, embedded);
+    }
+
+    #[test]
+    fn every_claimed_extension_has_one_primary() {
+        let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
+        let primaries: Vec<&LspServer> = list.iter().filter(|s| s.role == Role::Primary).collect();
+        let extensions: HashSet<&String> = primaries.iter().flat_map(|s| s.languages.keys()).collect();
+        for ext in extensions {
+            let always_on: Vec<&&LspServer> = primaries
+                .iter()
+                .filter(|s| s.languages.contains_key(ext) && s.activation_markers.is_empty())
+                .collect();
+            let top = always_on.iter().map(|s| s.priority).max().unwrap_or_default();
+            let winners: Vec<&str> = always_on.iter().filter(|s| s.priority == top).map(|s| s.id.as_str()).collect();
+            assert_eq!(winners.len(), 1, ".{ext} has no single primary: {winners:?}");
+        }
+    }
+
+    // --- [install] and the managed launch kind ---
+
+    const MANAGED: &str = r#"
+schema_version = 1
+id = "demo"
+label = "Demo"
+root_markers = [".git"]
+[languages]
+demo = "demo"
+[launch]
+kind = "managed"
+runtime = "node"
+program = "demo-server"
+[install]
+kind = "npm"
+package = "demo-server"
+version = "1.2.3"
+"#;
+
+    #[test]
+    fn an_npm_install_is_one_exact_version() {
+        let s = load_server_str(MANAGED, "test").unwrap();
+        assert_eq!(s.install, Some(Install::Npm { package: "demo-server".into(), version: "1.2.3".into() }));
+        assert_eq!(s.launch, Launch::Managed { program: "demo-server".into(), args: vec![], runtime: Runtime::Node });
+
+        for loose in ["latest", "^1.2.3", "1.x", ">=1.0.0", "1.2"] {
+            let text = MANAGED.replace("\"1.2.3\"", &format!("\"{loose}\""));
+            let err = load_server_str(&text, "test").unwrap_err();
+            assert!(err.contains("exact version"), "{loose}: {err}");
+        }
+        assert!(load_server_str(&MANAGED.replace("\"1.2.3\"", "\"1.2.3-beta.1\""), "test").is_ok());
+        let no_package = MANAGED.replace("package = \"demo-server\"", "");
+        assert!(load_server_str(&no_package, "test").unwrap_err().contains("requires `package`"));
+    }
+
+    #[test]
+    fn a_github_release_checks_each_asset() {
+        let release = |asset: &str| {
+            MANAGED.replace("runtime = \"node\"", "runtime = \"native\"").replace(
+                "kind = \"npm\"\npackage = \"demo-server\"\nversion = \"1.2.3\"",
+                &format!("kind = \"github_release\"\nrepo = \"o/demo\"\nversion = \"v1\"\n[install.assets.macos-aarch64]\n{asset}"),
+            )
+        };
+        let sha = "A".repeat(64);
+        let s = load_server_str(&release(&format!("file = \"demo.tar.gz\"\nsha256 = \"{sha}\"")), "test").unwrap();
+        let Some(Install::GithubRelease { assets, version, .. }) = &s.install else { panic!("{:?}", s.install) };
+        assert_eq!(version, "v1");
+        // `bin` defaults to the program, and the checksum is compared lowercase.
+        assert_eq!(assets["macos-aarch64"], Asset { file: "demo.tar.gz".into(), sha256: "a".repeat(64), bin: "demo-server".into() });
+
+        let short = release("file = \"demo.tar.gz\"\nsha256 = \"abc\"");
+        assert!(load_server_str(&short, "test").unwrap_err().contains("64 hex digits"));
+        let escapes = release(&format!("file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"../../bin/sh\""));
+        assert!(load_server_str(&escapes, "test").unwrap_err().contains("inside the install"));
+        let absolute = release(&format!("file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"/bin/sh\""));
+        assert!(load_server_str(&absolute, "test").unwrap_err().contains("inside the install"));
+        let path = release(&format!("file = \"a/demo.tar.gz\"\nsha256 = \"{sha}\""));
+        assert!(load_server_str(&path, "test").unwrap_err().contains("filename"));
+    }
+
+    #[test]
+    fn a_hint_is_text_for_any_launch_kind() {
+        let text = format!("{VALID}[install]\nkind = \"hint\"\ntext = \"brew install demo\"\n");
+        let s = load_server_str(&text, "test").unwrap();
+        assert_eq!(s.install, Some(Install::Hint { text: "brew install demo".into() }));
+        assert_eq!(s.install.unwrap().available_version(), None);
+
+        let empty = format!("{VALID}[install]\nkind = \"hint\"\n");
+        assert!(load_server_str(&empty, "test").unwrap_err().contains("requires `text`"));
+    }
+
+    #[test]
+    fn an_unknown_install_kind_is_rejected_by_name() {
+        let text = MANAGED.replace("kind = \"npm\"", "kind = \"pip\"");
+        let err = load_server_str(&text, "test").unwrap_err();
+        assert!(err.contains("pip") && err.contains("github_release"), "{err}");
+    }
+
+    #[test]
+    fn managed_and_an_install_come_together() {
+        let bare = MANAGED.split("[install]").next().unwrap();
+        assert!(load_server_str(bare, "test").unwrap_err().contains("needs an [install]"));
+
+        let hinted = format!("{bare}[install]\nkind = \"hint\"\ntext = \"x\"\n");
+        assert!(load_server_str(&hinted, "test").unwrap_err().contains("needs an [install]"));
+
+        let on_path = MANAGED.replace("kind = \"managed\"", "kind = \"path\"");
+        assert!(load_server_str(&on_path, "test").unwrap_err().contains("needs launch.kind"));
+    }
+
+    #[test]
+    fn managed_names_its_runtime() {
+        let none = MANAGED.replace("runtime = \"node\"\n", "");
+        assert!(load_server_str(&none, "test").unwrap_err().contains("requires `runtime`"));
+        let odd = MANAGED.replace("runtime = \"node\"", "runtime = \"python\"");
+        assert!(load_server_str(&odd, "test").unwrap_err().contains("python"));
     }
 
     #[test]
@@ -704,7 +1039,7 @@ program = "demo-server"
     fn a_non_toml_file_in_the_user_dir_is_skipped() {
         let dir = temp_dir("notoml");
         std::fs::write(dir.join("README.md"), "not a config").unwrap();
-        assert_eq!(build_registry_from(&dir).len(), 7);
+        assert_eq!(build_registry_from(&dir).len(), BUILTINS.len());
     }
 
     #[test]
