@@ -120,6 +120,15 @@
           "uniqueItems": true,
           "description": "Server ids that never start, such as \"eslint\". A server disabled here hands its files to the next one that claims them.",
           "default": []
+        },
+        "neverOffer": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Server ids the editor never offers to install, such as \"python\". Settings > Languages can still install them.",
+          "default": []
         }
       }
     },
