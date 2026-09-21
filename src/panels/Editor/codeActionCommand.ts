@@ -16,9 +16,16 @@ import type { EditorView } from "@codemirror/view";
 import { LSPPlugin } from "@codemirror/lsp-client";
 import { writeFilesSuppressingEcho } from "./batchWrite";
 import { adoptBufferText, dirtyBuffers } from "./liveBuffers";
-import { executeServerCommand, lspTargetFor, notifyLspFileChanged } from "./lspClient";
+import { serverById } from "../../utils/lspServers";
+import { executeServerCommand, notifyLspFileChanged, secondaryEditDeps } from "./lspClient";
 import type { LspRange } from "./lspDiagnosticContext";
-import { runCodeAction, type CodeAction, type RunCodeActionDeps, type RunOutcome } from "./lspCodeActions";
+import {
+  codeActionTarget,
+  runCodeAction,
+  type CodeAction,
+  type RunCodeActionDeps,
+  type RunOutcome,
+} from "./lspCodeActions";
 import {
   applyWorkspaceEdit,
   list,
@@ -72,8 +79,16 @@ export function wholeFileRange(view: EditorView): LspRange {
  * client Tori builds is given a `ToriWorkspace`, so the second case is a
  * should-not-happen that says so rather than dying as a TypeError inside a
  * promise, where it would look like nothing happened at all.
+ *
+ * An action from a secondary server is applied through that server's own view
+ * of the file and its command sent back to it, never to the primary.
  */
-export function codeActionRunner(view: EditorView, path: string, io: CodeActionIo): RunCodeActionDeps | null {
+export function codeActionRunner(
+  view: EditorView,
+  path: string,
+  io: CodeActionIo,
+  serverId?: string,
+): RunCodeActionDeps | null {
   const plugin = LSPPlugin.get(view);
   if (!plugin) return null;
   const client = plugin.client;
@@ -81,8 +96,9 @@ export function codeActionRunner(view: EditorView, path: string, io: CodeActionI
   if (typeof workspace?.requestFile !== "function" || typeof workspace.retainMapping !== "function") return null;
   const ws = workspace as EditWorkspace;
   const root = io.projectRoot();
+  const secondary = !!serverId && serverById(serverId)?.role === "secondary";
 
-  const deps: ApplyDeps = {
+  const primaryDeps: ApplyDeps = {
     requestFile: (uri) => ws.requestFile(uri),
     retainMapping: () => ws.retainMapping(),
     makeMapping: () => client.workspaceMapping() as unknown as Mapping,
@@ -97,6 +113,8 @@ export function codeActionRunner(view: EditorView, path: string, io: CodeActionI
 
   return {
     applyEdit: async (edit: WorkspaceEdit, title: string) => {
+      const deps = secondary ? secondaryEditDeps(path, serverId, "lsp.codeAction") : primaryDeps;
+      if (!deps) return "The language server that offered this has stopped, so nothing was changed.";
       const outcome = await applyWorkspaceEdit(edit, deps, {
         // Checked before the confirm, so nobody is asked to approve something
         // that was going to be refused anyway.
@@ -153,7 +171,7 @@ export function codeActionRunner(view: EditorView, path: string, io: CodeActionI
     // `executeCommandProvider`, which for a command-only action is a refusal to
     // report rather than a silent success.
     runCommand: async (command) => {
-      const target = lspTargetFor(path);
+      const target = codeActionTarget(path, serverId);
       if (!target) throw new Error("no language server for this file");
       const res = await executeServerCommand(target, command.command, command.arguments);
       if (res === null && !target.supports("executeCommandProvider")) {
@@ -176,7 +194,7 @@ export async function applyCodeAction(
   action: CodeAction,
   io: CodeActionIo,
 ): Promise<RunOutcome> {
-  const runner = codeActionRunner(view, path, io);
+  const runner = codeActionRunner(view, path, io, action.serverId);
   if (!runner) {
     const reason = "This editor's language client has no Tori workspace, so a code action cannot run.";
     io.notify(reason, "error");

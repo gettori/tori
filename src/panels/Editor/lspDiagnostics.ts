@@ -23,7 +23,7 @@ function toSeverity(severity: unknown): Diagnostic["severity"] {
 
 // Clamped rather than trusted: a server may point one past the last line or the
 // end of a line, and the library's conversion throws on either.
-function offsetIn(doc: Text, pos: LspPosition | undefined): number | null {
+export function offsetIn(doc: Text, pos: LspPosition | undefined): number | null {
   if (typeof pos?.line !== "number" || typeof pos.character !== "number") return null;
   if (pos.line >= doc.lines) return doc.length;
   const line = doc.line(Math.max(pos.line, 0) + 1);

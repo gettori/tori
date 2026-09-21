@@ -11,6 +11,7 @@ const PREFS: EditorDefaults = {
   // Part of the type, not of this pass: neither resolves to a live extension.
   formatOnSave: false,
   organizeImportsOnSave: false,
+  codeActionsOnSave: false,
   codeLens: false,
   vimMode: false,
   indentGuides: true,

@@ -72,7 +72,7 @@ vi.mock("./liveBuffers", () => ({
 }));
 
 vi.mock("./lspClient", () => ({
-  lspTargetFor: () => ({ supports: () => executeProvider }),
+  lspTargetsFor: () => [{ supports: () => executeProvider }],
   executeServerCommand: (_t: unknown, command: string, args?: unknown[]) => {
     commandRuns.push({ command, args });
     return Promise.resolve(executeAnswer);

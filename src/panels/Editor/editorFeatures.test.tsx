@@ -22,6 +22,7 @@ const BASE: EditorDefaults = {
   // are editor behaviour too, and neither resolves to an extension here.
   formatOnSave: false,
   organizeImportsOnSave: false,
+  codeActionsOnSave: false,
   codeLens: false,
   vimMode: false,
   indentGuides: false,

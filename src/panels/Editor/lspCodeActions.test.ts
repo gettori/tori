@@ -19,7 +19,7 @@ type Target = {
 let targets: Target[] = [];
 
 vi.mock("./lspClient", () => ({
-  lspTargetFor: (path: string) => targets.find((t) => path.startsWith(t.root)) ?? null,
+  lspTargetsFor: (path: string) => targets.filter((t) => path.startsWith(t.root)),
   lspTargets: () => targets,
 }));
 
