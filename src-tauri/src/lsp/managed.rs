@@ -20,6 +20,10 @@ use super::registry::{inside, platform, Install, Launch, LspServer, Runtime};
 
 const MANIFEST: &str = "tori-install.json";
 
+/// What `lsp_start` rejects a server with when Tori could install it, so the
+/// editor can offer to. `utils/serverInstall.ts` matches it exactly.
+pub const NOT_INSTALLED: &str = "not_installed";
+
 // The largest bundled asset (clangd) is under 100 MB; the bound turns a URL
 // that never ends into a refusal instead of a machine out of memory.
 const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
@@ -65,8 +69,10 @@ pub fn command(server: &LspServer, dir: &Path) -> Result<Command, String> {
             }
             Runtime::Native => Command::new(bin),
         }
+    } else if server.install.as_ref().is_some_and(|i| i.available_version().is_some()) {
+        return Err(NOT_INSTALLED.to_string());
     } else {
-        return Err(format!("{}: `{program}` is not installed; install it from Settings > Languages", server.id));
+        return Err(format!("{}: `{program}` is not on your PATH, and Tori has no build of it for {}", server.id, platform()));
     };
     cmd.args(args);
     Ok(cmd)
@@ -289,6 +295,12 @@ mod tests {
         assert!(err.contains("checksum mismatch"), "{err}");
         let left: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
         assert!(left.is_empty(), "nothing may be left behind: {left:?}");
+    }
+
+    #[test]
+    fn a_missing_server_tori_can_install_is_not_installed() {
+        let server = release_server("tori-not-on-any-path", "demo.tar.gz", &"0".repeat(64), "bin/x");
+        assert_eq!(command(&server, &temp_dir("missing")).unwrap_err(), NOT_INSTALLED);
     }
 
     #[test]

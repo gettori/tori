@@ -22,6 +22,7 @@ import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { noteRefused, onTrustChange, trustProject, UNTRUSTED } from "../../utils/projectTrust";
+import { NOT_INSTALLED, offerInstall, onServerInstalled } from "../../utils/serverInstall";
 import { dropDiagnostics, dropDiagnosticsUnder } from "../../utils/diagnostics";
 import {
   ensureLspServersLoaded,
@@ -176,6 +177,8 @@ onTrustChange(({ path, trusted }) => {
   else void stopLspUnder(path).then(() => reask(underScope));
 });
 
+onServerInstalled((serverId) => reask((file) => resolvedServerIds(file)?.includes(serverId) ?? false));
+
 function pruneClosed(): void {
   for (const file of requested.keys()) if (liveBufferText(file) === null) requested.delete(file);
 }
@@ -329,6 +332,10 @@ async function startFor(
   } catch (e) {
     if (e === UNTRUSTED) {
       if (noteRefused(projectPath)) askToTrust(projectPath);
+      return;
+    }
+    if (e === NOT_INSTALLED) {
+      offerInstall(server.id, server.label, path);
       return;
     }
     console.error("lsp_start failed", server.id, e);

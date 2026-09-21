@@ -164,6 +164,7 @@ import { type MenuItem } from "../../components/Menu/rows";
  *  `MenuState` in the same shape; local now, since nothing else needs it. */
 type ActionMenu = { x: number; y: number; items: MenuItem[] };
 import styles from "./CodeEditor.module.css";
+import InstallBanner from "./InstallBanner";
 
 function relTo(root: string, abs: string): string {
   return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
@@ -2651,8 +2652,8 @@ export default function CodeEditor(props: {
     view = undefined;
   });
 
-  /** One pane's editor: the reload banner for the file it holds, and the
-   *  element its view lives in for as long as the pane does. */
+  /** One pane's editor: the reload and install banners for the file it holds,
+   *  and the element its view lives in for as long as the pane does. */
   function PaneEditor(p: { id: string }) {
     onCleanup(() => detachView(p.id));
     return (
@@ -2674,6 +2675,7 @@ export default function CodeEditor(props: {
             </div>
           )}
         </Show>
+        <InstallBanner path={pathOf(p.id)} />
         <div class={styles.codeEditor} ref={(el) => attachView(p.id, el)} />
       </div>
     );
