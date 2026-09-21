@@ -41,6 +41,7 @@ let registry: unknown[] = [
     role: "primary",
     features: ["diagnostics", "code_action", "format"],
     activation_markers: [],
+    activation_keys: [],
     source: "bundled:typescript",
   },
   {
@@ -57,6 +58,7 @@ let registry: unknown[] = [
     role: "primary",
     features: ["diagnostics", "code_action", "format"],
     activation_markers: [],
+    activation_keys: [],
     source: "bundled:rust",
   },
 ];

@@ -1,0 +1,22 @@
+# Black, from the project's own virtualenv or the login PATH. See FORMATTERS.md.
+
+schema_version = 1
+id = "black"
+label = "Black"
+extensions = ["py", "pyi"]
+
+# Above Ruff: a pyproject.toml that configures both usually lints with Ruff and
+# formats with Black.
+priority = 10
+
+verified_against = "black 26.5.1"
+
+# Black reads its project config from pyproject.toml only.
+[markers]
+keys = [{ file = "pyproject.toml", key = "tool.black" }]
+
+[launch]
+kind = "project_bin"
+program = "black"
+# `--stdin-filename` is what finds the config, and picks stub style for a `.pyi`.
+args = ["--quiet", "--stdin-filename", "{file}", "-"]

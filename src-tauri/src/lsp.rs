@@ -345,7 +345,8 @@ pub struct LspHealth {
     /// Named in `lsp.disabled`, the user's or the workspace's.
     pub disabled: bool,
     /// Whether it starts depends on the project, so a probe from Settings,
-    /// which has no project, cannot say it is missing.
+    /// which has no project, cannot say it is missing. A key reads as
+    /// `pyproject.toml [tool.ruff]`.
     pub activation_markers: Vec<String>,
     /// Started only in some projects, or from the project's own install, so the
     /// same holds as for `activation_markers`.
@@ -406,9 +407,13 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
         detail,
         override_path: server.is_override().then(|| server.source.clone()),
         disabled: false,
-        activation_markers: server.activation_markers.clone(),
-        runs_per_project: !server.activation_markers.is_empty()
-            || matches!(server.launch, Launch::ProjectBin { .. }),
+        activation_markers: server
+            .activation_markers
+            .iter()
+            .cloned()
+            .chain(server.activation_keys.iter().map(|k| format!("{} [{}]", k.file, k.path.join("."))))
+            .collect(),
+        runs_per_project: server.needs_activation() || matches!(server.launch, Launch::ProjectBin { .. }),
         hint: match &server.install {
             Some(registry::Install::Hint { text }) => Some(text.clone()),
             _ => None,
