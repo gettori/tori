@@ -318,6 +318,60 @@ pub fn format_document(path: String, text: String, project_path: String) -> Form
     format_with(registry::registry(), &path, text, Path::new(&project_path), &choices)
 }
 
+/// A formatter's card in Settings, read the way `lsp::LspHealth` reads.
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatterHealth {
+    pub id: String,
+    pub label: String,
+    pub program: String,
+    /// Of `program` on the login PATH.
+    pub status: crate::health::BinaryStatus,
+    pub version: Option<String>,
+    pub verified_against: Option<String>,
+    /// `None` takes any file the formatter has a parser for.
+    pub extensions: Option<Vec<String>>,
+    /// What turns it on in a project. A prefix reads as `.prettierrc*`, a key
+    /// as `package.json [prettier]`.
+    pub markers: Vec<String>,
+    /// Found in the project's own install before the PATH, so a probe from
+    /// Settings, which has no project, cannot say it is missing.
+    pub runs_per_project: bool,
+}
+
+/// Health for every registered formatter.
+#[tauri::command(async)]
+pub fn formatter_health() -> Vec<FormatterHealth> {
+    registry::registry()
+        .iter()
+        .map(|f| {
+            let path = crate::env::resolve_binary(&f.program);
+            let version = path.as_deref().and_then(crate::health::run_version);
+            let markers = &f.markers;
+            FormatterHealth {
+                id: f.id.clone(),
+                label: f.label.clone(),
+                program: f.program.clone(),
+                status: match path {
+                    None => crate::health::BinaryStatus::NotFound,
+                    Some(_) => crate::health::compare(version.as_deref(), f.verified_against.as_deref()),
+                },
+                version,
+                verified_against: f.verified_against.clone(),
+                extensions: f.extensions.clone(),
+                markers: markers
+                    .files
+                    .iter()
+                    .cloned()
+                    .chain(markers.prefixes.iter().map(|p| format!("{p}*")))
+                    .chain(markers.keys.iter().map(|k| format!("{} [{}]", k.file, k.path.join("."))))
+                    .collect(),
+                runs_per_project: f.launch == LaunchKind::ProjectBin,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -79,6 +79,7 @@ pub struct Formatter {
     /// With `{file}` still in place; see `args_for`.
     pub args: Vec<String>,
     pub not_applicable: Option<NotApplicable>,
+    pub verified_against: Option<String>,
 }
 
 impl Formatter {
@@ -181,6 +182,8 @@ struct FormatterToml {
     launch: LaunchToml,
     #[serde(default)]
     not_applicable: Option<NotApplicableToml>,
+    #[serde(default)]
+    verified_against: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -314,6 +317,7 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
         program: raw.launch.program,
         args: raw.launch.args,
         not_applicable,
+        verified_against: raw.verified_against,
     })
 }
 

@@ -1,14 +1,11 @@
-import { For, Show, Switch, Match, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, Switch, Match, createSignal, type Resource } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
-import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
-import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
-import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
 import { installServer } from "../../../../utils/serverInstall";
 import { CmdLine } from "../../components/paneKit";
-import { overlayRoot, setServerDisabled } from "../../settingsStore";
+import { setServerDisabled } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
@@ -21,7 +18,7 @@ import styles from "../../Settings.module.css";
 // has every language installed, so an uninstalled one gets an install hint and
 // an unparseable version gets neutral text, never red.
 
-type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
+export type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
 export type LspHealth = {
   id: string;
@@ -55,7 +52,7 @@ export type LspHealth = {
 // answers "is this usable?" and nothing else, so `versionUnknown` is green.
 // Neither bundled config declares a `verified_against`, so dimming them over
 // Tori's own missing bookkeeping would mark two healthy servers as worse off.
-const TONE: Record<BinaryStatus, string> = {
+export const TONE: Record<BinaryStatus, string> = {
   versionMatch: styles.dotOk,
   versionUnknown: styles.dotOk,
   versionDrift: styles.dotWarn,
@@ -65,26 +62,24 @@ const TONE: Record<BinaryStatus, string> = {
 // A hint names its command in backticks, the way the server TOMLs write it.
 const commandIn = (hint: string | null) => hint?.match(/`([^`]+)`/)?.[1] ?? null;
 
-type Tab = "ready" | "installable" | "manual" | "perProject";
+type Tab = "ready" | "installable" | "manual";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "ready", label: "Ready" },
   { id: "installable", label: "Installable" },
   { id: "manual", label: "Manual" },
-  { id: "perProject", label: "Per project" },
 ];
 
 // By what the user can do about it, not by whether it runs right now: a server
 // turned off stays in its tab with its switch off.
 function tabOf(s: LspHealth): Tab {
-  if (s.activationMarkers.length > 0 || s.runsPerProject) return "perProject";
   if (s.installedVersion !== null || s.status !== "notFound") return "ready";
   return s.availableVersion !== null ? "installable" : "manual";
 }
 
 const kindOf = (s: LspHealth) => (s.role === "secondary" ? "Linter" : "LSP");
 
-function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> }) {
+export function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> }) {
   const s = () => props.server;
   const [pending, setPending] = createSignal<"install" | "remove" | null>(null);
   // Flipped here as soon as it is saved, rather than after `lsp_health`
@@ -236,61 +231,34 @@ function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> })
   );
 }
 
-type TrustTab = "trusted" | "untrusted";
-
-const TRUST_TABS: { id: TrustTab; label: string }[] = [
-  { id: "trusted", label: "Trusted" },
-  { id: "untrusted", label: "Not trusted" },
-];
-
-function TrustedProjects() {
-  const [trusted, { refetch: refetchTrusted }] = createResource(() => invoke<string[]>("trusted_projects"));
-  const [discovered, { refetch: refetchDiscovered }] = createResource(() =>
-    invoke<string[] | null>("untrusted_projects"),
-  );
-  onCleanup(
-    onTrustChange(() => {
-      void refetchTrusted();
-      void refetchDiscovered();
-    }),
-  );
-  const [picked, setPicked] = createSignal<TrustTab | null>(null);
+export default function LspSection(props: { health: Resource<LspHealth[]>; onChange: () => Promise<unknown> }) {
+  const servers = () => (props.health() ?? []).filter((s) => s.role === "primary");
+  const [picked, setPicked] = createSignal<Tab | null>(null);
   const [query, setQuery] = createSignal("");
-  const [confirming, setConfirming] = createSignal(false);
 
-  // Refused this session counts too: a project outside the discovery root is
-  // never in the discovered list.
-  const untrusted = () => [...new Set([...(discovered() ?? []), ...refusedProjects()])].sort();
-  const rows = () => [
-    ...[...(trusted() ?? [])].sort().map((path) => ({ path, trusted: true })),
-    ...untrusted().map((path) => ({ path, trusted: false })),
-  ];
-  const count = (tab: TrustTab) => rows().filter((r) => r.trusted === (tab === "trusted")).length;
-  const tab = () => picked() ?? TRUST_TABS.find((t) => count(t.id) > 0)?.id ?? "trusted";
   const q = () => query().trim().toLowerCase();
-  const shown = () =>
-    rows().filter((r) => (q() ? r.path.toLowerCase().includes(q()) : r.trusted === (tab() === "trusted")));
+  const count = (tab: Tab) => servers().filter((s) => tabOf(s) === tab).length;
+  // Until one is picked, the first tab with anything in it, so a machine with
+  // nothing ready does not open on an empty list.
+  const tab = () => picked() ?? TABS.find((t) => count(t.id) > 0)?.id ?? "ready";
+  // A search looks in every tab, the way the settings search looks in every
+  // pane, so a server is never hidden behind the tab it is not in.
+  const matches = (s: LspHealth) =>
+    [s.label, s.program, kindOf(s), ...s.extensions.map((e) => `.${e}`)].some((f) => f.toLowerCase().includes(q()));
+  const shown = () => servers().filter((s) => (q() ? matches(s) : tabOf(s) === tab()));
 
-  const pick = (t: TrustTab) => {
+  const pick = (t: Tab) => {
     setPicked(t);
     setQuery("");
-  };
-  const run = (verb: string, change: Promise<unknown>) =>
-    void change.catch((e) =>
-      emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} this project: ${String(e)}` }),
-    );
-  const revokeAll = () => {
-    setConfirming(false);
-    run("revoke", Promise.all((trusted() ?? []).map(revokeProject)));
   };
 
   return (
     <section class={styles.section}>
       <div class={styles.sectionTitle}>
-        <span>Trusted projects</span>
+        <span>Language servers</span>
         <span class={styles.sectionRule} />
-        <div class={styles.groupTabs} role="group" aria-label="Show projects">
-          <For each={TRUST_TABS}>
+        <div class={styles.groupTabs} role="group" aria-label="Show language servers">
+          <For each={TABS}>
             {(t) => (
               <button
                 type="button"
@@ -308,177 +276,40 @@ function TrustedProjects() {
           type="text"
           class={styles.tableFilter}
           placeholder="Search"
-          aria-label="Search projects"
+          aria-label="Search language servers"
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
-        <Show when={count("trusted") > 0}>
-          <span class={styles.titleAction}>
-            <Button size="xs" variant="ghost" onClick={() => setConfirming(true)}>
-              Revoke all
-            </Button>
-          </span>
-        </Show>
       </div>
-
-      <Show
-        when={shown().length > 0}
-        fallback={
-          <div class={styles.note}>
-            {q()
-              ? `No project matches "${query().trim()}".`
-              : tab() === "trusted"
-                ? "No trusted projects."
-                : "Every project is trusted."}
-          </div>
-        }
-      >
-        <div class={styles.trustTable}>
-          <div class={styles.trustHead}>
-            <span />
-            <span>Project</span>
-            <span>Status</span>
-            <span />
-          </div>
-          <OverlayScroll class={styles.trustScroll}>
-            <For each={shown()}>
-              {(r) => (
-                <div class={styles.trustRow}>
-                  <span class={`${styles.dot} ${r.trusted ? styles.dotOk : styles.dotOff}`} />
-                  <code class={styles.trustPath} classList={{ [styles.trustPathOff]: !r.trusted }} title={r.path}>
-                    {r.path}
-                  </code>
-                  <span class={styles.trustStatus}>{r.trusted ? "Trusted" : "Servers stay off"}</span>
-                  <Show
-                    when={r.trusted}
-                    fallback={
-                      <Button
-                        variant="primary"
-                        size="xs"
-                        class={styles.trustAction}
-                        aria-label={`Trust ${r.path}`}
-                        onClick={() => run("trust", trustProject(r.path))}
-                      >
-                        Trust
-                      </Button>
-                    }
-                  >
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      class={styles.trustAction}
-                      aria-label={`Revoke ${r.path}`}
-                      onClick={() => run("revoke", revokeProject(r.path))}
-                    >
-                      Revoke
-                    </Button>
-                  </Show>
-                </div>
-              )}
-            </For>
-          </OverlayScroll>
-        </div>
-      </Show>
-      <div class={styles.note}>
-        Servers that run a project's own code, like TypeScript and Rust, only start in trusted projects.
-      </div>
-
-      <Show when={confirming()}>
-        <ConfirmDialog
-          danger
-          title="Revoke every trusted project?"
-          message={`Servers that run a project's own code stop in all ${count("trusted")}, until you trust each one again here.`}
-          confirmLabel="Revoke all"
-          onConfirm={revokeAll}
-          onCancel={() => setConfirming(false)}
-        />
-      </Show>
-    </section>
-  );
-}
-
-export default function LspSection() {
-  const [health, { refetch }] = createResource(() => invoke<LspHealth[]>("lsp_health", { root: overlayRoot() }));
-  const [picked, setPicked] = createSignal<Tab | null>(null);
-  const [query, setQuery] = createSignal("");
-
-  const q = () => query().trim().toLowerCase();
-  const count = (tab: Tab) => (health() ?? []).filter((s) => tabOf(s) === tab).length;
-  // Until one is picked, the first tab with anything in it, so a machine with
-  // nothing ready does not open on an empty list.
-  const tab = () => picked() ?? TABS.find((t) => count(t.id) > 0)?.id ?? "ready";
-  // A search looks in every tab, the way the settings search looks in every
-  // pane, so a server is never hidden behind the tab it is not in.
-  const matches = (s: LspHealth) =>
-    [s.label, s.program, kindOf(s), ...s.extensions.map((e) => `.${e}`)].some((f) => f.toLowerCase().includes(q()));
-  const shown = () => (health() ?? []).filter((s) => (q() ? matches(s) : tabOf(s) === tab()));
-
-  const pick = (t: Tab) => {
-    setPicked(t);
-    setQuery("");
-  };
-
-  return (
-    <>
-      <section class={styles.section}>
-        <div class={styles.sectionTitle}>
-          <span>Language servers</span>
-          <span class={styles.sectionRule} />
-          <div class={styles.groupTabs} role="group" aria-label="Show language servers">
-            <For each={TABS}>
-              {(t) => (
-                <button
-                  type="button"
-                  class={styles.groupTab}
-                  aria-pressed={!q() && tab() === t.id}
-                  onClick={() => pick(t.id)}
-                >
-                  {t.label}
-                  <span class={styles.groupTabCount}>{count(t.id)}</span>
-                </button>
-              )}
-            </For>
-          </div>
-          <input
-            type="text"
-            class={styles.tableFilter}
-            placeholder="Search"
-            aria-label="Search language servers"
-            value={query()}
-            onInput={(e) => setQuery(e.currentTarget.value)}
-          />
-        </div>
-        <Switch>
-          <Match when={health.state === "pending"}>
-            <div class={styles.note}>Checking which language servers are installed…</div>
-          </Match>
-          <Match when={health.error}>
-            <div class={styles.note}>Could not check language servers: {String(health.error)}</div>
-          </Match>
-          <Match when={health()}>
-            <Show
-              when={shown().length > 0}
-              fallback={
-                <div class={styles.note}>
-                  {q() ? `No language server matches "${query().trim()}".` : "No language server here."}
-                </div>
-              }
-            >
-              <div class={styles.toolGrid}>
-                <For each={shown()}>
-                  {(server) => <LspCard server={server} onChange={() => Promise.resolve(refetch())} />}
-                </For>
+      <Switch>
+        <Match when={props.health.state === "pending"}>
+          <div class={styles.note}>Checking which language servers are installed…</div>
+        </Match>
+        <Match when={props.health.error}>
+          <div class={styles.note}>Could not check language servers: {String(props.health.error)}</div>
+        </Match>
+        <Match when={props.health()}>
+          <Show
+            when={shown().length > 0}
+            fallback={
+              <div class={styles.note}>
+                {q() ? `No language server matches "${query().trim()}".` : "No language server here."}
               </div>
-            </Show>
-            <div class={styles.note}>
-              A language with no server still opens and edits normally, it just has no completion or
-              diagnostics. Add one with a TOML file in <code>~/.config/tori/lsp/</code>; see
-              LSP-SERVERS.md.
+            }
+          >
+            <div class={styles.toolGrid}>
+              <For each={shown()}>
+                {(server) => <LspCard server={server} onChange={props.onChange} />}
+              </For>
             </div>
-          </Match>
-        </Switch>
-      </section>
-      <TrustedProjects />
-    </>
+          </Show>
+          <div class={styles.note}>
+            A language with no server still opens and edits normally, it just has no completion or
+            diagnostics. Add one with a TOML file in <code>~/.config/tori/lsp/</code>; see
+            LSP-SERVERS.md.
+          </div>
+        </Match>
+      </Switch>
+    </section>
   );
 }

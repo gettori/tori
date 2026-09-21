@@ -243,6 +243,18 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Which language servers are installed, and which files each one claims.",
   },
   {
+    id: "linters-formatters",
+    section: "lsp",
+    label: "Linters & formatters",
+    hint: "Which linters run beside a language's server, and which formatters Format Document can use.",
+  },
+  {
+    id: "trusted-projects",
+    section: "lsp",
+    label: "Trusted projects",
+    hint: "Which projects may start servers that run the project's own code, like TypeScript and Rust.",
+  },
+  {
     id: "debuggers",
     section: "dap",
     label: "Debuggers",

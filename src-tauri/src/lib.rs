@@ -350,6 +350,7 @@ pub fn run() {
             config::delete_branch,
             config::attach_remote_branch,
             format::format_document,
+            format::formatter_health,
             fs::fs_read_dir,
             fs::fs_read_dir_compact,
             fs::fs_read_file,
