@@ -40,7 +40,7 @@ beforeEach(async () => {
   await loadWorkspaceSettings(null);
 });
 
-/** The five catalogue entries that stand for a whole section rather than for a
+/** The seven catalogue entries that stand for a whole section rather than for a
  *  row: their controls are built at runtime (a card per agent found, a row per
  *  server installed), so they have a section on screen and no `<label>`.
  *
@@ -50,7 +50,9 @@ beforeEach(async () => {
  *  rendered nothing at all. */
 const CARD_ENTRIES: Record<string, string> = {
   "language-servers": "Language servers",
+  "linters-formatters": "Linters & formatters",
   debuggers: "Debuggers",
+  "trusted-projects": "Trusted projects",
   git: "Git",
   forge: "Hosts",
 };
@@ -306,7 +308,7 @@ describe("marking what matched, in the pane", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^Languages/ }));
 
     const wrappers = pane().querySelectorAll(`.${styles.cardSection}`);
-    expect(wrappers).toHaveLength(2);
+    expect(wrappers).toHaveLength(4);
     for (const w of wrappers) expect(w.querySelector("section")).toBeTruthy();
   });
 
@@ -329,7 +331,7 @@ describe("marking what matched, in the pane", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Languages" }));
 
     expect(activeTab()).toBe("Languages");
-    expect(pane().querySelectorAll(`.${styles.cardSection}`)).toHaveLength(2);
+    expect(pane().querySelectorAll(`.${styles.cardSection}`)).toHaveLength(4);
   });
 
   it("marks nothing at all when no query is running", () => {
