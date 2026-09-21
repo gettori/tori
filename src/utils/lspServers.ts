@@ -11,7 +11,10 @@ import { isToriSettingsFile } from "./toriSettingsFiles";
 
 export type LspLaunch =
   | { kind: "bundled_node"; entry: string; args: string[] }
-  | { kind: "path"; program: string; args: string[] };
+  | { kind: "path"; program: string; args: string[] }
+  | { kind: "project_bin"; program: string; args: string[] };
+
+export type LspFeature = "diagnostics" | "code_action" | "format";
 
 export type LspServer = {
   id: string;
@@ -39,7 +42,7 @@ export type LspServer = {
   runs_project_code: boolean;
   role: "primary" | "secondary";
   priority: number;
-  features: ("diagnostics" | "code_action" | "format")[];
+  features: LspFeature[];
   activation_markers: string[];
   source: string;
 };

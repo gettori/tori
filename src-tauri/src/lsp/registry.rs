@@ -40,6 +40,9 @@ pub enum Launch {
     /// never the GUI process PATH: a server installed via rustup/mise/asdf is
     /// invisible to a naive lookup from a Finder-launched app.
     Path { program: String, args: Vec<String> },
+    /// The project's own copy from `node_modules/.bin`, nearest the session
+    /// root first, then the login PATH. Always runs project code.
+    ProjectBin { program: String, args: Vec<String> },
 }
 
 impl Launch {
@@ -49,7 +52,7 @@ impl Launch {
     pub fn program(&self) -> &str {
         match self {
             Launch::BundledNode { .. } => "node",
-            Launch::Path { program, .. } => program,
+            Launch::Path { program, .. } | Launch::ProjectBin { program, .. } => program,
         }
     }
 }
@@ -278,19 +281,25 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
             })?;
             Launch::BundledNode { entry, args: raw.launch.args }
         }
-        "path" => {
+        kind @ ("path" | "project_bin") => {
             let program = raw
                 .launch
                 .program
-                .ok_or_else(|| format!("{source}: launch.kind = \"path\" requires `program`"))?;
-            Launch::Path { program, args: raw.launch.args }
+                .ok_or_else(|| format!("{source}: launch.kind = \"{kind}\" requires `program`"))?;
+            if kind == "path" {
+                Launch::Path { program, args: raw.launch.args }
+            } else {
+                Launch::ProjectBin { program, args: raw.launch.args }
+            }
         }
         other => {
             return Err(format!(
-                "{source}: unknown launch.kind `{other}` (tori implements: bundled_node, path)"
+                "{source}: unknown launch.kind `{other}` (tori implements: bundled_node, path, project_bin)"
             ))
         }
     };
+
+    let runs_project_code = raw.runs_project_code || matches!(launch, Launch::ProjectBin { .. });
 
     let role = match raw.role.as_deref() {
         None | Some("primary") => Role::Primary,
@@ -358,7 +367,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         settings,
         schema_associations: raw.schema_associations,
         verified_against: raw.verified_against,
-        runs_project_code: raw.runs_project_code,
+        runs_project_code,
         role,
         priority: raw.priority,
         features,
@@ -372,6 +381,8 @@ const BUILTIN_RUST: &str = include_str!("../../lsp/rust.toml");
 const BUILTIN_JSON: &str = include_str!("../../lsp/json.toml");
 const BUILTIN_YAML: &str = include_str!("../../lsp/yaml.toml");
 const BUILTIN_ESLINT: &str = include_str!("../../lsp/eslint.toml");
+const BUILTIN_BIOME: &str = include_str!("../../lsp/biome.toml");
+const BUILTIN_OXLINT: &str = include_str!("../../lsp/oxlint.toml");
 
 fn user_lsp_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/lsp")
@@ -391,6 +402,8 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
         ("bundled:json", BUILTIN_JSON),
         ("bundled:yaml", BUILTIN_YAML),
         ("bundled:eslint", BUILTIN_ESLINT),
+        ("bundled:biome", BUILTIN_BIOME),
+        ("bundled:oxlint", BUILTIN_OXLINT),
     ] {
         if let Err(e) = load_server_str(text, source).and_then(|s| admit(&mut list, s)) {
             eprintln!("tori: ERROR loading built-in lsp server {source}: {e}");
@@ -631,7 +644,7 @@ program = "demo-server"
     fn bundled_servers_load_with_no_user_dir() {
         let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, vec!["eslint", "json", "rust", "typescript", "yaml"]);
+        assert_eq!(ids, vec!["biome", "eslint", "json", "oxlint", "rust", "typescript", "yaml"]);
         assert!(list.iter().all(|s| !s.is_override()));
     }
 
@@ -691,7 +704,7 @@ program = "demo-server"
     fn a_non_toml_file_in_the_user_dir_is_skipped() {
         let dir = temp_dir("notoml");
         std::fs::write(dir.join("README.md"), "not a config").unwrap();
-        assert_eq!(build_registry_from(&dir).len(), 5);
+        assert_eq!(build_registry_from(&dir).len(), 7);
     }
 
     #[test]
@@ -1123,6 +1136,35 @@ program = "deno"
         assert_eq!(
             resolved_ids(&servers, &file, &project),
             (Some("typescript".into()), vec!["eslint".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_bundled_biome_and_oxlint_run_from_the_project_each_under_its_own_config() {
+        let project = temp_dir("bundled_linters");
+        let file = project.join("src/a.ts");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let servers = [
+            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            load_server_str(BUILTIN_ESLINT, "bundled:eslint").unwrap(),
+            load_server_str(BUILTIN_BIOME, "bundled:biome").unwrap(),
+            load_server_str(BUILTIN_OXLINT, "bundled:oxlint").unwrap(),
+        ];
+        for linter in &servers[2..] {
+            assert_eq!(linter.role, Role::Secondary, "{}", linter.id);
+            assert!(matches!(linter.launch, Launch::ProjectBin { .. }), "{}", linter.id);
+            assert!(linter.runs_project_code, "{}", linter.id);
+        }
+        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
+
+        std::fs::write(project.join("biome.json"), "{}").unwrap();
+        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec!["biome".to_string()]));
+
+        std::fs::write(project.join("eslint.config.js"), "").unwrap();
+        std::fs::write(project.join(".oxlintrc.json"), "{}").unwrap();
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec!["eslint".to_string(), "biome".to_string(), "oxlint".to_string()])
         );
     }
 

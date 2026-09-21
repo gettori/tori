@@ -1,0 +1,38 @@
+# Biome's language server, from the project's own `biome` install. See
+# LSP-SERVERS.md.
+#
+# `lsp-proxy` starts Biome's daemon when none is running and forwards to it.
+# Diagnostics are pushed; code actions come back without their edit and are
+# filled in through `codeAction/resolve`.
+
+schema_version = 1
+id = "biome"
+label = "Biome"
+role = "secondary"
+
+# One session per repo: Biome finds each file's own config.
+root_markers = [".git"]
+
+activation_markers = ["biome.json", "biome.jsonc"]
+
+verified_against = "biome 2.5.14"
+
+[languages]
+ts = "typescript"
+mts = "typescript"
+cts = "typescript"
+tsx = "typescriptreact"
+js = "javascript"
+mjs = "javascript"
+cjs = "javascript"
+jsx = "javascriptreact"
+json = "json"
+jsonc = "jsonc"
+css = "css"
+graphql = "graphql"
+gql = "graphql"
+
+[launch]
+kind = "project_bin"
+program = "biome"
+args = ["lsp-proxy"]
