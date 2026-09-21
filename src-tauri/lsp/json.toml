@@ -24,6 +24,10 @@ verified_against = "vscode-json-languageserver 1.3.4"
 # configuring: the notification handler applies the associations itself.
 schema_associations = true
 
+# Reads documents and fetches schemas but executes nothing from the project, so
+# it keeps working in a project the user has not trusted.
+runs_project_code = false
+
 [languages]
 json = "json"
 jsonc = "jsonc"

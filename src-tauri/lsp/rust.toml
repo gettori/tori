@@ -19,6 +19,9 @@ root_markers = ["Cargo.toml", ".git"]
 # default) would reject nearly every first request on a real project.
 request_timeout_ms = 90000
 
+# Indexing runs the project's build scripts and proc macros.
+runs_project_code = true
+
 [languages]
 rs = "rust"
 

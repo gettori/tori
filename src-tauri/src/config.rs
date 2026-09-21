@@ -629,8 +629,56 @@ fn project_favicon(ppath: &Path, units: &[BranchUnit]) -> Option<String> {
     crate::icons::cached_project_icon(ppath, &folders)
 }
 
+fn skipped(name: &str, ignore: &[String]) -> bool {
+    name.starts_with('.') || ignore.iter().any(|i| i == name)
+}
+
+// The walk `resolve` does, minus its git probe per project: that probe is far
+// too slow for a caller that only needs the paths.
+pub(crate) fn project_dirs_under(root: &Path, ignore: &[String]) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let Ok(spaces) = std::fs::read_dir(root) else {
+        return dirs;
+    };
+    for space in spaces.flatten().map(|e| e.path()) {
+        if !space.is_dir() || skipped(&basename(&space), ignore) {
+            continue;
+        }
+        let Ok(projects) = std::fs::read_dir(&space) else {
+            continue;
+        };
+        for project in projects.flatten().map(|e| e.path()) {
+            if project.is_dir() && !skipped(&basename(&project), ignore) {
+                dirs.push(project);
+            }
+        }
+    }
+    dirs
+}
+
+// Read without `ensure_config`: asking which projects exist must not be what
+// writes a sample config into a fresh home.
+fn read_raw_config() -> RawConfig {
+    std::fs::read_to_string(config_path())
+        .ok()
+        .and_then(|text| toml::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+pub(crate) fn discovery_root() -> Option<PathBuf> {
+    read_raw_config().discovery.roots.first().map(|r| PathBuf::from(expand_tilde(r)))
+}
+
+pub(crate) fn discovered_project_dirs() -> Vec<PathBuf> {
+    let raw = read_raw_config();
+    match raw.discovery.roots.first() {
+        Some(root) => project_dirs_under(Path::new(&expand_tilde(root)), &raw.discovery.ignore),
+        None => Vec::new(),
+    }
+}
+
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
-    let skip = |name: &str| name.starts_with('.') || raw.discovery.ignore.iter().any(|i| i == name);
+    let skip = |name: &str| skipped(name, &raw.discovery.ignore);
     // Single canonical root: a legacy multi-root config collapses to the first on
     // load (not only on explicit reset), so discovery yields one tree, never two.
     let roots: Vec<String> = raw.discovery.roots.iter().take(1).map(|r| expand_tilde(r)).collect();

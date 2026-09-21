@@ -48,6 +48,7 @@ mod workspace_settings;
 mod themes;
 mod topics;
 mod trace;
+mod trust;
 mod update;
 mod usage_probe;
 mod usage_token;
@@ -210,6 +211,10 @@ pub fn run() {
             // no-op when hooks-status is empty/missing.
             let session_index = app.state::<SessionIndex>();
             hooks::prune_stale(|| sessions::all_sessions(&session_index));
+
+            // At launch, not at the first gated open: a repo cloned between the
+            // two would otherwise be swept into the seed and start trusted.
+            trust::seed();
 
             // Chat claims left by a previous run. A record whose Tori is gone is
             // either litter (dropped here) or an orphan: a `claude` child that
@@ -422,6 +427,9 @@ pub fn run() {
             lsp::lsp_schema_associations,
             lsp::lsp_schema_dir,
             lsp::lsp_health,
+            trust::trusted_projects,
+            trust::trust_project,
+            trust::revoke_project,
             dap::dap_start,
             dap::dap_connect,
             dap::dap_send,

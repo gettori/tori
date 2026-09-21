@@ -88,6 +88,11 @@ schema_associations = false
 # health card render neutral; it never renders as drift.
 verified_against = "some-language-server 1.2.3"
 
+# optional (default true): this server executes code from the project it
+# serves, so it only starts in a project the user has trusted. See "Project
+# trust" below.
+runs_project_code = true
+
 # --- tables below this line; nothing top-level may follow them ---
 
 # required: which file extensions this server claims, and the LSP language id
@@ -168,6 +173,29 @@ Two consequences worth knowing:
   your home directory cannot become the root for a file inside a project.
 
 A file with no marker anywhere above it falls back to the project directory.
+
+### Project trust
+
+Some servers run code that lives in the project. The bundled
+`typescript-language-server` loads the workspace's own TypeScript and any
+tsconfig plugins, and rust-analyzer runs build scripts and proc macros. Opening
+a file in a freshly cloned repo would run that repo's code.
+
+So a server with `runs_project_code = true` only starts in a project you have
+trusted. The first time one is refused, Tori offers to trust the project.
+Until you do, the project still highlights, edits and saves, and servers with
+`runs_project_code = false` (the bundled JSON and YAML ones) work as normal.
+
+- Trust is recorded per discovered project (`<root>/<space>/<project>`), so it
+  covers every worktree of that project.
+- The list lives in `~/.config/tori/trusted.json`, never inside the project,
+  so a repo cannot mark itself trusted.
+- Settings > Languages lists trusted projects, each with Revoke.
+- The field defaults to `true`, so a server config that does not say is
+  treated as running project code. Set it to `false` only for a server that
+  executes nothing from the project.
+- When trust first shipped, every project already discovered was recorded as
+  trusted, because those projects had been running these servers all along.
 
 ## Example: a from-scratch third-party server
 
