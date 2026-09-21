@@ -67,6 +67,12 @@ export async function installServer(serverId: string): Promise<void> {
     patch(serverId, { status: "failed", error: String(e) });
     throw e;
   }
+  serverInstalled(serverId);
+}
+
+/** A server just arrived, however it was installed: drop its offer and let the
+ *  editor ask again for the files that wanted it. */
+export function serverInstalled(serverId: string): void {
   setOffers(offers().filter((o) => o.serverId !== serverId));
   for (const l of [...listeners]) l(serverId);
 }
