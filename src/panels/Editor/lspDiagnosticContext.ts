@@ -24,8 +24,9 @@ export type LspRange = { start: LspPosition; end: LspPosition };
 export type RawDiagnostic = { range?: LspRange; [key: string]: unknown };
 
 // Keyed by the URI the server used, which is the URI a code action will be
-// asked about, so no spelling is normalised in between.
-const byUri = new Map<string, RawDiagnostic[]>();
+// asked about, so no spelling is normalised in between. Then by server: a code
+// action goes to one server, and another's diagnostics mean nothing to it.
+const byUri = new Map<string, Map<string, RawDiagnostic[]>>();
 
 /**
  * Record what a server just published for one file.
@@ -35,9 +36,14 @@ const byUri = new Map<string, RawDiagnostic[]>();
  * and a monorepo-wide publish would otherwise leave an entry per file in the
  * project for the lifetime of the session.
  */
-export function rememberDiagnostics(uri: string, diagnostics: RawDiagnostic[]): void {
-  if (diagnostics.length) byUri.set(uri, diagnostics);
-  else byUri.delete(uri);
+export function rememberDiagnostics(uri: string, serverId: string, diagnostics: RawDiagnostic[]): void {
+  const servers = byUri.get(uri);
+  if (diagnostics.length) {
+    if (servers) servers.set(serverId, diagnostics);
+    else byUri.set(uri, new Map([[serverId, diagnostics]]));
+  } else if (servers?.delete(serverId) && !servers.size) {
+    byUri.delete(uri);
+  }
 }
 
 /** Forget everything. What full teardown calls: every diagnostic held here
@@ -57,33 +63,37 @@ export function dropDiagnosticContextUnder(uriPrefix: string): void {
 }
 
 /**
- * An `LSPClientExtension` that records every publish and lets the library
- * render it.
+ * An `LSPClientExtension` that records every publish of `serverId` and lets the
+ * library render it.
  *
  * Returning false is the whole trick: the client tries each extension's handler
  * in order and stops at the first that returns true
  * (`lsp-client/dist/index.js:670-676`), so this has to run *before*
- * `serverDiagnostics()` and decline to consume the notification. Placed ahead
- * of `languageServerExtensions()` in the client's list for that reason, and it
- * is the reason the order there is not arbitrary.
+ * `serverDiagnosticsFor()` and decline to consume the notification. Placed
+ * first in the client's list for that reason, and it is the reason the order
+ * there is not arbitrary.
  */
-export const diagnosticContextCapture = {
-  notificationHandlers: {
-    "textDocument/publishDiagnostics": (_client: unknown, params: unknown): boolean => {
-      const p = params as { uri?: unknown; diagnostics?: unknown } | null;
-      if (typeof p?.uri === "string") {
-        rememberDiagnostics(p.uri, Array.isArray(p.diagnostics) ? (p.diagnostics as RawDiagnostic[]) : []);
-      }
-      return false;
+export function diagnosticContextCapture(serverId: string) {
+  return {
+    notificationHandlers: {
+      "textDocument/publishDiagnostics": (_client: unknown, params: unknown): boolean => {
+        const p = params as { uri?: unknown; diagnostics?: unknown } | null;
+        if (typeof p?.uri === "string") {
+          const list = Array.isArray(p.diagnostics) ? (p.diagnostics as RawDiagnostic[]) : [];
+          rememberDiagnostics(p.uri, serverId, list);
+        }
+        return false;
+      },
     },
-  },
-};
+  };
+}
 
 const before = (a: LspPosition, b: LspPosition) =>
   a.line < b.line || (a.line === b.line && a.character < b.character);
 
 /**
- * The diagnostics overlapping `range` in `uri`, in the shape they arrived in.
+ * What `serverId` published overlapping `range` in `uri`, in the shape it
+ * arrived in.
  *
  * Touching counts as overlapping: a caret sitting at either end of a squiggle
  * is the position someone asks for a fix from, and an exclusive comparison
@@ -96,8 +106,8 @@ const before = (a: LspPosition, b: LspPosition) =>
  * and the server recomputes the fix from its own state anyway - the list is
  * what tells it *which* problem is being asked about, not where.
  */
-export function diagnosticsIn(uri: string, range: LspRange): RawDiagnostic[] {
-  const all = byUri.get(uri);
+export function diagnosticsIn(uri: string, serverId: string, range: LspRange): RawDiagnostic[] {
+  const all = byUri.get(uri)?.get(serverId);
   if (!all) return [];
   return all.filter((d) => {
     if (!d.range) return false;

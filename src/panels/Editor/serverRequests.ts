@@ -60,12 +60,13 @@ function errorFrame(id: unknown, e: unknown): string {
 }
 
 /**
- * Build a router over `handlers`, keyed by LSP method name.
+ * Build a router over `handlers`, keyed by LSP method name. A key of the form
+ * `eslint/*` answers every method in that namespace that has no key of its own.
  *
  * The returned function is what the transport calls for every inbound frame.
  */
 export function createRequestRouter<Ctx>(handlers: Record<string, ServerRequestHandler<Ctx>>): RequestRouter<Ctx> {
-  const methods = Object.keys(handlers);
+  const methods = Object.keys(handlers).map((m) => (m.endsWith("/*") ? m.slice(0, -1) : m));
 
   return (ctx, msg, send) => {
     // Rule 1. Cheap for the overwhelming majority of frames, which name none of
@@ -84,7 +85,8 @@ export function createRequestRouter<Ctx>(handlers: Record<string, ServerRequestH
     // to something that carries no id would put a response with `"id":
     // undefined` on the wire.
     if (typeof frame.method !== "string" || frame.id === undefined) return false;
-    const handler = handlers[frame.method];
+    const handler =
+      handlers[frame.method] ?? handlers[`${frame.method.slice(0, frame.method.indexOf("/") + 1)}*`];
     if (!handler) return false;
 
     const { id } = frame;

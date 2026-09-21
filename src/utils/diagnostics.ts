@@ -32,6 +32,8 @@ export type Problem = {
   column: number;
   severity: Severity;
   message: string;
+  /** Which tool said it, when two servers speak about one file. */
+  source?: string;
 };
 
 /** Most severe first. Used for ordering and for deciding what a cap keeps. */

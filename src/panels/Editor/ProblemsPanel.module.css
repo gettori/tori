@@ -78,6 +78,12 @@
   color: var(--fg-default);
 }
 
+.source {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+}
+
 /* The Send action is a ghost <Button size="xs">; only its hover/focus reveal is
    kept here (hidden until the row is hovered or the button is focused). */
 .sendButton {

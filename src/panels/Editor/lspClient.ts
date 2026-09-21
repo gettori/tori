@@ -14,7 +14,6 @@ import {
   hoverTooltips,
   jumpToDefinitionKeymap,
   LSPClient,
-  serverDiagnostics,
   signatureHelp,
   type Transport,
 } from "@codemirror/lsp-client";
@@ -32,6 +31,7 @@ import {
   languageIdFor,
   primariesClaiming,
   resolvedPrimary,
+  resolvedServerIds,
   resolveServers,
   serverById,
   setRegistryListener,
@@ -54,6 +54,8 @@ import {
   dropDiagnosticContextUnder,
   rememberDiagnostics,
 } from "./lspDiagnosticContext";
+import { changesToNow, publishFrom, serverDiagnosticsFor, toEditorDiagnostics } from "./lspDiagnostics";
+import { SecondaryClient, feedFor, secondaryFeed, type FeedTarget, type Publish } from "./secondaryClient";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
 import { pathToUri, ToriWorkspace } from "./toriWorkspace";
@@ -64,7 +66,8 @@ import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
  *  frontend only ever holds and returns it. */
 type LspHandle = { serverId: string; root: string };
 
-type Session = {
+type PrimarySession = {
+  kind: "primary";
   handle: LspHandle;
   client: LSPClient;
   workspace: ToriWorkspace;
@@ -74,6 +77,10 @@ type Session = {
    *  not whatever the last-started one happened to want. */
   server: LspServer;
 };
+
+type SecondarySession = { kind: "secondary"; handle: LspHandle; client: SecondaryClient; server: LspServer };
+
+type Session = PrimarySession | SecondarySession;
 
 const key = (h: LspHandle) => `${h.serverId}\u0000${h.root}`;
 
@@ -190,30 +197,34 @@ export function lspSettingsChanged(): void {
 async function reresolve(inScope: (file: string) => boolean, forget: () => void): Promise<void> {
   pruneClosed();
   const files = [...requested].filter(([file]) => inScope(file));
-  const before = new Map(files.map(([file]) => [file, resolvedPrimary(file)?.id]));
+  const before = new Map(files.map(([file]) => [file, resolvedServerIds(file) ?? []]));
   forget();
   const lost: [file: string, serverId: string][] = [];
   await Promise.all(
     files.map(async ([file, projectPath]) => {
-      const was = before.get(file);
+      const was = before.get(file) ?? [];
       const now = await resolveServers(file, projectPath).then(
-        (a) => a.resolution.primary,
+        ({ resolution }) => [resolution.primary, ...resolution.secondaries],
         () => was,
       );
-      if (was && now !== was) lost.push([file, was]);
+      for (const id of was) if (!now.includes(id)) lost.push([file, id]);
     }),
   );
   for (const session of [...sessions.values()]) {
     const flipped = lost.filter(([file, id]) => id === session.server.id && isUnderPath(file, session.handle.root));
     if (!flipped.length) continue;
     const stillWanted = [...requested.keys()].some(
-      (file) => isUnderPath(file, session.handle.root) && resolvedPrimary(file)?.id === session.server.id,
+      (file) => isUnderPath(file, session.handle.root) && resolvedServerIds(file)?.includes(session.server.id),
     );
-    if (stillWanted) continue;
-    stopSession(session);
+    if (!stillWanted) stopSession(session);
     for (const [file] of flipped) {
-      dropDiagnostics(file);
-      rememberDiagnostics(pathToUri(file), []);
+      if (session.kind === "primary" && !stillWanted) {
+        dropDiagnostics(file);
+        rememberDiagnostics(pathToUri(file), session.server.id, []);
+      } else if (session.kind === "secondary" && stillWanted) {
+        session.client.close(file);
+        retract(session.server.id, file);
+      }
     }
   }
   notify();
@@ -263,13 +274,16 @@ export async function ensureLspFor(path: string, projectPath: string): Promise<v
     console.error("lsp_resolve failed", path, e);
     return;
   }
-  const server = resolution.primary ? serverById(resolution.primary) : null;
-  if (!server) return;
-
-  const prev = starting.get(server.id) ?? Promise.resolve();
-  const next = prev.then(() => startFor(server, path, projectPath, startedAt)).catch(() => {});
-  starting.set(server.id, next);
-  await next;
+  const wanted = [resolution.primary, ...resolution.secondaries].map((id) => (id ? serverById(id) : null));
+  await Promise.all(
+    wanted.map((server) => {
+      if (!server) return;
+      const prev = starting.get(server.id) ?? Promise.resolve();
+      const next = prev.then(() => startFor(server, path, projectPath, startedAt)).catch(() => {});
+      starting.set(server.id, next);
+      return next;
+    }),
+  );
 }
 
 async function startFor(
@@ -298,7 +312,7 @@ async function startFor(
     // client below is built - and a server sends nothing at all until it has
     // been sent `initialize`, which only that client does. So by the time
     // anything worth intercepting arrives, this is not reading an unset binding.
-    if (interceptServerRequest(handle, msg)) return;
+    if (server.role !== "secondary" && interceptServerRequest(handle, msg)) return;
     for (const h of handlers) h(msg);
   };
 
@@ -341,8 +355,23 @@ async function startFor(
   // client here would sit connected to a transport no frame ever reaches.
   if (sessions.has(key(handle))) return;
 
+  const send = (message: string) => void invoke("lsp_send", { handle, message }).catch(() => {});
+  if (server.role === "secondary") {
+    const client: SecondaryClient = new SecondaryClient({
+      send,
+      rootUri: pathToUri(handle.root),
+      timeoutMs: server.request_timeout_ms,
+      settings: server.settings,
+      initializationOptions: server.initialization_options,
+      onDiagnostics: (publish) => showSecondaryDiagnostics(server.id, client, publish),
+    });
+    handlers.push((msg) => client.receive(msg));
+    addSession({ kind: "secondary", handle, client, server });
+    return;
+  }
+
   const transport: Transport = {
-    send: (message) => void invoke("lsp_send", { handle, message }).catch(() => {}),
+    send,
     subscribe: (h) => handlers.push(h),
     unsubscribe: (h) => {
       handlers = handlers.filter((x) => x !== h);
@@ -366,10 +395,10 @@ async function startFor(
     // view of a file that is already on screen and null for everything else,
     // which is every cross-file operation there is.
     workspace: (c) => (workspace = new ToriWorkspace(c, workspaceDeps(server))),
-    extensions: clientExtensions(),
+    extensions: clientExtensions(server.id),
   }).connect(transport);
 
-  addSession({ handle, client, workspace: workspace!, server });
+  addSession({ kind: "primary", handle, client, workspace: workspace!, server });
   void configureSession(handle, client, server);
 }
 
@@ -458,20 +487,19 @@ async function configureSession(handle: LspHandle, client: LSPClient, server: Ls
  * wrap or configure, only to replace (see `lspCompletion.ts`). The rest are
  * carried over unchanged apart from the keymap (see below), and each stays a
  * **top-level** entry because that is the only place the client merges an
- * extension's own `clientCapabilities`, which `serverDiagnostics()` has.
+ * extension's own `clientCapabilities`, which `serverDiagnosticsFor()` has.
  *
  * Exported so a test can build the same client the app does, rather than a
  * hand-assembled one that could drift from it.
  */
-export function clientExtensions() {
+export function clientExtensions(serverId: string) {
   return [
-    // Ahead of `serverDiagnostics()`, and that is load-bearing rather than
+    // Ahead of `serverDiagnosticsFor()`, and that is load-bearing rather than
     // tidy: the client stops at the first extension whose handler returns
-    // true, and `serverDiagnostics()` returns true for every publish it
-    // renders. Behind it, this would see only the publishes for files nobody
-    // has open, which is the opposite of the set a code action is ever asked
-    // about.
-    diagnosticContextCapture,
+    // true, and `serverDiagnosticsFor()` returns true for every publish.
+    // Behind it, this would see only the publishes for files nobody has open,
+    // which is the opposite of the set a code action is ever asked about.
+    diagnosticContextCapture(serverId),
     toriCompletion(),
     hoverTooltips(),
     // Two of the library's four keymaps, and the array around them is not a
@@ -501,7 +529,7 @@ export function clientExtensions() {
     //     `Prec.highest`, so this would only ever be the fallback nobody wants.
     [keymap.of([...jumpToDefinitionKeymap, ...findReferencesKeymap])],
     signatureHelp(),
-    serverDiagnostics(),
+    serverDiagnosticsFor(serverId, peersOf),
     symbolClientCapabilities,
     semanticTokensClientCapabilities,
     callHierarchyClientCapabilities,
@@ -628,7 +656,7 @@ const serverRequests = createRequestRouter<LspHandle>({
  */
 function applyDepsFor(handle: LspHandle): ApplyDeps | null {
   const session = sessions.get(key(handle));
-  if (!session) return null;
+  if (session?.kind !== "primary") return null;
   const { client, workspace } = session;
   return {
     requestFile: (uri) => workspace.requestFile(uri) as Promise<MaterialisedFile | null>,
@@ -659,8 +687,12 @@ export function notifyLspFileChanged(path: string): void {
   // Caught rather than left to float: this runs a callback back into the editor
   // component, and an unhandled rejection is invisible - it does not fail a
   // test run, and here it would not fail the app either.
-  for (const { workspace } of sessions.values()) {
-    workspace.fileChanged(path).catch((e) => console.error("lsp fileChanged failed", path, e));
+  for (const session of sessions.values()) {
+    if (session.kind === "primary") {
+      session.workspace.fileChanged(path).catch((e) => console.error("lsp fileChanged failed", path, e));
+    } else if (liveBufferText(path) === null) {
+      session.client.close(path);
+    }
   }
   if (isActivationMarker(path)) {
     const dir = path.slice(0, path.lastIndexOf("/"));
@@ -678,6 +710,7 @@ export function notifyLspFileChanged(path: string): void {
 export type LspTarget = {
   /** The root this session was started at, for naming and de-duplication. */
   root: string;
+  serverId: string;
   /** Resolves once `initialize` has been answered, so `supports` is asking
    *  about capabilities that exist. Settles either way: a server that failed to
    *  initialize is not one to keep a caller waiting on. */
@@ -700,9 +733,10 @@ export type LspTarget = {
 
 type ServerCapabilities = NonNullable<LSPClient["serverCapabilities"]>;
 
-function targetOf(session: Session): LspTarget {
+function targetOf(session: PrimarySession): LspTarget {
   return {
     root: session.handle.root,
+    serverId: session.server.id,
     ready: session.client.initializing.then(
       () => {},
       () => {},
@@ -726,7 +760,7 @@ export function lspTargetFor(path: string): LspTarget | null {
  *  is scoped to one server's own root, so a monorepo with a package-level
  *  session and a repo-root session has to ask both to see the whole tree. */
 export function lspTargets(): LspTarget[] {
-  return [...sessions.values()].map(targetOf);
+  return [...sessions.values()].flatMap((s) => (s.kind === "primary" ? [targetOf(s)] : []));
 }
 
 /**
@@ -794,6 +828,7 @@ function stopSession(session: Session): void {
     // ignore
   }
   sessions.delete(key(session.handle));
+  if (session.kind === "secondary") for (const path of session.client.openPaths()) retract(session.server.id, path);
   void invoke("lsp_stop", { handle: session.handle }).catch(() => {});
 }
 
@@ -804,7 +839,56 @@ function stopSession(session: Session): void {
  *  the result into the buffer's state. */
 export function lspPluginFor(path: string): Extension {
   const claim = claimFor(path);
-  return claim ? claim.session.client.plugin(pathToUri(path), claim.languageId) : [];
+  const primary = claim ? claim.session.client.plugin(pathToUri(path), claim.languageId) : [];
+  if (!feedTargets(path).length) return primary;
+  return [primary, secondaryFeed.of({ path, targets: () => feedTargets(path) })];
+}
+
+// Each secondary the file's resolution names, at the longest root holding it.
+// Unresolved (the cache is cleared while a change re-resolves), every live one
+// claiming the file, as `answeringSession` does for a primary.
+function secondariesFor(path: string): SecondarySession[] {
+  const ids = resolvedServerIds(path);
+  const found = new Map<string, SecondarySession>();
+  for (const session of sessions.values()) {
+    if (session.kind !== "secondary" || !isUnderPath(path, session.handle.root)) continue;
+    if (ids ? !ids.includes(session.server.id) : !languageIdFor(session.server, path)) continue;
+    const best = found.get(session.server.id);
+    if (!best || session.handle.root.length > best.handle.root.length) found.set(session.server.id, session);
+  }
+  return [...found.values()];
+}
+
+function feedTargets(path: string): FeedTarget[] {
+  return secondariesFor(path).flatMap((s) => {
+    const languageId = languageIdFor(s.server, path);
+    return languageId ? [{ client: s.client, languageId }] : [];
+  });
+}
+
+/** The live servers whose diagnostics a file shows. */
+function peersOf(path: string): string[] {
+  const primary = answeringSession(path);
+  return [...(primary ? [primary.server.id] : []), ...secondariesFor(path).map((s) => s.server.id)];
+}
+
+function showSecondaryDiagnostics(serverId: string, client: SecondaryClient, publish: Publish): void {
+  const { uri, path, version, diagnostics } = publish;
+  rememberDiagnostics(uri, serverId, diagnostics);
+  const feed = feedFor(path);
+  const held = client.held(path);
+  const since = client.since(path, version);
+  if (!feed || !held || !since) return;
+  const toNow = since.changes.composeDesc(changesToNow(held, feed.synced, feed.unsynced.desc, feed.doc));
+  const list = toEditorDiagnostics(diagnostics, since.doc, toNow, serverId);
+  feed.view.dispatch(publishFrom(feed.view.state, serverId, list, peersOf(path)));
+}
+
+// Take a server's diagnostics off a file it no longer answers for.
+function retract(serverId: string, path: string): void {
+  rememberDiagnostics(pathToUri(path), serverId, []);
+  const feed = feedFor(path);
+  if (feed) feed.view.dispatch(publishFrom(feed.view.state, serverId, [], peersOf(path)));
 }
 
 /** The session and language id that will answer for `path`, or null.
@@ -813,7 +897,7 @@ export function lspPluginFor(path: string): Extension {
  *  actually got and what the completion fallback believes it got cannot drift
  *  apart. Splitting them was how a file could end up with the server's
  *  completions and the scraped-word list at the same time. */
-function claimFor(path: string): { session: Session; languageId: string } | null {
+function claimFor(path: string): { session: PrimarySession; languageId: string } | null {
   const session = answeringSession(path);
   if (!session) return null;
   const languageId = languageIdFor(session.server, path);
@@ -824,13 +908,14 @@ function claimFor(path: string): { session: Session; languageId: string } | null
 // Resolved, the file's own primary answers. Unresolved (a call hierarchy item
 // in a file nobody opened), the longest-root session of any primary claiming
 // the extension does, which is what every file got before resolution existed.
-function answeringSession(path: string): Session | null {
+function answeringSession(path: string): PrimarySession | null {
   const resolved = resolvedPrimary(path);
   const candidates = resolved === undefined ? primariesClaiming(path) : resolved ? [resolved] : [];
-  let best: Session | null = null;
+  let best: PrimarySession | null = null;
   for (const server of candidates) {
     const session = sessionFor(path, server);
-    if (session && (!best || session.handle.root.length > best.handle.root.length)) best = session;
+    if (session?.kind !== "primary") continue;
+    if (!best || session.handle.root.length > best.handle.root.length) best = session;
   }
   return best;
 }

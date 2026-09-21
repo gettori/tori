@@ -15,7 +15,7 @@ const at = (line: number, character: number) => ({ line, character });
 const range = (sl: number, sc: number, el: number, ec: number) => ({ start: at(sl, sc), end: at(el, ec) });
 
 const publish = (uri: string, diagnostics: unknown[]) =>
-  diagnosticContextCapture.notificationHandlers["textDocument/publishDiagnostics"](null, {
+  diagnosticContextCapture("ts").notificationHandlers["textDocument/publishDiagnostics"](null, {
     uri,
     diagnostics,
   });
@@ -37,7 +37,7 @@ describe("capturing a publish", () => {
       { range: range(2, 4, 2, 9), message: "Cannot find name 'foo'.", code: 2304, source: "ts", data: { fix: 1 } },
     ]);
 
-    const [d] = diagnosticsIn("file:///a.ts", range(2, 5, 2, 5));
+    const [d] = diagnosticsIn("file:///a.ts", "ts", range(2, 5, 2, 5));
     expect(d.code).toBe(2304);
     expect(d.source).toBe("ts");
     expect(d.data).toEqual({ fix: 1 });
@@ -48,26 +48,26 @@ describe("capturing a publish", () => {
     // entry per file in a monorepo-wide publish for the life of the session.
     publish("file:///a.ts", [{ range: range(0, 0, 0, 1), message: "x" }]);
     publish("file:///a.ts", []);
-    expect(diagnosticsIn("file:///a.ts", range(0, 0, 0, 1))).toEqual([]);
+    expect(diagnosticsIn("file:///a.ts", "ts", range(0, 0, 0, 1))).toEqual([]);
   });
 
   it("ignores a publish naming no file", () => {
     expect(publish(undefined as unknown as string, [])).toBe(false);
-    expect(() => diagnosticsIn("file:///a.ts", range(0, 0, 0, 0))).not.toThrow();
+    expect(() => diagnosticsIn("file:///a.ts", "ts", range(0, 0, 0, 0))).not.toThrow();
   });
 
   it("treats a missing diagnostics array as a clear, not as a crash", () => {
     publish("file:///a.ts", [{ range: range(0, 0, 0, 1), message: "x" }]);
-    diagnosticContextCapture.notificationHandlers["textDocument/publishDiagnostics"](null, {
+    diagnosticContextCapture("ts").notificationHandlers["textDocument/publishDiagnostics"](null, {
       uri: "file:///a.ts",
     });
-    expect(diagnosticsIn("file:///a.ts", range(0, 0, 0, 1))).toEqual([]);
+    expect(diagnosticsIn("file:///a.ts", "ts", range(0, 0, 0, 1))).toEqual([]);
   });
 });
 
 describe("which diagnostics a range is asked about", () => {
   beforeEach(() => {
-    rememberDiagnostics("file:///a.ts", [
+    rememberDiagnostics("file:///a.ts", "ts", [
       { range: range(1, 0, 1, 5), message: "first" },
       { range: range(5, 2, 5, 8), message: "second" },
       { range: range(9, 0, 12, 0), message: "spanning" },
@@ -75,7 +75,7 @@ describe("which diagnostics a range is asked about", () => {
   });
 
   const messages = (r: ReturnType<typeof range>) =>
-    diagnosticsIn("file:///a.ts", r).map((d) => d.message);
+    diagnosticsIn("file:///a.ts", "ts", r).map((d) => d.message);
 
   it("answers with the one the caret sits inside", () => {
     expect(messages(range(5, 4, 5, 4))).toEqual(["second"]);
@@ -99,12 +99,12 @@ describe("which diagnostics a range is asked about", () => {
   });
 
   it("answers nothing for a file nothing was published for", () => {
-    expect(diagnosticsIn("file:///b.ts", range(0, 0, 0, 0))).toEqual([]);
+    expect(diagnosticsIn("file:///b.ts", "ts", range(0, 0, 0, 0))).toEqual([]);
   });
 
   it("skips an entry carrying no range rather than throwing", () => {
-    rememberDiagnostics("file:///c.ts", [{ message: "rangeless" }]);
-    expect(diagnosticsIn("file:///c.ts", range(0, 0, 0, 0))).toEqual([]);
+    rememberDiagnostics("file:///c.ts", "ts", [{ message: "rangeless" }]);
+    expect(diagnosticsIn("file:///c.ts", "ts", range(0, 0, 0, 0))).toEqual([]);
   });
 });
 
@@ -157,17 +157,17 @@ describe("the dispatch rule this module's placement rests on", () => {
 
   it("carries on past a handler that declines, which is why the capture returns false", () => {
     const seen: string[] = [];
-    feedPublish([diagnosticContextCapture, probe("after", false, seen)]);
+    feedPublish([diagnosticContextCapture("ts"), probe("after", false, seen)]);
 
     expect(seen, "the library's own renderer still gets its turn").toEqual(["after"]);
-    expect(diagnosticsIn("file:///proj/a.ts", range(0, 1, 0, 1)).map((d) => d.code)).toEqual([2304]);
+    expect(diagnosticsIn("file:///proj/a.ts", "ts", range(0, 1, 0, 1)).map((d) => d.code)).toEqual([2304]);
   });
 });
 
 describe("clearing", () => {
   it("drops everything, since a project switch invalidates every server", () => {
-    rememberDiagnostics("file:///a.ts", [{ range: range(0, 0, 0, 1), message: "x" }]);
+    rememberDiagnostics("file:///a.ts", "ts", [{ range: range(0, 0, 0, 1), message: "x" }]);
     clearDiagnosticContext();
-    expect(diagnosticsIn("file:///a.ts", range(0, 0, 0, 1))).toEqual([]);
+    expect(diagnosticsIn("file:///a.ts", "ts", range(0, 0, 0, 1))).toEqual([]);
   });
 });

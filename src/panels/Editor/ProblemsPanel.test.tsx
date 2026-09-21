@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { setDiagnostics } from "@codemirror/lint";
+import { EditorState } from "@codemirror/state";
 import { expectNoAxeViolations } from "../../test/axe";
 import ProblemsPanel from "./ProblemsPanel";
+import { problemsFromState } from "./problemsFromState";
 import { clearDiagnostics, publishDiagnostics, type Problem } from "../../utils/diagnostics";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 import type { MemberRoot } from "../../utils/topicMembers";
@@ -62,6 +65,16 @@ describe("a branch unit's problems", () => {
   it("says nothing is wrong when nothing is", () => {
     render(() => <ProblemsPanel selected={unit(API)} />);
     expect(screen.getByText("No problems in the open files.")).toBeTruthy();
+  });
+
+  it("names the tool that reported a problem", () => {
+    const state = EditorState.create({ doc: "let a = 1;\n" });
+    const linted = state.update(
+      setDiagnostics(state, [{ from: 4, to: 5, severity: "warning", message: "'a' is unused", source: "eslint" }]),
+    ).state;
+    publishDiagnostics(`${API}/src/a.ts`, problemsFromState(linted));
+    render(() => <ProblemsPanel selected={unit(API)} />);
+    expect(screen.getByText("'a' is unused").parentElement?.textContent).toContain("eslint");
   });
 });
 

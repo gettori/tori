@@ -94,7 +94,7 @@ function transport(): Transport {
 let views: EditorView[] = [];
 
 async function setup(doc = "", extra: Extension = [], uri = URI) {
-  const client = new LSPClient({ extensions: clientExtensions() }).connect(transport());
+  const client = new LSPClient({ extensions: clientExtensions("typescript") }).connect(transport());
   const view = new EditorView({
     state: EditorState.create({ doc, extensions: [client.plugin(uri, "typescript"), extra] }),
     parent: document.body,
@@ -245,7 +245,7 @@ describe("the client's extension list", () => {
     };
 
     const before = capabilitiesFor([
-      diagnosticContextCapture,
+      diagnosticContextCapture("typescript"),
       ...languageServerExtensions(),
       symbolClientCapabilities,
       semanticTokensClientCapabilities,
@@ -259,7 +259,7 @@ describe("the client's extension list", () => {
       callHierarchyClientCapabilities,
       codeLensClientCapabilities,
     ]);
-    const after = capabilitiesFor(clientExtensions());
+    const after = capabilitiesFor(clientExtensions("typescript"));
 
     const withoutCompletion = (caps: Record<string, Record<string, unknown>>) => {
       const { completion: _completion, ...textDocument } = caps.textDocument;

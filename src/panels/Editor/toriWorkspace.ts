@@ -22,10 +22,11 @@
 // taken when it left the screen stays accurate until the file changes
 // underneath it. `fileChanged` is what covers that last case.
 
-import { ChangeSet, Text } from "@codemirror/state";
+import { ChangeSet, Text, type ChangeDesc } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { LSPPlugin, Workspace, type LSPClient, type WorkspaceFile } from "@codemirror/lsp-client";
 import { diffChanges, toDoc } from "./docDiff";
+import { VersionTrail } from "./versionTrail";
 
 // The library declares this shape but does not export it, so it is read back
 // off the method that returns it rather than restated here, where it could
@@ -65,6 +66,7 @@ class ToriFile implements WorkspaceFile {
   /** A change the server has not been told about yet, reported by the next
    *  `syncFiles`. `changes` maps `this.doc` onto `doc`. */
   pending: { changes: ChangeSet; doc: Text } | null = null;
+  readonly trail = new VersionTrail();
 
   constructor(
     readonly uri: string,
@@ -73,7 +75,9 @@ class ToriFile implements WorkspaceFile {
     public languageId: string,
     public version: number,
     public doc: Text,
-  ) {}
+  ) {
+    this.trail.record(version, doc, null);
+  }
 
   getView(): EditorView | null {
     return this.view;
@@ -143,6 +147,13 @@ export class ToriWorkspace extends Workspace {
     return (path && this.byPath.get(path)) || null;
   }
 
+  /** The text the server was sent as `version` of `uri`, and the changes from
+   *  it to the latest it was sent. */
+  since(uri: string, version: number | null): { doc: Text; changes: ChangeDesc } | null {
+    const path = uriToPath(uri);
+    return (path && this.byPath.get(path)?.trail.since(version)) || null;
+  }
+
   // --- Change reporting ----------------------------------------------------
 
   syncFiles(): readonly WorkspaceFileUpdate[] {
@@ -161,6 +172,7 @@ export class ToriWorkspace extends Workspace {
         result.push({ changes, file, prevDoc: file.doc });
         file.doc = doc;
         file.version = this.nextVersion(file.path);
+        file.trail.record(file.version, doc, changes);
         continue;
       }
       if (!view || !plugin) continue;
@@ -169,6 +181,7 @@ export class ToriWorkspace extends Workspace {
       result.push({ changes, file, prevDoc: file.doc });
       file.doc = view.state.doc;
       file.version = this.nextVersion(file.path);
+      file.trail.record(file.version, file.doc, changes);
       plugin.clear();
     }
     return result;

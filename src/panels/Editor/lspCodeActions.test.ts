@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 type Target = {
   root: string;
+  serverId?: string;
   ready: Promise<void>;
   supports: (cap: string) => boolean;
   sync: () => void;
@@ -47,6 +48,7 @@ function target(opts: { root?: string; provides?: string[]; res?: unknown; fail?
   let release = () => {};
   const t: Target & { log: string[]; asked: typeof asked; release: () => void } = {
     root: opts.root ?? "/proj",
+    serverId: "ts",
     ready: opts.slowReady
       ? new Promise<void>((r) => {
           release = () => {
@@ -112,7 +114,7 @@ describe("requestCodeActions", () => {
   it("sends the server its own diagnostics for the range, fields intact", async () => {
     const t = target({ provides: ["codeActionProvider"] });
     targets = [t];
-    rememberDiagnostics("file:///proj/a.ts", [
+    rememberDiagnostics("file:///proj/a.ts", "ts", [
       { range: range(3, 4, 3, 9), message: "Cannot find name 'foo'.", code: 2304 },
       { range: range(40, 0, 40, 2), message: "elsewhere", code: 2551 },
     ]);
@@ -128,6 +130,18 @@ describe("requestCodeActions", () => {
     expect(params.range).toEqual(range(3, 6, 3, 6));
     expect(params.context.diagnostics.map((d) => d.code), "only the one under the caret").toEqual([2304]);
     expect(params.context.triggerKind, "a person asked").toBe(1);
+  });
+
+  it("sends only what its own server published, not another's on the same line", async () => {
+    const t = target({ provides: ["codeActionProvider"] });
+    targets = [t];
+    rememberDiagnostics("file:///proj/a.ts", "ts", [{ range: range(3, 4, 3, 9), message: "type", code: 2304 }]);
+    rememberDiagnostics("file:///proj/a.ts", "eslint", [{ range: range(3, 4, 3, 9), message: "lint", code: "no-undef" }]);
+
+    await requestCodeActions("/proj/a.ts", range(3, 6, 3, 6));
+
+    const params = t.asked[0].params as { context: { diagnostics: { message: string }[] } };
+    expect(params.context.diagnostics.map((d) => d.message)).toEqual(["type"]);
   });
 
   it("answers null when no server claims the file", async () => {
