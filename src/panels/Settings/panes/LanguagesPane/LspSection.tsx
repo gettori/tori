@@ -1,10 +1,12 @@
 import { For, Show, Switch, Match, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../../../components/Button/Button";
 import Toggle from "../../../../components/Switch/Switch";
-import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
-import { installServer } from "../../../../utils/serverInstall";
-import { CmdLine } from "../../components/paneKit";
+import InlineJob from "../../../FirstRun/job/InlineJob";
+import type { JobState } from "../../../FirstRun/job/InlineJobFrame";
+import { emitWith, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
+import { installServer, serverInstalled } from "../../../../utils/serverInstall";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
@@ -89,7 +91,7 @@ function tabOf(s: LspHealth): Tab {
 
 const kindOf = (s: LspHealth) => (s.role === "secondary" ? "Linter" : "LSP");
 
-export function LspCard(props: { server: LspHealth; onChange: () => Promise<unknown> }) {
+export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspHealth[] | null | undefined> }) {
   const s = () => props.server;
   const [pending, setPending] = createSignal<"install" | "remove" | null>(null);
   // Flipped here as soon as it is saved, rather than after `lsp_health`
@@ -100,6 +102,35 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<unkn
     s().installedVersion !== null && s().availableVersion !== null && s().installedVersion !== s().availableVersion;
   const installable = () => s().installedVersion === null && s().status === "notFound" && s().availableVersion !== null;
   const command = () => (s().status === "notFound" ? commandIn(s().hint) : null);
+  // Run here rather than as a dock tab, which would open behind this panel.
+  const [job, setJob] = createSignal<OpenJob | null>(null);
+
+  const runCommand = async (line: string) => {
+    setJob({
+      id: `lsp-install:${s().id}`,
+      title: `Install ${s().label}`,
+      cwd: await homeDir().catch(() => "/"),
+      program: "/bin/sh",
+      args: ["-c", line],
+      interactive: true,
+    });
+  };
+
+  // The card is rebuilt once health comes back, so what to say is decided
+  // from the answer rather than from this card.
+  const finished = async (state: JobState) => {
+    if (state !== "ok") return;
+    const { id, label, program } = s();
+    serverInstalled(id);
+    const now = (await props.onChange())?.find((x) => x.id === id);
+    emitWith<ToastEvent>(TOAST, {
+      message:
+        now && now.status !== "notFound"
+          ? `${label} is installed.`
+          : `The ${label} install finished, but ${program} is still not on your PATH.`,
+      kind: now && now.status !== "notFound" ? "info" : "error",
+    });
+  };
 
   // Install goes through `installServer` so files already open in the editor
   // pick the server up.
@@ -122,7 +153,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<unkn
   };
 
   return (
-    <div class={styles.toolCard}>
+    <div class={styles.toolCard} classList={{ [styles.toolCardWide]: job() !== null }}>
       <div class={styles.toolHead}>
         <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[s().status]}`} />
         <span class={styles.toolName} classList={{ [styles.toolNameOff]: off() }}>
@@ -171,7 +202,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<unkn
           <Match when={installable()}>
             Available, not installed. Tori can install version {s().availableVersion}.
           </Match>
-          <Match when={command()}>Not installed. Run this, then reopen Tori to pick it up.</Match>
+          <Match when={command()}>Not installed. Install runs this in a terminal here.</Match>
           <Match when={s().status === "notFound" && s().hint}>{(hint) => <>Not installed. {hint()}</>}</Match>
           <Match when={s().status === "notFound"}>
             Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
@@ -190,14 +221,46 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<unkn
         </Switch>
       </div>
 
-      <Show when={command()}>{(cmd) => <CmdLine text={cmd()} />}</Show>
+      <Show when={command()}>
+        {(cmd) => (
+          <Show
+            when={job()}
+            fallback={
+              <div class={styles.cmd}>
+                <span class={styles.cmdPrompt}>$</span>
+                <code class={styles.cmdText}>{cmd()}</code>
+              </div>
+            }
+          >
+            {(j) => (
+              <InlineJob
+                job={j()}
+                command={cmd()}
+                okLine={`Installed ${s().label}.`}
+                onCancel={() => setJob(null)}
+                onState={(state) => void finished(state)}
+              />
+            )}
+          </Show>
+        )}
+      </Show>
 
       <div class={styles.toolExts}>
         <For each={s().extensions}>{(ext) => <span>.{ext}</span>}</For>
       </div>
 
-      <Show when={!off() && (installable() || s().installedVersion)}>
+      <Show when={!off() && (installable() || s().installedVersion || (command() && !job()))}>
         <div class={styles.toolActions}>
+          <Show when={command() && !job()}>
+            <Button
+              variant="primary"
+              size="xs"
+              aria-label={`Install ${s().label}`}
+              onClick={() => void runCommand(command()!)}
+            >
+              Install
+            </Button>
+          </Show>
           <Show when={installable()}>
             <Button
               variant="primary"
