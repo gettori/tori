@@ -1,8 +1,10 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { ListX, ShieldOff } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
+import Icon from "../../../../components/Icon/Icon";
+import IconButton from "../../../../components/IconButton/IconButton";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
-import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
 import styles from "../../Settings.module.css";
@@ -84,11 +86,7 @@ export default function TrustedProjects() {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
         <Show when={count("trusted") > 0}>
-          <span class={styles.titleAction}>
-            <Button size="xs" variant="ghost" onClick={() => setConfirming(true)}>
-              Revoke all
-            </Button>
-          </span>
+          <IconButton size="sm" icon={<Icon icon={ListX} />} tooltip="Revoke all" onClick={() => setConfirming(true)} />
         </Show>
       </div>
 
@@ -111,43 +109,40 @@ export default function TrustedProjects() {
             <span>Status</span>
             <span />
           </div>
-          <OverlayScroll class={styles.trustScroll}>
-            <For each={shown()}>
-              {(r) => (
-                <div class={styles.trustRow}>
-                  <span class={`${styles.dot} ${r.trusted ? styles.dotOk : styles.dotOff}`} />
-                  <code class={styles.trustPath} classList={{ [styles.trustPathOff]: !r.trusted }} title={r.path}>
-                    {r.path}
-                  </code>
-                  <span class={styles.trustStatus}>{r.trusted ? "Trusted" : "Servers stay off"}</span>
-                  <Show
-                    when={r.trusted}
-                    fallback={
-                      <Button
-                        variant="primary"
-                        size="xs"
-                        class={styles.trustAction}
-                        aria-label={`Trust ${r.path}`}
-                        onClick={() => run("trust", trustProject(r.path))}
-                      >
-                        Trust
-                      </Button>
-                    }
-                  >
+          <For each={shown()}>
+            {(r) => (
+              <div class={styles.trustRow}>
+                <span class={`${styles.dot} ${r.trusted ? styles.dotOk : styles.dotOff}`} />
+                <code class={styles.trustPath} classList={{ [styles.trustPathOff]: !r.trusted }} title={r.path}>
+                  {r.path}
+                </code>
+                <span class={styles.trustStatus}>{r.trusted ? "Trusted" : "Servers stay off"}</span>
+                <Show
+                  when={r.trusted}
+                  fallback={
                     <Button
-                      variant="ghost"
+                      variant="primary"
                       size="xs"
                       class={styles.trustAction}
-                      aria-label={`Revoke ${r.path}`}
-                      onClick={() => run("revoke", revokeProject(r.path))}
+                      aria-label={`Trust ${r.path}`}
+                      onClick={() => run("trust", trustProject(r.path))}
                     >
-                      Revoke
+                      Trust
                     </Button>
-                  </Show>
-                </div>
-              )}
-            </For>
-          </OverlayScroll>
+                  }
+                >
+                  <IconButton
+                    size="xs"
+                    class={styles.trustAction}
+                    icon={<Icon icon={ShieldOff} />}
+                    tooltip="Revoke"
+                    aria-label={`Revoke ${r.path}`}
+                    onClick={() => run("revoke", revokeProject(r.path))}
+                  />
+                </Show>
+              </div>
+            )}
+          </For>
         </div>
       </Show>
       <div class={styles.note}>

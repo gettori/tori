@@ -914,9 +914,6 @@
     text-transform: uppercase;
     color: var(--fg-subtle);
   }
-  .trustScroll {
-    max-height: calc(214px * var(--ui-scale));
-  }
   .trustRow + .trustRow {
     border-top: var(--tori-border-thin) solid var(--border-default);
   }
@@ -940,16 +937,6 @@
   }
   .trustAction {
     justify-self: end;
-  }
-  /* Around a button on a title row, which is mono and uppercase. On a wrapper
-     because the button's own sheet is unlayered and wins, and it inherits its
-     font from here. */
-  .titleAction {
-    flex: none;
-    font-family: var(--tori-font-ui);
-    font-weight: 400;
-    letter-spacing: normal;
-    text-transform: none;
   }
 
   .card {
