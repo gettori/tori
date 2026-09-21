@@ -1,0 +1,33 @@
+# Typst via Tinymist. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "typst"
+label = "Typst (Tinymist)"
+root_markers = ["typst.toml", ".git"]
+
+# Typst compiles in a sandbox: a document cannot run a program.
+runs_project_code = false
+
+[languages]
+typ = "typst"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "tinymist"
+args = ["lsp"]
+
+[install]
+kind = "github_release"
+repo = "Myriad-Dreamin/tinymist"
+version = "v0.15.8"
+
+[install.assets.macos-aarch64]
+file = "tinymist-aarch64-apple-darwin.tar.gz"
+sha256 = "c3e8673fe4b7d8d21ad6d90e3c0684317191e1350758f7eaa02b5bde84339885"
+bin = "tinymist-aarch64-apple-darwin/tinymist"
+
+[install.assets.macos-x86_64]
+file = "tinymist-x86_64-apple-darwin.tar.gz"
+sha256 = "0ca702f40c5028d5937e081799a2c07d30c3f8f2ce3e40ce469471856cd6cef1"
+bin = "tinymist-x86_64-apple-darwin/tinymist"

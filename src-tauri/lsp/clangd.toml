@@ -1,0 +1,45 @@
+# C, C++ and Objective-C via clangd. Xcode's command line tools ship one at
+# /usr/bin/clangd, which wins over Tori's copy. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "clangd"
+label = "C / C++ (clangd)"
+root_markers = ["compile_commands.json", "compile_flags.txt", ".clangd", ".git"]
+request_timeout_ms = 30000
+
+# Compile flags come from the project, and a flag can load a compiler plugin.
+runs_project_code = true
+
+[languages]
+c = "c"
+h = "c"
+cc = "cpp"
+cpp = "cpp"
+cxx = "cpp"
+hh = "cpp"
+hpp = "cpp"
+hxx = "cpp"
+m = "objective-c"
+mm = "objective-cpp"
+
+[launch]
+kind = "managed"
+runtime = "native"
+program = "clangd"
+args = []
+
+# One universal build for both architectures.
+[install]
+kind = "github_release"
+repo = "clangd/clangd"
+version = "22.1.6"
+
+[install.assets.macos-aarch64]
+file = "clangd-mac-22.1.6.zip"
+sha256 = "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d"
+bin = "clangd_22.1.6/bin/clangd"
+
+[install.assets.macos-x86_64]
+file = "clangd-mac-22.1.6.zip"
+sha256 = "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d"
+bin = "clangd_22.1.6/bin/clangd"

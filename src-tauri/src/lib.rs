@@ -428,6 +428,8 @@ pub fn run() {
             lsp::lsp_schema_dir,
             lsp::lsp_health,
             lsp::lsp_resolve,
+            lsp::lsp_install,
+            lsp::lsp_uninstall,
             trust::trusted_projects,
             trust::trust_project,
             trust::revoke_project,

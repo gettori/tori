@@ -1,0 +1,23 @@
+# Zig via `zls`, which its own toolchain installs, so Tori
+# offers a hint rather than an install. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "zig"
+label = "Zig"
+root_markers = ["build.zig", ".git"]
+
+# Runs `build.zig` to learn the build.
+runs_project_code = true
+
+[languages]
+zig = "zig"
+zon = "zig"
+
+[launch]
+kind = "path"
+program = "zls"
+args = []
+
+[install]
+kind = "hint"
+text = "Install the zls release that matches your Zig version, see zigtools.org/zls/install."

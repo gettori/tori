@@ -1,0 +1,25 @@
+# GraphQL via graphql-language-service-cli. It answers from the project's
+# GraphQL config. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "graphql"
+label = "GraphQL"
+root_markers = [".graphqlrc", ".graphqlrc.yml", ".graphqlrc.json", "graphql.config.js", "graphql.config.ts", "package.json", ".git"]
+
+# A `graphql.config.js` or `.ts` is loaded as code.
+runs_project_code = true
+
+[languages]
+graphql = "graphql"
+gql = "graphql"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "graphql-lsp"
+args = ["server", "-m", "stream"]
+
+[install]
+kind = "npm"
+package = "graphql-language-service-cli"
+version = "3.5.0"
