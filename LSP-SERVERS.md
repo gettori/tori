@@ -31,7 +31,7 @@ intelligence.
 
 Beyond the core set, Tori knows how to run one server for each of these
 languages. Each is a primary, and each is either bundled, installed by Tori
-from Settings > Servers at a pinned version (see "Installing servers"), or
+from Settings > LSP at a pinned version (see "Installing servers"), or
 installed by you, with a hint on its card saying how.
 
 | id | Server | How it gets there |
@@ -274,7 +274,7 @@ sha256 = "0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c"
 bin = "bin/lua-language-server"
 ```
 
-Install, Update and Remove live on the server's card in Settings > Servers.
+Install, Update and Remove live on the server's card in Settings > LSP.
 Opening a file whose server Tori can install, but has not, also offers it in a
 banner above the file: Install, Not now (asked again next session), or Never
 for this language, which adds the id to `lsp.neverOffer` in
@@ -397,7 +397,7 @@ program = "pyright-langserver"
 args = ["--stdio"]
 ```
 
-Settings > Servers will then show a card for it, reporting
+Settings > LSP will then show a card for it, reporting
 whether `pyright-langserver` resolves on your PATH.
 
 ## Whole-replacing a bundled server
