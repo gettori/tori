@@ -292,7 +292,7 @@ export type Settings = {
   /** Mirrors `Lsp` in src-tauri/src/settings.rs. */
   lsp: { disabled: string[]; neverOffer: string[] };
   /** Mirrors `Format` in src-tauri/src/settings.rs. */
-  format: { byExtension: Record<string, string> };
+  format: { byExtension: Record<string, string>; disabled: string[] };
 };
 
 /** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
@@ -364,7 +364,7 @@ export const DEFAULT_SETTINGS: Settings = {
   editor: {},
   projectAgents: {},
   lsp: { disabled: [], neverOffer: [] },
-  format: { byExtension: {} },
+  format: { byExtension: {}, disabled: [] },
 };
 
 /**
@@ -730,6 +730,12 @@ export function neverOfferInstall(serverId: string): void {
 export function setServerDisabled(serverId: string, disabled: boolean): Promise<void> {
   const rest = (settings.lsp?.disabled ?? []).filter((id) => id !== serverId);
   return saveSettings({ ...settings, lsp: { ...settings.lsp, disabled: disabled ? [...rest, serverId] : rest } });
+}
+
+/** Add a formatter to your `format.disabled`, or take it off. */
+export function setFormatterDisabled(formatterId: string, disabled: boolean): Promise<void> {
+  const rest = (settings.format?.disabled ?? []).filter((id) => id !== formatterId);
+  return saveSettings({ ...settings, format: { ...settings.format, disabled: disabled ? [...rest, formatterId] : rest } });
 }
 
 /** Remember this project's format-on-save answer. Swallowed on failure for the

@@ -1,11 +1,11 @@
-import { For, Show, Switch, Match, createSignal, type Resource } from "solid-js";
+import { For, Show, Switch, Match, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { installServer } from "../../../../utils/serverInstall";
 import { CmdLine } from "../../components/paneKit";
-import { setServerDisabled } from "../../settingsStore";
+import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
@@ -47,6 +47,16 @@ export type LspHealth = {
   // Tori's own copy, set only when that is the one that runs.
   installedVersion: string | null;
 };
+
+// The Servers and Linters panes mount together with the panel, and this runs
+// every server's binary, so the second one to ask shares the first's answer.
+let probing: Promise<LspHealth[]> | null = null;
+export function probeLspHealth(): Promise<LspHealth[]> {
+  probing ??= invoke<LspHealth[]>("lsp_health", { root: overlayRoot() }).finally(() => {
+    probing = null;
+  });
+  return probing;
+}
 
 // Identical mapping to the agent cards, and for the same reason: the dot
 // answers "is this usable?" and nothing else, so `versionUnknown` is green.
@@ -231,8 +241,9 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<unkn
   );
 }
 
-export default function LspSection(props: { health: Resource<LspHealth[]>; onChange: () => Promise<unknown> }) {
-  const servers = () => (props.health() ?? []).filter((s) => s.role === "primary");
+export default function LspSection() {
+  const [health, { refetch }] = createResource(probeLspHealth);
+  const servers = () => (health() ?? []).filter((s) => s.role === "primary");
   const [picked, setPicked] = createSignal<Tab | null>(null);
   const [query, setQuery] = createSignal("");
 
@@ -282,13 +293,13 @@ export default function LspSection(props: { health: Resource<LspHealth[]>; onCha
         />
       </div>
       <Switch>
-        <Match when={props.health.state === "pending"}>
+        <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which language servers are installed…</div>
         </Match>
-        <Match when={props.health.error}>
-          <div class={styles.note}>Could not check language servers: {String(props.health.error)}</div>
+        <Match when={health.error}>
+          <div class={styles.note}>Could not check language servers: {String(health.error)}</div>
         </Match>
-        <Match when={props.health()}>
+        <Match when={health()}>
           <Show
             when={shown().length > 0}
             fallback={
@@ -299,7 +310,7 @@ export default function LspSection(props: { health: Resource<LspHealth[]>; onCha
           >
             <div class={styles.toolGrid}>
               <For each={shown()}>
-                {(server) => <LspCard server={server} onChange={props.onChange} />}
+                {(server) => <LspCard server={server} onChange={() => Promise.resolve(refetch())} />}
               </For>
             </div>
           </Show>

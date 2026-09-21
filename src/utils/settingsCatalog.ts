@@ -31,6 +31,9 @@ export type SettingSection =
   | "agents"
   | "lsp"
   | "dap"
+  | "lint"
+  | "fmt"
+  | "trust"
   | "git"
   | "forge"
   | "appearance"
@@ -56,7 +59,11 @@ export type SettingTab =
   | "agents"
   | "chat"
   | "editor"
-  | "languages"
+  | "servers"
+  | "debuggers"
+  | "linters"
+  | "formatters"
+  | "projects"
   | "appearance"
   | "integrations"
   | "panes"
@@ -64,7 +71,7 @@ export type SettingTab =
 
 /** Not "Workspace": the panel already uses that word for a folder, and most of
  *  these rows write your global settings. */
-export type SettingGroup = "Workbench" | "Application";
+export type SettingGroup = "Workbench" | "Languages" | "Application";
 
 export type SettingTabDef = {
   id: SettingTab;
@@ -84,7 +91,7 @@ export type SettingTabDef = {
 };
 
 /**
- * The six tabs, in rail order.
+ * The tabs, in rail order.
  *
  * The pairings are the ones that read as one subject rather than the ones that
  * happen to be adjacent today: checkpoints are what makes a chat's turns
@@ -100,8 +107,12 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "agents", label: "Agents", group: "Workbench", icon: "bot", sections: ["agents"] },
   { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
-  { id: "languages", label: "Languages", group: "Workbench", icon: "braces", sections: ["lsp", "dap"] },
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
+  { id: "servers", label: "Servers", group: "Languages", icon: "braces", sections: ["lsp"] },
+  { id: "debuggers", label: "Debuggers", group: "Languages", icon: "bug", sections: ["dap"] },
+  { id: "linters", label: "Linters", group: "Languages", icon: "list-checks", sections: ["lint"] },
+  { id: "formatters", label: "Formatters", group: "Languages", icon: "wand-sparkles", sections: ["fmt"] },
+  { id: "projects", label: "Projects", group: "Languages", icon: "shield-check", sections: ["trust"] },
   { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
   { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "forge"] },
   // Last in the rail because it is the only tab whose contents are not
@@ -128,6 +139,9 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   agents: "Agents",
   lsp: "Language servers",
   dap: "Debuggers",
+  lint: "Linters",
+  fmt: "Formatters",
+  trust: "Trusted projects",
   git: "Git",
   forge: "Hosts",
   appearance: "Appearance",
@@ -243,22 +257,28 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Which language servers are installed, and which files each one claims.",
   },
   {
-    id: "linters-formatters",
-    section: "lsp",
-    label: "Linters & formatters",
-    hint: "Which linters run beside a language's server, and which formatters Format Document can use.",
-  },
-  {
-    id: "trusted-projects",
-    section: "lsp",
-    label: "Trusted projects",
-    hint: "Which projects may start servers that run the project's own code, like TypeScript and Rust.",
-  },
-  {
     id: "debuggers",
     section: "dap",
     label: "Debuggers",
     hint: "Which debug adapters are installed, and which files each one can run under a debugger.",
+  },
+  {
+    id: "linters",
+    section: "lint",
+    label: "Linters",
+    hint: "Which linters run beside a language's server, and which project config turns each one on.",
+  },
+  {
+    id: "formatters",
+    section: "fmt",
+    label: "Formatters",
+    hint: "Which formatters Format Document and format on save can use, and which project config turns each one on.",
+  },
+  {
+    id: "trusted-projects",
+    section: "trust",
+    label: "Trusted projects",
+    hint: "Which projects may start servers that run the project's own code, like TypeScript and Rust.",
   },
   {
     id: "git",

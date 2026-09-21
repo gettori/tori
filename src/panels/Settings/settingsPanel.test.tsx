@@ -40,7 +40,7 @@ beforeEach(async () => {
   await loadWorkspaceSettings(null);
 });
 
-/** The seven catalogue entries that stand for a whole section rather than for a
+/** The eight catalogue entries that stand for a whole section rather than for a
  *  row: their controls are built at runtime (a card per agent found, a row per
  *  server installed), so they have a section on screen and no `<label>`.
  *
@@ -50,8 +50,9 @@ beforeEach(async () => {
  *  rendered nothing at all. */
 const CARD_ENTRIES: Record<string, string> = {
   "language-servers": "Language servers",
-  "linters-formatters": "Linters & formatters",
   debuggers: "Debuggers",
+  linters: "Linters",
+  formatters: "Formatters",
   "trusted-projects": "Trusted projects",
   git: "Git",
   forge: "Hosts",
@@ -302,13 +303,13 @@ describe("marking what matched, in the pane", () => {
   it("keeps the vertical rhythm the wrapper took away", () => {
     // Wrapping a `<section>` makes it `:first-child` of its own div, so the
     // `.section:first-child` rule zeroes its top margin. Two stacked card
-    // sections (Language servers over Debuggers) would butt together unless the
-    // wrapper carries that rhythm instead.
+    // sections (Git and Hosts) would butt together unless the wrapper carries
+    // that rhythm instead.
     render(() => <Settings onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /^Languages/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Integrations/ }));
 
     const wrappers = pane().querySelectorAll(`.${styles.cardSection}`);
-    expect(wrappers).toHaveLength(4);
+    expect(wrappers).toHaveLength(2);
     for (const w of wrappers) expect(w.querySelector("section")).toBeTruthy();
   });
 
@@ -322,16 +323,16 @@ describe("marking what matched, in the pane", () => {
     const hits = shownPanes().flatMap((p) => [...p.querySelectorAll(`.${styles.cardSectionHit}`)]);
     expect(hits).toHaveLength(1);
     expect(hits[0].querySelector("section")).toBeNull();
-    expect(screen.getByRole("button", { name: "Open Languages" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Debuggers" })).toBeTruthy();
   });
 
   it("takes you to the category a card section result names", () => {
     render(() => <Settings onClose={() => {}} />);
     type("debug adapters");
-    fireEvent.click(screen.getByRole("button", { name: "Open Languages" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Debuggers" }));
 
-    expect(activeTab()).toBe("Languages");
-    expect(pane().querySelectorAll(`.${styles.cardSection}`)).toHaveLength(4);
+    expect(activeTab()).toBe("Debuggers");
+    expect(pane().querySelectorAll(`.${styles.cardSection}`)).toHaveLength(1);
   });
 
   it("marks nothing at all when no query is running", () => {
