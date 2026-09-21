@@ -428,6 +428,33 @@
     border-color: var(--brand-default);
   }
 
+  /* `.input`'s frame around a read-only command and its copy button. */
+  .cmdField {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-2);
+    height: calc(32px * var(--ui-scale));
+    padding: 0 var(--tori-space-2) 0 var(--tori-space-4);
+    background: var(--canvas-input);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    transition: border-color var(--tori-duration-fast) ease;
+  }
+  .cmdField:focus-within {
+    border-color: var(--brand-default);
+  }
+  .cmdFieldText {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--fg-default);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+  }
+
   /* Mono, like every other machine-supplied value in this panel. */
   .text {
     width: 100%;
@@ -881,10 +908,6 @@
     font-family: var(--tori-font-mono);
     font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
-  }
-  .toolCard .cmd {
-    margin-top: 0;
-    padding: var(--tori-space-2) var(--tori-space-3);
   }
   .toolMeta {
     font-size: var(--tori-text-2xs);
