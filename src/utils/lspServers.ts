@@ -159,6 +159,21 @@ export function resolvedServerIds(path: string): string[] | undefined {
   return resolution.primary ? [resolution.primary, ...resolution.secondaries] : resolution.secondaries;
 }
 
+let disabledListeners: (() => void)[] = [];
+
+/** Hear about your `lsp.disabled` changing. Returns an unsubscribe. */
+export function onLspDisabledChange(cb: () => void): () => void {
+  disabledListeners.push(cb);
+  return () => {
+    disabledListeners = disabledListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Your `lsp.disabled` changed, from a Settings switch or the file edited by hand. */
+export function lspDisabledChanged(): void {
+  for (const l of [...disabledListeners]) l();
+}
+
 /** Drop cached resolutions for directories at or under `dir`, or all of them. */
 export function forgetResolutions(dir?: string): void {
   forgotten += 1;

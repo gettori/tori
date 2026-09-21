@@ -10,7 +10,6 @@ import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import Toggle from "../../../../components/Switch/Switch";
 import { findAdapter } from "../../../../utils/agents";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
-import { copyText } from "../../../../utils/clipboard";
 import {
   chatTier,
   publishedCapabilities,
@@ -25,7 +24,7 @@ import {
   type ProbeFailureReason,
 } from "../../../../utils/modelCatalog";
 import { fuzzyMatch, type Range } from "../../../../utils/fuzzy";
-import { Mark } from "../../components/paneKit";
+import { CmdLine, Mark } from "../../components/paneKit";
 import { asTabProfile, type AgentHealth } from "../../../../utils/agentHealth";
 import { setupJob, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
@@ -81,27 +80,6 @@ const FAILURE_NOTE: Record<ProbeFailureReason, string> = {
   noAnswer: "It started and said nothing.",
   unsupported: "Tori cannot ask this agent yet. Its models arrive when a session starts.",
 };
-
-/** A command the user could run themselves, with the one control that keeps
- *  the promise honest: copy, exactly as shown. */
-function CmdLine(props: { program: string; args: string[] }) {
-  const [copied, setCopied] = createSignal(false);
-  const text = () => [props.program, ...props.args].join(" ");
-  const copy = async () => {
-    if (!(await copyText(text()))) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <div class={styles.cmd}>
-      <span class={styles.cmdPrompt}>$</span>
-      <code class={styles.cmdText}>{text()}</code>
-      <button type="button" class={styles.cmdCopy} onClick={() => void copy()}>
-        {copied() ? "copied" : "copy"}
-      </button>
-    </div>
-  );
-}
 
 /**
  * One account's answer: what this agent said it can run, signed in as this
@@ -551,7 +529,7 @@ export default function AgentDetail(props: {
             <Show when={updateCmd()}>
               {(cmd) => (
                 <>
-                  <CmdLine program={cmd().program} args={cmd().args} />
+                  <CmdLine text={[cmd().program, ...cmd().args].join(" ")} />
                   <div class={styles.stepActions}>
                     <Button size="sm" onClick={() => void runVerb("update", cmd())}>
                       Update
@@ -631,7 +609,7 @@ export default function AgentDetail(props: {
                 </Match>
               </Switch>
               <Show when={installCmd()}>
-                {(cmd) => <CmdLine program={cmd().program} args={cmd().args} />}
+                {(cmd) => <CmdLine text={[cmd().program, ...cmd().args].join(" ")} />}
               </Show>
               <Show when={!installed() && installCmd()}>
                 <div class={styles.stepActions}>
@@ -669,7 +647,7 @@ export default function AgentDetail(props: {
               <Show when={installed() && loginCmd()}>
                 {(cmd) => (
                   <>
-                    <CmdLine program={cmd().program} args={cmd().args} />
+                    <CmdLine text={[cmd().program, ...cmd().args].join(" ")} />
                     <div class={styles.stepActions}>
                       <Button size="sm" onClick={() => void signIn()}>
                         Sign in

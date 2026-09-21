@@ -5,7 +5,8 @@
 // became six panes, and six components cannot share one closure. Nothing here
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
-import { For, Show, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
+import { copyText } from "../../../utils/clipboard";
 import { hintRanges, labelRanges, segments, type Range } from "../utils/searchHighlight";
 import {
   SETTINGS,
@@ -223,6 +224,26 @@ export function Group(props: {
         {props.children}
       </section>
     </Show>
+  );
+}
+
+/** A command the user could run themselves, with the one control that keeps
+ *  the promise honest: copy, exactly as shown. */
+export function CmdLine(props: { text: string }) {
+  const [copied, setCopied] = createSignal(false);
+  const copy = async () => {
+    if (!(await copyText(props.text))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div class={styles.cmd}>
+      <span class={styles.cmdPrompt}>$</span>
+      <code class={styles.cmdText}>{props.text}</code>
+      <button type="button" class={styles.cmdCopy} onClick={() => void copy()}>
+        {copied() ? "copied" : "copy"}
+      </button>
+    </div>
   );
 }
 
