@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
+import { overlayRoot } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
@@ -32,6 +33,8 @@ export type LspHealth = {
   // start failed.
   detail: string | null;
   overridePath: string | null;
+  disabled: boolean;
+  activationMarkers: string[];
 };
 
 // Identical mapping to the agent cards, and for the same reason: the dot
@@ -50,7 +53,7 @@ function LspCard(props: { server: LspHealth }) {
   return (
     <div class={styles.card}>
       <div class={styles.cardHead}>
-        <span class={`${styles.dot} ${TONE[s().status]}`} />
+        <span class={`${styles.dot} ${s().disabled ? styles.dotOff : TONE[s().status]}`} />
         <span class={styles.cardTitle}>{s().label}</span>
         <code class={styles.cardProgram}>{s().program}</code>
       </div>
@@ -60,6 +63,12 @@ function LspCard(props: { server: LspHealth }) {
           {/* Most specific first: a bundled server can be "not found" while its
               interpreter is present, and naming the interpreter there would
               send the user off installing something they already have. */}
+          <Match when={s().disabled}>Disabled by <code>lsp.disabled</code> in settings.</Match>
+          {/* Settings has no project to look in, so a probe here cannot say
+              whether such a server would be found where it actually starts. */}
+          <Match when={s().activationMarkers.length > 0}>
+            Runs per project, in projects with one of <code>{s().activationMarkers.join(", ")}</code>.
+          </Match>
           <Match when={s().detail}>{(detail) => <>{detail()}</>}</Match>
           <Match when={s().status === "notFound"}>
             Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
@@ -143,7 +152,7 @@ function TrustedProjects() {
 }
 
 export default function LspSection() {
-  const [health] = createResource(() => invoke<LspHealth[]>("lsp_health"));
+  const [health] = createResource(() => invoke<LspHealth[]>("lsp_health", { root: overlayRoot() }));
 
   return (
     <section class={styles.section}>

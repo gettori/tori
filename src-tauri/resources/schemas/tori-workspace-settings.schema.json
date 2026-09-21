@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Tori workspace settings",
-  "description": "One project's editor overrides, at <workspace>/.tori/settings.json. This file holds nothing but the editor block; anything else in it is read by nothing.",
+  "description": "One project's editor overrides and language servers to keep off, at <workspace>/.tori/settings.json.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -100,6 +100,22 @@
           "type": "string",
           "description": "TODO tags. Comma-separated tags the TODO panel searches for, matched case-sensitively so a marker is not confused with the word in prose.",
           "default": "TODO,FIXME,HACK,XXX"
+        }
+      }
+    },
+    "lsp": {
+      "type": "object",
+      "description": "Language servers.",
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Server ids that never start, such as \"eslint\". A server disabled here hands its files to the next one that claims them. This list adds to the one in your own settings and cannot switch a server back on.",
+          "default": []
         }
       }
     }

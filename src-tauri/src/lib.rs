@@ -427,6 +427,7 @@ pub fn run() {
             lsp::lsp_schema_associations,
             lsp::lsp_schema_dir,
             lsp::lsp_health,
+            lsp::lsp_resolve,
             trust::trusted_projects,
             trust::trust_project,
             trust::revoke_project,

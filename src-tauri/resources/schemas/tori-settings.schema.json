@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Tori settings",
-  "description": "Tori's global settings, at ~/.config/tori/settings.json. Only the editor block is described here: the rest of the file is written by the Settings panel, and constraining sections this schema does not model would report a newer build's keys as errors.",
+  "description": "Tori's global settings, at ~/.config/tori/settings.json. Only the editor and lsp blocks are described here: the rest of the file is written by the Settings panel, and constraining sections this schema does not model would report a newer build's keys as errors.",
   "type": "object",
   "properties": {
     "editorDefaults": {
@@ -99,6 +99,22 @@
           "type": "string",
           "description": "TODO tags. Comma-separated tags the TODO panel searches for, matched case-sensitively so a marker is not confused with the word in prose.",
           "default": "TODO,FIXME,HACK,XXX"
+        }
+      }
+    },
+    "lsp": {
+      "type": "object",
+      "description": "Language servers.",
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Server ids that never start, such as \"eslint\". A server disabled here hands its files to the next one that claims them.",
+          "default": []
         }
       }
     }

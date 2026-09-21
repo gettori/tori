@@ -68,10 +68,16 @@ pub fn set_workspace_settings(root: String, settings: Value) -> Result<Value, St
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("Creating {} failed: {e}", dir.display()))?;
     }
-    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    // The panel writes only the blocks it manages, so a hand-written block
+    // beside them (`lsp`) is carried over rather than erased by the next click.
+    let mut merged = std::fs::read_to_string(&path).map(|t| parse_overlay(&t)).unwrap_or_else(|_| empty());
+    if let (Some(into), Some(from)) = (merged.as_object_mut(), settings.as_object()) {
+        into.extend(from.clone());
+    }
+    let text = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
     std::fs::write(&path, format!("{text}\n"))
         .map_err(|e| format!("Writing {} failed: {e}", path.display()))?;
-    Ok(settings)
+    Ok(merged)
 }
 
 #[cfg(test)]

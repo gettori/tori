@@ -29,6 +29,7 @@ import {
   claimedByLsp,
   ensureLspFor,
   lspPluginFor,
+  lspSettingsChanged,
   lspTargetFor,
   notifyLspFileChanged,
   onLspChange,
@@ -2489,6 +2490,10 @@ export default function CodeEditor(props: {
     ),
   );
   createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
+  // A memo, so only a real change to the list re-resolves: every settings write
+  // replaces the store, and `on` alone would fire for each one.
+  const lspDisabled = createMemo(() => (settings.lsp?.disabled ?? []).join("\n"));
+  createEffect(on(lspDisabled, () => lspSettingsChanged(), { defer: true }));
   // Toggling blame reconfigures the compartment, which takes the field, the
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.

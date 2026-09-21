@@ -12,7 +12,7 @@
 // fails to spawn looks exactly like a language with no support at all.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -54,6 +54,32 @@ impl Launch {
     }
 }
 
+/// Whether a server owns a file or runs beside the one that does. A file gets
+/// at most one primary and any number of secondaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    Primary,
+    Secondary,
+}
+
+/// What `features` and `except_features` can name. A closed set, like the
+/// launch kind, so a misspelt feature is a load error instead of a filter that
+/// silently matches nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Feature {
+    Diagnostics,
+    CodeAction,
+    Format,
+}
+
+const FEATURES: [(&str, Feature); 3] = [
+    ("diagnostics", Feature::Diagnostics),
+    ("code_action", Feature::CodeAction),
+    ("format", Feature::Format),
+];
+
 /// A resolved, validated language server config.
 #[derive(Debug, Clone, Serialize)]
 pub struct LspServer {
@@ -86,6 +112,15 @@ pub struct LspServer {
     /// Whether this server executes code from the project it serves, which is
     /// what makes `lsp_start` refuse it in a project the user has not trusted.
     pub runs_project_code: bool,
+    pub role: Role,
+    /// Decides between primaries that are both active for one file. Higher wins.
+    pub priority: i32,
+    /// The features this server is asked for, with `features` or
+    /// `except_features` already applied.
+    pub features: Vec<Feature>,
+    /// Filenames one of which must sit between the file and the project root
+    /// for this server to start there. Empty means it always starts.
+    pub activation_markers: Vec<String>,
     /// `"bundled:<id>"` for a built-in, or the absolute path of the user TOML
     /// that defined (or whole-replaced) it, so a forgotten override is visible.
     pub source: String,
@@ -99,11 +134,6 @@ impl LspServer {
 
     /// The LSP language id for a path's extension, or `None` when this server
     /// does not claim it.
-    ///
-    /// No production caller yet: the frontend's `lspPluginFor` starts asking in
-    /// the next phase. Built and tested here so that phase is only wiring,
-    /// following `backstop.rs`'s precedent for staged machinery.
-    #[allow(dead_code)]
     pub fn language_id_for(&self, path: &str) -> Option<&str> {
         let file = path.rsplit('/').next()?;
         let dot = file.rfind('.')?;
@@ -144,6 +174,16 @@ struct ServerToml {
     verified_against: Option<String>,
     #[serde(default = "default_runs_project_code")]
     runs_project_code: bool,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    priority: i32,
+    #[serde(default)]
+    features: Option<Vec<String>>,
+    #[serde(default)]
+    except_features: Option<Vec<String>>,
+    #[serde(default)]
+    activation_markers: Vec<String>,
 }
 
 fn default_timeout_ms() -> u64 {
@@ -180,6 +220,11 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "schema_associations",
     "verified_against",
     "runs_project_code",
+    "role",
+    "priority",
+    "features",
+    "except_features",
+    "activation_markers",
 ];
 
 const REQUIRED_TOP_LEVEL: &[&str] = &["schema_version", "id", "label", "languages", "root_markers", "launch"];
@@ -247,6 +292,32 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         }
     };
 
+    let role = match raw.role.as_deref() {
+        None | Some("primary") => Role::Primary,
+        Some("secondary") => Role::Secondary,
+        Some(other) => {
+            return Err(format!("{source}: unknown role `{other}` (tori implements: primary, secondary)"))
+        }
+    };
+
+    let feature = |name: &String| {
+        FEATURES.iter().find(|(n, _)| n == name).map(|(_, f)| *f).ok_or_else(|| {
+            let known = FEATURES.map(|(n, _)| n).join(", ");
+            format!("{source}: unknown feature `{name}` (tori implements: {known})")
+        })
+    };
+    let features = match (&raw.features, &raw.except_features) {
+        (Some(_), Some(_)) => {
+            return Err(format!("{source}: set `features` or `except_features`, not both"))
+        }
+        (Some(only), None) => only.iter().map(feature).collect::<Result<Vec<_>, _>>()?,
+        (None, Some(except)) => {
+            let except = except.iter().map(feature).collect::<Result<Vec<_>, _>>()?;
+            FEATURES.iter().map(|(_, f)| *f).filter(|f| !except.contains(f)).collect()
+        }
+        (None, None) => FEATURES.iter().map(|(_, f)| *f).collect(),
+    };
+
     // Extensions are matched lowercase and without a dot, so normalise here
     // rather than at every lookup.
     let languages = raw
@@ -288,6 +359,10 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         schema_associations: raw.schema_associations,
         verified_against: raw.verified_against,
         runs_project_code: raw.runs_project_code,
+        role,
+        priority: raw.priority,
+        features,
+        activation_markers: raw.activation_markers,
         source: source.to_string(),
     })
 }
@@ -307,7 +382,7 @@ fn user_lsp_dir() -> PathBuf {
 /// and the id it would have overridden keeps its previous entry, so one broken
 /// file can never make a language silently lose its server.
 fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
-    let mut by_id: HashMap<String, LspServer> = HashMap::new();
+    let mut list: Vec<LspServer> = Vec::new();
 
     for (source, text) in [
         ("bundled:typescript", BUILTIN_TYPESCRIPT),
@@ -315,42 +390,55 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
         ("bundled:json", BUILTIN_JSON),
         ("bundled:yaml", BUILTIN_YAML),
     ] {
-        match load_server_str(text, source) {
-            Ok(s) => {
-                by_id.insert(s.id.clone(), s);
-            }
-            Err(e) => eprintln!("tori: ERROR loading built-in lsp server {source}: {e}"),
+        if let Err(e) = load_server_str(text, source).and_then(|s| admit(&mut list, s)) {
+            eprintln!("tori: ERROR loading built-in lsp server {source}: {e}");
         }
     }
 
-    if let Ok(entries) = std::fs::read_dir(user_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+    // Sorted so that when two user files conflict, which one is refused does not
+    // depend on the order the filesystem happens to list them in.
+    let mut files: Vec<PathBuf> = std::fs::read_dir(user_dir)
+        .map(|entries| entries.flatten().map(|e| e.path()).collect())
+        .unwrap_or_default();
+    files.retain(|p| p.extension().and_then(|e| e.to_str()) == Some("toml"));
+    files.sort();
+
+    for path in files {
+        let source = path.to_string_lossy().into_owned();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("tori: ERROR reading lsp server {source}: {e}");
                 continue;
             }
-            let source = path.to_string_lossy().into_owned();
-            let text = match std::fs::read_to_string(&path) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("tori: ERROR reading lsp server {source}: {e}");
-                    continue;
-                }
-            };
-            match load_server_str(&text, &source) {
-                Ok(s) => {
-                    by_id.insert(s.id.clone(), s);
-                }
-                Err(e) => eprintln!(
-                    "tori: ERROR loading lsp server {source}: {e} (keeping the previous server for this id)"
-                ),
-            }
+        };
+        if let Err(e) = load_server_str(&text, &source).and_then(|s| admit(&mut list, s)) {
+            eprintln!("tori: ERROR loading lsp server {e} (keeping the previous server for this id)");
         }
     }
 
-    let mut list: Vec<LspServer> = by_id.into_values().collect();
     list.sort_by(|a, b| a.id.cmp(&b.id));
     list
+}
+
+/// Add `server`, whole-replacing any entry with its id, unless it and another
+/// server would both be the unconditional primary for the same files.
+fn admit(list: &mut Vec<LspServer>, server: LspServer) -> Result<(), String> {
+    let unconditional = |s: &LspServer| s.role == Role::Primary && s.activation_markers.is_empty();
+    if unconditional(&server) {
+        for other in list.iter().filter(|o| o.id != server.id && unconditional(o) && o.priority == server.priority) {
+            if let Some(ext) = server.languages.keys().find(|ext| other.languages.contains_key(*ext)) {
+                return Err(format!(
+                    "{}: `{}` is already the primary for .{ext} at priority {}; give one of them a different \
+                     priority or activation_markers",
+                    server.source, other.id, other.priority
+                ));
+            }
+        }
+    }
+    list.retain(|o| o.id != server.id);
+    list.push(server);
+    Ok(())
 }
 
 fn build_registry() -> Vec<LspServer> {
@@ -370,17 +458,61 @@ pub fn find(id: &str) -> Option<&'static LspServer> {
     registry().iter().find(|s| s.id == id)
 }
 
-/// The server claiming `path`'s extension, or `None`.
+/// The servers that should run for `file`: the winning primary, and every
+/// secondary. A server qualifies when it claims the extension, is not in
+/// `disabled`, and, if it names `activation_markers`, finds one between the
+/// file and `project`.
 ///
-/// An unregistered extension yielding `None` is the normal, supported state,
-/// not a degraded one: a language with a grammar but no server opens and edits
-/// exactly as before, it just gets no plugin.
-///
-/// Staged like `language_id_for`: the frontend picks a server per file in the
-/// next phase, and this is the lookup it will call.
-#[allow(dead_code)]
-pub fn server_for_path(path: &str) -> Option<&'static LspServer> {
-    registry().iter().find(|s| s.language_id_for(path).is_some())
+/// No primary is the normal, supported state, not a degraded one: a language
+/// with a grammar but no server opens and edits exactly as before.
+pub fn resolve<'a>(
+    servers: &'a [LspServer],
+    file: &Path,
+    project: &Path,
+    disabled: &HashSet<String>,
+) -> (Option<&'a LspServer>, Vec<&'a LspServer>) {
+    let path = file.to_string_lossy();
+    let active: Vec<&LspServer> = servers
+        .iter()
+        .filter(|s| s.language_id_for(&path).is_some() && !disabled.contains(&s.id))
+        .filter(|s| activated(s, file, project))
+        .collect();
+    // On equal priority a primary that needed a marker is the more specific
+    // answer, so it beats one that is always on; the id only keeps it stable.
+    let primary = active.iter().copied().filter(|s| s.role == Role::Primary).max_by_key(|s| {
+        (s.priority, !s.activation_markers.is_empty(), std::cmp::Reverse(s.id.as_str()))
+    });
+    let secondaries = active.into_iter().filter(|s| s.role == Role::Secondary).collect();
+    (primary, secondaries)
+}
+
+// The same walk as `format::detect`, including its refusal to search for a file
+// outside the project: a marker above the project must not switch a server on.
+fn activated(server: &LspServer, file: &Path, project: &Path) -> bool {
+    server.activation_markers.is_empty()
+        || (!project.as_os_str().is_empty()
+            && nearest_marker_dir(&server.activation_markers, file, project).is_some())
+}
+
+/// The nearest directory from `file` up to `project` (inclusive) holding one of
+/// `markers`. `None` for a file outside the project, which has no ancestor
+/// chain worth searching (a shared file, a worktree's `.shared/`).
+fn nearest_marker_dir(markers: &[String], file: &Path, project: &Path) -> Option<PathBuf> {
+    let start = if file.is_dir() { file } else { file.parent().unwrap_or(project) };
+    if !start.starts_with(project) {
+        return None;
+    }
+    let mut dir = Some(start);
+    while let Some(current) = dir {
+        if markers.iter().any(|m| current.join(m).exists()) {
+            return Some(current.to_path_buf());
+        }
+        if current == project {
+            break;
+        }
+        dir = current.parent();
+    }
+    None
 }
 
 /// The project root a server should be started at for `file_path`: the nearest
@@ -392,28 +524,8 @@ pub fn server_for_path(path: &str) -> Option<&'static LspServer> {
 /// stopping at the project boundary is also what keeps the resolved root
 /// inside the tree the editor already scopes to.
 pub fn root_for(server: &LspServer, file_path: &Path, project_path: &Path) -> PathBuf {
-    let start = if file_path.is_dir() { file_path } else { file_path.parent().unwrap_or(project_path) };
-
-    // Only walk within the project. A file outside it (a shared file, a
-    // worktree's `.shared/`) has no ancestor chain worth searching, so it
-    // falls straight back to the project root.
-    if !start.starts_with(project_path) {
-        return project_path.to_path_buf();
-    }
-
-    let mut dir = Some(start);
-    while let Some(current) = dir {
-        for marker in &server.root_markers {
-            if current.join(marker).exists() {
-                return current.to_path_buf();
-            }
-        }
-        if current == project_path {
-            break;
-        }
-        dir = current.parent();
-    }
-    project_path.to_path_buf()
+    nearest_marker_dir(&server.root_markers, file_path, project_path)
+        .unwrap_or_else(|| project_path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -456,8 +568,8 @@ program = "demo-server"
         let rs = load_server_str(BUILTIN_RUST, "bundled:rust").unwrap();
         assert_eq!(rs.id, "rust");
         assert_eq!(rs.language_id_for("/p/a.rs"), Some("rust"));
-        // The two bundled servers must not both claim an extension, or
-        // `server_for_path` would depend on registry order.
+        // The two bundled servers must not both claim an extension: as
+        // unconditional primaries at one priority, `admit` would refuse one.
         for ext in ts.languages.keys() {
             assert!(!rs.languages.contains_key(ext), "both servers claim .{ext}");
         }
@@ -940,5 +1052,90 @@ program = "demo-server"
 
         let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
         assert_eq!(root_for(&ts, &pkg.join("a.ts"), &dir), pkg);
+    }
+
+    const ESLINT: &str = r#"
+schema_version = 1
+id = "eslint"
+label = "ESLint"
+role = "secondary"
+root_markers = ["package.json"]
+activation_markers = ["eslint.config.js"]
+[languages]
+ts = "typescript"
+[launch]
+kind = "path"
+program = "eslint-lsp"
+"#;
+
+    const DENO: &str = r#"
+schema_version = 1
+id = "deno"
+label = "Deno"
+root_markers = ["deno.json"]
+activation_markers = ["deno.json"]
+[languages]
+ts = "typescript"
+[launch]
+kind = "path"
+program = "deno"
+"#;
+
+    fn resolved_ids(servers: &[LspServer], file: &Path, project: &Path) -> (Option<String>, Vec<String>) {
+        let (primary, secondaries) = resolve(servers, file, project, &HashSet::new());
+        (primary.map(|s| s.id.clone()), secondaries.iter().map(|s| s.id.clone()).collect())
+    }
+
+    #[test]
+    fn a_ts_file_gets_typescript_alone_until_a_secondary_activates() {
+        let project = temp_dir("resolve_secondary");
+        let file = project.join("src/a.ts");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let servers = [
+            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            load_server_str(ESLINT, "eslint").unwrap(),
+        ];
+
+        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
+
+        std::fs::write(project.join("eslint.config.js"), "").unwrap();
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec!["eslint".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_marker_activated_primary_wins_in_its_package_and_not_in_a_sibling() {
+        let project = temp_dir("resolve_sibling");
+        let edge = project.join("packages/edge/src/a.ts");
+        let web = project.join("packages/web/src/a.ts");
+        std::fs::create_dir_all(edge.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(web.parent().unwrap()).unwrap();
+        std::fs::write(project.join("packages/edge/deno.json"), "{}").unwrap();
+        let servers = [
+            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            load_server_str(DENO, "deno").unwrap(),
+        ];
+
+        assert_eq!(resolved_ids(&servers, &edge, &project).0.as_deref(), Some("deno"));
+        assert_eq!(resolved_ids(&servers, &web, &project).0.as_deref(), Some("typescript"));
+    }
+
+    #[test]
+    fn activation_needs_a_marker_between_the_file_and_the_project_root() {
+        let outer = temp_dir("activation_walk");
+        let project = outer.join("repo");
+        let file = project.join("src/deep/a.ts");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let eslint = load_server_str(ESLINT, "eslint").unwrap();
+
+        assert!(!activated(&eslint, &file, &project));
+
+        std::fs::write(outer.join("eslint.config.js"), "").unwrap();
+        assert!(!activated(&eslint, &file, &project), "a marker above the project must not count");
+
+        std::fs::write(project.join("src/eslint.config.js"), "").unwrap();
+        assert!(activated(&eslint, &file, &project));
     }
 }

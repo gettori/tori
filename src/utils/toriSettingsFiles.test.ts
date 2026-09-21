@@ -16,6 +16,10 @@ const json: LspServer = {
   schema_associations: true,
   verified_against: null,
   runs_project_code: false,
+  role: "primary",
+  priority: 0,
+  features: ["diagnostics", "code_action", "format"],
+  activation_markers: [],
   source: "bundled:json",
 };
 

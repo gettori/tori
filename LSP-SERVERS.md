@@ -93,6 +93,24 @@ verified_against = "some-language-server 1.2.3"
 # trust" below.
 runs_project_code = true
 
+# optional (default "primary"): "primary" owns the file, "secondary" runs beside
+# it (a linter next to the compiler's server). See "Which servers a file gets".
+role = "primary"
+
+# optional (default 0): decides between primaries that are both active for one
+# file. Higher wins.
+priority = 0
+
+# optional (default: every feature): which optional features to ask this server
+# for. Set `features` to allow only some, or `except_features` to drop some,
+# never both. Known features: diagnostics, code_action, format.
+# features = ["diagnostics", "code_action"]
+except_features = ["format"]
+
+# optional (default: always active): filenames one of which must sit between
+# the file and the project root for this server to start there.
+activation_markers = ["some.config.json"]
+
 # --- tables below this line; nothing top-level may follow them ---
 
 # required: which file extensions this server claims, and the LSP language id
@@ -173,6 +191,43 @@ Two consequences worth knowing:
   your home directory cannot become the root for a file inside a project.
 
 A file with no marker anywhere above it falls back to the project directory.
+
+### Which servers a file gets
+
+Every server claiming the file's extension is a candidate. A candidate drops
+out if its id is in `lsp.disabled`, or if it names `activation_markers` and
+none of them sits between the file and the project root. That walk stops at
+the project root, the same way root resolution does, so a marker above the
+project never switches a server on.
+
+Of what is left, the file gets one primary and every secondary:
+
+- The primary is the one with the highest `priority`. On a tie, one that needed
+  a marker to activate beats one that is always on, because it is the more
+  specific answer. So a Deno config with `activation_markers = ["deno.json"]`
+  takes `.ts` files inside Deno packages, and TypeScript keeps the rest.
+- Secondaries only add to the primary. Today Tori resolves them but does not
+  start them yet.
+- Two primaries with no `activation_markers` at the same `priority` claiming
+  the same extension is a load error. The file loaded later is refused and
+  logged, and user files load in filename order, so which one is refused does
+  not depend on the filesystem.
+
+Creating or deleting an activation marker while Tori is open re-resolves the
+open files under it, with no restart.
+
+`lsp.disabled` lists server ids that never start. It can be set in two places:
+
+- `~/.config/tori/settings.json`, for every project.
+- `<workspace>/.tori/settings.json`, for one project.
+
+The workspace list only adds to yours. A repo can ship its own
+`.tori/settings.json`, and it must not be able to switch back on a server you
+turned off. A disabled primary hands the file to the next active one.
+
+```json
+{ "lsp": { "disabled": ["eslint"] } }
+```
 
 ### Project trust
 
