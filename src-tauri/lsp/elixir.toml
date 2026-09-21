@@ -5,6 +5,9 @@ schema_version = 1
 id = "elixir"
 label = "Elixir"
 root_markers = ["mix.exs", ".git"]
+# Outside a Mix project elixir-ls builds nothing and only reports that it found
+# no mixfile, so a loose script gets highlighting and no server.
+activation_markers = ["mix.exs"]
 request_timeout_ms = 120000
 
 # Compiles the project with mix, and macros run at compile time.

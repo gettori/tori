@@ -900,6 +900,10 @@ program = "demo-server"
         assert_eq!(on_disk, embedded);
     }
 
+    // Elixir starts only inside a Mix project (elixir.toml), so outside one
+    // these have no primary on purpose.
+    const MARKER_ONLY: &[&str] = &["ex", "exs"];
+
     #[test]
     fn every_claimed_extension_has_one_primary() {
         let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
@@ -912,7 +916,8 @@ program = "demo-server"
                 .collect();
             let top = always_on.iter().map(|s| s.priority).max().unwrap_or_default();
             let winners: Vec<&str> = always_on.iter().filter(|s| s.priority == top).map(|s| s.id.as_str()).collect();
-            assert_eq!(winners.len(), 1, ".{ext} has no single primary: {winners:?}");
+            let expected = if MARKER_ONLY.contains(&ext.as_str()) { 0 } else { 1 };
+            assert_eq!(winners.len(), expected, ".{ext} has no single primary: {winners:?}");
         }
     }
 
