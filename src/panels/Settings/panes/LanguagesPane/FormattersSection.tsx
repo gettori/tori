@@ -42,7 +42,9 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
           {f().label}
         </span>
         <span class={styles.kindTag}>Formatter</span>
-        <Toggle class={styles.toolSwitch} checked={!off()} aria-label={`Use ${f().label}`} onChange={use} />
+        <Show when={off() || f().status !== "notFound" || f().runsPerProject}>
+          <Toggle class={styles.toolSwitch} checked={!off()} aria-label={`Use ${f().label}`} onChange={use} />
+        </Show>
       </div>
       <code class={styles.toolProgram}>{f().program}</code>
 

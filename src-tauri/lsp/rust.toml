@@ -33,3 +33,6 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `rustup component add rust-analyzer`."
+# Updates the whole toolchain: rustup has no update for one component.
+update = "rustup update"
+uninstall = "rustup component remove rust-analyzer"

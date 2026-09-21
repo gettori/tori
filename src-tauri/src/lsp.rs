@@ -363,6 +363,11 @@ pub struct LspHealth {
     /// The version of Tori's own copy, when that is the one that runs: a copy
     /// on the login PATH wins, and then this is `None`.
     pub installed_version: Option<String>,
+    /// Its toolchain's commands to update and to remove it, for a hint server
+    /// that is found. A wrong guess about how it got installed fails in the
+    /// terminal it runs in.
+    pub update: Option<String>,
+    pub uninstall: Option<String>,
 }
 
 /// Build one server's health card.
@@ -393,6 +398,13 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
     // it found on the strength of the interpreter alone would send the user
     // chasing a problem that is not the one they have. Same rule `health.rs`
     // states for agents, applied to the second thing a server can be missing.
+    let (update, uninstall) = match &server.install {
+        Some(registry::Install::Hint { update, uninstall, .. }) if resolved.is_some() => {
+            (update.clone(), uninstall.clone())
+        }
+        _ => (None, None),
+    };
+
     let status = match (&resolved, &detail) {
         (None, _) | (Some(_), Some(_)) => crate::health::BinaryStatus::NotFound,
         (Some(_), None) => {
@@ -422,11 +434,13 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
             .collect(),
         runs_per_project: server.needs_activation() || matches!(server.launch, Launch::ProjectBin { .. }),
         hint: match &server.install {
-            Some(registry::Install::Hint { text }) => Some(text.clone()),
+            Some(registry::Install::Hint { text, .. }) => Some(text.clone()),
             _ => None,
         },
         available_version: server.install.as_ref().and_then(|i| i.available_version()).map(str::to_string),
         installed_version: installed.map(|(_, manifest)| manifest.version),
+        update,
+        uninstall,
     }
 }
 
