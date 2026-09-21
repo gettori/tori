@@ -2904,6 +2904,18 @@ export default function LeftSidebar(props: {
     onCleanup(() => fonts.removeEventListener("loadingdone", remeasure));
   });
 
+  // The other things that move a name's width without touching the names:
+  // zoom, and in dev a stylesheet edit. Both show up as the probe's own box
+  // changing size, since it keeps the last name it measured. The pass ends on
+  // that same name, so the box it leaves is the box it found and the observer
+  // does not fire again on its own work. Guarded because jsdom has no observer.
+  onMount(() => {
+    if (!probeNameEl || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measureNames());
+    ro.observe(probeNameEl);
+    onCleanup(() => ro.disconnect());
+  });
+
   // The set of names is the other input. After paint, or the probe has no box.
   createEffect(
     on(

@@ -246,6 +246,11 @@
      button lands on the one edge the whole column ends on. */
   padding: calc(8px * var(--ui-scale)) var(--tree-gutter) calc(16px * var(--ui-scale))
     calc(10px * var(--ui-scale));
+  /* A relayout boundary. The pill opens by animating widths, and without this
+     every frame of that dirties the column above it, tree and all. Size
+     containment needs the height stated: the padding plus one tile. */
+  height: calc(54px * var(--ui-scale));
+  contain: size layout;
 }
 
 .stripNav {
