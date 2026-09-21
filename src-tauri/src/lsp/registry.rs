@@ -371,6 +371,7 @@ const BUILTIN_TYPESCRIPT: &str = include_str!("../../lsp/typescript.toml");
 const BUILTIN_RUST: &str = include_str!("../../lsp/rust.toml");
 const BUILTIN_JSON: &str = include_str!("../../lsp/json.toml");
 const BUILTIN_YAML: &str = include_str!("../../lsp/yaml.toml");
+const BUILTIN_ESLINT: &str = include_str!("../../lsp/eslint.toml");
 
 fn user_lsp_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/lsp")
@@ -389,6 +390,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
         ("bundled:rust", BUILTIN_RUST),
         ("bundled:json", BUILTIN_JSON),
         ("bundled:yaml", BUILTIN_YAML),
+        ("bundled:eslint", BUILTIN_ESLINT),
     ] {
         if let Err(e) = load_server_str(text, source).and_then(|s| admit(&mut list, s)) {
             eprintln!("tori: ERROR loading built-in lsp server {source}: {e}");
@@ -629,7 +631,7 @@ program = "demo-server"
     fn bundled_servers_load_with_no_user_dir() {
         let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, vec!["json", "rust", "typescript", "yaml"]);
+        assert_eq!(ids, vec!["eslint", "json", "rust", "typescript", "yaml"]);
         assert!(list.iter().all(|s| !s.is_override()));
     }
 
@@ -689,7 +691,7 @@ program = "demo-server"
     fn a_non_toml_file_in_the_user_dir_is_skipped() {
         let dir = temp_dir("notoml");
         std::fs::write(dir.join("README.md"), "not a config").unwrap();
-        assert_eq!(build_registry_from(&dir).len(), 4);
+        assert_eq!(build_registry_from(&dir).len(), 5);
     }
 
     #[test]
@@ -1099,6 +1101,25 @@ program = "deno"
         assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
 
         std::fs::write(project.join("eslint.config.js"), "").unwrap();
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec!["eslint".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_bundled_eslint_runs_beside_typescript_only_under_a_config() {
+        let eslint = load_server_str(BUILTIN_ESLINT, "bundled:eslint").unwrap();
+        assert_eq!(eslint.role, Role::Secondary);
+        assert!(eslint.runs_project_code, "it loads the project's own eslint, so an untrusted project refuses it");
+        let project = temp_dir("bundled_eslint");
+        let file = project.join("src/a.ts");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let servers = [load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(), eslint];
+
+        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
+
+        std::fs::write(project.join("eslint.config.mjs"), "").unwrap();
         assert_eq!(
             resolved_ids(&servers, &file, &project),
             (Some("typescript".into()), vec!["eslint".to_string()])
