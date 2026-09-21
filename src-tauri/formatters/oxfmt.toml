@@ -1,0 +1,27 @@
+# oxfmt, from the project's own install. See FORMATTERS.md.
+#
+# No `extensions`: a file oxfmt has no parser for comes back as exit 1 with the
+# message below, which hands the file on. A syntax error is exit 2.
+
+schema_version = 1
+id = "oxfmt"
+label = "oxfmt"
+
+# Above Prettier: `oxfmt --migrate prettier` writes an .oxfmtrc.json and leaves
+# the .prettierrc where it was.
+priority = 10
+
+verified_against = "oxfmt 0.70.0"
+
+[markers]
+# Read from the binary, and each confirmed to change the output.
+files = [".oxfmtrc.json", ".oxfmtrc.jsonc", "oxfmt.config.ts", "oxfmt.config.mts"]
+
+[launch]
+kind = "project_bin"
+program = "oxfmt"
+args = ["--stdin-filepath", "{file}"]
+
+[not_applicable]
+exit_code = 1
+stderr = "Unsupported file type"

@@ -1,0 +1,16 @@
+# StyLua, from the login PATH. See FORMATTERS.md.
+
+schema_version = 1
+id = "stylua"
+label = "StyLua"
+extensions = ["lua", "luau"]
+
+verified_against = "stylua 2.5.2"
+
+[markers]
+files = ["stylua.toml", ".stylua.toml"]
+
+[launch]
+kind = "path"
+program = "stylua"
+args = ["--stdin-filepath", "{file}", "-"]

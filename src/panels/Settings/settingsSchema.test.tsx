@@ -97,20 +97,20 @@ describe("the shipped settings schemas", () => {
   });
 
   it("constrain the workspace file completely and the global file only where it knows the shape", () => {
-    // A workspace overlay holds the editor and lsp blocks and nothing else, so
-    // anything else in it is read by nothing and worth saying so. The global file also
+    // A workspace overlay holds the editor, lsp and format blocks and nothing
+    // else, so anything else in it is read by nothing and worth saying so. The global file also
     // holds appearance, typography, chat and the rest, none of which this
     // schema models - closing it would report a newer build's own keys as
     // errors in a file that build had just written.
     expect(workspace.additionalProperties, WORKSPACE_FILE).toBe(false);
-    expect(Object.keys(workspace.properties), WORKSPACE_FILE).toEqual(["editor", "lsp"]);
+    expect(Object.keys(workspace.properties), WORKSPACE_FILE).toEqual(["editor", "lsp", "format"]);
     expect(user.additionalProperties, USER_FILE).toBeUndefined();
     // Which is what makes a section this schema has never heard of valid
     // rather than flagged. `agent.defaultProfiles` (which account a new
     // session starts on) is the newest of them: the Settings panel writes it,
     // so it is described where the panel is, not here. Modelling half the
     // `agent` block would report the other half as errors.
-    expect(Object.keys(user.properties), USER_FILE).toEqual(["editorDefaults", "lsp"]);
+    expect(Object.keys(user.properties), USER_FILE).toEqual(["editorDefaults", "lsp", "format"]);
   });
 
   it("are the files the associations point at", () => {

@@ -1,0 +1,27 @@
+# Prettier, from the project's own install. See FORMATTERS.md.
+#
+# No `extensions`, so a plugin language (`prettier-plugin-svelte`) keeps
+# formatting. A file no parser or plugin covers comes back as exit 2 with the
+# message below, which hands the file on; a syntax error is also exit 2 but says
+# something else, so it is still reported.
+
+schema_version = 1
+id = "prettier"
+label = "Prettier"
+
+verified_against = "prettier 3.9.8"
+
+[markers]
+# Prettier takes `.prettierrc` under eight extensions and `prettier.config`
+# under five, and the set grows.
+prefixes = [".prettierrc", "prettier.config."]
+keys = [{ file = "package.json", key = "prettier" }]
+
+[launch]
+kind = "project_bin"
+program = "prettier"
+args = ["--stdin-filepath", "{file}"]
+
+[not_applicable]
+exit_code = 2
+stderr = "No parser could be inferred"

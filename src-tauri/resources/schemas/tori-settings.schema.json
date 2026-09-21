@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Tori settings",
-  "description": "Tori's global settings, at ~/.config/tori/settings.json. Only the editor and lsp blocks are described here: the rest of the file is written by the Settings panel, and constraining sections this schema does not model would report a newer build's keys as errors.",
+  "description": "Tori's global settings, at ~/.config/tori/settings.json. Only the editor, lsp and format blocks are described here: the rest of the file is written by the Settings panel, and constraining sections this schema does not model would report a newer build's keys as errors.",
   "type": "object",
   "properties": {
     "editorDefaults": {
@@ -11,7 +11,7 @@
       "properties": {
         "formatOnSave": {
           "type": "boolean",
-          "description": "Format on save. Runs the project's own Biome or Prettier before writing, and nothing at all in a project that has neither.",
+          "description": "Format on save. Runs the file's formatter before writing: this workspace's format.byExtension pick, else the project's own config, else your own format.byExtension pick. Nothing runs when none of those names one.",
           "default": false
         },
         "organizeImportsOnSave": {
@@ -120,6 +120,21 @@
           "uniqueItems": true,
           "description": "Server ids that never start, such as \"eslint\". A server disabled here hands its files to the next one that claims them.",
           "default": []
+        }
+      }
+    },
+    "format": {
+      "type": "object",
+      "description": "Formatters.",
+      "additionalProperties": false,
+      "properties": {
+        "byExtension": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Your formatter per file extension, such as { \"py\": \"ruff\" }, for files the project's own config names no formatter for. The ids are the file names in FORMATTERS.md.",
+          "default": {}
         }
       }
     }

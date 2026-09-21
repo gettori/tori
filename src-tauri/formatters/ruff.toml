@@ -1,0 +1,18 @@
+# Ruff's formatter, from the login PATH. See FORMATTERS.md.
+
+schema_version = 1
+id = "ruff"
+label = "Ruff"
+extensions = ["py", "pyi"]
+
+verified_against = "ruff 0.16.8"
+
+[markers]
+files = ["ruff.toml", ".ruff.toml"]
+keys = [{ file = "pyproject.toml", key = "tool.ruff" }]
+
+[launch]
+kind = "path"
+program = "ruff"
+# `--stdin-filename` is what finds the config and the per-file settings.
+args = ["format", "--stdin-filename", "{file}", "-"]

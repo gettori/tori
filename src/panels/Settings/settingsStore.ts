@@ -290,6 +290,8 @@ export type Settings = {
   projectAgents?: Record<string, AgentRow[]>;
   /** Mirrors `Lsp` in src-tauri/src/settings.rs. */
   lsp: { disabled: string[] };
+  /** Mirrors `Format` in src-tauri/src/settings.rs. */
+  format: { byExtension: Record<string, string> };
 };
 
 /** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
@@ -361,6 +363,7 @@ export const DEFAULT_SETTINGS: Settings = {
   editor: {},
   projectAgents: {},
   lsp: { disabled: [] },
+  format: { byExtension: {} },
 };
 
 /**

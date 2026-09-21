@@ -672,6 +672,16 @@ pub struct Lsp {
     pub disabled: Vec<String>,
 }
 
+/// Formatter choices. `by_extension` maps an extension to a formatter id, used
+/// when the project's own config names no formatter for the file. A
+/// workspace's own map outranks the project's config instead.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Format {
+    #[serde(default)]
+    pub by_extension: std::collections::BTreeMap<String, String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -715,6 +725,8 @@ pub struct Settings {
     pub project_agents: std::collections::HashMap<String, Vec<AgentRow>>,
     #[serde(default)]
     pub lsp: Lsp,
+    #[serde(default)]
+    pub format: Format,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
