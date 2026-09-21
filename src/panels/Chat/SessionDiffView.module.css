@@ -6,7 +6,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--tori-space-2) 0;
-  background: var(--canvas-default);
+  background: var(--canvas-card);
 }
 
 /* The layout control, right-aligned so it sits out of the way of the diffs it

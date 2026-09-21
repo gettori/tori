@@ -1,12 +1,24 @@
 /* Shared by ReviewPanel and SessionPanel's hunk-comment affordance. */
+/* Padded block-wise because the row is as tall as its buttons, which would
+   otherwise sit flush against the gap row's border above it. The diff row
+   rules that pair with this one set `padding-inline` only, so this survives. */
 .hunkHeaderRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: calc(6px * var(--ui-scale));
+  padding-block: calc(4px * var(--ui-scale));
+  background: var(--neutral-subtle);
 }
 
-/* The Comment toggle is a ghost <Button size="xs"> now. */
+/* The header text takes the slack, not the gaps between the actions: the
+   actions have to land in the same place on every hunk, and header lengths
+   differ per hunk. */
+.hunkHeaderText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .commentBox {
   display: flex;
