@@ -810,6 +810,10 @@
     background: var(--neutral-subtle);
     padding: var(--tori-space-4) var(--tori-space-5);
   }
+  /* Room for the terminal an install runs in. */
+  .toolCardWide {
+    grid-column: 1 / -1;
+  }
   .toolHead {
     display: flex;
     align-items: center;

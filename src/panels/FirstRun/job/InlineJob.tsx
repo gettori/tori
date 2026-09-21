@@ -15,6 +15,7 @@ import styles from "./InlineJob.module.css";
  */
 export default function InlineJob(props: {
   job: OpenJob;
+  command?: string;
   okLine: string;
   onCancel: () => void;
   onState?: (state: JobState) => void;
@@ -86,7 +87,7 @@ export default function InlineJob(props: {
 
   return (
     <InlineJobFrame
-      command={[props.job.program, ...props.job.args].join(" ")}
+      command={props.command ?? [props.job.program, ...props.job.args].join(" ")}
       state={state()}
       code={code()}
       okLine={props.okLine}
