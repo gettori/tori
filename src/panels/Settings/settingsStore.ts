@@ -291,6 +291,8 @@ export type Settings = {
   projectAgents?: Record<string, AgentRow[]>;
   /** Mirrors `Lsp` in src-tauri/src/settings.rs. */
   lsp: { disabled: string[]; neverOffer: string[] };
+  /** Mirrors `Dap` in src-tauri/src/settings.rs. */
+  dap: { disabled: string[] };
   /** Mirrors `Format` in src-tauri/src/settings.rs. */
   format: { byExtension: Record<string, string>; disabled: string[] };
 };
@@ -364,6 +366,7 @@ export const DEFAULT_SETTINGS: Settings = {
   editor: {},
   projectAgents: {},
   lsp: { disabled: [], neverOffer: [] },
+  dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
 };
 
@@ -730,6 +733,12 @@ export function neverOfferInstall(serverId: string): void {
 export function setServerDisabled(serverId: string, disabled: boolean): Promise<void> {
   const rest = (settings.lsp?.disabled ?? []).filter((id) => id !== serverId);
   return saveSettings({ ...settings, lsp: { ...settings.lsp, disabled: disabled ? [...rest, serverId] : rest } });
+}
+
+/** Add a debug adapter to your `dap.disabled`, or take it off. */
+export function setDebuggerDisabled(adapterId: string, disabled: boolean): Promise<void> {
+  const rest = (settings.dap?.disabled ?? []).filter((id) => id !== adapterId);
+  return saveSettings({ ...settings, dap: { ...settings.dap, disabled: disabled ? [...rest, adapterId] : rest } });
 }
 
 /** Add a formatter to your `format.disabled`, or take it off. */
