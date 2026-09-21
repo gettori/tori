@@ -58,8 +58,9 @@ export function configurationFor(settings: Record<string, unknown> | null, param
   const items = (params as { items?: unknown } | null)?.items;
   if (!Array.isArray(items)) return [];
   return items.map((item: ConfigurationItem) => {
-    // No section means the whole configuration, per the specification.
-    if (typeof item?.section !== "string") return settings ?? null;
+    // No section means the whole configuration, per the specification, and
+    // `vscode-eslint-language-server` asks for it as the empty string.
+    if (typeof item?.section !== "string" || item.section === "") return settings ?? null;
     return settings ? sectionValue(settings, item.section) : null;
   });
 }

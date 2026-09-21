@@ -144,6 +144,9 @@ export default function ProblemsPanel(props: { selected: Selection | null; roots
                               {p.line}:{p.column}
                             </span>
                             <span class={styles.message}>{p.message}</span>
+                            <Show when={p.source}>
+                              <span class={styles.source}>{p.source}</span>
+                            </Show>
                             <Button
                               size="xs"
                               variant="ghost"
