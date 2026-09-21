@@ -23,13 +23,20 @@ import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { noteRefused, onTrustChange, trustProject, UNTRUSTED } from "../../utils/projectTrust";
-import { dropDiagnosticsUnder } from "../../utils/diagnostics";
+import { dropDiagnostics, dropDiagnosticsUnder } from "../../utils/diagnostics";
 import {
   ensureLspServersLoaded,
+  forgetResolutions,
+  hasServerFor,
+  isActivationMarker,
   languageIdFor,
-  serverForPath,
+  primariesClaiming,
+  resolvedPrimary,
+  resolveServers,
+  serverById,
   setRegistryListener,
   type LspServer,
+  type Resolution,
 } from "../../utils/lspServers";
 import { TORI_SETTINGS_FILES } from "../../utils/toriSettingsFiles";
 import { callHierarchyClientCapabilities } from "../../utils/callHierarchy";
@@ -45,6 +52,7 @@ import {
   clearDiagnosticContext,
   diagnosticContextCapture,
   dropDiagnosticContextUnder,
+  rememberDiagnostics,
 } from "./lspDiagnosticContext";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
@@ -154,19 +162,62 @@ let generation = 0;
 const requested = new Map<string, string>();
 
 onTrustChange(({ path, trusted }) => {
-  if (trusted) reaskUnder(path);
-  else void stopLspUnder(path).then(() => reaskUnder(path));
+  const underScope = (_file: string, projectPath: string) => isUnderPath(projectPath, path);
+  if (trusted) reask(underScope);
+  else void stopLspUnder(path).then(() => reask(underScope));
 });
 
 function pruneClosed(): void {
   for (const file of requested.keys()) if (liveBufferText(file) === null) requested.delete(file);
 }
 
-function reaskUnder(scope: string): void {
+function reask(wanted: (file: string, projectPath: string) => boolean): void {
   pruneClosed();
   for (const [file, projectPath] of requested) {
-    if (isUnderPath(projectPath, scope)) void ensureLspFor(file, projectPath);
+    if (wanted(file, projectPath)) void ensureLspFor(file, projectPath);
   }
+}
+
+/** `lsp.disabled` changed, in the user's settings or a workspace's: every open
+ *  file may now get different servers. */
+export function lspSettingsChanged(): void {
+  void reresolve(() => true, () => forgetResolutions());
+}
+
+// A server that just lost an open file is stopped once no open file under its
+// root still resolves to it, so a disabled one does not idle until a restart.
+// Only a loser is judged: a server nobody has a file open for stays warm.
+async function reresolve(inScope: (file: string) => boolean, forget: () => void): Promise<void> {
+  pruneClosed();
+  const files = [...requested].filter(([file]) => inScope(file));
+  const before = new Map(files.map(([file]) => [file, resolvedPrimary(file)?.id]));
+  forget();
+  const lost: [file: string, serverId: string][] = [];
+  await Promise.all(
+    files.map(async ([file, projectPath]) => {
+      const was = before.get(file);
+      const now = await resolveServers(file, projectPath).then(
+        (a) => a.resolution.primary,
+        () => was,
+      );
+      if (was && now !== was) lost.push([file, was]);
+    }),
+  );
+  for (const session of [...sessions.values()]) {
+    const flipped = lost.filter(([file, id]) => id === session.server.id && isUnderPath(file, session.handle.root));
+    if (!flipped.length) continue;
+    const stillWanted = [...requested.keys()].some(
+      (file) => isUnderPath(file, session.handle.root) && resolvedPrimary(file)?.id === session.server.id,
+    );
+    if (stillWanted) continue;
+    stopSession(session);
+    for (const [file] of flipped) {
+      dropDiagnostics(file);
+      rememberDiagnostics(pathToUri(file), []);
+    }
+  }
+  notify();
+  for (const [file, projectPath] of files) void ensureLspFor(file, projectPath);
 }
 
 function askToTrust(projectPath: string): void {
@@ -195,13 +246,25 @@ export async function ensureLspFor(path: string, projectPath: string): Promise<v
   // not be the current one by the time it gets a turn.
   const startedAt = generation;
   await ensureLspServersLoaded();
-  const server = serverForPath(path);
   // No server for this language is the normal case, not a failure.
-  if (!server) return;
+  if (!hasServerFor(path)) return;
   if (!isUnderPath(path, projectPath)) return;
   pruneClosed();
   requested.set(path, projectPath);
   for (const r of touchWarmRoot(projectPath)) void stopLspUnder(r);
+
+  let resolution: Resolution;
+  try {
+    const answer = await resolveServers(path, projectPath);
+    resolution = answer.resolution;
+    // A buffer built before the answer landed chose its plugin without it.
+    if (answer.fresh) notify();
+  } catch (e) {
+    console.error("lsp_resolve failed", path, e);
+    return;
+  }
+  const server = resolution.primary ? serverById(resolution.primary) : null;
+  if (!server) return;
 
   const prev = starting.get(server.id) ?? Promise.resolve();
   const next = prev.then(() => startFor(server, path, projectPath, startedAt)).catch(() => {});
@@ -599,6 +662,12 @@ export function notifyLspFileChanged(path: string): void {
   for (const { workspace } of sessions.values()) {
     workspace.fileChanged(path).catch((e) => console.error("lsp fileChanged failed", path, e));
   }
+  if (isActivationMarker(path)) {
+    const dir = path.slice(0, path.lastIndexOf("/"));
+    void reresolve((file) => isUnderPath(file, dir), () => forgetResolutions(dir));
+  } else if (path.endsWith("/.tori/settings.json")) {
+    lspSettingsChanged();
+  }
 }
 
 /** What a running server is, to code that only wants to ask it something.
@@ -649,9 +718,7 @@ function targetOf(session: Session): LspTarget {
  *  longest-root rule as the plugin, so a question about a file reaches the
  *  server holding that file's compiler config. */
 export function lspTargetFor(path: string): LspTarget | null {
-  const server = serverForPath(path);
-  if (!server) return null;
-  const session = sessionFor(path, server);
+  const session = answeringSession(path);
   return session ? targetOf(session) : null;
 }
 
@@ -714,18 +781,20 @@ async function stopLspUnder(projectPath: string): Promise<void> {
   const doomed = [...sessions.values()].filter(
     (s) => s.handle.root === projectPath || isUnderPath(s.handle.root, projectPath),
   );
-  for (const session of doomed) {
-    try {
-      session.client.disconnect();
-    } catch {
-      // ignore
-    }
-    sessions.delete(key(session.handle));
-    void invoke("lsp_stop", { handle: session.handle }).catch(() => {});
-  }
+  for (const session of doomed) stopSession(session);
   dropDiagnosticsUnder(projectPath);
   dropDiagnosticContextUnder(`${pathToUri(projectPath)}/`);
   if (doomed.length) notify();
+}
+
+function stopSession(session: Session): void {
+  try {
+    session.client.disconnect();
+  } catch {
+    // ignore
+  }
+  sessions.delete(key(session.handle));
+  void invoke("lsp_stop", { handle: session.handle }).catch(() => {});
 }
 
 /** Per-buffer editor extension for a file whose server is up, empty for
@@ -745,13 +814,25 @@ export function lspPluginFor(path: string): Extension {
  *  apart. Splitting them was how a file could end up with the server's
  *  completions and the scraped-word list at the same time. */
 function claimFor(path: string): { session: Session; languageId: string } | null {
-  const server = serverForPath(path);
-  if (!server) return null;
-  const session = sessionFor(path, server);
+  const session = answeringSession(path);
   if (!session) return null;
-  const languageId = languageIdFor(server, path);
+  const languageId = languageIdFor(session.server, path);
   if (!languageId) return null;
   return { session, languageId };
+}
+
+// Resolved, the file's own primary answers. Unresolved (a call hierarchy item
+// in a file nobody opened), the longest-root session of any primary claiming
+// the extension does, which is what every file got before resolution existed.
+function answeringSession(path: string): Session | null {
+  const resolved = resolvedPrimary(path);
+  const candidates = resolved === undefined ? primariesClaiming(path) : resolved ? [resolved] : [];
+  let best: Session | null = null;
+  for (const server of candidates) {
+    const session = sessionFor(path, server);
+    if (session && (!best || session.handle.root.length > best.handle.root.length)) best = session;
+  }
+  return best;
 }
 
 /**

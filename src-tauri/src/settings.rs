@@ -658,6 +658,15 @@ impl Default for Git {
     }
 }
 
+/// Language server preferences. `disabled` names server ids that never start;
+/// a workspace's own `lsp.disabled` adds to it and cannot take anything away.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Lsp {
+    #[serde(default)]
+    pub disabled: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -699,6 +708,8 @@ pub struct Settings {
     /// project that allowed only that one refuses rather than opens up.
     #[serde(default)]
     pub project_agents: std::collections::HashMap<String, Vec<AgentRow>>,
+    #[serde(default)]
+    pub lsp: Lsp,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---

@@ -15,7 +15,7 @@
 // TypeScript would mean two implementations of the same marker walk, and any
 // disagreement between them pairs a client with the wrong server silently.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -334,6 +334,11 @@ pub struct LspHealth {
     pub detail: Option<String>,
     /// Path of the user TOML overriding this server, when one is loaded.
     pub override_path: Option<String>,
+    /// Named in `lsp.disabled`, the user's or the workspace's.
+    pub disabled: bool,
+    /// Whether it starts depends on the project, so a probe from Settings,
+    /// which has no project, cannot say it is missing.
+    pub activation_markers: Vec<String>,
 }
 
 /// Build one server's health card.
@@ -371,6 +376,8 @@ fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
         extensions: server.languages.keys().cloned().collect(),
         detail,
         override_path: server.is_override().then(|| server.source.clone()),
+        disabled: false,
+        activation_markers: server.activation_markers.clone(),
     }
 }
 
@@ -379,7 +386,8 @@ fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
 /// rust-analyzer while Tori is open should see the card change on the next
 /// Settings open rather than after a restart.
 #[tauri::command]
-pub async fn lsp_health(app: AppHandle) -> Vec<LspHealth> {
+pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> {
+    let disabled = disabled_servers(crate::settings::get_settings().lsp.disabled, root.as_deref());
     registry::registry()
         .iter()
         .map(|server| {
@@ -387,9 +395,43 @@ pub async fn lsp_health(app: AppHandle) -> Vec<LspHealth> {
                 Launch::BundledNode { entry, .. } => bundled_entry(&app, entry).is_none(),
                 Launch::Path { .. } => false,
             };
-            check(server, missing)
+            LspHealth { disabled: disabled.contains(&server.id), ..check(server, missing) }
         })
         .collect()
+}
+
+/// Which servers should run for one file, by id.
+#[derive(Debug, Serialize)]
+pub struct Resolution {
+    pub primary: Option<String>,
+    pub secondaries: Vec<String>,
+}
+
+/// The servers `file_path` gets once activation markers and `lsp.disabled`
+/// have had their say. See `registry::resolve`.
+#[tauri::command(async)]
+pub fn lsp_resolve(file_path: String, project_path: String) -> Resolution {
+    let disabled = disabled_servers(crate::settings::get_settings().lsp.disabled, Some(&project_path));
+    let (primary, secondaries) =
+        registry::resolve(registry::registry(), Path::new(&file_path), Path::new(&project_path), &disabled);
+    Resolution {
+        primary: primary.map(|s| s.id.clone()),
+        secondaries: secondaries.iter().map(|s| s.id.clone()).collect(),
+    }
+}
+
+// The workspace list only adds. A repo ships its own `.tori/settings.json`, and
+// letting that file switch back on a server the user turned off would hand the
+// choice to the repo.
+fn disabled_servers(user: Vec<String>, root: Option<&str>) -> HashSet<String> {
+    let mut ids: HashSet<String> = user.into_iter().collect();
+    if let Some(root) = root.filter(|r| !r.is_empty()) {
+        let overlay = crate::workspace_settings::get_workspace_settings(root.to_string());
+        if let Some(list) = overlay.pointer("/lsp/disabled").and_then(|v| v.as_array()) {
+            ids.extend(list.iter().filter_map(|v| v.as_str()).map(str::to_string));
+        }
+    }
+    ids
 }
 
 #[cfg(test)]
@@ -675,5 +717,41 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&text)
                 .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
         }
+    }
+
+    #[test]
+    fn a_disabled_server_is_left_out_and_a_disabled_primary_hands_over() {
+        let project = std::env::temp_dir().join(format!("tori_lsp_disabled_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&project);
+        let file = project.join("src/a.ts");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(project.join(".tori")).unwrap();
+        std::fs::write(project.join("eslint.config.js"), "").unwrap();
+        std::fs::write(project.join("deno.json"), "{}").unwrap();
+        std::fs::write(project.join(".tori/settings.json"), r#"{ "lsp": { "disabled": ["eslint"] } }"#).unwrap();
+
+        let config = |id: &str, extra: &str| {
+            registry::load_server_str(
+                &format!(
+                    "schema_version = 1\nid = \"{id}\"\nlabel = \"{id}\"\nroot_markers = [\".git\"]\n{extra}\n\
+                     [languages]\nts = \"typescript\"\n[launch]\nkind = \"path\"\nprogram = \"{id}\"\n"
+                ),
+                id,
+            )
+            .unwrap()
+        };
+        let servers = [
+            registry::load_server_str(include_str!("../lsp/typescript.toml"), "bundled:typescript").unwrap(),
+            config("eslint", "role = \"secondary\"\nactivation_markers = [\"eslint.config.js\"]"),
+            config("deno", "activation_markers = [\"deno.json\"]"),
+        ];
+        let root = project.to_string_lossy().into_owned();
+
+        let disabled = disabled_servers(vec!["deno".to_string()], Some(&root));
+        assert!(disabled.contains("eslint") && disabled.contains("deno"), "the workspace adds to the user's list");
+
+        let (primary, secondaries) = registry::resolve(&servers, &file, &project, &disabled);
+        assert_eq!(primary.map(|s| s.id.as_str()), Some("typescript"));
+        assert!(secondaries.is_empty());
     }
 }

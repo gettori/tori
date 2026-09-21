@@ -35,6 +35,8 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   extensions: ["ts", "tsx"],
   detail: null,
   overridePath: null,
+  disabled: false,
+  activationMarkers: [],
   ...over,
 });
 
@@ -102,6 +104,32 @@ describe("LspSection", () => {
     await waitFor(() =>
       expect(screen.getByText(/\/home\/me\/.config\/tori\/lsp\/typescript.toml/)).toBeTruthy(),
     );
+  });
+
+  it("says a server named in lsp.disabled is disabled", async () => {
+    health = [server({ disabled: true })];
+    render(() => <LspSection />);
+
+    await waitFor(() => expect(screen.getByText(/Disabled by/)).toBeTruthy());
+  });
+
+  it("calls a marker-activated server per project, not missing, when its binary is not on PATH", async () => {
+    health = [
+      server({
+        id: "deno",
+        label: "Deno",
+        program: "deno",
+        status: "notFound",
+        path: null,
+        version: null,
+        activationMarkers: ["deno.json", "deno.jsonc"],
+      }),
+    ];
+    render(() => <LspSection />);
+
+    await waitFor(() => expect(screen.getByText(/Runs per project/)).toBeTruthy());
+    expect(screen.getByText("deno.json, deno.jsonc")).toBeTruthy();
+    expect(screen.queryByText(/Not installed/)).toBeNull();
   });
 
   it("lists trusted projects, and Revoke takes one off the list", async () => {

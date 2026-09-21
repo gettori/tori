@@ -38,6 +38,8 @@ let registry: unknown[] = [
     settings: null,
     schema_associations: false,
     verified_against: null,
+    role: "primary",
+    activation_markers: [],
     source: "bundled:typescript",
   },
   {
@@ -51,6 +53,8 @@ let registry: unknown[] = [
     settings: null,
     schema_associations: false,
     verified_against: null,
+    role: "primary",
+    activation_markers: [],
     source: "bundled:rust",
   },
 ];
@@ -73,6 +77,17 @@ let resolveRoot: (args: StartArgs) => string = (a) => a.projectPath;
 let startFails = false;
 
 let untrusted = new Set<string>();
+
+type Resolution = { primary: string | null; secondaries: string[] };
+
+function claimantOf(filePath: string): Resolution {
+  const ext = filePath.slice(filePath.lastIndexOf(".") + 1);
+  const claimant = (registry as { id: string; languages: Record<string, string> }[]).find(
+    (s) => ext in s.languages,
+  );
+  return { primary: claimant?.id ?? null, secondaries: [] };
+}
+let resolve: (filePath: string) => Resolution = claimantOf;
 
 // When set, lsp_start blocks on this until the test releases it, so a teardown
 // can be interleaved with a start that is already in flight.
@@ -118,6 +133,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       });
     }
     if (cmd === "trust_project") return Promise.resolve(args?.path);
+    if (cmd === "lsp_resolve") return Promise.resolve(resolve(args?.filePath as string));
     if (cmd === "lsp_stop_all") stopped.push("all");
     if (cmd === "lsp_stop") stopped.push((args?.handle as { serverId: string }).serverId);
     return Promise.resolve();
@@ -218,6 +234,7 @@ beforeEach(() => {
   resolveRoot = (a) => a.projectPath;
   startFails = false;
   untrusted = new Set();
+  resolve = claimantOf;
   holdStart = null;
 });
 
@@ -1342,19 +1359,19 @@ describe("claimedByLsp", () => {
   });
 });
 
+async function openBuffers(paths: string[]) {
+  const { setBufferAccess } = await import("./liveBuffers");
+  return setBufferAccess({
+    textOf: (p: string) => (paths.includes(p) ? "" : null),
+    isDirty: () => false,
+    adopt: () => {},
+    patch: () => "absent" as const,
+  });
+}
+
 describe("project trust", () => {
   beforeEach(() => vi.stubGlobal("window", new EventTarget()));
   afterEach(() => vi.unstubAllGlobals());
-
-  async function openBuffers(paths: string[]) {
-    const { setBufferAccess } = await import("./liveBuffers");
-    return setBufferAccess({
-      textOf: (p: string) => (paths.includes(p) ? "" : null),
-      isDirty: () => false,
-      adopt: () => {},
-      patch: () => "absent" as const,
-    });
-  }
 
   async function collectToasts() {
     const { onWith, TOAST } = await import("../../utils/events");
@@ -1427,6 +1444,37 @@ describe("project trust", () => {
     } finally {
       off();
       offBuffers();
+    }
+  });
+});
+
+describe("activation markers", () => {
+  it("re-resolves an open buffer when a marker appears, without reopening it", async () => {
+    const saved = registry;
+    registry = [
+      ...saved,
+      {
+        ...(saved[0] as object),
+        id: "deno",
+        label: "Deno",
+        activation_markers: ["deno.json"],
+        source: "deno.toml",
+      },
+    ];
+    const m = await freshModule();
+    const offBuffers = await openBuffers(["/proj/d/src/a.ts"]);
+    try {
+      await m.ensureLspFor("/proj/d/src/a.ts", "/proj/d");
+      expect(started.map((s) => s.serverId)).toEqual(["typescript"]);
+
+      resolve = (filePath) => (filePath.startsWith("/proj/d/") ? { primary: "deno", secondaries: [] } : claimantOf(filePath));
+      m.notifyLspFileChanged("/proj/d/deno.json");
+
+      await vi.waitFor(() => expect(started.map((s) => s.serverId)).toEqual(["typescript", "deno"]));
+      expect(started[1].filePath).toBe("/proj/d/src/a.ts");
+    } finally {
+      offBuffers();
+      registry = saved;
     }
   });
 });
