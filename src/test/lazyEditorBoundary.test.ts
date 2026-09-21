@@ -99,4 +99,13 @@ describe("the CodeMirror lazy boundary", () => {
     expect(seen.size).toBeGreaterThan(50);
     expect(offenses).toEqual([]);
   });
+
+  it("reaches the language-data catalogue only through languages.ts", () => {
+    // One owner, so no second lookup can skip the overrides languages.ts puts
+    // in front of it: the eager JS and JSON packs, the shell rc files.
+    const naming = Object.keys(SOURCES).filter(
+      (key) => !/\.test\.tsx?$/.test(key) && SOURCES[key].includes("@codemirror/language-data"),
+    );
+    expect(naming).toEqual(["../panels/Editor/languages.ts"]);
+  });
 });

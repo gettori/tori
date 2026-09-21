@@ -5,51 +5,63 @@
 // property of this table, and the pane is not involved in it.
 //
 // Editor-side, behind the lazy boundary: it imports CodeMirror.
-import { LanguageSupport, StreamLanguage, type Language } from "@codemirror/language";
+import { LanguageDescription, type Language, type LanguageSupport } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import type { Extension } from "@codemirror/state";
 
+function basename(path: string): string {
+  return path.split("/").pop() ?? "";
+}
+
 // The suffix comes from the basename so a dotted directory can't fake one, and
 // dotfiles like .zshrc resolve to their own name.
 function suffix(path: string): string {
-  const file = path.split("/").pop()?.toLowerCase() ?? "";
-  return file.split(".").pop() ?? "";
+  return basename(path).toLowerCase().split(".").pop() ?? "";
 }
 
-// Packs beyond ts/js/json load on demand so the (already lazy) editor chunk
-// stays lean; the module cache makes every open after the first free.
-async function packFor(ext: string): Promise<LanguageSupport | Language | null> {
+// Already in the editor chunk, so these load without a round trip.
+function syncPack(ext: string): LanguageSupport | null {
   if (["ts", "mts", "cts"].includes(ext)) return javascript({ typescript: true });
   if (ext === "tsx") return javascript({ typescript: true, jsx: true });
   if (["js", "mjs", "cjs"].includes(ext)) return javascript();
   if (ext === "jsx") return javascript({ jsx: true });
   if (ext === "json") return json();
-  if (["md", "markdown"].includes(ext)) return (await import("@codemirror/lang-markdown")).markdown();
-  if (ext === "css") return (await import("@codemirror/lang-css")).css();
-  if (["html", "htm"].includes(ext)) return (await import("@codemirror/lang-html")).html();
-  if (ext === "rs") return (await import("@codemirror/lang-rust")).rust();
-  if (ext === "py") return (await import("@codemirror/lang-python")).python();
-  if (["yaml", "yml"].includes(ext)) return (await import("@codemirror/lang-yaml")).yaml();
-  if (ext === "toml") return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/toml")).toml);
-  if (["sh", "bash", "zsh", "zshrc", "bashrc"].includes(ext)) return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/shell")).shell);
   return null;
 }
 
+// Shell here before language-data, which claims none of them.
+const SHELL_SUFFIXES = ["zsh", "zshrc", "bashrc"];
+
+// language-data matches extensions case-sensitively, and its filename patterns
+// (`Dockerfile`) are case-sensitive on purpose, so the name is tried as written
+// first.
+function descriptionFor(path: string): LanguageDescription | null {
+  const name = basename(path);
+  return (
+    LanguageDescription.matchFilename(languages, name) ??
+    LanguageDescription.matchFilename(languages, name.toLowerCase()) ??
+    (SHELL_SUFFIXES.includes(suffix(path)) ? LanguageDescription.matchLanguageName(languages, "shell") : null)
+  );
+}
+
+async function packFor(path: string): Promise<LanguageSupport | null> {
+  return syncPack(suffix(path)) ?? (await descriptionFor(path)?.load()) ?? null;
+}
+
 export async function languageForPath(path: string): Promise<Language | null> {
-  const pack = await packFor(suffix(path));
-  return pack instanceof LanguageSupport ? pack.language : pack;
+  return (await packFor(path))?.language ?? null;
 }
 
 export async function langForPath(path: string): Promise<Extension> {
-  const ext = suffix(path);
   // Swatches ride with the CSS pack rather than sitting in the prefs
   // compartment: the picker reads the CSS syntax tree, so it is meaningless in
   // a buffer that has no CSS in it, and pairing them here means it can never be
   // installed against the wrong language.
-  if (ext === "css") {
-    const [pack, { colorPicker }] = await Promise.all([packFor(ext), import("@replit/codemirror-css-color-picker")]);
+  if (suffix(path) === "css") {
+    const [pack, { colorPicker }] = await Promise.all([packFor(path), import("@replit/codemirror-css-color-picker")]);
     return [pack ?? [], colorPicker];
   }
-  return (await packFor(ext)) ?? [];
+  return (await packFor(path)) ?? [];
 }
