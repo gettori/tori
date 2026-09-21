@@ -230,7 +230,29 @@ export type QuestionItem = {
   result: string | null;
 };
 
-export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem | QuestionItem;
+/** What a client-side slash command printed. Its own row because it is neither
+ *  speaker: `/usage` and `/context` never reach a model, so rendering the output
+ *  as assistant prose would credit it with words it never said.
+ *
+ *  `command` labels the card and is null when nothing named it, which is every
+ *  live frame: the prompt that ran it is already the row directly above, and
+ *  only a replayed transcript has an envelope record to recover the name from. */
+export type CommandItem = {
+  kind: "command";
+  id: string;
+  turnId: string;
+  command: string | null;
+  output: string;
+};
+export type ChatItem =
+  | UserItem
+  | TextItem
+  | ThinkingItem
+  | ToolItem
+  | NoticeItem
+  | HookItem
+  | QuestionItem
+  | CommandItem;
 
 /** The lane a row belongs to: the subagent that produced it, or null for the
  *  main agent. A notice, a hook row and a user message are the session's rather
@@ -1319,6 +1341,17 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       const running = settleCompaction(s);
       if (running) Object.assign(running, settled);
       else push(s, { kind: "notice", id: nextId(s, "notice"), ...settled });
+      return;
+    }
+    case "localCommand": {
+      touchTurn(s, ev.turnId);
+      push(s, {
+        kind: "command",
+        id: nextId(s, "command"),
+        turnId: ev.turnId,
+        command: ev.command,
+        output: ev.output,
+      });
       return;
     }
     case "slashCommands":

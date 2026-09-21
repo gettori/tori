@@ -1,5 +1,5 @@
 import { Index, Match, Switch, createMemo } from "solid-js";
-import { marked, type Token } from "marked";
+import { Marked, type Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
@@ -10,6 +10,17 @@ import styles from "./Chat.module.css";
 type Segment =
   | { kind: "prose"; html: string }
   | { kind: "code"; lang: string; code: string };
+
+/** The two newline rules, built once each rather than configured per call.
+ *
+ *  Instances because the static `marked.lexer`/`marked.parser` take an options
+ *  object that *replaces* the defaults instead of merging into them, and
+ *  `breaks` does nothing without the `gfm` it would have dropped. Measured on
+ *  marked 18.0.6: passing `{breaks: true}` to both halves renders no `<br>` at
+ *  all, which is a silent no-op and exactly the shape of bug that survives
+ *  review. */
+const PROSE = new Marked();
+const LINEWISE = new Marked({ breaks: true });
 
 /**
  * Assistant markdown, rendered block by block rather than as one innerHTML
@@ -26,22 +37,33 @@ type Segment =
  * they are not a script vector - but an anchor the webview follows takes the
  * whole app off the SPA, which reads as a crash and loses the session. So every
  * click is intercepted, and where it goes is `linkTarget`'s answer.
+ *
+ * `breaks` turns a single newline into a line break, and is off for anything a
+ * model wrote: the model writes markdown, where a wrapped paragraph is one
+ * paragraph and honouring its newlines would shred it. What needs it is text
+ * that only looks like markdown. `/usage` answers in plain lines whose breaks
+ * are the whole structure, and rendering those as prose ran the session, the
+ * week and the per-model rows together into one sentence.
  */
-export default function Markdown(props: { text: string; cwd: string }) {
+export default function Markdown(props: { text: string; cwd: string; breaks?: boolean }) {
   // Rendered prose keyed by its raw source, carried across recomputes: while
   // streaming, every segment but the tail hits this cache, so the per-delta
   // cost is one lexer pass plus one segment's parse and sanitize.
   let prev = new Map<string, string>();
 
   const segments = createMemo<Segment[]>(() => {
-    const tokens = marked.lexer(props.text);
+    // One instance for both halves, or they disagree about what a newline is:
+    // the lexer decides whether one becomes a break token, the parser decides
+    // whether it renders.
+    const md = props.breaks === true ? LINEWISE : PROSE;
+    const tokens = md.lexer(props.text);
     const next = new Map<string, string>();
     const segs: Segment[] = [];
     let run: Token[] = [];
     const flush = () => {
       if (!run.length) return;
       const raw = run.map((t) => t.raw).join("");
-      const html = prev.get(raw) ?? next.get(raw) ?? sanitizeHtml(marked.parser(run));
+      const html = prev.get(raw) ?? next.get(raw) ?? sanitizeHtml(md.parser(run));
       next.set(raw, html);
       segs.push({ kind: "prose", html });
       run = [];

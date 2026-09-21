@@ -940,7 +940,7 @@ impl ClaudeMapper {
     /// main agent's frames stay dropped, or every call would render twice.
     fn map_assistant(&self, frame: &Value) -> Vec<ChatEvent> {
         if !frame["parent_tool_use_id"].is_string() {
-            return Vec::new();
+            return self.map_local_command(frame);
         }
         let mut out = Vec::new();
         for block in frame["message"]["content"].as_array().into_iter().flatten() {
@@ -977,6 +977,41 @@ impl ClaudeMapper {
             }
         }
         out
+    }
+
+    /// The one top-level `assistant` frame that is not a duplicate of the
+    /// stream: what a client-side slash command printed.
+    ///
+    /// `/usage`, `/context` and `/cost` never reach a model. The CLI runs them
+    /// itself and reports the result on a frame marked `local_command_source`,
+    /// with `message.model` set to the literal `<synthetic>` and **no
+    /// `stream_event` anywhere in the turn** (measured, claude 2.1.268: a
+    /// `system/init`, this frame, a `result`, nothing else). So the blanket
+    /// drop above was throwing away the only copy there is, and `/usage`
+    /// rendered as an empty turn.
+    ///
+    /// Gated on `local_command_source` rather than on `<synthetic>`, which is
+    /// the wider set: a refused fast-mode switch is synthetic too, and its
+    /// reason already reaches the toggle from `system/init`, so admitting it
+    /// here would put it on screen twice.
+    fn map_local_command(&self, frame: &Value) -> Vec<ChatEvent> {
+        if !frame["local_command_source"].is_string() {
+            return Vec::new();
+        }
+        let output = tool_result_text(&frame["message"]["content"]).unwrap_or_default();
+        if output.trim().is_empty() {
+            return Vec::new();
+        }
+        vec![ChatEvent::LocalCommand {
+            session_id: self.session_id.clone(),
+            turn_id: self.turn_id(),
+            // Nothing on the wire names the command: not this frame, and there
+            // is no `user` frame for the invocation either. Live that costs
+            // nothing, because the prompt that ran it is already the row above.
+            // Only a replayed transcript has an envelope record to recover.
+            command: None,
+            output,
+        }]
     }
 
     fn map_stream_event(&mut self, frame: &Value) -> Vec<ChatEvent> {
@@ -4365,4 +4400,3 @@ mod tests {
         }
     }
 }
-

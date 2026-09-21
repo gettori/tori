@@ -1,6 +1,7 @@
 [
   "userMessage",
   "compacted",
+  "localCommand",
   "textDelta",
   "thinkingDelta",
   "toolCallStarted",

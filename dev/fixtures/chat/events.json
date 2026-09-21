@@ -132,7 +132,8 @@
     },
     "capabilities": {
       "loadSession": true,
-      "listSessions": true
+      "listSessions": true,
+      "imageInput": true
     }
   },
   {
@@ -168,6 +169,13 @@
     "preTokens": 247408,
     "postTokens": 9444,
     "summary": "This session is being continued from a previous conversation"
+  },
+  {
+    "type": "localCommand",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "command": "/usage",
+    "output": "Current session: 31% used"
   },
   {
     "type": "slashCommands",

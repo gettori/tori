@@ -566,6 +566,24 @@ export default function MessageList(props: {
                 </>
               )}
             </Match>
+            <Match when={item.kind === "command" && item}>
+              {(it) => (
+                <>
+                  <TurnAnchor itemId={it().id} />
+                  <div class={styles.command}>
+                    {/* Only when a record named it. Live nothing does, and the
+                        prompt that ran the command is the row directly above,
+                        so a header there would just say it twice. */}
+                    <Show when={it().command}>
+                      {(name) => <div class={styles.commandName}>{name()}</div>}
+                    </Show>
+                    <div class={styles.commandBody}>
+                      <Markdown text={it().output} cwd={props.cwd} breaks />
+                    </div>
+                  </div>
+                </>
+              )}
+            </Match>
             <Match when={item.kind === "thinking" && item}>
               {(it) => (
                 <>
