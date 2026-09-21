@@ -298,7 +298,7 @@ export const SETTINGS: SettingEntry[] = [
     section: "editor",
     label: "Format on save",
     toggles: "formatOnSave",
-    hint: "Runs the project's own Biome or Prettier before writing, and nothing at all in a project that has neither. Off by default: a repo carrying a formatter config is not necessarily one that is currently formatted.",
+    hint: "Runs the file's formatter before writing: this workspace's pick for the file type, else the project's own config (Biome, Prettier, ruff and the rest), else your own pick. Nothing runs when none of those names one. Off by default: a repo carrying a formatter config is not necessarily one that is currently formatted.",
   },
   {
     id: "organize-imports-on-save",

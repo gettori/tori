@@ -1,0 +1,15 @@
+# gofmt, from the login PATH. See FORMATTERS.md.
+#
+# No markers: gofmt has no config file, and a go.mod says a directory is Go,
+# not that it formats with gofmt. It runs only when `format.byExtension` names it.
+
+schema_version = 1
+id = "gofmt"
+label = "gofmt"
+extensions = ["go"]
+
+verified_against = "go1.27.1"
+
+[launch]
+kind = "path"
+program = "gofmt"

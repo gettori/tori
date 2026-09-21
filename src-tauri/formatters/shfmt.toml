@@ -1,0 +1,17 @@
+# shfmt, from the login PATH. See FORMATTERS.md.
+#
+# No markers: shfmt reads .editorconfig, which says nothing about whether a
+# repo uses shfmt. It runs only when `format.byExtension` names it.
+
+schema_version = 1
+id = "shfmt"
+label = "shfmt"
+extensions = ["sh", "bash"]
+
+verified_against = "shfmt v3.14.1"
+
+[launch]
+kind = "path"
+program = "shfmt"
+# `--filename` is what picks the dialect and the .editorconfig section.
+args = ["--filename", "{file}"]

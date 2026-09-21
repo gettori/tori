@@ -1,0 +1,27 @@
+# Biome, from the project's own install. See FORMATTERS.md.
+#
+# No `extensions`: Biome decides per file, and its HTML formatter is off until a
+# biome.json turns it on. A file it will not format comes back as exit 1 with
+# the notice below, which hands the file on.
+
+schema_version = 1
+id = "biome"
+label = "Biome"
+
+# Above Prettier: a repo holding both configs has migrated and left the old
+# file behind, and the newer tool is the one CI runs.
+priority = 20
+
+verified_against = "biome 2.5.14"
+
+[markers]
+files = ["biome.json", "biome.jsonc"]
+
+[launch]
+kind = "project_bin"
+program = "biome"
+args = ["format", "--stdin-file-path", "{file}"]
+
+[not_applicable]
+exit_code = 1
+stderr = "the formatter is currently disabled"
