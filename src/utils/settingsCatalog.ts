@@ -108,7 +108,7 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
-  { id: "servers", label: "Servers", group: "Languages", icon: "braces", sections: ["lsp"] },
+  { id: "servers", label: "LSP", group: "Languages", icon: "braces", sections: ["lsp"] },
   { id: "debuggers", label: "Debuggers", group: "Languages", icon: "bug", sections: ["dap"] },
   { id: "linters", label: "Linters", group: "Languages", icon: "list-checks", sections: ["lint"] },
   { id: "formatters", label: "Formatters", group: "Languages", icon: "wand-sparkles", sections: ["fmt"] },
