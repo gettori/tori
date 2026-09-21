@@ -10,6 +10,7 @@ import InlineJob from "../../../FirstRun/job/InlineJob";
 import type { JobState } from "../../../FirstRun/job/InlineJobFrame";
 import { emitWith, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { installServer, serverInstalled } from "../../../../utils/serverInstall";
+import { CmdField } from "../../components/paneKit";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import styles from "../../Settings.module.css";
 
@@ -316,14 +317,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
       <Show
         when={job()}
         fallback={
-          <Show when={command()}>
-            {(cmd) => (
-              <div class={styles.cmd}>
-                <span class={styles.cmdPrompt}>$</span>
-                <code class={styles.cmdText}>{cmd()}</code>
-              </div>
-            )}
-          </Show>
+          <Show when={command()}>{(cmd) => <CmdField text={cmd()} />}</Show>
         }
       >
         {(j) => (
