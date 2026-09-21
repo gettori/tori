@@ -295,6 +295,9 @@ pub async fn dap_start(
 ) -> Result<DapHandle, String> {
     let adapter: &DapAdapter = registry::find(&adapter_id)
         .ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
+    if crate::settings::get_settings().dap.disabled.contains(&adapter.id) {
+        return Err(format!("the {} debugger is off. Turn it on in Settings > Debuggers.", adapter.label));
+    }
 
     let root = registry::root_for(
         adapter,
@@ -486,6 +489,8 @@ pub struct DapHealth {
     /// was never installed: `node` resolves fine, so probing the program alone
     /// would report the card healthy while every `dap_start` fails.
     pub detail: Option<String>,
+    /// Named in your `dap.disabled`.
+    pub disabled: bool,
 }
 
 /// Build one adapter's health card.
@@ -520,6 +525,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
         adapter_version: adapter.version.clone(),
         extensions: adapter.languages.keys().cloned().collect(),
         detail,
+        disabled: false,
     }
 }
 
@@ -528,9 +534,13 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
 /// while Tori is open should see the card change on the next Settings open.
 #[tauri::command]
 pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
+    let disabled = crate::settings::get_settings().dap.disabled;
     registry::registry()
         .iter()
-        .map(|adapter| check(adapter, bundled_entry(&app, &adapter.entry).is_none()))
+        .map(|adapter| DapHealth {
+            disabled: disabled.contains(&adapter.id),
+            ..check(adapter, bundled_entry(&app, &adapter.entry).is_none())
+        })
         .collect()
 }
 

@@ -132,6 +132,22 @@
         }
       }
     },
+    "dap": {
+      "type": "object",
+      "description": "Debuggers.",
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Debug adapter ids that never start, such as \"js-debug\".",
+          "default": []
+        }
+      }
+    },
     "format": {
       "type": "object",
       "description": "Formatters.",
