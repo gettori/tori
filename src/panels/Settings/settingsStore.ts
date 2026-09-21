@@ -7,6 +7,7 @@ import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
+import { lspDisabledChanged } from "../../utils/lspServers";
 import type { ToastEvent } from "../../utils/events";
 import { getTheme, reloadUserThemes, setTheme } from "../../theme";
 import { editorFontSizePx, terminalFontSizePx, uiScale } from "./utils/scale";
@@ -479,12 +480,21 @@ function reportThemeProblems(problems: string[]) {
   }
 }
 
+// Compared, because re-resolving reconfigures every open buffer and most
+// settings changes are something else.
+let lspDisabled = "";
+
 /** Apply tokens, then the theme named by settings.appearance (the source of
  *  truth). An id nothing provides falls back to the default; a theme that fails
  *  the contrast gate paints nothing, so the app stays where it was. */
 function applyAll(s: Settings) {
   applySettings(s);
   reportThemeProblems(setTheme(s.appearance.theme));
+  const disabled = String(s.lsp?.disabled ?? []);
+  if (disabled !== lspDisabled) {
+    lspDisabled = disabled;
+    lspDisabledChanged();
+  }
 }
 
 // Whether the file has been read at all. Told apart from its contents because
@@ -714,6 +724,12 @@ export function neverOfferInstall(serverId: string): void {
   if (never.includes(serverId)) return;
   const next: Settings = { ...settings, lsp: { ...settings.lsp, neverOffer: [...never, serverId] } };
   void saveSettings(next).catch(() => {});
+}
+
+/** Add a server to your `lsp.disabled`, or take it off. */
+export function setServerDisabled(serverId: string, disabled: boolean): Promise<void> {
+  const rest = (settings.lsp?.disabled ?? []).filter((id) => id !== serverId);
+  return saveSettings({ ...settings, lsp: { ...settings.lsp, disabled: disabled ? [...rest, serverId] : rest } });
 }
 
 /** Remember this project's format-on-save answer. Swallowed on failure for the

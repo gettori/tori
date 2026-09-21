@@ -785,18 +785,105 @@
     border-color: var(--brand-default);
   }
 
-  /* One column: a language server says less than a agent, so two across
-     would be a grid of mostly empty card. */
-  .cardStack {
+  /* Language servers and debuggers: three across in the full-width panel,
+     fewer as it narrows. */
+  .toolGrid {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(240px * var(--ui-scale)), 1fr));
     gap: var(--tori-space-4);
   }
   /* Straight under a title, a card block takes the same air the agent table
      does off its own: a title's 2px is measured for a row, which brings its
      own padding, not for a bordered card. */
-  .sectionTitle + .cardStack,
+  .sectionTitle + .toolGrid,
   .sectionTitle + .connect {
     margin-top: var(--tori-space-5);
+  }
+
+  .toolCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-2);
+    min-width: 0;
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    background: var(--neutral-subtle);
+    padding: var(--tori-space-4) var(--tori-space-5);
+  }
+  .toolHead {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    min-width: 0;
+  }
+  .toolName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-md);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .toolNameOff {
+    color: var(--fg-muted);
+  }
+  .kindTag {
+    flex: none;
+    padding: 0 var(--tori-space-2);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-sm);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+  .toolSwitch {
+    flex: none;
+    margin-left: auto;
+  }
+  .toolProgram,
+  .toolExts {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    color: var(--fg-subtle);
+  }
+  .toolProgram {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toolExts {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--tori-space-3);
+  }
+  /* Muted, never subtle: this is the line the card exists to say. */
+  .toolStatus {
+    font-size: var(--tori-text-xs);
+    line-height: 1.45;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+  .toolStatus code {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    color: var(--fg-subtle);
+  }
+  .toolCard .cmd {
+    margin-top: 0;
+    padding: var(--tori-space-2) var(--tori-space-3);
+  }
+  .toolActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--tori-space-2);
+  }
+  .toolMeta {
+    font-size: var(--tori-text-2xs);
+    color: var(--fg-subtle);
+    overflow-wrap: anywhere;
   }
 
   .card {
@@ -1710,6 +1797,12 @@
   }
   button.groupTab[aria-pressed="true"] {
     color: var(--fg-default);
+  }
+  .groupTabCount {
+    margin-left: var(--tori-space-2);
+    font-weight: 400;
+    letter-spacing: normal;
+    color: var(--fg-subtle);
   }
   button.groupTab + button.groupTab {
     margin-left: var(--tori-space-4);
