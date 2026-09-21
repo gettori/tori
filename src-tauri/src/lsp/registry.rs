@@ -81,8 +81,9 @@ pub enum Install {
     /// One release asset per platform, checked against its sha256 before it
     /// is unpacked. `version` is the release tag.
     GithubRelease { repo: String, version: String, assets: BTreeMap<String, Asset> },
-    /// Text only, for a server its own toolchain installs.
-    Hint { text: String },
+    /// Text only, for a server its own toolchain installs. `update` and
+    /// `uninstall` are that toolchain's commands for the other two jobs.
+    Hint { text: String, update: Option<String>, uninstall: Option<String> },
 }
 
 impl Install {
@@ -295,6 +296,10 @@ struct InstallToml {
     assets: BTreeMap<String, AssetToml>,
     #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    update: Option<String>,
+    #[serde(default)]
+    uninstall: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -510,6 +515,11 @@ fn load_install(raw: InstallToml, program: &str, source: &str) -> Result<Install
     let required = |value: Option<String>, field: &str| {
         value.ok_or_else(|| format!("{source}: [install] kind = \"{}\" requires `{field}`", raw.kind))
     };
+    if raw.kind != "hint" && (raw.update.is_some() || raw.uninstall.is_some()) {
+        return Err(format!(
+            "{source}: [install] `update` and `uninstall` are only for kind = \"hint\"; Tori updates and removes its own installs"
+        ));
+    }
     match raw.kind.as_str() {
         "npm" => {
             let package = required(raw.package, "package")?;
@@ -538,7 +548,7 @@ fn load_install(raw: InstallToml, program: &str, source: &str) -> Result<Install
             }
             Ok(Install::GithubRelease { repo, version, assets })
         }
-        "hint" => Ok(Install::Hint { text: required(raw.text, "text")? }),
+        "hint" => Ok(Install::Hint { text: required(raw.text, "text")?, update: raw.update, uninstall: raw.uninstall }),
         other => Err(format!("{source}: unknown [install] kind `{other}` (tori implements: npm, github_release, hint)")),
     }
 }
@@ -970,7 +980,7 @@ version = "1.2.3"
     fn a_hint_is_text_for_any_launch_kind() {
         let text = format!("{VALID}[install]\nkind = \"hint\"\ntext = \"brew install demo\"\n");
         let s = load_server_str(&text, "test").unwrap();
-        assert_eq!(s.install, Some(Install::Hint { text: "brew install demo".into() }));
+        assert_eq!(s.install, Some(Install::Hint { text: "brew install demo".into(), update: None, uninstall: None }));
         assert_eq!(s.install.unwrap().available_version(), None);
 
         let empty = format!("{VALID}[install]\nkind = \"hint\"\n");

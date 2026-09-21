@@ -21,3 +21,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `opam install ocaml-lsp-server`."
+update = "opam upgrade ocaml-lsp-server"
+uninstall = "opam remove ocaml-lsp-server"

@@ -22,3 +22,5 @@ args = []
 [install]
 kind = "hint"
 text = "Install it with `brew install kotlin-language-server`."
+update = "brew upgrade kotlin-language-server"
+uninstall = "brew uninstall kotlin-language-server"
