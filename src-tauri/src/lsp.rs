@@ -353,8 +353,8 @@ pub struct LspHealth {
     /// which has no project, cannot say it is missing. A key reads as
     /// `pyproject.toml [tool.ruff]`.
     pub activation_markers: Vec<String>,
-    /// Started only in some projects, or from the project's own install, so the
-    /// same holds as for `activation_markers`.
+    /// Launched from the project's own install before the PATH, so a probe
+    /// from Settings, which has no project, cannot say it is missing.
     pub runs_per_project: bool,
     /// How to install it, for a server its own toolchain manages.
     pub hint: Option<String>,
@@ -432,7 +432,7 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
             .cloned()
             .chain(server.activation_keys.iter().map(|k| format!("{} [{}]", k.file, k.path.join("."))))
             .collect(),
-        runs_per_project: server.needs_activation() || matches!(server.launch, Launch::ProjectBin { .. }),
+        runs_per_project: matches!(server.launch, Launch::ProjectBin { .. }),
         hint: match &server.install {
             Some(registry::Install::Hint { text, .. }) => Some(text.clone()),
             _ => None,
