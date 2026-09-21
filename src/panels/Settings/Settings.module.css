@@ -886,6 +886,72 @@
     overflow-wrap: anywhere;
   }
 
+  /* Trusted projects: one bordered table whose body scrolls, since the list
+     keeps every project Tori has found. */
+  .trustTable {
+    margin-top: var(--tori-space-5);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    overflow: hidden;
+  }
+  .trustHead,
+  .trustRow {
+    display: grid;
+    grid-template-columns:
+      calc(7px * var(--ui-scale)) minmax(0, 1fr) calc(120px * var(--ui-scale))
+      calc(64px * var(--ui-scale));
+    column-gap: var(--tori-space-5);
+    align-items: center;
+    padding: var(--tori-space-3) var(--tori-space-5);
+  }
+  .trustHead {
+    background: var(--neutral-subtle);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+  .trustScroll {
+    max-height: calc(214px * var(--ui-scale));
+  }
+  .trustRow + .trustRow {
+    border-top: var(--tori-border-thin) solid var(--border-default);
+  }
+  .trustRow:hover {
+    background: var(--neutral-hover);
+  }
+  .trustPath {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-default);
+  }
+  .trustPathOff {
+    color: var(--fg-muted);
+  }
+  .trustStatus {
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+  .trustAction {
+    justify-self: end;
+  }
+  /* Around a button on a title row, which is mono and uppercase. On a wrapper
+     because the button's own sheet is unlayered and wins, and it inherits its
+     font from here. */
+  .titleAction {
+    flex: none;
+    font-family: var(--tori-font-ui);
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
   .card {
     border: var(--tori-border-thin) solid var(--border-default);
     border-radius: var(--tori-radius-lg);
