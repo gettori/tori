@@ -675,6 +675,14 @@ pub struct Lsp {
     pub never_offer: Vec<String>,
 }
 
+/// Debugger preferences. `disabled` names adapter ids that never start.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Dap {
+    #[serde(default)]
+    pub disabled: Vec<String>,
+}
+
 /// Formatter choices. `by_extension` maps an extension to a formatter id, used
 /// when the project's own config names no formatter for the file. A
 /// workspace's own map outranks the project's config instead. `disabled` names
@@ -731,6 +739,8 @@ pub struct Settings {
     pub project_agents: std::collections::HashMap<String, Vec<AgentRow>>,
     #[serde(default)]
     pub lsp: Lsp,
+    #[serde(default)]
+    pub dap: Dap,
     #[serde(default)]
     pub format: Format,
 }

@@ -172,6 +172,7 @@ async function startRun(start: DebugStart, startedAt: number): Promise<DapSessio
     });
   } catch (e) {
     console.error("dap_start failed", start.adapterId, e);
+    start.onLaunchFailed?.(e);
     return null;
   }
 
