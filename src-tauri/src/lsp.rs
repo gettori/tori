@@ -370,6 +370,37 @@ pub struct LspHealth {
     pub uninstall: Option<String>,
 }
 
+// rustup links a proxy for tools whose component is not installed, and that proxy
+// only prints an error and exits. `--version` cannot tell, since a working server
+// may refuse the flag (sourcekit-lsp exits 64 on it), so ask rustup itself.
+fn missing_rustup_component(path: &Path) -> Option<String> {
+    let rustup = path.with_file_name("rustup");
+    if path == rustup || !same_file(path, &rustup) {
+        return None;
+    }
+    let name = path.file_name()?.to_string_lossy().into_owned();
+    let out = crate::env::output_with_timeout(Command::new(&rustup).arg("which").arg(&name))?;
+    (!out.status.success())
+        .then(|| format!("`{name}` on your PATH is rustup's proxy, and the {name} component is not installed."))
+}
+
+// Metadata rather than the paths: rustup links its proxies as symlinks on some
+// installs and hard links on others.
+fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (std::fs::metadata(a), std::fs::metadata(b)) {
+            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(a), Ok(b)) if a == b)
+    }
+}
+
 /// Build one server's health card.
 ///
 /// `bundled_entry_missing` is passed in rather than resolved here so this stays
@@ -377,6 +408,7 @@ pub struct LspHealth {
 fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(PathBuf, managed::Installed)>) -> LspHealth {
     let program = server.launch.program().to_string();
     let on_path = crate::env::resolve_binary(&program);
+    let proxy_gap = on_path.as_deref().and_then(missing_rustup_component);
     // Tori's copy only counts when nothing on the PATH shadows it, and its
     // version comes from the manifest: `--version` on a script started without
     // its runtime would report nothing.
@@ -391,7 +423,8 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
     };
 
     let detail = bundled_entry_missing
-        .then(|| "the bundled server is not installed (run `pnpm lsp:install`)".to_string());
+        .then(|| "the bundled server is not installed (run `pnpm lsp:install`)".to_string())
+        .or(proxy_gap);
 
     // A server is only runnable when *everything* it needs is present. A
     // bundled server needs its interpreter and its entry script, and reporting
@@ -399,7 +432,7 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
     // chasing a problem that is not the one they have. Same rule `health.rs`
     // states for agents, applied to the second thing a server can be missing.
     let (update, uninstall) = match &server.install {
-        Some(registry::Install::Hint { update, uninstall, .. }) if resolved.is_some() => {
+        Some(registry::Install::Hint { update, uninstall, .. }) if resolved.is_some() && detail.is_none() => {
             (update.clone(), uninstall.clone())
         }
         _ => (None, None),
@@ -700,7 +733,10 @@ mod tests {
         assert_ne!(present.status, crate::health::BinaryStatus::NotFound);
 
         // A `path` server has no entry script, so it can never be in this state.
-        assert!(check(registry::find("rust").unwrap(), false, None).detail.is_none());
+        // It can carry a detail of its own (a rustup proxy with no component),
+        // which depends on the machine, so only this one is ruled out.
+        let rust = check(registry::find("rust").unwrap(), false, None);
+        assert!(!rust.detail.unwrap_or_default().contains("lsp:install"));
     }
 
     #[test]
