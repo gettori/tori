@@ -65,7 +65,7 @@ file - four lines and no Rust, because the protocol carries the models, the
 permission questions and the history itself. For one that does not, the TOML also
 says where its transcripts live and how to spot a live process. The schema is
 documented and stable at v2, and v1 files still load: see
-[ADAPTERS.md](ADAPTERS.md).
+[ADAPTERS.md](docs/ADAPTERS.md).
 
 **Settings > Agents also lists the ~40 other agents that speak ACP**, read from
 the official [ACP Registry](https://github.com/agentclientprotocol/registry) with

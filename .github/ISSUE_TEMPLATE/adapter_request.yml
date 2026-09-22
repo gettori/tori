@@ -8,7 +8,7 @@ body:
         **You may not need this issue.** Agents are data, not code: a
         `schema_version = 1` TOML in `~/.config/tori/agents/` can add one
         yourself, and the schema is stable at v1. See
-        [ADAPTERS.md](../../ADAPTERS.md).
+        [ADAPTERS.md](../../docs/ADAPTERS.md).
 
         Open this issue if you tried that and the agent's transcript format
         does not fit any implemented parser kind, or if you want your working

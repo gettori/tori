@@ -3041,7 +3041,7 @@ default = true
     /// silently drift from what the loader accepts.
     #[test]
     fn adapters_md_example_parses() {
-        let doc = include_str!("../../ADAPTERS.md");
+        let doc = include_str!("../../docs/ADAPTERS.md");
         let heading = "## Example: a from-scratch third-party adapter";
         let after_heading =
             doc.find(heading).expect("ADAPTERS.md must document a complete example") + heading.len();
@@ -3060,7 +3060,7 @@ default = true
     /// validating, the shortest path into Tori would be a broken copy-paste.
     #[test]
     fn adapters_md_acp_example_parses_and_needs_no_session_plumbing() {
-        let doc = include_str!("../../ADAPTERS.md");
+        let doc = include_str!("../../docs/ADAPTERS.md");
         let heading = "### An ACP agent";
         let after = doc.find(heading).expect("ADAPTERS.md must document an ACP example") + heading.len();
         let rest = &doc[after..];

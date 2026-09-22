@@ -1194,7 +1194,7 @@ version = "1.2.3"
     /// can't silently drift from what the loader accepts.
     #[test]
     fn lsp_servers_md_example_parses() {
-        let doc = include_str!("../../../LSP-SERVERS.md");
+        let doc = include_str!("../../../docs/LSP-SERVERS.md");
         let heading = "## Example: a from-scratch third-party server";
         let after =
             doc.find(heading).expect("LSP-SERVERS.md must document a complete example") + heading.len();
@@ -1366,7 +1366,7 @@ version = "1.2.3"
     /// be TOML that parses, and it has to parse into the shape it claims.
     #[test]
     fn the_documented_schema_block_parses_and_keeps_its_keys_top_level() {
-        let doc = include_str!("../../../LSP-SERVERS.md");
+        let doc = include_str!("../../../docs/LSP-SERVERS.md");
         // The heading, exactly. A bare `"## Schema"` also matches inside
         // `### Schemas for JSON and YAML`, which is a different section and
         // has no block to find.
@@ -1395,7 +1395,7 @@ version = "1.2.3"
     /// one without documenting it fails here rather than shipping undocumented.
     #[test]
     fn the_doc_documents_every_schema_field() {
-        let doc = include_str!("../../../LSP-SERVERS.md");
+        let doc = include_str!("../../../docs/LSP-SERVERS.md");
         for field in KNOWN_TOP_LEVEL {
             assert!(doc.contains(field), "LSP-SERVERS.md does not document `{field}`");
         }
@@ -1413,7 +1413,7 @@ version = "1.2.3"
     /// instruction someone follows when the bundled server is not what they want.
     #[test]
     fn lsp_servers_md_override_example_parses() {
-        let doc = include_str!("../../../LSP-SERVERS.md");
+        let doc = include_str!("../../../docs/LSP-SERVERS.md");
         let heading = "## Whole-replacing a bundled server";
         let after = doc.find(heading).expect("the doc must show how to override") + heading.len();
         let rest = &doc[after..];

@@ -505,7 +505,7 @@ args = ["--stdin", "{file}"]
     /// in it has to load.
     #[test]
     fn every_toml_block_in_formatters_md_loads() {
-        let doc = include_str!("../../../FORMATTERS.md");
+        let doc = include_str!("../../../docs/FORMATTERS.md");
         let blocks: Vec<&str> =
             doc.split("```toml").skip(1).map(|rest| rest.split("```").next().unwrap()).collect();
         assert_eq!(blocks.len(), 3, "the schema, the from-scratch example and the override");

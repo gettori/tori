@@ -12,7 +12,7 @@ file dropped into `~/.config/tori/agents/` describes how to launch the agent,
 where its session transcripts live, how to recognize a live process, and which
 built-in parser reads its transcripts.
 
-[**ADAPTERS.md**](ADAPTERS.md) is the reference: the full schema, the closed set
+[**ADAPTERS.md**](docs/ADAPTERS.md) is the reference: the full schema, the closed set
 of parser kinds, a from-scratch worked example, and how to whole-replace a
 bundled adapter. The schema is stable at v1, so a file you write today keeps
 working.
