@@ -1,4 +1,4 @@
-import { For, createSignal, createEffect, createMemo, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
+import { For, createSignal, createEffect, createMemo, ErrorBoundary, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -3094,7 +3094,20 @@ export default function Editor(props: {
       <For each={editorPaneIds()}>
         {(paneId) => (
           <Portal mount={stageHost(editorStageId(paneId))}>
-            <EditorColumn paneId={paneId} />
+            {/* The buffers live in CodeEditor, not in the column, so Reopen
+                only rebuilds what is drawn around them. */}
+            <ErrorBoundary
+              fallback={(err, reset) => (
+                <div class={styles.editorCrashed} role="alert">
+                  <span>This pane stopped drawing: {String(err)}</span>
+                  <Button size="sm" onClick={reset}>
+                    Reopen
+                  </Button>
+                </div>
+              )}
+            >
+              <EditorColumn paneId={paneId} />
+            </ErrorBoundary>
           </Portal>
         )}
       </For>

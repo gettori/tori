@@ -266,6 +266,13 @@ pub fn fs_mtime_ms(path: String) -> Option<u64> {
         .map(|d| d.as_millis() as u64)
 }
 
+/// A file's size in bytes, asked before reading it, so one too big for the
+/// editor is refused without being read into memory first.
+#[tauri::command(async)]
+pub fn fs_file_size(path: String) -> Option<u64> {
+    std::fs::metadata(&path).ok().map(|m| m.len())
+}
+
 /// One file in a batched write.
 #[derive(Deserialize)]
 pub struct FileWrite {

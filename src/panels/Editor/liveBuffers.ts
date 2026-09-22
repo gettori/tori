@@ -50,6 +50,9 @@ export type BufferAccess = {
    *  file on disk has *not* been written, and this edit is one more the user
    *  still has to save. All or nothing. */
   patch: (path: string, edits: readonly LineEdit[]) => PatchOutcome;
+  /** Whether that buffer is kept from language servers: too big to send, or a
+   *  banner standing in for text that could not be read. */
+  keptFromServers?: (path: string) => boolean;
 };
 
 let access: BufferAccess | null = null;
@@ -66,6 +69,11 @@ export function setBufferAccess(a: BufferAccess): () => void {
  *  includes "no editor is mounted", the state every non-editor test is in). */
 export function liveBufferText(path: string): string | null {
   return access ? access.textOf(path) : null;
+}
+
+/** Whether `path` is open as a buffer no language server should see. */
+export function keptFromServers(path: string): boolean {
+  return !!access?.keptFromServers?.(path);
 }
 
 /** Which of `paths` are open with unsaved edits. */

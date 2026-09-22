@@ -58,7 +58,7 @@ import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
 import { writeFilesSuppressingEcho } from "./batchWrite";
 import { toDoc } from "./docDiff";
-import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
+import { adoptBufferText, dirtyBuffers, keptFromServers, liveBufferText } from "./liveBuffers";
 import { codeActionClientCapabilities } from "./lspCodeActions";
 import { codeLensClientCapabilities } from "./lspCodeLens";
 import { completionClientCapabilities, toriCompletion } from "./lspCompletion";
@@ -1097,6 +1097,7 @@ export function lspPluginFor(path: string): Extension {
 // Unresolved (the cache is cleared while a change re-resolves), every live one
 // claiming the file, as `answeringSession` does for a primary.
 function secondariesFor(path: string): SecondarySession[] {
+  if (keptFromServers(path)) return [];
   const ids = resolvedServerIds(path);
   const found = new Map<string, SecondarySession>();
   for (const session of sessions.values()) {
@@ -1157,7 +1158,9 @@ function claimFor(path: string): { session: PrimarySession; languageId: string }
 // Resolved, the file's own primary answers. Unresolved (a call hierarchy item
 // in a file nobody opened), the longest-root session of any primary claiming
 // the extension does, which is what every file got before resolution existed.
+// A buffer kept from servers gets none: too big to send, or not the file's text.
 function answeringSession(path: string): PrimarySession | null {
+  if (keptFromServers(path)) return null;
   const resolved = resolvedPrimary(path);
   const candidates = resolved === undefined ? primariesClaiming(path) : resolved ? [resolved] : [];
   let best: PrimarySession | null = null;

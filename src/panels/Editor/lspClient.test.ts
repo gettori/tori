@@ -1600,6 +1600,31 @@ describe("secondary servers", () => {
     return (await formattingTarget("/proj/a/a.ts"))?.serverId;
   }
 
+  it("serves a buffer opened too large from no session, primary or secondary", async () => {
+    // No plugin means no didOpen and no diagnostics feed, and no secondary
+    // target means nothing pulls. A small file beside it is served as before.
+    withEslint();
+    const m = await freshModule();
+    const { setBufferAccess } = await import("./liveBuffers");
+    const off = setBufferAccess({
+      textOf: () => "",
+      isDirty: () => false,
+      adopt: () => {},
+      patch: () => "absent" as const,
+      keptFromServers: (p) => p === "/proj/big/huge.ts",
+    });
+    try {
+      await m.ensureLspFor("/proj/big/a.ts", "/proj/big");
+      await m.ensureLspFor("/proj/big/huge.ts", "/proj/big");
+      expect(m.lspPluginFor("/proj/big/huge.ts")).toEqual([]);
+      expect(m.lspTargetFor("/proj/big/huge.ts")).toBeNull();
+      expect(m.lspTargetsFor("/proj/big/huge.ts", "diagnostics")).toEqual([]);
+      expect(m.lspTargetsFor("/proj/big/a.ts", "diagnostics").map((t) => t.serverId)).toEqual(["typescript", "eslint"]);
+    } finally {
+      off();
+    }
+  });
+
   it("formats through a secondary before the primary, and not one whose config drops format", async () => {
     withEslint();
     expect(await formatterFor(["diagnostics", "code_action", "format"])).toBe("eslint");

@@ -6,12 +6,13 @@ import { EditorView, keymap, drawSelection, dropCursor, rectangularSelection, cr
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
 import { Annotation, EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateEffect, type StateField } from "@codemirror/state";
-import { defaultKeymap, history, historyField, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { syntaxHighlighting, indentOnInput, bracketMatching, foldKeymap } from "@codemirror/language";
 import { toriHighlight } from "./syntaxStyle";
 import { foldingExtension } from "./folding";
+import { extensionCrashSink } from "./extensionCrash";
 import { toriTheme } from "./editorTheme";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
@@ -84,7 +85,7 @@ import { clearCallRoots, dropCallRoots, setCallFetcher } from "../../utils/callH
 import { jumpToDefinition, findReferences } from "@codemirror/lsp-client";
 import { fallbackCompletion } from "./fallbackCompletion";
 import { fromDisk, type DiskText } from "./lineEndings";
-import { rememberClosed, reviveClosed } from "./closedBuffers";
+import { rememberClosed, reviveClosed, SERIALIZED_FIELDS } from "./closedBuffers";
 import { saveStash, stashToWrite, takeStashEntry, type HotExitStore, type StashEntry } from "../../utils/hotExit";
 import { setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics, setDiagnosticFixLookup } from "../../utils/diagnostics";
@@ -205,6 +206,13 @@ type Buffer = {
   /** Where the reader was when this buffer last left a view. Live buffers only,
    *  so a stash and a closed tab still come back on the selection (see swapTo). */
   scrollSnap?: StateEffect<unknown>;
+  // Shown as a banner in place of the text: a read that failed, or a file too
+  // big to read. The state is empty and is never saved, so it cannot overwrite
+  // the file it stands for.
+  unopenable?: string;
+  // Built without folding, guides, the minimap or a language server: a file
+  // over the large threshold, or one shown as a banner.
+  plain?: boolean;
 };
 // "changed": the file still exists but its contents moved under unsaved edits.
 // "deleted": the file is gone from disk (a checkpoint tree revert removes the
@@ -214,15 +222,16 @@ type Buffer = {
 type ConflictKind = "changed" | "deleted";
 type Conflict = { path: string; external: string; kind: ConflictKind };
 
+// Past the first, a buffer opens without its heavier features and without a
+// language server. Past the second, it is not read at all.
+const LARGE_FILE_BYTES = 4 * 1024 * 1024;
+const REFUSED_FILE_BYTES = 32 * 1024 * 1024;
+
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 /** The per-buffer compartments, together because they are always built, passed
  *  and stored as a set. */
 type BufferConf = { lsp: Compartment; completion: Compartment; eol: Compartment; codeLens: Compartment };
-
-// What `toJSON`/`fromJSON` carry beyond the document and the selection. The
-// undo history is the whole point of keeping a closed buffer at all; without
-// naming the field here it is simply dropped, silently, and a reopened tab
-// would look right and undo nothing.
-const SERIALIZED_FIELDS = { history: historyField };
 
 // Closed tabs, kept so reopening one is a return to where it was left rather
 // than a fresh read (undo history included). Bounded; see closedBuffers.ts,
@@ -421,6 +430,8 @@ export default function CodeEditor(props: {
   // The active buffer has an external on-disk change conflicting with unsaved
   // edits (drives the reload banner).
   const [conflict, setConflict] = createSignal<Conflict | null>(null);
+  // Bumped when a buffer is built as a banner, since the buffer map is not reactive.
+  const [bannerTick, setBannerTick] = createSignal(0);
   // The code-action menu, open at the caret. Held here rather than in a CM6
   // panel so it is the same menu component as every other list of choices in
   // the app, with the same keyboard and outside-click behaviour.
@@ -461,7 +472,8 @@ export default function CodeEditor(props: {
   // Registered in the component body, not in `onMount`, so a server that comes
   // up during the opening swap already sees it.
   const offBufferAccess = setBufferAccess({
-    textOf: docOf,
+    textOf: (path) => (buffers.get(path)?.unopenable ? null : docOf(path)),
+    keptFromServers: (path) => !!buffers.get(path)?.plain,
     isDirty: (path) => {
       const buf = buffers.get(path);
       return !!buf && docOf(path) !== buf.savedText;
@@ -585,7 +597,7 @@ export default function CodeEditor(props: {
   }
 
   async function handleExternalChange(path: string) {
-    if (!buffers.has(path)) return;
+    if (!buffers.has(path) || buffers.get(path)?.unopenable) return;
     // Somebody else wrote the file, so which of its lines are uncommitted is no
     // longer what was read - even though HEAD has not moved, which is the one
     // thing the cache key knows about. Dropped here rather than re-read: the
@@ -852,7 +864,7 @@ export default function CodeEditor(props: {
   async function saveActive() {
     const path = shown;
     const authority = path ? authorityState(path) : undefined;
-    if (!path || !authority) return;
+    if (!path || !authority || buffers.get(path)?.unopenable) return;
     // `sliceDoc`, never `doc.toString()`: the latter hard-codes "\n" and so
     // answers a different question for every CRLF file, which is what makes the
     // bytes written below the buffer's own (see lineEndings.ts).
@@ -897,40 +909,43 @@ export default function CodeEditor(props: {
     }
     try {
       await invoke("fs_write_file", { path, contents: text });
-      markSelfWrite(path);
-      // Ours now, so the next save compares against what we just wrote rather
-      // than against the reading from before it. Awaited rather than fired off
-      // because the ordering against a save that follows it closely would
-      // otherwise rest on which IPC round trip lands first, which is not a
-      // thing worth resting on. No test pins this: the mocked backend resolves
-      // in one microtask, so the interleaving it guards against cannot be
-      // reproduced in the harness.
-      await noteMtime(path);
-      // The bytes as written, after the formatter, for whoever mirrors this
-      // file elsewhere (the chat composer's draft).
-      emitWith<EditorFileSaved>(EDITOR_FILE_SAVED, { path, contents: text });
-      // A version of the file as it was just saved, whether or not it is ever
-      // committed. One blob write, deduped against the newest entry, and not
-      // awaited: the save has already landed, and local history is a record of
-      // it rather than part of it, so a repo that cannot store one must not make
-      // the save look like it failed.
-      if (props.projectRoot) {
-        void invoke("local_history_note", { repoPath: props.projectRoot, path }).catch(() => {});
-      }
-      const buf = buffers.get(path);
-      if (buf) buf.savedText = text;
-      props.onDirty(path, false);
-      refreshDiff();
-      // The file on disk is no longer the file that was blamed, so the cached
-      // read is spent - but nothing is re-read *here*: the markers on screen
-      // were mapped through exactly the edits just saved and are still right.
-      // The next rebuild (a swap, a toggle) is what pays for a fresh read.
-      if (props.projectRoot) {
-        dropBlame(props.projectRoot, relTo(props.projectRoot, path));
-        dropAgentLines(props.projectRoot, relTo(props.projectRoot, path));
-      }
     } catch (e) {
-      console.error("save failed", path, e);
+      // Left dirty: `savedText` only moves once the write has landed.
+      const shownPath = props.projectRoot ? relTo(props.projectRoot, path) : path;
+      emitWith<ToastEvent>(TOAST, { message: `Could not save ${shownPath}: ${String(e)}`, kind: "error" });
+      return;
+    }
+    markSelfWrite(path);
+    // Ours now, so the next save compares against what we just wrote rather
+    // than against the reading from before it. Awaited rather than fired off
+    // because the ordering against a save that follows it closely would
+    // otherwise rest on which IPC round trip lands first, which is not a
+    // thing worth resting on. No test pins this: the mocked backend resolves
+    // in one microtask, so the interleaving it guards against cannot be
+    // reproduced in the harness.
+    await noteMtime(path);
+    // The bytes as written, after the formatter, for whoever mirrors this
+    // file elsewhere (the chat composer's draft).
+    emitWith<EditorFileSaved>(EDITOR_FILE_SAVED, { path, contents: text });
+    // A version of the file as it was just saved, whether or not it is ever
+    // committed. One blob write, deduped against the newest entry, and not
+    // awaited: the save has already landed, and local history is a record of
+    // it rather than part of it, so a repo that cannot store one must not make
+    // the save look like it failed.
+    if (props.projectRoot) {
+      void invoke("local_history_note", { repoPath: props.projectRoot, path }).catch(() => {});
+    }
+    const buf = buffers.get(path);
+    if (buf) buf.savedText = text;
+    props.onDirty(path, false);
+    refreshDiff();
+    // The file on disk is no longer the file that was blamed, so the cached
+    // read is spent - but nothing is re-read *here*: the markers on screen
+    // were mapped through exactly the edits just saved and are still right.
+    // The next rebuild (a swap, a toggle) is what pays for a fresh read.
+    if (props.projectRoot) {
+      dropBlame(props.projectRoot, relTo(props.projectRoot, path));
+      dropAgentLines(props.projectRoot, relTo(props.projectRoot, path));
     }
   }
 
@@ -1027,8 +1042,8 @@ export default function CodeEditor(props: {
 
   /** The settings, plus this tab's overrides. One reader, so a buffer built now
    *  and a buffer swapped in later cannot be handed different arguments. */
-  function currentPrefExtensions(): Extension[] {
-    return editorPrefExtensions(editorDefaults(), { softWrap: props.softWrap });
+  function currentPrefExtensions(plain = !!(shown && buffers.get(shown)?.plain)): Extension[] {
+    return editorPrefExtensions(editorDefaults(), { softWrap: props.softWrap, plain });
   }
 
   // Reconfigure reaches the *active* state only; a stashed buffer keeps the
@@ -1086,13 +1101,14 @@ export default function CodeEditor(props: {
   // A follower view (a second pane onto the same file) gets everything except
   // the undo history: one document has one history, it lives on the authority,
   // and the keymap below routes this view's undo there.
-  const commonExtensions = (follower = false): Extension[] => [
+  const commonExtensions = (follower = false, plain = false): Extension[] => [
     // First, and load-bearing. Vim intercepts keys through a ViewPlugin DOM
     // handler, and for a key both it and a keymap claim, whichever is earlier
     // in this array takes it. `defaultKeymap`'s Mac Emacs bindings (Ctrl-A,
     // Ctrl-E, Ctrl-D, Ctrl-K) collide with vim's Ctrl commands, and in normal
     // mode vim is the one that should win. `vimMode.test.tsx` pins the rule.
     vimConf.of([]),
+    extensionCrashSink,
     diffLineNumbers(),
     ...(follower ? [] : [history()]),
     drawSelection(),
@@ -1116,7 +1132,7 @@ export default function CodeEditor(props: {
       text.replace(/\r\n?|\n/g, state.lineBreak),
     ),
     highlightSpecialChars(),
-    foldingExtension(),
+    ...(plain ? [] : [foldingExtension()]),
     highlightSelectionMatches(),
     diffGutterExtension(),
     // The view rather than a path, because one buffer's extensions outlive a
@@ -1126,7 +1142,7 @@ export default function CodeEditor(props: {
       if (path) props.onCompareConflict?.(path);
     }),
     blameConf.of([]),
-    prefsConf.of(currentPrefExtensions()),
+    prefsConf.of(currentPrefExtensions(plain)),
     // What the selection was before it last grew, so shrink has somewhere to go
     // back to. Per buffer, like the undo history beside it: an expansion chain
     // is about one document's syntax.
@@ -1282,14 +1298,16 @@ export default function CodeEditor(props: {
     lang: Extension,
     conf: BufferConf,
     follower = false,
+    plain = false,
   ): Extension[] {
     return [
-      ...commonExtensions(follower),
+      ...commonExtensions(follower, plain),
       lang,
       conf.eol.of(EditorState.lineSeparator.of(disk.eol)),
       // One view per file talks to the server (plan phase 9 task 4): a follower
       // would double every notification and answer for a document it does not own.
-      conf.lsp.of(follower ? [] : lspPluginFor(path)),
+      // A plain buffer is not registered yet, so `lspPluginFor` cannot tell.
+      conf.lsp.of(follower || plain ? [] : lspPluginFor(path)),
       // Undo and redo belong to the authority's history, whichever view the key
       // was pressed in. Highest precedence, so it beats historyKeymap's own.
       ...(follower
@@ -1766,11 +1784,17 @@ export default function CodeEditor(props: {
   /** Open a file: read it, revive whatever was kept of it, and register the
    *  buffer. One caller at a time, through `building`. */
   async function buildBuffer(path: string): Promise<Buffer> {
-    let raw: string;
-    try {
-      raw = await invoke<string>("fs_read_file", { path });
-    } catch (e) {
-      raw = `// failed to open ${path}\n// ${String(e)}`;
+    let raw = "";
+    let unreadable: string | null = null;
+    const size = await invoke<number | null>("fs_file_size", { path }).catch(() => null);
+    if (size !== null && size > REFUSED_FILE_BYTES) {
+      unreadable = `This file is ${megabytes(size)}, and the editor opens files up to ${megabytes(REFUSED_FILE_BYTES)}.`;
+    } else {
+      try {
+        raw = await invoke<string>("fs_read_file", { path });
+      } catch (e) {
+        unreadable = `This file could not be opened: ${String(e)}`;
+      }
     }
     // The first open of a language awaits its pack's chunk import.
     const lang = await langForPath(path);
@@ -1783,14 +1807,17 @@ export default function CodeEditor(props: {
       eol: new Compartment(),
       codeLens: new Compartment(),
     };
-    const extensions = bufferExtensions(path, disk, lang, conf);
+    // Unsaved work the last quit stashed outranks both: the file on disk is by
+    // definition not what the user was looking at. Taken even when the read
+    // failed, since for a file deleted while the app was shut it is the only copy.
+    const stashed = takeStashEntry(path);
+    const plain = (unreadable !== null && !stashed) || (size !== null && size > LARGE_FILE_BYTES);
+    const extensions = bufferExtensions(path, disk, lang, conf, false, plain);
+    if (unreadable !== null && !stashed) return holdUnopenable(path, unreadable, extensions, conf);
     // A tab reopened onto an unchanged file comes back with its undo history,
     // cursor and folds. `disk.text` and not the raw bytes, so a CRLF file is
     // compared with what the buffer actually holds (see lineEndings.ts).
-    const kept = reviveClosed(closedBuffers, path, disk.text);
-    // Unsaved work the last quit stashed outranks both: the file on disk is by
-    // definition not what the user was looking at.
-    const stashed = takeStashEntry(path);
+    const kept = unreadable === null ? reviveClosed(closedBuffers, path, disk.text) : undefined;
     // The baseline is `disk.text`, not the bytes: it is what `sliceDoc` will
     // answer for this buffer, and every dirty check compares against that.
     const buf: Buffer = stashed
@@ -1802,6 +1829,7 @@ export default function CodeEditor(props: {
           savedText: disk.text,
           ...conf,
         };
+    buf.plain = plain;
     buffers.set(path, buf);
     // The baseline for the save guard, taken from the same open that produced
     // `savedText`. Out-of-root paths only; everything else has a watcher.
@@ -1815,7 +1843,15 @@ export default function CodeEditor(props: {
     // arrives through `onLspChange` -> `relinkLsp`, the same path a file opened
     // before its server was ready already takes. Opening only `.ts` files
     // therefore never starts rust-analyzer.
-    if (props.projectRoot) void ensureLspFor(path, props.projectRoot);
+    if (props.projectRoot && !plain) void ensureLspFor(path, props.projectRoot);
+    return buf;
+  }
+
+  function holdUnopenable(path: string, reason: string, extensions: Extension[], conf: BufferConf): Buffer {
+    const state = EditorState.create({ extensions: [extensions, EditorState.readOnly.of(true)] });
+    const buf: Buffer = { state, savedText: "", unopenable: reason, plain: true, ...conf };
+    buffers.set(path, buf);
+    setBannerTick((n) => n + 1);
     return buf;
   }
 
@@ -1970,7 +2006,7 @@ export default function CodeEditor(props: {
     return EditorState.create({
       doc: authority.doc,
       selection: authority.selection,
-      extensions: bufferExtensions(path, disk, lang, conf, true),
+      extensions: bufferExtensions(path, disk, lang, conf, true, !!buf?.plain),
     });
   }
 
@@ -2669,6 +2705,11 @@ export default function CodeEditor(props: {
    *  and the element its view lives in for as long as the pane does. */
   function PaneEditor(p: { id: string }) {
     onCleanup(() => detachView(p.id));
+    const unopenable = () => {
+      bannerTick();
+      const path = pathOf(p.id);
+      return path ? (buffers.get(path)?.unopenable ?? null) : null;
+    };
     return (
       <div
         class={styles.codeEditorWrap}
@@ -2689,7 +2730,12 @@ export default function CodeEditor(props: {
           )}
         </Show>
         <InstallBanner path={pathOf(p.id)} />
-        <div class={styles.codeEditor} ref={(el) => attachView(p.id, el)} />
+        <Show when={unopenable()}>{(reason) => <div class={styles.unopenable}>{reason()}</div>}</Show>
+        <div
+          class={styles.codeEditor}
+          style={{ display: unopenable() ? "none" : undefined }}
+          ref={(el) => attachView(p.id, el)}
+        />
       </div>
     );
   }

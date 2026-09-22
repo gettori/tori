@@ -359,6 +359,7 @@ pub fn run() {
             fs::fs_is_dir,
             dragboard::drag_paths,
             fs::fs_mtime_ms,
+            fs::fs_file_size,
             fs::fs_write_files,
             fs::fs_mkdir,
             fs::fs_delete,
