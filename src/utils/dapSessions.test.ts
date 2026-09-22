@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import editorSource from "../panels/Editor/Editor.tsx?raw";
+import type { ToastEvent } from "./events";
 
 // The session tree and the orchestration around it. Everything below the module
 // is a fake adapter: what is asserted here is the shape of the tree, that a
@@ -24,6 +25,7 @@ let sessionCounter = 0;
  *  a start that is already in flight. */
 let holdStart: Promise<void> | null = null;
 let startFails = false;
+let untrusted = false;
 
 /** Bodies the fake adapter answers requests with. Anything not here answers
  *  `{}`, which is what `configurationDone` and `launch` really answer. */
@@ -43,12 +45,14 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
     if (cmd === "dap_start") {
+      if (untrusted) return Promise.reject("untrusted");
       if (startFails) return Promise.reject(new Error("bundled adapter not found"));
       const handle: Handle = { server: `dap${serverCounter++}`, session: `sess${sessionCounter++}` };
       channels.set(handle.session, args!.onMessage as { onmessage: ((m: string) => void) | null });
       const result = Promise.resolve(handle);
       return holdStart ? holdStart.then(() => handle) : result;
     }
+    if (cmd === "trust_project") return Promise.resolve(args!.path);
     if (cmd === "dap_connect") {
       const handle: Handle = { server: args!.server as string, session: `sess${sessionCounter++}` };
       channels.set(handle.session, args!.onMessage as { onmessage: ((m: string) => void) | null });
@@ -135,6 +139,7 @@ beforeEach(() => {
   sessionCounter = 0;
   holdStart = null;
   startFails = false;
+  untrusted = false;
   failCommands.clear();
   silentCommands.clear();
   warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -328,6 +333,37 @@ describe("a failing launch", () => {
     // reach a `console.warn` and nowhere else.
     expect(failures).toHaveLength(1);
     expect(String(failures[0])).toContain("attach refused");
+  });
+});
+
+describe("an untrusted project", () => {
+  it("offers Trust on every refused start, and starts once trusted", async () => {
+    const m = await freshModule();
+    const trust = await import("./projectTrust");
+    const toasts: ToastEvent[] = [];
+    // The suite runs in the node environment, and the notice rides emitWith().
+    vi.stubGlobal("window", {
+      dispatchEvent: (e: CustomEvent<ToastEvent>) => toasts.push(e.detail) > 0,
+    });
+    const failures: unknown[] = [];
+    untrusted = true;
+    try {
+      expect(await m.startDebugSession({ ...start, onLaunchFailed: (e) => failures.push(e) })).toBeNull();
+      expect(await m.startDebugSession(start)).toBeNull();
+
+      expect(toasts).toHaveLength(2);
+      expect(toasts[1].action?.label).toBe("Trust");
+      expect(failures).toEqual([]);
+      expect(m.debugRoots()).toHaveLength(0);
+      expect(trust.refusedProjects()).toEqual(["/p"]);
+
+      untrusted = false;
+      toasts[1].action?.run();
+      await vi.waitFor(() => expect(trust.refusedProjects()).toEqual([]));
+      expect(await m.startDebugSession(start)).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

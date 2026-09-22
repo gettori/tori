@@ -1,6 +1,6 @@
-// Which projects may run their own code through a language server. Kept in
-// Tori's config directory and never in the project, because a flag the repo
-// could ship would let the repo answer for itself.
+// Which projects may run their own code through a language server or a
+// debugger. Kept in Tori's config directory and never in the project, because a
+// flag the repo could ship would let the repo answer for itself.
 
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::lsp::registry::LspServer;
 
-/// What `lsp_start` refuses a gated server with. `utils/projectTrust.ts`
-/// matches it exactly.
+/// What `lsp_start` and `dap_start` refuse an untrusted project with.
+/// `utils/projectTrust.ts` matches it exactly.
 pub const UNTRUSTED: &str = "untrusted";
 
 #[derive(Serialize, Deserialize, Default)]
@@ -90,6 +90,10 @@ fn gate_at(
     if !server.runs_project_code {
         return Ok(());
     }
+    gate_project_at(file, discover, project)
+}
+
+fn gate_project_at(file: &Path, discover: impl FnOnce() -> Vec<PathBuf>, project: &Path) -> Result<(), String> {
     let _guard = lock();
     if covers(&load_or_seed(file, discover), project) {
         Ok(())
@@ -132,6 +136,12 @@ pub fn seed() {
 /// trusted. Called before anything is spawned.
 pub fn gate(server: &LspServer, project: &Path) -> Result<(), String> {
     gate_at(&store_path(), crate::config::discovered_project_dirs, server, project)
+}
+
+/// Refuse a debug run in a project the user has not trusted. Unlike a server,
+/// no debugger is exempt: the debuggee is the project's own code.
+pub fn gate_project(project: &Path) -> Result<(), String> {
+    gate_project_at(&store_path(), crate::config::discovered_project_dirs, project)
 }
 
 /// Every trusted project, as stored.
@@ -237,6 +247,22 @@ mod tests {
 
         revoke_at(&store, Vec::new, &trusted).unwrap();
         assert_eq!(gate_at(&store, Vec::new, &typescript(), &worktree), Err(UNTRUSTED.to_string()));
+    }
+
+    #[test]
+    fn an_untrusted_project_refuses_a_debug_run_even_where_a_server_is_exempt() {
+        let dir = temp_dir("debug");
+        let store = dir.join("trusted.json");
+        let root = dir.join("projects");
+        let project = root.join("work/repo");
+        std::fs::create_dir_all(&project).unwrap();
+
+        let json = bundled(include_str!("../lsp/json.toml"), "json");
+        assert_eq!(gate_at(&store, Vec::new, &json, &project), Ok(()));
+        assert_eq!(gate_project_at(&store, Vec::new, &project), Err(UNTRUSTED.to_string()));
+
+        trust_at(&store, Vec::new, Some(&root), &project).unwrap();
+        assert_eq!(gate_project_at(&store, Vec::new, &project), Ok(()));
     }
 
     #[test]
