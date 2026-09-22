@@ -57,6 +57,19 @@
   padding: calc(20px * var(--ui-scale));
 }
 
+.editorCrashed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(20px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-lg);
+  text-align: center;
+}
+
 .editorErr {
   padding: calc(10px * var(--ui-scale));
   color: var(--danger-fg);

@@ -5,7 +5,9 @@
 // second is the one with teeth, since a wrong yes replays an undo history
 // against a document that has moved underneath it.
 import { describe, it, expect } from "vitest";
-import { rememberClosed, reviveClosed, MAX_CLOSED_BUFFERS } from "./closedBuffers";
+import { EditorState } from "@codemirror/state";
+import { codeFolding, foldEffect, foldedRanges } from "@codemirror/language";
+import { rememberClosed, reviveClosed, MAX_CLOSED_BUFFERS, SERIALIZED_FIELDS } from "./closedBuffers";
 
 /** Stands in for a stored entry: this module only ever reads `savedText`, and
  *  is generic over whatever the pane chooses to keep beside it. */
@@ -92,5 +94,19 @@ describe("handing a closed buffer back", () => {
     const store = new Map();
     rememberClosed(store, "/a", buf("abc"));
     expect(reviveClosed(store, "/a", "abd")).toBeUndefined();
+  });
+});
+
+describe("what a kept buffer carries", () => {
+  it("keeps its folds", () => {
+    const doc = "function f() {\n  return 1;\n}\n";
+    const folded = EditorState.create({ doc, extensions: codeFolding() }).update({
+      effects: foldEffect.of({ from: 14, to: 27 }),
+    }).state;
+    const json = folded.toJSON(SERIALIZED_FIELDS);
+    const reopened = EditorState.fromJSON(json, { extensions: codeFolding() }, SERIALIZED_FIELDS);
+    const ranges: [number, number][] = [];
+    foldedRanges(reopened).between(0, doc.length, (from, to) => void ranges.push([from, to]));
+    expect(ranges).toEqual([[14, 27]]);
   });
 });
