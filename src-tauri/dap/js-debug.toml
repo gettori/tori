@@ -1,0 +1,32 @@
+# vscode-js-debug, the adapter behind VS Code's own JavaScript debugging. Tori
+# bundles it (`pnpm dap:install`), so its version and entry script live in
+# `resources/dap/manifest.json`, the file the installer pins them in, and not
+# here. No `verified_against` either: the bundle is pinned by sha256, so the
+# only version question is `node`'s, and js-debug states no floor to check.
+
+schema_version = 1
+id = "js-debug"
+label = "JavaScript / TypeScript (vscode-js-debug)"
+
+# `package.json` is the honest marker for a node target: it is what decides
+# module resolution and which scripts exist, and in a monorepo it is the
+# per-package one that matters.
+root_markers = ["package.json"]
+
+# Even a one-file launch is two sessions: js-debug asks for a child per target
+# (`startDebugging`) and expects it as a second connection to the same process.
+child_sessions = true
+
+# Every JS dialect goes through one DAP type.
+[languages]
+cjs = "pwa-node"
+cts = "pwa-node"
+js = "pwa-node"
+jsx = "pwa-node"
+mjs = "pwa-node"
+mts = "pwa-node"
+ts = "pwa-node"
+tsx = "pwa-node"
+
+[launch]
+kind = "bundled_node_socket"
