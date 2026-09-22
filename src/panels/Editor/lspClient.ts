@@ -21,7 +21,7 @@ import { ChangeSet, type Extension, type Text } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
-import { noteRefused, onTrustChange, trustProject, UNTRUSTED } from "../../utils/projectTrust";
+import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "../../utils/projectTrust";
 import { NOT_INSTALLED, offerInstall, onServerInstalled } from "../../utils/serverInstall";
 import { dropDiagnostics, dropDiagnosticsUnder } from "../../utils/diagnostics";
 import {
@@ -239,20 +239,6 @@ async function reresolve(inScope: (file: string) => boolean, forget: () => void)
   for (const [file, projectPath] of files) void ensureLspFor(file, projectPath);
 }
 
-function askToTrust(projectPath: string): void {
-  emitWith<ToastEvent>(TOAST, {
-    kind: "info",
-    message: "Language servers that run this project's code stay off until you trust it.",
-    action: {
-      label: "Trust",
-      run: () =>
-        void trustProject(projectPath).catch((e) =>
-          emitWith<ToastEvent>(TOAST, { message: `Could not trust this project: ${String(e)}` }),
-        ),
-    },
-  });
-}
-
 /** Ensure a server is running for `path`, starting one if this is the first
  *  file of its language under that root. Resolves to the session that will
  *  answer for the path, or null when no server claims it.
@@ -334,7 +320,9 @@ async function startFor(
     });
   } catch (e) {
     if (e === UNTRUSTED) {
-      if (noteRefused(projectPath)) askToTrust(projectPath);
+      if (noteRefused(projectPath)) {
+        askToTrust(projectPath, "Language servers that run this project's code stay off until you trust it.");
+      }
       return;
     }
     if (e === NOT_INSTALLED) {

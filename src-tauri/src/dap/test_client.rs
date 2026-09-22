@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::registry::{self, DapAdapter, Launch};
-use super::{connect_retry, next_id, pump_frames, start_adapter, stop, write_frame, Server, CONNECT_TIMEOUT};
+use super::{connect_retry, locate, next_id, pump_frames, start_adapter, stop, write_frame, Server, CONNECT_TIMEOUT};
 
 /// Room for a cold adapter and a source map, short enough that a breakpoint
 /// that never binds fails the run rather than hanging it.
@@ -34,7 +34,7 @@ pub(super) fn run_to_breakpoint(
     line: u32,
     config: Value,
 ) -> Result<Value, String> {
-    let started = start_adapter(adapter, &root.to_string_lossy(), dev_bundled)?;
+    let started = start_adapter(adapter, &root.to_string_lossy(), &locate(adapter, dev_bundled)?)?;
     let (tx, rx) = mpsc::channel();
     let mut client = Client {
         adapter,
