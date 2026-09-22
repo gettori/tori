@@ -52,6 +52,7 @@ export default function PaneView(props: {
   paneId?: string;
   ws?: string;
   trailing?: JSX.Element;
+  end?: JSX.Element;
 }) {
   const entry = () => maybeKindEntry(props.pinKind);
   const inDock = () => isShellsKey(props.ws);
@@ -316,6 +317,7 @@ export default function PaneView(props: {
         blurred={blurred()}
         bare={inDock()}
         trailing={props.trailing}
+        end={props.end}
         items={items()}
         activeId={activeId()}
         place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
