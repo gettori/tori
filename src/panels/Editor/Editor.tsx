@@ -34,6 +34,7 @@ import Breadcrumbs from "./Breadcrumbs";
 // The bar's own stylesheet: these two controls belong to it, not to the editor.
 import crumbStyles from "./Breadcrumbs.module.css";
 import { diagnostics } from "../../utils/diagnostics";
+import { progressFor, progressLabel } from "../../utils/lspProgress";
 import { traceSettle } from "../../utils/perfTrace";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
@@ -2782,6 +2783,13 @@ export default function Editor(props: {
           caret={focused() ? caretHere() : null}
           trailing={
             <>
+              <Show when={progressFor(filePath())}>
+                {(p) => (
+                  <span class={crumbStyles.progress}>
+                    {progressLabel(p())}
+                  </span>
+                )}
+              </Show>
               {/* Preview first, blame second, because the cluster is pinned to
                   the bar's right edge: the one that comes and goes has to be
                   the one on the moving side of it. */}
