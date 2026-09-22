@@ -8,8 +8,9 @@ import styles from "./ShortcutSheet.module.css";
  * table in utils/hotkeys.ts - the same table the dispatcher matches against -
  * so the sheet cannot drift from what the keys actually do.
  *
- * Read-only: it lists bindings, it does not rebind them. Remapping lives in
- * Settings.
+ * Read-only: it lists bindings, it does not rebind them, and nothing else does
+ * either. Tori has no remapping surface, so what this sheet shows is the whole
+ * of the answer.
  *
  * Everything modal about it is `Dialog`'s. Two hand-built pieces went with the
  * migration and are worth naming, because both looked load-bearing:

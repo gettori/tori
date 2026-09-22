@@ -31,7 +31,7 @@ import { traceSettle } from "../../../utils/perfTrace";
 import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
-import { copyText } from "../../../utils/clipboard";
+import { copyPaths, revealPaths } from "../../../utils/pathActions";
 import { syntheticId } from "../../../utils/syntheticTabs";
 import { collapseDirs, isDirOpen, nextSessionKey, setDirOpen } from "../../../utils/treeExpanded";
 import { editorDefaults } from "../../Settings/settingsStore";
@@ -354,18 +354,6 @@ function targetsOf(entry: Entry, ctx?: EditCtx): string[] {
   return chosen?.has(entry.path) ? [...chosen] : [entry.path];
 }
 
-/** Show `entry` (or the selection) in Finder. Reads nothing and writes nothing,
- *  so it is offered on a read-only tree too. */
-async function revealEntry(entry: Entry, ctx?: EditCtx) {
-  try {
-    // Singular name, plural argument: the plugin kept the old command name when
-    // it grew multi-select, and renames it only in its next major.
-    await invoke("plugin:opener|reveal_item_in_dir", { paths: targetsOf(entry, ctx) });
-  } catch (e) {
-    emitWith<ToastEvent>(TOAST, { message: String(e) });
-  }
-}
-
 /** Delete `entry`, or the whole selection when `entry` is part of one, and say
  *  how many. */
 async function deleteEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promise<void>) {
@@ -494,11 +482,6 @@ async function duplicateEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Pr
   } catch (e) {
     emitWith<ToastEvent>(TOAST, { message: String(e) });
   }
-}
-
-async function copyPaths(paths: string[], root: string, relative: boolean) {
-  const text = paths.map((p) => (relative ? relTo(root, p) : p)).join("\n");
-  if (!(await copyText(text))) emitWith<ToastEvent>(TOAST, { message: "Could not copy to the clipboard." });
 }
 
 /** Whether this drag is one the tree started, which is what separates a move
@@ -657,7 +640,7 @@ function TreeNode(props: {
     group(
       !e.is_dir && { label: "Open to the Side", onClick: open({ side: true }) },
       !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ rendered: true }) },
-      { label: "Reveal in Finder", onClick: () => revealEntry(e, ctx) },
+      { label: "Reveal in Finder", onClick: () => revealPaths(targetsOf(e, ctx)) },
       {
         label: "Open in Integrated Terminal",
         onClick: () => emitWith<OpenShellAt>(OPEN_SHELL_AT, { cwd: dir }),
@@ -681,8 +664,11 @@ function TreeNode(props: {
       ctx && { label: "Duplicate", onClick: () => duplicateEntry(ctx, e, props.reloadParent) },
     );
     group(
-      { label: "Copy Path", onClick: () => copyPaths(targetsOf(e, ctx), view.root, false) },
-      { label: "Copy Relative Path", onClick: () => copyPaths(targetsOf(e, ctx), view.root, true) },
+      { label: "Copy Path", onClick: () => copyPaths(targetsOf(e, ctx)) },
+      {
+        label: "Copy Relative Path",
+        onClick: () => copyPaths(targetsOf(e, ctx).map((p) => relTo(view.root, p))),
+      },
     );
     group(
       !e.is_dir &&
