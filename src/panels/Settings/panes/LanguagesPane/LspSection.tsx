@@ -9,7 +9,7 @@ import Toggle from "../../../../components/Switch/Switch";
 import InlineJob from "../../../FirstRun/job/InlineJob";
 import type { JobState } from "../../../FirstRun/job/InlineJobFrame";
 import { emitWith, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
-import { installServer, serverInstalled } from "../../../../utils/serverInstall";
+import { commandIn, installServer, serverInstalled } from "../../../../utils/serverInstall";
 import { CmdField } from "../../components/paneKit";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import styles from "../../Settings.module.css";
@@ -77,9 +77,6 @@ export const TONE: Record<BinaryStatus, string> = {
   versionDrift: styles.dotWarn,
   notFound: styles.dotOff,
 };
-
-// A hint names its command in backticks, the way the server TOMLs write it.
-const commandIn = (hint: string | null) => hint?.match(/`([^`]+)`/)?.[1] ?? null;
 
 type Tab = "ready" | "installable" | "manual";
 

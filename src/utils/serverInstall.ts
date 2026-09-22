@@ -5,8 +5,12 @@ import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 /** Mirrors `managed::NOT_INSTALLED`, what `lsp_start` rejects a server with
- *  when Tori could install it. */
+ *  when Tori could install it, and `dap_start` an adapter with an install. */
 export const NOT_INSTALLED = "not_installed";
+
+// A hint names its command in backticks, the way the server and adapter TOMLs
+// write it.
+export const commandIn = (hint: string | null) => hint?.match(/`([^`]+)`/)?.[1] ?? null;
 
 /** What a pane's banner shows for one server that is not installed. */
 export type InstallOffer = {

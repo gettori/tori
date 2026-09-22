@@ -20,8 +20,9 @@ use super::registry::{inside, platform, Install, Launch, LspServer, Runtime};
 
 const MANIFEST: &str = "tori-install.json";
 
-/// What `lsp_start` rejects a server with when Tori could install it, so the
-/// editor can offer to. `utils/serverInstall.ts` matches it exactly.
+/// What `lsp_start` rejects a server with when Tori could install it, and
+/// `dap_start` an adapter with an `[install]`, so the editor can offer to.
+/// `utils/serverInstall.ts` matches it exactly.
 pub const NOT_INSTALLED: &str = "not_installed";
 
 // The largest bundled asset (clangd) is under 100 MB; the bound turns a URL
