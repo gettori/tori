@@ -649,6 +649,17 @@ describe("code-action capabilities", () => {
   });
 });
 
+describe("work-done progress capability", () => {
+  it("advertises it, since a server reports progress only to a client that asked", async () => {
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/wd/main.rs", "/proj/wd");
+    const blocks = (clientConfigs[0].extensions ?? []).map(
+      (e) => (e as { clientCapabilities?: { window?: Record<string, unknown> } }).clientCapabilities?.window,
+    );
+    expect(blocks.some((b) => b?.workDoneProgress === true)).toBe(true);
+  });
+});
+
 describe("workspace/semanticTokens/refresh", () => {
   const refresh = (id: unknown) =>
     JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/semanticTokens/refresh" });

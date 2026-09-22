@@ -38,6 +38,7 @@ import Toolbar from './components/Toolbar/Toolbar';
 import WindowControls from './components/WindowControls/WindowControls';
 import Resizer from './components/Resizer/Resizer';
 import AskpassDialog from './components/Dialogs/AskpassDialog';
+import ServerMessageDialog from './components/Dialogs/ServerMessageDialog';
 import ConfirmDialog, { type ConfirmReq } from './components/Dialogs/ConfirmDialog';
 import ToastRegion from './components/Toasts/Toasts';
 import type { GitReport } from './utils/gitHealth';
@@ -1234,6 +1235,7 @@ function App() {
       </Show>
 
       <AskpassDialog />
+      <ServerMessageDialog />
       <ToastRegion />
     </div>
   );
