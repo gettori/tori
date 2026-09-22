@@ -39,6 +39,10 @@ One thing: **before-state capture** for inline diffs and for [[concept_diff_as_t
 
 The capture is also **no longer the only way to a before-state.** `snapshot::store_text` (`snapshot.rs:129`) hashes text straight into the same git object store `capture` writes to, so an ACP agent that sends the file's prior text with its tool call produces the same card. See [[concept_acp_agent_quirks]].
 
+## One session kind will get a gate again, and it is not this one (2026-09-23)
+
+Not built: gettori/tori#203 plans a refusal point for sessions flagged `background`, whose harness prompt is on nobody's screen. It sits on Tori's own outward tools rather than on this hook, so the capture stays decision free and fail open exactly as described above. See [[adr_a_background_session_needs_a_tori_gate]].
+
 ## Related
 
 - [[concept_askpass_bridge]] - the socket-bridge pattern this reuses
@@ -47,3 +51,4 @@ The capture is also **no longer the only way to a before-state.** `snapshot::sto
 - [[concept_harness_capability_tiers]] - where what rides this is published
 - [[gotcha_hook_name_reports_the_tool_not_the_configured_matcher]]
 - [[gotcha_a_pretooluse_hook_printing_only_unknown_keys_does_not_end_the_permission_chain]]
+- [[adr_a_background_session_needs_a_tori_gate]] - the planned exception for background sessions, which deliberately does not ride this hook

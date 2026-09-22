@@ -33,6 +33,10 @@ A chat stops when it reaches a cost or context ceiling. The enforcement point is
 
 **One limitation, stated not fixed.** If the model catalogue has not loaded, `contextWindow` is null and the context ceiling silently never fires. It degrades safe, but it is silent, and the money ceilings do not share the failure.
 
+## There is a call to refuse again, and ceilings still do not ride it (2026-09-23)
+
+Not built: gettori/tori#203 plans a refusal point for outward actions from a session flagged `background`, which undoes the premise above that with no gate there is no call to refuse. Ceilings stay at the turn boundary anyway, since widening that gate to cost would grow it back into the general permission layer [[adr_harness_breadth]] retired. See [[adr_a_background_session_needs_a_tori_gate]].
+
 ## Related
 
 - [[concept_harness_capability_tiers]] - where a harness's ability to carry one is published, and why ACP cannot
@@ -41,3 +45,4 @@ A chat stops when it reaches a cost or context ceiling. The enforcement point is
 - [[lesson_a_denial_names_the_fix_but_the_retry_may_not_carry_it]] - the measurement that shaped the retired model-facing reason
 - [[gotcha_a_frontend_settings_key_with_no_rust_field_is_dropped_on_save]]
 - [[concept_quota_is_an_account_fact]] - the harness's own limits, which share this vocabulary and come from the account rather than from Tori.
+- [[adr_a_background_session_needs_a_tori_gate]] - the new refusal point, and why ceilings deliberately do not use it
