@@ -32,6 +32,8 @@ export type DapSession = {
   /** Which adapter is behind this run, for the initialize payload and the
    *  per-adapter start queue. */
   adapterId: string;
+  /** Whether that adapter opens child sessions (`startDebugging`). */
+  childSessions: boolean;
   /** The project this run belongs to. A run outlives the file that started it
    *  but never the project, which is what `stopAllDap` enforces. */
   projectPath: string;
@@ -53,6 +55,9 @@ export type DebugConfig = Record<string, unknown>;
 
 export type DebugStart = {
   adapterId: string;
+  /** The adapter's `child_sessions`: whether Tori declares and serves
+   *  `startDebugging` for it. */
+  childSessions: boolean;
   /** The file the run is about. The backend resolves the adapter's root from
    *  it, which becomes the debuggee's `cwd`, so it decides module resolution
    *  and where source maps resolve from. */
@@ -92,6 +97,16 @@ function notify(): void {
 /** Every root session, oldest first. */
 export function debugRoots(): DapSession[] {
   return rootIds.map((id) => sessions.get(id)!).filter(Boolean);
+}
+
+/** The run stop and restart act on: the one holding `selected` (the session
+ *  the debug pane is looking at), else the most recently started. Returns its
+ *  root. */
+export function runFor(selected: string | null): DapSession | null {
+  let session = selected ? sessions.get(selected) : undefined;
+  while (session?.parent) session = sessions.get(session.parent);
+  const roots = debugRoots();
+  return session ?? roots[roots.length - 1] ?? null;
 }
 
 /** One session by id, or null. */
@@ -188,6 +203,7 @@ async function startRun(start: DebugStart, startedAt: number): Promise<DapSessio
     handle,
     conn: wire.attach(handle),
     adapterId: start.adapterId,
+    childSessions: start.childSessions,
     projectPath: start.projectPath,
     parent: null,
     name: `run${runCounter++}`,
@@ -228,6 +244,7 @@ async function connectChild(parent: DapSession, config: DebugConfig): Promise<vo
     handle,
     conn: wire.attach(handle),
     adapterId: parent.adapterId,
+    childSessions: parent.childSessions,
     projectPath: parent.projectPath,
     parent: parent.handle.session,
     name: `${parent.name}.child${parent.children.length}`,
@@ -251,15 +268,18 @@ function register(
 function wireSession(session: DapSession): void {
   const { conn } = session;
 
-  conn.onReverse("startDebugging", (args) => {
-    const request = (args ?? {}) as { configuration?: DebugConfig; request?: string };
-    const config = request.configuration ?? {};
-    // Answered synchronously, and the child is dialled afterwards. js-debug is
-    // blocked on this response, and the child's handshake runs over its own
-    // connection, so nothing about it depends on the answer being deferred.
-    void connectChild(session, { ...config, request: config.request ?? request.request ?? "launch" });
-    return {};
-  });
+  // Left unhandled for any other adapter, so the connection refuses it.
+  if (session.childSessions) {
+    conn.onReverse("startDebugging", (args) => {
+      const request = (args ?? {}) as { configuration?: DebugConfig; request?: string };
+      const config = request.configuration ?? {};
+      // Answered synchronously, and the child is dialled afterwards. js-debug is
+      // blocked on this response, and the child's handshake runs over its own
+      // connection, so nothing about it depends on the answer being deferred.
+      void connectChild(session, { ...config, request: config.request ?? request.request ?? "launch" });
+      return {};
+    });
+  }
 
   conn.on("initialized", () => configureOnce(session));
 
@@ -328,7 +348,7 @@ async function handshake(
   try {
     session.capabilities = (await session.conn.request<Record<string, unknown>>(
       "initialize",
-      initializeArguments(session.adapterId),
+      initializeArguments(session.adapterId, session.childSessions),
     )) ?? {};
   } catch (e) {
     console.error("initialize failed", session.name, e);

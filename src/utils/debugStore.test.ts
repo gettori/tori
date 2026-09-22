@@ -72,6 +72,7 @@ async function freshModules() {
 
 const start = {
   adapterId: "js-debug",
+  childSessions: true,
   filePath: "/p/src/index.ts",
   projectPath: "/p",
   config: { type: "pwa-node", request: "launch", program: "/p/src/index.ts" },

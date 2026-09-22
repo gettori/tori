@@ -40,12 +40,14 @@ import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
-import { debugRoots, stopAllDap, stopDebugRun } from "../../utils/dapSessions";
+import { runFor, stopAllDap, stopDebugRun } from "../../utils/dapSessions";
 import { clearDebugConsole, debugRunning } from "../../utils/debugStore";
 import DebugTargetDialog from "../../components/Dialogs/DebugTargetDialog";
-import { launchTarget, resolveRoot, scriptsAt } from "../../utils/debugLaunch";
+import { adapterForPath, dapAdapters, launchTarget, resolveRoot, scriptsAt } from "../../utils/debugLaunch";
 import {
   attachPortFor,
+  JS_ADAPTER,
+  kindsFor,
   lastTargetFor,
   loadAttachPorts,
   loadLastTargets,
@@ -53,6 +55,7 @@ import {
   saveLastTargets,
   setAttachPort,
   setLastTarget,
+  type DapAdapterInfo,
   type DebugTarget,
   type TargetKind,
 } from "../../utils/debugTargets";
@@ -267,7 +270,7 @@ import {
   type FrecencyStore,
   type Touch,
 } from "../../utils/frecency";
-import { frameLocation } from "../../utils/debugStack";
+import { frameLocation, selectedFrame } from "../../utils/debugStack";
 import {
   breakpointMarks,
   breakpointsMoved,
@@ -1194,7 +1197,9 @@ export default function Editor(props: {
   // and what was last debugged here. F5 is a repeat of that last target, and
   // the picker is what a first press opens instead of doing nothing.
   const [debugPick, setDebugPick] = createSignal<{
-    kind: TargetKind;
+    adapters: DapAdapterInfo[];
+    kind: TargetKind | null;
+    fileAdapter: string | null;
     scripts: string[];
     port: number;
   } | null>(null);
@@ -1212,15 +1217,35 @@ export default function Editor(props: {
     emitWith<ToastEvent>(TOAST, { message, kind: "error" });
   }
 
-  /** Open the picker, having resolved the root so the scripts it offers are the
-   *  ones that root actually declares. In a monorepo those are the package's
-   *  own, which is the only list runnable from the `cwd` the config will use. */
-  async function openDebugPicker(kind: TargetKind) {
+  /** Open the picker on `adapters`, having resolved js-debug's root so the
+   *  scripts it offers are the ones that root actually declares. In a monorepo
+   *  those are the package's own, which is the only list runnable from the
+   *  `cwd` the config will use. */
+  async function openDebugPicker(adapters: DapAdapterInfo[], kind: TargetKind | null) {
     const ws = focusRoot();
     if (!ws) return;
-    const anchor = debugFilePath() ?? ws;
-    const resolved = await resolveRoot(anchor, ws);
-    setDebugPick({ kind, scripts: await scriptsAt(resolved), port: attachPortFor(attachPorts(), ws) });
+    if (!adapters.length) return debugError("No debugger is registered.");
+    const file = debugFilePath();
+    const anchor = file ?? ws;
+    const scripts = adapters.some((a) => a.id === JS_ADAPTER)
+      ? await scriptsAt(await resolveRoot(JS_ADAPTER, anchor, ws))
+      : [];
+    setDebugPick({
+      adapters,
+      kind,
+      fileAdapter: adapterForPath(await dapAdapters(), file)?.id ?? null,
+      scripts,
+      port: attachPortFor(attachPorts(), ws),
+    });
+  }
+
+  async function pickDebugKind(kind: TargetKind) {
+    const adapters = await dapAdapters();
+    const claimed = adapterForPath(adapters, debugFilePath());
+    const offers = (a: DapAdapterInfo) => kindsFor(a.id).includes(kind);
+    const adapter = claimed && offers(claimed) ? claimed : adapters.find(offers);
+    if (adapter) void openDebugPicker([adapter], kind);
+    else debugError("No debugger is registered for that.");
   }
 
   async function runDebugTarget(target: DebugTarget) {
@@ -1245,23 +1270,28 @@ export default function Editor(props: {
     await launchTarget(target, { projectPath: ws, onError: debugError });
   }
 
-  function startDebugging() {
-    const ws = focusRoot();
-    if (!ws) return;
-    const remembered = lastTargetFor(lastTargets(), ws);
+  function repeatOrAsk(ws: string, adapterId: string | null, choices: DapAdapterInfo[]) {
+    const remembered = lastTargetFor(lastTargets(), ws, adapterId);
     // A remembered file target whose tab is gone is not a target any more, and
     // silently launching it would be worse than asking again.
     const stale =
       remembered?.kind === "file" && !tabs().some((t) => t.path === remembered.path);
-    if (remembered && !stale) {
-      void runDebugTarget(remembered);
-      return;
-    }
-    void openDebugPicker(debugFilePath() ? "file" : "script");
+    if (remembered && !stale) void runDebugTarget(remembered);
+    else void openDebugPicker(choices, null);
   }
 
+  async function startDebugging() {
+    const ws = focusRoot();
+    if (!ws) return;
+    const adapters = await dapAdapters();
+    const claimed = adapterForPath(adapters, debugFilePath());
+    repeatOrAsk(ws, claimed?.id ?? null, claimed ? [claimed] : adapters);
+  }
+
+  const currentRun = () => runFor(selectedFrame()?.session ?? null);
+
   function stopDebugging() {
-    const run = debugRoots()[0];
+    const run = currentRun();
     if (run) void stopDebugRun(run.handle.session);
   }
 
@@ -1270,9 +1300,13 @@ export default function Editor(props: {
    *  being torn down finds it live and joins it, so the restart would be a
    *  no-op that looks like one. */
   async function restartDebugging() {
-    const run = debugRoots()[0];
-    if (run) await stopDebugRun(run.handle.session);
-    startDebugging();
+    const run = currentRun();
+    const ws = focusRoot();
+    if (!run || !ws) return startDebugging();
+    await stopDebugRun(run.handle.session);
+    const adapters = await dapAdapters();
+    const adapter = adapters.find((a) => a.id === run.adapterId);
+    repeatOrAsk(ws, run.adapterId, adapter ? [adapter] : adapters);
   }
 
   // Where scratch buffers live, fetched once: it is a fixed directory the
@@ -2360,7 +2394,7 @@ export default function Editor(props: {
       onEvent(EDITOR_SAVE_AS, () => void saveAsFromPrompt()),
       onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
       onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
-      onEvent(DEBUG_START, startDebugging),
+      onEvent(DEBUG_START, () => void startDebugging()),
       onEvent(DEBUG_STOP, stopDebugging),
       onEvent(DEBUG_TOGGLE_BREAKPOINT, () => {
         const at = caretHere();
@@ -2369,7 +2403,7 @@ export default function Editor(props: {
       }),
       onEvent(DEBUG_RESTART, () => void restartDebugging()),
       onWith<DebugPick>(DEBUG_PICK, (d) => {
-        if (d?.kind) void openDebugPicker(d.kind);
+        if (d?.kind) void pickDebugKind(d.kind);
       }),
       onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
       onEvent(FOCUS_PR_REVIEW, focusPrReview),
@@ -3229,8 +3263,10 @@ export default function Editor(props: {
       <Show when={debugPick()}>
         {(pick) => (
           <DebugTargetDialog
+            adapters={pick().adapters}
             kind={pick().kind}
             filePath={debugFilePath()}
+            fileAdapter={pick().fileAdapter}
             scripts={pick().scripts}
             port={pick().port}
             onConfirm={(target) => {

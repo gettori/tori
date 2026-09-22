@@ -104,6 +104,7 @@ const FILE = "/p/src/index.ts";
 
 const start = {
   adapterId: "js-debug",
+  childSessions: true,
   filePath: FILE,
   projectPath: WS,
   config: { type: "pwa-node", request: "launch", program: FILE },
