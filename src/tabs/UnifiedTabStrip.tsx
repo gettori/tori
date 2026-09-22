@@ -25,6 +25,7 @@ export default function UnifiedTabStrip(props: {
    *  controls apply. */
   bare?: boolean;
   trailing?: JSX.Element;
+  end?: JSX.Element;
 }) {
   // Every registered cluster, not the active tab's (phase 13): what a pane
   // offers should not depend on which of its tabs is in front. Keyed by the
@@ -52,6 +53,7 @@ export default function UnifiedTabStrip(props: {
       renderTab={(t, ghost) => renderRegistryTab(t, ghost, props.place)}
       renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
       trailing={props.bare ? props.trailing : <For each={trailingClusters()}>{(cluster) => cluster()}</For>}
+      end={props.end}
     />
   );
 }
