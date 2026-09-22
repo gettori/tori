@@ -1,9 +1,11 @@
-// Debug adapter host. Spawns the adapter described by `dap/registry.rs` and
-// bridges its DAP JSON to the frontend: socket frames are de-framed and pushed
-// over a Channel, `dap_send` re-frames outgoing messages back onto the socket.
+// Debug adapter host. Spawns the adapters described by `dap/registry.rs` and
+// bridges their DAP JSON to the frontend: frames are de-framed and pushed over a
+// Channel, `dap_send` re-frames outgoing messages back onto the adapter.
 //
 // The framing is `lsp.rs`'s, byte for byte (Content-Length header, then body).
-// Nothing else about the transport is:
+// A `stdio` adapter is a language server's pipe pair and nothing more. The
+// bundled js-debug, which these notes were written against, differs in every
+// other way, and a `tcp` adapter shares the first and last of them:
 //
 //   - **The adapter listens; we dial in.** `dapDebugServer.js <socket-path>`
 //     binds a socket and waits, so there is no stdin/stdout pair to frame over.
@@ -36,10 +38,11 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::thread;
@@ -54,7 +57,7 @@ use crate::env::augmented_path;
 
 pub mod registry;
 
-use registry::DapAdapter;
+use registry::{DapAdapter, Launch, Resolve};
 
 /// How long to keep retrying the connect before calling the adapter dead.
 /// Measured cold-start is ~106ms; this is wide enough for a loaded machine and
@@ -78,12 +81,14 @@ pub struct DapHandle {
 
 struct Session {
     /// The write half. The read half lives in the pump thread.
-    stream: UnixStream,
+    writer: Box<dyn Write + Send>,
 }
 
 struct Server {
     child: Child,
-    socket: PathBuf,
+    /// The bundled adapter's socket, removed on stop.
+    socket: Option<PathBuf>,
+    child_sessions: bool,
     sessions: HashMap<String, Session>,
 }
 
@@ -164,26 +169,47 @@ fn bundled_entry(app: &AppHandle, rel: &str) -> Option<PathBuf> {
     None
 }
 
-/// Spawn the adapter, listening on `socket`, in its own process group.
-fn spawn_adapter(entry: &PathBuf, socket: &PathBuf, root: &str) -> Result<Child, String> {
-    let mut child = Command::new("node")
-        .arg(entry)
-        .arg(socket)
-        .current_dir(root)
+/// The launch program's path on this machine, by the adapter's resolver. The
+/// health card asks this too, so a card never reads found for a program a start
+/// would not find.
+fn find_program(launch: &Launch) -> Option<PathBuf> {
+    let program = launch.program();
+    match launch.resolve() {
+        Resolve::Path => crate::env::resolve_binary(program),
+        Resolve::Xcrun => xcrun_find(program).or_else(|| crate::env::resolve_binary(program)),
+    }
+}
+
+fn xcrun_find(program: &str) -> Option<PathBuf> {
+    let out = crate::env::output_with_timeout(Command::new("xcrun").args(["-f", program]))?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    (path.is_absolute() && path.is_file()).then_some(path)
+}
+
+/// Spawn an adapter at `root` in its own process group. stdout is always piped:
+/// it is the DAP wire for a `stdio` adapter, and `log_stdout` drains it for the
+/// others.
+fn spawn_adapter(cmd: &mut Command, root: &str, stdin: Stdio) -> Result<Child, String> {
+    cmd.current_dir(root)
         // The login-shell PATH, not the GUI process one: the adapter resolves
         // the debuggee's runtime (`node`, `pnpm`) from what it inherits, and a
         // Finder-launched Tori has almost nothing on PATH.
         .env("PATH", augmented_path())
         // Its own process group, so `stop` can take the debuggee with it.
         .process_group(0)
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("failed to spawn the debug adapter: {e}"))?;
+        .map_err(|e| format!("failed to spawn the debug adapter: {e}"))
+}
 
-    // Drain stdout so a chatty adapter cannot block on a full pipe, and log the
-    // readiness line for diagnostics. Nothing waits on this.
+/// Drain stdout so a chatty adapter cannot block on a full pipe, and log it
+/// (js-debug's readiness line among it) for diagnostics. Nothing waits on this.
+fn log_stdout(child: &mut Child) {
     if let Some(out) = child.stdout.take() {
         thread::spawn(move || {
             for line in BufReader::new(out).lines().map_while(Result::ok) {
@@ -191,19 +217,26 @@ fn spawn_adapter(entry: &PathBuf, socket: &PathBuf, root: &str) -> Result<Child,
             }
         });
     }
-    Ok(child)
 }
 
-/// Dial the adapter, retrying until it has bound its socket.
+/// Dial a listening adapter, retrying until it accepts.
 ///
-/// Split out and generic over nothing so the timing behaviour is testable
-/// against a plain `UnixListener` with no adapter and no `node` involved.
-fn connect_retry(socket: &PathBuf, timeout: Duration) -> Result<UnixStream, String> {
+/// Gives up as soon as `exited` reports the adapter gone, so one that never
+/// came up, or lost the race for its port, reports at once rather than after
+/// the full timeout.
+fn dial<T>(
+    mut connect: impl FnMut() -> std::io::Result<T>,
+    mut exited: impl FnMut() -> Option<ExitStatus>,
+    timeout: Duration,
+) -> Result<T, String> {
     let start = Instant::now();
     loop {
-        match UnixStream::connect(socket) {
+        match connect() {
             Ok(s) => return Ok(s),
             Err(e) => {
+                if let Some(status) = exited() {
+                    return Err(format!("the debug adapter exited before accepting a connection ({status})"));
+                }
                 if start.elapsed() >= timeout {
                     return Err(format!(
                         "the debug adapter did not accept a connection within {}s: {e}",
@@ -212,6 +245,91 @@ fn connect_retry(socket: &PathBuf, timeout: Duration) -> Result<UnixStream, Stri
                 }
                 thread::sleep(CONNECT_RETRY_DELAY);
             }
+        }
+    }
+}
+
+/// Dial the bundled adapter's socket, retrying until it has bound it. Also what
+/// a child session dials, with no process in hand to watch.
+fn connect_retry(socket: &Path, timeout: Duration) -> Result<UnixStream, String> {
+    dial(|| UnixStream::connect(socket), || None, timeout)
+}
+
+/// A port nothing listens on right now. It is released before the adapter binds
+/// it, so another process can take it in between. That race is the price of
+/// not reading the port out of the adapter's English stdout, which this host
+/// never waits on.
+fn free_port() -> Result<u16, String> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|e| format!("could not pick a port for the debug adapter: {e}"))?;
+    listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
+}
+
+/// A started adapter: its process, both halves of its first session, and the
+/// socket a child session dials, for the one kind that has one.
+struct Started {
+    child: Child,
+    reader: Box<dyn Read + Send>,
+    writer: Box<dyn Write + Send>,
+    socket: Option<PathBuf>,
+}
+
+/// Start `adapter` at `root` and open its first session.
+///
+/// Free of Tauri types so every launch kind is testable without an app.
+/// `bundled` is the one lookup that needs the app: where the bundled script is.
+fn start_adapter(
+    adapter: &DapAdapter,
+    root: &str,
+    bundled: impl FnOnce(&str) -> Option<PathBuf>,
+) -> Result<Started, String> {
+    let not_found = |program: &str| match adapter.launch.resolve() {
+        Resolve::Path => format!("{}: `{program}` was not found on your PATH", adapter.id),
+        Resolve::Xcrun => format!("{}: `{program}` was not found by xcrun or on your PATH", adapter.id),
+    };
+    match &adapter.launch {
+        Launch::BundledNodeSocket { entry, .. } => {
+            let entry = bundled(entry)
+                .ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id))?;
+            let socket = socket_path()?;
+            let mut child = spawn_adapter(Command::new("node").arg(entry).arg(&socket), root, Stdio::null())?;
+            log_stdout(&mut child);
+            let dialled = dial(|| UnixStream::connect(&socket), || child.try_wait().ok().flatten(), CONNECT_TIMEOUT)
+                .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
+            let (reader, stream) = match dialled {
+                Ok(pair) => pair,
+                Err(e) => {
+                    // The adapter is up but unreachable; do not leak it.
+                    stop(&mut Server { child, socket: Some(socket), child_sessions: false, sessions: HashMap::new() });
+                    return Err(e);
+                }
+            };
+            Ok(Started { child, reader: Box::new(reader), writer: Box::new(stream), socket: Some(socket) })
+        }
+        Launch::Stdio { program, args, .. } => {
+            let path = find_program(&adapter.launch).ok_or_else(|| not_found(program))?;
+            let mut child = spawn_adapter(Command::new(path).args(args), root, Stdio::piped())?;
+            let reader = child.stdout.take().ok_or("the debug adapter has no stdout")?;
+            let writer = child.stdin.take().ok_or("the debug adapter has no stdin")?;
+            Ok(Started { child, reader: Box::new(reader), writer: Box::new(writer), socket: None })
+        }
+        Launch::Tcp { program, args, .. } => {
+            let path = find_program(&adapter.launch).ok_or_else(|| not_found(program))?;
+            let port = free_port()?;
+            let args = args.iter().map(|a| a.replace("{port}", &port.to_string()));
+            let mut child = spawn_adapter(Command::new(path).args(args), root, Stdio::null())?;
+            log_stdout(&mut child);
+            let dialled =
+                dial(|| TcpStream::connect(("127.0.0.1", port)), || child.try_wait().ok().flatten(), CONNECT_TIMEOUT)
+                    .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
+            let (reader, stream) = match dialled {
+                Ok(pair) => pair,
+                Err(e) => {
+                    stop(&mut Server { child, socket: None, child_sessions: false, sessions: HashMap::new() });
+                    return Err(e);
+                }
+            };
+            Ok(Started { child, reader: Box::new(reader), writer: Box::new(stream), socket: None })
         }
     }
 }
@@ -252,12 +370,12 @@ fn pump_frames<R: Read + Send + 'static>(stream: R, sink: impl Fn(String) + Send
     });
 }
 
-/// Frame a message onto a session's socket.
-fn write_frame(stream: &mut UnixStream, message: &str) -> Result<(), String> {
+/// Frame a message onto a session's write half.
+fn write_frame(writer: &mut impl Write, message: &str) -> Result<(), String> {
     let header = format!("Content-Length: {}\r\n\r\n", message.len());
-    stream.write_all(header.as_bytes()).map_err(|e| e.to_string())?;
-    stream.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
-    stream.flush().map_err(|e| e.to_string())
+    writer.write_all(header.as_bytes()).map_err(|e| e.to_string())?;
+    writer.write_all(message.as_bytes()).map_err(|e| e.to_string())?;
+    writer.flush().map_err(|e| e.to_string())
 }
 
 /// Stop a server: kill its whole process group, reap it, and remove the socket.
@@ -279,7 +397,9 @@ fn stop(server: &mut Server) {
         .status();
     let _ = server.child.kill();
     let _ = server.child.wait();
-    let _ = std::fs::remove_file(&server.socket);
+    if let Some(socket) = &server.socket {
+        let _ = std::fs::remove_file(socket);
+    }
 }
 
 /// Start an adapter for `adapter_id` at the root resolved for `file_path`, and
@@ -306,38 +426,32 @@ pub async fn dap_start(
     );
     let root = root.to_string_lossy().into_owned();
 
-    let entry = bundled_entry(&app, &adapter.entry)
-        .ok_or_else(|| format!("{adapter_id}: bundled adapter not found (run `pnpm dap:install`)"))?;
-
-    let socket = socket_path()?;
-    let child = spawn_adapter(&entry, &socket, &root)?;
-    let stream = match connect_retry(&socket, CONNECT_TIMEOUT) {
-        Ok(s) => s,
-        Err(e) => {
-            // The adapter is up but unreachable; do not leak it.
-            let mut dying = Server { child, socket: socket.clone(), sessions: HashMap::new() };
-            stop(&mut dying);
-            return Err(e);
-        }
-    };
+    let started = start_adapter(adapter, &root, |rel| bundled_entry(&app, rel))?;
 
     let handle = DapHandle {
         server: DapServerId(next_id("dap")),
         session: next_id("sess"),
     };
-    let reader = stream.try_clone().map_err(|e| e.to_string())?;
-    pump_frames(reader, move |body| {
+    pump_frames(started.reader, move |body| {
         let _ = on_message.send(body);
     });
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let server = guard.entry(handle.server.clone()).or_insert(Server {
-        child,
-        socket,
+        child: started.child,
+        socket: started.socket,
+        child_sessions: adapter.child_sessions,
         sessions: HashMap::new(),
     });
-    server.sessions.insert(handle.session.clone(), Session { stream });
+    server.sessions.insert(handle.session.clone(), Session { writer: started.writer });
     Ok(handle)
+}
+
+/// Where another session on `server` dials in. Only an adapter with
+/// `child_sessions` takes a second connection; any other runs one session per
+/// process.
+fn child_socket(server: &Server) -> Option<&PathBuf> {
+    server.socket.as_ref().filter(|_| server.child_sessions)
 }
 
 /// Open another session on a server that is already running.
@@ -354,10 +468,9 @@ pub async fn dap_connect(
 ) -> Result<DapHandle, String> {
     let socket = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .get(&server)
-            .ok_or_else(|| format!("debug adapter {} is not running", server.0))?
-            .socket
+        let running = guard.get(&server).ok_or_else(|| format!("debug adapter {} is not running", server.0))?;
+        child_socket(running)
+            .ok_or_else(|| format!("debug adapter {} runs one session per process and cannot open another", server.0))?
             .clone()
     };
 
@@ -376,7 +489,7 @@ pub async fn dap_connect(
         // rather than registering a session nothing can reach.
         return Err(format!("debug adapter {} stopped while connecting", server.0));
     };
-    entry.sessions.insert(handle.session.clone(), Session { stream });
+    entry.sessions.insert(handle.session.clone(), Session { writer: Box::new(stream) });
     Ok(handle)
 }
 
@@ -391,7 +504,7 @@ pub async fn dap_send(
         .get_mut(&handle.server)
         .and_then(|s| s.sessions.get_mut(&handle.session))
         .ok_or_else(|| format!("debug session {} is not running", handle.session))?;
-    write_frame(&mut session.stream, &message)
+    write_frame(&mut session.writer, &message)
 }
 
 /// Stop one adapter and everything it launched.
@@ -475,14 +588,15 @@ pub async fn dap_launch_env() -> BTreeMap<String, String> {
 pub struct DapHealth {
     pub id: String,
     pub label: String,
-    /// The binary that has to exist on this machine. Always `node`: the adapter
-    /// itself is a bundled script, not a program.
+    /// The binary that has to exist on this machine: `node` for the bundled
+    /// adapter, which is a script, else the adapter's own program.
     pub program: String,
     pub status: crate::health::BinaryStatus,
     pub path: Option<String>,
     pub version: Option<String>,
-    /// The adapter release this build pins, from the installer's manifest.
-    pub adapter_version: String,
+    /// The bundled adapter's release, from the installer's manifest. `None` for
+    /// an adapter Tori does not bundle.
+    pub adapter_version: Option<String>,
     /// Extensions this adapter claims, for the card's chips.
     pub extensions: Vec<String>,
     /// What is wrong beyond a missing `program`. The one case is a bundle that
@@ -498,8 +612,8 @@ pub struct DapHealth {
 /// `entry_missing` is passed in rather than resolved here so this stays free of
 /// `AppHandle` and testable off a real Tauri app, exactly as `lsp::check` is.
 fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
-    let program = "node".to_string();
-    let resolved = crate::env::resolve_binary(&program);
+    let program = adapter.launch.program().to_string();
+    let resolved = find_program(&adapter.launch);
     let version = resolved.as_deref().and_then(crate::health::run_version);
 
     let detail = entry_missing
@@ -509,10 +623,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
     // of `node` alone would send someone chasing a problem they do not have.
     let status = match (&resolved, &detail) {
         (None, _) | (Some(_), Some(_)) => crate::health::BinaryStatus::NotFound,
-        // No `verified_against` to compare with: the adapter is a bundle this
-        // build pins by sha256, so the only version question is `node`'s, and
-        // js-debug states no floor Tori could check one against.
-        (Some(_), None) => crate::health::BinaryStatus::VersionUnknown,
+        (Some(_), None) => crate::health::compare(version.as_deref(), adapter.verified_against.as_deref()),
     };
 
     DapHealth {
@@ -522,7 +633,10 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
         status,
         path: resolved.map(|p| p.to_string_lossy().into_owned()),
         version,
-        adapter_version: adapter.version.clone(),
+        adapter_version: match &adapter.launch {
+            Launch::BundledNodeSocket { version, .. } => Some(version.clone()),
+            Launch::Stdio { .. } | Launch::Tcp { .. } => None,
+        },
         extensions: adapter.languages.keys().cloned().collect(),
         detail,
         disabled: false,
@@ -537,12 +651,18 @@ pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
     let disabled = crate::settings::get_settings().dap.disabled;
     registry::registry()
         .iter()
-        .map(|adapter| DapHealth {
-            disabled: disabled.contains(&adapter.id),
-            ..check(adapter, bundled_entry(&app, &adapter.entry).is_none())
+        .map(|adapter| {
+            let entry_missing = match &adapter.launch {
+                Launch::BundledNodeSocket { entry, .. } => bundled_entry(&app, entry).is_none(),
+                Launch::Stdio { .. } | Launch::Tcp { .. } => false,
+            };
+            DapHealth { disabled: disabled.contains(&adapter.id), ..check(adapter, entry_missing) }
         })
         .collect()
 }
+
+#[cfg(test)]
+mod test_client;
 
 #[cfg(test)]
 mod tests {
@@ -694,7 +814,7 @@ mod tests {
         let mut line = String::new();
         BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
         let grandchild: u32 = line.trim().parse().expect("child pid");
-        let server = Server { child, socket: socket_path().unwrap(), sessions: HashMap::new() };
+        let server = Server { child, socket: None, child_sessions: false, sessions: HashMap::new() };
         (server, grandchild)
     }
 
@@ -818,11 +938,64 @@ mod tests {
         assert!(socket.exists());
 
         let (mut server, _) = group_with_child();
-        server.socket = socket.clone();
+        server.socket = Some(socket.clone());
         stop(&mut server);
 
         assert!(!socket.exists(), "the socket outlived the server that bound it");
         assert!(connect_retry(&socket, Duration::from_millis(200)).is_err());
+    }
+
+    /// An adapter built from a TOML launch table, for the transport tests.
+    fn adapter(launch: &str) -> DapAdapter {
+        let text = format!(
+            "schema_version = 1\nid = \"echo\"\nlabel = \"Echo\"\nroot_markers = [\".git\"]\n\
+             [languages]\necho = \"echo\"\n[launch]\n{launch}\n"
+        );
+        registry::load_adapter_str(&text, "test").unwrap()
+    }
+
+    fn round_trip(started: Started) -> String {
+        let Started { child, reader, mut writer, socket } = started;
+        let (tx, rx) = mpsc::channel();
+        pump_frames(reader, move |b| {
+            let _ = tx.send(b);
+        });
+        write_frame(&mut writer, r#"{"seq":1,"type":"request"}"#).unwrap();
+        let echoed = recv(&rx);
+        stop(&mut Server { child, socket, child_sessions: false, sessions: HashMap::new() });
+        echoed
+    }
+
+    #[test]
+    fn a_stdio_adapter_round_trips_a_frame_over_its_pipes() {
+        let cat = adapter("kind = \"stdio\"\nprogram = \"cat\"");
+        let started = start_adapter(&cat, "/tmp", |_| None).expect("cat starts");
+        assert!(started.socket.is_none());
+        assert_eq!(round_trip(started), r#"{"seq":1,"type":"request"}"#);
+    }
+
+    /// Echoes one connection on the port in its first argument, standing in
+    /// for `dlv dap --listen`. Perl because every Mac has it.
+    const TCP_ECHO: &str = r#"$s = IO::Socket::INET->new(LocalAddr => "127.0.0.1", LocalPort => $ARGV[0], Listen => 1, ReuseAddr => 1) or die; $c = $s->accept; while (sysread($c, $d, 4096)) { syswrite($c, $d) }"#;
+
+    #[test]
+    fn a_tcp_adapter_is_dialled_on_the_port_tori_picked() {
+        let echo = adapter(&format!(
+            "kind = \"tcp\"\nprogram = \"perl\"\nargs = [\"-MIO::Socket::INET\", \"-e\", '{TCP_ECHO}', \"{{port}}\"]"
+        ));
+        let started = start_adapter(&echo, "/tmp", |_| None).expect("the echo adapter accepts");
+        assert_eq!(round_trip(started), r#"{"seq":1,"type":"request"}"#);
+    }
+
+    /// A lost port race, or an adapter that never ran, fails as soon as the
+    /// process is gone rather than after the full connect timeout.
+    #[test]
+    fn a_tcp_adapter_that_exits_at_once_fails_well_inside_the_timeout() {
+        let gone = adapter("kind = \"tcp\"\nprogram = \"false\"\nargs = [\"{port}\"]");
+        let began = Instant::now();
+        let err = start_adapter(&gone, "/tmp", |_| None).err().expect("nothing ever listens");
+        assert!(err.contains("exited before accepting"), "got {err}");
+        assert!(began.elapsed() < CONNECT_TIMEOUT / 5, "took {:?}", began.elapsed());
     }
 
     #[test]
@@ -877,29 +1050,34 @@ mod tests {
     /// `pnpm dap:install` yet.
     #[test]
     fn the_real_adapter_answers_a_framed_initialize() {
-        let entry = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/dap/"))
-            .join(&registry::find("js-debug").unwrap().entry);
-        if !entry.exists() {
-            eprintln!("skipping: {} not installed (run `pnpm dap:install`)", entry.display());
+        let js = registry::find("js-debug").unwrap();
+        let Launch::BundledNodeSocket { entry, .. } = &js.launch else {
+            panic!("js-debug should be bundled_node_socket, got {:?}", js.launch);
+        };
+        if test_client::dev_bundled(entry).is_none() {
+            eprintln!("skipping: {entry} not installed (run `pnpm dap:install`)");
+            return;
+        }
+        if crate::env::resolve_binary("node").is_none() {
+            eprintln!("skipping: node is not runnable here");
             return;
         }
 
-        let socket = socket_path().unwrap();
-        let child = spawn_adapter(&entry, &socket, "/tmp");
-        let Ok(child) = child else {
-            eprintln!("skipping: node is not runnable here");
-            return;
+        let started = start_adapter(js, "/tmp", test_client::dev_bundled).expect("the real adapter accepts");
+        let mut writer = started.writer;
+        let mut server = Server {
+            child: started.child,
+            socket: started.socket,
+            child_sessions: js.child_sessions,
+            sessions: HashMap::new(),
         };
-        let mut server = Server { child, socket: socket.clone(), sessions: HashMap::new() };
-
-        let mut stream = connect_retry(&socket, CONNECT_TIMEOUT).expect("the real adapter accepts");
         let (tx, rx) = mpsc::channel();
-        pump_frames(stream.try_clone().unwrap(), move |b| {
+        pump_frames(started.reader, move |b| {
             let _ = tx.send(b);
         });
 
         write_frame(
-            &mut stream,
+            &mut writer,
             r#"{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"js-debug","clientID":"tori","linesStartAt1":true,"columnsStartAt1":true}}"#,
         )
         .unwrap();
@@ -989,7 +1167,8 @@ mod tests {
         let installed = check(adapter, false);
         assert!(installed.detail.is_none());
         assert_eq!(installed.program, "node");
-        assert_eq!(installed.adapter_version, adapter.version);
+        let Launch::BundledNodeSocket { version, .. } = &adapter.launch else { panic!("{:?}", adapter.launch) };
+        assert_eq!(installed.adapter_version.as_ref(), Some(version));
         assert!(installed.extensions.contains(&"ts".to_string()));
     }
 

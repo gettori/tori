@@ -24,7 +24,7 @@ export type DapHealth = {
   status: BinaryStatus;
   path: string | null;
   version: string | null;
-  adapterVersion: string;
+  adapterVersion: string | null;
   extensions: string[];
   detail: string | null;
   disabled: boolean;
