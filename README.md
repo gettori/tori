@@ -81,6 +81,10 @@ working/needs-you dot around it. What a TOML alone cannot add is a **transport**
 for a protocol Tori does not speak, or a parser for a transcript shaped unlike
 claude's; both need Rust.
 
+Shell tabs run your own login shell with your rc files intact; what Tori sets
+in its environment, and how to keep a tmux auto-attach out of the tab, is in
+[docs/TERMINAL.md](docs/TERMINAL.md).
+
 ## Install
 
 ```sh
