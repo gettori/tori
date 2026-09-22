@@ -33,7 +33,7 @@ export default function UnifiedTabStrip(props: {
   return (
     <OverflowTabBar
       ref={props.ref}
-      class={`unified-strip ${props.blurred ? "pane-blur" : ""} ${props.class ?? ""}`}
+      class={`unified-strip ${props.bare ? "dock-strip" : ""} ${props.blurred ? "pane-blur" : ""} ${props.class ?? ""}`}
       items={props.items}
       activeId={props.activeId}
       idOf={idOf}

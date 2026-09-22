@@ -501,13 +501,18 @@ html {
   white-space: nowrap;
 }
 
-/* The pinned trailing action (+ New / Follow) sits at the far right. */
+/* The pinned trailing action (+ New / Follow) sits at the far right, except in
+   the dock, where the new-shell button follows the tabs. */
 .otab-trailing {
   margin-left: auto;
   align-self: center;
   display: inline-flex;
   align-items: center;
   flex: none;
+}
+
+.dock-strip .otab-trailing {
+  margin-left: 0;
 }
 
 /* The +N overflow count button. */
