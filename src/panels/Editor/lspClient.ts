@@ -323,6 +323,7 @@ function queueStart(server: LspServer, path: string, projectPath: string, starte
  *  session for its handle rather than a new one. */
 async function restart(server: LspServer, origin: Origin, live?: Session): Promise<void> {
   const startedAt = generation;
+  wrongEncoding.delete(server.id);
   if (live) {
     await stopSession(live);
     notify();
@@ -340,6 +341,7 @@ async function startFor(
   // project it was opened for is gone, so starting its server now would spawn
   // one nothing will ever use.
   if (startedAt !== generation) return;
+  if (wrongEncoding.has(server.id)) return;
 
   // Deliberately no "is this path already covered?" short-circuit here. A file
   // can sit under a live session's root and still belong to a *nearer* one: in
@@ -465,6 +467,28 @@ async function startFor(
   void configureSession(handle, client, server);
 }
 
+// Refused once per server id for the life of the app: the encoding belongs to
+// the binary, and every file opened after would start it and refuse it again.
+const wrongEncoding = new Set<string>();
+
+// The library turns positions into offsets by indexing JS strings, which is
+// UTF-16, with no hook to do otherwise. A server counting any other way would
+// put every edit and diagnostic in the wrong column on a non-ASCII line.
+function refuseEncoding(handle: LspHandle, server: LspServer, encoding: string): void {
+  wrongEncoding.add(server.id);
+  const session = sessions.get(key(handle));
+  if (session?.kind === "primary") retractPrimary(session);
+  if (session) dropSession(session);
+  notify();
+  const shutdown = JSON.stringify({ jsonrpc: "2.0", id: "tori-shutdown", method: "shutdown", params: null });
+  void invoke("lsp_send", { handle, message: shutdown }).catch(() => {});
+  notifyServer(handle, "exit", null);
+  void invoke("lsp_stop", { handle }).catch(() => {});
+  emitWith<ToastEvent>(TOAST, {
+    message: `${server.label} was stopped: it counts positions in ${encoding}, and Tori only reads UTF-16.`,
+  });
+}
+
 /** Fire-and-forget one JSON-RPC notification at a session's server. */
 function notifyServer(handle: LspHandle, method: string, params: unknown): void {
   const message = JSON.stringify({ jsonrpc: "2.0", method, params });
@@ -508,6 +532,9 @@ async function configureSession(handle: LspHandle, client: LSPClient, server: Ls
     initialized = false;
   });
   if (!initialized || sessions.get(key(handle))?.client !== client) return;
+
+  const encoding = client.serverCapabilities?.positionEncoding;
+  if (encoding && encoding !== "utf-16") return refuseEncoding(handle, server, encoding);
 
   if (server.settings) notifyServer(handle, "workspace/didChangeConfiguration", { settings: server.settings });
 

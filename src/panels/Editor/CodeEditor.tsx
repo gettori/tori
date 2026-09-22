@@ -47,8 +47,10 @@ import { toriRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
 import { publishSourceActionKinds } from "../../utils/sourceActions";
+import { publishServerProviders } from "../../utils/serverProviders";
 import { codeActionBulb, setCodeActionLine } from "./codeActionBulb";
 import { openPeek, selectPeekResult } from "./peekCommand";
+import { PEEK_PROVIDER, type PeekKind } from "./peekLocations";
 import { peekField, peekKeymap, peekTheme, type PeekState } from "./peekView";
 import {
   clearCodeActions,
@@ -142,6 +144,8 @@ import {
   EDITOR_LSP_SOURCE_ACTION,
   EDITOR_PEEK_DEFINITION,
   EDITOR_PEEK_REFERENCES,
+  EDITOR_PEEK_IMPLEMENTATION,
+  EDITOR_PEEK_TYPE_DEFINITION,
   SOURCE_KINDS,
   type SourceAction,
   REVEAL_TURN,
@@ -1063,10 +1067,20 @@ export default function CodeEditor(props: {
   /** Peek from the caret, in whichever file is on screen. A no-op with no file
    *  open, which is the state the palette's `editorFile` requirement usually
    *  keeps this out of but the event bus cannot promise. */
-  function peekFromCaret(kind: "definition" | "references") {
+  function peekFromCaret(kind: PeekKind) {
     const path = props.activePath;
     if (!view || !path) return;
     void openPeek(view, kind, path);
+  }
+
+  // Declines rather than preventing the default in a buffer no server claims,
+  // for `Alt-Enter`'s reason: a binding that swallows a key it cannot act on is
+  // worse than no binding.
+  function peekIfClaimed(kind: PeekKind): boolean {
+    const p = activePath();
+    if (!p || !claimedByLsp(p)) return false;
+    peekFromCaret(kind);
+    return true;
   }
 
   // A follower view (a second pane onto the same file) gets everything except
@@ -1158,18 +1172,10 @@ export default function CodeEditor(props: {
           return true;
         },
       },
-      {
-        // VS Code's peek chord. Declines rather than preventing the default in
-        // a buffer no server claims, for `Alt-Enter`'s reason above: a binding
-        // that swallows a key it cannot act on is worse than no binding.
-        key: "Alt-F12",
-        run: () => {
-          const p = activePath();
-          if (!p || !claimedByLsp(p)) return false;
-          peekFromCaret("definition");
-          return true;
-        },
-      },
+      // VS Code binds no key to type definition, so it takes the shifted one.
+      { key: "Alt-F12", run: () => peekIfClaimed("definition") },
+      { key: "Mod-F12", run: () => peekIfClaimed("implementation") },
+      { key: "Mod-Shift-F12", run: () => peekIfClaimed("typeDefinition") },
       // Before defaultKeymap, whose `Mod-i` runs `selectParentSyntax` without
       // recording where the selection came from; see `selectionKeymap`.
       ...selectionKeymap,
@@ -1445,9 +1451,9 @@ export default function CodeEditor(props: {
     // And for the lenses, which have the same "nothing at all until there is a
     // server" state and no local trigger that would end it.
     refreshLenses();
-    // And the same for the whole-file commands: which of them the palette
+    // And the same for the server-gated commands: which of them the palette
     // should list is the server's answer, so it is unknown until there is one.
-    publishSourceActions();
+    publishServerOffers();
   }
 
   /**
@@ -1621,20 +1627,24 @@ export default function CodeEditor(props: {
   });
   onCleanup(offFixLookup);
 
-  /** Tell the palette which whole-file actions this file's server offers, so
-   *  three commands nothing can answer never appear in a language that has
+  /** Tell the palette which whole-file actions and peeks this file's server
+   *  offers, so commands nothing can answer never appear in a language that has
    *  none. Re-read on a tab swap and on every client lifecycle change, because
    *  both change the answer and neither is observable from the store. */
-  function publishSourceActions() {
+  function publishServerOffers() {
     const path = shown;
     const target = path ? lspTargetFor(path) : null;
-    if (!target) return publishSourceActionKinds(null);
+    if (!target) {
+      publishServerProviders([]);
+      return publishSourceActionKinds(null);
+    }
     void target.ready.then(() => {
       // Compared against the file this call was *started* for, not against
       // whatever is on screen now: `initialize` can take a cold rust-analyzer
       // a long time, and answering for the tab the user has since left would
       // put one language's commands in another language's palette.
       if (shown !== path) return;
+      publishServerProviders(Object.values(PEEK_PROVIDER).filter((p) => target.supports(p)));
       const provider = target.capability("codeActionProvider");
       if (!provider) return publishSourceActionKinds(null);
       // `true` is a server that does code actions without enumerating kinds,
@@ -1988,7 +1998,7 @@ export default function CodeEditor(props: {
     void refreshSymbols();
     refreshSemantic();
     refreshLenses();
-    publishSourceActions();
+    publishServerOffers();
   }
 
 
@@ -2470,6 +2480,8 @@ export default function CodeEditor(props: {
     onWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, ({ kind, label }) => void runSourceAction(kind, label)),
     onEvent(EDITOR_PEEK_DEFINITION, () => peekFromCaret("definition")),
     onEvent(EDITOR_PEEK_REFERENCES, () => peekFromCaret("references")),
+    onEvent(EDITOR_PEEK_IMPLEMENTATION, () => peekFromCaret("implementation")),
+    onEvent(EDITOR_PEEK_TYPE_DEFINITION, () => peekFromCaret("typeDefinition")),
   ];
 
   // No listener for the vim-mode toggle: it is a setting rather than an editor
@@ -2642,8 +2654,9 @@ export default function CodeEditor(props: {
     clearCallRoots();
     clearCodeActions();
     // No editor, no server answering for anything, so the palette must stop
-    // offering three commands with nothing behind them.
+    // offering commands with nothing behind them.
     publishSourceActionKinds(null);
+    publishServerProviders([]);
     for (const rec of views.values()) rec.view.destroy();
     views.clear();
     // Nothing is going to adopt these now.

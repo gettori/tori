@@ -321,6 +321,8 @@ export type SourceAction = { kind: string; label: string };
 // symbol, and one command doing both would have to guess which was meant.
 export const EDITOR_PEEK_DEFINITION = "tori:editor-peek-definition";
 export const EDITOR_PEEK_REFERENCES = "tori:editor-peek-references";
+export const EDITOR_PEEK_IMPLEMENTATION = "tori:editor-peek-implementation";
+export const EDITOR_PEEK_TYPE_DEFINITION = "tori:editor-peek-type-definition";
 
 /** The LSP kinds those commands are spelled with. Here rather than beside the
  *  rest of the source-action logic because `commands.ts` needs them and is
