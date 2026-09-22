@@ -85,14 +85,14 @@ function tooltipDom(value: string, type: string | null): HTMLElement {
 const hoverTheme = EditorView.baseTheme({
   ".cm-debug-hover": {
     display: "flex",
-    gap: "6px",
+    gap: "var(--tori-space-3)",
     alignItems: "baseline",
-    padding: "2px 6px",
-    fontFamily: "var(--tori-font-mono)",
-    fontSize: "var(--tori-text-sm)",
+    padding: "var(--tori-space-3) var(--tori-space-4)",
+    fontFamily: 'var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace)',
+    fontSize: "var(--editor-font-size, 13px)",
   },
-  ".cm-debug-hover-type": { color: "var(--fg-subtle)" },
-  ".cm-debug-hover-value": { color: "var(--fg-default)", whiteSpace: "pre-wrap" },
+  ".cm-debug-hover-type": { flex: "none", color: "var(--fg-subtle)" },
+  ".cm-debug-hover-value": { minWidth: "0", color: "var(--fg-default)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
 });
 
 /**
