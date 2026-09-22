@@ -1,0 +1,27 @@
+# debugpy, the adapter behind VS Code's Python debugging. Tori installs it into
+# a venv of its own, made with the `python3` on your PATH, and runs the adapter
+# from there. The program being debugged runs on the project's interpreter
+# instead, which each launch config names, so the project never needs debugpy.
+
+schema_version = 1
+id = "debugpy"
+label = "Python (debugpy)"
+verified_against = "1.8.22"
+
+# Where a Python project's imports resolve from, which becomes the debuggee's
+# working directory. The Python language server's markers, less its own config.
+root_markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"]
+
+[languages]
+py = "debugpy"
+
+[launch]
+kind = "stdio"
+program = "python"
+resolve = "managed"
+args = ["-m", "debugpy.adapter"]
+
+[install]
+kind = "pip"
+package = "debugpy"
+version = "1.8.22"
