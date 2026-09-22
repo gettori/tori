@@ -124,7 +124,7 @@ export const EDITOR_TOGGLES = togglesIn("editing");
  *  not. */
 export const OWN_ROW_TOGGLES = togglesIn("editor");
 
-/** The one editing setting that is not a switch, read off the catalogue like
+/** An editing setting that is not a switch, read off the catalogue like
  *  the toggles are so its label and hint are still named in one place. Found by
  *  the key it edits rather than by its id, so the row and the setting cannot
  *  drift apart the way two strings can. */
@@ -132,6 +132,9 @@ export const TODO_TAGS: SettingEntry = SETTINGS.find((s) => s.edits === "todoPat
 
 /** The other one, found the same way. */
 export const ACTIVE_LINE: SettingEntry = SETTINGS.find((s) => s.edits === "activeLineHighlight")!;
+
+/** And the tab size, found the same way. */
+export const TAB_SIZE: SettingEntry = SETTINGS.find((s) => s.edits === "tabSize")!;
 
 /** What a pane needs from the shell: which rows the query left on screen, and
  *  the query itself so a row can mark *why* it is one of them. `shown` answers
@@ -517,6 +520,26 @@ export function TodoTagsRow(props: PaneProps) {
         aria-label={TODO_TAGS.label}
         value={editorDefaults().todoPatterns}
         onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
+      />
+    </EditsRow>
+  );
+}
+
+/** The tab size row: a stepper, since a width has no other value to flip to. */
+export function TabSizeRow(props: PaneProps) {
+  return (
+    <EditsRow
+      {...props}
+      entry={TAB_SIZE}
+      setting="tabSize"
+      pin="Use this width in the current workspace only, leaving your global setting alone"
+    >
+      <Stepper
+        aria-label={TAB_SIZE.label}
+        min={1}
+        max={8}
+        value={editorDefaults().tabSize}
+        onChange={(v) => setEditorDefault("tabSize", v)}
       />
     </EditsRow>
   );

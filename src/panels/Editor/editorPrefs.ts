@@ -17,11 +17,12 @@ import {
   highlightWhitespace,
   scrollPastEnd,
 } from "@codemirror/view";
+import { indentUnit } from "@codemirror/language";
+import { EditorState, type Extension } from "@codemirror/state";
 import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { rainbowBrackets, bracketPairGuides } from "./bracketPairs";
 import { minimap } from "./minimap";
 import { stickyScroll } from "./stickyScroll";
-import type { Extension } from "@codemirror/state";
 import type { ActiveLineHighlight, EditorDefaults } from "../Settings/settingsStore";
 
 /** A preference that resolves to a live-swappable extension. Named separately
@@ -137,4 +138,40 @@ export function editorPrefExtensions(
   overrides: EditorPrefOverrides = {},
 ): Extension[] {
   return activeEditorFeatures(prefs, overrides).map((f) => FEATURE_EXTENSIONS[f]());
+}
+
+/** How one buffer indents: the columns a level takes, how wide a tab is drawn,
+ *  and whether a level is spaces or a tab. */
+export type Indent = { size: number; tabWidth: number; spaces: boolean };
+
+/** What the `.editorconfig` files over one file say, null where they say
+ *  nothing. */
+export type FileIndent = { spaces: boolean | null; size: number | null; tabWidth: number | null };
+
+// A hand-edited settings file or an odd `.editorconfig` can hold any number,
+// and CodeMirror throws on an empty indent unit, so a width it cannot use is
+// read as no answer at all.
+const usable = (n: number | null | undefined): n is number =>
+  typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 16;
+
+// What `settingsStore` ships, for the case where neither layer left a width
+// this can use. Spelled out rather than imported: this module is behind the
+// lazy editor boundary and the store is not.
+const FALLBACK_WIDTH = 2;
+
+/** The file's own answer where it has one, the setting otherwise. */
+export function resolveIndent(prefs: EditorDefaults, file?: FileIndent): Indent {
+  const setting = usable(prefs.tabSize) ? prefs.tabSize : FALLBACK_WIDTH;
+  return {
+    size: usable(file?.size) ? file.size : setting,
+    tabWidth: usable(file?.tabWidth) ? file.tabWidth : setting,
+    spaces: file?.spaces ?? prefs.insertSpaces,
+  };
+}
+
+export function indentExtension(indent: Indent): Extension[] {
+  return [
+    EditorState.tabSize.of(indent.tabWidth),
+    indentUnit.of(indent.spaces ? " ".repeat(indent.size) : "\t"),
+  ];
 }

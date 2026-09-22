@@ -29,10 +29,32 @@
           "description": "Code lens. Draws the language server's reference and implementation counts above the lines they describe.",
           "default": false
         },
+        "trimTrailingWhitespace": {
+          "type": "boolean",
+          "description": "Trim trailing whitespace on save. Drops the spaces and tabs at the end of every line as the file is written.",
+          "default": false
+        },
+        "insertFinalNewline": {
+          "type": "boolean",
+          "description": "Insert final newline on save. Ends the file with exactly one line break: adds one where it is missing, and drops the blank lines trailing after it.",
+          "default": false
+        },
         "vimMode": {
           "type": "boolean",
           "description": "Vim keybindings. Modal editing in the code editor, with a status line showing pending commands.",
           "default": false
+        },
+        "tabSize": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Tab size. How many columns one indent level takes, and how wide a tab character is drawn.",
+          "default": 2
+        },
+        "insertSpaces": {
+          "type": "boolean",
+          "description": "Indent with spaces. Tab indents with spaces; off, it indents with tab characters.",
+          "default": true
         },
         "indentGuides": {
           "type": "boolean",

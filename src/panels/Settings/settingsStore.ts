@@ -183,7 +183,18 @@ export type EditorDefaults = {
    *  to a question the user asked, so it is a request per file per edit that
    *  nothing else would have made. (Wave 7) */
   codeLens: boolean;
+  /** Drop the spaces and tabs at the end of every line as the file is written.
+   *  Off by default for `formatOnSave`'s reason: it rewrites lines the user did
+   *  not touch, and in a repo nobody trims, every save becomes a wide diff. */
+  trimTrailingWhitespace: boolean;
+  /** End the written file with exactly one line break: one is added when it is
+   *  missing, and the blank lines after the last line with something on it go
+   *  with it. VS Code splits those two halves into two settings; one switch is
+   *  what "the file ends properly" means to the person turning it on. */
+  insertFinalNewline: boolean;
   vimMode: boolean;
+  tabSize: number;
+  insertSpaces: boolean;
   /** Vertical guides at each indent level, active one highlighted. (Phase 3) */
   indentGuides: boolean;
   /**
@@ -343,7 +354,14 @@ export const DEFAULT_SETTINGS: Settings = {
     organizeImportsOnSave: false,
     codeActionsOnSave: false,
     codeLens: false,
+    trimTrailingWhitespace: false,
+    insertFinalNewline: false,
     vimMode: false,
+    // CodeMirror's own indent unit, so Tab and the formatter's options are what
+    // they were before this was a setting. VS Code's 4 would re-indent every
+    // Tab press in a two-space file.
+    tabSize: 2,
+    insertSpaces: true,
     indentGuides: true,
     // Both places, which is where the caret line has always been marked here.
     // VS Code defaults to the line alone; this defaults to what Tori already
