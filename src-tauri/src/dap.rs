@@ -55,6 +55,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::env::augmented_path;
 
+mod cargo;
 mod managed;
 pub mod registry;
 
@@ -183,6 +184,14 @@ fn find_program(adapter: &DapAdapter, debuggers: &Path) -> Option<PathBuf> {
 }
 
 fn xcrun_find(program: &str) -> Option<PathBuf> {
+    // `xcrun` opens Apple's installer when there are no developer tools, and
+    // health asks on every Settings open, so it runs only once `xcode-select`
+    // names a developer directory that exists.
+    let dir = crate::env::output_with_timeout(Command::new("/usr/bin/xcode-select").arg("-p"))
+        .filter(|o| o.status.success())?;
+    if !Path::new(String::from_utf8_lossy(&dir.stdout).trim()).is_dir() {
+        return None;
+    }
     let out = crate::env::output_with_timeout(Command::new("xcrun").args(["-f", program]))?;
     if !out.status.success() {
         return None;
@@ -739,6 +748,57 @@ pub fn dap_uninstall(adapter_id: String) -> Result<(), String> {
     crate::lsp::managed::remove(&managed::debuggers_dir(), &adapter_id)
 }
 
+/// The binaries of the Cargo package at `root`, for the target picker.
+#[tauri::command(async)]
+pub fn dap_cargo_bins(root: String, project_path: String) -> Result<Vec<String>, String> {
+    crate::trust::gate_project(Path::new(&project_path))?;
+    cargo::bins(Path::new(&root))
+}
+
+/// Build `bin` in the package at `root` so it can be debugged, sending each
+/// line cargo prints to `on_line`. `build_id` is what `dap_cargo_cancel` stops
+/// it by.
+#[tauri::command(async)]
+pub fn dap_cargo_build(
+    root: String,
+    project_path: String,
+    bin: String,
+    build_id: String,
+    on_line: Channel<String>,
+) -> Result<cargo::Built, String> {
+    crate::trust::gate_project(Path::new(&project_path))?;
+    cargo::build(Path::new(&root), &bin, &build_id, |line| {
+        let _ = on_line.send(line.to_string());
+    })
+}
+
+#[tauri::command]
+pub fn dap_cargo_cancel(build_id: String) {
+    cargo::cancel(&build_id);
+}
+
+/// A program to debug, chosen in a native file picker opened at `root`. `None`
+/// when the pick is cancelled, as `pick_icon_file` answers.
+#[tauri::command(async)]
+pub fn dap_pick_program(root: String) -> Result<Option<String>, String> {
+    // `root` travels as an argument rather than inside the script, so no path
+    // can break out of the AppleScript string.
+    let out = Command::new("osascript")
+        .args([
+            "-e",
+            "on run argv",
+            "-e",
+            "POSIX path of (choose file with prompt \"Choose the program to debug\" default location (POSIX file (item 1 of argv)))",
+            "-e",
+            "end run",
+            &root,
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok((out.status.success() && !path.is_empty()).then_some(path))
+}
+
 #[cfg(test)]
 mod test_client;
 
@@ -1292,6 +1352,18 @@ mod tests {
         assert!(broken.detail.is_some_and(|d| d.contains("no longer runs")));
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_xcrun_adapter_reads_not_found_when_neither_xcrun_nor_the_path_has_it() {
+        let mut lldb = registry::find("lldb").expect("lldb is registered").clone();
+        let Launch::Stdio { args, resolve, .. } = &lldb.launch else { panic!("{:?}", lldb.launch) };
+        assert_eq!(*resolve, Resolve::Xcrun);
+        lldb.launch = Launch::Stdio { program: "tori-no-such-lldb-dap".into(), args: args.clone(), resolve: Resolve::Xcrun };
+
+        let health = check(&lldb, false, Path::new("/nonexistent"));
+        assert!(matches!(health.status, crate::health::BinaryStatus::NotFound), "{:?}", health.status);
+        assert_eq!(health.path, None);
     }
 
     #[test]

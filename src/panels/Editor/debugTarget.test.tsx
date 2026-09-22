@@ -29,7 +29,7 @@ type Handle = { server: string; session: string };
 type Invoke = { cmd: string; args: Record<string, unknown> };
 
 /** js-debug, plus a second adapter claiming `.rs` so F5 has two to choose
- *  between. It has no target kinds of its own yet. */
+ *  between. */
 const REGISTRY = [
   {
     id: "js-debug",
@@ -348,9 +348,8 @@ describe("starting a run", () => {
     await openFile(`${REPO}/src/main.rs`);
     calls.length = 0;
     emit(DEBUG_START);
-    await waitFor(() =>
-      expect(screen.getByText(/Tori cannot start Rust, C and C\+\+ \(lldb-dap\)/)).toBeTruthy(),
-    );
+    // No Cargo.toml at the root, so lldb's picker opens on a program to name.
+    await waitFor(() => expect(screen.getByText("Enter the path of a program built with debug info.")).toBeTruthy());
     expect(launchedConfig()).toBeNull();
     fireEvent.click(screen.getByText("Cancel"));
     await waitFor(() => expect(screen.queryByText("Start debugging")).toBeNull());

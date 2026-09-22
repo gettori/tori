@@ -331,3 +331,71 @@ fn it_hits_a_breakpoint_in_a_go_package_and_in_its_test() {
     assert_eq!(package.expect("the package's breakpoint is hit")["reason"], "breakpoint");
     assert_eq!(tests.expect("the test's breakpoint is hit")["reason"], "breakpoint");
 }
+
+#[test]
+fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
+    let lldb = registry::find("lldb").expect("lldb is registered");
+    if locate(lldb, dev_bundled).is_err() || crate::env::resolve_binary("cc").is_none() {
+        eprintln!("skipping: lldb-dap or `cc` is not installed");
+        return;
+    }
+
+    let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("sample.c");
+    std::fs::write(
+        &source,
+        "#include <stdio.h>\n\nint main(void) {\n  int total = 0;\n  for (int i = 0; i < 3; i++) {\n    total += i;\n  }\n  printf(\"%d\\n\", total);\n  return 0;\n}\n",
+    )
+    .unwrap();
+    let binary = dir.join("sample");
+    let built = std::process::Command::new("cc").args(["-g", "-O0", "-o"]).arg(&binary).arg(&source).status();
+    assert!(built.is_ok_and(|s| s.success()), "the sample builds");
+
+    let config = json!({
+        "type": "lldb-dap",
+        "request": "launch",
+        "name": "Debug sample",
+        "program": binary,
+        "cwd": dir,
+    });
+    let stopped = run_to_breakpoint(lldb, &dir, &source, 6, config);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
+}
+
+#[test]
+fn it_hits_a_breakpoint_in_a_cargo_binary_it_built() {
+    let lldb = registry::find("lldb").expect("lldb is registered");
+    if locate(lldb, dev_bundled).is_err() || crate::env::resolve_binary("cargo").is_none() {
+        eprintln!("skipping: lldb-dap or cargo is not installed");
+        return;
+    }
+
+    let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    // rustc records the physical path, and the temp dir sits under a symlink.
+    let dir = std::fs::canonicalize(&dir).unwrap();
+    std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+    let main = dir.join("src/main.rs");
+    std::fs::write(&main, "fn main() {\n    let mut total = 0;\n    for i in 0..3 {\n        total += i;\n    }\n    println!(\"{total}\");\n}\n").unwrap();
+    assert_eq!(super::cargo::bins(&dir).expect("cargo metadata runs"), ["sample"]);
+    let built = super::cargo::build(&dir, "sample", &next_id("b"), |_| {}).expect("the sample builds");
+    let sysroot = built.sysroot.expect("rustc names its sysroot");
+
+    // `lldbConfigFor` in debugTargets.ts.
+    let config = json!({
+        "type": "lldb-dap",
+        "request": "launch",
+        "name": "Debug sample",
+        "program": built.executable,
+        "cwd": dir,
+        "initCommands": [
+            format!("command script import \"{sysroot}/lib/rustlib/etc/lldb_lookup.py\""),
+            format!("command source -s 1 \"{sysroot}/lib/rustlib/etc/lldb_commands\""),
+        ],
+    });
+    let stopped = run_to_breakpoint(lldb, &dir, &main, 4, config);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
+}
