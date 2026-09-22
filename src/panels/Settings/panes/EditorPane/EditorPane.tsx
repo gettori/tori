@@ -6,6 +6,7 @@ import {
   Row,
   TodoTagsRow,
   ActiveLineRow,
+  TabSizeRow,
   ToggleRow,
   idsIn,
   workspaceName,
@@ -43,6 +44,7 @@ export default function EditorPane(props: PaneProps) {
             the same boolean row, and the list is what the wave keeps adding to.
             The hint is optional, carried only by the keys whose effect is not
             obvious from the label. */}
+        <TabSizeRow {...props} />
         <For each={EDITOR_TOGGLES}>{(t) => <ToggleRow {...props} entry={t} />}</For>
         <ActiveLineRow {...props} />
         <TodoTagsRow {...props} />

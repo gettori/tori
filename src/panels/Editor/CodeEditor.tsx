@@ -77,6 +77,7 @@ import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
 import { organizeForSave, type OrganizeDeps } from "./organizeOnSave";
+import { whitespaceEdits, type WhitespaceEdit } from "./whitespaceOnSave";
 import { editsByUri } from "./workspaceEdit";
 import { uriToPath } from "./toriWorkspace";
 import { diffChanges, toDoc } from "./docDiff";
@@ -100,7 +101,7 @@ import {
   fractionOfLine,
 } from "../../utils/liveBuffer";
 import { problemsFromState } from "./problemsFromState";
-import { editorPrefExtensions } from "./editorPrefs";
+import { editorPrefExtensions, indentExtension, resolveIndent, type FileIndent } from "./editorPrefs";
 import {
   selectionHistory,
   selectionKeymap,
@@ -201,6 +202,7 @@ type Buffer = {
   completion: Compartment;
   eol: Compartment;
   codeLens: Compartment;
+  indent: Compartment;
   pendingExternal?: string;
   pendingKind?: ConflictKind;
   /** Where the reader was when this buffer last left a view. Live buffers only,
@@ -213,6 +215,7 @@ type Buffer = {
   // Built without folding, guides, the minimap or a language server: a file
   // over the large threshold, or one shown as a banner.
   plain?: boolean;
+  fileIndent?: FileIndent;
 };
 // "changed": the file still exists but its contents moved under unsaved edits.
 // "deleted": the file is gone from disk (a checkpoint tree revert removes the
@@ -231,7 +234,13 @@ const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /** The per-buffer compartments, together because they are always built, passed
  *  and stored as a set. */
-type BufferConf = { lsp: Compartment; completion: Compartment; eol: Compartment; codeLens: Compartment };
+type BufferConf = {
+  lsp: Compartment;
+  completion: Compartment;
+  eol: Compartment;
+  codeLens: Compartment;
+  indent: Compartment;
+};
 
 // Closed tabs, kept so reopening one is a return to where it was left rather
 // than a fresh read (undo history included). Bounded; see closedBuffers.ts,
@@ -861,6 +870,21 @@ export default function CodeEditor(props: {
     if (buf) buf.state = buf.state.update({ changes, userEvent: "format" }).state;
   }
 
+  /** Put a change set into a buffer wherever it lives, and answer with what it
+   *  now holds. `applyFormatted`'s split, for a caller that already knows which
+   *  ranges move. */
+  function applyEdits(path: string, changes: WhitespaceEdit[]): string | null {
+    const live = authorityView(path);
+    if (live) {
+      live.dispatch({ changes, userEvent: "format" });
+      return live.state.sliceDoc();
+    }
+    const buf = buffers.get(path);
+    if (!buf) return null;
+    buf.state = buf.state.update({ changes, userEvent: "format" }).state;
+    return buf.state.sliceDoc();
+  }
+
   async function saveActive() {
     const path = shown;
     const authority = path ? authorityState(path) : undefined;
@@ -869,9 +893,15 @@ export default function CodeEditor(props: {
     // answers a different question for every CRLF file, which is what makes the
     // bytes written below the buffer's own (see lineEndings.ts).
     let text = authority.sliceDoc();
+    // The buffer as it stands right now. Every step below may rewrite it, and a
+    // step handed an identity from before that happened drops its own answer as
+    // belonging to a document that has moved.
+    const now = () => ({ text, id: authorityState(path)?.doc ?? authority.doc });
+    const tidy = whitespaceEdits(authority.doc, editorDefaults(), authority.lineBreak);
+    if (tidy.length) text = applyEdits(path, tidy) ?? text;
     // First, so organizing and the formatter tidy up after what a fix changed.
     if (codeActionsOnSaveFor(props.projectRoot)) {
-      const outcome = await organizeForSave(fixAllDeps, path, { text, id: authority.doc });
+      const outcome = await organizeForSave(fixAllDeps, path, now());
       if (outcome.kind === "gone") return;
       if (outcome.kind === "organized") applyFormatted(path, outcome.text);
       text = outcome.text;
@@ -882,7 +912,7 @@ export default function CodeEditor(props: {
     // Bounded inside `organizeForSave`, because this one asks a language server
     // and a server can simply not answer.
     if (organizeImportsOnSaveFor(props.projectRoot)) {
-      const outcome = await organizeForSave(organizeDeps, path, { text, id: authorityState(path)?.doc ?? authority.doc });
+      const outcome = await organizeForSave(organizeDeps, path, now());
       if (outcome.kind === "gone") return;
       if (outcome.kind === "organized") applyFormatted(path, outcome.text);
       text = outcome.text;
@@ -890,11 +920,8 @@ export default function CodeEditor(props: {
     // Ahead of the write, so what lands on disk and what is in the buffer are
     // the same bytes. Gated on the setting first: detection is a directory walk
     // in the backend, and a project that has opted out should not pay for it.
-    // The authority's doc is re-read here rather than reused from above:
-    // organizing may have just replaced it, and handing the formatter the old
-    // identity would make it discard its own result when both settings are on.
     if (formatOnSaveFor(props.projectRoot)) {
-      const outcome = await formatForSave(formatDeps, path, { text, id: authorityState(path)?.doc ?? authority.doc });
+      const outcome = await formatForSave(formatDeps, path, now());
       if (outcome.kind === "gone") return;
       if (outcome.kind === "formatted") applyFormatted(path, outcome.text);
       text = outcome.text;
@@ -1278,6 +1305,10 @@ export default function CodeEditor(props: {
     return codeLensExtension(editorDefaults().codeLens ?? false);
   }
 
+  function currentIndent(path: string, file = buffers.get(path)?.fileIndent): Extension {
+    return indentExtension(resolveIndent(editorDefaults(), file));
+  }
+
   /**
    * Everything one buffer's state is configured with.
    *
@@ -1299,6 +1330,7 @@ export default function CodeEditor(props: {
     conf: BufferConf,
     follower = false,
     plain = false,
+    fileIndent?: FileIndent,
   ): Extension[] {
     return [
       ...commonExtensions(follower, plain),
@@ -1341,6 +1373,7 @@ export default function CodeEditor(props: {
       }),
       conf.completion.of(currentFallbackCompletion(path)),
       conf.codeLens.of(currentCodeLens()),
+      conf.indent.of(currentIndent(path, fileIndent)),
       EditorView.updateListener.of((u) => {
         // Diagnostics arrive as a transaction effect from the LSP client, so
         // republish only when one actually lands rather than on every keypress.
@@ -1446,6 +1479,36 @@ export default function CodeEditor(props: {
     // Switching it on has nothing to draw until somebody asks: the field starts
     // empty, and without this the lenses would appear only at the next edit.
     refreshLenses();
+  }
+
+  /** Re-indent every buffer. Through the compartments rather than `prefsConf`,
+   *  which reaches the buffer on screen alone: a tab in the background would
+   *  otherwise come back still indenting the way it was built. Every view on a
+   *  file and not just its authority, since a second pane holds its own state
+   *  over the same document. */
+  function syncIndent() {
+    reconfigureBuffers(buffers, (buf) => buf.indent, currentIndent, (path, effects) => {
+      let reached = false;
+      for (const rec of views.values()) {
+        if (rec.path !== path) continue;
+        rec.view.dispatch({ effects });
+        reached = true;
+      }
+      return reached;
+    });
+  }
+
+  /** Ask again for every open buffer: a rule written anywhere above a file can
+   *  change its answer, so which files are affected is not worth deriving. */
+  async function rereadEditorConfig() {
+    await Promise.all(
+      [...buffers.keys()].map(async (path) => {
+        const answer = await invoke<FileIndent | null>("editorconfig_indent", { path }).catch(() => null);
+        const buf = buffers.get(path);
+        if (buf) buf.fileIndent = answer ?? undefined;
+      }),
+    );
+    syncIndent();
   }
 
   // The language client moved: came up, went away, or was replaced by a project
@@ -1784,6 +1847,7 @@ export default function CodeEditor(props: {
   /** Open a file: read it, revive whatever was kept of it, and register the
    *  buffer. One caller at a time, through `building`. */
   async function buildBuffer(path: string): Promise<Buffer> {
+    const askedIndent = invoke<FileIndent | null>("editorconfig_indent", { path }).catch(() => null);
     let raw = "";
     let unreadable: string | null = null;
     const size = await invoke<number | null>("fs_file_size", { path }).catch(() => null);
@@ -1798,6 +1862,7 @@ export default function CodeEditor(props: {
     }
     // The first open of a language awaits its pack's chunk import.
     const lang = await langForPath(path);
+    const fileIndent = (await askedIndent) ?? undefined;
     const existing = buffers.get(path);
     if (existing) return existing;
     const disk = fromDisk(raw);
@@ -1806,13 +1871,14 @@ export default function CodeEditor(props: {
       completion: new Compartment(),
       eol: new Compartment(),
       codeLens: new Compartment(),
+      indent: new Compartment(),
     };
     // Unsaved work the last quit stashed outranks both: the file on disk is by
     // definition not what the user was looking at. Taken even when the read
     // failed, since for a file deleted while the app was shut it is the only copy.
     const stashed = takeStashEntry(path);
     const plain = (unreadable !== null && !stashed) || (size !== null && size > LARGE_FILE_BYTES);
-    const extensions = bufferExtensions(path, disk, lang, conf, false, plain);
+    const extensions = bufferExtensions(path, disk, lang, conf, false, plain, fileIndent);
     if (unreadable !== null && !stashed) return holdUnopenable(path, unreadable, extensions, conf);
     // A tab reopened onto an unchanged file comes back with its undo history,
     // cursor and folds. `disk.text` and not the raw bytes, so a CRLF file is
@@ -1830,6 +1896,7 @@ export default function CodeEditor(props: {
           ...conf,
         };
     buf.plain = plain;
+    buf.fileIndent = fileIndent;
     buffers.set(path, buf);
     // The baseline for the save guard, taken from the same open that produced
     // `savedText`. Out-of-root paths only; everything else has a watcher.
@@ -2002,6 +2069,9 @@ export default function CodeEditor(props: {
       completion: new Compartment(),
       eol: new Compartment(),
       codeLens: new Compartment(),
+      // The authority's own, so one reconfigure reaches both states: a
+      // compartment is a key, and each state holds its own content for it.
+      indent: buf?.indent ?? new Compartment(),
     };
     return EditorState.create({
       doc: authority.doc,
@@ -2272,6 +2342,7 @@ export default function CodeEditor(props: {
         notifyLspFileChanged(p);
         if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
       }
+      if (e.payload.paths.some((p) => p.endsWith("/.editorconfig"))) void rereadEditorConfig();
     });
     // A chat session reporting its own writes, ~250ms before the watcher's
     // debounce would. Same handler and the same isSelfWrite check, so the two
@@ -2601,6 +2672,9 @@ export default function CodeEditor(props: {
   // asks the server for the first time, so it has to be told apart from a
   // whitespace toggle rather than folded into the list above.
   createEffect(on(() => editorDefaults().codeLens, () => syncCodeLens(), { defer: true }));
+  createEffect(
+    on(() => [editorDefaults().tabSize, editorDefaults().insertSpaces], () => syncIndent(), { defer: true }),
+  );
   // Toggling vim from Settings takes effect where the caret already is, with
   // the file's text and undo history untouched: a compartment reconfigure, not
   // a rebuild.

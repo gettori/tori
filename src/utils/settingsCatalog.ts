@@ -347,6 +347,20 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Applies every language server's fix-all to the file (ESLint, Biome and oxlint autofixes among them) before imports are organized and the formatter runs. Off by default: an autofix rewrites code you did not touch.",
   },
   {
+    id: "trim-trailing-whitespace",
+    section: "editor",
+    label: "Trim trailing whitespace on save",
+    toggles: "trimTrailingWhitespace",
+    hint: "Drops the spaces and tabs at the end of every line as the file is written, before the fixes, the import sort and the formatter run. Off by default: in a repo nobody trims, the first save turns into a diff across the whole file.",
+  },
+  {
+    id: "insert-final-newline",
+    section: "editor",
+    label: "Insert final newline on save",
+    toggles: "insertFinalNewline",
+    hint: "Ends the file with exactly one line break: adds one where it is missing, and drops the blank lines trailing after it.",
+  },
+  {
     id: "code-lens",
     section: "editor",
     label: "Code lens",
@@ -364,6 +378,20 @@ export const SETTINGS: SettingEntry[] = [
   // The editing-comfort toggles, in the order they read as a list rather than in
   // the order the wave built them: what the text looks like, then what the
   // editor does for you, then what survives a quit.
+  {
+    id: "tab-size",
+    section: "editing",
+    edits: "tabSize",
+    label: "Tab size",
+    hint: "How many columns one indent level takes, and how wide a tab character is drawn. Language server formatting is asked for the same width. A file's .editorconfig outranks it.",
+  },
+  {
+    id: "insert-spaces",
+    section: "editing",
+    label: "Indent with spaces",
+    toggles: "insertSpaces",
+    hint: "Tab indents with spaces. Off, it indents with tab characters. A file's .editorconfig outranks it.",
+  },
   { id: "indent-guides", section: "editing", label: "Indentation guides", toggles: "indentGuides" },
   {
     // No `toggles`, for the TODO tags row's reason below: four answers, so the
