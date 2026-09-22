@@ -11,7 +11,18 @@ import TabMark from "./TabMark";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
 import HistoryPanel from "./HistoryPanel";
 import Button from "../../components/Button/Button";
-import { X, ChevronDown, Plus, History, CircleDashed } from "lucide-solid";
+import {
+  X,
+  ChevronDown,
+  Plus,
+  History,
+  CircleDashed,
+  ListX,
+  MessageSquare,
+  SquareTerminal,
+  Terminal as TerminalIcon,
+  Zap,
+} from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -1818,11 +1829,11 @@ export default function Terminal(props: {
       : "No agent enabled. Turn one on in Settings.";
   };
 
-  /** The menu's two agent-backed rows, each present only while its agent is
-   *  one this install offers. Arrays so a call site can spread them in place
-   *  and an absent row costs no entry rather than a hole. */
-  const newChatItem = () => (noChatReason() ? [] : [{ label: "New chat", onClick: () => newChat() }]);
   /** The agent-terminal row, one per account once there are two of them.
+   *
+   *  An array so the call site can spread it in place and an absent row costs
+   *  no entry rather than a hole: it is gone entirely unless this install
+   *  offers the agent behind it.
    *
    *  An agent tab runs as an account exactly the way a chat does, so a single
    *  row would start whichever login Tori happened to inherit while the menu
@@ -1842,10 +1853,18 @@ export default function Terminal(props: {
     return accounts.length
       ? accounts.map((a) => ({
           label: label(a.label),
+          icon: SquareTerminal,
           onClick: () => newSession("claude", false, asTabProfile(a.id)),
           ...claudeRowRefusal(asTabProfile(a.id)),
         }))
-      : [{ label: label(), onClick: () => newSession("claude"), ...claudeRowRefusal() }];
+      : [
+          {
+            label: label(),
+            icon: SquareTerminal,
+            onClick: () => newSession("claude"),
+            ...claudeRowRefusal(),
+          },
+        ];
   };
 
   /** The fields that make a Claude launch row refuse in the selected project, or
@@ -2367,24 +2386,19 @@ export default function Terminal(props: {
           onOpenChange={setMenuOpen}
           placement="bottom-end"
           items={[
-            // The user's default surface leads, and the other one sits
-            // directly under it: whichever way the setting points, the
-            // other route stays a single click from this menu.
-            //
-            // The chat entry names no agent any more. It opens a draft, and
-            // which harness that draft would start is the palette's answer
-            // (the project's last-used one), not this menu's.
+            // The shell leads. It is the one row here with no agent behind it
+            // and nothing gating it, and it is what the main half used to open,
+            // so it is the route most often come looking for.
+            { label: "Terminal", icon: TerminalIcon, onClick: () => newShell() },
+            // No chat row: the main half of this split button is already that
+            // click, and a menu repeating its own button says there are two
+            // things where there is one.
             //
             // Every entry that would start an agent is absent unless that
             // agent is one this install offers: a menu row is a promise, and
             // one that starts something the user turned off in Settings is
             // Tori going around its own setting.
-            ...(settings.chatDefaults.defaultSurface === "agent"
-              ? [...claudeTerminalItem(), ...newChatItem()]
-              : [...newChatItem(), ...claudeTerminalItem("terminal")]),
-            // The shell the main half used to open, still one click away. No
-            // agent behind it, so nothing gates it.
-            { label: "Terminal", onClick: () => newShell() },
+            ...claudeTerminalItem("terminal"),
             // Absent when there is nothing to close, since a row that would
             // do nothing is worse than no row. Counted in the label: the
             // whole point is knowing how much of the strip this clears.
@@ -2392,6 +2406,7 @@ export default function Terminal(props: {
               ? [
                   {
                     label: `Close ${inertTabs().length} tab${inertTabs().length > 1 ? "s" : ""} not started`,
+                    icon: ListX,
                     onClick: closeInert,
                   },
                 ]
@@ -2404,6 +2419,7 @@ export default function Terminal(props: {
               ? [
                   {
                     label: "Continue this session in chat",
+                    icon: MessageSquare,
                     // Disabled rather than absent, and the label says why: the
                     // session exists and the reader can see it, so a row that
                     // silently vanished would read as Tori losing it.
@@ -2415,6 +2431,7 @@ export default function Terminal(props: {
                   // not only for a new one.
                   {
                     label: "Continue this session in terminal",
+                    icon: SquareTerminal,
                     disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
                     onClick: () => void focusOrResume(props.selected!),
                   },
@@ -2424,6 +2441,7 @@ export default function Terminal(props: {
               ? [
                   {
                     label: `${findAdapter("claude").label} (yolo)`,
+                    icon: Zap,
                     onClick: () => newSession("claude", true),
                     ...claudeRowRefusal(),
                   },

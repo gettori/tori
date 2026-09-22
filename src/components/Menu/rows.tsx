@@ -1,5 +1,5 @@
 import { For, Show, createUniqueId, type JSX } from "solid-js";
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight, type LucideIcon } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import { DropdownMenu as Primitive } from "../../lib/menu";
 import { useMenuSurface } from "./surface";
@@ -21,6 +21,10 @@ export type MenuItem =
   | {
       label: string;
       onClick: () => void;
+      /** A leading glyph, for a menu whose rows are read by shape before they
+       *  are read as words. Decorative: the label still carries the meaning, so
+       *  it is hidden from the accessibility tree. */
+      icon?: LucideIcon;
       danger?: boolean;
       warn?: boolean;
       disabled?: boolean;
@@ -190,6 +194,9 @@ function NoteRow(props: { item: Extract<MenuItem, { label: string }> }) {
       refusing={props.item.refusing}
       describedBy={props.item.note ? noteId : undefined}
     >
+      <Show when={props.item.icon}>
+        {(icon) => <Icon icon={icon()} aria-hidden="true" />}
+      </Show>
       <Show when={props.item.note} fallback={props.item.label}>
         <span class={styles.noted}>
           {props.item.label}
