@@ -149,6 +149,13 @@ export default function Tab(props: TabProps) {
     local.onClose(e);
   };
 
+  // `auxclick` fires for the right button too, and that one opens the menu.
+  const onAuxClick = (e: MouseEvent) => {
+    if (row.inert || !local.onClose || e.button !== 1) return;
+    e.preventDefault();
+    local.onClose(e);
+  };
+
   const at = () => row.position(local.value);
 
   const content = () => (
@@ -171,6 +178,7 @@ export default function Tab(props: TabProps) {
       data-tab-pill=""
       class={local.class}
       classList={{ [styles.pill]: true }}
+      onAuxClick={onAuxClick}
     >
       <Show
         when={!row.inert}

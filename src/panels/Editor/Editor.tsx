@@ -189,7 +189,10 @@ import {
   type SplitPane,
   type FileRenamed,
   type FsChanged,
+  MOVE_TAB_TO_PANE,
+  type MoveTabToPane,
 } from "../../utils/events";
+import { copyPaths, revealPaths } from "../../utils/pathActions";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { rootOf, selectionRoot, workspaceKey } from "../../utils/topics";
 import {
@@ -330,6 +333,7 @@ import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind } from "../../tabs/registry";
+import { TAB_MOVE_MIME } from "../../tabs/tabDrag";
 import { isKindHome, kindHomePane, paneActiveId, paneTabs, panesWithKind } from "../../tabs/paneTabs";
 import { focusedPaneId } from "../../layout/layoutStore";
 import { paneMenuItems } from "../../tabs/paneTabs";
@@ -1095,26 +1099,85 @@ export default function Editor(props: {
   }
 
 
+  /** The file tabs this one shares a strip with, in the order they are drawn.
+   *  Pane order rather than the workspace list, because "to the right" can only
+   *  mean what the person right-clicking can see. */
+  function stripSiblings(t: FileTab): FileTab[] {
+    const pane = paneHoldingFile(tabId(t));
+    if (!pane) return tabs();
+    return paneTabs(ws(), pane)
+      .filter((u): u is FileUnifiedTab => u.kind === "file")
+      .map((u) => u.file);
+  }
+
+  /** Close a run of tabs one at a time. A dirty tab asks before it goes, and
+   *  several prompts racing each other would each read the strip as it stood
+   *  before any of the others had closed anything. Each close is independent,
+   *  so one failure reports and the rest still go. */
+  async function closeEach(victims: FileTab[]) {
+    for (const v of victims) {
+      try {
+        await closeTab(tabId(v));
+      } catch (e) {
+        emitWith<ToastEvent>(TOAST, { message: `Could not close ${v.name}: ${String(e)}` });
+      }
+    }
+  }
+
   function tabMenuItems(t: FileTab): MenuItem[] {
     const panes = paneMenuItems(ws(), { id: tabId(t), kind: "file" });
+    const siblings = stripSiblings(t);
+    const at = siblings.findIndex((s) => tabId(s) === tabId(t));
+    const saved = siblings.filter((s) => !dirty()[s.path]);
+    const closes: MenuItem[] = [
+      {
+        label: "Close others",
+        disabled: siblings.length < 2,
+        onClick: () => void closeEach(siblings.filter((s) => tabId(s) !== tabId(t))),
+      },
+      {
+        label: "Close to the right",
+        disabled: at < 0 || at === siblings.length - 1,
+        onClick: () => void closeEach(siblings.slice(at + 1)),
+      },
+      { label: "Close saved", disabled: !saved.length, onClick: () => void closeEach(saved) },
+    ];
     const r = root();
     const rel = r && repoRelative(t.path, r);
-    if (!r || !rel) return panes;
+    // A `tori://` id names no folder anyone could reach.
+    if (isSyntheticId(t.path)) return [...panes, { separator: true }, ...closes];
+    const relRoot = tabMember(t.path)?.key ?? r;
+    const relFrom = relRoot && repoRelative(t.path, relRoot);
+    const paths: MenuItem[] = [
+      { label: "Copy path", onClick: () => void copyPaths([t.path]) },
+      ...(relFrom ? [{ label: "Copy relative path", onClick: () => void copyPaths([relFrom]) }] : []),
+      { label: "Reveal in Finder", onClick: () => void revealPaths([t.path]) },
+    ];
+    const history: MenuItem[] =
+      r && rel
+        ? [
+            {
+              label: "File history",
+              onClick: () =>
+                emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
+            },
+            {
+              // Beside it, not instead of it: git's list is what was committed,
+              // this one is what was saved, and the version somebody is hunting
+              // for is usually in exactly the half the other one never kept.
+              label: "Local history",
+              onClick: () =>
+                emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", r, rel) }),
+            },
+          ]
+        : [];
     return [
       ...panes,
       { separator: true },
-      {
-        label: "File history",
-        onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
-      },
-      {
-        // Beside it, not instead of it: git's list is what was committed, this
-        // one is what was saved, and the version somebody is hunting for is
-        // usually in exactly the half the other one never kept.
-        label: "Local history",
-        onClick: () =>
-          emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", r, rel) }),
-      },
+      ...closes,
+      { separator: true },
+      ...paths,
+      ...(history.length ? [{ separator: true } as MenuItem, ...history] : []),
     ];
   }
 
@@ -1484,6 +1547,43 @@ export default function Editor(props: {
     // because `PaneView`'s `onActivate` writes both.
     const pane = paneHoldingFile(path) ?? focusedEditorPane();
     if (pane && pane !== SOLO_PANE) setPaneActive(ws(), pane, path);
+  }
+
+  // Capture phase, or CodeMirror's own drop handler below would insert the path
+  // as text: the payload carries `text/plain` too, so a tab dropped on a
+  // terminal pastes something the shell can use.
+  function acceptPathDrops(el: HTMLElement, paneId: string) {
+    const carries = (e: DragEvent) =>
+      !!e.dataTransfer &&
+      !e.dataTransfer.types.includes(TAB_MOVE_MIME) &&
+      e.dataTransfer.types.includes(DRAG_PATH_MIME);
+    const over = (e: DragEvent) => {
+      if (!carries(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const drop = (e: DragEvent) => {
+      if (!carries(e)) return;
+      const path = e.dataTransfer!.getData(DRAG_PATH_MIME);
+      if (!path) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const was = paneHoldingFile(path);
+      openFile(path);
+      // The pane it landed on, not the focused one. `openFile` puts a tab where
+      // the file already is or where focus is, and a drop is the one opener
+      // that names somewhere else.
+      if (paneId !== SOLO_PANE && was !== paneId) {
+        emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: path, kind: "file", paneId });
+      }
+    };
+    el.addEventListener("dragover", over, true);
+    el.addEventListener("drop", drop, true);
+    onCleanup(() => {
+      el.removeEventListener("dragover", over, true);
+      el.removeEventListener("drop", drop, true);
+    });
   }
 
   let slotBusy: Promise<void> = Promise.resolve();
@@ -2769,7 +2869,10 @@ export default function Editor(props: {
         // Registered by pane id; the width observer effect above picks the
         // focused one, so the right panel's bound tracks focus and remounts
         // rather than whichever column happened to be focused at mount.
-        ref={(el) => holdCol(p.paneId, el)}
+        ref={(el) => {
+          holdCol(p.paneId, el);
+          acceptPathDrops(el, p.paneId);
+        }}
       >
         {/* Where the open file sits and where the caret sits in it. Below the
             tabs and above everything else in the column: a tab says which file,
