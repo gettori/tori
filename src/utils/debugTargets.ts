@@ -3,9 +3,11 @@
 // Every target belongs to one adapter, and each adapter offers its own kinds.
 // js-debug's three are the three ways a Node program is already started: the
 // file in front of you, a script the project declares, and a process somebody
-// else started with `--inspect`. Everything here is pure: the caller supplies
-// the resolved root, that root's directory listing and the launch environment,
-// so every rule is testable without a workspace on disk.
+// else started with `--inspect`. debugpy's are the three ways Python code is
+// run: a file, a module (`python -m`), and a test file under pytest. Everything
+// here is pure: the caller supplies the resolved root, that root's directory
+// listing and the launch environment, so every rule is testable without a
+// workspace on disk.
 //
 // The `cwd` is the load-bearing field. It is the backend's `root_for` answer,
 // not the workspace root, and in a monorepo those differ: `cwd` decides module
@@ -19,10 +21,16 @@ import type { DebugConfig } from "./dapSessions";
 /** The adapter every JavaScript and TypeScript target uses. */
 export const JS_ADAPTER = "js-debug";
 
+/** The adapter every Python target uses. */
+export const PYTHON_ADAPTER = "debugpy";
+
 export type DebugTarget =
   | { adapterId: typeof JS_ADAPTER; kind: "file"; path: string }
   | { adapterId: typeof JS_ADAPTER; kind: "script"; script: string }
-  | { adapterId: typeof JS_ADAPTER; kind: "attach"; port: number };
+  | { adapterId: typeof JS_ADAPTER; kind: "attach"; port: number }
+  | { adapterId: typeof PYTHON_ADAPTER; kind: "file"; path: string }
+  | { adapterId: typeof PYTHON_ADAPTER; kind: "module"; module: string }
+  | { adapterId: typeof PYTHON_ADAPTER; kind: "pytest"; path: string };
 
 export type TargetKind = DebugTarget["kind"];
 
@@ -40,6 +48,7 @@ export type DapAdapterInfo = {
  *  registers and this table does not name has none yet. */
 const ADAPTER_KINDS: Readonly<Record<string, readonly TargetKind[]>> = {
   [JS_ADAPTER]: ["file", "script", "attach"],
+  [PYTHON_ADAPTER]: ["file", "module", "pytest"],
 };
 
 export function kindsFor(adapterId: string): readonly TargetKind[] {
@@ -61,6 +70,8 @@ export type TargetContext = {
    *  GUI-launched Tori inherits a minimal one and `pnpm` is not on it
    *  (gotchas#gui-launched-processes-inherit-a-minimal-path). */
   env: Record<string, string>;
+  /** The project's interpreter, for a Python target. */
+  python?: string;
 };
 
 /** The DAP `type` every target uses. js-debug drives every JS dialect through
@@ -141,15 +152,58 @@ export function attachConfig(ctx: TargetContext, port: number): DebugConfig {
   };
 }
 
+/** The DAP `type` every Python target uses. */
+export const PYTHON_DEBUG_TYPE = "debugpy";
+
+/** A dotted Python module name, what `python -m` takes. */
+export function isModuleName(value: string): boolean {
+  return /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(value);
+}
+
+/**
+ * Fields every Python launch carries.
+ *
+ * `python` is the project's interpreter, not the one debugpy runs from: Tori's
+ * own venv holds the adapter and none of the project's packages. Without one
+ * debugpy falls back to its own. `console: "internalConsole"` for js-debug's
+ * reason: anything else makes the adapter ask for `runInTerminal`, which Tori
+ * does not serve.
+ */
+function pythonLaunch(ctx: TargetContext, name: string): DebugConfig {
+  return {
+    type: PYTHON_DEBUG_TYPE,
+    request: "launch",
+    name,
+    cwd: ctx.root,
+    console: "internalConsole",
+    justMyCode: true,
+    env: ctx.env,
+    ...(ctx.python ? { python: ctx.python } : {}),
+  };
+}
+
+function pythonConfigFor(target: DebugTarget & { adapterId: typeof PYTHON_ADAPTER }, ctx: TargetContext): DebugConfig {
+  switch (target.kind) {
+    case "file":
+      return { ...pythonLaunch(ctx, `Debug ${basename(target.path)}`), program: target.path };
+    case "module":
+      return { ...pythonLaunch(ctx, `Debug -m ${target.module}`), module: target.module };
+    case "pytest":
+      return { ...pythonLaunch(ctx, `Debug pytest ${basename(target.path)}`), module: "pytest", args: [target.path] };
+  }
+}
+
 /** The config for one target, built by the rules of the adapter it runs under. */
 export function configFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
   switch (target.adapterId) {
     case JS_ADAPTER:
       return nodeConfigFor(target, ctx);
+    case PYTHON_ADAPTER:
+      return pythonConfigFor(target, ctx);
   }
 }
 
-function nodeConfigFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
+function nodeConfigFor(target: DebugTarget & { adapterId: typeof JS_ADAPTER }, ctx: TargetContext): DebugConfig {
   switch (target.kind) {
     case "file":
       return fileConfig(ctx, target.path);
@@ -162,10 +216,11 @@ function nodeConfigFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
 
 /** The file a target's root should be resolved against.
  *
- *  A script and an attach have no file of their own, so they resolve against
- *  the root the picker was opened at, which the caller passes as the fallback. */
+ *  A script, an attach and a module have no file of their own, so they resolve
+ *  against the root the picker was opened at, which the caller passes as the
+ *  fallback. */
 export function anchorFor(target: DebugTarget, fallback: string): string {
-  return target.kind === "file" ? target.path : fallback;
+  return "path" in target ? target.path : fallback;
 }
 
 /** How a target reads in the picker and in the pane. */
@@ -177,6 +232,10 @@ export function describeTarget(target: DebugTarget): string {
       return `run ${target.script}`;
     case "attach":
       return `port ${target.port}`;
+    case "module":
+      return `-m ${target.module}`;
+    case "pytest":
+      return `pytest ${basename(target.path)}`;
   }
 }
 
@@ -287,10 +346,17 @@ export function setLastTarget(store: LastTargetStore, ws: string, target: DebugT
  *  than launched as something it is not. */
 function isTarget(value: unknown): value is DebugTarget {
   const t = value as DebugTarget | null;
-  if (!t || typeof t !== "object" || t.adapterId !== JS_ADAPTER) return false;
-  if (t.kind === "file") return typeof t.path === "string" && t.path.length > 0;
-  if (t.kind === "script") return typeof t.script === "string" && t.script.length > 0;
-  if (t.kind === "attach") return isPort(t.port);
+  if (!t || typeof t !== "object") return false;
+  const nonEmpty = (v: unknown) => typeof v === "string" && v.length > 0;
+  if (t.adapterId === JS_ADAPTER) {
+    if (t.kind === "file") return nonEmpty(t.path);
+    if (t.kind === "script") return nonEmpty(t.script);
+    if (t.kind === "attach") return isPort(t.port);
+  }
+  if (t.adapterId === PYTHON_ADAPTER) {
+    if (t.kind === "file" || t.kind === "pytest") return nonEmpty(t.path);
+    if (t.kind === "module") return typeof t.module === "string" && isModuleName(t.module);
+  }
   return false;
 }
 

@@ -1275,7 +1275,7 @@ export default function Editor(props: {
     // A remembered file target whose tab is gone is not a target any more, and
     // silently launching it would be worse than asking again.
     const stale =
-      remembered?.kind === "file" && !tabs().some((t) => t.path === remembered.path);
+      !!remembered && "path" in remembered && !tabs().some((t) => t.path === remembered.path);
     if (remembered && !stale) void runDebugTarget(remembered);
     else void openDebugPicker(choices, null);
   }

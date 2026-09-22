@@ -226,8 +226,8 @@ describe("the last target", () => {
           "/b": { kind: "attach", port: 80 },
           "/c": { kind: "file", path: "" },
           "/d": { kind: "attach", port: 9229 },
-          "/e": [{ adapterId: "debugpy", kind: "module", module: "app" }],
-          "/f": [script, { ...file, adapterId: "debugpy" }],
+          "/e": [{ adapterId: "no-such-debugger", kind: "module", module: "app" }],
+          "/f": [script, { ...file, adapterId: "no-such-debugger" }],
         }),
       ),
     ).toEqual({ "/d": [{ adapterId: JS_ADAPTER, kind: "attach", port: 9229 }], "/f": [script] });
