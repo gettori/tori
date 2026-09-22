@@ -352,13 +352,14 @@ describe("an untrusted project", () => {
       expect(await m.startDebugSession(start)).toBeNull();
 
       expect(toasts).toHaveLength(2);
-      expect(toasts[1].action?.label).toBe("Trust");
+      const [trustAction] = [toasts[1].action].flat();
+      expect(trustAction?.label).toBe("Trust");
       expect(failures).toEqual([]);
       expect(m.debugRoots()).toHaveLength(0);
       expect(trust.refusedProjects()).toEqual(["/p"]);
 
       untrusted = false;
-      toasts[1].action?.run();
+      trustAction?.run();
       await vi.waitFor(() => expect(trust.refusedProjects()).toEqual([]));
       expect(await m.startDebugSession(start)).not.toBeNull();
     } finally {

@@ -15,17 +15,18 @@
 // TypeScript would mean two implementations of the same marker walk, and any
 // disagreement between them pairs a client with the wrong server silently.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::env::augmented_path;
 
@@ -47,10 +48,72 @@ pub struct LspHandle {
 pub struct LspSession {
     child: Child,
     stdin: ChildStdin,
+    // A handle outlives its process: after a stop and a start, a late EOF from
+    // the old process must not reap the new one.
+    serial: u64,
 }
 
+static NEXT_SERIAL: AtomicU64 = AtomicU64::new(0);
+
+const LOG_CAP: usize = 64 * 1024;
+
+type Log = Arc<Mutex<VecDeque<u8>>>;
+
+// Logs are not dropped with their session, because the one worth reading is
+// the one that explains why a server just died.
 #[derive(Default)]
-pub struct LspState(pub Mutex<HashMap<LspHandle, LspSession>>);
+pub struct LspState {
+    sessions: Mutex<HashMap<LspHandle, LspSession>>,
+    logs: Mutex<HashMap<LspHandle, Log>>,
+}
+
+/// What `lsp://exited` carries. `deliberate` is decided here because only this
+/// side knows: `lsp_stop_all` sweeps before the frontend's teardown finishes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LspExited {
+    pub handle: LspHandle,
+    pub status: Option<String>,
+    pub deliberate: bool,
+}
+
+const EXITED: &str = "lsp://exited";
+
+impl LspState {
+    fn stop(&self, handle: &LspHandle) -> Result<Option<LspExited>, String> {
+        let session = self.sessions.lock().map_err(|e| e.to_string())?.remove(handle);
+        Ok(session.map(|mut s| LspExited { handle: handle.clone(), status: stop(&mut s), deliberate: true }))
+    }
+
+    fn stop_all(&self) -> Result<Vec<LspExited>, String> {
+        let drained: Vec<_> = self.sessions.lock().map_err(|e| e.to_string())?.drain().collect();
+        Ok(drained
+            .into_iter()
+            .map(|(handle, mut s)| LspExited { status: stop(&mut s), handle, deliberate: true })
+            .collect())
+    }
+
+    /// A session whose stdout closed. `None` when a deliberate stop already
+    /// took it out of the map, since that stop reports it.
+    fn reap(&self, handle: &LspHandle, serial: u64) -> Option<LspExited> {
+        let mut session = {
+            let mut sessions = self.sessions.lock().ok()?;
+            if sessions.get(handle)?.serial != serial {
+                return None;
+            }
+            sessions.remove(handle)?
+        };
+        Some(LspExited { handle: handle.clone(), status: stop(&mut session), deliberate: false })
+    }
+
+    fn log(&self, handle: &LspHandle) -> String {
+        let tail = self.logs.lock().ok().and_then(|logs| {
+            let tail: Vec<u8> = logs.get(handle)?.lock().ok()?.iter().copied().collect();
+            Some(tail)
+        });
+        String::from_utf8_lossy(&tail.unwrap_or_default()).into_owned()
+    }
+}
 
 /// Locate a bundled server entry: the packaged resource first, then the dev
 /// source tree on the build machine (so `tauri dev` works without bundling).
@@ -103,37 +166,63 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
     }
 }
 
-/// Spawn a server rooted at `root`, returning the session plus its stdout.
-fn spawn_session(mut cmd: Command, root: &str) -> Result<(LspSession, std::process::ChildStdout), String> {
+/// Spawn a server rooted at `root`, returning the session plus its stdout and
+/// stderr.
+fn spawn_session(mut cmd: Command, root: &str) -> Result<(LspSession, ChildStdout, ChildStderr), String> {
     let mut child = cmd
         .current_dir(root)
         .env("PATH", augmented_path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("failed to spawn the language server: {e}"))?;
 
     let stdout = child.stdout.take().ok_or("language server has no stdout")?;
+    let stderr = child.stderr.take().ok_or("language server has no stderr")?;
     let stdin = child.stdin.take().ok_or("language server has no stdin")?;
-    Ok((LspSession { child, stdin }, stdout))
+    let serial = NEXT_SERIAL.fetch_add(1, Ordering::Relaxed);
+    Ok((LspSession { child, stdin, serial }, stdout, stderr))
+}
+
+/// Keep the last `LOG_CAP` bytes of `stderr` in `log`. A server that is never
+/// read from blocks once the pipe fills, so this drains it whether or not
+/// anyone ever asks for the log.
+fn pump_log<R: Read + Send + 'static>(mut stderr: R, log: Log) {
+    thread::spawn(move || {
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = match stderr.read(&mut buf) {
+                Ok(0) | Err(_) => return,
+                Ok(n) => n,
+            };
+            let Ok(mut tail) = log.lock() else { return };
+            tail.extend(&buf[..n]);
+            let over = tail.len().saturating_sub(LOG_CAP);
+            tail.drain(..over);
+        }
+    });
 }
 
 /// Read LSP frames (Content-Length header + body) off `stdout` and hand each
-/// JSON body to `sink`. Returns when the stream reaches EOF, i.e. when the
+/// JSON body to `sink`. Calls `on_eof` when the stream ends, i.e. when the
 /// server stops.
 ///
 /// Generic over the sink so the framing can be tested against a plain pipe,
 /// with no Tauri `Channel` and no real language server involved.
-fn pump_frames<R: Read + Send + 'static>(stdout: R, sink: impl Fn(String) + Send + 'static) {
+fn pump_frames<R: Read + Send + 'static>(
+    stdout: R,
+    sink: impl Fn(String) + Send + 'static,
+    on_eof: impl FnOnce() + Send + 'static,
+) {
     thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
-        loop {
+        'frames: loop {
             let mut content_length = 0usize;
             loop {
                 let mut line = String::new();
                 match reader.read_line(&mut line) {
-                    Ok(0) | Err(_) => return,
+                    Ok(0) | Err(_) => break 'frames,
                     Ok(_) => {}
                 }
                 let header = line.trim_end();
@@ -149,22 +238,23 @@ fn pump_frames<R: Read + Send + 'static>(stdout: R, sink: impl Fn(String) + Send
             }
             let mut body = vec![0u8; content_length];
             if reader.read_exact(&mut body).is_err() {
-                return;
+                break;
             }
             sink(String::from_utf8_lossy(&body).into_owned());
         }
+        on_eof();
     });
 }
 
-/// Stop a session: signal it, then reap it.
+/// Stop a session: signal it, then reap it. Returns how it ended.
 ///
 /// The `wait` is not optional bookkeeping. `kill` only delivers the signal, so
 /// without reaping, every stopped server stays a zombie for as long as Tori
 /// runs, and a session-per-root registry stops far more servers than the old
 /// one-server host ever did.
-fn stop(session: &mut LspSession) {
+fn stop(session: &mut LspSession) -> Option<String> {
     let _ = session.child.kill();
-    let _ = session.child.wait();
+    session.child.wait().ok().map(|s| s.to_string())
 }
 
 /// Put a freshly spawned session in the map, unless another start won the race
@@ -227,26 +317,58 @@ pub fn lsp_start(
         root: root.to_string_lossy().into_owned(),
     };
 
-    {
-        let guard = state.0.lock().map_err(|e| e.to_string())?;
-        if guard.contains_key(&handle) {
-            return Ok(handle);
-        }
+    let exit_handle = handle.clone();
+    start_session(
+        &state,
+        &handle,
+        cmd,
+        move |body| {
+            let _ = on_message.send(body);
+        },
+        move |serial| {
+            if let Some(exited) = app.state::<LspState>().reap(&exit_handle, serial) {
+                let _ = app.emit(EXITED, exited);
+            }
+        },
+    )?;
+    Ok(handle)
+}
+
+/// Spawn and install a session for `handle`, unless one is already live.
+///
+/// The pumps start only once the session is in the map. A server that dies on
+/// launch, as a rustup proxy with no component does, would otherwise reach EOF
+/// before it was installed, and the dead session would then answer every later
+/// start.
+fn start_session(
+    state: &LspState,
+    handle: &LspHandle,
+    cmd: Command,
+    sink: impl Fn(String) + Send + 'static,
+    on_eof: impl FnOnce(u64) + Send + 'static,
+) -> Result<(), String> {
+    if state.sessions.lock().map_err(|e| e.to_string())?.contains_key(handle) {
+        return Ok(());
     }
 
-    let (session, stdout) = spawn_session(cmd, &handle.root)?;
-    pump_frames(stdout, move |body| {
-        let _ = on_message.send(body);
-    });
-
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    install_session(&mut guard, &handle, session);
-    Ok(handle)
+    let (session, stdout, stderr) = spawn_session(cmd, &handle.root)?;
+    let serial = session.serial;
+    let log = Log::default();
+    {
+        let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
+        if !install_session(&mut sessions, handle, session) {
+            return Ok(());
+        }
+        state.logs.lock().map_err(|e| e.to_string())?.insert(handle.clone(), log.clone());
+    }
+    pump_log(stderr, log);
+    pump_frames(stdout, sink, move || on_eof(serial));
+    Ok(())
 }
 
 #[tauri::command]
 pub fn lsp_send(state: State<LspState>, handle: LspHandle, message: String) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let mut guard = state.sessions.lock().map_err(|e| e.to_string())?;
     let session = guard
         .get_mut(&handle)
         .ok_or_else(|| format!("{} is not running at {}", handle.server_id, handle.root))?;
@@ -254,9 +376,9 @@ pub fn lsp_send(state: State<LspState>, handle: LspHandle, message: String) -> R
 }
 
 #[tauri::command(async)]
-pub fn lsp_stop(state: State<LspState>, handle: LspHandle) -> Result<(), String> {
-    if let Some(mut session) = state.0.lock().map_err(|e| e.to_string())?.remove(&handle) {
-        stop(&mut session);
+pub fn lsp_stop(app: AppHandle, state: State<LspState>, handle: LspHandle) -> Result<(), String> {
+    if let Some(exited) = state.stop(&handle)? {
+        let _ = app.emit(EXITED, exited);
     }
     Ok(())
 }
@@ -265,12 +387,17 @@ pub fn lsp_stop(state: State<LspState>, handle: LspHandle) -> Result<(), String>
 /// servers are all wrong at once, and there is no per-handle bookkeeping the
 /// caller would have to keep in step.
 #[tauri::command(async)]
-pub fn lsp_stop_all(state: State<LspState>) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    for (_, mut session) in guard.drain() {
-        stop(&mut session);
+pub fn lsp_stop_all(app: AppHandle, state: State<LspState>) -> Result<(), String> {
+    for exited in state.stop_all()? {
+        let _ = app.emit(EXITED, exited);
     }
     Ok(())
+}
+
+/// The tail of a server's stderr, still there after the server has exited.
+#[tauri::command]
+pub fn lsp_log(state: State<LspState>, handle: LspHandle) -> String {
+    state.log(&handle)
 }
 
 /// Every registered server, for the frontend's extension-to-server map and the
@@ -569,15 +696,123 @@ mod tests {
 
     fn start_echo(root: &str) -> (LspSession, mpsc::Receiver<String>) {
         let (tx, rx) = mpsc::channel();
-        let (session, stdout) = spawn_session(echo_server(), root).unwrap();
-        pump_frames(stdout, move |body| {
-            let _ = tx.send(body);
-        });
+        let (session, stdout, _stderr) = spawn_session(echo_server(), root).unwrap();
+        pump_frames(
+            stdout,
+            move |body| {
+                let _ = tx.send(body);
+            },
+            || {},
+        );
         (session, rx)
     }
 
     fn recv(rx: &mpsc::Receiver<String>) -> String {
         rx.recv_timeout(Duration::from_secs(5)).expect("no frame arrived")
+    }
+
+    fn alive(pid: u32) -> bool {
+        Command::new("kill").arg("-0").arg(pid.to_string()).stderr(Stdio::null()).status().unwrap().success()
+    }
+
+    /// Start `cmd` the way `lsp_start` does, with every EOF's `reap` sent back.
+    fn start_reaped(
+        state: &Arc<LspState>,
+        handle: &LspHandle,
+        cmd: Command,
+    ) -> mpsc::Receiver<Option<LspExited>> {
+        let (tx, rx) = mpsc::channel();
+        let (reaper, h) = (state.clone(), handle.clone());
+        start_session(state, handle, cmd, |_| {}, move |serial| {
+            let _ = tx.send(reaper.reap(&h, serial));
+        })
+        .unwrap();
+        rx
+    }
+
+    fn pid_of(state: &LspState, handle: &LspHandle) -> u32 {
+        state.sessions.lock().unwrap()[handle].child.id()
+    }
+
+    fn sh(script: &str) -> Command {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(script);
+        cmd
+    }
+
+    fn wait_for_log(state: &LspState, handle: &LspHandle, done: impl Fn(&str) -> bool) -> String {
+        for _ in 0..500 {
+            let log = state.log(handle);
+            if done(&log) {
+                return log;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        state.log(handle)
+    }
+
+    #[test]
+    fn stderr_is_kept_as_a_bounded_tail_that_outlives_the_server() {
+        let state = Arc::new(LspState::default());
+        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+
+        let _exits = start_reaped(&state, &handle, sh("echo 'booting demo' >&2; exec cat"));
+        let log = wait_for_log(&state, &handle, |l| l.contains("booting demo"));
+        assert!(log.contains("booting demo"), "stderr on start never reached the log: {log:?}");
+        state.stop(&handle).unwrap();
+
+        // A restart of the handle starts a fresh log, and a flood keeps only its tail.
+        let exits = start_reaped(
+            &state,
+            &handle,
+            sh("echo first >&2; head -c 1048576 /dev/zero | tr '\\0' x >&2; echo last >&2"),
+        );
+        assert!(exits.recv_timeout(Duration::from_secs(10)).unwrap().is_some(), "the flood never exited");
+        let log = wait_for_log(&state, &handle, |l| l.ends_with("last\n"));
+        assert!(log.ends_with("last\n"), "the tail is missing its last line");
+        assert!(log.len() <= LOG_CAP, "kept {} bytes", log.len());
+        assert!(!log.contains("first") && !log.contains("booting demo"));
+        assert!(!state.sessions.lock().unwrap().contains_key(&handle), "the log is read after the session is gone");
+    }
+
+    #[test]
+    fn a_crashed_server_is_reaped_reported_and_respawned_on_the_next_start() {
+        let state = Arc::new(LspState::default());
+        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let exits = start_reaped(&state, &handle, echo_server());
+        let pid = pid_of(&state, &handle);
+
+        Command::new("kill").arg("-9").arg(pid.to_string()).status().unwrap();
+        let exited = exits.recv_timeout(Duration::from_secs(5)).unwrap().expect("a crash is reported");
+        assert_eq!(exited.handle, handle);
+        assert!(!exited.deliberate);
+        assert!(exited.status.is_some_and(|s| s.contains("signal")), "the status says how it died");
+        // `kill -0` succeeds on a zombie, so failing here means it was reaped.
+        assert!(!alive(pid), "pid {pid} is still in the process table");
+
+        let _exits = start_reaped(&state, &handle, echo_server());
+        let fresh = pid_of(&state, &handle);
+        assert_ne!(fresh, pid, "the start after a crash reused the dead session");
+        assert!(alive(fresh));
+        state.stop(&handle).unwrap();
+    }
+
+    #[test]
+    fn a_deliberate_stop_is_reported_as_one_and_never_as_a_crash() {
+        let state = Arc::new(LspState::default());
+        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let exits = start_reaped(&state, &handle, echo_server());
+        let pid = pid_of(&state, &handle);
+
+        let exited = state.stop(&handle).unwrap().expect("a live session reports its stop");
+        assert!(exited.deliberate);
+        assert!(!alive(pid));
+        assert!(exits.recv_timeout(Duration::from_secs(5)).unwrap().is_none(), "the EOF after a stop reported a crash");
+
+        let _exits = start_reaped(&state, &handle, echo_server());
+        let all = state.stop_all().unwrap();
+        assert_eq!(all.len(), 1);
+        assert!(all[0].deliberate);
     }
 
     #[test]

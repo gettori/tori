@@ -1,4 +1,4 @@
-import { Show, onCleanup } from "solid-js";
+import { For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { X } from "lucide-solid";
 import { Toast } from "../../lib/toast";
@@ -25,9 +25,10 @@ const TTL = 8000;
  *  event lands here, and the sidebar's `setError` forwards here. Empty and
  *  whitespace-only messages are a no-op, preserving the old "clear the banner"
  *  idiom that some `setError("")` call sites still use. */
-export function pushToast(message: string, kind: ToastKind = "error", action?: ToastAction) {
+export function pushToast(message: string, kind: ToastKind = "error", action?: ToastAction | ToastAction[]) {
   const text = String(message ?? "").trim();
   if (!text) return;
+  const actions = action ? [action].flat() : [];
   Toast.toaster.show((props) => (
     // `as="div"`, and the same on the List: Kobalte's default ol/li fails
     // axe's `list` rule, because role="status" strips the li of its listitem
@@ -39,7 +40,7 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
       class={`${styles.toast} ${kind === "error" ? styles.error : styles.info}`}
     >
       <Toast.Title class={styles.toastMsg}>{text}</Toast.Title>
-      <Show when={action}>
+      <For each={actions}>
         {(a) => (
           // CloseButton rather than a bare Button: Kobalte runs our onClick
           // first, then closes, which is exactly the old run-then-dismiss.
@@ -49,13 +50,13 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
             as={Button}
             size="xs"
             class={styles.toastAction}
-            aria-label={a().label}
-            onClick={() => a().run()}
+            aria-label={a.label}
+            onClick={() => a.run()}
           >
-            {a().label}
+            {a.label}
           </Toast.CloseButton>
         )}
-      </Show>
+      </For>
       <Toast.CloseButton
         as={IconButton}
         icon={<Icon icon={X} />}

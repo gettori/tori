@@ -273,7 +273,7 @@ describe("the dock", () => {
 
     emit(TOGGLE_DOCK);
     await waitFor(() => expect(dockShown()).toBe(false));
-    toasts.find((t) => t.kind === "error")!.action!.run();
+    [toasts.find((t) => t.kind === "error")!.action].flat()[0]!.run();
     await waitFor(() => expect(dockShown()).toBe(true));
     expect(dockActiveId()).toBe("clone:1");
     off();

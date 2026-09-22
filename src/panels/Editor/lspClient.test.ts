@@ -1405,13 +1405,14 @@ describe("project trust", () => {
       await m.ensureLspFor("/proj/t/a.ts", "/proj/t");
       await m.ensureLspFor("/proj/t/b.ts", "/proj/t");
       expect(toasts).toHaveLength(1);
-      expect(toasts[0].action?.label).toBe("Trust");
+      const [trustAction] = [toasts[0].action].flat();
+      expect(trustAction?.label).toBe("Trust");
       expect(m.lspPluginFor("/proj/t/a.ts")).toEqual([]);
 
       untrusted.clear();
       let fired = 0;
       const offChange = m.onLspChange(() => (fired += 1));
-      toasts[0].action?.run();
+      trustAction?.run();
       await vi.waitFor(() => expect(m.lspPluginFor("/proj/t/a.ts")).not.toEqual([]));
       expect(m.lspPluginFor("/proj/t/b.ts")).not.toEqual([]);
       expect(fired).toBeGreaterThan(0);

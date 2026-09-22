@@ -160,6 +160,12 @@ export function prAllTabId(workspace: string, number: number): string {
   return syntheticId("prall", workspace, String(number));
 }
 
+/** A language server session's stderr. The session's root stands in for the
+ *  workspace, since a handle is the server id plus that root. */
+export function lspLogTabId(handle: { serverId: string; root: string }): string {
+  return syntheticId("lsplog", handle.root, handle.serverId);
+}
+
 /**
  * The path a tab is scoped to, for the folder-prefix sweeps: a synthetic tab
  * answers with its workspace, a file tab with its own path.
@@ -193,6 +199,7 @@ export function syntheticTabName(id: string): string {
   // told apart by the word that differs rather than by the one they share.
   if (t.kind === "localhistory") return `Local: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
+  if (t.kind === "lsplog") return `Log: ${t.arg}`;
   // The mode is in the label, not just the tooltip: a partially staged file has
   // two of these open and the file name alone does not tell them apart.
   if (t.kind === "diff") {

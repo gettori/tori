@@ -1,0 +1,47 @@
+.logView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--canvas-card);
+}
+
+.head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-head);
+}
+
+.name {
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+}
+
+.note {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+.log {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  white-space: pre;
+}

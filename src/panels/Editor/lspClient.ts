@@ -9,6 +9,7 @@
 // and hands back the handle; nothing here re-derives it.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   findReferencesKeymap,
   hoverTooltips,
@@ -31,6 +32,7 @@ import {
   isActivationMarker,
   languageIdFor,
   onLspDisabledChange,
+  onLspRestartRequest,
   primariesClaiming,
   resolvedPrimary,
   resolvedServerIds,
@@ -41,6 +43,7 @@ import {
   type LspServer,
   type Resolution,
 } from "../../utils/lspServers";
+import { lspLogTabId } from "../../utils/syntheticTabs";
 import { TORI_SETTINGS_FILES } from "../../utils/toriSettingsFiles";
 import { callHierarchyClientCapabilities } from "../../utils/callHierarchy";
 import { symbolClientCapabilities } from "../../utils/symbols";
@@ -70,6 +73,11 @@ import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
  *  frontend only ever holds and returns it. */
 type LspHandle = { serverId: string; root: string };
 
+/** The file a session was first started for. A restart asks the backend for a
+ *  root again, and this file is the one known to resolve to this session's,
+ *  whether or not its tab is still open. */
+type Origin = { path: string; projectPath: string };
+
 type PrimarySession = {
   kind: "primary";
   handle: LspHandle;
@@ -80,9 +88,16 @@ type PrimarySession = {
    *  arrives with nothing but section names, and the answer is this server's,
    *  not whatever the last-started one happened to want. */
   server: LspServer;
+  origin: Origin;
 };
 
-type SecondarySession = { kind: "secondary"; handle: LspHandle; client: SecondaryClient; server: LspServer };
+type SecondarySession = {
+  kind: "secondary";
+  handle: LspHandle;
+  client: SecondaryClient;
+  server: LspServer;
+  origin: Origin;
+};
 
 type Session = PrimarySession | SecondarySession;
 
@@ -180,6 +195,17 @@ onTrustChange(({ path, trusted }) => {
 
 onServerInstalled((serverId) => reask((file) => resolvedServerIds(file)?.includes(serverId) ?? false));
 
+// A session that is live restarts from its own origin, since the file on screen
+// may resolve to a nearer root than the one it is being served from. One that
+// is gone, a crash the toast was dismissed on, starts from the file on screen.
+onLspRestartRequest((path, serverId) => {
+  const server = serverById(serverId);
+  const projectPath = requested.get(path);
+  if (!server || !projectPath) return;
+  const live = sessionFor(path, server) ?? undefined;
+  void restart(server, live?.origin ?? { path, projectPath }, live);
+});
+
 function pruneClosed(): void {
   for (const file of requested.keys()) if (liveBufferText(file) === null) requested.delete(file);
 }
@@ -224,7 +250,7 @@ async function reresolve(inScope: (file: string) => boolean, forget: () => void)
     const stillWanted = [...requested.keys()].some(
       (file) => isUnderPath(file, session.handle.root) && resolvedServerIds(file)?.includes(session.server.id),
     );
-    if (!stillWanted) stopSession(session);
+    if (!stillWanted) void stopSession(session);
     for (const [file] of flipped) {
       if (session.kind === "primary" && !stillWanted) {
         dropDiagnostics(file);
@@ -269,15 +295,26 @@ export async function ensureLspFor(path: string, projectPath: string): Promise<v
     return;
   }
   const wanted = [resolution.primary, ...resolution.secondaries].map((id) => (id ? serverById(id) : null));
-  await Promise.all(
-    wanted.map((server) => {
-      if (!server) return;
-      const prev = starting.get(server.id) ?? Promise.resolve();
-      const next = prev.then(() => startFor(server, path, projectPath, startedAt)).catch(() => {});
-      starting.set(server.id, next);
-      return next;
-    }),
-  );
+  await Promise.all(wanted.map((server) => server && queueStart(server, path, projectPath, startedAt)));
+}
+
+function queueStart(server: LspServer, path: string, projectPath: string, startedAt: number): Promise<void> {
+  const prev = starting.get(server.id) ?? Promise.resolve();
+  const next = prev.then(() => startFor(server, path, projectPath, startedAt)).catch(() => {});
+  starting.set(server.id, next);
+  return next;
+}
+
+/** Stop `live` if it is still running, then start its server again from
+ *  `origin`. Awaits the stop, because the backend hands a start the running
+ *  session for its handle rather than a new one. */
+async function restart(server: LspServer, origin: Origin, live?: Session): Promise<void> {
+  const startedAt = generation;
+  if (live) {
+    await stopSession(live);
+    notify();
+  }
+  await queueStart(server, origin.path, origin.projectPath, startedAt);
 }
 
 async function startFor(
@@ -310,6 +347,9 @@ async function startFor(
     for (const h of handlers) h(msg);
   };
 
+  await watchExits();
+  const ours = key({ serverId: server.id, root: "" });
+  for (const k of diedEarly) if (k.startsWith(ours)) diedEarly.delete(k);
   let handle: LspHandle;
   try {
     handle = await invoke<LspHandle>("lsp_start", {
@@ -332,6 +372,7 @@ async function startFor(
     console.error("lsp_start failed", server.id, e);
     return;
   }
+  const died = diedEarly.delete(key(handle));
 
   // Torn down while we were starting. The server this call brought up is real
   // and running, and `lsp_stop_all` may already have swept past it, so stop it
@@ -355,6 +396,11 @@ async function startFor(
   // client here would sit connected to a transport no frame ever reaches.
   if (sessions.has(key(handle))) return;
 
+  if (died) {
+    toastCrash(server, handle, { path, projectPath });
+    return;
+  }
+
   const send = (message: string) => void invoke("lsp_send", { handle, message }).catch(() => {});
   if (server.role === "secondary") {
     const client: SecondaryClient = new SecondaryClient({
@@ -370,7 +416,7 @@ async function startFor(
         ),
     });
     handlers.push((msg) => client.receive(msg));
-    addSession({ kind: "secondary", handle, client, server });
+    addSession({ kind: "secondary", handle, client, server, origin: { path, projectPath } });
     return;
   }
 
@@ -402,7 +448,7 @@ async function startFor(
     extensions: clientExtensions(server.id),
   }).connect(transport);
 
-  addSession({ kind: "primary", handle, client, workspace: workspace!, server });
+  addSession({ kind: "primary", handle, client, workspace: workspace!, server, origin: { path, projectPath } });
   void configureSession(handle, client, server);
 }
 
@@ -894,13 +940,21 @@ async function stopLspUnder(projectPath: string): Promise<void> {
   const doomed = [...sessions.values()].filter(
     (s) => s.handle.root === projectPath || isUnderPath(s.handle.root, projectPath),
   );
-  for (const session of doomed) stopSession(session);
+  for (const session of doomed) void stopSession(session);
   dropDiagnosticsUnder(projectPath);
   dropDiagnosticContextUnder(`${pathToUri(projectPath)}/`);
   if (doomed.length) notify();
 }
 
-function stopSession(session: Session): void {
+function stopSession(session: Session): Promise<void> {
+  dropSession(session);
+  return invoke("lsp_stop", { handle: session.handle }).then(
+    () => {},
+    () => {},
+  );
+}
+
+function dropSession(session: Session): void {
   try {
     session.client.disconnect();
   } catch {
@@ -908,7 +962,65 @@ function stopSession(session: Session): void {
   }
   sessions.delete(key(session.handle));
   if (session.kind === "secondary") for (const path of session.client.openPaths()) retract(session.server.id, path);
-  void invoke("lsp_stop", { handle: session.handle }).catch(() => {});
+}
+
+type LspExited = { handle: LspHandle; status: string | null; deliberate: boolean };
+
+let exits: Promise<unknown> | null = null;
+
+// Awaited before a start, so a server that dies on launch cannot report it
+// before anyone is listening.
+function watchExits(): Promise<unknown> {
+  exits ??= listen<LspExited>("lsp://exited", (e) => onExited(e.payload)).catch(() => {});
+  return exits;
+}
+
+// A server can die between `lsp_start` answering and its client being built, and
+// its exit then finds no session. Cleared per server before each start, so a
+// crash nobody was waiting on is never pinned on a later process.
+const diedEarly = new Set<string>();
+
+// No restart of its own: a server that dies during `initialize` would go round
+// for as long as the app stayed open.
+function onExited({ handle, deliberate }: LspExited): void {
+  if (deliberate) return;
+  const session = sessions.get(key(handle));
+  if (!session) {
+    diedEarly.add(key(handle));
+    return;
+  }
+  if (session.kind === "primary") retractPrimary(session);
+  dropSession(session);
+  notify();
+  toastCrash(session.server, handle, session.origin);
+}
+
+function toastCrash(server: LspServer, handle: LspHandle, origin: Origin): void {
+  emitWith<ToastEvent>(TOAST, {
+    message: `${server.label} stopped`,
+    action: [
+      { label: "Restart", run: () => void restart(server, origin) },
+      { label: "Show log", run: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: lspLogTabId(handle) }) },
+    ],
+  });
+}
+
+// Before the client disconnects, which is what still knows the files it had
+// open. A buffer with no view keeps its lint state out of reach, so its Problems
+// entry is dropped instead, as `reresolve` does.
+function retractPrimary(session: PrimarySession): void {
+  const shown = new Set<string>();
+  for (const file of session.workspace.files) {
+    rememberDiagnostics(file.uri, session.server.id, []);
+    const view = file.getView();
+    const path = uriToPath(file.uri);
+    if (!view || !path) continue;
+    shown.add(path);
+    view.dispatch(publishFrom(view.state, session.server.id, [], peersOf(path)));
+  }
+  for (const path of requested.keys()) {
+    if (!shown.has(path) && answeringSession(path) === session) dropDiagnostics(path);
+  }
 }
 
 /** Per-buffer editor extension for a file whose server is up, empty for
