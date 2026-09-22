@@ -58,6 +58,10 @@ The switch-answer path (`switch_events`) is a pure function and is unit tested o
 - `switch_events` reads each `set_config_option` answer: the whole set goes out first (it is how the store confirms an ACP pick, see [[concept_acp_config_options]]), then a mode that did not take is `ModeRefused` for all three shapes (an error, an answer naming another mode, an answer naming no mode), while a model keeps a plain `SessionError`. The `session/set_mode` fallback's error is `ModeRefused` too.
 - `initialize_request` and `new_session_request` are `pub` and **shared with the catalogue probe** rather than copied. A probe that handshook with different client capabilities would be measuring an agent Tori never actually runs.
 
+## The background exception does not reach this module (2026-09-23)
+
+Not built: gettori/tori#203 plans a refusal for outward actions from a session flagged `background`. It gates Tori's own tools, so permissions, modes and models stay the agent's here and this module keeps deciding nothing. See [[adr_a_background_session_needs_a_tori_gate]].
+
 ## Related
 
 - [[component_catalog_probe]] — the other caller of this module's handshake
@@ -68,3 +72,4 @@ The switch-answer path (`switch_events`) is a pure function and is unit tested o
 - [[component_acp_catalog]] — the launch commands for agents this could drive but has not
 - [[concept_transport_neutral_event_model]] — the claim this module was the fourth and fifth test of
 - [[gotcha_async_process_command_from_does_not_carry_stdio_settings_across]]
+- [[adr_a_background_session_needs_a_tori_gate]] — the planned background refusal, which gates Tori tools rather than the agent

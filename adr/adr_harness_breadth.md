@@ -29,6 +29,10 @@ Measured 2026-08-13, npm downloads for the prior month: Codex 65.5M, Claude Code
 - This becomes a third concurrent program alongside the eight-wave editor roadmap and the Kobalte design-system migration.
 - Mid-conversation provider switching stays impossible and must never be implied in the UI. No comparable tool does it, because a session is pinned to one harness; only a product owning its own inference gateway can, and that is the LLM-client path rejected above.
 
+## Amendment (2026-09-23, gettori/tori#195)
+
+Not built, and it does not touch harness breadth: gettori/tori#203 plans one Tori level refusal, for outward actions from a session flagged `background`, because such a session's harness prompt is on nobody's screen. It gates Tori's own tools rather than the harness's, so there is still no per harness gate to port. See [[adr_a_background_session_needs_a_tori_gate]].
+
 ## Related
 
 - [[concept_transport_neutral_event_model]] - the seam that makes a second harness a module rather than a fork
@@ -37,3 +41,4 @@ Measured 2026-08-13, npm downloads for the prior month: Codex 65.5M, Claude Code
 - [[component_acp_catalog]] - the curated upstream that shrank the maintenance tax
 - [[concept_acp_agent_quirks]] - the per-agent variance this breadth buys
 - [[adr_native_chat_surface]] - the decision this extends
+- [[adr_a_background_session_needs_a_tori_gate]] - the one narrowing of Tori owned permissions, scoped so no per harness gate is needed

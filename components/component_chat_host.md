@@ -95,6 +95,10 @@ Three things this forced in `claude_transport.rs`:
 - **The outcome is summarised at parse time**, the same treatment and for the same reason as `tool_summary`: an `Agent` result quotes the subagent's whole reply back, and none of it survives `SubagentOutcome`.
 - **`resolvedModel` was measured and dropped.** No live `task_*` frame carries a model, so a lane field only replay could fill would be a divergence invented by the code meant to close them.
 
+## A background session will refuse some tools, and this is not where (2026-09-23)
+
+Not built: gettori/tori#203 plans a Tori level refusal for outward actions from a session flagged `background`. It lives on the protocol's own outward methods and not in `map_control_request`, so "it decides no tool call" stays true of every session a person opened. See [[adr_a_background_session_needs_a_tori_gate]].
+
 ## Related
 
 - [[component_chat_panel]] - the Solid half this feeds
@@ -103,3 +107,4 @@ Three things this forced in `claude_transport.rs`:
 - [[component_pty_host]] - the older per-session process host whose concurrency shape this copies
 - [[concept_inline_agent_question]] - the question that rides the permission wire and leaves as its own event
 - [[concept_pretooluse_capture_hook]] · [[concept_transport_neutral_event_model]] · [[component_acp_transport]] · [[concept_harness_capability_tiers]]
+- [[adr_a_background_session_needs_a_tori_gate]] - the planned refusal for background sessions, which does not live in this module
