@@ -658,6 +658,12 @@ pub struct DapHealth {
     pub available_version: Option<String>,
     /// The version of Tori's own install, when there is one that runs.
     pub installed_version: Option<String>,
+    /// How to install it, for an adapter its own toolchain manages.
+    pub hint: Option<String>,
+    /// Its toolchain's commands to update and to remove it, for a hint adapter
+    /// that is found.
+    pub update: Option<String>,
+    pub uninstall: Option<String>,
 }
 
 /// Build one adapter's health card.
@@ -693,6 +699,10 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
         (None, _) | (Some(_), Some(_)) => crate::health::BinaryStatus::NotFound,
         (Some(_), None) => crate::health::compare(version.as_deref(), adapter.verified_against.as_deref()),
     };
+    let (update, uninstall) = match &adapter.install {
+        Some(Install::Hint { update, uninstall, .. }) if resolved.is_some() => (update.clone(), uninstall.clone()),
+        _ => (None, None),
+    };
 
     DapHealth {
         id: adapter.id.clone(),
@@ -710,6 +720,12 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
         available_version: adapter.install.as_ref().and_then(Install::available_version).map(str::to_string),
         installed_version: version.clone().filter(|_| managed),
         version,
+        hint: match &adapter.install {
+            Some(Install::Hint { text, .. }) => Some(text.clone()),
+            _ => None,
+        },
+        update,
+        uninstall,
     }
 }
 

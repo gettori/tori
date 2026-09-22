@@ -261,6 +261,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 1, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/LanguagesPane/toolActions.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Settings/panes/IntegrationsPane/ForgeSection.tsx",
     { count: 1, reason: `${HEADING} - the one a host's destructive actions ask through` },
