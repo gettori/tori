@@ -19,6 +19,7 @@ const meta = {
     fileAdapter: "js-debug",
     scripts: ["dev", "build", "test"],
     port: 9229,
+    lldb: { root: "/Users/you/Projects/tori", bins: [], error: null },
     onConfirm: () => {},
     onCancel: () => {},
   },

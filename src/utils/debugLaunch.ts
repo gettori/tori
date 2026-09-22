@@ -12,20 +12,25 @@
 // TypeScript would not merely disagree, it would pair a monorepo package with
 // the wrong config and its breakpoints would never bind.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 
-import { startDebugSession, type DapSession } from "./dapSessions";
+import { debugRoots, refuseUntrustedRun, startDebugSession, type DapSession } from "./dapSessions";
+import { debugBuild, endDebugBuild, noteConsoleLine, startDebugBuild } from "./debugStore";
 import {
   anchorFor,
   attachFailureMessage,
   configFor,
+  LLDB_ADAPTER,
   PYTHON_ADAPTER,
+  type CargoBuilt,
   type DapAdapterInfo,
   type DebugTarget,
+  type LldbPick,
 } from "./debugTargets";
 import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "./events";
 import { extensionOf } from "./lspServers";
+import { UNTRUSTED } from "./projectTrust";
 import { commandIn, NOT_INSTALLED } from "./serverInstall";
 import { parsePackageScripts, packageRunner } from "./tasks";
 
@@ -77,6 +82,47 @@ export async function scriptsAt(root: string): Promise<string[]> {
   if (!names.includes("package.json")) return [];
   const json = await invoke<string>("fs_read_file", { path: `${root}/package.json` }).catch(() => "");
   return parsePackageScripts(json, packageRunner(names)).map((t) => t.name);
+}
+
+/** Where an lldb target picked now would run, and the Cargo binaries there.
+ *  Null when the project is not trusted, having offered to trust it: listing
+ *  the binaries runs cargo. */
+export async function lldbPickAt(anchor: string, projectPath: string): Promise<LldbPick | null> {
+  const root = await resolveRoot(LLDB_ADAPTER, anchor, projectPath);
+  if (!(await entriesOf(root)).includes("Cargo.toml")) return { root, bins: [], error: null };
+  try {
+    return { root, bins: await invoke<string[]>("dap_cargo_bins", { root, projectPath }), error: null };
+  } catch (e) {
+    if (e !== UNTRUSTED) return { root, bins: [], error: String(e) };
+    refuseUntrustedRun(projectPath);
+    return null;
+  }
+}
+
+/** Mirrors `dap::cargo::CANCELLED`. */
+const CANCELLED = "cancelled";
+
+let builds = 0;
+
+// A cancel says nothing: the user asked for it.
+async function buildCargo(
+  bin: string,
+  root: string,
+  opts: { projectPath: string; onError: (message: string) => void },
+): Promise<CargoBuilt | null> {
+  const buildId = `build${builds++}`;
+  const onLine = new Channel<string>();
+  onLine.onmessage = (line) => noteConsoleLine("cargo", "console", line);
+  startDebugBuild({ label: `Building ${bin}`, cancel: () => void invoke("dap_cargo_cancel", { buildId }) });
+  try {
+    return await invoke<CargoBuilt>("dap_cargo_build", { root, projectPath: opts.projectPath, bin, buildId, onLine });
+  } catch (e) {
+    if (e === UNTRUSTED) refuseUntrustedRun(opts.projectPath);
+    else if (e !== CANCELLED) opts.onError(`Could not build ${bin}: ${String(e)}`);
+    return null;
+  } finally {
+    endDebugBuild();
+  }
 }
 
 // The run is not retried after an install, so the next F5 starts it, as after
@@ -131,6 +177,16 @@ export async function launchTarget(
   }
   const anchor = anchorFor(target, opts.projectPath);
   const root = await resolveRoot(adapter.id, anchor, opts.projectPath);
+
+  // A start that joins the live run launches nothing, so it builds nothing, and
+  // a second build would race the first over one target directory.
+  const joins = debugRoots().some((s) => s.adapterId === adapter.id && s.projectPath === opts.projectPath);
+  let built: CargoBuilt | null = null;
+  if (target.kind === "cargo" && !joins) {
+    built = debugBuild() ? null : await buildCargo(target.bin, root, opts);
+    if (!built) return null;
+  }
+
   const [entries, env, python] = await Promise.all([
     entriesOf(root),
     invoke<Record<string, string>>("dap_launch_env").catch(() => ({})),
@@ -139,7 +195,7 @@ export async function launchTarget(
       : null,
   ]);
 
-  const config = configFor(target, { root, entries, env, python: python ?? undefined });
+  const config = configFor(target, { root, entries, env, python: python ?? undefined, built: built ?? undefined });
   return startDebugSession({
     adapterId: adapter.id,
     childSessions: adapter.childSessions,

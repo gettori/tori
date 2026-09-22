@@ -41,14 +41,15 @@ import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
 import { runFor, stopAllDap, stopDebugRun } from "../../utils/dapSessions";
-import { clearDebugConsole, debugRunning } from "../../utils/debugStore";
+import { clearDebugConsole, debugBuild, debugRunning } from "../../utils/debugStore";
 import DebugTargetDialog from "../../components/Dialogs/DebugTargetDialog";
-import { adapterForPath, dapAdapters, launchTarget, resolveRoot, scriptsAt } from "../../utils/debugLaunch";
+import { adapterForPath, dapAdapters, launchTarget, lldbPickAt, resolveRoot, scriptsAt } from "../../utils/debugLaunch";
 import {
   attachPortFor,
   JS_ADAPTER,
   kindsFor,
   lastTargetFor,
+  LLDB_ADAPTER,
   loadAttachPorts,
   loadLastTargets,
   saveAttachPorts,
@@ -57,6 +58,7 @@ import {
   setLastTarget,
   type DapAdapterInfo,
   type DebugTarget,
+  type LldbPick,
   type TargetKind,
 } from "../../utils/debugTargets";
 import type { RevertOutcome } from "./CheckpointTimeline";
@@ -1202,6 +1204,7 @@ export default function Editor(props: {
     fileAdapter: string | null;
     scripts: string[];
     port: number;
+    lldb: LldbPick;
   } | null>(null);
   const [attachPorts, setAttachPorts] = createSignal(loadAttachPorts());
   const [lastTargets, setLastTargets] = createSignal(loadLastTargets());
@@ -1230,12 +1233,17 @@ export default function Editor(props: {
     const scripts = adapters.some((a) => a.id === JS_ADAPTER)
       ? await scriptsAt(await resolveRoot(JS_ADAPTER, anchor, ws))
       : [];
+    const lldb = adapters.some((a) => a.id === LLDB_ADAPTER)
+      ? await lldbPickAt(anchor, ws)
+      : { root: ws, bins: [], error: null };
+    if (!lldb) return;
     setDebugPick({
       adapters,
       kind,
       fileAdapter: adapterForPath(await dapAdapters(), file)?.id ?? null,
       scripts,
       port: attachPortFor(attachPorts(), ws),
+      lldb,
     });
   }
 
@@ -1364,6 +1372,8 @@ export default function Editor(props: {
   createEffect(
     on(wsKey, () => {
       void stopAllDap();
+      // A build still running would start its run in the project just left.
+      debugBuild()?.cancel();
       // And the transcript with them: what is on screen is another workspace's
       // program output, and the pane has no way to say whose it was.
       clearDebugConsole();
@@ -3266,6 +3276,7 @@ export default function Editor(props: {
             fileAdapter={pick().fileAdapter}
             scripts={pick().scripts}
             port={pick().port}
+            lldb={pick().lldb}
             onConfirm={(target) => {
               setDebugPick(null);
               void runDebugTarget(target);
