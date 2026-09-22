@@ -161,15 +161,28 @@
   line-height: 1;
 }
 
-/* How many files are waiting behind the Changes tab, shown only while its pane
-   is not the one in front. Plain digits rather than the pill the panel's own
-   section headers wear: this sits on a tab that is already marked by its fill,
-   and a second filled shape beside the icon would compete with it. */
+/* Pinned over the icon's corner rather than beside it, so a count appearing
+   never widens the tab and shifts the strip. Anchored by its right edge, so a
+   longer count grows over the icon instead of into the next tab. The ring cuts
+   it off the glyph underneath. */
 .tabCount {
-  flex: none;
-  color: var(--fg-muted);
-  font-size: var(--tori-text-xs);
+  --count-size: calc(14px * var(--ui-scale));
+  position: absolute;
+  top: calc(50% + var(--control-icon) / 2 - var(--count-size) / 2);
+  right: calc(var(--tab-pad) - var(--count-size) / 2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--count-size);
+  height: var(--count-size);
+  padding: 0 calc(3px * var(--ui-scale));
+  border-radius: var(--tori-radius-pill);
+  background: var(--brand-default);
+  box-shadow: 0 0 0 calc(2px * var(--ui-scale)) var(--canvas-card);
+  color: var(--brand-on);
+  font-size: var(--tori-text-2xs);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 

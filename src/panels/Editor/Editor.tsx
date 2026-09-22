@@ -3147,10 +3147,7 @@ export default function Editor(props: {
           onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
           trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
           renderTab={(t) => {
-            // The Changes tab carries its count only while another pane is in
-            // front: open, the panel below says it better than a badge can.
-            const badge = () =>
-              t.mode === "changes" && rightMode() !== "changes" ? changeCount() : 0;
+            const badge = () => (t.mode === "changes" ? changeCount() : 0);
             const name = () =>
               badge() ? `${t.label}, ${badge()} changed file${badge() === 1 ? "" : "s"}` : t.label;
             return (
