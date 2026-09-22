@@ -80,6 +80,8 @@ import {
   EDITOR_LSP_CODE_ACTION,
   EDITOR_PEEK_DEFINITION,
   EDITOR_PEEK_REFERENCES,
+  EDITOR_PEEK_IMPLEMENTATION,
+  EDITOR_PEEK_TYPE_DEFINITION,
   EDITOR_LSP_SOURCE_ACTION,
   SOURCE_KINDS,
   type SourceAction,
@@ -151,7 +153,11 @@ export type Requirement =
    *  saying, and this one means "this language has no such feature", which is
    *  not actionable and would put three dead rows in every palette. Same rule
    *  the Outline tab uses to hide itself. */
-  | "sourceActions";
+  | "sourceActions"
+  /** The active file's server advertises this provider. Hides when unmet, for
+   *  `sourceActions`' reason. */
+  | "implementationProvider"
+  | "typeDefinitionProvider";
 
 export type Command = {
   id: string;
@@ -740,6 +746,22 @@ export const COMMANDS: Command[] = [
     group: "editor",
     run: () => emit(EDITOR_PEEK_REFERENCES),
     requires: ["editorFile"],
+  },
+  {
+    id: "peek-implementation",
+    label: "Go to implementation",
+    sub: "⌘F12",
+    group: "editor",
+    run: () => emit(EDITOR_PEEK_IMPLEMENTATION),
+    requires: ["editorFile", "implementationProvider"],
+  },
+  {
+    id: "peek-type-definition",
+    label: "Go to type definition",
+    sub: "⇧⌘F12",
+    group: "editor",
+    run: () => emit(EDITOR_PEEK_TYPE_DEFINITION),
+    requires: ["editorFile", "typeDefinitionProvider"],
   },
   ...RIGHT_MODES.map(
     (m): Command => ({

@@ -21,6 +21,13 @@ import { Decoration, EditorView, WidgetType, keymap, lineNumbers } from "@codemi
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 import type { PeekKind, PeekLocation } from "./peekLocations";
 
+const TITLE: Record<PeekKind, { found: (n: number) => string; none: string }> = {
+  definition: { found: () => "Definition", none: "No definition" },
+  references: { found: (n) => `${n} reference${n === 1 ? "" : "s"}`, none: "No references" },
+  implementation: { found: (n) => `${n} implementation${n === 1 ? "" : "s"}`, none: "No implementations" },
+  typeDefinition: { found: () => "Type definition", none: "No type definition" },
+};
+
 /** Lines of the file shown above the peeked line, for context. */
 export const PEEK_CONTEXT_BEFORE = 2;
 
@@ -144,13 +151,8 @@ class PeekWidget extends WidgetType {
     const title = document.createElement("span");
     title.className = "cm-peek-title";
     const current = this.state.locations[this.state.index];
-    title.textContent = this.state.locations.length
-      ? this.state.kind === "references"
-        ? `${this.state.locations.length} reference${this.state.locations.length === 1 ? "" : "s"}`
-        : "Definition"
-      : this.state.kind === "references"
-        ? "No references"
-        : "No definition";
+    const count = this.state.locations.length;
+    title.textContent = count ? TITLE[this.state.kind].found(count) : TITLE[this.state.kind].none;
     header.appendChild(title);
 
     if (current) {
