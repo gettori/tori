@@ -288,3 +288,46 @@ fn it_hits_a_breakpoint_in_a_python_file_whose_venv_has_no_debugpy() {
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
 }
+
+#[test]
+fn it_hits_a_breakpoint_in_a_go_package_and_in_its_test() {
+    let delve = registry::find("delve").expect("delve is registered");
+    if crate::env::resolve_binary("dlv").is_none() || crate::env::resolve_binary("go").is_none() {
+        eprintln!("skipping: `dlv` or `go` is not on your login PATH");
+        return;
+    }
+
+    let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("go.mod"), "module sample\n\ngo 1.21\n").unwrap();
+    let main = dir.join("main.go");
+    std::fs::write(
+        &main,
+        "package main\n\nimport \"fmt\"\n\nfunc sum(n int) int {\n\ttotal := 0\n\tfor i := 0; i < n; i++ {\n\t\ttotal += i\n\t}\n\treturn total\n}\n\nfunc main() {\n\tfmt.Println(sum(3))\n}\n",
+    )
+    .unwrap();
+    let test = dir.join("main_test.go");
+    std::fs::write(
+        &test,
+        "package main\n\nimport \"testing\"\n\nfunc TestSum(t *testing.T) {\n\tgot := sum(3)\n\tif got != 3 {\n\t\tt.Fatal(got)\n\t}\n}\n",
+    )
+    .unwrap();
+
+    // `goConfigFor` in debugTargets.ts.
+    let launch = |mode: &str, name: &str| {
+        json!({
+            "type": "go",
+            "request": "launch",
+            "name": name,
+            "mode": mode,
+            "program": dir,
+            "cwd": dir,
+            "outputMode": "remote",
+        })
+    };
+    let package = run_to_breakpoint(delve, &dir, &main, 8, launch("debug", "Debug sample"));
+    let tests = run_to_breakpoint(delve, &dir, &test, 7, launch("test", "Debug tests in sample"));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(package.expect("the package's breakpoint is hit")["reason"], "breakpoint");
+    assert_eq!(tests.expect("the test's breakpoint is hit")["reason"], "breakpoint");
+}

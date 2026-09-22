@@ -13,6 +13,7 @@
 // the wrong config and its breakpoints would never bind.
 
 import { invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 
 import { startDebugSession, type DapSession } from "./dapSessions";
 import {
@@ -23,7 +24,9 @@ import {
   type DapAdapterInfo,
   type DebugTarget,
 } from "./debugTargets";
+import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "./events";
 import { extensionOf } from "./lspServers";
+import { commandIn, NOT_INSTALLED } from "./serverInstall";
 import { parsePackageScripts, packageRunner } from "./tasks";
 
 let registry: Promise<DapAdapterInfo[]> | null = null;
@@ -76,6 +79,45 @@ export async function scriptsAt(root: string): Promise<string[]> {
   return parsePackageScripts(json, packageRunner(names)).map((t) => t.name);
 }
 
+// The run is not retried after an install, so the next F5 starts it, as after
+// a trust prompt.
+function offerInstall(adapter: DapAdapterInfo): void {
+  const toast = (event: ToastEvent) => emitWith<ToastEvent>(TOAST, event);
+  const install = adapter.install;
+  if (install?.kind === "pip") {
+    toast({
+      kind: "info",
+      message: `${adapter.label} is not installed. Tori can install version ${install.version}.`,
+      action: {
+        label: "Install",
+        run: () => {
+          toast({ kind: "info", message: `Installing ${adapter.label}.` });
+          invoke("dap_install", { adapterId: adapter.id }).then(
+            () => toast({ kind: "info", message: `${adapter.label} is installed.` }),
+            (e) => toast({ message: `Could not install ${adapter.label}: ${String(e)}` }),
+          );
+        },
+      },
+    });
+    return;
+  }
+  const command = commandIn(install?.text ?? null);
+  const runInTerminal = async (line: string) =>
+    emitWith<OpenJob>(OPEN_JOB, {
+      id: `dap-install:${adapter.id}`,
+      title: `Install ${adapter.label}`,
+      cwd: await homeDir().catch(() => "/"),
+      program: "/bin/sh",
+      args: ["-c", line],
+      interactive: true,
+    });
+  toast({
+    kind: "info",
+    message: `${adapter.label} is not installed. ${install?.text ?? ""}`.trim(),
+    action: command ? { label: "Install", run: () => void runInTerminal(command) } : undefined,
+  });
+}
+
 /** Start `target`. Resolves to the root session, or null when it could not be
  *  started; `onError` is given something worth showing when that happens. */
 export async function launchTarget(
@@ -105,6 +147,7 @@ export async function launchTarget(
     projectPath: opts.projectPath,
     config,
     onLaunchFailed: (e) => {
+      if (e === NOT_INSTALLED) return offerInstall(adapter);
       // An attach failure has one common cause and the adapter's own message
       // does not name it, so it gets the message that does. A launch failure is
       // already specific (a missing file, a script that does not exist), so it
