@@ -80,6 +80,7 @@ import DiffView from "./DiffView";
 import GraphView from "./GraphView";
 import SharedFilesView from "./SharedFilesView";
 import DebugSourceView from "./DebugSourceView";
+import LspLogView from "./LspLogView";
 import ImageView, { isImagePath } from "./ImageView";
 import PdfToolbar from "./PdfToolbar";
 import { isPdfPath, releasePdfsExcept } from "./pdfDocument";
@@ -2926,6 +2927,9 @@ export default function Editor(props: {
                     save it to. */}
                 <Show when={t().kind === "dapsource"}>
                   <DebugSourceView id={fileId()!} name={syntheticTabName(fileId()!)} />
+                </Show>
+                <Show when={t().kind === "lsplog"}>
+                  <LspLogView root={t().workspace} serverId={t().arg} />
                 </Show>
                 <Show when={t().kind === "conflict"}>
                   {/* Resolving rewrites the file, so it reports on the same
