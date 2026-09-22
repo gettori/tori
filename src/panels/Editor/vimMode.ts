@@ -80,7 +80,6 @@ const vimTheme = EditorView.theme({
   ".cm-vim-panel": {
     backgroundColor: "var(--canvas-head)",
     color: "var(--fg-muted)",
-    borderTop: "1px solid var(--border-default)",
     // The same family and size the content uses, so a pending `d2` lines up
     // with the text it is about to act on.
     fontFamily: 'var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace)',

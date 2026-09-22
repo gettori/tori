@@ -1042,6 +1042,14 @@ html {
 /* Who wrote the line the cursor is on, after the end of that line. Subtle and
    un-selectable: it is an annotation on the code, not part of it. */
 .cm-blame-inline {
+  /* A block rather than inline so a long commit subject stops at the popups'
+     measure instead of widening the line it annotates. `top` because a clipped
+     inline-block sits on its bottom edge, which would lift the text. */
+  display: inline-block;
+  max-width: 72ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
   padding-left: 2ch;
   color: var(--fg-subtle);
   font-style: italic;
@@ -1102,26 +1110,6 @@ html {
 }
 .cm-lint-marker-info {
   color: var(--diag-info);
-}
-
-.cm-tooltip.cm-tooltip-lint {
-  background: var(--canvas-head);
-  border: 1px solid var(--border-default);
-  border-radius: var(--tori-radius-sm);
-  color: var(--fg-default);
-}
-.cm-tooltip .cm-diagnostic {
-  border-left-width: 3px;
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-.cm-tooltip .cm-diagnostic-error {
-  border-left-color: var(--diag-error);
-}
-.cm-tooltip .cm-diagnostic-warning {
-  border-left-color: var(--diag-warning);
-}
-.cm-tooltip .cm-diagnostic-info {
-  border-left-color: var(--diag-info);
 }
 
 /* The dock: a card of its own under the work card, sized by its Resizer. */
