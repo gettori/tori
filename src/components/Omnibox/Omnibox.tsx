@@ -23,6 +23,7 @@ import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState } from "../../utils/editorState";
 import { stagedFiles, canPush } from "../../utils/gitActions";
 import { offersAnySourceAction } from "../../utils/sourceActions";
+import { activeServerProvides } from "../../utils/serverProviders";
 import {
   emitWith,
   NEW_SESSION,
@@ -124,6 +125,9 @@ function unmetReason(req: Requirement): string | null {
       return offersAnySourceAction()
         ? null
         : "This language server has no whole-file actions";
+    case "implementationProvider":
+    case "typeDefinitionProvider":
+      return activeServerProvides(req) ? null : "This language server cannot answer that";
   }
 }
 
@@ -136,7 +140,7 @@ function unmetReason(req: Requirement): string | null {
  * the row would be permanent clutter in every Python or Rust buffer. Same rule
  * the Outline tab uses when a server advertises no symbol provider.
  */
-const HIDES_WHEN_UNMET = new Set<Requirement>(["sourceActions"]);
+const HIDES_WHEN_UNMET = new Set<Requirement>(["sourceActions", "implementationProvider", "typeDefinitionProvider"]);
 
 /** Whether a command should not be listed at all right now. */
 function suppressed(c: Command): boolean {

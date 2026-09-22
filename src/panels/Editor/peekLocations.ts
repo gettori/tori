@@ -13,7 +13,7 @@ import { lspTargetFor } from "./lspClient";
 import { pathToUri, uriToPath } from "./toriWorkspace";
 
 /** Which question a peek is asking. */
-export type PeekKind = "definition" | "references";
+export type PeekKind = "definition" | "references" | "implementation" | "typeDefinition";
 
 /**
  * One place a peek can show.
@@ -31,11 +31,15 @@ export type PeekLocation = {
 const METHOD: Record<PeekKind, string> = {
   definition: "textDocument/definition",
   references: "textDocument/references",
+  implementation: "textDocument/implementation",
+  typeDefinition: "textDocument/typeDefinition",
 };
 
-const PROVIDER = {
+export const PEEK_PROVIDER = {
   definition: "definitionProvider",
   references: "referencesProvider",
+  implementation: "implementationProvider",
+  typeDefinition: "typeDefinitionProvider",
 } as const;
 
 function locationOf(raw: unknown): PeekLocation | null {
@@ -155,7 +159,7 @@ export async function peekAt(
   // asked the moment a server came up arrives before `initialize` was answered,
   // and refusing then would make the feature depend on startup timing.
   await target.ready;
-  if (!target.supports(PROVIDER[kind])) return settle(null);
+  if (!target.supports(PEEK_PROVIDER[kind])) return settle(null);
 
   // The reply is a set of positions, so the server has to be looking at the
   // document those positions are in. The library's own sync is debounced by
