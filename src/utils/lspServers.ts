@@ -174,6 +174,23 @@ export function lspDisabledChanged(): void {
   for (const l of [...disabledListeners]) l();
 }
 
+// Here rather than on the client, which the palette cannot import without
+// pulling CodeMirror into the startup chunk.
+let restartListeners: ((path: string, serverId: string) => void)[] = [];
+
+/** Hear about a restart asked for by name. Returns an unsubscribe. */
+export function onLspRestartRequest(cb: (path: string, serverId: string) => void): () => void {
+  restartListeners.push(cb);
+  return () => {
+    restartListeners = restartListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Restart `serverId` where it serves `path`. */
+export function requestLspRestart(path: string, serverId: string): void {
+  for (const l of [...restartListeners]) l(path, serverId);
+}
+
 /** Drop cached resolutions for directories at or under `dir`, or all of them. */
 export function forgetResolutions(dir?: string): void {
   forgotten += 1;

@@ -32,6 +32,7 @@ import {
   type StopChat,
   type NewSession,
 } from "../../utils/events";
+import { requestLspRestart, resolvedServerIds, serverById } from "../../utils/lspServers";
 import { rootOf, workspaceKey } from "../../utils/topics";
 import { createTopicMembers, memberFor } from "../../utils/topicMembers";
 import { loadFrecency, rankByFrecency, topFiles } from "../../utils/frecency";
@@ -465,6 +466,18 @@ export default function Omnibox(props: {
         disabled: why,
         run: () => c.run?.(),
       });
+    }
+    // One row per server the file in front resolves to, since a file can have a
+    // linter beside its language server and only one of them may be stuck.
+    const active = editorState().activePath;
+    if (active) {
+      for (const serverId of resolvedServerIds(active) ?? []) {
+        out.push({
+          id: `lsp-restart:${serverId}`,
+          label: `Restart language server: ${serverById(serverId)?.label ?? serverId}`,
+          run: () => requestLspRestart(active, serverId),
+        });
+      }
     }
     // One row per task this project defines, from the same reader the Tasks
     // panel uses, so the two surfaces cannot come to disagree about what the

@@ -424,6 +424,7 @@ pub fn run() {
             lsp::lsp_send,
             lsp::lsp_stop,
             lsp::lsp_stop_all,
+            lsp::lsp_log,
             lsp::lsp_registry,
             lsp::lsp_schema_associations,
             lsp::lsp_schema_dir,
