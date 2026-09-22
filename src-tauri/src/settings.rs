@@ -431,7 +431,15 @@ pub struct EditorDefaults {
     #[serde(default)]
     pub code_lens: bool,
     #[serde(default)]
+    pub trim_trailing_whitespace: bool,
+    #[serde(default)]
+    pub insert_final_newline: bool,
+    #[serde(default)]
     pub vim_mode: bool,
+    #[serde(default = "default_tab_size")]
+    pub tab_size: u32,
+    #[serde(default = "default_true")]
+    pub insert_spaces: bool,
     #[serde(default = "default_true")]
     pub indent_guides: bool,
     /// Where the line the caret is on is marked: `none`, `gutter`, `line` or
@@ -472,6 +480,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_tab_size() -> u32 {
+    2
+}
+
 fn default_todo_patterns() -> String {
     "TODO,FIXME,HACK,XXX".to_string()
 }
@@ -487,7 +499,11 @@ impl Default for EditorDefaults {
             organize_imports_on_save: false,
             code_actions_on_save: false,
             code_lens: false,
+            trim_trailing_whitespace: false,
+            insert_final_newline: false,
             vim_mode: false,
+            tab_size: default_tab_size(),
+            insert_spaces: true,
             indent_guides: true,
             active_line_highlight: default_active_line_highlight(),
             soft_wrap: false,
@@ -1273,6 +1289,25 @@ mod tests {
 
         let raw = std::fs::read_to_string(&p).unwrap();
         assert!(raw.contains("codeLens"), "serialized under the name the frontend uses");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn indent_settings_survive_a_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        let loaded = load_from(&p);
+        assert_eq!(loaded.editor_defaults.tab_size, 2, "a file from before the field reads as the default");
+        assert!(loaded.editor_defaults.insert_spaces);
+
+        let mut s = loaded;
+        s.editor_defaults.tab_size = 8;
+        s.editor_defaults.insert_spaces = false;
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p), s);
+
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("tabSize") && raw.contains("insertSpaces"), "serialized under the frontend's names");
         let _ = std::fs::remove_file(&p);
     }
 

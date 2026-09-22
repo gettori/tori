@@ -16,6 +16,7 @@ mod conflict;
 mod credential;
 mod dap;
 mod dragboard;
+mod editorconfig;
 mod env;
 mod exec;
 pub mod forge;
@@ -360,6 +361,7 @@ pub fn run() {
             dragboard::drag_paths,
             fs::fs_mtime_ms,
             fs::fs_file_size,
+            editorconfig::editorconfig_indent,
             fs::fs_write_files,
             fs::fs_mkdir,
             fs::fs_delete,
