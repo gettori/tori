@@ -43,6 +43,14 @@ import {
   type LspServer,
   type Resolution,
 } from "../../utils/lspServers";
+import {
+  clearProgress,
+  progressClientCapabilities,
+  progressScopeChanged,
+  setProgressScope,
+  trackProgress,
+} from "../../utils/lspProgress";
+import { askServerQuestion, dropServerQuestions } from "../../utils/lspMessages";
 import { lspLogTabId } from "../../utils/syntheticTabs";
 import { TORI_SETTINGS_FILES } from "../../utils/toriSettingsFiles";
 import { callHierarchyClientCapabilities } from "../../utils/callHierarchy";
@@ -122,12 +130,15 @@ export function onLspChange(cb: () => void): () => void {
 
 // Iterates a copy: a watcher is allowed to unsubscribe from inside its own call.
 function notify() {
+  progressScopeChanged();
   for (const w of [...watchers]) w();
 }
 
 // The registry landing changes what `lspPluginFor` would answer for an already
 // open buffer, so it is a lifecycle transition like any other.
 setRegistryListener(notify);
+
+setProgressScope((path) => answeringSession(path)?.handle ?? null);
 
 // The two places `sessions` is mutated, so no transition can skip the notify.
 function addSession(session: Session) {
@@ -145,6 +156,8 @@ function dropAllSessions() {
     }
   }
   sessions.clear();
+  clearProgress();
+  dropServerQuestions();
   // Every diagnostic held there was published by a server that is now gone, and
   // the next project's files can spell their URIs the same way.
   clearDiagnosticContext();
@@ -343,7 +356,7 @@ async function startFor(
     // client below is built - and a server sends nothing at all until it has
     // been sent `initialize`, which only that client does. So by the time
     // anything worth intercepting arrives, this is not reading an unset binding.
-    if (server.role !== "secondary" && interceptServerRequest(handle, msg)) return;
+    if (server.role !== "secondary" && (interceptServerRequest(handle, msg) || interceptProgress(handle, msg))) return;
     for (const h of handlers) h(msg);
   };
 
@@ -588,6 +601,7 @@ export function clientExtensions(serverId: string) {
     codeActionClientCapabilities,
     completionClientCapabilities,
     configurationClientCapabilities,
+    progressClientCapabilities,
   ];
 }
 
@@ -610,6 +624,8 @@ const SEMANTIC_REFRESH = "workspace/semanticTokens/refresh";
 const CODE_LENS_REFRESH = "workspace/codeLens/refresh";
 const APPLY_EDIT = "workspace/applyEdit";
 const CONFIGURATION = "workspace/configuration";
+const WORK_DONE_CREATE = "window/workDoneProgress/create";
+const SHOW_MESSAGE_REQUEST = "window/showMessageRequest";
 
 /**
  * One "a server says its own answers went stale" slot.
@@ -689,6 +705,13 @@ const serverRequests = createRequestRouter<LspHandle>({
   // outlive the project it was asked about.
   [CONFIGURATION]: (params, handle) =>
     configurationFor(sessions.get(key(handle))?.server.settings ?? null, params),
+  // Nothing to set up: a token is tracked from its `begin`.
+  [WORK_DONE_CREATE]: () => {},
+  // A session already dropped has nobody left to clear its question.
+  [SHOW_MESSAGE_REQUEST]: (params, handle) => {
+    const session = sessions.get(key(handle));
+    return session ? askServerQuestion(key(handle), session.server.label, params) : null;
+  },
 });
 
 /**
@@ -778,6 +801,12 @@ function interceptServerRequest(handle: LspHandle, msg: string): boolean {
   return serverRequests(handle, msg, (message) => {
     void invoke("lsp_send", { handle, message }).catch(() => {});
   });
+}
+
+// Only for a live session: a frame still in the channel after its session was
+// dropped would begin work that nothing ever ends.
+function interceptProgress(handle: LspHandle, msg: string): boolean {
+  return sessions.has(key(handle)) && trackProgress(handle, msg);
 }
 
 /** Tell every live workspace that a file changed outside its editor, so a
@@ -961,6 +990,8 @@ function dropSession(session: Session): void {
     // ignore
   }
   sessions.delete(key(session.handle));
+  clearProgress(session.handle);
+  dropServerQuestions(key(session.handle));
   if (session.kind === "secondary") for (const path of session.client.openPaths()) retract(session.server.id, path);
 }
 

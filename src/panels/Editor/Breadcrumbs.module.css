@@ -90,3 +90,14 @@
   padding-left: calc(4px * var(--ui-scale));
   background: var(--canvas-card);
 }
+
+/* A server's work on this file's project. Capped so a long message cannot push
+   the pane's own controls off the bar. */
+.progress {
+  max-width: calc(240px * var(--ui-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-sm);
+}
