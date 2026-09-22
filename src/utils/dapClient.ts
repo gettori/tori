@@ -82,7 +82,7 @@ const REFUSAL_ERROR_BASE = 1000;
  * pinned by a test: flipping either silently moves every breakpoint, stack
  * frame and current-line highlight by one.
  */
-export function initializeArguments(adapterId: string): Record<string, unknown> {
+export function initializeArguments(adapterId: string, childSessions: boolean): Record<string, unknown> {
   return {
     clientID: "tori",
     clientName: "Tori",
@@ -99,9 +99,11 @@ export function initializeArguments(adapterId: string): Record<string, unknown> 
     // it is declared.
     supportsVariableType: true,
     supportsVariablePaging: true,
-    // The two that oblige an answer. See CAPABILITY_OBLIGATIONS.
+    // The two that oblige an answer. See CAPABILITY_OBLIGATIONS. A child
+    // session is a second connection to the same adapter, which only an
+    // adapter with `child_sessions` takes.
     supportsRunInTerminalRequest: false,
-    supportsStartDebuggingRequest: true,
+    supportsStartDebuggingRequest: childSessions,
   };
 }
 

@@ -131,6 +131,7 @@ async function flush(times = 12): Promise<void> {
 
 const start = {
   adapterId: "js-debug",
+  childSessions: true,
   filePath: FILE,
   projectPath: REPO,
   config: { type: "pwa-node", request: "launch", program: FILE },

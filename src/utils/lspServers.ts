@@ -91,7 +91,7 @@ export function ensureLspServersLoaded(): Promise<void> {
  *  matching `LspServer::language_id_for` in registry.rs exactly: the two
  *  disagreeing would mean the frontend asks a server about a file the backend
  *  never claimed. */
-function extensionOf(path: string): string | null {
+export function extensionOf(path: string): string | null {
   const file = path.split("/").pop() ?? "";
   const dot = file.lastIndexOf(".");
   // `>0` not `>=0`: a dotfile like `.zshrc` has no extension, it *is* its name.
