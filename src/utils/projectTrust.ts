@@ -3,9 +3,11 @@
 // whoever started servers, without importing the editor, so Settings can too.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { emitWith, TOAST, type ToastEvent } from "./events";
 import { isUnderPath } from "./pathScope";
 
-/** Mirrors `trust::UNTRUSTED`, what `lsp_start` rejects a gated server with. */
+/** Mirrors `trust::UNTRUSTED`, what `lsp_start` and `dap_start` reject an
+ *  untrusted project with. */
 export const UNTRUSTED = "untrusted";
 
 /** `path` is the trusted scope, which can sit above the project a start was
@@ -40,6 +42,22 @@ export function noteRefused(projectPath: string): boolean {
   if (asked.some((a) => isUnderPath(projectPath, a))) return false;
   asked.push(projectPath);
   return true;
+}
+
+/** Offer to trust the project `projectPath` belongs to. `message` says what
+ *  stays off until then. */
+export function askToTrust(projectPath: string, message: string): void {
+  emitWith<ToastEvent>(TOAST, {
+    kind: "info",
+    message,
+    action: {
+      label: "Trust",
+      run: () =>
+        void trustProject(projectPath).catch((e) =>
+          emitWith<ToastEvent>(TOAST, { message: `Could not trust this project: ${String(e)}` }),
+        ),
+    },
+  });
 }
 
 /** Trust the project `projectPath` belongs to. */

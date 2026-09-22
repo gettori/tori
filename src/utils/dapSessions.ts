@@ -14,8 +14,8 @@
 // it handed us. `dap_connect` opens exactly that, which is why the backend
 // splits `dap_start` (spawn plus first session) from `dap_connect` at all.
 //
-// Nothing here imports CodeMirror or Solid. The pane that renders this arrives
-// in Phase 4 and subscribes through `onDebugChange`.
+// Nothing here imports CodeMirror or a component. The pane that renders this
+// arrives in Phase 4 and subscribes through `onDebugChange`.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
@@ -25,6 +25,7 @@ import {
   type DapConnection,
   type DapHandle,
 } from "./dapClient";
+import { askToTrust, noteRefused, UNTRUSTED } from "./projectTrust";
 
 export type DapSession = {
   handle: DapHandle;
@@ -186,6 +187,13 @@ async function startRun(start: DebugStart, startedAt: number): Promise<DapSessio
       onMessage: wire.channel,
     });
   } catch (e) {
+    if (e === UNTRUSTED) {
+      // Asked on every refused start, not once per project as a file open is: a
+      // start is a deliberate press, and one that shows nothing reads as broken.
+      noteRefused(start.projectPath);
+      askToTrust(start.projectPath, "Debugging runs this project's code, so it stays off until you trust the project.");
+      return null;
+    }
     console.error("dap_start failed", start.adapterId, e);
     start.onLaunchFailed?.(e);
     return null;

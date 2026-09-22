@@ -274,25 +274,33 @@ struct Started {
     socket: Option<PathBuf>,
 }
 
-/// Start `adapter` at `root` and open its first session.
+/// What a start of `adapter` runs: the bundled script (under `node`) for the
+/// socket kind, else the adapter's own program, found by its resolver.
+///
+/// `bundled` is the one lookup that needs the app: where the bundled script is.
+fn locate(adapter: &DapAdapter, bundled: impl FnOnce(&str) -> Option<PathBuf>) -> Result<PathBuf, String> {
+    match &adapter.launch {
+        Launch::BundledNodeSocket { entry, .. } => bundled(entry)
+            .ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id)),
+        launch => find_program(launch).ok_or_else(|| {
+            let program = launch.program();
+            match launch.resolve() {
+                Resolve::Path => format!("{}: `{program}` was not found on your PATH", adapter.id),
+                Resolve::Xcrun => format!("{}: `{program}` was not found by xcrun or on your PATH", adapter.id),
+            }
+        }),
+    }
+}
+
+/// Start `adapter` at `root` from what `locate` found, and open its first
+/// session.
 ///
 /// Free of Tauri types so every launch kind is testable without an app.
-/// `bundled` is the one lookup that needs the app: where the bundled script is.
-fn start_adapter(
-    adapter: &DapAdapter,
-    root: &str,
-    bundled: impl FnOnce(&str) -> Option<PathBuf>,
-) -> Result<Started, String> {
-    let not_found = |program: &str| match adapter.launch.resolve() {
-        Resolve::Path => format!("{}: `{program}` was not found on your PATH", adapter.id),
-        Resolve::Xcrun => format!("{}: `{program}` was not found by xcrun or on your PATH", adapter.id),
-    };
+fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Started, String> {
     match &adapter.launch {
-        Launch::BundledNodeSocket { entry, .. } => {
-            let entry = bundled(entry)
-                .ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id))?;
+        Launch::BundledNodeSocket { .. } => {
             let socket = socket_path()?;
-            let mut child = spawn_adapter(Command::new("node").arg(entry).arg(&socket), root, Stdio::null())?;
+            let mut child = spawn_adapter(Command::new("node").arg(located).arg(&socket), root, Stdio::null())?;
             log_stdout(&mut child);
             let dialled = dial(|| UnixStream::connect(&socket), || child.try_wait().ok().flatten(), CONNECT_TIMEOUT)
                 .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
@@ -306,18 +314,16 @@ fn start_adapter(
             };
             Ok(Started { child, reader: Box::new(reader), writer: Box::new(stream), socket: Some(socket) })
         }
-        Launch::Stdio { program, args, .. } => {
-            let path = find_program(&adapter.launch).ok_or_else(|| not_found(program))?;
-            let mut child = spawn_adapter(Command::new(path).args(args), root, Stdio::piped())?;
+        Launch::Stdio { args, .. } => {
+            let mut child = spawn_adapter(Command::new(located).args(args), root, Stdio::piped())?;
             let reader = child.stdout.take().ok_or("the debug adapter has no stdout")?;
             let writer = child.stdin.take().ok_or("the debug adapter has no stdin")?;
             Ok(Started { child, reader: Box::new(reader), writer: Box::new(writer), socket: None })
         }
-        Launch::Tcp { program, args, .. } => {
-            let path = find_program(&adapter.launch).ok_or_else(|| not_found(program))?;
+        Launch::Tcp { args, .. } => {
             let port = free_port()?;
             let args = args.iter().map(|a| a.replace("{port}", &port.to_string()));
-            let mut child = spawn_adapter(Command::new(path).args(args), root, Stdio::null())?;
+            let mut child = spawn_adapter(Command::new(located).args(args), root, Stdio::null())?;
             log_stdout(&mut child);
             let dialled =
                 dial(|| TcpStream::connect(("127.0.0.1", port)), || child.try_wait().ok().flatten(), CONNECT_TIMEOUT)
@@ -402,6 +408,30 @@ fn stop(server: &mut Server) {
     }
 }
 
+/// Everything `dap_start` settles before it spawns: the adapter, that it is on,
+/// what it runs, that the project is trusted, and its root. Free of Tauri types,
+/// so the refusals are testable without an app.
+///
+/// The program is located before the trust gate, so a missing one fails as
+/// missing rather than as a trust prompt, the order `lsp_start` keeps.
+fn prepare(
+    adapter_id: &str,
+    file_path: &str,
+    project_path: &str,
+    disabled: &[String],
+    bundled: impl FnOnce(&str) -> Option<PathBuf>,
+    gate: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(&'static DapAdapter, String, PathBuf), String> {
+    let adapter = registry::find(adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
+    if disabled.contains(&adapter.id) {
+        return Err(format!("the {} debugger is off. Turn it on in Settings > Debuggers.", adapter.label));
+    }
+    let located = locate(adapter, bundled)?;
+    gate(Path::new(project_path))?;
+    let root = registry::root_for(adapter, Path::new(file_path), Path::new(project_path));
+    Ok((adapter, root.to_string_lossy().into_owned(), located))
+}
+
 /// Start an adapter for `adapter_id` at the root resolved for `file_path`, and
 /// open its first session.
 #[tauri::command]
@@ -413,20 +443,15 @@ pub async fn dap_start(
     project_path: String,
     on_message: Channel<String>,
 ) -> Result<DapHandle, String> {
-    let adapter: &DapAdapter = registry::find(&adapter_id)
-        .ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
-    if crate::settings::get_settings().dap.disabled.contains(&adapter.id) {
-        return Err(format!("the {} debugger is off. Turn it on in Settings > Debuggers.", adapter.label));
-    }
-
-    let root = registry::root_for(
-        adapter,
-        std::path::Path::new(&file_path),
-        std::path::Path::new(&project_path),
-    );
-    let root = root.to_string_lossy().into_owned();
-
-    let started = start_adapter(adapter, &root, |rel| bundled_entry(&app, rel))?;
+    let (adapter, root, located) = prepare(
+        &adapter_id,
+        &file_path,
+        &project_path,
+        &crate::settings::get_settings().dap.disabled,
+        |rel| bundled_entry(&app, rel),
+        crate::trust::gate_project,
+    )?;
+    let started = start_adapter(adapter, &root, &located)?;
 
     let handle = DapHandle {
         server: DapServerId(next_id("dap")),
@@ -969,7 +994,7 @@ mod tests {
     #[test]
     fn a_stdio_adapter_round_trips_a_frame_over_its_pipes() {
         let cat = adapter("kind = \"stdio\"\nprogram = \"cat\"");
-        let started = start_adapter(&cat, "/tmp", |_| None).expect("cat starts");
+        let started = start_adapter(&cat, "/tmp", &locate(&cat, |_| None).unwrap()).expect("cat starts");
         assert!(started.socket.is_none());
         assert_eq!(round_trip(started), r#"{"seq":1,"type":"request"}"#);
     }
@@ -983,7 +1008,8 @@ mod tests {
         let echo = adapter(&format!(
             "kind = \"tcp\"\nprogram = \"perl\"\nargs = [\"-MIO::Socket::INET\", \"-e\", '{TCP_ECHO}', \"{{port}}\"]"
         ));
-        let started = start_adapter(&echo, "/tmp", |_| None).expect("the echo adapter accepts");
+        let located = locate(&echo, |_| None).unwrap();
+        let started = start_adapter(&echo, "/tmp", &located).expect("the echo adapter accepts");
         assert_eq!(round_trip(started), r#"{"seq":1,"type":"request"}"#);
     }
 
@@ -993,7 +1019,7 @@ mod tests {
     fn a_tcp_adapter_that_exits_at_once_fails_well_inside_the_timeout() {
         let gone = adapter("kind = \"tcp\"\nprogram = \"false\"\nargs = [\"{port}\"]");
         let began = Instant::now();
-        let err = start_adapter(&gone, "/tmp", |_| None).err().expect("nothing ever listens");
+        let err = start_adapter(&gone, "/tmp", &locate(&gone, |_| None).unwrap()).err().expect("nothing ever listens");
         assert!(err.contains("exited before accepting"), "got {err}");
         assert!(began.elapsed() < CONNECT_TIMEOUT / 5, "took {:?}", began.elapsed());
     }
@@ -1063,7 +1089,8 @@ mod tests {
             return;
         }
 
-        let started = start_adapter(js, "/tmp", test_client::dev_bundled).expect("the real adapter accepts");
+        let located = locate(js, test_client::dev_bundled).expect("the bundle is installed");
+        let started = start_adapter(js, "/tmp", &located).expect("the real adapter accepts");
         let mut writer = started.writer;
         let mut server = Server {
             child: started.child,
@@ -1207,5 +1234,25 @@ mod tests {
 
         assert!(root_for_adapter("nope", "/a", "/a").is_err());
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn an_untrusted_project_is_refused_before_spawning_but_after_a_missing_program() {
+        let untrusted = |_: &Path| Err(crate::trust::UNTRUSTED.to_string());
+        let found = |_: &str| Some(PathBuf::from("/bundled/dapDebugServer.js"));
+
+        let mut gated = None;
+        let refused = prepare("js-debug", "/p/a.ts", "/p", &[], found, |project| {
+            gated = Some(project.to_path_buf());
+            untrusted(project)
+        });
+        assert_eq!(refused.err().as_deref(), Some(crate::trust::UNTRUSTED));
+        assert_eq!(gated.as_deref(), Some(Path::new("/p")));
+
+        let missing = prepare("js-debug", "/p/a.ts", "/p", &[], |_| None, untrusted).err().unwrap();
+        assert!(missing.contains("bundled adapter not found"), "got {missing}");
+
+        let off = prepare("js-debug", "/p/a.ts", "/p", &["js-debug".to_string()], found, untrusted).err().unwrap();
+        assert!(off.contains("debugger is off"), "got {off}");
     }
 }
