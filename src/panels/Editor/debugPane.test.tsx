@@ -132,6 +132,7 @@ async function mountEditor() {
 async function startRun(): Promise<{ id: string; name: string }> {
   const root = await dap.startDebugSession({
     adapterId: "js-debug",
+    childSessions: true,
     filePath: `${REPO}/src/index.ts`,
     projectPath: REPO,
     config: { type: "pwa-node", request: "launch" },

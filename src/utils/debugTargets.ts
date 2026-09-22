@@ -1,10 +1,11 @@
 // What "debug this" actually means, as a DAP launch or attach configuration.
 //
-// Three target kinds, because they are the three ways a Node program is already
-// started: the file in front of you, a script the project declares, and a
-// process somebody else started with `--inspect`. Everything here is pure: the
-// caller supplies the resolved root, that root's directory listing and the
-// launch environment, so every rule is testable without a workspace on disk.
+// Every target belongs to one adapter, and each adapter offers its own kinds.
+// js-debug's three are the three ways a Node program is already started: the
+// file in front of you, a script the project declares, and a process somebody
+// else started with `--inspect`. Everything here is pure: the caller supplies
+// the resolved root, that root's directory listing and the launch environment,
+// so every rule is testable without a workspace on disk.
 //
 // The `cwd` is the load-bearing field. It is the backend's `root_for` answer,
 // not the workspace root, and in a monorepo those differ: `cwd` decides module
@@ -15,12 +16,40 @@
 import { packageRunner } from "./tasks";
 import type { DebugConfig } from "./dapSessions";
 
-export type TargetKind = "file" | "script" | "attach";
+/** The adapter every JavaScript and TypeScript target uses. */
+export const JS_ADAPTER = "js-debug";
 
 export type DebugTarget =
-  | { kind: "file"; path: string }
-  | { kind: "script"; script: string }
-  | { kind: "attach"; port: number };
+  | { adapterId: typeof JS_ADAPTER; kind: "file"; path: string }
+  | { adapterId: typeof JS_ADAPTER; kind: "script"; script: string }
+  | { adapterId: typeof JS_ADAPTER; kind: "attach"; port: number };
+
+export type TargetKind = DebugTarget["kind"];
+
+/** A registered debug adapter, as much of a `dap_registry` row as the frontend
+ *  reads. */
+export type DapAdapterInfo = {
+  id: string;
+  label: string;
+  /** Extension (dotless, lowercase) to the DAP `type`. */
+  languages: Record<string, string>;
+  childSessions: boolean;
+};
+
+/** The kinds each adapter offers, in picker order. An adapter the backend
+ *  registers and this table does not name has none yet. */
+const ADAPTER_KINDS: Readonly<Record<string, readonly TargetKind[]>> = {
+  [JS_ADAPTER]: ["file", "script", "attach"],
+};
+
+export function kindsFor(adapterId: string): readonly TargetKind[] {
+  return ADAPTER_KINDS[adapterId] ?? [];
+}
+
+export function defaultKind(adapterId: string, hasFile: boolean): TargetKind | null {
+  const kinds = kindsFor(adapterId);
+  return kinds.find((k) => hasFile || k !== "file") ?? kinds[0] ?? null;
+}
 
 /** Everything a config needs that this module cannot work out for itself. */
 export type TargetContext = {
@@ -112,8 +141,15 @@ export function attachConfig(ctx: TargetContext, port: number): DebugConfig {
   };
 }
 
-/** The config for one target. */
+/** The config for one target, built by the rules of the adapter it runs under. */
 export function configFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
+  switch (target.adapterId) {
+    case JS_ADAPTER:
+      return nodeConfigFor(target, ctx);
+  }
+}
+
+function nodeConfigFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
   switch (target.kind) {
     case "file":
       return fileConfig(ctx, target.path);
@@ -225,15 +261,24 @@ export function saveAttachPorts(store: AttachPortStore): void {
 
 const LS_LAST_TARGET = "tori.debugLastTarget";
 
-/** What each workspace last debugged, keyed by branch-unit folder. */
-export type LastTargetStore = Readonly<Record<string, DebugTarget>>;
+/** What each workspace debugged, keyed by branch-unit folder: at most one
+ *  target per adapter, the most recent first. */
+export type LastTargetStore = Readonly<Record<string, readonly DebugTarget[]>>;
 
-export function lastTargetFor(store: LastTargetStore, ws: string): DebugTarget | null {
-  return store[ws] ?? null;
+/** The target F5 repeats: `adapterId`'s last one, or with no adapter to go by,
+ *  whatever the workspace ran most recently. */
+export function lastTargetFor(
+  store: LastTargetStore,
+  ws: string,
+  adapterId: string | null,
+): DebugTarget | null {
+  const targets = store[ws] ?? [];
+  return (adapterId === null ? targets[0] : targets.find((t) => t.adapterId === adapterId)) ?? null;
 }
 
 export function setLastTarget(store: LastTargetStore, ws: string, target: DebugTarget): LastTargetStore {
-  return { ...store, [ws]: target };
+  const others = (store[ws] ?? []).filter((t) => t.adapterId !== target.adapterId);
+  return { ...store, [ws]: [target, ...others] };
 }
 
 /** Whether a parsed value is a target this build understands. Kept strict
@@ -242,7 +287,7 @@ export function setLastTarget(store: LastTargetStore, ws: string, target: DebugT
  *  than launched as something it is not. */
 function isTarget(value: unknown): value is DebugTarget {
   const t = value as DebugTarget | null;
-  if (!t || typeof t !== "object") return false;
+  if (!t || typeof t !== "object" || t.adapterId !== JS_ADAPTER) return false;
   if (t.kind === "file") return typeof t.path === "string" && t.path.length > 0;
   if (t.kind === "script") return typeof t.script === "string" && t.script.length > 0;
   if (t.kind === "attach") return isPort(t.port);
@@ -254,9 +299,17 @@ export function parseLastTargets(raw: string | null): LastTargetStore {
   try {
     const parsed: unknown = JSON.parse(raw ?? "");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const out: Record<string, DebugTarget> = {};
-    for (const [ws, target] of Object.entries(parsed as Record<string, unknown>)) {
-      if (isTarget(target)) out[ws] = target;
+    const out: Record<string, DebugTarget[]> = {};
+    for (const [ws, value] of Object.entries(parsed as Record<string, unknown>)) {
+      // A workspace used to keep one bare target, and every target then was
+      // js-debug's.
+      const listed = Array.isArray(value)
+        ? value
+        : [value && typeof value === "object" ? { ...value, adapterId: JS_ADAPTER } : value];
+      const targets = listed
+        .filter(isTarget)
+        .filter((t, i, all) => all.findIndex((o) => o.adapterId === t.adapterId) === i);
+      if (targets.length) out[ws] = targets;
     }
     return out;
   } catch {

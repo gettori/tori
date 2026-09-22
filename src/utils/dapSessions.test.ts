@@ -118,6 +118,7 @@ async function freshModule() {
 
 const start = {
   adapterId: "js-debug",
+  childSessions: true,
   filePath: "/p/src/index.ts",
   projectPath: "/p",
   config: { type: "pwa-node", request: "launch", program: "/p/src/index.ts" },
@@ -488,6 +489,28 @@ describe("stopping", () => {
     // process group takes the debuggee with it.
     expect(m.debugSessions()).toHaveLength(0);
     expect(calls.filter((c) => c.cmd === "dap_stop")).toHaveLength(1);
+  });
+
+  it("stops the run holding the selected session, not the newest of two", async () => {
+    const m = await freshModule();
+    const js = await m.startDebugSession(start);
+    await m.startDebugSession({ ...start, adapterId: "lldb", childSessions: false });
+    await flush();
+    await startDebugging(js!.handle.session, { __pendingTargetId: "t1" });
+
+    // The pane's selected frame is in js-debug's child session.
+    await m.stopDebugRun(m.runFor(js!.children[0])!.handle.session);
+
+    expect(m.debugRoots().map((r) => r.adapterId)).toEqual(["lldb"]);
+    expect(calls.filter((c) => c.cmd === "dap_stop").map((c) => c.args.server)).toEqual(["dap0"]);
+  });
+
+  it("stops the most recently started run when nothing is selected", async () => {
+    const m = await freshModule();
+    await m.startDebugSession(start);
+    const newest = await m.startDebugSession({ ...start, adapterId: "lldb", childSessions: false });
+
+    expect(m.runFor(null)).toBe(newest);
   });
 
   it("is swept when the workspace changes, not when the active member moves", () => {

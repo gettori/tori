@@ -4,17 +4,32 @@ import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import Select from "../Select/Select";
-import { DEFAULT_ATTACH_PORT, isPort, type DebugTarget, type TargetKind } from "../../utils/debugTargets";
+import {
+  DEFAULT_ATTACH_PORT,
+  defaultKind,
+  isPort,
+  JS_ADAPTER,
+  kindsFor,
+  type DebugTarget,
+  type TargetKind,
+} from "../../utils/debugTargets";
 
 // The visible line above each field is also its accessible name, rather than an
 // `aria-label` repeating that line, so the two cannot drift apart (the
 // convention `NewProjectDialog` set in #99). Static ids: only one of these can
 // be open at a time.
+const ADAPTER_LABEL = "debug-target-adapter-label";
 const SCRIPT_LABEL = "debug-target-script-label";
 const PORT_LABEL = "debug-target-port-label";
 
-// Which of the three things "debug" means, in one dialog with a mode picker
-// rather than three palette rows each firing its own prompt chain
+const KIND_LABELS: Record<TargetKind, string> = {
+  file: "This file",
+  script: "Package script",
+  attach: "Attach",
+};
+
+// Which of an adapter's kinds "debug" means, in one dialog with a mode picker
+// rather than a palette row per kind each firing its own prompt chain
 // (lesson_menu_items_into_mode_picker_dialog). They act on the same workspace
 // and differ by a parameter, which is exactly that shape: the modes are visible
 // side by side, only the field the mode needs is shown, and Start is gated on
@@ -27,10 +42,16 @@ const PORT_LABEL = "debug-target-port-label";
 // `disabled` and a disabled button is never clicked. Escape does not stay here:
 // Kobalte reports it as `onClose`.
 export default function DebugTargetDialog(props: {
-  /** Which tab to open on. The palette's three rows each name one. */
-  kind: TargetKind;
+  /** The debuggers to choose among. One when the active file or the palette
+   *  row already decided it, and then there is nothing to choose. */
+  adapters: readonly { id: string; label: string }[];
+  /** Which tab to open on, or null for the adapter's own default. A palette
+   *  row names one. */
+  kind: TargetKind | null;
   /** The active editor file, or null when nothing is open. */
   filePath: string | null;
+  /** The adapter that runs `filePath`, or null when none does. */
+  fileAdapter: string | null;
   /** Script names from the resolved root's `package.json`, in declaration
    *  order. Empty when the root declares none, or has no `package.json`. */
   scripts: string[];
@@ -39,7 +60,15 @@ export default function DebugTargetDialog(props: {
   onConfirm: (target: DebugTarget) => void;
   onCancel: () => void;
 }) {
-  const [kind, setKind] = createSignal<TargetKind>(props.kind);
+  const [adapterId, setAdapterId] = createSignal(props.adapters[0]?.id ?? "");
+  const adapterLabel = () => props.adapters.find((a) => a.id === adapterId())?.label ?? adapterId();
+  const runner = () => (adapterId() === JS_ADAPTER ? "node" : adapterLabel());
+  const runnableFile = () => (props.fileAdapter === adapterId() ? props.filePath : null);
+  const [kind, setKind] = createSignal<TargetKind | null>(
+    props.kind && kindsFor(adapterId()).includes(props.kind)
+      ? props.kind
+      : defaultKind(adapterId(), !!runnableFile()),
+  );
   const [script, setScript] = createSignal(props.scripts[0] ?? "");
   const [port, setPort] = createSignal(String(props.port || DEFAULT_ATTACH_PORT));
   let first: HTMLElement | undefined;
@@ -50,8 +79,11 @@ export default function DebugTargetDialog(props: {
    *  an empty picker says what is missing instead of looking broken. */
   function blocker(): string | null {
     switch (kind()) {
+      case null:
+        return `Tori cannot start ${adapterLabel()} programs from here yet.`;
       case "file":
-        return props.filePath ? null : "Open a file to debug it.";
+        if (runnableFile()) return null;
+        return props.filePath ? "Open a file this debugger runs." : "Open a file to debug it.";
       case "script":
         if (!props.scripts.length) return "This project declares no package scripts.";
         return script() ? null : "Pick a script.";
@@ -62,14 +94,18 @@ export default function DebugTargetDialog(props: {
     }
   }
 
+  // Every kind is js-debug's today, so every target is too.
   function target(): DebugTarget | null {
+    const f = runnableFile();
     switch (kind()) {
+      case null:
+        return null;
       case "file":
-        return props.filePath ? { kind: "file", path: props.filePath } : null;
+        return f ? { adapterId: JS_ADAPTER, kind: "file", path: f } : null;
       case "script":
-        return script() ? { kind: "script", script: script() } : null;
+        return script() ? { adapterId: JS_ADAPTER, kind: "script", script: script() } : null;
       case "attach":
-        return isPort(portNumber()) ? { kind: "attach", port: portNumber() } : null;
+        return isPort(portNumber()) ? { adapterId: JS_ADAPTER, kind: "attach", port: portNumber() } : null;
     }
   }
 
@@ -84,11 +120,12 @@ export default function DebugTargetDialog(props: {
     confirm();
   }
 
-  const segs: { value: TargetKind; label: string }[] = [
-    { value: "file", label: "This file" },
-    { value: "script", label: "Package script" },
-    { value: "attach", label: "Attach" },
-  ];
+  const segs = () => kindsFor(adapterId()).map((value) => ({ value, label: KIND_LABELS[value] }));
+
+  function chooseAdapter(id: string) {
+    setAdapterId(id);
+    setKind(defaultKind(id, !!runnableFile()));
+  }
 
   return (
     <Dialog
@@ -106,18 +143,30 @@ export default function DebugTargetDialog(props: {
         </>
       }
     >
-      <SegmentedControl
-        aria-label="What to debug"
-        options={segs}
-        value={kind()}
-        onChange={setKind}
-      />
+      <Show when={props.adapters.length > 1}>
+        <div id={ADAPTER_LABEL} class={styles.label}>Debugger</div>
+        <Select
+          class={styles.fill}
+          aria-labelledby={ADAPTER_LABEL}
+          options={props.adapters.map((a) => ({ value: a.id, label: a.label }))}
+          value={adapterId()}
+          onChange={chooseAdapter}
+        />
+      </Show>
+
+      <Show when={kind()}>
+        {(k) => (
+          <SegmentedControl aria-label="What to debug" options={segs()} value={k()} onChange={setKind} />
+        )}
+      </Show>
 
       <Show when={kind() === "file"}>
         <div class={styles.msg}>
-          {props.filePath
-            ? `Runs ${props.filePath} under node, stopping on your breakpoints.`
-            : "No file is open."}
+          {runnableFile()
+            ? `Runs ${runnableFile()} under ${runner()}, stopping on your breakpoints.`
+            : props.filePath
+              ? `${props.filePath} is not a file ${adapterLabel()} runs.`
+              : "No file is open."}
         </div>
       </Show>
 

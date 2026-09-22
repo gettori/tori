@@ -112,6 +112,7 @@ const OTHER = "/p/src/other.ts";
 
 const start = {
   adapterId: "js-debug",
+  childSessions: true,
   filePath: FILE,
   projectPath: WS,
   config: { type: "pwa-node", request: "launch", program: FILE },

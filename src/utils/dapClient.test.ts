@@ -239,7 +239,7 @@ describe("the reverse-request list", () => {
 });
 
 describe("the initialize payload", () => {
-  const args = initializeArguments("js-debug");
+  const args = initializeArguments("js-debug", true);
 
   it("pins the Phase 1 line and column base", () => {
     // Flipping either silently moves every breakpoint, stack frame and

@@ -13,8 +13,10 @@ const meta = {
     port: { control: "number" },
   },
   args: {
+    adapters: [{ id: "js-debug", label: "JavaScript / TypeScript (vscode-js-debug)" }],
     kind: "file",
     filePath: "/Users/you/Projects/tori/src/index.ts",
+    fileAdapter: "js-debug",
     scripts: ["dev", "build", "test"],
     port: 9229,
     onConfirm: () => {},

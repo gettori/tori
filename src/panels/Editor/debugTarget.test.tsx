@@ -28,6 +28,18 @@ const PKG = `${REPO}/packages/api`;
 type Handle = { server: string; session: string };
 type Invoke = { cmd: string; args: Record<string, unknown> };
 
+/** js-debug, plus a second adapter claiming `.rs` so F5 has two to choose
+ *  between. It has no target kinds of its own yet. */
+const REGISTRY = [
+  {
+    id: "js-debug",
+    label: "JavaScript / TypeScript (vscode-js-debug)",
+    languages: { ts: "pwa-node" },
+    childSessions: true,
+  },
+  { id: "lldb", label: "Rust, C and C++ (lldb-dap)", languages: { rs: "lldb-dap" }, childSessions: false },
+];
+
 const calls: Invoke[] = [];
 const channels = new Map<string, { onmessage: ((m: string) => void) | null }>();
 let sessionCounter = 0;
@@ -52,6 +64,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([{ name: "package.json" }, { name: "pnpm-lock.yaml" }]);
       case "fs_read_file":
         return Promise.resolve(packageJson);
+      case "dap_registry":
+        return Promise.resolve(REGISTRY);
       case "dap_root_for":
         return Promise.resolve(resolvedRoot);
       case "dap_launch_env":
@@ -318,6 +332,63 @@ describe("starting a run", () => {
     // the adapter's whole process group.
     await waitFor(() => expect(dap.debugRoots()).toHaveLength(0));
     expect(calls.some((c) => c.cmd === "dap_stop")).toBe(true);
+  });
+
+  it("follows the active file's adapter across a .rs then .ts switch", async () => {
+    await mountEditor();
+    await openFile(`${REPO}/src/index.ts`);
+    emit(DEBUG_START);
+    await waitFor(() => expect(screen.getByText("Start debugging")).toBeTruthy());
+    fireEvent.click(screen.getByText("Start"));
+    await flush();
+    await dap.stopAllDap();
+
+    // The .rs file belongs to another adapter, so js-debug's target is not the
+    // one to repeat: F5 asks, on that adapter's picker.
+    await openFile(`${REPO}/src/main.rs`);
+    calls.length = 0;
+    emit(DEBUG_START);
+    await waitFor(() =>
+      expect(screen.getByText(/Tori cannot start Rust, C and C\+\+ \(lldb-dap\)/)).toBeTruthy(),
+    );
+    expect(launchedConfig()).toBeNull();
+    fireEvent.click(screen.getByText("Cancel"));
+    await waitFor(() => expect(screen.queryByText("Start debugging")).toBeNull());
+
+    // Back on the .ts file, F5 repeats js-debug's target without asking.
+    await openFile(`${REPO}/src/index.ts`);
+    emit(DEBUG_START);
+    await flush();
+    expect(screen.queryByText("Start debugging")).toBeNull();
+    await waitFor(() => expect(launchedConfig()).toMatchObject({ program: `${REPO}/src/index.ts` }));
+  });
+
+  it("repeats the workspace's last target from a tab no adapter claims", async () => {
+    await mountEditor();
+    await openFile(`${REPO}/src/index.ts`);
+    emit(DEBUG_START);
+    await waitFor(() => expect(screen.getByText("Start debugging")).toBeTruthy());
+    fireEvent.click(screen.getByText("Start"));
+    await flush();
+    await dap.stopAllDap();
+
+    await openFile(`${REPO}/README.md`);
+    calls.length = 0;
+    emit(DEBUG_START);
+    await flush();
+
+    // A README has no debugger, so it has no say: F5 means "again".
+    expect(screen.queryByText("Start debugging")).toBeNull();
+    await waitFor(() => expect(launchedConfig()).toMatchObject({ program: `${REPO}/src/index.ts` }));
+  });
+
+  it("offers a choice of debugger from a tab no adapter claims, with nothing to repeat", async () => {
+    await mountEditor();
+    await openFile(`${REPO}/README.md`);
+
+    emit(DEBUG_START);
+
+    await waitFor(() => expect(screen.getByText("Debugger")).toBeTruthy());
   });
 
   it("remembers the attach port per workspace, across a reload", async () => {

@@ -15,12 +15,33 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { startDebugSession, type DapSession } from "./dapSessions";
-import { anchorFor, attachFailureMessage, configFor, type DebugTarget } from "./debugTargets";
+import {
+  anchorFor,
+  attachFailureMessage,
+  configFor,
+  type DapAdapterInfo,
+  type DebugTarget,
+} from "./debugTargets";
+import { extensionOf } from "./lspServers";
 import { parsePackageScripts, packageRunner } from "./tasks";
 
-/** The adapter every JavaScript and TypeScript target uses. One adapter ships;
- *  when a second does, this becomes a lookup in `dap_registry`. */
-export const JS_ADAPTER = "js-debug";
+let registry: Promise<DapAdapterInfo[]> | null = null;
+
+/** Every registered debug adapter. Asked once, since the backend loads them once
+ *  at startup; a failed ask is not kept, so the next call retries it. */
+export function dapAdapters(): Promise<DapAdapterInfo[]> {
+  registry ??= invoke<DapAdapterInfo[]>("dap_registry").catch(() => {
+    registry = null;
+    return [];
+  });
+  return registry;
+}
+
+/** The adapter that runs `path`, by its extension, or null. */
+export function adapterForPath(adapters: readonly DapAdapterInfo[], path: string | null): DapAdapterInfo | null {
+  const ext = path ? extensionOf(path) : null;
+  return (ext && adapters.find((a) => ext in a.languages)) || null;
+}
 
 type DirEntry = { name: string };
 
@@ -29,12 +50,12 @@ async function entriesOf(root: string): Promise<string[]> {
   return (entries ?? []).map((e) => e.name);
 }
 
-/** Where a target for `anchor` will actually run. The dialog needs this before
- *  anything starts, because the scripts it offers are that root's, not the
- *  workspace root's. */
-export async function resolveRoot(anchor: string, projectPath: string): Promise<string> {
+/** Where `adapterId` will run a target for `anchor`. The dialog needs this
+ *  before anything starts, because the scripts it offers are that root's, not
+ *  the workspace root's. */
+export async function resolveRoot(adapterId: string, anchor: string, projectPath: string): Promise<string> {
   return invoke<string>("dap_root_for", {
-    adapterId: JS_ADAPTER,
+    adapterId,
     filePath: anchor,
     projectPath,
   }).catch(() => projectPath);
@@ -60,8 +81,13 @@ export async function launchTarget(
   target: DebugTarget,
   opts: { projectPath: string; onError: (message: string) => void },
 ): Promise<DapSession | null> {
+  const adapter = (await dapAdapters()).find((a) => a.id === target.adapterId);
+  if (!adapter) {
+    opts.onError(`No debugger is registered as ${target.adapterId}.`);
+    return null;
+  }
   const anchor = anchorFor(target, opts.projectPath);
-  const root = await resolveRoot(anchor, opts.projectPath);
+  const root = await resolveRoot(adapter.id, anchor, opts.projectPath);
   const [entries, env] = await Promise.all([
     entriesOf(root),
     invoke<Record<string, string>>("dap_launch_env").catch(() => ({})),
@@ -69,7 +95,8 @@ export async function launchTarget(
 
   const config = configFor(target, { root, entries, env });
   return startDebugSession({
-    adapterId: JS_ADAPTER,
+    adapterId: adapter.id,
+    childSessions: adapter.childSessions,
     filePath: anchor,
     projectPath: opts.projectPath,
     config,

@@ -10,6 +10,7 @@ import {
   describeTarget,
   fileConfig,
   isPort,
+  JS_ADAPTER,
   lastTargetFor,
   loadAttachPorts,
   loadLastTargets,
@@ -114,9 +115,9 @@ describe("an attach config", () => {
 describe("choosing a target", () => {
   it("routes each kind to its own config", () => {
     const targets: DebugTarget[] = [
-      { kind: "file", path: "/repo/a.ts" },
-      { kind: "script", script: "dev" },
-      { kind: "attach", port: 5858 },
+      { adapterId: JS_ADAPTER, kind: "file", path: "/repo/a.ts" },
+      { adapterId: JS_ADAPTER, kind: "script", script: "dev" },
+      { adapterId: JS_ADAPTER, kind: "attach", port: 5858 },
     ];
     expect(targets.map((t) => configFor(t, ctx()).request)).toEqual(["launch", "launch", "attach"]);
   });
@@ -124,15 +125,17 @@ describe("choosing a target", () => {
   it("resolves a file target against its own file and the rest against the workspace", () => {
     // A script and an attach have no file, so the root walk has nothing of
     // their own to start from.
-    expect(anchorFor({ kind: "file", path: "/repo/pkg/a.ts" }, "/repo")).toBe("/repo/pkg/a.ts");
-    expect(anchorFor({ kind: "script", script: "dev" }, "/repo")).toBe("/repo");
-    expect(anchorFor({ kind: "attach", port: 9229 }, "/repo")).toBe("/repo");
+    expect(anchorFor({ adapterId: JS_ADAPTER, kind: "file", path: "/repo/pkg/a.ts" }, "/repo")).toBe(
+      "/repo/pkg/a.ts",
+    );
+    expect(anchorFor({ adapterId: JS_ADAPTER, kind: "script", script: "dev" }, "/repo")).toBe("/repo");
+    expect(anchorFor({ adapterId: JS_ADAPTER, kind: "attach", port: 9229 }, "/repo")).toBe("/repo");
   });
 
   it("describes each kind in the words somebody picked it with", () => {
-    expect(describeTarget({ kind: "file", path: "/repo/src/index.ts" })).toBe("index.ts");
-    expect(describeTarget({ kind: "script", script: "test" })).toBe("run test");
-    expect(describeTarget({ kind: "attach", port: 9229 })).toBe("port 9229");
+    expect(describeTarget({ adapterId: JS_ADAPTER, kind: "file", path: "/repo/src/index.ts" })).toBe("index.ts");
+    expect(describeTarget({ adapterId: JS_ADAPTER, kind: "script", script: "test" })).toBe("run test");
+    expect(describeTarget({ adapterId: JS_ADAPTER, kind: "attach", port: 9229 })).toBe("port 9229");
   });
 });
 
@@ -179,20 +182,43 @@ describe("the remembered attach port", () => {
 });
 
 describe("the last target", () => {
+  const script: DebugTarget = { adapterId: JS_ADAPTER, kind: "script", script: "test" };
+  const file: DebugTarget = { adapterId: JS_ADAPTER, kind: "file", path: "/ws/a.ts" };
+  /** Another adapter's target. Only js-debug has kinds of its own so far, so
+   *  this borrows one; the store only reads `adapterId`. */
+  const other = { ...file, adapterId: "lldb" } as unknown as DebugTarget;
+
   it("is what F5 repeats, per workspace", () => {
-    const store = setLastTarget({}, "/ws", { kind: "script", script: "test" });
-    expect(lastTargetFor(store, "/ws")).toEqual({ kind: "script", script: "test" });
-    expect(lastTargetFor(store, "/other")).toBeNull();
+    const store = setLastTarget({}, "/ws", script);
+    expect(lastTargetFor(store, "/ws", JS_ADAPTER)).toEqual(script);
+    expect(lastTargetFor(store, "/other", JS_ADAPTER)).toBeNull();
+  });
+
+  it("is kept per adapter, the most recent first", () => {
+    let store = setLastTarget({}, "/ws", script);
+    store = setLastTarget(store, "/ws", other);
+
+    // A .rs file and a .ts file in one workspace each replay their own.
+    expect(lastTargetFor(store, "/ws", "lldb")).toEqual(other);
+    expect(lastTargetFor(store, "/ws", JS_ADAPTER)).toEqual(script);
+    // A tab no adapter claims replays whatever ran last.
+    expect(lastTargetFor(store, "/ws", null)).toEqual(other);
+
+    // Running js-debug again replaces its own entry and moves it to the front.
+    store = setLastTarget(store, "/ws", file);
+    expect(store["/ws"]).toEqual([file, other]);
+    expect(lastTargetFor(store, "/ws", null)).toEqual(file);
+  });
+
+  it("reads a workspace's one target from before adapters as js-debug's", () => {
+    const stored = JSON.stringify({ "/ws": { kind: "file", path: "/ws/a.ts" } });
+    expect(parseLastTargets(stored)).toEqual({ "/ws": [file] });
   });
 
   it("refuses a shape this build does not know", () => {
-    expect(parseLastTargets(JSON.stringify({ "/ws": { kind: "file", path: "/ws/a.ts" } }))).toEqual({
-      "/ws": { kind: "file", path: "/ws/a.ts" },
-    });
-
     // Read back across releases: a target written by a build that knew a fourth
-    // kind must be ignored rather than launched as something it is not, and so
-    // must one whose port is no longer acceptable.
+    // kind or another adapter must be ignored rather than launched as something
+    // it is not, and so must one whose port is no longer acceptable.
     expect(
       parseLastTargets(
         JSON.stringify({
@@ -200,9 +226,13 @@ describe("the last target", () => {
           "/b": { kind: "attach", port: 80 },
           "/c": { kind: "file", path: "" },
           "/d": { kind: "attach", port: 9229 },
+          "/e": [{ adapterId: "debugpy", kind: "module", module: "app" }],
+          "/f": [script, { ...file, adapterId: "debugpy" }],
         }),
       ),
-    ).toEqual({ "/d": { kind: "attach", port: 9229 } });
+    ).toEqual({ "/d": [{ adapterId: JS_ADAPTER, kind: "attach", port: 9229 }], "/f": [script] });
+    // Two entries for one adapter keep the first, the most recent.
+    expect(parseLastTargets(JSON.stringify({ "/ws": [script, file] }))).toEqual({ "/ws": [script] });
     expect(parseLastTargets("{not json")).toEqual({});
   });
 

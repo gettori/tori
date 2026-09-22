@@ -20,6 +20,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
     switch (cmd) {
+      case "dap_registry":
+        return Promise.resolve([
+          { id: "js-debug", label: "JavaScript", languages: { ts: "pwa-node" }, childSessions: true },
+        ]);
       case "dap_root_for":
         return Promise.resolve(resolvedRoot);
       case "dap_launch_env":
@@ -108,7 +112,7 @@ describe("what a launch is built from", () => {
   it("takes cwd from the backend's root, never the workspace root", async () => {
     const m = await freshModule();
     await m.launchTarget(
-      { kind: "file", path: "/repo/packages/api/src/x.ts" },
+      { adapterId: "js-debug", kind: "file", path: "/repo/packages/api/src/x.ts" },
       { projectPath: "/repo", onError: () => {} },
     );
     await flush();
@@ -122,7 +126,10 @@ describe("what a launch is built from", () => {
 
   it("reads the lockfile at the resolved root, not at the project root", async () => {
     const m = await freshModule();
-    await m.launchTarget({ kind: "script", script: "dev" }, { projectPath: "/repo", onError: () => {} });
+    await m.launchTarget(
+      { adapterId: "js-debug", kind: "script", script: "dev" },
+      { projectPath: "/repo", onError: () => {} },
+    );
     await flush();
 
     // The package's own lockfile is the one that decides its runner.
@@ -156,7 +163,10 @@ describe("when the adapter refuses", () => {
     failCommands.add("attach");
     const errors: string[] = [];
 
-    await m.launchTarget({ kind: "attach", port: 9229 }, { projectPath: "/repo", onError: (e) => errors.push(e) });
+    await m.launchTarget(
+      { adapterId: "js-debug", kind: "attach", port: 9229 },
+      { projectPath: "/repo", onError: (e) => errors.push(e) },
+    );
     await flush();
 
     // A refused connection to an inspector port has one common cause and the
@@ -174,7 +184,7 @@ describe("when the adapter refuses", () => {
     const errors: string[] = [];
 
     await m.launchTarget(
-      { kind: "file", path: "/repo/gone.ts" },
+      { adapterId: "js-debug", kind: "file", path: "/repo/gone.ts" },
       { projectPath: "/repo", onError: (e) => errors.push(e) },
     );
     await flush();

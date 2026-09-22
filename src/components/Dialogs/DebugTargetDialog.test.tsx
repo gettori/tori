@@ -44,8 +44,10 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   const onCancel = vi.fn();
   render(() => (
     <DebugTargetDialog
+      adapters={[{ id: "js-debug", label: "JavaScript / TypeScript (vscode-js-debug)" }]}
       kind="file"
       filePath={null}
+      fileAdapter="js-debug"
       scripts={[]}
       port={9229}
       onConfirm={onConfirm}
@@ -112,7 +114,7 @@ describe("DebugTargetDialog", () => {
 
       fireEvent.click(start());
 
-      expect(onConfirm).toHaveBeenCalledWith({ kind: "file", path: "/tmp/app.ts" });
+      expect(onConfirm).toHaveBeenCalledWith({ adapterId: "js-debug", kind: "file", path: "/tmp/app.ts" });
     });
 
     it("blocks script mode with a reason when the project declares none", () => {
@@ -130,7 +132,7 @@ describe("DebugTargetDialog", () => {
 
       fireEvent.click(start());
 
-      expect(onConfirm).toHaveBeenCalledWith({ kind: "script", script: "dev" });
+      expect(onConfirm).toHaveBeenCalledWith({ adapterId: "js-debug", kind: "script", script: "dev" });
     });
 
     it("starts whichever script is picked", async () => {
@@ -139,7 +141,7 @@ describe("DebugTargetDialog", () => {
       await pickScript(script(), "test");
       fireEvent.click(start());
 
-      expect(onConfirm).toHaveBeenCalledWith({ kind: "script", script: "test" });
+      expect(onConfirm).toHaveBeenCalledWith({ adapterId: "js-debug", kind: "script", script: "test" });
     });
 
     it("offers the workspace's last port for an attach", () => {
@@ -153,7 +155,7 @@ describe("DebugTargetDialog", () => {
 
       fireEvent.click(start());
 
-      expect(onConfirm).toHaveBeenCalledWith({ kind: "attach", port: 9229 });
+      expect(onConfirm).toHaveBeenCalledWith({ adapterId: "js-debug", kind: "attach", port: 9229 });
     });
 
     it("blocks an attach on a port outside the range, with the range in the reason", () => {
@@ -261,7 +263,7 @@ describe("DebugTargetDialog", () => {
 
       fireEvent.keyDown(document.activeElement!, { key: "Enter" });
 
-      expect(onConfirm).toHaveBeenCalledWith({ kind: "file", path: "/tmp/app.ts" });
+      expect(onConfirm).toHaveBeenCalledWith({ adapterId: "js-debug", kind: "file", path: "/tmp/app.ts" });
     });
 
     it("ignores Enter from the panel while the mode is blocked", async () => {
