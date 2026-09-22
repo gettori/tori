@@ -28,6 +28,18 @@
   background: var(--canvas-head);
 }
 
+.building {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-head);
+  color: var(--fg-muted);
+}
+
 /* Between the sessions and the console, since that is where it belongs in the
    reading order: which session, then where it is, then what it said. */
 .stack {

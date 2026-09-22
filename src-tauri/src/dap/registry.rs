@@ -362,12 +362,14 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
 const BUILTIN_JS_DEBUG: &str = include_str!("../../dap/js-debug.toml");
 const BUILTIN_DEBUGPY: &str = include_str!("../../dap/debugpy.toml");
 const BUILTIN_DELVE: &str = include_str!("../../dap/delve.toml");
+const BUILTIN_LLDB: &str = include_str!("../../dap/lldb.toml");
 
 /// Every bundled config.
 const BUILTINS: &[(&str, &str)] = &[
     ("bundled:js-debug", BUILTIN_JS_DEBUG),
     ("bundled:debugpy", BUILTIN_DEBUGPY),
     ("bundled:delve", BUILTIN_DELVE),
+    ("bundled:lldb", BUILTIN_LLDB),
 ];
 
 fn user_dap_dir() -> PathBuf {

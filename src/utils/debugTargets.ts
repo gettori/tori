@@ -6,7 +6,8 @@
 // else started with `--inspect`. debugpy's are the three ways Python code is
 // run: a file, a module (`python -m`), and a test file under pytest. Delve's
 // are what `go run` and `go test` build: the package of the file in front of
-// you. Everything here is pure: the caller supplies the resolved root, that root's directory
+// you. lldb-dap's are a Cargo binary, built first, and any program you name,
+// which is how C and C++ are debugged. Everything here is pure: the caller supplies the resolved root, that root's directory
 // listing and the launch environment, so every rule is testable without a
 // workspace on disk.
 //
@@ -28,6 +29,9 @@ export const PYTHON_ADAPTER = "debugpy";
 /** The adapter every Go target uses. */
 export const GO_ADAPTER = "delve";
 
+/** The adapter every Rust, C and C++ target uses. */
+export const LLDB_ADAPTER = "lldb";
+
 export type DebugTarget =
   | { adapterId: typeof JS_ADAPTER; kind: "file"; path: string }
   | { adapterId: typeof JS_ADAPTER; kind: "script"; script: string }
@@ -36,7 +40,9 @@ export type DebugTarget =
   | { adapterId: typeof PYTHON_ADAPTER; kind: "module"; module: string }
   | { adapterId: typeof PYTHON_ADAPTER; kind: "pytest"; path: string }
   | { adapterId: typeof GO_ADAPTER; kind: "package"; path: string }
-  | { adapterId: typeof GO_ADAPTER; kind: "test"; path: string };
+  | { adapterId: typeof GO_ADAPTER; kind: "test"; path: string }
+  | { adapterId: typeof LLDB_ADAPTER; kind: "cargo"; dir: string; bin: string }
+  | { adapterId: typeof LLDB_ADAPTER; kind: "program"; program: string };
 
 export type TargetKind = DebugTarget["kind"];
 
@@ -58,15 +64,17 @@ const ADAPTER_KINDS: Readonly<Record<string, readonly TargetKind[]>> = {
   [JS_ADAPTER]: ["file", "script", "attach"],
   [PYTHON_ADAPTER]: ["file", "module", "pytest"],
   [GO_ADAPTER]: ["package", "test"],
+  [LLDB_ADAPTER]: ["cargo", "program"],
 };
 
 export function kindsFor(adapterId: string): readonly TargetKind[] {
   return ADAPTER_KINDS[adapterId] ?? [];
 }
 
-export function defaultKind(adapterId: string, hasFile: boolean): TargetKind | null {
+/** The kind the picker opens on: the first one there is something for. */
+export function defaultKind(adapterId: string, has: { file: boolean; bins: boolean }): TargetKind | null {
   const kinds = kindsFor(adapterId);
-  return kinds.find((k) => hasFile || k !== "file") ?? kinds[0] ?? null;
+  return kinds.find((k) => (has.file || k !== "file") && (has.bins || k !== "cargo")) ?? kinds[0] ?? null;
 }
 
 /** Everything a config needs that this module cannot work out for itself. */
@@ -81,6 +89,20 @@ export type TargetContext = {
   env: Record<string, string>;
   /** The project's interpreter, for a Python target. */
   python?: string;
+  /** What `cargo build` made, for a Cargo target. */
+  built?: CargoBuilt;
+};
+
+/** What the picker offers lldb-dap: where it runs, the Cargo binaries there,
+ *  and why there are none when cargo said. */
+export type LldbPick = { root: string; bins: string[]; error: string | null };
+
+/** `dap::cargo::Built`. */
+export type CargoBuilt = {
+  executable: string;
+  /** Where the toolchain's lldb formatters live, or null when `rustc` would not
+   *  say. */
+  sysroot: string | null;
 };
 
 /** The DAP `type` every target uses. js-debug drives every JS dialect through
@@ -239,6 +261,33 @@ function goConfigFor(target: DebugTarget & { adapterId: typeof GO_ADAPTER }, ctx
   }
 }
 
+/** The DAP `type` every lldb-dap target uses. */
+export const LLDB_DEBUG_TYPE = "lldb-dap";
+
+// Without Rust's own formatters a `String` shows as the raw `Vec` inside it.
+// `-s 1` keeps the sixty lines `lldb_commands` runs out of the console.
+function rustFormatters(sysroot: string): string[] {
+  const etc = `${sysroot}/lib/rustlib/etc`;
+  return [`command script import "${etc}/lldb_lookup.py"`, `command source -s 1 "${etc}/lldb_commands"`];
+}
+
+// No `env`, unlike the other adapters: the program inherits lldb-dap's own
+// environment, login PATH included.
+function lldbConfigFor(target: DebugTarget & { adapterId: typeof LLDB_ADAPTER }, ctx: TargetContext): DebugConfig {
+  const launch = { type: LLDB_DEBUG_TYPE, request: "launch", cwd: ctx.root };
+  switch (target.kind) {
+    case "cargo":
+      return {
+        ...launch,
+        name: `Debug ${target.bin}`,
+        program: ctx.built?.executable,
+        initCommands: ctx.built?.sysroot ? rustFormatters(ctx.built.sysroot) : [],
+      };
+    case "program":
+      return { ...launch, name: `Debug ${basename(target.program)}`, program: target.program };
+  }
+}
+
 /** The config for one target, built by the rules of the adapter it runs under. */
 export function configFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
   switch (target.adapterId) {
@@ -248,6 +297,8 @@ export function configFor(target: DebugTarget, ctx: TargetContext): DebugConfig 
       return pythonConfigFor(target, ctx);
     case GO_ADAPTER:
       return goConfigFor(target, ctx);
+    case LLDB_ADAPTER:
+      return lldbConfigFor(target, ctx);
   }
 }
 
@@ -264,11 +315,12 @@ function nodeConfigFor(target: DebugTarget & { adapterId: typeof JS_ADAPTER }, c
 
 /** The file a target's root should be resolved against.
  *
- *  A script, an attach and a module have no file of their own, so they resolve
- *  against the root the picker was opened at, which the caller passes as the
- *  fallback. */
+ *  A Cargo target keeps the package it was picked in. A script, an attach, a
+ *  module and a program have no file of their own, so they resolve against the
+ *  root the picker was opened at, which the caller passes as the fallback. */
 export function anchorFor(target: DebugTarget, fallback: string): string {
-  return "path" in target ? target.path : fallback;
+  if ("path" in target) return target.path;
+  return "dir" in target ? target.dir : fallback;
 }
 
 /** How a target reads in the picker and in the pane. */
@@ -288,6 +340,10 @@ export function describeTarget(target: DebugTarget): string {
       return `package ${basename(dirname(target.path))}`;
     case "test":
       return `tests in ${basename(dirname(target.path))}`;
+    case "cargo":
+      return target.bin;
+    case "program":
+      return basename(target.program);
   }
 }
 
@@ -411,6 +467,10 @@ function isTarget(value: unknown): value is DebugTarget {
   }
   if (t.adapterId === GO_ADAPTER) {
     if (t.kind === "package" || t.kind === "test") return nonEmpty(t.path);
+  }
+  if (t.adapterId === LLDB_ADAPTER) {
+    if (t.kind === "cargo") return nonEmpty(t.dir) && nonEmpty(t.bin);
+    if (t.kind === "program") return nonEmpty(t.program);
   }
   return false;
 }

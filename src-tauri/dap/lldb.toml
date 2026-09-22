@@ -1,0 +1,37 @@
+# lldb-dap, LLVM's debug adapter, for Rust, C and C++. Apple's Command Line
+# Tools and Xcode both ship it outside the PATH, which is what `xcrun` finds.
+# Homebrew's `llvm` has one too, but it is keg-only, so it is found only once
+# its `bin` is on your PATH.
+#
+# No `verified_against`: `lldb-dap --version` prints three lines, so the health
+# card has no version to compare.
+
+schema_version = 1
+id = "lldb"
+label = "Rust, C and C++ (lldb-dap)"
+
+# A Rust debuggee runs from its package, where `cargo build` ran. C and C++
+# have no marker every project shares, so they run from the project root.
+root_markers = ["Cargo.toml"]
+
+[languages]
+rs = "lldb-dap"
+c = "lldb-dap"
+h = "lldb-dap"
+cc = "lldb-dap"
+cpp = "lldb-dap"
+cxx = "lldb-dap"
+hh = "lldb-dap"
+hpp = "lldb-dap"
+hxx = "lldb-dap"
+m = "lldb-dap"
+mm = "lldb-dap"
+
+[launch]
+kind = "stdio"
+program = "lldb-dap"
+resolve = "xcrun"
+
+[install]
+kind = "hint"
+text = "Install Apple's Command Line Tools with `xcode-select --install`, or Xcode. Homebrew's `llvm` works too once its `bin` is on your PATH."

@@ -153,6 +153,17 @@ let generation = 0;
 let runCounter = 0;
 
 /**
+ * Offer to trust the project a debug run was refused in.
+ *
+ * Asked on every refused start, not once per project as a file open is: a start
+ * is a deliberate press, and one that shows nothing reads as broken.
+ */
+export function refuseUntrustedRun(projectPath: string): void {
+  noteRefused(projectPath);
+  askToTrust(projectPath, "Debugging runs this project's code, so it stays off until you trust the project.");
+}
+
+/**
  * Start a debug run, or join the one already live for this adapter and project.
  *
  * Resolves to the root session, or null when the run was refused, failed to
@@ -188,10 +199,7 @@ async function startRun(start: DebugStart, startedAt: number): Promise<DapSessio
     });
   } catch (e) {
     if (e === UNTRUSTED) {
-      // Asked on every refused start, not once per project as a file open is: a
-      // start is a deliberate press, and one that shows nothing reads as broken.
-      noteRefused(start.projectPath);
-      askToTrust(start.projectPath, "Debugging runs this project's code, so it stays off until you trust the project.");
+      refuseUntrustedRun(start.projectPath);
       return null;
     }
     console.error("dap_start failed", start.adapterId, e);

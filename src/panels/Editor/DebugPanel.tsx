@@ -21,6 +21,7 @@ import { askAgentAboutFrame } from "../../utils/debugAsk";
 import { sendTargetFor } from "../../utils/sendTarget";
 import {
   consoleLines,
+  debugBuild,
   debugTree,
   type DebugNode,
   type OutputCategory,
@@ -99,12 +100,24 @@ export default function DebugPanel(props: { root: string | null; selected: Selec
       <Show when={debugTree().length > 0}>
         <Controls />
       </Show>
+      <Show when={debugBuild()}>
+        {(build) => (
+          <div class={styles.building} role="status">
+            <span>{build().label}</span>
+            <Button size="sm" onClick={() => build().cancel()}>
+              Cancel
+            </Button>
+          </div>
+        )}
+      </Show>
       <Show
         when={debugTree().length > 0}
         fallback={
-          <div class={styles.empty}>
-            Nothing is being debugged. Start a run to see its sessions and output here.
-          </div>
+          <Show when={!debugBuild()}>
+            <div class={styles.empty}>
+              Nothing is being debugged. Start a run to see its sessions and output here.
+            </div>
+          </Show>
         }
       >
         <div class={styles.sessions}>

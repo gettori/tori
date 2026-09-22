@@ -70,14 +70,31 @@ export type ConsoleLine = {
  */
 export const MAX_CONSOLE_LINES = 5000;
 
+/** A build a run waits on, as the pane shows it. */
+export type DebugBuild = { label: string; cancel: () => void };
+
 const [tree, setTree] = createSignal<DebugNode[]>([]);
 const [lines, setLines] = createSignal<ConsoleLine[]>([]);
+const [build, setBuild] = createSignal<DebugBuild | null>(null);
 
 /** Every live run, as a tree. Empty when nothing is being debugged. */
 export const debugTree = tree;
 
 /** The debug console transcript, oldest first. */
 export const consoleLines = lines;
+
+/** The build in progress, or null. */
+export const debugBuild = build;
+
+/** A build is the start of a new run, so the previous run's output goes. */
+export function startDebugBuild(b: DebugBuild): void {
+  clearDebugConsole();
+  setBuild(b);
+}
+
+export function endDebugBuild(): void {
+  setBuild(null);
+}
 
 /** Whether anything is being debugged right now. What the pane's empty state
  *  and the editor's tab availability both ask. */

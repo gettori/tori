@@ -15,6 +15,8 @@ let entries = ["package.json", "pnpm-lock.yaml"];
 let packageJson = JSON.stringify({ scripts: { dev: "vite", test: "vitest" } });
 /** Commands the fake adapter refuses, so a real failure path can be driven. */
 const failCommands = new Set<string>();
+/** What `dap_cargo_build` answers. */
+let cargoBuild: () => Promise<unknown> = () => Promise.resolve({ executable: "/x", sysroot: null });
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
@@ -23,7 +25,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "dap_registry":
         return Promise.resolve([
           { id: "js-debug", label: "JavaScript", languages: { ts: "pwa-node" }, childSessions: true },
+          { id: "lldb", label: "Rust, C and C++", languages: { rs: "lldb-dap" }, childSessions: false },
         ]);
+      case "dap_cargo_build":
+        return cargoBuild();
       case "dap_root_for":
         return Promise.resolve(resolvedRoot);
       case "dap_launch_env":
@@ -154,6 +159,23 @@ describe("the scripts offered", () => {
     const m = await freshModule();
     packageJson = "{not json";
     expect(await m.scriptsAt("/repo/packages/api")).toEqual([]);
+  });
+});
+
+describe("a Cargo target", () => {
+  it("shows the first build error and starts no adapter", async () => {
+    const m = await freshModule();
+    cargoBuild = () => Promise.reject("error[E0308]: mismatched types --> src/main.rs:2:18");
+    const errors: string[] = [];
+
+    await m.launchTarget(
+      { adapterId: "lldb", kind: "cargo", dir: "/repo/crates/app", bin: "app" },
+      { projectPath: "/repo", onError: (e) => errors.push(e) },
+    );
+    await flush();
+
+    expect(errors).toEqual(["Could not build app: error[E0308]: mismatched types --> src/main.rs:2:18"]);
+    expect(calls.some((c) => c.cmd === "dap_start")).toBe(false);
   });
 });
 

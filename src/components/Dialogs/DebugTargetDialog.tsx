@@ -1,4 +1,5 @@
 import { createSignal, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -12,8 +13,10 @@ import {
   isPort,
   JS_ADAPTER,
   kindsFor,
+  LLDB_ADAPTER,
   PYTHON_ADAPTER,
   type DebugTarget,
+  type LldbPick,
   type TargetKind,
 } from "../../utils/debugTargets";
 
@@ -25,6 +28,8 @@ const ADAPTER_LABEL = "debug-target-adapter-label";
 const SCRIPT_LABEL = "debug-target-script-label";
 const PORT_LABEL = "debug-target-port-label";
 const MODULE_LABEL = "debug-target-module-label";
+const BIN_LABEL = "debug-target-bin-label";
+const PROGRAM_LABEL = "debug-target-program-label";
 
 const KIND_LABELS: Record<TargetKind, string> = {
   file: "This file",
@@ -34,6 +39,8 @@ const KIND_LABELS: Record<TargetKind, string> = {
   pytest: "pytest",
   package: "This package",
   test: "Package tests",
+  cargo: "Cargo binary",
+  program: "Program",
 };
 
 // Which of an adapter's kinds "debug" means, in one dialog with a mode picker
@@ -65,6 +72,8 @@ export default function DebugTargetDialog(props: {
   scripts: string[];
   /** The port this workspace last attached to, or node's own default. */
   port: number;
+  /** Where an lldb-dap target would run, and the Cargo binaries there. */
+  lldb: LldbPick;
   onConfirm: (target: DebugTarget) => void;
   onCancel: () => void;
 }) {
@@ -72,6 +81,7 @@ export default function DebugTargetDialog(props: {
   const adapterLabel = () => props.adapters.find((a) => a.id === adapterId())?.label ?? adapterId();
   const runner = () => (adapterId() === JS_ADAPTER ? "node" : adapterLabel());
   const runnableFile = () => (props.fileAdapter === adapterId() ? props.filePath : null);
+  const has = () => ({ file: !!runnableFile(), bins: props.lldb.bins.length > 0 });
   const fileMessage = (runs: (file: string) => string) => {
     const f = runnableFile();
     if (f) return runs(f);
@@ -80,11 +90,13 @@ export default function DebugTargetDialog(props: {
   const [kind, setKind] = createSignal<TargetKind | null>(
     props.kind && kindsFor(adapterId()).includes(props.kind)
       ? props.kind
-      : defaultKind(adapterId(), !!runnableFile()),
+      : defaultKind(adapterId(), has()),
   );
   const [script, setScript] = createSignal(props.scripts[0] ?? "");
   const [port, setPort] = createSignal(String(props.port || DEFAULT_ATTACH_PORT));
   const [module, setModule] = createSignal("");
+  const [bin, setBin] = createSignal(props.lldb.bins[0] ?? "");
+  const [program, setProgram] = createSignal("");
   let first: HTMLElement | undefined;
 
   const portNumber = () => Number(port().trim());
@@ -110,6 +122,10 @@ export default function DebugTargetDialog(props: {
           : "Enter a port between 1024 and 65535 (node's default is 9229).";
       case "module":
         return isModuleName(module().trim()) ? null : "Enter a module name, like app.main.";
+      case "cargo":
+        return bin() ? null : (props.lldb.error ?? "No Cargo package with a binary here.");
+      case "program":
+        return program().trim() ? null : "Enter the path of a program built with debug info.";
     }
   }
 
@@ -138,7 +154,19 @@ export default function DebugTargetDialog(props: {
         return f ? { adapterId: GO_ADAPTER, kind: "package", path: f } : null;
       case "test":
         return f ? { adapterId: GO_ADAPTER, kind: "test", path: f } : null;
+      case "cargo":
+        return bin() ? { adapterId: LLDB_ADAPTER, kind: "cargo", dir: props.lldb.root, bin: bin() } : null;
+      case "program": {
+        const p = program().trim();
+        if (!p) return null;
+        return { adapterId: LLDB_ADAPTER, kind: "program", program: p.startsWith("/") ? p : `${props.lldb.root}/${p}` };
+      }
     }
+  }
+
+  async function pickProgram() {
+    const picked = await invoke<string | null>("dap_pick_program", { root: props.lldb.root }).catch(() => null);
+    if (picked) setProgram(picked);
   }
 
   function confirm() {
@@ -156,7 +184,7 @@ export default function DebugTargetDialog(props: {
 
   function chooseAdapter(id: string) {
     setAdapterId(id);
-    setKind(defaultKind(id, !!runnableFile()));
+    setKind(defaultKind(id, has()));
   }
 
   return (
@@ -211,6 +239,46 @@ export default function DebugTargetDialog(props: {
       <Show when={kind() === "test"}>
         <div class={styles.msg}>
           {fileMessage(() => "Runs the tests of the package this file is in, stopping on your breakpoints.")}
+        </div>
+      </Show>
+
+      <Show when={kind() === "cargo" && props.lldb.bins.length > 0}>
+        <Show
+          when={props.lldb.bins.length > 1}
+          fallback={<div class={styles.msg}>Builds {bin()} with cargo, then debugs it.</div>}
+        >
+          <div id={BIN_LABEL} class={styles.label}>Binary</div>
+          <Select
+            ref={(el) => (first = el)}
+            class={styles.fill}
+            aria-labelledby={BIN_LABEL}
+            options={props.lldb.bins.map((name) => ({ value: name, label: name }))}
+            value={bin()}
+            onChange={setBin}
+          />
+          <div class={styles.msg}>Builds it with cargo, then debugs it.</div>
+        </Show>
+      </Show>
+
+      <Show when={kind() === "program"}>
+        <div id={PROGRAM_LABEL} class={styles.label}>Program</div>
+        <div class={styles.fieldRow}>
+          <input
+            ref={(el) => (first = el)}
+            class={styles.fieldInput}
+            aria-labelledby={PROGRAM_LABEL}
+            value={program()}
+            placeholder="build/app"
+            onInput={(e) => setProgram(e.currentTarget.value)}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck={false}
+          />
+          <Button onClick={() => void pickProgram()}>Choose</Button>
+        </div>
+        <div class={styles.msg}>
+          A program built with debug info (<code>-g</code>). A relative path starts from{" "}
+          <code>{props.lldb.root}</code>.
         </div>
       </Show>
 

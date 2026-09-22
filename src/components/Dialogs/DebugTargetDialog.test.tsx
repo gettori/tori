@@ -50,6 +50,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
       fileAdapter="js-debug"
       scripts={[]}
       port={9229}
+      lldb={{ root: "/proj", bins: [], error: null }}
       onConfirm={onConfirm}
       onCancel={onCancel}
       {...props}
