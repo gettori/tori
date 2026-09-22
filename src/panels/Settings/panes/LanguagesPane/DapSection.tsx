@@ -3,17 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setDebuggerDisabled } from "../../settingsStore";
+import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 
-// One card per debug adapter, answering for the debugger what the LSP cards
-// answer for intelligence: "can this thing actually run here?"
-//
-// Two things have to be true, and the card says which one is not. `node` has to
-// resolve on the login-shell PATH, and the adapter bundle has to have been
-// installed, which is a build step rather than something a user does. Reporting
-// the card healthy on `node` alone would be exactly the failure
-// lesson_the_handshake_succeeded_and_the_feature_is_silent describes: every
-// start fails while the surface that should have said so reads fine.
+// One card per debug adapter. The bundled one reads ready only when `node` and
+// its bundle are both there, or every start fails while the card reads fine
+// (lesson_the_handshake_succeeded_and_the_feature_is_silent).
 
 type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
@@ -30,6 +25,9 @@ export type DapHealth = {
   disabled: boolean;
   availableVersion: string | null;
   installedVersion: string | null;
+  hint: string | null;
+  update: string | null;
+  uninstall: string | null;
 };
 
 // Same mapping as the LSP and agent cards: the dot answers "is this usable?"
@@ -41,8 +39,15 @@ const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
-function DapCard(props: { adapter: DapHealth }) {
+function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[] | null | undefined> }) {
   const a = () => props.adapter;
+  const actions = createToolActions({
+    tool: a,
+    scope: "dap",
+    onChange: () => props.onChange(),
+    install: (adapterId) => invoke("dap_install", { adapterId }),
+    remove: (adapterId) => invoke("dap_uninstall", { adapterId }),
+  });
   // Kept here because `dap_health` is not asked again after a save.
   const [turnedOff, setTurnedOff] = createSignal<boolean | null>(null);
   const off = () => turnedOff() ?? a().disabled;
@@ -56,16 +61,19 @@ function DapCard(props: { adapter: DapHealth }) {
   };
 
   return (
-    <div class={styles.toolCard}>
+    <div class={styles.toolCard} classList={{ [styles.toolCardWide]: actions.job() !== null }}>
       <div class={styles.toolHead}>
         <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[a().status]}`} />
         <span class={styles.toolName} classList={{ [styles.toolNameOff]: off() }}>
           {a().label}
         </span>
         <span class={styles.kindTag}>Debug</span>
-        <Show when={off() || a().status !== "notFound"}>
-          <Toggle class={styles.toolSwitch} checked={!off()} aria-label={`Use ${a().label}`} onChange={use} />
-        </Show>
+        <span class={styles.toolControls}>
+          <Show when={off() || a().status !== "notFound"}>
+            <Toggle checked={!off()} aria-label={`Use ${a().label}`} onChange={use} />
+          </Show>
+          <actions.Controls />
+        </span>
       </div>
       <code class={styles.toolProgram}>{a().program}</code>
 
@@ -77,30 +85,50 @@ function DapCard(props: { adapter: DapHealth }) {
           <Match when={off()}>
             Disabled by <code>dap.disabled</code> in settings.
           </Match>
+          <Match when={actions.pending() === "install"}>Installing {a().label}.</Match>
           <Match when={a().detail}>{(detail) => <>{detail()}</>}</Match>
+          <Match when={a().installedVersion}>
+            {(version) => (
+              <>
+                Installed by Tori, version {version()}.
+                <Show when={actions.outdated()}> Version {a().availableVersion} is available.</Show>
+              </>
+            )}
+          </Match>
+          <Match when={actions.installable()}>
+            Available, not installed. Tori can install version {a().availableVersion}.
+          </Match>
+          {/* The whole hint rather than just its command: Delve's also says
+              where `go install` puts it, which the PATH may not include. */}
+          <Match when={a().status === "notFound" && a().hint}>{(hint) => <>Not installed. {hint()}</>}</Match>
           <Match when={a().status === "notFound"}>
             Not installed. Install <code>{a().program}</code> and reopen Tori to pick it up.
           </Match>
-          <Match when={a().version}>
-            Ready, running the bundled adapter {a().adapterVersion} on {a().program}{" "}
-            {a().version}.
+          <Match when={a().adapterVersion && a().version}>
+            Ready, running the bundled adapter {a().adapterVersion} on {a().program} {a().version}.
           </Match>
-          <Match when={true}>
+          <Match when={a().adapterVersion}>
             Ready, running the bundled adapter {a().adapterVersion}. {a().program} does not report a
             version, so Tori cannot check it.
           </Match>
+          <Match when={a().version}>Installed, version {a().version}.</Match>
+          <Match when={true}>Installed. It does not report a version, so Tori cannot check it.</Match>
         </Switch>
       </div>
+
+      <actions.Job />
 
       <div class={styles.toolExts}>
         <For each={a().extensions}>{(ext) => <span>.{ext}</span>}</For>
       </div>
+
+      <actions.Confirm />
     </div>
   );
 }
 
 export default function DapSection() {
-  const [health] = createResource(() => invoke<DapHealth[]>("dap_health"));
+  const [health, { refetch }] = createResource(() => invoke<DapHealth[]>("dap_health"));
 
   return (
     <section class={styles.section}>
@@ -109,7 +137,7 @@ export default function DapSection() {
         <span class={styles.sectionRule} />
       </div>
       <Switch>
-        <Match when={health.loading}>
+        <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which debuggers are installed…</div>
         </Match>
         <Match when={health.error}>
@@ -117,12 +145,14 @@ export default function DapSection() {
         </Match>
         <Match when={health()}>
           <div class={styles.toolGrid}>
-            <For each={health()}>{(adapter) => <DapCard adapter={adapter} />}</For>
+            <For each={health()}>
+              {(adapter) => <DapCard adapter={adapter} onChange={() => Promise.resolve(refetch())} />}
+            </For>
           </div>
           <div class={styles.note}>
             A language with no adapter still opens, edits and runs normally, it just cannot be
-            debugged from here. The bundled adapter is fetched at build time by{" "}
-            <code>pnpm dap:install</code>.
+            debugged from here. Add one with a TOML file in <code>~/.config/tori/dap/</code>; see
+            DEBUGGERS.md.
           </div>
         </Match>
       </Switch>
