@@ -8,6 +8,130 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.922.0-alpha
+
+Tori speaks to language servers and debuggers for languages it had never heard
+of a release ago. Servers install from a pinned catalog, linters run beside
+them, Python, Go, Rust, C and C++ get debuggers, and anything that would run
+your project's own code asks you to trust the project first.
+
+### Language servers
+
+- 34 more languages install from a pinned catalog: npm at an exact version, or
+  a GitHub release checked against its sha256 before anything is written. Your
+  own copy on the PATH wins over the one Tori installed. The ones a toolchain
+  owns say so instead.
+- Open a file whose server Tori can install and a banner offers it, with
+  Install, Not now and Never for this language. When the install lands, every
+  open file that wanted it gets it without reopening.
+- Settings > Languages > LSP is a card per server: a dot, a kind tag, a switch,
+  the program, the status and the extensions, under Ready, Installable, Manual
+  and Per project tabs with counts and a search. Install, Update and Remove sit
+  on the card, and a server that needs `brew`, `go install` or `rustup` runs it
+  in a terminal inside the card, so Settings stays open and a prompt can be
+  answered there.
+- A file can have a primary server and secondaries beside it. Their diagnostics
+  arrive together, each remembering which server said it, and the Problems
+  panel names the source.
+- ESLint ships bundled. Biome, oxlint and Ruff run from the project's own
+  install.
+- Code actions, Format Document and fix-all ask every server on the file that
+  can answer. Fix all on save is a new setting, off by default.
+- Go to implementation and type definition, on `Cmd-F12` and `Shift-Cmd-F12`.
+- A server that dies says so, keeps its last output and can be restarted. One
+  that does not count positions in UTF-16 is refused instead of left to write
+  edits in the wrong places.
+- The breadcrumb bar says what a server is busy with, and a question from a
+  server opens a dialog instead of being refused.
+- `rust-analyzer` is reported missing when all that is on the PATH is rustup's
+  proxy.
+- 143 languages highlight, from CodeMirror's own catalogue.
+
+### Project trust
+
+- Opening a file used to run the repo's code: `typescript-language-server`
+  loads the workspace's TypeScript and its tsconfig plugins, `rust-analyzer`
+  runs build scripts and proc macros. A server like that now starts only in a
+  project you trust. JSON, YAML, highlighting, editing and saving never needed
+  it.
+- The first refused start shows a toast with Trust, and trusting replays what
+  was refused, so nothing has to be reopened.
+- Debugging is gated for every debugger, not only the ones that run project
+  code, because the program being debugged is the project's own.
+- Trust lives in `~/.config/tori/trusted.json` and never inside the project, so
+  a repo cannot mark itself trusted, and one answer covers every worktree of
+  the project. Settings > Languages > Projects lists trusted and untrusted with
+  a search, Revoke and Revoke all. Everything you had already opened counts as
+  trusted on the first launch of this build.
+
+### Debugging
+
+- Debug adapters are TOML now, the way agents and language servers already
+  were, with stdio, TCP and socket launches and user files in
+  `~/.config/tori/dap/`.
+- Python through debugpy, which Tori installs into a venv of its own while your
+  program runs on the project's Python. F5 offers this file, a module, or
+  pytest on this file.
+- Go through Delve: this package, or its tests.
+- Rust, C and C++ through lldb-dap, which Xcode already ships. F5 on a `.rs`
+  file offers the package's binaries and runs `cargo build` first, with the
+  build in the console and Rust's own formatters loaded, so a String reads as a
+  String.
+- The debugger comes from the file in front of you, and a target is remembered
+  per debugger, so F5 replays the right one. Stop and restart act on the run
+  you are looking at.
+- Debugger cards carry install, update, uninstall and a switch like the server
+  cards, and F5 offers Install when the debugger is missing.
+
+### Formatters and linters
+
+- Formatters are TOML too, and one that declines a file hands it to the next,
+  so a `.rs` file in a repo with a `.prettierrc` still reaches rust-analyzer.
+- Black, Ruff, oxfmt, gofmt, shfmt, stylua and Vite+ join Biome and Prettier.
+  Python tools come from the project's own `.venv` when it has one.
+- Linters and Formatters get their own sections in Settings, with a switch per
+  job, so Biome can lint without also formatting.
+
+### The editor
+
+- Tab size and indent with spaces are settings, and a file's `.editorconfig`
+  outranks them. Whitespace is tidied on save.
+- A closed tab keeps its folds as well as its undo history.
+- A save that fails says which file and why, and the buffer stays dirty.
+- A file that is not UTF-8, or is over 32 MB, shows a banner instead of a
+  buffer, so it cannot be overwritten by an empty one. Over 4 MB it opens
+  without folding, guides, the minimap or a language server.
+- Every editor pane sits in an error boundary with a Reopen button.
+- Diff views read like the editor: its font, its surface, its soft wrap.
+- The editor's popups and panels wear Tori's own tokens and stop growing at a
+  cap.
+
+### Tabs and the dock
+
+- The tab menu has close others, close to the right, close saved, copy path,
+  copy relative path and reveal in Finder, acting on the pane's own strip.
+- Middle click closes a tab, and a dirty one still asks first.
+- A file dragged from the tree onto a pane opens in that pane.
+- The launch menu leads with the shell and gives every row a glyph.
+- The dock keeps its new shell button beside its tabs, and its hide button at
+  the far right.
+- `docs/TERMINAL.md` explains what a shell tab inherits and why an rc file that
+  attaches tmux does it inside Tori too.
+
+### Fixes
+
+- The Changes count sits in the corner of the tab's icon and stays there when
+  the tab is selected.
+- Unpublished commits are counted before the first push.
+- A worktree branch with no tracking config is pulled from origin.
+- The space strip's pill no longer jumps when it opens.
+- What `/usage`, `/context` and `/cost` print is shown, and is still there when
+  the session is reopened.
+- Codex attaches images where the model says it takes them, and its model list
+  is read the way the rest of the catalogue is.
+- The first file opened after a reload no longer pushes the panes down while
+  the editor loads.
+
 ## 26.920.0-alpha
 
 Pull requests are read in Tori now. The sidebar says which branches have one,
