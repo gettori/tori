@@ -3221,7 +3221,10 @@ export default function Editor(props: {
           unsaved edits, which is the loss `openPaths` carrying the union exists
           to prevent. */}
       <Show when={allOpenPaths().length}>
-        <Suspense fallback={filePaths().length ? <div class={styles.editorEmpty}>Loading editor…</div> : null}>
+        {/* No fallback: this Suspense is the panel's one unportalled render
+            site, so a fallback lands in `.workspace` above the pane tree and
+            squashes it. The pane's `.codeSlot` already holds the box. */}
+        <Suspense>
           <CodeEditor
             // What the watcher covers, so a tab on a file outside all of it
             // knows it will hear about an outside write from nobody.
