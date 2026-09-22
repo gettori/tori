@@ -4,8 +4,9 @@
 // js-debug's three are the three ways a Node program is already started: the
 // file in front of you, a script the project declares, and a process somebody
 // else started with `--inspect`. debugpy's are the three ways Python code is
-// run: a file, a module (`python -m`), and a test file under pytest. Everything
-// here is pure: the caller supplies the resolved root, that root's directory
+// run: a file, a module (`python -m`), and a test file under pytest. Delve's
+// are what `go run` and `go test` build: the package of the file in front of
+// you. Everything here is pure: the caller supplies the resolved root, that root's directory
 // listing and the launch environment, so every rule is testable without a
 // workspace on disk.
 //
@@ -24,13 +25,18 @@ export const JS_ADAPTER = "js-debug";
 /** The adapter every Python target uses. */
 export const PYTHON_ADAPTER = "debugpy";
 
+/** The adapter every Go target uses. */
+export const GO_ADAPTER = "delve";
+
 export type DebugTarget =
   | { adapterId: typeof JS_ADAPTER; kind: "file"; path: string }
   | { adapterId: typeof JS_ADAPTER; kind: "script"; script: string }
   | { adapterId: typeof JS_ADAPTER; kind: "attach"; port: number }
   | { adapterId: typeof PYTHON_ADAPTER; kind: "file"; path: string }
   | { adapterId: typeof PYTHON_ADAPTER; kind: "module"; module: string }
-  | { adapterId: typeof PYTHON_ADAPTER; kind: "pytest"; path: string };
+  | { adapterId: typeof PYTHON_ADAPTER; kind: "pytest"; path: string }
+  | { adapterId: typeof GO_ADAPTER; kind: "package"; path: string }
+  | { adapterId: typeof GO_ADAPTER; kind: "test"; path: string };
 
 export type TargetKind = DebugTarget["kind"];
 
@@ -42,6 +48,8 @@ export type DapAdapterInfo = {
   /** Extension (dotless, lowercase) to the DAP `type`. */
   languages: Record<string, string>;
   childSessions: boolean;
+  /** Tori's own install (`pip`), or the command a `hint` names. */
+  install: { kind: "hint"; text: string } | { kind: "pip"; version: string } | null;
 };
 
 /** The kinds each adapter offers, in picker order. An adapter the backend
@@ -49,6 +57,7 @@ export type DapAdapterInfo = {
 const ADAPTER_KINDS: Readonly<Record<string, readonly TargetKind[]>> = {
   [JS_ADAPTER]: ["file", "script", "attach"],
   [PYTHON_ADAPTER]: ["file", "module", "pytest"],
+  [GO_ADAPTER]: ["package", "test"],
 };
 
 export function kindsFor(adapterId: string): readonly TargetKind[] {
@@ -83,6 +92,10 @@ export const DEFAULT_ATTACH_PORT = 9229;
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
+}
+
+function dirname(path: string): string {
+  return path.slice(0, path.lastIndexOf("/")) || "/";
 }
 
 /**
@@ -193,6 +206,39 @@ function pythonConfigFor(target: DebugTarget & { adapterId: typeof PYTHON_ADAPTE
   }
 }
 
+/** The DAP `type` every Go target uses. */
+export const GO_DEBUG_TYPE = "go";
+
+/**
+ * Fields every Go launch carries.
+ *
+ * `outputMode: "remote"` is Delve's `internalConsole`: without it the program
+ * writes to Delve's own stdout, which Tori only logs, and the debug console
+ * stays empty.
+ */
+function goLaunch(ctx: TargetContext, name: string): DebugConfig {
+  return {
+    type: GO_DEBUG_TYPE,
+    request: "launch",
+    name,
+    cwd: ctx.root,
+    outputMode: "remote",
+    env: ctx.env,
+  };
+}
+
+function goConfigFor(target: DebugTarget & { adapterId: typeof GO_ADAPTER }, ctx: TargetContext): DebugConfig {
+  const pkg = dirname(target.path);
+  switch (target.kind) {
+    case "package":
+      return { ...goLaunch(ctx, `Debug ${basename(pkg)}`), mode: "debug", program: pkg };
+    case "test":
+      // In the package's own directory, where `go test` runs a test, so its
+      // `testdata/` resolves.
+      return { ...goLaunch(ctx, `Debug tests in ${basename(pkg)}`), mode: "test", program: pkg, cwd: pkg };
+  }
+}
+
 /** The config for one target, built by the rules of the adapter it runs under. */
 export function configFor(target: DebugTarget, ctx: TargetContext): DebugConfig {
   switch (target.adapterId) {
@@ -200,6 +246,8 @@ export function configFor(target: DebugTarget, ctx: TargetContext): DebugConfig 
       return nodeConfigFor(target, ctx);
     case PYTHON_ADAPTER:
       return pythonConfigFor(target, ctx);
+    case GO_ADAPTER:
+      return goConfigFor(target, ctx);
   }
 }
 
@@ -236,6 +284,10 @@ export function describeTarget(target: DebugTarget): string {
       return `-m ${target.module}`;
     case "pytest":
       return `pytest ${basename(target.path)}`;
+    case "package":
+      return `package ${basename(dirname(target.path))}`;
+    case "test":
+      return `tests in ${basename(dirname(target.path))}`;
   }
 }
 
@@ -356,6 +408,9 @@ function isTarget(value: unknown): value is DebugTarget {
   if (t.adapterId === PYTHON_ADAPTER) {
     if (t.kind === "file" || t.kind === "pytest") return nonEmpty(t.path);
     if (t.kind === "module") return typeof t.module === "string" && isModuleName(t.module);
+  }
+  if (t.adapterId === GO_ADAPTER) {
+    if (t.kind === "package" || t.kind === "test") return nonEmpty(t.path);
   }
   return false;
 }

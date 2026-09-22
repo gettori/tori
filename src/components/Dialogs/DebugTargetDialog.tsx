@@ -7,6 +7,7 @@ import Select from "../Select/Select";
 import {
   DEFAULT_ATTACH_PORT,
   defaultKind,
+  GO_ADAPTER,
   isModuleName,
   isPort,
   JS_ADAPTER,
@@ -31,6 +32,8 @@ const KIND_LABELS: Record<TargetKind, string> = {
   attach: "Attach",
   module: "Module",
   pytest: "pytest",
+  package: "This package",
+  test: "Package tests",
 };
 
 // Which of an adapter's kinds "debug" means, in one dialog with a mode picker
@@ -69,6 +72,11 @@ export default function DebugTargetDialog(props: {
   const adapterLabel = () => props.adapters.find((a) => a.id === adapterId())?.label ?? adapterId();
   const runner = () => (adapterId() === JS_ADAPTER ? "node" : adapterLabel());
   const runnableFile = () => (props.fileAdapter === adapterId() ? props.filePath : null);
+  const fileMessage = (runs: (file: string) => string) => {
+    const f = runnableFile();
+    if (f) return runs(f);
+    return props.filePath ? `${props.filePath} is not a file ${adapterLabel()} runs.` : "No file is open.";
+  };
   const [kind, setKind] = createSignal<TargetKind | null>(
     props.kind && kindsFor(adapterId()).includes(props.kind)
       ? props.kind
@@ -89,6 +97,8 @@ export default function DebugTargetDialog(props: {
         return `Tori cannot start ${adapterLabel()} programs from here yet.`;
       case "file":
       case "pytest":
+      case "package":
+      case "test":
         if (runnableFile()) return null;
         return props.filePath ? "Open a file this debugger runs." : "Open a file to debug it.";
       case "script":
@@ -124,6 +134,10 @@ export default function DebugTargetDialog(props: {
           : null;
       case "pytest":
         return f ? { adapterId: PYTHON_ADAPTER, kind: "pytest", path: f } : null;
+      case "package":
+        return f ? { adapterId: GO_ADAPTER, kind: "package", path: f } : null;
+      case "test":
+        return f ? { adapterId: GO_ADAPTER, kind: "test", path: f } : null;
     }
   }
 
@@ -180,21 +194,23 @@ export default function DebugTargetDialog(props: {
 
       <Show when={kind() === "file"}>
         <div class={styles.msg}>
-          {runnableFile()
-            ? `Runs ${runnableFile()} under ${runner()}, stopping on your breakpoints.`
-            : props.filePath
-              ? `${props.filePath} is not a file ${adapterLabel()} runs.`
-              : "No file is open."}
+          {fileMessage((f) => `Runs ${f} under ${runner()}, stopping on your breakpoints.`)}
         </div>
       </Show>
 
       <Show when={kind() === "pytest"}>
+        <div class={styles.msg}>{fileMessage((f) => `Runs pytest on ${f}, stopping on your breakpoints.`)}</div>
+      </Show>
+
+      <Show when={kind() === "package"}>
         <div class={styles.msg}>
-          {runnableFile()
-            ? `Runs pytest on ${runnableFile()}, stopping on your breakpoints.`
-            : props.filePath
-              ? `${props.filePath} is not a file ${adapterLabel()} runs.`
-              : "No file is open."}
+          {fileMessage(() => "Builds the package this file is in and runs it, stopping on your breakpoints.")}
+        </div>
+      </Show>
+
+      <Show when={kind() === "test"}>
+        <div class={styles.msg}>
+          {fileMessage(() => "Runs the tests of the package this file is in, stopping on your breakpoints.")}
         </div>
       </Show>
 

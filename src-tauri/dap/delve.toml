@@ -1,0 +1,28 @@
+# Delve, Go's debugger. Go's own toolchain installs it, so Tori offers a hint
+# rather than an install. `dlv dap` listens on the port Tori picks, serves one
+# session and exits with it.
+#
+# No `verified_against`: `dlv` has no `--version` (its `dlv version` prints
+# three lines), so the health card has no version to compare.
+
+schema_version = 1
+id = "delve"
+label = "Go (Delve)"
+
+# The module a package builds in. Delve runs `go build` from its own working
+# directory, which is this root.
+root_markers = ["go.mod"]
+
+[languages]
+go = "go"
+
+[launch]
+kind = "tcp"
+program = "dlv"
+args = ["dap", "--listen=127.0.0.1:{port}"]
+
+[install]
+kind = "hint"
+text = "Install it with `go install github.com/go-delve/delve/cmd/dlv@latest`, and put `$(go env GOPATH)/bin` on your PATH."
+update = "go install github.com/go-delve/delve/cmd/dlv@latest"
+uninstall = 'gobin="$(go env GOBIN)"; rm "${gobin:-$(go env GOPATH)/bin}/dlv"'

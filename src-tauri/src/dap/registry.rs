@@ -361,9 +361,14 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
 
 const BUILTIN_JS_DEBUG: &str = include_str!("../../dap/js-debug.toml");
 const BUILTIN_DEBUGPY: &str = include_str!("../../dap/debugpy.toml");
+const BUILTIN_DELVE: &str = include_str!("../../dap/delve.toml");
 
 /// Every bundled config.
-const BUILTINS: &[(&str, &str)] = &[("bundled:js-debug", BUILTIN_JS_DEBUG), ("bundled:debugpy", BUILTIN_DEBUGPY)];
+const BUILTINS: &[(&str, &str)] = &[
+    ("bundled:js-debug", BUILTIN_JS_DEBUG),
+    ("bundled:debugpy", BUILTIN_DEBUGPY),
+    ("bundled:delve", BUILTIN_DELVE),
+];
 
 fn user_dap_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/dap")
@@ -539,6 +544,17 @@ uninstall = "rm \"$(go env GOPATH)/bin/dlv\""
         );
         assert_eq!(adapter.verified_against.as_deref(), Some("1.25.0"));
         assert!(!adapter.child_sessions);
+    }
+
+    /// A bundled TOML that fails to load is only logged, and its language then
+    /// has no debugger.
+    #[test]
+    fn every_bundled_adapter_loads() {
+        for &(source, text) in BUILTINS {
+            if let Err(e) = load_adapter_str(text, source) {
+                panic!("{e}");
+            }
+        }
     }
 
     /// The extension -> adapter mapping these two tests covered went with

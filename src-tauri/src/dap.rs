@@ -286,12 +286,12 @@ fn locate(adapter: &DapAdapter, bundled: impl FnOnce(&str) -> Option<PathBuf>) -
             .ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id)),
         launch => find_program(adapter, &managed::debuggers_dir()).ok_or_else(|| {
             let program = launch.program();
-            match launch.resolve() {
-                Resolve::Path => format!("{}: `{program}` was not found on your PATH", adapter.id),
-                Resolve::Xcrun => format!("{}: `{program}` was not found by xcrun or on your PATH", adapter.id),
-                Resolve::Managed => {
-                    format!("the {} debugger is not installed. Install it in Settings > Debuggers.", adapter.label)
-                }
+            // A `managed` launch always has an install, so it never reaches the
+            // PATH message.
+            match (&adapter.install, launch.resolve()) {
+                (Some(_), _) => crate::lsp::managed::NOT_INSTALLED.to_string(),
+                (None, Resolve::Xcrun) => format!("{}: `{program}` was not found by xcrun or on your PATH", adapter.id),
+                (None, _) => format!("{}: `{program}` was not found on your PATH", adapter.id),
             }
         }),
     }
