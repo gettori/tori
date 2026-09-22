@@ -4,6 +4,7 @@ import {
   createMemo,
   onMount,
   onCleanup,
+  children,
   For,
   Show,
   type JSX,
@@ -46,6 +47,7 @@ export default function OverflowTabBar<T>(props: {
   renderTab: (t: T, ghost?: boolean) => JSX.Element;
   renderMenuItem: (t: T) => JSX.Element;
   trailing?: JSX.Element;
+  end?: JSX.Element;
   /** The bar's own element, for a consumer that hit-tests against its box. */
   ref?: (el: HTMLElement) => void;
   class?: string;
@@ -54,6 +56,8 @@ export default function OverflowTabBar<T>(props: {
   let ghost!: HTMLDivElement;
   let countSample: HTMLButtonElement | undefined;
   let trailingEl: HTMLDivElement | undefined;
+  let endEl: HTMLDivElement | undefined;
+  const end = children(() => props.end);
 
   const [visibleCount, setVisibleCount] = createSignal(props.items.length);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -86,9 +90,10 @@ export default function OverflowTabBar<T>(props: {
       const cm = getComputedStyle(countSample);
       count = countSample.offsetWidth + parseFloat(cm.marginLeft) + parseFloat(cm.marginRight);
     }
+    const endWidth = end() && endEl ? endEl.offsetWidth + (parseFloat(cs.columnGap) || 0) : 0;
     const reserves: Reserves = {
       padding: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight),
-      trailing: trailingEl?.offsetWidth ?? 0,
+      trailing: (trailingEl?.offsetWidth ?? 0) + endWidth,
       count,
       safety: 6,
     };
@@ -283,6 +288,12 @@ export default function OverflowTabBar<T>(props: {
       <div class="otab-trailing" ref={trailingEl}>
         {props.trailing}
       </div>
+
+      <Show when={end()}>
+        <div class="otab-end" ref={endEl}>
+          {end()}
+        </div>
+      </Show>
     </Tabs.Root>
   );
 }

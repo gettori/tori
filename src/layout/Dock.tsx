@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Plus } from "lucide-solid";
+import { Plus, X } from "lucide-solid";
 import Icon from "../components/Icon/Icon";
 import IconButton from "../components/IconButton/IconButton";
 import PaneView from "../tabs/PaneView";
@@ -7,6 +7,7 @@ import { tabsIn } from "../panels/Terminal/terminalTabStore";
 import { SHELLS_KEY } from "../utils/topics";
 import { emit, NEW_DOCK_SHELL } from "../utils/events";
 import { shellsPane } from "./shellsWorkspace";
+import { showDock } from "./dockStore";
 
 export default function Dock() {
   return (
@@ -21,6 +22,14 @@ export default function Dock() {
             tooltip="New shell at your home folder"
             aria-label="New shell"
             onClick={() => emit(NEW_DOCK_SHELL)}
+          />
+        }
+        end={
+          <IconButton
+            icon={<Icon icon={X} />}
+            tooltip="Hide the dock"
+            aria-label="Hide the dock"
+            onClick={() => showDock(false)}
           />
         }
       />

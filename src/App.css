@@ -502,8 +502,10 @@ html {
 }
 
 /* The pinned trailing action (+ New / Follow) sits at the far right, except in
-   the dock, where the new-shell button follows the tabs. */
-.otab-trailing {
+   the dock, where the new-shell button follows the tabs and its hide button
+   takes the far right instead. */
+.otab-trailing,
+.otab-end {
   margin-left: auto;
   align-self: center;
   display: inline-flex;
