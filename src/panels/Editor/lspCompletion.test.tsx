@@ -237,6 +237,7 @@ describe("the client's extension list", () => {
     const { configurationClientCapabilities } = await import("./lspConfiguration");
     const { callHierarchyClientCapabilities } = await import("../../utils/callHierarchy");
     const { codeLensClientCapabilities } = await import("./lspCodeLens");
+    const { progressClientCapabilities } = await import("../../utils/lspProgress");
 
     const capabilitiesFor = (extensions: unknown[]) => {
       sent = [];
@@ -258,6 +259,7 @@ describe("the client's extension list", () => {
       configurationClientCapabilities,
       callHierarchyClientCapabilities,
       codeLensClientCapabilities,
+      progressClientCapabilities,
     ]);
     const after = capabilitiesFor(clientExtensions("typescript"));
 

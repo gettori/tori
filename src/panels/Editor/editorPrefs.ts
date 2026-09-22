@@ -58,7 +58,11 @@ const ACTIVE_LINE: Record<ActiveLineHighlight, EditorFeature[]> = {
  * what lets the palette's toggle return a tab to the default rather than only
  * ever pinning it.
  */
-export type EditorPrefOverrides = { softWrap?: boolean | null };
+export type EditorPrefOverrides = { softWrap?: boolean | null; plain?: boolean };
+
+// Each walks the whole document or draws a second copy of it, which a very
+// large file makes slow enough to feel like a hang.
+const HEAVY: EditorFeature[] = ["indentGuides", "bracketPairGuides", "minimap"];
 
 /** Which features are on for this buffer, override first, setting second. */
 export function activeEditorFeatures(
@@ -78,7 +82,7 @@ export function activeEditorFeatures(
   if (prefs.bracketPairGuides) on.push("bracketPairGuides");
   if (prefs.minimap) on.push("minimap");
   if (prefs.stickyScroll) on.push("stickyScroll");
-  return on;
+  return overrides.plain ? on.filter((f) => !HEAVY.includes(f)) : on;
 }
 
 // A total map rather than a chain of ifs: a feature added to the union without

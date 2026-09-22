@@ -19,13 +19,21 @@
 // compartments are objects the next instance has never heard of. Handing one
 // back after a remount produces a buffer that looks perfect and answers to
 // nothing. So a closed buffer is serialized (`EditorState.toJSON` with the
-// history field) and rebuilt into whatever the *current* instance configures.
+// fields below) and rebuilt into whatever the *current* instance configures.
 //
 // **Bounded, because the entries are not small.** Each holds the whole document
 // plus its undo history, so an unbounded store would grow with every file the
 // session ever touched. `editorTabPersist` caps at 30, but those are path
 // descriptors; these are documents, and eight is about as many tabs as anyone
 // reopens by hand.
+
+import { historyField } from "@codemirror/commands";
+import { foldState } from "@codemirror/language";
+
+// What `toJSON`/`fromJSON` carry beyond the document and the selection. A field
+// not named here is dropped, silently: a reopened tab would look right and undo
+// nothing, or come back with every fold opened.
+export const SERIALIZED_FIELDS = { history: historyField, fold: foldState };
 
 /** How many closed buffers to keep. Least recently closed goes first. */
 export const MAX_CLOSED_BUFFERS = 8;

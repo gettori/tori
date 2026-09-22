@@ -33,6 +33,13 @@
 }
 
 /* Pane banners: the external-change conflict, and a server install offer */
+.unopenable {
+  padding: calc(12px * var(--ui-scale));
+  font-size: var(--tori-text-lg);
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+}
+
 .reloadBanner,
 .installBanner {
   display: flex;
