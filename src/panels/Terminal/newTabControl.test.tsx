@@ -276,12 +276,14 @@ describe("the launch control", () => {
     expect(screen.queryByTestId("draft")).toBeNull();
   });
 
-  it("opens a draft from the menu's chat row too, on no named agent", async () => {
+  // The main half is the only chat route in this control, so the menu must not
+  // carry a second one: a row repeating its own button is what was removed.
+  it("offers no chat row beside the button that already makes one", async () => {
     await mountLoaded();
-    await menuItem("New chat");
+    pointerClick(screen.getByLabelText("Launch an agent session"));
 
-    await waitFor(() => expect(screen.getAllByTestId("draft")).toHaveLength(1));
-    expect(screen.queryByTestId("chat")).toBeNull();
+    await screen.findByRole("menuitem", { name: "Terminal" });
+    expect(screen.queryByRole("menuitem", { name: "New chat" })).toBeNull();
   });
 
   // An agent tab runs as an account exactly the way a chat does. One row would
