@@ -116,7 +116,7 @@ export default function TrustedProjects() {
                 <code class={styles.trustPath} classList={{ [styles.trustPathOff]: !r.trusted }} title={r.path}>
                   {r.path}
                 </code>
-                <span class={styles.trustStatus}>{r.trusted ? "Trusted" : "Servers stay off"}</span>
+                <span class={styles.trustStatus}>{r.trusted ? "Trusted" : "Not trusted"}</span>
                 <Show
                   when={r.trusted}
                   fallback={
@@ -146,7 +146,8 @@ export default function TrustedProjects() {
         </div>
       </Show>
       <div class={styles.note}>
-        Servers that run a project's own code, like TypeScript and Rust, only start in trusted projects.
+        Servers that run a project's own code, like TypeScript and Rust, and every debugger only start in
+        trusted projects.
       </div>
 
       <Show when={confirming()}>

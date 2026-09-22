@@ -1,17 +1,10 @@
 import { For, Show, Switch, Match, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { homeDir } from "@tauri-apps/api/path";
-import { CircleArrowUp, Download, Trash2 } from "lucide-solid";
-import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
-import Icon from "../../../../components/Icon/Icon";
-import IconButton from "../../../../components/IconButton/IconButton";
 import Toggle from "../../../../components/Switch/Switch";
-import InlineJob from "../../../FirstRun/job/InlineJob";
-import type { JobState } from "../../../FirstRun/job/InlineJobFrame";
-import { emitWith, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
-import { commandIn, installServer, serverInstalled } from "../../../../utils/serverInstall";
-import { CmdField } from "../../components/paneKit";
+import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
+import { installServer, serverInstalled } from "../../../../utils/serverInstall";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
+import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 
 // One card per registered language server, answering the same question the
@@ -95,78 +88,27 @@ function tabOf(s: LspHealth): Tab {
 
 const kindOf = (s: LspHealth) => (s.role === "secondary" ? "Linter" : "LSP");
 
-type Verb = "install" | "update" | "uninstall";
-const VERB_LABEL: Record<Verb, string> = { install: "Install", update: "Update", uninstall: "Uninstall" };
-const VERB_DONE: Record<Verb, string> = { install: "Installed", update: "Updated", uninstall: "Uninstalled" };
-
 export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspHealth[] | null | undefined> }) {
   const s = () => props.server;
-  const [pending, setPending] = createSignal<"install" | "remove" | null>(null);
+  const actions = createToolActions({
+    tool: s,
+    scope: "lsp",
+    onChange: () => props.onChange(),
+    // Through `installServer` so files already open in the editor pick the
+    // server up.
+    install: installServer,
+    remove: (serverId) => invoke("lsp_uninstall", { serverId }),
+    onHintInstalled: serverInstalled,
+    uninstallNote: () => `Files that use ${s().label} lose it once Tori restarts.`,
+  });
   // Flipped here as soon as it is saved, rather than after `lsp_health`
   // answers, which probes every binary again.
   const [turnedOff, setTurnedOff] = createSignal<boolean | null>(null);
   const off = () => turnedOff() ?? s().disabled;
-  const outdated = () =>
-    s().installedVersion !== null && s().availableVersion !== null && s().installedVersion !== s().availableVersion;
-  const installable = () => s().installedVersion === null && s().status === "notFound" && s().availableVersion !== null;
-  const command = () => (s().status === "notFound" ? commandIn(s().hint) : null);
   // Nothing to switch off. A per-project server can still be in the project,
   // and one already off keeps its switch so it can be turned back on.
   const switchable = () =>
     off() || s().status !== "notFound" || s().installedVersion !== null || s().runsPerProject;
-  // Run here rather than as a dock tab, which would open behind this panel.
-  const [job, setJob] = createSignal<{ verb: Verb; line: string; job: OpenJob } | null>(null);
-  const [confirming, setConfirming] = createSignal(false);
-
-  const runCommand = async (verb: Verb, line: string) => {
-    setConfirming(false);
-    const job: OpenJob = {
-      id: `lsp-${verb}:${s().id}`,
-      title: `${VERB_LABEL[verb]} ${s().label}`,
-      cwd: await homeDir().catch(() => "/"),
-      program: "/bin/sh",
-      args: ["-c", line],
-      interactive: true,
-    };
-    setJob({ verb, line, job });
-  };
-
-  // The card is rebuilt once health comes back, so what to say is decided
-  // from the answer rather than from this card.
-  const finished = async (verb: Verb, state: JobState) => {
-    if (state !== "ok") return;
-    const { id, label, program } = s();
-    if (verb === "install") serverInstalled(id);
-    const now = (await props.onChange())?.find((x) => x.id === id);
-    const found = !!now && now.status !== "notFound";
-    const toast = (message: string, ok: boolean) =>
-      emitWith<ToastEvent>(TOAST, { message, kind: ok ? "info" : "error" });
-    if (verb === "install") {
-      const message = found
-        ? `${label} is installed.`
-        : `The ${label} install finished, but ${program} is still not on your PATH.`;
-      toast(message, found);
-    } else if (verb === "update") {
-      toast(now?.version ? `${label} is on version ${now.version}.` : `The ${label} update finished.`, true);
-    } else {
-      const message = found
-        ? `The ${label} uninstall finished, but ${program} is still on your PATH.`
-        : `Uninstalled ${label}.`;
-      toast(message, !found);
-    }
-  };
-
-  // Install goes through `installServer` so files already open in the editor
-  // pick the server up.
-  const run = (verb: string, command: "lsp_install" | "lsp_uninstall") => {
-    setPending(command === "lsp_install" ? "install" : "remove");
-    const done = command === "lsp_install" ? installServer(s().id) : invoke(command, { serverId: s().id });
-    done
-      .then(() => props.onChange(), (e) =>
-        emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} ${s().label}: ${String(e)}` }),
-      )
-      .finally(() => setPending(null));
-  };
 
   const use = (on: boolean) => {
     setTurnedOff(!on);
@@ -177,7 +119,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
   };
 
   return (
-    <div class={styles.toolCard} classList={{ [styles.toolCardWide]: job() !== null }}>
+    <div class={styles.toolCard} classList={{ [styles.toolCardWide]: actions.job() !== null }}>
       <div class={styles.toolHead}>
         <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[s().status]}`} />
         <span class={styles.toolName} classList={{ [styles.toolNameOff]: off() }}>
@@ -193,69 +135,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
               onChange={use}
             />
           </Show>
-          <Show when={!job()}>
-            <Show when={command()}>
-              {(cmd) => (
-                <IconButton
-                  size="sm"
-                  icon={<Icon icon={Download} />}
-                  tooltip="Install"
-                  aria-label={`Install ${s().label}`}
-                  onClick={() => void runCommand("install", cmd())}
-                />
-              )}
-            </Show>
-            <Show when={installable()}>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={Download} />}
-                tooltip="Install"
-                aria-label={`Install ${s().label}`}
-                disabled={pending() !== null}
-                onClick={() => run("install", "lsp_install")}
-              />
-            </Show>
-            <Show when={s().update}>
-              {(cmd) => (
-                <IconButton
-                  size="sm"
-                  icon={<Icon icon={CircleArrowUp} />}
-                  tooltip="Update"
-                  aria-label={`Update ${s().label}`}
-                  onClick={() => void runCommand("update", cmd())}
-                />
-              )}
-            </Show>
-            <Show when={outdated()}>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={CircleArrowUp} />}
-                tooltip="Update"
-                aria-label={`Update ${s().label}`}
-                disabled={pending() !== null}
-                onClick={() => run("update", "lsp_install")}
-              />
-            </Show>
-            <Show when={s().uninstall}>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={Trash2} />}
-                tooltip="Uninstall"
-                aria-label={`Uninstall ${s().label}`}
-                onClick={() => setConfirming(true)}
-              />
-            </Show>
-            <Show when={s().installedVersion}>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={Trash2} />}
-                tooltip="Remove"
-                aria-label={`Remove ${s().label}`}
-                disabled={pending() !== null}
-                onClick={() => run("remove", "lsp_uninstall")}
-              />
-            </Show>
-          </Show>
+          <actions.Controls />
         </span>
       </div>
       <code class={styles.toolProgram}>{s().program}</code>
@@ -278,21 +158,21 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
             Runs per project, from the project's own <code>node_modules</code> or <code>.venv</code>, or your PATH.
           </Match>
           <Match when={s().detail}>{(detail) => <>{detail()}</>}</Match>
-          <Match when={pending() === "install"}>
+          <Match when={actions.pending() === "install"}>
             Installing {s().label}. A large server can take a minute to download.
           </Match>
           <Match when={s().installedVersion}>
             {(version) => (
               <>
                 Installed by Tori, version {version()}.
-                <Show when={outdated()}> Version {s().availableVersion} is available.</Show>
+                <Show when={actions.outdated()}> Version {s().availableVersion} is available.</Show>
               </>
             )}
           </Match>
-          <Match when={installable()}>
+          <Match when={actions.installable()}>
             Available, not installed. Tori can install version {s().availableVersion}.
           </Match>
-          <Match when={command()}>Not installed. Install runs this in a terminal here.</Match>
+          <Match when={actions.command()}>Not installed. Install runs this in a terminal here.</Match>
           <Match when={s().status === "notFound" && s().hint}>{(hint) => <>Not installed. {hint()}</>}</Match>
           <Match when={s().status === "notFound"}>
             Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
@@ -311,22 +191,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
         </Switch>
       </div>
 
-      <Show
-        when={job()}
-        fallback={
-          <Show when={command()}>{(cmd) => <CmdField text={cmd()} />}</Show>
-        }
-      >
-        {(j) => (
-          <InlineJob
-            job={j().job}
-            command={j().line}
-            okLine={`${VERB_DONE[j().verb]} ${s().label}.`}
-            onCancel={() => setJob(null)}
-            onState={(state) => void finished(j().verb, state)}
-          />
-        )}
-      </Show>
+      <actions.Job />
 
       <div class={styles.toolExts}>
         <For each={s().extensions}>{(ext) => <span>.{ext}</span>}</For>
@@ -336,18 +201,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
         {(path) => <div class={styles.toolMeta}>Overridden by {path()}</div>}
       </Show>
 
-      <Show when={confirming() && s().uninstall}>
-        {(cmd) => (
-          <ConfirmDialog
-            danger
-            title={`Uninstall ${s().label}?`}
-            message={`Runs ${cmd()} in a terminal here. Files that use ${s().label} lose it once Tori restarts.`}
-            confirmLabel="Uninstall"
-            onConfirm={() => void runCommand("uninstall", cmd())}
-            onCancel={() => setConfirming(false)}
-          />
-        )}
-      </Show>
+      <actions.Confirm />
     </div>
   );
 }
