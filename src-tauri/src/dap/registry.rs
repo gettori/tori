@@ -77,6 +77,15 @@ impl Launch {
         }
     }
 
+    /// The module `args` runs with `-m`, when they run one.
+    pub fn module(&self) -> Option<&str> {
+        let args = match self {
+            Launch::BundledNodeSocket { .. } => return None,
+            Launch::Stdio { args, .. } | Launch::Tcp { args, .. } => args,
+        };
+        args.iter().skip_while(|a| *a != "-m").nth(1).map(String::as_str)
+    }
+
     /// Where `program` is looked up.
     pub fn resolve(&self) -> Resolve {
         match self {
@@ -95,6 +104,8 @@ pub enum Resolve {
     /// `xcrun -f <program>`, else the login-shell PATH, for a tool Xcode ships
     /// outside the PATH.
     Xcrun,
+    /// Tori's own install of this adapter, the only place a `pip` one lives.
+    Managed,
 }
 
 /// How an adapter gets onto the machine. The LSP registry's `hint` shape, so
@@ -105,6 +116,20 @@ pub enum Install {
     /// Text only, for an adapter its own toolchain installs. `update` and
     /// `uninstall` are that toolchain's commands for the other two jobs.
     Hint { text: String, update: Option<String>, uninstall: Option<String> },
+    /// A venv Tori creates with the PATH `python3` and installs `package` into,
+    /// at an exact version.
+    Pip { package: String, version: String },
+}
+
+impl Install {
+    /// The version Tori would install, or `None` for one it leaves to a
+    /// toolchain.
+    pub fn available_version(&self) -> Option<&str> {
+        match self {
+            Install::Pip { version, .. } => Some(version),
+            Install::Hint { .. } => None,
+        }
+    }
 }
 
 /// A debug adapter Tori can start.
@@ -169,6 +194,10 @@ struct InstallToml {
     update: Option<String>,
     #[serde(default)]
     uninstall: Option<String>,
+    #[serde(default)]
+    package: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
 }
 
 const KNOWN_TOP_LEVEL: &[&str] = &[
@@ -247,8 +276,11 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
             let resolve = match raw.launch.resolve.as_deref() {
                 None | Some("path") => Resolve::Path,
                 Some("xcrun") => Resolve::Xcrun,
+                Some("managed") => Resolve::Managed,
                 Some(other) => {
-                    return Err(format!("{source}: unknown launch.resolve `{other}` (tori implements: path, xcrun)"))
+                    return Err(format!(
+                        "{source}: unknown launch.resolve `{other}` (tori implements: path, xcrun, managed)"
+                    ))
                 }
             };
             let args = raw.launch.args;
@@ -285,9 +317,28 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
                 update: table.update,
                 uninstall: table.uninstall,
             }),
-            other => Err(format!("{source}: unknown [install] kind `{other}` (tori implements: hint)")),
+            "pip" => Ok(Install::Pip {
+                package: table
+                    .package
+                    .ok_or_else(|| format!("{source}: [install] kind = \"pip\" requires `package`"))?,
+                version: table
+                    .version
+                    .ok_or_else(|| format!("{source}: [install] kind = \"pip\" requires `version`"))?,
+            }),
+            other => Err(format!("{source}: unknown [install] kind `{other}` (tori implements: hint, pip)")),
         })
         .transpose()?;
+
+    // A pip install lands in a venv no PATH lookup reaches, and a managed
+    // program has nowhere to come from but Tori's own install.
+    if (launch.resolve() == Resolve::Managed) != matches!(install, Some(Install::Pip { .. })) {
+        return Err(format!("{source}: launch.resolve = \"managed\" and [install] kind = \"pip\" go together"));
+    }
+    // Only `python -m` survives the move out of staging: a venv's console
+    // scripts carry the staging path in their shebangs.
+    if matches!(install, Some(Install::Pip { .. })) && launch.module().is_none() {
+        return Err(format!("{source}: [install] kind = \"pip\" needs launch.args to run a module (`-m <module>`)"));
+    }
 
     // Matched lowercase and without a dot, so normalise once here.
     let languages = raw
@@ -309,9 +360,10 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
 }
 
 const BUILTIN_JS_DEBUG: &str = include_str!("../../dap/js-debug.toml");
+const BUILTIN_DEBUGPY: &str = include_str!("../../dap/debugpy.toml");
 
 /// Every bundled config.
-const BUILTINS: &[(&str, &str)] = &[("bundled:js-debug", BUILTIN_JS_DEBUG)];
+const BUILTINS: &[(&str, &str)] = &[("bundled:js-debug", BUILTIN_JS_DEBUG), ("bundled:debugpy", BUILTIN_DEBUGPY)];
 
 fn user_dap_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/dap")

@@ -28,6 +28,8 @@ export type DapHealth = {
   extensions: string[];
   detail: string | null;
   disabled: boolean;
+  availableVersion: string | null;
+  installedVersion: string | null;
 };
 
 // Same mapping as the LSP and agent cards: the dot answers "is this usable?"

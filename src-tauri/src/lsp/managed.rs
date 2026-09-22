@@ -88,15 +88,28 @@ fn install_with(
     dir: &Path,
     fetch: impl Fn(&str) -> Result<Vec<u8>, String>,
 ) -> Result<Installed, String> {
+    install_staged(dir, &server.id, |staging| fill(server, staging, fetch))
+}
+
+/// Build `id`'s install with `fill` in a staging directory beside `dir/<id>`,
+/// then move it into place whole. Shared with the debuggers Tori installs.
+pub(crate) fn install_staged(
+    dir: &Path,
+    id: &str,
+    fill: impl FnOnce(&Path) -> Result<Installed, String>,
+) -> Result<Installed, String> {
     let _guard = INSTALLING.lock().unwrap_or_else(|e| e.into_inner());
-    let staging = dir.join(format!(".{}.partial", server.id));
+    let staging = dir.join(format!(".{id}.partial"));
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging).map_err(|e| format!("cannot create {}: {e}", staging.display()))?;
 
-    let result = fill(server, &staging, fetch).and_then(|manifest| {
+    let result = fill(&staging).and_then(|manifest| {
+        if !staging.join(&manifest.bin).is_file() {
+            return Err(format!("{id}: the install has no `{}`", manifest.bin));
+        }
         let text = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
         std::fs::write(staging.join(MANIFEST), text).map_err(|e| e.to_string())?;
-        swap_in(dir, &server.id, &staging)?;
+        swap_in(dir, id, &staging)?;
         Ok(manifest)
     });
     let _ = std::fs::remove_dir_all(&staging);
@@ -154,9 +167,6 @@ fn fill(
         }
         Some(Install::Hint { .. }) | None => return Err(format!("{}: Tori has nothing to install", server.id)),
     };
-    if !staging.join(&manifest.bin).is_file() {
-        return Err(format!("{}: the install has no `{}`", server.id, manifest.bin));
-    }
     Ok(manifest)
 }
 
@@ -239,7 +249,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn last_line(stderr: &[u8]) -> String {
+pub(crate) fn last_line(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
     text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output").trim().to_string()
 }

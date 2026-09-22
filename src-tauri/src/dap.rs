@@ -55,9 +55,10 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::env::augmented_path;
 
+mod managed;
 pub mod registry;
 
-use registry::{DapAdapter, Launch, Resolve};
+use registry::{DapAdapter, Install, Launch, Resolve};
 
 /// How long to keep retrying the connect before calling the adapter dead.
 /// Measured cold-start is ~106ms; this is wide enough for a loaded machine and
@@ -171,12 +172,13 @@ fn bundled_entry(app: &AppHandle, rel: &str) -> Option<PathBuf> {
 
 /// The launch program's path on this machine, by the adapter's resolver. The
 /// health card asks this too, so a card never reads found for a program a start
-/// would not find.
-fn find_program(launch: &Launch) -> Option<PathBuf> {
-    let program = launch.program();
-    match launch.resolve() {
+/// would not find. `debuggers` is where Tori installs its own.
+fn find_program(adapter: &DapAdapter, debuggers: &Path) -> Option<PathBuf> {
+    let program = adapter.launch.program();
+    match adapter.launch.resolve() {
         Resolve::Path => crate::env::resolve_binary(program),
         Resolve::Xcrun => xcrun_find(program).or_else(|| crate::env::resolve_binary(program)),
+        Resolve::Managed => crate::lsp::managed::installed(debuggers, &adapter.id).map(|(bin, _)| bin),
     }
 }
 
@@ -282,11 +284,14 @@ fn locate(adapter: &DapAdapter, bundled: impl FnOnce(&str) -> Option<PathBuf>) -
     match &adapter.launch {
         Launch::BundledNodeSocket { entry, .. } => bundled(entry)
             .ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id)),
-        launch => find_program(launch).ok_or_else(|| {
+        launch => find_program(adapter, &managed::debuggers_dir()).ok_or_else(|| {
             let program = launch.program();
             match launch.resolve() {
                 Resolve::Path => format!("{}: `{program}` was not found on your PATH", adapter.id),
                 Resolve::Xcrun => format!("{}: `{program}` was not found by xcrun or on your PATH", adapter.id),
+                Resolve::Managed => {
+                    format!("the {} debugger is not installed. Install it in Settings > Debuggers.", adapter.label)
+                }
             }
         }),
     }
@@ -588,6 +593,15 @@ fn root_for_adapter(adapter_id: &str, file_path: &str, project_path: &str) -> Re
     Ok(root.to_string_lossy().into_owned())
 }
 
+/// The interpreter a Python program is debugged on: the nearest `.venv` or
+/// `venv` from `root` up to the project, else `python3` on the login PATH. Never
+/// Tori's own venv, which holds the adapter and none of the project's packages.
+#[tauri::command(async)]
+pub fn dap_python(root: String, project_path: String) -> Option<String> {
+    crate::format::project_bin("python3", Path::new(&root), Path::new(&project_path))
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
 /// The environment a launched debuggee should run with.
 ///
 /// A map rather than a bare PATH string so a second variable later is a new key
@@ -624,25 +638,45 @@ pub struct DapHealth {
     pub adapter_version: Option<String>,
     /// Extensions this adapter claims, for the card's chips.
     pub extensions: Vec<String>,
-    /// What is wrong beyond a missing `program`. The one case is a bundle that
-    /// was never installed: `node` resolves fine, so probing the program alone
-    /// would report the card healthy while every `dap_start` fails.
+    /// What is wrong beyond a missing `program`: a bundle that was never
+    /// installed (`node` resolves fine, so probing the program alone would
+    /// report the card healthy while every `dap_start` fails), or Tori's own
+    /// install that no longer imports what the launch runs.
     pub detail: Option<String>,
     /// Named in your `dap.disabled`.
     pub disabled: bool,
+    /// The version Tori installs, for an adapter it installs itself.
+    pub available_version: Option<String>,
+    /// The version of Tori's own install, when there is one that runs.
+    pub installed_version: Option<String>,
 }
 
 /// Build one adapter's health card.
 ///
-/// `entry_missing` is passed in rather than resolved here so this stays free of
-/// `AppHandle` and testable off a real Tauri app, exactly as `lsp::check` is.
-fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
+/// `entry_missing` and `debuggers` are passed in rather than resolved here so
+/// this stays free of `AppHandle` and testable off a real Tauri app and a real
+/// home directory, exactly as `lsp::check` is.
+fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHealth {
     let program = adapter.launch.program().to_string();
-    let resolved = find_program(&adapter.launch);
-    let version = resolved.as_deref().and_then(crate::health::run_version);
+    let resolved = find_program(adapter, debuggers);
+    // The package's version, and only once the module the launch runs imports:
+    // `python --version` names Python, and says nothing about the adapter.
+    let version = match (&adapter.install, resolved.as_deref()) {
+        (Some(Install::Pip { package, .. }), Some(python)) => {
+            adapter.launch.module().and_then(|module| managed::package_version(python, package, module))
+        }
+        (_, Some(path)) => crate::health::run_version(path),
+        (_, None) => None,
+    };
+    let managed = adapter.launch.resolve() == Resolve::Managed;
 
-    let detail = entry_missing
-        .then(|| "the bundled debug adapter is not installed (run `pnpm dap:install`)".to_string());
+    let detail = if entry_missing {
+        Some("the bundled debug adapter is not installed (run `pnpm dap:install`)".to_string())
+    } else if managed && resolved.is_some() && version.is_none() {
+        Some(format!("Tori's copy of {} no longer runs. Install it again.", adapter.label))
+    } else {
+        None
+    };
 
     // Runnable means *everything* is present. Reporting found on the strength
     // of `node` alone would send someone chasing a problem they do not have.
@@ -657,7 +691,6 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
         program,
         status,
         path: resolved.map(|p| p.to_string_lossy().into_owned()),
-        version,
         adapter_version: match &adapter.launch {
             Launch::BundledNodeSocket { version, .. } => Some(version.clone()),
             Launch::Stdio { .. } | Launch::Tcp { .. } => None,
@@ -665,6 +698,9 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
         extensions: adapter.languages.keys().cloned().collect(),
         detail,
         disabled: false,
+        available_version: adapter.install.as_ref().and_then(Install::available_version).map(str::to_string),
+        installed_version: version.clone().filter(|_| managed),
+        version,
     }
 }
 
@@ -674,6 +710,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
 #[tauri::command]
 pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
     let disabled = crate::settings::get_settings().dap.disabled;
+    let debuggers = managed::debuggers_dir();
     registry::registry()
         .iter()
         .map(|adapter| {
@@ -681,9 +718,25 @@ pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
                 Launch::BundledNodeSocket { entry, .. } => bundled_entry(&app, entry).is_none(),
                 Launch::Stdio { .. } | Launch::Tcp { .. } => false,
             };
-            DapHealth { disabled: disabled.contains(&adapter.id), ..check(adapter, entry_missing) }
+            DapHealth { disabled: disabled.contains(&adapter.id), ..check(adapter, entry_missing, &debuggers) }
         })
         .collect()
+}
+
+/// Install Tori's own copy of an adapter, or replace it with the version this
+/// build pins.
+#[tauri::command(async)]
+pub fn dap_install(adapter_id: String) -> Result<(), String> {
+    let adapter =
+        registry::find(&adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
+    managed::install(adapter, &managed::debuggers_dir()).map(|_| ())
+}
+
+/// Remove Tori's own copy of an adapter.
+#[tauri::command(async)]
+pub fn dap_uninstall(adapter_id: String) -> Result<(), String> {
+    registry::find(&adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
+    crate::lsp::managed::remove(&managed::debuggers_dir(), &adapter_id)
 }
 
 #[cfg(test)]
@@ -1135,7 +1188,7 @@ mod tests {
         let lib = include_str!("lib.rs");
 
         let defined: Vec<&str> = module
-            .split("#[tauri::command]")
+            .split("#[tauri::command")
             .skip(1)
             .filter_map(|after| {
                 let sig = after.split("fn ").nth(1)?;
@@ -1184,19 +1237,61 @@ mod tests {
     fn an_uninstalled_bundle_reads_not_found_even_though_node_is_here() {
         let adapter = registry::find("js-debug").expect("js-debug is registered");
 
-        let missing = check(adapter, true);
+        let missing = check(adapter, true, Path::new("/nonexistent"));
         assert!(matches!(missing.status, crate::health::BinaryStatus::NotFound));
         let detail = missing.detail.expect("a missing bundle explains itself");
         // Actionable, not merely negative: the message names the command that
         // fixes it, the way `lsp_health`'s does.
         assert!(detail.contains("dap:install"), "unhelpful detail: {detail}");
 
-        let installed = check(adapter, false);
+        let installed = check(adapter, false, Path::new("/nonexistent"));
         assert!(installed.detail.is_none());
         assert_eq!(installed.program, "node");
         let Launch::BundledNodeSocket { version, .. } = &adapter.launch else { panic!("{:?}", adapter.launch) };
         assert_eq!(installed.adapter_version.as_ref(), Some(version));
         assert!(installed.extensions.contains(&"ts".to_string()));
+    }
+
+    #[test]
+    fn debugpy_reads_found_only_while_toris_own_venv_runs() {
+        use crate::health::BinaryStatus;
+        use std::os::unix::fs::PermissionsExt;
+
+        let debugpy = registry::find("debugpy").expect("debugpy is registered");
+        let pinned = debugpy.install.as_ref().and_then(Install::available_version).unwrap().to_string();
+        let dir = std::env::temp_dir().join(format!("tori-dap-health-{}-{}", std::process::id(), next_id("t")));
+
+        let without = check(debugpy, false, &dir);
+        assert!(matches!(without.status, BinaryStatus::NotFound));
+        assert_eq!(without.available_version.as_deref(), Some(pinned.as_str()));
+        assert_eq!(without.installed_version, None);
+
+        // A stand-in for the venv's interpreter: `script` is its whole behaviour.
+        let install = |script: &str| {
+            crate::lsp::managed::install_staged(&dir, "debugpy", |staging| {
+                let python = staging.join("venv/bin/python");
+                std::fs::create_dir_all(python.parent().unwrap()).unwrap();
+                std::fs::write(&python, format!("#!/bin/sh\n{script}\n")).unwrap();
+                std::fs::set_permissions(&python, std::fs::Permissions::from_mode(0o755)).unwrap();
+                Ok(crate::lsp::managed::Installed { version: pinned.clone(), bin: "venv/bin/python".into() })
+            })
+            .unwrap();
+        };
+
+        install(&format!("echo {pinned}"));
+        let with = check(debugpy, false, &dir);
+        assert!(matches!(with.status, BinaryStatus::VersionMatch), "{:?}", with.status);
+        assert_eq!(with.path, Some(dir.join("debugpy/venv/bin/python").to_string_lossy().into_owned()));
+        assert_eq!(with.installed_version.as_deref(), Some(pinned.as_str()));
+        assert!(with.detail.is_none());
+
+        install("exit 1");
+        let broken = check(debugpy, false, &dir);
+        assert!(matches!(broken.status, BinaryStatus::NotFound));
+        assert_eq!(broken.installed_version, None);
+        assert!(broken.detail.is_some_and(|d| d.contains("no longer runs")));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -7,9 +7,11 @@ import Select from "../Select/Select";
 import {
   DEFAULT_ATTACH_PORT,
   defaultKind,
+  isModuleName,
   isPort,
   JS_ADAPTER,
   kindsFor,
+  PYTHON_ADAPTER,
   type DebugTarget,
   type TargetKind,
 } from "../../utils/debugTargets";
@@ -21,11 +23,14 @@ import {
 const ADAPTER_LABEL = "debug-target-adapter-label";
 const SCRIPT_LABEL = "debug-target-script-label";
 const PORT_LABEL = "debug-target-port-label";
+const MODULE_LABEL = "debug-target-module-label";
 
 const KIND_LABELS: Record<TargetKind, string> = {
   file: "This file",
   script: "Package script",
   attach: "Attach",
+  module: "Module",
+  pytest: "pytest",
 };
 
 // Which of an adapter's kinds "debug" means, in one dialog with a mode picker
@@ -71,6 +76,7 @@ export default function DebugTargetDialog(props: {
   );
   const [script, setScript] = createSignal(props.scripts[0] ?? "");
   const [port, setPort] = createSignal(String(props.port || DEFAULT_ATTACH_PORT));
+  const [module, setModule] = createSignal("");
   let first: HTMLElement | undefined;
 
   const portNumber = () => Number(port().trim());
@@ -82,6 +88,7 @@ export default function DebugTargetDialog(props: {
       case null:
         return `Tori cannot start ${adapterLabel()} programs from here yet.`;
       case "file":
+      case "pytest":
         if (runnableFile()) return null;
         return props.filePath ? "Open a file this debugger runs." : "Open a file to debug it.";
       case "script":
@@ -91,21 +98,32 @@ export default function DebugTargetDialog(props: {
         return isPort(portNumber())
           ? null
           : "Enter a port between 1024 and 65535 (node's default is 9229).";
+      case "module":
+        return isModuleName(module().trim()) ? null : "Enter a module name, like app.main.";
     }
   }
 
-  // Every kind is js-debug's today, so every target is too.
   function target(): DebugTarget | null {
     const f = runnableFile();
+    const id = adapterId();
     switch (kind()) {
       case null:
         return null;
       case "file":
-        return f ? { adapterId: JS_ADAPTER, kind: "file", path: f } : null;
+        if (!f) return null;
+        return id === PYTHON_ADAPTER
+          ? { adapterId: id, kind: "file", path: f }
+          : { adapterId: JS_ADAPTER, kind: "file", path: f };
       case "script":
         return script() ? { adapterId: JS_ADAPTER, kind: "script", script: script() } : null;
       case "attach":
         return isPort(portNumber()) ? { adapterId: JS_ADAPTER, kind: "attach", port: portNumber() } : null;
+      case "module":
+        return isModuleName(module().trim())
+          ? { adapterId: PYTHON_ADAPTER, kind: "module", module: module().trim() }
+          : null;
+      case "pytest":
+        return f ? { adapterId: PYTHON_ADAPTER, kind: "pytest", path: f } : null;
     }
   }
 
@@ -168,6 +186,32 @@ export default function DebugTargetDialog(props: {
               ? `${props.filePath} is not a file ${adapterLabel()} runs.`
               : "No file is open."}
         </div>
+      </Show>
+
+      <Show when={kind() === "pytest"}>
+        <div class={styles.msg}>
+          {runnableFile()
+            ? `Runs pytest on ${runnableFile()}, stopping on your breakpoints.`
+            : props.filePath
+              ? `${props.filePath} is not a file ${adapterLabel()} runs.`
+              : "No file is open."}
+        </div>
+      </Show>
+
+      <Show when={kind() === "module"}>
+        <div id={MODULE_LABEL} class={styles.label}>Module</div>
+        <input
+          ref={(el) => (first = el)}
+          class={styles.input}
+          aria-labelledby={MODULE_LABEL}
+          value={module()}
+          placeholder="app.main"
+          onInput={(e) => setModule(e.currentTarget.value)}
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck={false}
+        />
+        <div class={styles.msg}>Runs it the way <code>python -m</code> does, stopping on your breakpoints.</div>
       </Show>
 
       <Show when={kind() === "script"}>

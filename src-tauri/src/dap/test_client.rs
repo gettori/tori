@@ -240,3 +240,51 @@ fn it_hits_a_breakpoint_in_a_js_file_under_the_real_js_debug() {
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
 }
+
+#[test]
+#[ignore = "installs debugpy from PyPI"]
+fn it_hits_a_breakpoint_in_a_python_file_whose_venv_has_no_debugpy() {
+    let debugpy = registry::find("debugpy").expect("debugpy is registered");
+    let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
+    let installed = super::managed::install(debugpy, &dir.join("debuggers")).expect("debugpy installs");
+
+    // Another Python than the adapter's when the machine has one: a Homebrew
+    // venv for Tori and a project on some other version is the common case.
+    let project_base = Some(PathBuf::from("/usr/local/bin/python3"))
+        .filter(|p| p.exists())
+        .or_else(|| crate::env::resolve_binary("python3"))
+        .expect("python3 is on PATH");
+    let project = dir.join("project");
+    let status = std::process::Command::new(project_base).args(["-m", "venv"]).arg(project.join(".venv")).status();
+    assert!(status.is_ok_and(|s| s.success()), "the project venv is created");
+    let python = project.join(".venv/bin/python3");
+    let module = debugpy.launch.module().unwrap();
+    assert_eq!(super::managed::package_version(&python, "debugpy", module), None, "the project venv has no debugpy");
+
+    let file = project.join("sample.py");
+    std::fs::write(&file, "total = 0\nfor i in range(3):\n    total += i\nprint(total)\n").unwrap();
+
+    // Pointed at the temp install: `resolve = "managed"` looks in the real home.
+    let Launch::Stdio { args, .. } = &debugpy.launch else { panic!("{:?}", debugpy.launch) };
+    let mut adapter = debugpy.clone();
+    adapter.launch = Launch::Stdio {
+        program: dir.join("debuggers/debugpy").join(&installed.bin).to_string_lossy().into_owned(),
+        args: args.clone(),
+        resolve: registry::Resolve::Path,
+    };
+
+    // `pythonConfigFor` in debugTargets.ts.
+    let config = json!({
+        "type": "debugpy",
+        "request": "launch",
+        "name": "Debug sample.py",
+        "program": file,
+        "python": python,
+        "cwd": project,
+        "console": "internalConsole",
+        "justMyCode": true,
+    });
+    let stopped = run_to_breakpoint(&adapter, &project, &file, 3, config);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
+}

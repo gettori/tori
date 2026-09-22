@@ -1,7 +1,7 @@
 // Turning a chosen target into a running debug session.
 //
-// The impure half of `debugTargets.ts`: it asks the backend for the three
-// things a config needs that only the backend knows, builds the config with the
+// The impure half of `debugTargets.ts`: it asks the backend for the things a
+// config needs that only the backend knows, builds the config with the
 // pure rules, and hands it to `dapSessions`. Split so every rule about *what* a
 // config says is testable without a workspace on disk, and only the *asking* is
 // here.
@@ -19,6 +19,7 @@ import {
   anchorFor,
   attachFailureMessage,
   configFor,
+  PYTHON_ADAPTER,
   type DapAdapterInfo,
   type DebugTarget,
 } from "./debugTargets";
@@ -88,12 +89,15 @@ export async function launchTarget(
   }
   const anchor = anchorFor(target, opts.projectPath);
   const root = await resolveRoot(adapter.id, anchor, opts.projectPath);
-  const [entries, env] = await Promise.all([
+  const [entries, env, python] = await Promise.all([
     entriesOf(root),
     invoke<Record<string, string>>("dap_launch_env").catch(() => ({})),
+    target.adapterId === PYTHON_ADAPTER
+      ? invoke<string | null>("dap_python", { root, projectPath: opts.projectPath }).catch(() => null)
+      : null,
   ]);
 
-  const config = configFor(target, { root, entries, env });
+  const config = configFor(target, { root, entries, env, python: python ?? undefined });
   return startDebugSession({
     adapterId: adapter.id,
     childSessions: adapter.childSessions,
