@@ -1,7 +1,7 @@
 ---
 summary: every theme role must declare a contrast floor and surface, or the gate fails, catching 31 misses in shipped palettes
 status: current
-updated: 2026-08-22
+updated: 2026-09-24
 source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 6, 7; commit db3abe9"
 ---
 
@@ -34,7 +34,7 @@ Two tests keep the table honest in both directions: the rule ids and the role id
 
 ## A wash has no contrast of its own
 
-A translucent value must be **composited onto its surface before measuring**. What a reader sees is the flattened result, so measuring the wash's own channels reports a colour that is never on screen. `parseColor` returns channels plus alpha, `composite` flattens, and only then does the ratio get computed. See [[gotcha_a_translucent_role_has_no_contrast_of_its_own]].
+A translucent value must be **composited onto its surface before measuring**. What a reader sees is the flattened result, so measuring the wash's own channels reports a colour that is never on screen. `parseColor` returns channels plus alpha, `composite` flattens, and only then does the ratio get computed. See [[gotcha_a_translucent_role_has_no_contrast_of_its_own]]. The surface side has no such escape: a translucent surface is unmeasurable, so a tint that carries text is an opaque mix, see [[gotcha_a_translucent_role_cannot_be_a_contrast_surface]].
 
 ## Exemptions are principled, not convenient
 

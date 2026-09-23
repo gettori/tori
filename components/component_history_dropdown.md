@@ -1,13 +1,13 @@
 ---
 summary: every session for the branch on screen sits in one dropdown, replacing the sidebar tree, at the cost of showing less
 status: current
-updated: 2026-08-15
+updated: 2026-09-24
 source: "Session navigation moves to a History dropdown; pi and opencode are removed (branch `navigation`, phases 5-6); commits a713a26, 61eb767, dfda207; Kobalte migration: plan \"Popover onto Kobalte Popover\" (branch `104-popover`, issue #104)"
 ---
 
 # History dropdown
 
-**Location:** `src/panels/Terminal/HistoryPanel.tsx`, `HistoryPanel.module.css`, `src/utils/sessionBuckets.ts`
+**Location:** `src/panels/Terminal/HistoryPanel.tsx`, `HistoryRow.tsx`, `HistoryPanel.module.css`, `src/utils/sessionBuckets.ts`
 
 Every session anchored on the workspace currently on screen, as a dropdown off the tab bar's History button. It replaced the sidebar's session rows: the tree made you navigate to find a session, this makes you navigate not at all, at the cost of showing nothing outside the branch you are working in. It owns almost nothing — it reads the two session stores and emits one event.
 
@@ -35,6 +35,8 @@ Every session anchored on the workspace currently on screen, as a dropdown off t
 
 ## Design notes worth keeping
 
+**The row is its own pure component.** `HistoryRow` draws one session from props (label, agent, status, age, active, menu items) and knows nothing of the stores; `HistoryPanel` reads them, builds the menu and keeps the menu lifecycle (`releaseMenu` on cleanup). It was pulled out so a row can be drawn in Storybook, and it carries two slots for [[component_autopilot_parts]]: `lead`, a mark before the label, and `locked`, which takes the timestamp's place while the autopilot holds the session. The row's `title=` moved with it, so the title guard's census lists `HistoryRow.tsx`.
+
 **`SESSION_ACTION` is the whole seam.** The three things a row does are exactly the three the terminal pane cannot reach: `ensureBranch`'s plain-repo checkout guard, the rename prompt, and the destructive delete confirm with its close-the-child-first ordering. Copying any of them into the panel would have been a second implementation of a thing that already has tests. That handler is registered in the sidebar's **component body**, not its async `onMount` — see the gotcha below.
 
 **Two orderings, because they answer different questions.** `OPEN NOW` is what has a tab, whatever its age; everything else falls into `last_active` eras. The two sets are exact complements, which is the whole of "every session appears exactly once". Era boundaries are local midnights, not rolling 24-hour windows, so last night at 11pm reads as "Yesterday" at 1am.
@@ -45,6 +47,7 @@ Every session anchored on the workspace currently on screen, as a dropdown off t
 
 ## Related
 
+- [[component_autopilot_parts]]: the marks the row's slots carry
 - [[gotcha_a_window_listener_registered_in_an_async_onmount_can_miss_a_startup_event]] — why the sidebar's handler moved to the component body
 - [[gotcha_overflow_hidden_on_a_positioned_bar_clips_its_own_dropdown]] — why the panel is portalled
 - [[gotcha_a_midnight_crossing_makes_an_offset_from_now_fixture_land_in_yesterday]] — the era test that bit

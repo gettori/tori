@@ -1,7 +1,7 @@
 ---
 summary: the shared tab pill throws with no Tabs.Root above it, and its close button stays hidden since a tablist owns only tabs
 status: current
-updated: 2026-08-16
+updated: 2026-09-24
 source: "Plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111, closing #114/#115/#132 and the `Tab` half of #116); `src/components/Tab/Tab.tsx`, `src/lib/tabs.ts`"
 ---
 
@@ -35,6 +35,10 @@ Consequences worth knowing:
 - `onClose` takes `MouseEvent | KeyboardEvent`, since the keyboard path fires it too.
 - **The keystroke half is the one that is *on* a tab**, and it costs the bar a special case. The close button's click has no tab above it, but `onKeyDown` runs on the trigger, so a Delete looks exactly like a selection gesture to anything reading the event's target. Closing writes the tab list before the panel moves the id, and Kobalte heals in between, so a bar that trusted that keystroke would open the leftmost tab. `src/utils/tabGesture.ts` refuses a close keystroke by name for this reason; see [[component_overflow_tab_bar]] and [[gotcha_kobaltes_tab_root_force_selects_the_first_key_and_calls_onchange_doing_it]].
 
+## A locked tab
+
+`locked` takes a mark (the autopilot's turning wheel) and puts it in the close slot, for a tab something else is driving. While it is set, Delete, Backspace and a middle click do nothing, and the close button is not rendered at all, so there is no pointer path either. Say why in `tooltip`. The purple bar across the top is a `::before` layer rather than part of `background`, because hover, selection and a blurred pane all rewrite the background and would erase it. Cmd+W and "close others" live outside the component and still close it; that is #209. See [[component_autopilot_parts]].
+
 ## The pill
 
 The wrapper is always rendered, close button or not, so the fill and radius live in one place instead of moving between the wrapper and the trigger depending on whether the strip closes tabs. It carries `role="presentation"`, which is what keeps it out of the tablist's owned children.
@@ -57,5 +61,6 @@ The chip beside it is the opposite: `aria-hidden`, and composed **before** the e
 ## Related
 
 - [[lesson_a_tablist_may_own_nothing_but_tabs]]
+- [[component_autopilot_parts]]: the lock mark and why a tab can be locked
 - [[gotcha_kobaltes_tab_panel_never_receives_its_aria_labelledby]]
 - [[gotcha_a_generic_polymorphic_component_cannot_be_inferred_from]]
