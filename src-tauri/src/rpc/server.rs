@@ -85,6 +85,17 @@ pub struct CheckpointParams {
     pub force: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointDiffParams {
+    /// The session id.
+    pub id: String,
+    /// The first turn, 1 based, in the order `checkpoints.list` returns.
+    pub turn: usize,
+    /// The last turn of a range, the same turn when left out; never before `turn`.
+    pub to: Option<usize>,
+}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SpawnParams {
@@ -155,7 +166,7 @@ pub trait Backend: Send + Sync {
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
-    fn checkpoint_diff(&self, params: CheckpointParams) -> Result<Value, RpcError>;
+    fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError>;
     fn checkpoint_revert(&self, principal: &Principal, params: CheckpointParams) -> Result<Value, RpcError>;
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError>;
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
@@ -343,7 +354,7 @@ pub mod tests {
         fn checkpoints_list(&self, p: CheckpointsParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
-        fn checkpoint_diff(&self, p: CheckpointParams) -> Result<Value, RpcError> {
+        fn checkpoint_diff(&self, p: CheckpointDiffParams) -> Result<Value, RpcError> {
             Ok(json!({ "turn": p.turn }))
         }
         fn checkpoint_revert(&self, _: &Principal, p: CheckpointParams) -> Result<Value, RpcError> {
@@ -577,6 +588,15 @@ pub mod tests {
         let me = server.dispatch(0, &worker, &request("caller", Value::Null)).unwrap();
         assert_eq!(me["kind"], json!("worker"));
         assert!(server.dispatch(0, &worker, &request("sessions.list", json!({}))).is_ok());
+    }
+
+    #[test]
+    fn a_diff_range_ending_before_it_starts_is_refused() {
+        let server = stub_server();
+        let diff = |params| server.dispatch(0, &Principal::Local, &request("checkpoint.diff", params));
+        assert_eq!(diff(json!({"id": "s1", "turn": 3, "to": 2})).unwrap_err().code, INVALID_PARAMS);
+        assert!(diff(json!({"id": "s1", "turn": 2, "to": 3})).is_ok());
+        assert!(diff(json!({"id": "s1", "turn": 2})).is_ok());
     }
 
     #[test]

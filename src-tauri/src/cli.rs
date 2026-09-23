@@ -21,7 +21,7 @@ const USAGE: &str = "usage:
   tori steer <id> <text>...
   tori worktree new <branch> [--project <path>] [--from <ref>]
   tori checkpoints <id> [--json]
-  tori checkpoint diff <id> <n>
+  tori checkpoint diff <id> <n> [<m>]
   tori checkpoint revert <id> <n> [--force]
   tori spawn [--agent <id>] [--account <id>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
              [--prompt <text>] [--attach <path>]... [--background] [--json]
@@ -386,8 +386,19 @@ fn checkpoint_turn(args: &[String], switches: &[&str]) -> Result<Value, Failure>
     Ok(json!({ "id": id, "turn": turn, "force": p.has("force").then_some(true) }))
 }
 
+fn diff_params(args: &[String]) -> Result<Value, Failure> {
+    let p = Parsed::new(args, &[], &[])?;
+    let (id, turn, to) = match p.positional.as_slice() {
+        [id, turn] => (id, turn, None),
+        [id, turn, to] => (id, turn, Some(to)),
+        _ => return Err(usage("takes a session id, a turn number from tori checkpoints and an optional last turn")),
+    };
+    let number = |v: &String| v.parse::<usize>().map_err(|_| usage(format!("turn must be a number, got {v}")));
+    Ok(json!({ "id": id, "turn": number(turn)?, "to": to.map(number).transpose()? }))
+}
+
 fn checkpoint_diff(args: &[String]) -> Result<(), Failure> {
-    let params = checkpoint_turn(args, &[])?;
+    let params = diff_params(args)?;
     let diff = connect()?.call("checkpoint.diff", params)?;
     Ok(write!(io::stdout().lock(), "{}", diff["diff"].as_str().unwrap_or(""))?)
 }
@@ -511,6 +522,25 @@ fn events(args: &[String]) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(all: &[&str]) -> Vec<String> {
+        all.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn checkpoint_diff_takes_an_optional_last_turn() {
+        assert_eq!(diff_params(&args(&["s1", "2"])).ok(), Some(json!({ "id": "s1", "turn": 2, "to": null })));
+        assert_eq!(diff_params(&args(&["s1", "2", "4"])).ok(), Some(json!({ "id": "s1", "turn": 2, "to": 4 })));
+        assert!(diff_params(&args(&["s1", "2", "x"])).is_err());
+        assert!(diff_params(&args(&["s1", "2", "3", "4"])).is_err());
+    }
+
+    #[test]
+    fn a_refused_range_prints_the_sockets_reason() {
+        let refused = crate::rpc::frame::RpcError::new(crate::rpc::frame::INVALID_PARAMS, "to 2 is before turn 3");
+        let printed = Failure::Client(client::ClientError::Rpc(refused)).to_string();
+        assert!(printed.contains("to 2 is before turn 3"), "{printed}");
+    }
 
     #[test]
     fn whoami_names_the_callers_kind() {

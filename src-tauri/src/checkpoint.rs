@@ -918,6 +918,36 @@ pub fn checkpoint_diff_file(
     git_output(&repo_path, &["diff", "--no-color", &before, &after, "--", &file])
 }
 
+/// The files and unified diff from the tree before the turn at `from_ts` to
+/// the tree after the turn at `to_ts`, narrowed to the files some turn in that
+/// span attributes to this session, the same way a single turn's list is.
+pub fn checkpoint_range_diff(
+    repo_path: &str,
+    session_id: &str,
+    from_ts: u64,
+    to_ts: u64,
+) -> Result<(Vec<CheckpointFile>, String), String> {
+    let checkpoints = list_checkpoints(repo_path, session_id);
+    let before = tree_at_or_before(&checkpoints, from_ts);
+    let after = tree_after(repo_path, session_id, &checkpoints, to_ts)?;
+    let mut mine = std::collections::HashSet::new();
+    for turn in checkpoints.iter().filter(|c| (from_ts..=to_ts).contains(&c.ts)) {
+        let files = checkpoint_turn_files(repo_path.to_string(), session_id.to_string(), turn.ts, None, None)?;
+        mine.extend(files.into_iter().map(|f| f.path));
+    }
+    let files: Vec<CheckpointFile> = parse_name_status(&git_capture(repo_path, &["diff", "--name-status", &before, &after])?)
+        .into_iter()
+        .filter(|f| mine.contains(&f.path))
+        .collect();
+    if files.is_empty() {
+        return Ok((files, String::new()));
+    }
+    let mut args = vec!["diff", "--no-color", before.as_str(), after.as_str(), "--"];
+    args.extend(files.iter().map(|f| f.path.as_str()));
+    let diff = git_output(repo_path, &args)?;
+    Ok((files, diff))
+}
+
 fn tree_has_file(repo: &str, tree: &str, file: &str) -> Result<bool, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -2079,6 +2109,32 @@ mod tests {
             .collect();
         cumulative.sort();
         assert_eq!(cumulative, vec!["by_the_user.txt", "turn1.txt", "turn2.txt"]);
+        cleanup(&dir, &sid);
+    }
+
+    #[test]
+    fn a_range_is_the_diff_between_its_outer_trees() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("base.txt"), "0").unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("turn1.txt"), "one").unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
+        std::fs::write(dir.join("base.txt"), "2").unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 300).unwrap();
+        std::fs::write(dir.join("turn3.txt"), "three").unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 400).unwrap();
+        let trees = checkpoint_trees(&repo, &sid);
+
+        let (files, diff) = checkpoint_range_diff(&repo, &sid, 100, 200).unwrap();
+        let expected = git_output(&repo, &["diff", "--no-color", &trees[0].1, &trees[2].1]).unwrap();
+        assert_eq!(diff, expected);
+        let mut paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["base.txt", "turn1.txt"]);
+
+        let (_, one) = checkpoint_range_diff(&repo, &sid, 100, 100).unwrap();
+        assert_eq!(one, checkpoint_diff_file(repo.clone(), sid.clone(), 100, "turn1.txt".into(), None).unwrap());
         cleanup(&dir, &sid);
     }
 
