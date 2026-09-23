@@ -36,6 +36,18 @@ pub enum EndReason {
     Killed,
 }
 
+// On the wire: "user", {"session": id}, {"tab": id}, "local" for a caller Tori
+// did not spawn, "agent" for a turn the agent opened itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnBy {
+    User,
+    Session(String),
+    Tab(String),
+    Local,
+    Agent,
+}
+
 // The deepest project holding `cwd`: a worktree sits inside its project's
 // folder, and `create_worktree` wants the project, not the worktree.
 pub fn project_of(cwd: &str, projects: &[PathBuf]) -> Option<String> {

@@ -27,7 +27,7 @@ use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
-use crate::rpc::events::{session_event, EndReason, Place};
+use crate::rpc::events::{session_event, EndReason, Place, TurnBy};
 
 /// What a spawn call actually did, so a caller can tell a fresh session from a
 /// re-subscribe without inspecting the map itself.
@@ -79,6 +79,12 @@ pub type Publish = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 struct Lifecycle {
     publish: Arc<std::sync::OnceLock<Publish>>,
     announced: Arc<Mutex<HashMap<String, Place>>>,
+    // Who sent the turn about to start. A steer into a running turn starts
+    // none, so only a send leaves one, and a turn's end clears it.
+    origins: Arc<Mutex<HashMap<String, TurnBy>>>,
+    // Until its `SessionStarted`, what a session emits is its conversation
+    // handed back (an ACP load or reload), not new work, so it is not announced.
+    replaying: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Lifecycle {
@@ -87,6 +93,7 @@ impl Lifecycle {
             std::collections::hash_map::Entry::Occupied(_) => return,
             std::collections::hash_map::Entry::Vacant(slot) => slot.insert(Place::default()),
         };
+        self.expect_replay(id);
         let Some(publish) = self.publish.get() else { return };
         let place = Place::of(cwd);
         if let Some(held) = lock(&self.announced).get_mut(id) {
@@ -95,8 +102,53 @@ impl Lifecycle {
         publish(id, session_event("session.started", id, &place, serde_json::json!({ "agent": agent })));
     }
 
+    fn note(&self, id: &str, kind: &str, fields: serde_json::Value) {
+        let Some(publish) = self.publish.get() else { return };
+        let Some(place) = lock(&self.announced).get(id).cloned() else { return };
+        publish(id, session_event(kind, id, &place, fields));
+    }
+
+    fn expect_replay(&self, id: &str) {
+        lock(&self.replaying).insert(id.to_string());
+    }
+
+    fn observe(&self, id: &str, event: &ChatEvent) {
+        if matches!(event, ChatEvent::SessionStarted { .. }) {
+            lock(&self.replaying).remove(id);
+            return;
+        }
+        if lock(&self.replaying).contains(id) {
+            return;
+        }
+        match event {
+            ChatEvent::TurnStarted { turn_id, agent_initiated, .. } => {
+                let pending = lock(&self.origins).remove(id);
+                let by = if *agent_initiated { TurnBy::Agent } else { pending.unwrap_or(TurnBy::User) };
+                self.note(id, "session.turn_started", serde_json::json!({ "turn_id": turn_id, "by": by }));
+            }
+            ChatEvent::TurnCompleted { turn_id, outcome, .. } => {
+                lock(&self.origins).remove(id);
+                self.note(id, "session.turn_ended", serde_json::json!({ "turn_id": turn_id, "outcome": outcome }));
+            }
+            ChatEvent::QuestionRequest { tool_use_id, questions, .. } => {
+                self.note(id, "session.question", serde_json::json!({ "tool_use_id": tool_use_id, "questions": questions }));
+            }
+            ChatEvent::PermissionRequest { tool_use_id, tool_name, input, .. } => {
+                let detail = permission_detail(input);
+                self.note(
+                    id,
+                    "session.permission",
+                    serde_json::json!({ "tool_use_id": tool_use_id, "tool_name": tool_name, "detail": detail }),
+                );
+            }
+            _ => {}
+        }
+    }
+
     fn ended(&self, id: &str, reason: EndReason) {
         crate::rpc::revoke(&crate::rpc::auth::Caller::Chat(id.to_string()));
+        lock(&self.origins).remove(id);
+        lock(&self.replaying).remove(id);
         let Some(place) = lock(&self.announced).remove(id) else {
             return;
         };
@@ -104,6 +156,14 @@ impl Lifecycle {
             publish(id, session_event("session.ended", id, &place, serde_json::json!({ "reason": reason })));
         }
     }
+}
+
+// What a permission is about, in a line. Never the whole input: a Write
+// carries the file it is about to write.
+fn permission_detail(input: &serde_json::Value) -> Option<String> {
+    const LONGEST: usize = 200;
+    let text = ["command", "file_path", "path", "url", "pattern"].iter().find_map(|key| input[key].as_str())?;
+    Some(text.chars().take(LONGEST).collect())
 }
 
 /// The frames that say what a session *is*, kept so a re-subscribe can be told.
@@ -326,6 +386,12 @@ impl ChatHost {
         }
     }
 
+    /// Publish an event about a live session, in its envelope. Nothing for a
+    /// session this host never started.
+    pub fn publish(&self, session_id: &str, kind: &str, fields: serde_json::Value) {
+        self.lifecycle.note(session_id, kind, fields);
+    }
+
     /// Set once, when the app socket comes up. A host with none publishes nothing.
     pub fn set_publisher(&self, publish: Publish) {
         let _ = self.lifecycle.publish.set(publish);
@@ -514,6 +580,7 @@ impl ChatHost {
             if let Some(mirror) = &mirror {
                 mirror.expect_replay();
             }
+            self.lifecycle.expect_replay(session_id);
             // Asked **after** the listener is in place, so a replay that starts
             // immediately has somewhere to land, and before the identity is
             // sent, because the answer decides what the identity may include.
@@ -641,6 +708,7 @@ impl ChatHost {
             if let Some(mirror) = &mirror {
                 mirror.note(&event);
             }
+            lifecycle.observe(&id, &event);
             emit(event);
             if fatal {
                 let tab = lock(&sessions).remove(&id).map(|e| e.tab_id);
@@ -724,7 +792,7 @@ impl ChatHost {
     // A message from outside the panel (the app socket). The panel did not draw
     // it, so the host does, unless the transport already puts sent turns in the
     // stream.
-    pub fn deliver(&self, session_id: &str, blocks: Vec<ContentBlock>, mid_turn: bool) -> Result<(), String> {
+    pub fn deliver(&self, session_id: &str, blocks: Vec<ContentBlock>, mid_turn: bool, by: TurnBy) -> Result<(), String> {
         let entry = lock(&self.sessions).get(session_id).map(|e| (e.sink.clone(), e.transport.clone()));
         let Some((sink, transport)) = entry else {
             return Err(format!("no live chat session {session_id}"));
@@ -732,7 +800,12 @@ impl ChatHost {
         if mid_turn {
             self.steer(session_id, blocks.clone())?;
         } else {
-            self.send(session_id, blocks.clone())?;
+            // Before the send, so the turn it starts cannot begin ahead of it.
+            lock(&self.lifecycle.origins).insert(session_id.to_string(), by);
+            if let Err(e) = self.send(session_id, blocks.clone()) {
+                lock(&self.lifecycle.origins).remove(session_id);
+                return Err(e);
+            }
         }
         if !lock(&transport).echoes_sent_turns() {
             emit(&sink, ChatEvent::UserMessage { session_id: session_id.to_string(), turn_id: String::new(), blocks });
@@ -1975,5 +2048,93 @@ mod tests {
         });
         assert!(result.is_err());
         assert_eq!(*lock(&seen), began_then_ended("s-never", "died"));
+    }
+
+    fn turn_started(id: &str, turn: &str, agent_initiated: bool) -> ChatEvent {
+        ChatEvent::TurnStarted {
+            session_id: id.into(),
+            turn_id: turn.into(),
+            agent_initiated,
+            model: "m".into(),
+            permission_mode: super::super::model::PermissionMode::new("default"),
+            extra: Default::default(),
+        }
+    }
+
+    fn turn_completed(id: &str, turn: &str) -> ChatEvent {
+        ChatEvent::TurnCompleted {
+            session_id: id.into(),
+            turn_id: turn.into(),
+            outcome: super::super::model::TurnOutcome::Cancelled,
+            stop_reason: None,
+            usage: Default::default(),
+            cost_usd: None,
+            permission_denials: vec![],
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_turn_names_who_started_it_and_a_steer_into_a_running_turn_names_nobody() {
+        let host = ChatHost::at(temp_store());
+        let seen: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+        let into = seen.clone();
+        host.set_publisher(Arc::new(move |_, data| {
+            if data["kind"] == "session.turn_started" {
+                lock(&into).push(data["by"].clone());
+            }
+        }));
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+        host.spawn_plain("s-by", "tab", Collector::default().emit(), spec("s-by"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+        let sink = lock(&holder).clone().unwrap();
+        let text = || vec![ContentBlock::Text { text: "hi".into() }];
+
+        emit(&sink, started("s-by"));
+        emit(&sink, turn_started("s-by", "t1", false));
+        host.deliver("s-by", text(), true, TurnBy::Session("other".into())).unwrap();
+        emit(&sink, turn_completed("s-by", "t1"));
+        host.send("s-by", text()).unwrap();
+        emit(&sink, turn_started("s-by", "t2", false));
+        emit(&sink, turn_completed("s-by", "t2"));
+
+        host.deliver("s-by", text(), false, TurnBy::Session("other".into())).unwrap();
+        emit(&sink, turn_started("s-by", "t3", false));
+        emit(&sink, turn_completed("s-by", "t3"));
+        emit(&sink, turn_started("s-by", "t4", true));
+
+        assert_eq!(
+            *lock(&seen),
+            [
+                serde_json::json!("user"),
+                serde_json::json!("user"),
+                serde_json::json!({ "session": "other" }),
+                serde_json::json!("agent"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_conversation_handed_back_before_its_session_started_is_not_announced() {
+        let host = ChatHost::at(temp_store());
+        let seen = published(&host);
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+        host.spawn_plain("s-load", "tab", Collector::default().emit(), spec("s-load"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+        let sink = lock(&holder).clone().unwrap();
+        emit(&sink, turn_started("s-load", "old", false));
+        emit(&sink, turn_completed("s-load", "old"));
+        emit(&sink, started("s-load"));
+        emit(&sink, turn_started("s-load", "new", false));
+        assert_eq!(
+            *lock(&seen),
+            [("session.started".to_string(), "s-load".to_string()), ("session.turn_started".into(), "s-load".into())]
+        );
     }
 }

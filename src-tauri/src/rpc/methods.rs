@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use super::asks::{Asks, Waited};
 use super::auth::{Caller, Principal};
 use super::bridge::Bridge;
-use super::events::project_of;
+use super::events::{project_of, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskParams, AskWaitParams, Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
@@ -277,7 +277,7 @@ impl Backend for TauriBackend {
         Ok(json!({ "caller": caller, "identity": self.identity(principal) }))
     }
 
-    fn session_steer(&self, params: SteerParams) -> Result<Value, RpcError> {
+    fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError> {
         let host = &self.app.state::<ChatState>().0;
         if !host.is_live(&params.id) {
             let terminal = self.states.snapshot().contains_key(&params.id) || self.live().contains_key(&params.id);
@@ -289,7 +289,12 @@ impl Backend for TauriBackend {
         }
         // A session waiting on a prompt is still inside its turn.
         let mid_turn = matches!(self.states.snapshot().get(&params.id), Some(SessionState::Working | SessionState::NeedsYou));
-        host.deliver(&params.id, vec![ContentBlock::Text { text: params.text }], mid_turn).map_err(refused)?;
+        let by = match principal {
+            Principal::Local => TurnBy::Local,
+            Principal::Session(Caller::Chat(id)) => TurnBy::Session(id.clone()),
+            Principal::Session(Caller::Terminal(tab)) => TurnBy::Tab(tab.clone()),
+        };
+        host.deliver(&params.id, vec![ContentBlock::Text { text: params.text }], mid_turn, by).map_err(refused)?;
         Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
     }
 
@@ -407,6 +412,17 @@ impl Backend for TauriBackend {
             self.asks.forget(&ask.id);
             return Err(e);
         }
+        self.app.state::<ChatState>().0.publish(
+            session,
+            "session.question",
+            json!({
+                "ask_id": ask.id,
+                "questions": [{
+                    "question": ask.question,
+                    "options": ask.options.iter().map(|label| json!({ "label": label })).collect::<Vec<_>>(),
+                }],
+            }),
+        );
         self.wait_for_answer(&ask.id, params.timeout)
     }
 
