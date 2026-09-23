@@ -43,6 +43,7 @@ const {
   sessionCertainty,
   liveSessionDots,
   liveSessionStatuses,
+  socketReports,
   shouldPollAccumulatedDiff,
   branchOwner,
   resetSessionActivityForTests,
@@ -453,6 +454,30 @@ describe("a failing check on the branch a session owns", () => {
     // The tray marks a needs-you row and sorts it first; a count with no row to
     // click is the failure the merged list was built to end.
     expect(trayEntries(live)).toEqual([{ id: "pty", label: "⚠ title of pty (repo)" }]);
+  });
+
+  it("tells the app socket the agent is idle, since the socket carries the check as its own event", async () => {
+    await seedSessions([meta("pty", "main")]);
+    noteLiveTabs([tab("t1", "pty")]);
+    bridge.running = ["pty"];
+    await probeBatch([{ id: "pty", agent: "claude" }]);
+    setLiveChat({
+      sessionId: "c-idle",
+      sessionName: "the idle chat",
+      agentId: "claude",
+      folderPath: FOLDER,
+      tabId: "chat:idle",
+      visible: false,
+      status: "idle",
+    });
+    noteForgeUnits([unit("main", true)]);
+
+    expect(sessionStatus("pty")).toBe("waitingForApproval");
+    expect(socketReports()).toEqual([
+      { id: "c-idle", state: "idle", source: "chat", folder: FOLDER },
+      { id: "pty", state: "idle", source: "pty", folder: FOLDER, tab: "t1" },
+    ]);
+    dropLiveChat("c-idle");
   });
 
   it("reaches no tray, badge or notification when nothing is running on it", async () => {

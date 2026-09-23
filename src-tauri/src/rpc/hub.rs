@@ -21,6 +21,7 @@ pub const QUEUE_CAP: usize = 256;
 pub enum Channel {
     Sessions,
     Session(String),
+    Accounts,
     Autopilot,
 }
 
@@ -28,6 +29,7 @@ impl Channel {
     pub fn parse(topic: &str) -> Option<Self> {
         match topic {
             "sessions" => Some(Channel::Sessions),
+            "accounts" => Some(Channel::Accounts),
             "autopilot" => Some(Channel::Autopilot),
             _ => topic.strip_prefix("session:").filter(|id| !id.is_empty()).map(|id| Channel::Session(id.to_string())),
         }
@@ -39,6 +41,7 @@ impl fmt::Display for Channel {
         match self {
             Channel::Sessions => f.write_str("sessions"),
             Channel::Session(id) => write!(f, "session:{id}"),
+            Channel::Accounts => f.write_str("accounts"),
             Channel::Autopilot => f.write_str("autopilot"),
         }
     }
@@ -113,6 +116,11 @@ impl Hub {
         }
     }
 
+    pub fn publish_session(&self, id: &str, data: Value) {
+        self.publish(&Channel::Session(id.to_string()), data.clone());
+        self.publish(&Channel::Sessions, data);
+    }
+
     #[cfg(test)]
     pub fn subscriptions(&self) -> usize {
         self.lock().conns.values().map(|c| c.channels.len()).sum()
@@ -122,13 +130,14 @@ impl Hub {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::events::{session_event, Place};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::sync_channel;
     use std::sync::Arc;
 
     #[test]
     fn channels_round_trip_through_their_wire_names() {
-        for topic in ["sessions", "session:abc", "autopilot"] {
+        for topic in ["sessions", "session:abc", "accounts", "autopilot"] {
             assert_eq!(Channel::parse(topic).unwrap().to_string(), topic);
         }
         assert_eq!(Channel::parse("session:"), None);
@@ -154,6 +163,31 @@ mod tests {
         hub.unsubscribe(a, &Channel::Sessions);
         hub.publish(&Channel::Sessions, json!({}));
         assert!(rx_a.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_session_event_reaches_the_firehose_and_its_own_topic() {
+        let hub = Hub::default();
+        let (tx_all, rx_all) = sync_channel(QUEUE_CAP);
+        let (tx_one, rx_one) = sync_channel(QUEUE_CAP);
+        let (tx_other, rx_other) = sync_channel(QUEUE_CAP);
+        hub.subscribe(hub.register(tx_all, Box::new(|| {})), Channel::Sessions);
+        hub.subscribe(hub.register(tx_one, Box::new(|| {})), Channel::Session("s1".into()));
+        hub.subscribe(hub.register(tx_other, Box::new(|| {})), Channel::Session("s2".into()));
+
+        let place = Place { project: Some("/p".into()), folder: Some("/p/wt".into()) };
+        hub.publish_session("s1", session_event("session.started", "s1", &place, json!({})));
+        for (rx, topic) in [(&rx_all, "sessions"), (&rx_one, "session:s1")] {
+            let got: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+            assert_eq!(got["params"]["topic"], topic);
+            let data = &got["params"]["data"];
+            assert_eq!(data["kind"], "session.started");
+            assert_eq!(data["id"], "s1");
+            assert_eq!(data["project"], "/p");
+            assert_eq!(data["folder"], "/p/wt");
+            assert!(data["ts"].is_u64());
+        }
+        assert!(rx_other.try_recv().is_err());
     }
 
     #[test]

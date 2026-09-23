@@ -863,8 +863,12 @@ pub struct BeforeContent {
 }
 
 #[tauri::command]
-pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
-    state.0.close(&session_id)
+pub async fn chat_close(
+    state: State<'_, ChatState>,
+    session_id: String,
+    reason: Option<crate::rpc::events::EndReason>,
+) -> Result<(), String> {
+    state.0.close(&session_id, reason.unwrap_or(crate::rpc::events::EndReason::Closed))
 }
 
 /// Replay a session's transcript as the events that rebuild it.

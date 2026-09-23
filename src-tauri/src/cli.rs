@@ -490,7 +490,7 @@ fn ask(args: &[String]) -> Result<(), Failure> {
 
 fn events(args: &[String]) -> Result<(), Failure> {
     let p = Parsed::new(args, &["topic"], &[])?;
-    let topics = p.flags.get("topic").cloned().unwrap_or_else(|| vec!["sessions".to_string()]);
+    let topics = p.flags.get("topic").cloned().unwrap_or_else(|| vec!["sessions".to_string(), "accounts".to_string()]);
     let mut client = connect()?;
     for topic in &topics {
         client.call("subscribe", json!({ "topic": topic }))?;

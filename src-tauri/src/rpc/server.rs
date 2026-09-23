@@ -462,7 +462,7 @@ pub mod tests {
         let r = start(AUTH_TIMEOUT);
         let mut c = authed(&r);
         assert_eq!(c.call(1, "subscribe", json!({"topic": "sessions"}))["result"], json!({}));
-        r.hub.publish(&Channel::Sessions, json!({"kind": "started", "id": "s1"}));
+        r.hub.publish(&Channel::Sessions, json!({"kind": "session.started", "id": "s1"}));
         let event = c.recv().unwrap();
         assert_eq!(event["method"], json!("event"));
         assert_eq!(event["params"]["data"]["id"], json!("s1"));

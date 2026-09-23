@@ -447,6 +447,31 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
 
 export { liveSessionDots, liveSessionStatuses };
 
+export type SocketReport = {
+  id: string;
+  state: "working" | "needs_you" | "idle";
+  source: "chat" | "pty";
+  folder: string;
+  tab?: string;
+};
+
+export function socketReports(): SocketReport[] {
+  const byId = new Map<string, SocketReport>();
+  // Forge attention stays out: the socket carries it as `session.pr`, and a
+  // failing check read as the agent waiting would reach a watcher twice.
+  for (const t of liveTabs()) {
+    if (t.kind !== "agent" || !t.sessionId) continue;
+    const dot = computeSessionDot({ ...sessionDotInputs(t.sessionId), forgeAttention: false });
+    const state = socketState(statusFromDot(dot));
+    if (state) byId.set(t.sessionId, { id: t.sessionId, state, source: "pty", folder: t.workspace, tab: t.id });
+  }
+  for (const c of liveChats()) {
+    const state = socketState(c.status);
+    if (state) byId.set(c.sessionId, { id: c.sessionId, state, source: "chat", folder: c.folderPath });
+  }
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /** Whether the editor should poll `sessionId`'s accumulated diff.
  *
  *  Executing, **and not a chat**. The status list covers both tiers now, but a
@@ -514,12 +539,7 @@ createRoot(() => {
   // every quiet and active edge.
   let pushed = "";
   createEffect(() => {
-    const byId = new Map<string, string>();
-    for (const s of liveSessionStatuses()) {
-      const state = socketState(s.status);
-      if (state) byId.set(s.sessionId, state);
-    }
-    const states = [...byId].sort(([a], [b]) => a.localeCompare(b)).map(([id, state]) => ({ id, state }));
+    const states = socketReports();
     const key = JSON.stringify(states);
     if (key === pushed) return;
     pushed = key;

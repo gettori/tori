@@ -2,7 +2,7 @@
 //! the chat panel read.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -12,6 +12,7 @@ use tauri::{AppHandle, Manager};
 use super::asks::{Asks, Waited};
 use super::auth::{Caller, Principal};
 use super::bridge::Bridge;
+use super::events::project_of;
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskParams, AskWaitParams, Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
@@ -132,17 +133,6 @@ pub fn or_callers(given: Option<String>, callers: impl FnOnce() -> Option<String
     given.or_else(callers).ok_or_else(|| {
         RpcError::new(INVALID_PARAMS, format!("pass --{flag}: the caller has no {flag} of its own to default to"))
     })
-}
-
-// The deepest project holding `cwd`: a worktree sits inside its project's
-// folder, and `create_worktree` wants the project, not the worktree.
-fn project_of(cwd: &str, projects: &[PathBuf]) -> Option<String> {
-    let cwd = Path::new(cwd);
-    projects
-        .iter()
-        .filter(|project| cwd.starts_with(project))
-        .max_by_key(|project| project.components().count())
-        .map(|project| project.to_string_lossy().into_owned())
 }
 
 fn same_folder(a: &str, b: &str) -> bool {
