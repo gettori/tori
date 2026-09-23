@@ -1,8 +1,8 @@
 ---
 summary: forge client owns the OAuth device flow, keychain credential and caches in Rust, and the token never crosses the bridge
 status: current
-updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd"
+updated: 2026-09-24
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd; gettori/tori#202 commit f8a61936"
 ---
 
 # Forge client (Rust)
@@ -31,7 +31,9 @@ Everything Tori knows about a forge's HTTP API. It owns the provider trait, the 
 - `token.rs:19` - the keychain service name, stable because changing it orphans stored tokens
 - `auth.rs:158` - `note_result`, which marks a credential suspect without deleting it
 - `status.rs:63` - `plan_tick`, what to ask about and how much it could not cover
-- `status.rs:198` - `SingleFlight`, so two triggers make one request
+- `status.rs:198` - `SingleFlight<T = Fetched>`, so two triggers make one request; generic so the assigned-issues list reuses it
+- `Forge::issues()` - the same host as an issue source, `None` by default, `Some(self)` on GitHub ([[component_issue_source]])
+- `github.rs` `graphql_response` - the raw GraphQL answer, beside `graphql`, for a caller that must read an error's `type` ([[gotcha_github_graphql_answers_a_missing_number_with_a_not_found_error]])
 - `prs.rs:135` - `push_then_create`, always in that order, never a pre-check on ahead/behind
 - `commands.rs` - the Tauri surface, including `landing()`, which invalidates both caches for a repo on a successful merge
 
@@ -50,3 +52,5 @@ Everything Tori knows about a forge's HTTP API. It owns the provider trait, the 
 - [[gotcha_keyring_the_all_in_one_crate_is_the_wrong_dependency]]
 - [[gotcha_a_422s_actionable_text_is_in_errors_not_message]]
 - [[gotcha_paginate_graphql_drains_top_level_pages_before_nested_connections]]
+- [[component_issue_source]] - rides this client through `Forge::issues()`
+- [[gotcha_string_of_an_invoke_rejection_can_be_object_object]] - how a `ForgeErrorDto` rejection reads in the webview

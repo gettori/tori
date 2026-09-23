@@ -2,7 +2,7 @@
 summary: one JSON-RPC unix socket per Tori process: methods in one table with caller kinds, per child tokens, a webview bridge
 status: current
 updated: 2026-09-24
-source: gettori/tori#197 and #198 on branch orchestrator; commits 392d36b0, ae2bbe65, 15f6b615, f66f5da7, 9c01ba2a, 85430c9e; src-tauri/src/rpc/{mod,frame,transport,auth,hub,server,methods,states,bridge,asks,client}.rs; dev/rpc-probe.mjs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; plan "tori mcp" commits b69f5ada, 928f500e, 12bcab53, a375fb7a, src-tauri/src/rpc/table.rs
+source: gettori/tori#197 and #198 on branch orchestrator; commits 392d36b0, ae2bbe65, 15f6b615, f66f5da7, 9c01ba2a, 85430c9e; src-tauri/src/rpc/{mod,frame,transport,auth,hub,server,methods,states,bridge,asks,client}.rs; dev/rpc-probe.mjs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; plan "tori mcp" commits b69f5ada, 928f500e, 12bcab53, a375fb7a, src-tauri/src/rpc/table.rs; gettori/tori#202 commit 982c9bed
 ---
 
 # App socket (Rust)
@@ -35,8 +35,9 @@ Layering, bottom up. Nothing above `transport.rs` sees a unix socket:
 - `sessions.list {cwd?, live?, limit?}` (default 50). Rows are `SessionMeta` plus `live` and `state`, newest first, and `background: true` on a session spawned with it. Live sessions the index hasn't seen yet (no transcript written) come first. A session counts as live when a claim holds it or the webview reports it, since a PTY agent tab that started fresh holds no claim.
 - `session.tail {id, agent?, limit?}` (default 50): the last events from `chat::commands::read_history`. Outputs are capped with `cap_output` directly, **not** through `ChatHost::cut_outputs`, which would push full outputs into a live session's 16-entry cache and evict the ones the panel holds.
 - `session.steer {id, text}`: chat sessions only. Steers when the cached state is working or needs you, sends otherwise, through `ChatHost::deliver` ([[gotcha_a_turn_sent_from_outside_the_panel_draws_no_user_bubble]]).
-- `worktree.new {branch, project?, from?}`, `checkpoints.list {id}`, `checkpoint.diff {id, turn, to?}`, `checkpoint.revert {id, turn, force?}`. Turns are 1 based. With `to`, the diff runs from before `turn` to after `to`, narrowed to the files those turns attribute to the session; `to < turn` is `INVALID_PARAMS`. A revert refuses (`-32002`) while another live session writes in the folder, unless forced.
+- `worktree.new {branch, project?, from?, issue?}`, `checkpoints.list {id}`, `checkpoint.diff {id, turn, to?}`, `checkpoint.revert {id, turn, force?}`. Turns are 1 based. With `to`, the diff runs from before `turn` to after `to`, narrowed to the files those turns attribute to the session; `to < turn` is `INVALID_PARAMS`. A revert refuses (`-32002`) while another live session writes in the folder, unless forced.
 - `session.spawn {agent?, account?, folder?, prompt?, attach?, new_worktree?, project?, from?, background?}`, `window.open {path, line?}`, `budget {id?, folder?}`, `ask.create {question, options?, timeout?}`, `ask.wait {id, timeout?}`, `ask.answer {id, answer}`.
+- `issues.assigned {project?, refresh?}`, `issues.get {key, project?}`, `issues.link_branch {key, branch, base?, project?}` (not workers). They call the issue source's core straight from `TauriBackend`, no bridge. `worktree.new` with an `issue` looks the issue up before making the worktree, so a bad key leaves nothing, then records it on the unit. See [[component_issue_source]].
 - `session.wait {id, timeout?}` (default 60s): blocks on `SessionStates::wait_settled` (a `Condvar` notified by `replace`) until the session is anything but `working`, then returns `{id, state, question, last}`: its pending ask, and the main agent's text of its latest turn. A live session not yet reported is re-polled, so a wait right after a spawn does not error.
 - Notifications are `event {topic, data}`. Session events have a dotted `kind` and go on both `sessions` and `session:<id>` through `Hub::publish_session`; `account.quota` goes on `accounts`. The kinds, their fields and where each is noticed are in [[concept_socket_event_vocabulary]].
 - `rpc_session_states` (async) takes `{id, state, source, folder, tab?}` and `rpc_quota` takes `{agent, profile, readings}`. Modules without Tauri state publish through `rpc::publish_checkpoint` and `rpc::publish_pr`, which read a process wide `(Hub, SessionStates)` and do nothing before the socket is up.
@@ -51,7 +52,7 @@ The webview owns session status, spawning, the concurrent cap, quota readings an
 - **Actions are asked.** `Bridge::request` emits `rpc://request {rid, method, params}` and blocks the connection's thread until `rpc_reply(rid, result | error)`, or 10 s, after which the call fails naming the window. A webview error comes back as `-32002`. On the webview side `utils/rpcBridge.ts` holds `handleRpc(method, fn)`; Terminal registers `session.spawn` and serves the bridge from its mount.
 - **Spawn needs no focus.** The pane hosts every unit's tabs, and a chat tab that has a session id starts `live`, so a tab opened offscreen mounts `ChatView`, spawns, and sends its first turn from `markAutoSend`. The id comes back before the turn runs.
 - **`budget`** reads spend (`chat::usage`) and budgets (`settings`) in Rust and asks the webview only for quota windows (`usage.windows`).
-- **Workers.** A session spawned by a chat caller is marked a worker in `SessionStates` (cleared on end and by `rpc::revoke`). Its rows refuse it `session.spawn`, `session.steer`, `session.wait` and `ask.answer`; it may still ask, and its spawner reads the question through `session.wait` and answers it with `ask.answer`, which also drops the card through the bridge's `ask.close`.
+- **Workers.** A session spawned by a chat caller is marked a worker in `SessionStates` (cleared on end and by `rpc::revoke`). Its rows refuse it `session.spawn`, `session.steer`, `session.wait` and `ask.answer`; a row that names its own `refusal` gives that sentence instead of the generic worker one (`issues.link_branch` does). It may still ask, and its spawner reads the question through `session.wait` and answers it with `ask.answer`, which also drops the card through the bridge's `ask.close`.
 - **Asks live in Rust.** `ask.create` refuses anything but a chat or worker caller, shows the card through `ask.show`, and waits. Ids are random, since reading an answer consumes it. The webview reloads open asks from `rpc_asks_pending` and answers with `rpc_ask_answer`, so a reload loses neither. `ChatView` reports `waitingForAnswer` while a card is open, which is what drives the dot and the notification. A chat ending forgets its asks through `rpc::revoke`.
 
 ## Why publish never blocks
@@ -68,6 +69,7 @@ The webview owns session status, spawning, the concurrent cap, quota readings an
 - [[concept_transport_neutral_event_model]]: the `ChatEvent` a tail returns
 - [[component_tori_cli]]: the first front
 - [[component_tori_mcp]]: the MCP front, built from the method table
+- [[component_issue_source]]: what the `issues.*` rows call
 - [[adr_socket_asks_the_webview_until_rust_owns_state]]: why state is pushed and actions are asked
 - [[gotcha_codex_shell_drops_env_names_containing_token_key_or_secret]]: why the env var is `TORI_CALLER`
 - [[gotcha_a_turn_sent_from_outside_the_panel_draws_no_user_bubble]]: what `session.steer` has to draw itself
