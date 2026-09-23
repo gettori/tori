@@ -34,6 +34,7 @@ mod install;
 mod launch;
 mod local_history;
 mod lsp;
+mod mcp;
 mod model;
 mod onboarding;
 mod owned_state;

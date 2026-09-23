@@ -45,9 +45,7 @@ type Call = fn(&dyn Backend, &Principal, &Value) -> Result<Value, RpcError>;
 
 pub struct Method {
     pub name: &'static str,
-    #[expect(dead_code, reason = "read by `tori mcp`'s tools/list, which is not written yet")]
     pub description: &'static str,
-    #[cfg_attr(not(test), expect(dead_code, reason = "read by `tori mcp`'s tools/list, which is not written yet"))]
     pub params: fn() -> Schema,
     pub callers: &'static [CallerKind],
     /// Appended to the dispatcher's refusal of a caller kind not in `callers`.
