@@ -927,7 +927,7 @@ mutation($threadId:ID!,$body:String!){
         })
     }
 
-    fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod) -> Result<(), ForgeError> {
+    fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod, expected_head: Option<&str>) -> Result<(), ForgeError> {
         self.require_token()?;
         let method = match method {
             MergeMethod::Merge => "merge",
@@ -935,7 +935,11 @@ mutation($threadId:ID!,$body:String!){
             MergeMethod::Rebase => "rebase",
         };
         let path = format!("/repos/{}/{}/pulls/{number}/merge", repo.owner, repo.repo);
-        self.send(self.rest("PUT", &path, Some(serde_json::json!({ "merge_method": method }))))?;
+        let mut body = serde_json::json!({ "merge_method": method });
+        if let Some(sha) = expected_head {
+            body["sha"] = serde_json::json!(sha);
+        }
+        self.send(self.rest("PUT", &path, Some(body)))?;
         Ok(())
     }
 
@@ -1538,7 +1542,7 @@ mod tests {
             405,
             r#"{"message":"At least 1 approving review is required by reviewers with write access."}"#,
         )]);
-        let err = f.merge(&repo(), 42, MergeMethod::Squash).unwrap_err();
+        let err = f.merge(&repo(), 42, MergeMethod::Squash, None).unwrap_err();
         assert_eq!(
             err,
             ForgeError::NotMergeable {

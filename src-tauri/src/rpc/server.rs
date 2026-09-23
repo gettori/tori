@@ -14,7 +14,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::approvals::Draft;
 use super::auth::{authenticate, Credential, Principal};
+use crate::forge::model::{DraftComment, ReviewEvent};
+use crate::forge::MergeMethod;
 use super::frame::{
     read_request, to_line, write_line, ReadError, Request, Response, RpcError, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
@@ -188,6 +191,11 @@ pub struct AskParams {
     pub options: Option<Vec<String>>,
     /// Seconds to wait for an answer before returning the id to poll with `ask.wait`.
     pub timeout: Option<u64>,
+    /// Ask to approve this outward action and its exact draft. The options become Approve and Reject, and
+    /// an Approve answer comes back with the `approval_id` a background session passes to that action.
+    pub approval: Option<Draft>,
+    /// The project an `approval` is for, the caller's own project when left out.
+    pub project: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -206,6 +214,86 @@ pub struct AskWaitParams {
     pub id: String,
     /// Seconds to wait for the answer before returning null again.
     pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrCreateParams {
+    /// The branch the pull request is from, already pushed.
+    pub head: String,
+    /// The branch it merges into.
+    pub base: String,
+    /// The pull request's title.
+    pub title: String,
+    /// The pull request's body.
+    pub body: String,
+    /// Open it as a draft.
+    pub draft: Option<bool>,
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
+    pub approval_id: Option<String>,
+}
+
+impl PrCreateParams {
+    pub fn draft(&self) -> Draft {
+        Draft::PrCreate {
+            head: self.head.clone(),
+            base: self.base.clone(),
+            title: self.title.clone(),
+            body: self.body.clone(),
+            draft: self.draft.unwrap_or(false),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewSubmitParams {
+    /// The pull request's number.
+    pub number: u64,
+    /// The verdict.
+    pub event: ReviewEvent,
+    /// The review's body.
+    pub body: String,
+    /// Line comments held with the review.
+    pub comments: Option<Vec<DraftComment>>,
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
+    pub approval_id: Option<String>,
+}
+
+impl ReviewSubmitParams {
+    pub fn draft(&self) -> Draft {
+        Draft::ReviewSubmit {
+            number: self.number,
+            event: self.event,
+            body: self.body.clone(),
+            comments: self.comments.clone().unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrMergeParams {
+    /// The pull request's number.
+    pub number: u64,
+    /// How to land it.
+    pub method: MergeMethod,
+    /// The head commit to land; the host refuses once the branch has moved on.
+    pub head_sha: String,
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
+    pub approval_id: Option<String>,
+}
+
+impl PrMergeParams {
+    pub fn draft(&self) -> Draft {
+        Draft::PrMerge { number: self.number, method: self.method, head_sha: self.head_sha.clone() }
+    }
 }
 
 /// What the methods read. Tauri state in the app, a stub in tests.
@@ -229,6 +317,9 @@ pub trait Backend: Send + Sync {
     fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError>;
     fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError>;
     fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError>;
+    fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError>;
+    fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
+    fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -449,6 +540,15 @@ pub mod tests {
         fn issue_link_branch(&self, _: &Principal, p: LinkBranchParams) -> Result<Value, RpcError> {
             Ok(json!({ "branch": p.branch }))
         }
+        fn pr_create(&self, _: &Principal, p: PrCreateParams) -> Result<Value, RpcError> {
+            Ok(json!({ "head": p.head }))
+        }
+        fn review_submit(&self, _: &Principal, p: ReviewSubmitParams) -> Result<Value, RpcError> {
+            Ok(json!({ "number": p.number }))
+        }
+        fn pr_merge(&self, _: &Principal, p: PrMergeParams) -> Result<Value, RpcError> {
+            Ok(json!({ "number": p.number }))
+        }
     }
 
     pub struct Running {
@@ -616,7 +716,13 @@ pub mod tests {
             let schema = (method.params)().to_value();
             let mut sample = serde_json::Map::new();
             for field in schema["required"].as_array().into_iter().flatten().filter_map(Value::as_str) {
-                let value = match schema["properties"][field]["type"].as_str() {
+                let property = &schema["properties"][field];
+                let referenced = property["$ref"].as_str().and_then(|r| r.strip_prefix("#/$defs/")).map(|name| &schema["$defs"][name]);
+                if let Some(first) = referenced.and_then(|def| def["enum"].get(0)) {
+                    sample.insert(field.to_string(), first.clone());
+                    continue;
+                }
+                let value = match property["type"].as_str() {
                     Some("integer") => json!(1),
                     Some("array") => json!([]),
                     Some("boolean") => json!(false),

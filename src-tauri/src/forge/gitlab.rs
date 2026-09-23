@@ -802,7 +802,7 @@ impl Forge for GitLabForge {
     /// project whether a merge commit or a rebase is used. `Rebase` is refused
     /// rather than quietly merged the project's way: a picker that says rebase
     /// and produces a merge commit is worse than one that says it cannot.
-    fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod) -> Result<(), ForgeError> {
+    fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod, expected_head: Option<&str>) -> Result<(), ForgeError> {
         self.require_token()?;
         if method == MergeMethod::Rebase {
             return Err(ForgeError::Invalid {
@@ -811,7 +811,10 @@ impl Forge for GitLabForge {
             });
         }
         let path = format!("/projects/{}/merge_requests/{number}/merge", project(repo));
-        let body = serde_json::json!({ "squash": method == MergeMethod::Squash });
+        let mut body = serde_json::json!({ "squash": method == MergeMethod::Squash });
+        if let Some(sha) = expected_head {
+            body["sha"] = serde_json::json!(sha);
+        }
         self.send(self.rest("PUT", &path, Some(body)))?;
         Ok(())
     }
@@ -1165,8 +1168,8 @@ mod tests {
             StubTransport::json(200, "{}"),
             StubTransport::json(200, "{}"),
         ]);
-        f.merge(&repo(), 7, MergeMethod::Squash).unwrap();
-        f.merge(&repo(), 7, MergeMethod::Merge).unwrap();
+        f.merge(&repo(), 7, MergeMethod::Squash, None).unwrap();
+        f.merge(&repo(), 7, MergeMethod::Merge, None).unwrap();
         f.update_branch(&repo(), 7).unwrap();
 
         let bodies = stub.bodies();

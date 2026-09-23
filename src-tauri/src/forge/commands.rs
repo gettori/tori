@@ -1164,6 +1164,15 @@ pub fn forge_create_pr(
     Ok(pr)
 }
 
+/// Opens a pull request for a socket caller, through the gated client since
+/// nothing on screen asked for it.
+pub fn create_pr(project_path: &str, req: &CreatePr) -> Result<PullRequest, ForgeError> {
+    let c = gated_client(project_path)?;
+    let pr = attempt(&c, |f| f.create_pull_request(&c.repo, req))?;
+    prs::record_created(&c.repo, pr.clone());
+    Ok(pr)
+}
+
 /// Pushes the branch, then opens a pull request for it.
 ///
 /// The push is blocking here rather than the usual fire-and-forget, because the
@@ -1366,8 +1375,19 @@ pub fn forge_submit_review(
     body: String,
     comments: Vec<DraftComment>,
 ) -> Result<(), ForgeErrorDto> {
-    let c = gated_client(&project_path)?;
-    Ok(attempt(&c, |f| f.submit_review(&c.repo, number, event, &body, &comments))?)
+    Ok(submit_review(&project_path, number, event, &body, &comments)?)
+}
+
+/// The review a socket caller submits, the same call the review panel makes.
+pub fn submit_review(
+    project_path: &str,
+    number: u64,
+    event: ReviewEvent,
+    body: &str,
+    comments: &[DraftComment],
+) -> Result<(), ForgeError> {
+    let c = gated_client(project_path)?;
+    attempt(&c, |f| f.submit_review(&c.repo, number, event, body, comments))
 }
 
 /// Post one line comment on its own, anchored to the commit the patch came from.
@@ -1442,8 +1462,18 @@ pub fn forge_merge(
     number: u64,
     method: MergeMethod,
 ) -> Result<(), ForgeErrorDto> {
-    let c = gated_client(&project_path)?;
-    Ok(landing(&c.repo, || attempt(&c, |f| f.merge(&c.repo, number, method)))?)
+    Ok(merge(&project_path, number, method, None)?)
+}
+
+/// Land a pull request for a socket caller, which may pin the head it expects.
+pub fn merge(
+    project_path: &str,
+    number: u64,
+    method: MergeMethod,
+    expected_head: Option<&str>,
+) -> Result<(), ForgeError> {
+    let c = gated_client(project_path)?;
+    landing(&c.repo, || attempt(&c, |f| f.merge(&c.repo, number, method, expected_head)))
 }
 
 /// Merge the base branch into this pull request's head, on the server.
