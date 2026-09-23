@@ -5,7 +5,7 @@
 //   node dev/rpc-probe.mjs --no-wait       # skip the wait for a `started` event
 //   node dev/rpc-probe.mjs --timeout <ms>  # how long to wait for it (default 120000)
 //
-// Finds the socket the way a front must: `TORI_SOCK`/`TORI_TOKEN` when run
+// Finds the socket the way a front must: `TORI_SOCK`/`TORI_CALLER` when run
 // inside a Tori terminal, else `~/.config/tori/rpc.json`. Exits non-zero when any
 // check fails, including a bad token that is not refused.
 import { readFileSync } from "node:fs";
@@ -19,8 +19,8 @@ const timeoutAt = args.indexOf("--timeout");
 const timeoutMs = timeoutAt >= 0 ? Number(args[timeoutAt + 1]) : 120_000;
 
 function locate() {
-  if (process.env.TORI_SOCK && process.env.TORI_TOKEN) {
-    return { sock: process.env.TORI_SOCK, token: process.env.TORI_TOKEN, from: "env" };
+  if (process.env.TORI_SOCK && process.env.TORI_CALLER) {
+    return { sock: process.env.TORI_SOCK, token: process.env.TORI_CALLER, from: "env" };
   }
   const file = join(homedir(), ".config/tori/rpc.json");
   const { sock, token } = JSON.parse(readFileSync(file, "utf8"));

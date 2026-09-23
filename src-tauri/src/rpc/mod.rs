@@ -2,7 +2,7 @@
 //! the MCP server and later a WebSocket are all fronts on. See
 //! [[adr_one_protocol_several_fronts]].
 //!
-//! Found two ways. A process Tori spawns gets `TORI_SOCK` and `TORI_TOKEN` in
+//! Found two ways. A process Tori spawns gets `TORI_SOCK` and `TORI_CALLER` in
 //! its env; anything else reads the `rpc.json` bridge file, the same shape and
 //! the same lifetime rule as the askpass one in `crate::credential`.
 
@@ -19,15 +19,17 @@ use std::sync::{Arc, OnceLock};
 
 use tauri::AppHandle;
 
-use auth::Credential;
+use auth::{Caller, Children, Credential};
 use hub::Hub;
 use server::{Server, AUTH_TIMEOUT};
 use transport::{Transport, UnixTransport};
 
 pub const ENV_SOCK: &str = "TORI_SOCK";
-pub const ENV_TOKEN: &str = "TORI_TOKEN";
+// Not `TORI_TOKEN`: codex's shell tool carries default excludes for names like
+// `*TOKEN*`, `*KEY*` and `*SECRET*`, and an agent's shell has to see this one.
+pub const ENV_CALLER: &str = "TORI_CALLER";
 
-static SOCKET: OnceLock<(String, String)> = OnceLock::new();
+static SOCKET: OnceLock<(String, Arc<Children>)> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub struct RpcState {
@@ -52,8 +54,9 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let transport = Arc::new(UnixTransport::bind()?);
     let token = crate::chat::approval::random_token();
     let hub = Arc::new(Hub::default());
+    let children = Arc::new(Children::default());
     let server = Arc::new(Server {
-        credential: Credential::Token(token.clone()),
+        credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend { app }),
         auth_timeout: AUTH_TIMEOUT,
@@ -64,7 +67,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     if let Err(e) = crate::credential::write_bridge(&bridge_path(), &sock, &token) {
         eprintln!("tori: rpc bridge file not written: {e}");
     }
-    let _ = SOCKET.set((sock, token));
+    let _ = SOCKET.set((sock, children));
     match link_cli(transport.sock_path()) {
         Ok(dir) => {
             let _ = CLI_DIR.set(dir);
@@ -94,12 +97,27 @@ pub fn path_with_cli(path: &str) -> String {
     }
 }
 
-/// Env for a process Tori spawns. Empty when the socket never came up.
-pub fn child_env() -> Vec<(String, String)> {
+/// Env for a process Tori spawns, with a token minted for `caller`. Empty when
+/// the socket never came up.
+pub fn child_env(caller: Caller) -> Vec<(String, String)> {
     SOCKET
         .get()
-        .map(|(sock, token)| vec![(ENV_SOCK.to_string(), sock.clone()), (ENV_TOKEN.to_string(), token.clone())])
+        .map(|(sock, children)| {
+            vec![(ENV_SOCK.to_string(), sock.clone()), (ENV_CALLER.to_string(), children.mint(caller))]
+        })
         .unwrap_or_default()
+}
+
+pub fn revoke_env(env: &[(String, String)]) {
+    if let Some((_, children)) = SOCKET.get() {
+        env.iter().filter(|(key, _)| key == ENV_CALLER).for_each(|(_, token)| children.revoke_token(token));
+    }
+}
+
+pub fn revoke(caller: &Caller) {
+    if let Some((_, children)) = SOCKET.get() {
+        children.revoke(caller);
+    }
 }
 
 pub(crate) fn bridge_path() -> PathBuf {

@@ -7,11 +7,13 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
+use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{Backend, ListParams, TailParams};
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
 use crate::chat::model::{cap_output, ChatEvent};
+use crate::chat::ownership::Registry;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 
 const DEFAULT_LIST_LIMIT: usize = 50;
@@ -85,6 +87,23 @@ fn tail(mut events: Vec<ChatEvent>, limit: usize) -> Vec<ChatEvent> {
     tail
 }
 
+// What a method falls back to when a param is left out. All empty for a
+// process Tori did not start, so that caller has to pass everything.
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
+pub struct Identity {
+    pub agent: Option<String>,
+    pub account: Option<String>,
+    pub cwd: Option<String>,
+}
+
+fn chat_identity(registry: &Registry, live: &[(String, String)], id: &str) -> Identity {
+    Identity {
+        agent: registry.agent_of(id),
+        account: registry.profile_of(id),
+        cwd: live.iter().find(|(live_id, _)| live_id == id).map(|(_, cwd)| cwd.clone()),
+    }
+}
+
 pub struct TauriBackend {
     pub app: AppHandle,
 }
@@ -102,6 +121,19 @@ impl TauriBackend {
             live.entry(id).or_default().cwd = cwd;
         }
         live
+    }
+
+    pub fn identity(&self, principal: &Principal) -> Identity {
+        match principal {
+            Principal::Local => Identity::default(),
+            Principal::Session(Caller::Terminal(tab)) => {
+                self.app.state::<crate::pty::PtyState>().identity(tab).unwrap_or_default()
+            }
+            Principal::Session(Caller::Chat(id)) => {
+                let host = &self.app.state::<ChatState>().0;
+                chat_identity(&host.registry, &host.live_sessions(), id)
+            }
+        }
     }
 
     fn agent_of(&self, id: &str) -> Option<String> {
@@ -131,6 +163,14 @@ impl Backend for TauriBackend {
         let events = tail(read_history(&params.id, &from, &agent, None), params.limit.unwrap_or(DEFAULT_TAIL_LIMIT));
         serde_json::to_value(events).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
+
+    fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
+        let caller = match principal {
+            Principal::Local => None,
+            Principal::Session(caller) => Some(caller),
+        };
+        Ok(serde_json::json!({ "caller": caller, "identity": self.identity(principal) }))
+    }
 }
 
 #[cfg(test)]
@@ -138,6 +178,31 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    fn claim(agent: &str, profile: &str) -> crate::chat::ownership::Claim {
+        crate::chat::ownership::Claim {
+            surface: crate::chat::ownership::Surface::Chat,
+            tab_id: "tab".into(),
+            child_pid: None,
+            tori_pid: std::process::id(),
+            agent: agent.into(),
+            profile: profile.into(),
+        }
+    }
+
+    #[test]
+    fn a_chat_caller_resolves_to_its_claimed_agent_account_and_live_folder() {
+        let dir = std::env::temp_dir().join(format!("tori-rpc-identity-{}", std::process::id()));
+        let registry = Registry::at(dir.join("claims.json"));
+        registry.claim("s1", claim("codex", "work"));
+        let live = vec![("s1".to_string(), "/p/wt".to_string())];
+        assert_eq!(
+            chat_identity(&registry, &live, "s1"),
+            Identity { agent: Some("codex".into()), account: Some("work".into()), cwd: Some("/p/wt".into()) }
+        );
+        assert_eq!(chat_identity(&registry, &live, "gone"), Identity::default());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     fn meta(id: &str, cwd: &str, last_active: u64) -> SessionMeta {
         SessionMeta { last_active, ..live_row(id, &Live { agent: "claude".into(), cwd: cwd.into() }, last_active) }

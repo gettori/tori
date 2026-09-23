@@ -8,12 +8,13 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 3] = ["sessions", "session", "events"];
+const COMMANDS: [&str; 4] = ["sessions", "session", "events", "whoami"];
 
 const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
-  tori events [--topic <topic>]...";
+  tori events [--topic <topic>]...
+  tori whoami [--json]";
 
 pub fn is_cli() -> bool {
     std::env::args().nth(1).is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
@@ -73,6 +74,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
             _ => Err(usage("session needs a subcommand: tail")),
         },
         "events" => events(rest),
+        "whoami" => whoami(rest),
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
@@ -260,6 +262,27 @@ fn transcript(events: &[Value]) -> Vec<String> {
     }
     flush(&mut prose, &mut lines);
     lines
+}
+
+fn whoami(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["json"])?;
+    let me = connect()?.call("caller", Value::Null)?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{me}")?);
+    }
+    let caller = &me["caller"];
+    let who = match caller["kind"].as_str() {
+        Some(kind) => format!("{kind} {}", caller["id"].as_str().unwrap_or("")),
+        None => "outside caller".to_string(),
+    };
+    writeln!(out, "{who}")?;
+    for key in ["agent", "account", "cwd"] {
+        if let Some(value) = me["identity"][key].as_str() {
+            writeln!(out, "{key}: {value}")?;
+        }
+    }
+    Ok(())
 }
 
 fn events(args: &[String]) -> Result<(), Failure> {

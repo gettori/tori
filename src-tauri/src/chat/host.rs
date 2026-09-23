@@ -92,6 +92,7 @@ impl Lifecycle {
     }
 
     fn ended(&self, id: &str) {
+        crate::rpc::revoke(&crate::rpc::auth::Caller::Chat(id.to_string()));
         if !lock(&self.announced).remove(id) {
             return;
         }
