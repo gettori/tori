@@ -8,9 +8,9 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 12] = [
+const COMMANDS: [&str; 13] = [
     "sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
-    "ask",
+    "ask", "mcp",
 ];
 
 const USAGE: &str = "usage:
@@ -28,7 +28,8 @@ const USAGE: &str = "usage:
   tori open <path> [--line <n>]
   tori budget [<id>] [--folder <path>] [--json]
   tori ask <question>... [--option <text>]... [--timeout <secs>]
-  tori ask --wait <id> [--timeout <secs>]";
+  tori ask --wait <id> [--timeout <secs>]
+  tori mcp";
 
 pub fn is_cli() -> bool {
     std::env::args().nth(1).is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
@@ -112,6 +113,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "open" => open(rest),
         "budget" => budget(rest),
         "ask" => ask(rest),
+        "mcp" => Ok(crate::mcp::run()?),
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
