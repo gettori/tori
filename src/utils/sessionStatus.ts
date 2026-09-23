@@ -105,6 +105,13 @@ export function isWorking(status: SessionStatus): boolean {
   return status === "executing" || status === "waitingOnBackground";
 }
 
+// The app socket's vocabulary, for callers outside the webview.
+export function socketState(status: SessionStatus): "working" | "needs_you" | "idle" | null {
+  if (isWorking(status) || status === "running") return "working";
+  if (blockedOnUser(status)) return "needs_you";
+  return status === "idle" ? "idle" : null;
+}
+
 /** Outstanding background work in the words a status line uses, e.g.
  *  `Waiting: 2 agents, 1 task`. */
 export function backgroundLabel(counts: { agents: number; tasks: number }): string {

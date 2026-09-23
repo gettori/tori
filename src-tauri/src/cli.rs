@@ -170,9 +170,12 @@ fn session_cells(row: &Value) -> [String; 7] {
         .or_else(|| row.get("profile").and_then(Value::as_str))
         .unwrap_or("default")
         .to_string();
-    let state = if row.get("live").and_then(Value::as_bool).unwrap_or(false) { "live" } else { "ended" };
+    let state = match row.get("state").and_then(Value::as_str) {
+        Some(state) => state.replace('_', " "),
+        None => "live".to_string(),
+    };
     let title = row.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text("title"));
-    [text("id"), text("agent"), account, state.to_string(), text("branch"), home_relative(&text("cwd")), clip(&title, 60)]
+    [text("id"), text("agent"), account, state, text("branch"), home_relative(&text("cwd")), clip(&title, 60)]
 }
 
 fn home_relative(path: &str) -> String {

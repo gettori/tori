@@ -12,6 +12,7 @@ pub mod frame;
 pub mod hub;
 pub mod methods;
 pub mod server;
+pub mod states;
 pub mod transport;
 
 use std::path::PathBuf;
@@ -21,7 +22,9 @@ use tauri::AppHandle;
 
 use auth::{Caller, Children, Credential};
 use hub::Hub;
+use hub::Channel;
 use server::{Server, AUTH_TIMEOUT};
+use states::{Reported, SessionStates};
 use transport::{Transport, UnixTransport};
 
 pub const ENV_SOCK: &str = "TORI_SOCK";
@@ -35,6 +38,7 @@ static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
 pub struct RpcState {
     transport: Arc<UnixTransport>,
     pub hub: Arc<Hub>,
+    states: Arc<SessionStates>,
 }
 
 impl RpcState {
@@ -55,10 +59,11 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let token = crate::chat::approval::random_token();
     let hub = Arc::new(Hub::default());
     let children = Arc::new(Children::default());
+    let states = Arc::new(SessionStates::default());
     let server = Arc::new(Server {
         credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
-        backend: Box::new(methods::TauriBackend { app }),
+        backend: Box::new(methods::TauriBackend { app, states: states.clone() }),
         auth_timeout: AUTH_TIMEOUT,
     });
     server::serve(transport.clone() as Arc<dyn Transport>, server);
@@ -74,7 +79,14 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub })
+    Ok(RpcState { transport, hub, states })
+}
+
+#[tauri::command]
+pub fn rpc_session_states(rpc: tauri::State<RpcState>, states: Vec<Reported>) {
+    for (id, state) in rpc.states.replace(states) {
+        rpc.hub.publish(&Channel::Sessions, serde_json::json!({ "kind": "state", "id": id, "state": state }));
+    }
 }
 
 /// A `bin/tori` link beside the socket, so it goes with the socket's private
