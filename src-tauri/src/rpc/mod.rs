@@ -10,6 +10,7 @@ pub mod asks;
 pub mod auth;
 pub mod bridge;
 pub mod client;
+pub mod events;
 pub mod frame;
 pub mod hub;
 pub mod methods;
@@ -17,6 +18,8 @@ pub mod server;
 pub mod states;
 pub mod transport;
 
+use std::cell::OnceCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
@@ -25,10 +28,10 @@ use tauri::{AppHandle, Emitter};
 use asks::{Ask, Asks};
 use auth::{Caller, Children, Credential};
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
+use events::Place;
 use hub::Hub;
-use hub::Channel;
 use server::{Server, AUTH_TIMEOUT};
-use states::{Reported, SessionStates};
+use states::{Held, Reported, SessionStates, Source};
 use transport::{Transport, UnixTransport};
 
 pub const ENV_SOCK: &str = "TORI_SOCK";
@@ -101,10 +104,29 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     Ok(RpcState { transport, hub, states, bridge, asks })
 }
 
-#[tauri::command]
-pub fn rpc_session_states(rpc: tauri::State<RpcState>, states: Vec<Reported>) {
-    for (id, state) in rpc.states.replace(states) {
-        rpc.hub.publish(&Channel::Sessions, serde_json::json!({ "kind": "state", "id": id, "state": state }));
+// Async so resolving a new session's project, which reads the config and lists
+// the discovery root, stays off the main thread.
+#[tauri::command(async)]
+pub fn rpc_session_states(
+    rpc: tauri::State<RpcState>,
+    chat: tauri::State<crate::chat::host::ChatState>,
+    pty: tauri::State<crate::pty::PtyState>,
+    states: Vec<Reported>,
+) {
+    let chats: HashSet<String> = chat.0.live_sessions().into_iter().map(|(id, _)| id).collect();
+    let tabs: HashSet<String> = pty.live_ids().unwrap_or_default().into_iter().collect();
+    let projects = OnceCell::new();
+    let place_of = |folder: &str| Place {
+        project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),
+        folder: Some(folder.to_string()),
+    };
+    let alive = |id: &str, held: &Held| match held.source {
+        Source::Chat => chats.contains(id),
+        Source::Pty => held.tab.as_ref().is_some_and(|tab| tabs.contains(tab)),
+    };
+    for event in rpc.states.replace(states, place_of, alive) {
+        let id = event["id"].as_str().unwrap_or_default().to_string();
+        rpc.hub.publish_session(&id, event);
     }
 }
 

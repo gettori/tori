@@ -204,7 +204,7 @@ pub fn run() {
             match rpc::start(app.handle().clone()) {
                 Ok(state) => {
                     let hub = state.hub.clone();
-                    app.state::<ChatState>().0.set_publisher(Arc::new(move |channel, data| hub.publish(channel, data)));
+                    app.state::<ChatState>().0.set_publisher(Arc::new(move |id, data| hub.publish_session(id, data)));
                     app.manage(state);
                 }
                 Err(e) => eprintln!("tori: rpc socket failed to start: {e}"),

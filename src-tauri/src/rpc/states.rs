@@ -6,6 +6,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use super::events::{session_event, Place};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -16,45 +19,97 @@ pub enum SessionState {
     Ended,
 }
 
+// A chat's start and end are announced by `ChatHost`, which knows the reason;
+// a PTY agent's only by this cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Source {
+    Chat,
+    Pty,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Reported {
     pub id: String,
     pub state: SessionState,
+    pub source: Source,
+    #[serde(default)]
+    pub folder: Option<String>,
+    // The PTY tab running it, which is how a PTY is known to be alive.
+    #[serde(default)]
+    pub tab: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Held {
+    pub state: SessionState,
+    pub source: Source,
+    pub tab: Option<String>,
+    folder: Option<String>,
+    place: Place,
 }
 
 #[derive(Default)]
 pub struct SessionStates {
-    states: Mutex<HashMap<String, SessionState>>,
+    states: Mutex<HashMap<String, Held>>,
     // Spawned with `--background`, held for #203's gate to read.
     background: Mutex<HashSet<String>>,
 }
 
 impl SessionStates {
-    // The webview's whole list rather than a delta, so one a reload lost still
-    // gets cleared. A session no longer listed comes back as `Ended`.
-    pub fn replace(&self, reported: Vec<Reported>) -> Vec<(String, SessionState)> {
-        let next: HashMap<String, SessionState> = reported.into_iter().map(|r| (r.id, r.state)).collect();
+    // The webview's whole list, so one a reload lost still gets cleared. Absence
+    // alone is not an end, since a reload restores tabs per workspace on first
+    // visit, so an absent session ends only once `alive` says its child is gone.
+    pub fn replace(
+        &self,
+        reported: Vec<Reported>,
+        place_of: impl Fn(&str) -> Place,
+        alive: impl Fn(&str, &Held) -> bool,
+    ) -> Vec<Value> {
         let mut held = self.states.lock().unwrap_or_else(|e| e.into_inner());
-        let mut moved: BTreeMap<String, SessionState> = held
-            .keys()
-            .filter(|id| !next.contains_key(*id))
-            .map(|id| (id.clone(), SessionState::Ended))
-            .collect();
-        for (id, state) in &next {
-            if held.get(id) != Some(state) {
-                moved.insert(id.clone(), *state);
+        let mut events = Vec::new();
+        let mut next: BTreeMap<String, Held> = BTreeMap::new();
+        for r in reported {
+            let before = held.remove(&r.id);
+            let place = match &before {
+                Some(b) if b.folder == r.folder => b.place.clone(),
+                _ => r.folder.as_deref().map(&place_of).unwrap_or_default(),
+            };
+            if before.is_none() && r.source == Source::Pty {
+                events.push(session_event("session.started", &r.id, &place, json!({})));
             }
+            let was = before.as_ref().map(|b| b.state);
+            if was != Some(r.state) {
+                events.push(session_event("session.state", &r.id, &place, json!({ "state": r.state })));
+                if r.state == SessionState::NeedsYou {
+                    events.push(session_event("session.needs_you", &r.id, &place, json!({})));
+                }
+            }
+            next.insert(r.id, Held { state: r.state, source: r.source, tab: r.tab, folder: r.folder, place });
         }
-        *held = next;
+        let mut ended = Vec::new();
+        for (id, gone) in held.drain() {
+            if alive(&id, &gone) {
+                next.insert(id, gone);
+                continue;
+            }
+            events.push(session_event("session.state", &id, &gone.place, json!({ "state": SessionState::Ended })));
+            if gone.source == Source::Pty {
+                events.push(session_event("session.ended", &id, &gone.place, json!({})));
+            }
+            ended.push(id);
+        }
+        *held = next.into_iter().collect();
         let mut background = self.background.lock().unwrap_or_else(|e| e.into_inner());
-        moved.iter().filter(|(_, state)| **state == SessionState::Ended).for_each(|(id, _)| {
-            background.remove(id);
-        });
-        moved.into_iter().collect()
+        for id in ended {
+            background.remove(&id);
+        }
+        events
     }
 
     pub fn snapshot(&self) -> HashMap<String, SessionState> {
-        self.states.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        held.iter().map(|(id, h)| (id.clone(), h.state)).collect()
     }
 
     pub fn mark_background(&self, id: &str) {
@@ -66,3 +121,75 @@ impl SessionStates {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report(id: &str, state: SessionState, source: Source) -> Reported {
+        Reported { id: id.into(), state, source, folder: Some("/p/wt".into()), tab: Some(format!("tab-{id}")) }
+    }
+
+    fn place(_: &str) -> Place {
+        Place { project: Some("/p".into()), folder: Some("/p/wt".into()) }
+    }
+
+    fn kinds(events: &[Value]) -> Vec<String> {
+        events.iter().map(|e| format!("{} {}", e["kind"].as_str().unwrap(), e["id"].as_str().unwrap())).collect()
+    }
+
+    const GONE: fn(&str, &Held) -> bool = |_, _| false;
+
+    #[test]
+    fn a_chat_added_then_dropped_announces_no_lifecycle() {
+        let states = SessionStates::default();
+        let first = states.replace(vec![report("c", SessionState::Working, Source::Chat)], place, GONE);
+        assert_eq!(kinds(&first), ["session.state c"]);
+        assert_eq!(first[0]["project"], "/p");
+        let second = states.replace(vec![], place, GONE);
+        assert_eq!(kinds(&second), ["session.state c"]);
+        assert_eq!(second[0]["state"], "ended");
+    }
+
+    #[test]
+    fn a_pty_added_then_dropped_starts_and_ends() {
+        let states = SessionStates::default();
+        let first = states.replace(vec![report("p", SessionState::Working, Source::Pty)], place, GONE);
+        assert_eq!(kinds(&first), ["session.started p", "session.state p"]);
+        let second = states.replace(vec![], place, GONE);
+        assert_eq!(kinds(&second), ["session.state p", "session.ended p"]);
+    }
+
+    #[test]
+    fn needs_you_fires_on_the_rising_edge_only() {
+        let states = SessionStates::default();
+        states.replace(vec![report("c", SessionState::Working, Source::Chat)], place, GONE);
+        let up = states.replace(vec![report("c", SessionState::NeedsYou, Source::Chat)], place, GONE);
+        assert_eq!(kinds(&up), ["session.state c", "session.needs_you c"]);
+        let same = states.replace(vec![report("c", SessionState::NeedsYou, Source::Chat)], place, GONE);
+        assert!(same.is_empty());
+    }
+
+    #[test]
+    fn a_session_missing_from_the_list_but_still_running_is_kept_quietly() {
+        let states = SessionStates::default();
+        states.replace(vec![report("p", SessionState::Idle, Source::Pty)], place, GONE);
+        let reload = states.replace(vec![], place, |_, held| held.tab.as_deref() == Some("tab-p"));
+        assert!(reload.is_empty());
+        assert_eq!(states.snapshot().get("p"), Some(&SessionState::Idle));
+        let back = states.replace(vec![report("p", SessionState::Idle, Source::Pty)], place, GONE);
+        assert!(back.is_empty(), "coming back is not a second start");
+    }
+
+    #[test]
+    fn the_project_is_resolved_once_per_session() {
+        let states = SessionStates::default();
+        let calls = std::cell::Cell::new(0);
+        let counting = |folder: &str| {
+            calls.set(calls.get() + 1);
+            place(folder)
+        };
+        states.replace(vec![report("c", SessionState::Working, Source::Chat)], counting, GONE);
+        states.replace(vec![report("c", SessionState::Idle, Source::Chat)], counting, GONE);
+        assert_eq!(calls.get(), 1);
+    }
+}

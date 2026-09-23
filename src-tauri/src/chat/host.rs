@@ -27,7 +27,7 @@ use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
-use crate::rpc::hub::Channel;
+use crate::rpc::events::{session_event, EndReason, Place};
 
 /// What a spawn call actually did, so a caller can tell a fresh session from a
 /// re-subscribe without inspecting the map itself.
@@ -66,38 +66,42 @@ struct Entry {
 
 type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 
-/// Where session lifecycle events go: the app socket's hub once it is up.
-pub type Publish = Arc<dyn Fn(&Channel, serde_json::Value) + Send + Sync>;
+/// Where session events go: the app socket's hub once it is up.
+pub type Publish = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 
 /// Says `started` and `ended` exactly once each, in that order.
 ///
-/// Gated on a set of its own rather than on the session map, because the map
+/// Gated on a map of its own rather than on the session map, because the map
 /// does not order them: `spawn` inserts only after `transport.start`, so a
 /// child that dies at once has its fatal event through `wrap` before there is
 /// an entry to remove.
 #[derive(Default, Clone)]
 struct Lifecycle {
     publish: Arc<std::sync::OnceLock<Publish>>,
-    announced: Arc<Mutex<HashSet<String>>>,
+    announced: Arc<Mutex<HashMap<String, Place>>>,
 }
 
 impl Lifecycle {
     fn started(&self, id: &str, agent: &str, cwd: &str) {
-        if !lock(&self.announced).insert(id.to_string()) {
-            return;
+        match lock(&self.announced).entry(id.to_string()) {
+            std::collections::hash_map::Entry::Occupied(_) => return,
+            std::collections::hash_map::Entry::Vacant(slot) => slot.insert(Place::default()),
+        };
+        let Some(publish) = self.publish.get() else { return };
+        let place = Place::of(cwd);
+        if let Some(held) = lock(&self.announced).get_mut(id) {
+            *held = place.clone();
         }
-        if let Some(publish) = self.publish.get() {
-            publish(&Channel::Sessions, serde_json::json!({ "kind": "started", "id": id, "agent": agent, "cwd": cwd }));
-        }
+        publish(id, session_event("session.started", id, &place, serde_json::json!({ "agent": agent })));
     }
 
-    fn ended(&self, id: &str) {
+    fn ended(&self, id: &str, reason: EndReason) {
         crate::rpc::revoke(&crate::rpc::auth::Caller::Chat(id.to_string()));
-        if !lock(&self.announced).remove(id) {
+        let Some(place) = lock(&self.announced).remove(id) else {
             return;
-        }
+        };
         if let Some(publish) = self.publish.get() {
-            publish(&Channel::Sessions, serde_json::json!({ "kind": "ended", "id": id }));
+            publish(id, session_event("session.ended", id, &place, serde_json::json!({ "reason": reason })));
         }
     }
 }
@@ -551,7 +555,7 @@ impl ChatHost {
             // process; a spawn that then fails has to give it back, or the id
             // stays held by a session that does not exist.
             self.registry.release(session_id, tab_id);
-            self.lifecycle.ended(session_id);
+            self.lifecycle.ended(session_id, EndReason::Died);
             return Err(e);
         }
         if let Some(pid) = transport.child_pid() {
@@ -652,7 +656,7 @@ impl ChatHost {
                 if let Some(tab) = tab {
                     registry.release(&id, &tab);
                 }
-                lifecycle.ended(&id);
+                lifecycle.ended(&id, EndReason::Died);
             }
         })
     }
@@ -702,7 +706,7 @@ impl ChatHost {
             }
             ChatCommand::Close { .. } => {
                 drop(t);
-                self.close(&session_id)
+                self.close(&session_id, EndReason::Closed)
             }
         }
     }
@@ -764,7 +768,7 @@ impl ChatHost {
     /// End a session: kill the child, drop the entry, release the claim.
     ///
     /// Idempotent, because both the tab-close path and app exit call it.
-    pub fn close(&self, session_id: &str) -> Result<(), String> {
+    pub fn close(&self, session_id: &str, reason: EndReason) -> Result<(), String> {
         // The bridge goes first: its blocked tool calls must be denied while the
         // child is still there to receive the denial, not after it is killed.
         self.drop_bridge(session_id);
@@ -772,7 +776,7 @@ impl ChatHost {
         let Some(entry) = entry else { return Ok(()) };
         let result = lock(&entry.transport).close();
         self.registry.release(session_id, &entry.tab_id);
-        self.lifecycle.ended(session_id);
+        self.lifecycle.ended(session_id, reason);
         result
     }
 
@@ -784,7 +788,7 @@ impl ChatHost {
     pub fn shutdown(&self) {
         let ids: Vec<String> = lock(&self.sessions).keys().cloned().collect();
         for id in ids {
-            let _ = self.close(&id);
+            let _ = self.close(&id, EndReason::Closed);
         }
     }
 
@@ -1118,7 +1122,7 @@ mod tests {
         assert_eq!(host.generation("s1"), Some(1), "a re-subscribe bumps the generation");
 
         // The rewire is real: events now reach the new subscriber only.
-        host.close("s1").unwrap();
+        host.close("s1", EndReason::Closed).unwrap();
         assert!(first.events().is_empty());
     }
 
@@ -1466,7 +1470,7 @@ mod tests {
         burst(&sink, "s1");
         assert_eq!(seen.events().len(), 300, "a session on screen streams unchanged");
 
-        host.close("s1").unwrap();
+        host.close("s1", EndReason::Closed).unwrap();
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
         host.spawn_plain("s2", "tab-b", seen.emit(), spec("s2"), move || {
@@ -1715,7 +1719,7 @@ mod tests {
         assert_eq!(outcome, ClaimOutcome::HeldByOther { surface: Surface::Chat, tab_id: "chat-tab".to_string() });
 
         // Closing the chat tab hands the session back to the terminal.
-        host.close(&id).unwrap();
+        host.close(&id, EndReason::Closed).unwrap();
         assert_eq!(
             host.registry.claim(
                 &id,
@@ -1893,19 +1897,22 @@ mod tests {
         host.dispatch(&ChatCommand::Close { session_id: "s-q".into() }).unwrap();
     }
 
-    /// What the app socket's `sessions` channel was told, in order.
     fn published(host: &ChatHost) -> Arc<Mutex<Vec<(String, String)>>> {
         let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
         let into = seen.clone();
-        host.set_publisher(Arc::new(move |channel, data| {
-            assert_eq!(*channel, Channel::Sessions);
-            lock(&into).push((data["kind"].as_str().unwrap().to_string(), data["id"].as_str().unwrap().to_string()));
+        host.set_publisher(Arc::new(move |id, data| {
+            assert_eq!(data["id"], id);
+            let kind = match data["reason"].as_str() {
+                Some(reason) => format!("{} {reason}", data["kind"].as_str().unwrap()),
+                None => data["kind"].as_str().unwrap().to_string(),
+            };
+            lock(&into).push((kind, id.to_string()));
         }));
         seen
     }
 
-    fn began_then_ended(id: &str) -> Vec<(String, String)> {
-        vec![("started".into(), id.into()), ("ended".into(), id.into())]
+    fn began_then_ended(id: &str, reason: &str) -> Vec<(String, String)> {
+        vec![("session.started".into(), id.into()), (format!("session.ended {reason}"), id.into())]
     }
 
     #[test]
@@ -1915,9 +1922,20 @@ mod tests {
         host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || Box::new(Puppet::default()))
             .unwrap();
         host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || unreachable!()).unwrap();
-        host.close("s-life").unwrap();
-        host.close("s-life").unwrap();
-        assert_eq!(*lock(&seen), began_then_ended("s-life"));
+        host.close("s-life", EndReason::Closed).unwrap();
+        host.close("s-life", EndReason::Closed).unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-life", "closed"));
+    }
+
+    #[test]
+    fn a_session_closed_as_killed_says_so() {
+        let host = ChatHost::at(temp_store());
+        let seen = published(&host);
+        host.spawn_plain("s-kill", "tab", Collector::default().emit(), spec("s-kill"), || Box::new(Puppet::default()))
+            .unwrap();
+        host.close("s-kill", EndReason::Killed).unwrap();
+        host.close("s-kill", EndReason::Closed).unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-kill", "killed"));
     }
 
     #[test]
@@ -1932,8 +1950,8 @@ mod tests {
         .unwrap();
         let sink = lock(&holder).clone().unwrap();
         emit(&sink, ChatEvent::SessionEnded { session_id: "s-fatal".into(), reason: None });
-        host.close("s-fatal").unwrap();
-        assert_eq!(*lock(&seen), began_then_ended("s-fatal"));
+        host.close("s-fatal", EndReason::Closed).unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-fatal", "died"));
     }
 
     #[test]
@@ -1944,8 +1962,8 @@ mod tests {
             Box::new(Puppet { dies_on_start: true, ..Default::default() })
         })
         .unwrap();
-        host.close("s-quick").unwrap();
-        assert_eq!(*lock(&seen), began_then_ended("s-quick"));
+        host.close("s-quick", EndReason::Closed).unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-quick", "died"));
     }
 
     #[test]
@@ -1956,6 +1974,6 @@ mod tests {
             Box::new(Puppet { refuses_start: true, ..Default::default() })
         });
         assert!(result.is_err());
-        assert_eq!(*lock(&seen), began_then_ended("s-never"));
+        assert_eq!(*lock(&seen), began_then_ended("s-never", "died"));
     }
 }

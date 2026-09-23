@@ -2,7 +2,7 @@
 // Drive Tori's app socket end to end, the way the CLI will.
 //
 //   node dev/rpc-probe.mjs                 # list, tail, then wait for a chat session to start
-//   node dev/rpc-probe.mjs --no-wait       # skip the wait for a `started` event
+//   node dev/rpc-probe.mjs --no-wait       # skip the wait for a `session.started` event
 //   node dev/rpc-probe.mjs --timeout <ms>  # how long to wait for it (default 120000)
 //
 // Finds the socket the way a front must: `TORI_SOCK`/`TORI_CALLER` when run
@@ -102,7 +102,7 @@ check(hungUp, "and its connection is closed");
 if (wait) {
   console.log(`waiting up to ${timeoutMs} ms: start a chat session in Tori`);
   const started = await Promise.race([
-    new Promise((resolve) => c.onEvent((p) => p.topic === "sessions" && p.data.kind === "started" && resolve(p.data))),
+    new Promise((resolve) => c.onEvent((p) => p.topic === "sessions" && p.data.kind === "session.started" && resolve(p.data))),
     new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs)),
   ]);
   check(started !== null, "a started event arrives", JSON.stringify(started));
