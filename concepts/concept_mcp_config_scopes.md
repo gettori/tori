@@ -1,8 +1,8 @@
 ---
-summary: Tori reads all three claude MCP scopes but writes only mcp json, because claude json is live app state it must not race
+summary: Tori reads claude's three MCP scopes, writes only mcp json, and injects a fourth via --mcp-config, merged not replacing
 status: current
-updated: 2026-07-28
-source: plan "Native Claude chat as the default session surface" (phase 12), branch `chat`; `src-tauri/src/chat/mcp.rs`; `src/panels/Chat/SessionInfo.tsx`
+updated: 2026-09-23
+source: plan "Native Claude chat as the default session surface" (phase 12), branch `chat`; `src-tauri/src/chat/mcp.rs`; `src/panels/Chat/SessionInfo.tsx`; plan "Probe: --mcp-config beside --settings" (phase 2), branch `orchestrator`; `dev/mcp-probe.mjs --scopes`
 ---
 
 # MCP config: three scopes, read all, write one
@@ -30,6 +30,18 @@ Approval state is read from `projects[<cwd>].enabledMcpjsonServers` / `disabledM
 `.mcp.json` has none of those problems: small, single-purpose, checked in, and designed to be shared. So Tori writes there and reports the other two read-only. Writes preserve sibling keys and pretty-print with a trailing newline, because the file is meant to be reviewed in a diff.
 
 The accepted consequence is that a newly written server is **pending**, not connected - the approval lives in the file we will not write. Tori reports that state with the instruction for clearing it rather than force-enabling it behind the user's back. Verified end to end: writing a `.mcp.json` and running `claude mcp list` reported `⏸ Pending approval`.
+
+## The injected fourth source: `--mcp-config`
+
+Measured on claude 2.1.280 with `node dev/mcp-probe.mjs --scopes` (phase 1's calibration ran on 2.1.278). This is how Tori hands a session its own server without writing any of the three files above.
+
+- **It merges, it does not displace.** Passed beside the injected `--settings <path>` at default setting sources, the server loads with `source: "dynamic"` and connects, its tools appear as `mcp__<name>__<tool>`, the turn reaches `result/success`, and the `--settings` hook still fires through `Stop`. In a project holding a `.mcp.json`, the project server stays `source: "project"`, `connected` with and without `--mcp-config`, and the claude.ai connectors stay too.
+- **It is not persisted with the session.** `--resume <id>` with `--mcp-config` present brings the server back. `--resume <id>` without it and the server is gone from `mcp_servers` and `tools`. Tori has to pass the flag on every spawn, resumes included.
+- **`--strict-mcp-config` replaces every other source.** With it, only the `dynamic` servers are left: the project `.mcp.json` server and every claude.ai connector drop out, and with no `--mcp-config` at all the array is empty. **#200 must not pass it**, since it would silently strip the user's own servers from every Tori-launched session.
+- **The flag is variadic.** `--mcp-config <configs...>` takes several files or JSON strings and eats every bare token after it, so a prompt passed as a positional after it gets read as a config. Put another flag after the configs, or send the prompt over stream-json stdin.
+- **`source` names provenance directly** (`dynamic`, `project`, `claudeai`), so displacement reads off the label rather than from diffing two arrays.
+
+Two things read like approval state and are not. An unapproved `.mcp.json` server comes up `connected` under `-p`, which is what the chat transport runs, so the pending state in [[gotcha_a_newly_written_mcp_json_server_is_pending_not_connected]] was measured on the interactive surface (`claude mcp list`) and does not gate a print-mode session. And a claude.ai connector often shows `pending` in `system/init` because it had not finished connecting when the turn opened, not because anything is waiting on the user.
 
 ## Related
 
