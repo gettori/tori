@@ -13,7 +13,7 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::auth::{authenticate, Credential};
+use super::auth::{authenticate, Credential, Principal};
 use super::frame::{
     read_request, to_line, write_line, ReadError, Request, Response, RpcError, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, UNAUTHORIZED,
@@ -44,6 +44,7 @@ pub struct TailParams {
 pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
+    fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -70,7 +71,7 @@ fn channel(value: &Value) -> Result<Channel, RpcError> {
 }
 
 impl Server {
-    pub fn dispatch(&self, conn: ConnId, req: &Request) -> Result<Value, RpcError> {
+    pub fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         match req.method.as_str() {
             "subscribe" => {
                 self.hub.subscribe(conn, channel(&req.params)?);
@@ -82,6 +83,7 @@ impl Server {
             }
             "sessions.list" => self.backend.sessions_list(params(&req.params)?),
             "session.tail" => self.backend.session_tail(params(&req.params)?),
+            "caller" => self.backend.caller(principal),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             other => Err(RpcError::new(METHOD_NOT_FOUND, format!("no method {other}"))),
         }
@@ -111,26 +113,29 @@ fn handle(server: &Server, mut stream: Box<dyn Stream>) {
     // Bounded, so a client that connects and says nothing does not hold a
     // thread forever.
     let _ = stream.set_read_timeout(Some(server.auth_timeout));
-    let refused = match read_request(&mut reader) {
+    let authed = match read_request(&mut reader) {
         Ok(Some(first)) => match authenticate(&first, &server.credential) {
-            Ok(_) => {
+            Ok(principal) => {
                 let reply = Response::ok(first.id.clone().unwrap_or(Value::Null), json!({}));
                 if write_line(&mut stream, &to_line(&reply)).is_err() {
                     return;
                 }
-                None
+                Ok(principal)
             }
-            Err(e) => Some(Response::err(first.id.clone().unwrap_or(Value::Null), e.rpc())),
+            Err(e) => Err(Response::err(first.id.clone().unwrap_or(Value::Null), e.rpc())),
         },
         Ok(None) => return,
-        Err(ReadError::Io(_)) => Some(Response::err(Value::Null, RpcError::new(UNAUTHORIZED, "no auth frame in time"))),
-        Err(e) => Some(Response::err(Value::Null, e.rpc())),
+        Err(ReadError::Io(_)) => Err(Response::err(Value::Null, RpcError::new(UNAUTHORIZED, "no auth frame in time"))),
+        Err(e) => Err(Response::err(Value::Null, e.rpc())),
     };
-    if let Some(reply) = refused {
-        let _ = write_line(&mut stream, &to_line(&reply));
-        stream.close();
-        return;
-    }
+    let principal = match authed {
+        Ok(principal) => principal,
+        Err(reply) => {
+            let _ = write_line(&mut stream, &to_line(&reply));
+            stream.close();
+            return;
+        }
+    };
     let _ = stream.set_read_timeout(None);
 
     let (tx, rx) = sync_channel::<String>(QUEUE_CAP);
@@ -149,7 +154,7 @@ fn handle(server: &Server, mut stream: Box<dyn Stream>) {
         let reply = match read_request(&mut reader) {
             Ok(None) | Err(ReadError::Io(_)) => break,
             Ok(Some(req)) => {
-                let outcome = server.dispatch(conn, &req);
+                let outcome = server.dispatch(conn, &principal, &req);
                 match req.id {
                     Some(id) => Response::reply(id, outcome),
                     None => continue,
@@ -174,6 +179,7 @@ fn handle(server: &Server, mut stream: Box<dyn Stream>) {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::rpc::auth::{Caller, Children};
     use crate::rpc::transport::UnixTransport;
     use std::io::{BufRead, Write};
     use std::os::unix::net::UnixStream;
@@ -187,11 +193,18 @@ pub mod tests {
         fn session_tail(&self, p: TailParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": p.id }]))
         }
+        fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
+            Ok(match principal {
+                Principal::Local => json!("local"),
+                Principal::Session(caller) => json!(caller),
+            })
+        }
     }
 
     pub struct Running {
         pub transport: Arc<UnixTransport>,
         pub hub: Arc<Hub>,
+        pub children: Arc<Children>,
     }
 
     impl Drop for Running {
@@ -203,14 +216,15 @@ pub mod tests {
     pub fn start(timeout: Duration) -> Running {
         let transport = Arc::new(UnixTransport::bind().unwrap());
         let hub = Arc::new(Hub::default());
+        let children = Arc::new(Children::default());
         let server = Arc::new(Server {
-            credential: Credential::Token("tok".into()),
+            credential: Credential { process: "tok".into(), children: children.clone() },
             hub: hub.clone(),
             backend: Box::new(StubBackend),
             auth_timeout: timeout,
         });
         serve(transport.clone(), server);
-        Running { transport, hub }
+        Running { transport, hub, children }
     }
 
     pub struct Client {
@@ -264,6 +278,26 @@ pub mod tests {
         let mut c = authed(&r);
         assert_eq!(c.call(1, "sessions.list", json!({"limit": 3}))["result"], json!([{"id": "s1", "limit": 3}]));
         assert_eq!(c.call(2, "session.tail", json!({"id": "s9", "agent": "claude"}))["result"], json!([{"id": "s9"}]));
+    }
+
+    #[test]
+    fn each_connection_keeps_the_caller_its_token_was_minted_for() {
+        let r = start(AUTH_TIMEOUT);
+        let tab = r.children.mint(Caller::Terminal("t1".into()));
+        let chat = r.children.mint(Caller::Chat("s1".into()));
+        let as_caller = |token: &str| {
+            let mut c = Client::connect(&r);
+            assert_eq!(c.call(0, "auth", json!({ "token": token }))["result"], json!({}));
+            c.call(1, "caller", Value::Null)["result"].clone()
+        };
+        assert_eq!(as_caller(&tab), json!({"kind": "terminal", "id": "t1"}));
+        assert_eq!(as_caller(&chat), json!({"kind": "chat", "id": "s1"}));
+        assert_eq!(as_caller("tok"), json!("local"));
+
+        r.children.revoke_token(&tab);
+        let mut c = Client::connect(&r);
+        c.send(json!({"jsonrpc": "2.0", "id": 0, "method": "auth", "params": {"token": tab}}));
+        refused(&mut c);
     }
 
     #[test]

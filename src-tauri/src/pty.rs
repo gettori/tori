@@ -92,6 +92,21 @@ impl PtyState {
         ids.sort();
         ids
     }
+
+    /// What a live tab runs: its agent and account when it is an agent tab, and
+    /// the folder it was opened in.
+    pub fn identity(&self, tab: &str) -> Option<crate::rpc::methods::Identity> {
+        let guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let session = guard.get(tab)?;
+        Some(crate::rpc::methods::Identity {
+            account: session
+                .agent
+                .as_ref()
+                .map(|_| session.profile.clone().unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string())),
+            agent: session.agent.clone(),
+            cwd: Some(session.cwd.clone()).filter(|cwd| !cwd.is_empty()),
+        })
+    }
 }
 
 /// Where a session's raw PTY output is streamed. Swappable so a remount/
@@ -129,6 +144,7 @@ pub struct Session {
     /// a live agent in it.
     agent: Option<String>,
     profile: Option<String>,
+    cwd: String,
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -495,7 +511,8 @@ pub fn pty_spawn(
     cmd.env("TERM", "xterm-256color");
     cmd.env("TERM_PROGRAM", "Tori");
     cmd.env("TERM_PROGRAM_VERSION", app.package_info().version.to_string());
-    for (key, value) in crate::credential::spawn_env().into_iter().chain(crate::rpc::child_env()) {
+    let rpc_env = crate::rpc::child_env(crate::rpc::auth::Caller::Terminal(id.clone()));
+    for (key, value) in crate::credential::spawn_env().into_iter().chain(rpc_env.clone()) {
         cmd.env(key, value);
     }
     let path = cmd.get_env("PATH").map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
@@ -508,6 +525,9 @@ pub fn pty_spawn(
     }
 
     let spawned = pair.slave.spawn_command(cmd).map_err(|e| e.to_string());
+    if spawned.is_err() {
+        crate::rpc::revoke_env(&rpc_env);
+    }
     if is_command && spawned.is_err() {
         // A command that never started has still ended, and `pty://exit` is the
         // only place its verdict is read; 127 is what a shell reports here.
@@ -610,6 +630,9 @@ pub fn pty_spawn(
         // almost always already reaped; the poll covers the race where it is
         // not, and gives up rather than hanging on a process that outlives it.
         let code = poll_exit_code(&reader_child, EXIT_WAIT, EXIT_POLL);
+        // A tab restarted under the same id may already hold a fresh token, so
+        // only this spawn's one goes.
+        crate::rpc::revoke_env(&rpc_env);
         let _ = app_handle.emit("pty://exit", ExitEvent { id: emit_id, code });
     });
 
@@ -653,6 +676,7 @@ pub fn pty_spawn(
             claimed_session,
             agent: agent_id,
             profile,
+            cwd,
         },
     );
     Ok(PtySpawnResult { ownership: None })
@@ -777,6 +801,7 @@ mod tests {
             claimed_session: claimed_session.map(str::to_string),
             agent: agent.map(str::to_string),
             profile: profile.map(str::to_string),
+            cwd: String::new(),
         }
     }
 
@@ -825,6 +850,27 @@ mod tests {
     /// The removal guard's second table. A **fresh** agent tab holds no claim
     /// until its session id exists, so this listing is the only thing that can
     /// stop an account's home being deleted out from under one.
+    #[test]
+    fn a_tab_identity_is_its_folder_and_for_an_agent_tab_its_account() {
+        use crate::rpc::methods::Identity;
+        let state = PtyState::default();
+        {
+            let mut guard = state.0.lock().unwrap();
+            guard.insert("shell".into(), Session { cwd: "/p".into(), ..live_session(None) });
+            guard.insert("agent".into(), Session { cwd: "/p/wt".into(), ..agent_session(None, Some("claude"), None) });
+        }
+        assert_eq!(state.identity("shell"), Some(Identity { agent: None, account: None, cwd: Some("/p".into()) }));
+        assert_eq!(
+            state.identity("agent"),
+            Some(Identity {
+                agent: Some("claude".into()),
+                account: Some(crate::accounts::DEFAULT_PROFILE_ID.into()),
+                cwd: Some("/p/wt".into()),
+            })
+        );
+        assert_eq!(state.identity("closed"), None);
+    }
+
     #[test]
     fn live_agent_tabs_names_only_the_agent_and_account_asked_about() {
         let state = PtyState::default();

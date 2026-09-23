@@ -77,7 +77,7 @@ pub fn build_command(spec: &StartSpec) -> std::process::Command {
     // `pty.rs`'s `command` tabs use it.
     cmd.env("PATH", crate::rpc::path_with_cli(&crate::env::augmented_path()));
     cmd.envs(crate::credential::spawn_env());
-    cmd.envs(crate::rpc::child_env());
+    cmd.envs(crate::rpc::child_env(crate::rpc::auth::Caller::Chat(spec.session_id.clone())));
     for (k, v) in &spec.env {
         cmd.env(k, v);
     }

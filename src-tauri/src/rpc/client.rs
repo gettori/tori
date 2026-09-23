@@ -10,7 +10,7 @@ use std::os::unix::net::UnixStream;
 use serde_json::{json, Value};
 
 use super::frame::{to_line, RpcError};
-use super::{bridge_path, ENV_SOCK, ENV_TOKEN};
+use super::{bridge_path, ENV_CALLER, ENV_SOCK};
 
 // `File` means Tori did not start this process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +28,7 @@ pub struct Endpoint {
 // Env first, the bridge file second, the same order every front uses.
 pub fn locate() -> Option<Endpoint> {
     let env = |key| std::env::var(key).ok().filter(|v: &String| !v.is_empty());
-    if let (Some(sock), Some(token)) = (env(ENV_SOCK), env(ENV_TOKEN)) {
+    if let (Some(sock), Some(token)) = (env(ENV_SOCK), env(ENV_CALLER)) {
         return Some(Endpoint { sock, token, found: Found::Env });
     }
     let (sock, token) = crate::credential::socket_in_file(&bridge_path())?;
