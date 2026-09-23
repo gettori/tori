@@ -6,6 +6,7 @@
 //   node dev/mcp-probe.mjs --argv-check      # two --mcp-config files at once
 //   node dev/mcp-probe.mjs --calibrate       # force a give-up at a known time
 //   node dev/mcp-probe.mjs --scopes          # --mcp-config beside --settings, resume, .mcp.json, strict
+//   node dev/mcp-probe.mjs --acp             # empty then populated mcpServers, per ACP agent (--agent to pick one)
 //   node dev/mcp-probe.mjs --serve           # the stdio MCP server itself
 //   node dev/mcp-probe.mjs --json            # machine-readable, any mode
 //
@@ -30,7 +31,7 @@
 // a probe that stopped reading, and "no ceiling" is the answer that decides
 // whether Tori's `ask_user` may block. A check that cannot fail is not a check.
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,12 +65,13 @@ const TOOLS = [
   },
 ];
 
-function serve(name) {
+function serve(name, mark) {
   const write = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
   const ok = (id, result) => write({ jsonrpc: "2.0", id, result });
   const text = (body) => ({ content: [{ type: "text", text: body }] });
 
   const handle = async (msg) => {
+    if (mark && msg.method) appendFileSync(mark, `${msg.method}\n`);
     switch (msg.method) {
       case "initialize":
         // Echo the client's own version back. The probe has no stake in which
@@ -128,8 +130,8 @@ function serve(name) {
   process.stdin.on("end", () => process.exit(0));
 }
 
-function serverSpec(name) {
-  return { command: process.execPath, args: [SELF, "--serve", "--name", name] };
+function serverSpec(name, mark) {
+  return { command: process.execPath, args: [SELF, "--serve", "--name", name, ...(mark ? ["--mark", mark] : [])] };
 }
 
 function openClient(name) {
@@ -506,6 +508,165 @@ async function scopes() {
   }
 }
 
+// The chat launch lines from `codex.toml` and `pi.toml`, pinned the same way,
+// so a result here is a result for the bridge Tori actually spawns.
+const ACP_AGENTS = {
+  "codex-acp": { program: "npx", args: ["-y", "@agentclientprotocol/codex-acp@1.12.0"] },
+  "pi-acp": { program: "npx", args: ["-y", "pi-acp@0.0.33"] },
+};
+
+function openAcp(spec, cwd) {
+  const child = spawn(spec.program, spec.args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+  const pending = new Map();
+  const frames = [];
+  let nextId = 1;
+  let buffer = "";
+  let stderr = "";
+
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (c) => (stderr += c));
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    buffer += chunk;
+    let nl;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      let msg;
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (msg.id !== undefined && pending.has(msg.id) && !msg.method) {
+        const waiter = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.error) waiter.reject(Object.assign(new Error(msg.error.message), { rpc: msg.error }));
+        else waiter.resolve(msg.result);
+      } else if (msg.method && msg.id === undefined) {
+        frames.push(msg);
+      } else if (msg.method) {
+        // Granted, because a refused permission measures a cancelled call
+        // rather than whether the tool was reachable. Everything else, fs and
+        // terminal included, is refused so the agent never stalls on us.
+        const grant = msg.method === "session/request_permission" && allowOption(msg.params);
+        child.stdin.write(
+          `${JSON.stringify(
+            grant
+              ? { jsonrpc: "2.0", id: msg.id, result: { outcome: { outcome: "selected", optionId: grant } } }
+              : { jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "not served by this probe" } },
+          )}\n`,
+        );
+      }
+    }
+  });
+
+  const call = (method, params, timeoutMs = 120_000) =>
+    new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, { resolve, reject });
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      setTimeout(() => {
+        if (pending.delete(id)) reject(new Error(`${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs).unref?.();
+    });
+
+  return { call, frames, stderrText: () => stderr, close: () => child.kill("SIGKILL") };
+}
+
+function allowOption(params) {
+  const options = params?.options ?? [];
+  const pick =
+    options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always") ?? options[0];
+  return pick?.optionId ?? null;
+}
+
+// ACP's stdio server shape: `env` is a required array of pairs, not a map.
+function acpServer(name, mark) {
+  const spec = serverSpec(name, mark);
+  return { name, command: spec.command, args: spec.args, env: [] };
+}
+
+// One process per attempt, so the populated run cannot inherit anything the
+// empty run negotiated, and a crash in one leaves the other readable.
+async function acpAttempt(spec, cwd, mcpServers, withTurn) {
+  const acp = openAcp(spec, cwd);
+  const out = {};
+  try {
+    const init = await acp.call("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    });
+    out.mcpCapabilities = init.agentCapabilities?.mcpCapabilities ?? null;
+    let session;
+    try {
+      session = await acp.call("session/new", { cwd, mcpServers });
+      out.sessionNew = "ok";
+    } catch (e) {
+      out.sessionNew = e.rpc ? `refused: ${e.rpc.code} ${e.rpc.message}` : `failed: ${e.message}`;
+      out.stderr = acp.stderrText().slice(-400);
+      return out;
+    }
+    if (!withTurn) return out;
+    const prompt = await acp.call(
+      "session/prompt",
+      {
+        sessionId: session.sessionId,
+        prompt: [{ type: "text", text: `Call the ${PING_TOOL} tool exactly once, then reply with what it returned.` }],
+      },
+      240_000,
+    );
+    out.stopReason = prompt?.stopReason ?? null;
+    const calls = new Map();
+    for (const f of acp.frames) {
+      const u = f.params?.update;
+      if (u?.sessionUpdate !== "tool_call" && u?.sessionUpdate !== "tool_call_update") continue;
+      calls.set(u.toolCallId, { ...calls.get(u.toolCallId), ...u });
+    }
+    const probeCalls = [...calls.values()].filter((c) => String(c.title ?? "").includes(PING_TOOL));
+    out.toolCall = probeCalls.length
+      ? probeCalls.map((c) => ({ title: c.title ?? null, status: c.status ?? null, pong: JSON.stringify(c).includes("pong from") }))
+      : "(the turn completed without calling the tool)";
+    out.otherToolCalls = calls.size - probeCalls.length;
+    out.reply = acp.frames
+      .filter((f) => f.params?.update?.sessionUpdate === "agent_message_chunk")
+      .map((f) => f.params.update.content?.text ?? "")
+      .join("")
+      .slice(-300);
+  } catch (e) {
+    out.error = e.rpc ? `${e.rpc.code} ${e.rpc.message}` : e.message;
+    out.stderr = acp.stderrText().slice(-400);
+  } finally {
+    acp.close();
+  }
+  return out;
+}
+
+async function acpServers() {
+  const only = val("--agent", null);
+  const results = {};
+  for (const [name, spec] of Object.entries(ACP_AGENTS)) {
+    if (only && only !== name) continue;
+    const dir = mkdtempSync(join(tmpdir(), "tori-mcp-probe-"));
+    try {
+      const empty = await acpAttempt(spec, dir, [], false);
+      // The server logs every method it receives, so "the agent never started
+      // it" and "it started but the model never called it" read differently.
+      const mark = join(dir, "server-methods.log");
+      // Only a populated attempt whose empty twin succeeded says anything about
+      // MCP. Otherwise the refusal is auth or the bridge, and is reported as such.
+      const populated =
+        empty.sessionNew === "ok" ? await acpAttempt(spec, dir, [acpServer("toriprobe", mark)], true) : null;
+      const serverSaw = existsSync(mark) ? [...new Set(readFileSync(mark, "utf8").split("\n").filter(Boolean))] : [];
+      results[name] = { empty, populated, serverSaw };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return { mode: "acp", ...results };
+}
+
 function report(out) {
   if (AS_JSON) {
     console.log(JSON.stringify(out, null, 2));
@@ -524,14 +685,15 @@ async function main() {
   if (has("--argv-check")) return report(await argvCheck());
   if (has("--calibrate")) return report(await calibrate());
   if (has("--scopes")) return report(await scopes());
-  console.error("pick a mode: --self-check, --argv-check, --calibrate, --scopes, or --serve");
+  if (has("--acp")) return report(await acpServers());
+  console.error("pick a mode: --self-check, --argv-check, --calibrate, --scopes, --acp, or --serve");
   process.exit(2);
 }
 
 // Dispatch sits last: `main` reads consts declared above it, and calling it
 // from higher up the file hits their temporal dead zone.
 if (has("--serve")) {
-  serve(val("--name", "toriprobe"));
+  serve(val("--name", "toriprobe"), val("--mark", null));
 } else {
   main().catch((err) => {
     console.error(err?.stack ?? String(err));
