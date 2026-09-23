@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::asks::{Asks, Waited};
 use super::auth::{Caller, Principal};
@@ -15,11 +15,12 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
-    WaitParams, WorktreeParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, IssueGetParams,
+    IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
+use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock};
@@ -161,6 +162,14 @@ fn refused(message: String) -> RpcError {
     RpcError::new(REFUSED, message)
 }
 
+fn forge_refused(e: crate::forge::ForgeError) -> RpcError {
+    refused(e.to_string())
+}
+
+fn to_json<T: Serialize>(value: T) -> Result<Value, RpcError> {
+    serde_json::to_value(value).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
+}
+
 pub struct TauriBackend {
     pub app: AppHandle,
     pub states: Arc<SessionStates>,
@@ -238,12 +247,23 @@ impl TauriBackend {
         others
     }
 
-    fn create_worktree(&self, principal: &Principal, params: WorktreeParams) -> Result<String, RpcError> {
+    fn project(&self, principal: &Principal, given: Option<String>) -> Result<String, RpcError> {
         let callers =
             || self.identity(principal).cwd.and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()));
-        let project = or_callers(params.project, callers, "project")?;
+        or_callers(given, callers, "project")
+    }
+
+    fn create_worktree(&self, principal: &Principal, params: WorktreeParams) -> Result<String, RpcError> {
+        let project = self.project(principal, params.project)?;
         let create = crate::worktree::create_worktree(self.app.clone(), project, params.branch, params.from);
         tauri::async_runtime::block_on(create).map_err(refused)
+    }
+
+    fn remember_issue(&self, project: &str, branch: &str, issue: &Issue, path: &str) -> Result<(), RpcError> {
+        crate::issues::store::record(project, branch, issue.into())
+            .map_err(|e| refused(format!("the worktree is at {path}, but remembering its issue failed: {e}")))?;
+        let _ = self.app.emit("config://changed", ());
+        Ok(())
     }
 
     fn wait_for_answer(&self, id: &str, timeout: Option<u64>) -> Result<Value, RpcError> {
@@ -344,7 +364,16 @@ impl Backend for TauriBackend {
     }
 
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
-        Ok(json!({ "path": self.create_worktree(principal, params)? }))
+        let project = self.project(principal, params.project)?;
+        // Asked before the worktree exists, so a bad key leaves nothing behind.
+        let issue = params.issue.map(|key| crate::issues::commands::get(&project, &key)).transpose().map_err(forge_refused)?;
+        let branch = params.branch.trim().to_string();
+        let created = WorktreeParams { branch: branch.clone(), project: Some(project.clone()), from: params.from, issue: None };
+        let path = self.create_worktree(principal, created)?;
+        if let Some(issue) = issue {
+            self.remember_issue(&project, &branch, &issue, &path)?;
+        }
+        Ok(json!({ "path": path }))
     }
 
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError> {
@@ -395,7 +424,7 @@ impl Backend for TauriBackend {
         }
         let folder = match params.new_worktree {
             Some(branch) => {
-                self.create_worktree(principal, WorktreeParams { branch, project: params.project, from: params.from })?
+                self.create_worktree(principal, WorktreeParams { branch, project: params.project, from: params.from, issue: None })?
             }
             None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
         };
@@ -483,6 +512,24 @@ impl Backend for TauriBackend {
         }
         let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
         Ok(json!({}))
+    }
+
+    fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError> {
+        let project = self.project(principal, params.project)?;
+        to_json(crate::issues::commands::assigned(&project, params.refresh.unwrap_or(false)).map_err(forge_refused)?)
+    }
+
+    fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError> {
+        let project = self.project(principal, params.project)?;
+        to_json(crate::issues::commands::get(&project, &params.key).map_err(forge_refused)?)
+    }
+
+    fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError> {
+        let project = self.project(principal, params.project)?;
+        let branch = params.branch.trim();
+        let outcome = crate::issues::commands::link(&project, &params.key, branch, params.base.as_deref())
+            .map_err(forge_refused)?;
+        Ok(json!({ "branch": branch, "outcome": outcome }))
     }
 }
 

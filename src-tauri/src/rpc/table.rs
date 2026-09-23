@@ -8,8 +8,9 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams,
-    SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
+    params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
+    IssueGetParams, IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams, WaitParams,
+    WorktreeParams,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,11 +115,35 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "worktree.new",
-        description: "Create a git worktree on a new branch and return its path.",
+        description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue.",
         params: schema::<WorktreeParams>,
         callers: ANYONE,
         refusal: None,
         call: |b, p, v| b.worktree_new(p, params(v)?),
+    },
+    Method {
+        name: "issues.assigned",
+        description: "Open issues assigned to you in a project's repo, then open pull requests waiting on your review, each with its kind.",
+        params: schema::<IssuesAssignedParams>,
+        callers: ANYONE,
+        refusal: None,
+        call: |b, p, v| b.issues_assigned(p, params(v)?),
+    },
+    Method {
+        name: "issues.get",
+        description: "One issue: its title, body, url and the branch name suggested for it.",
+        params: schema::<IssueGetParams>,
+        callers: ANYONE,
+        refusal: None,
+        call: |b, p, v| b.issue_get(p, params(v)?),
+    },
+    Method {
+        name: "issues.link_branch",
+        description: "Make a branch on the host under an issue and fetch it. Safe to retry: a branch already there is reported, not made twice.",
+        params: schema::<LinkBranchParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("making a branch on the host is the spawner's call"),
+        call: |b, p, v| b.issue_link_branch(p, params(v)?),
     },
     Method {
         name: "checkpoints.list",

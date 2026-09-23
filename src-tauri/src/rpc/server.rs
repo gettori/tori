@@ -74,6 +74,39 @@ pub struct WorktreeParams {
     pub project: Option<String>,
     /// The ref the new branch starts from.
     pub from: Option<String>,
+    /// The issue the branch is for, remembered on the unit it makes.
+    pub issue: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IssuesAssignedParams {
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// Ask the host even when a list fetched in the last half minute is at hand.
+    pub refresh: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IssueGetParams {
+    /// The issue's key, the number on GitHub.
+    pub key: String,
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LinkBranchParams {
+    /// The issue's key, the number on GitHub.
+    pub key: String,
+    /// The branch to make on the host, linked under the issue.
+    pub branch: String,
+    /// The branch it starts from, the host's default branch when left out.
+    pub base: Option<String>,
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -193,6 +226,9 @@ pub trait Backend: Send + Sync {
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
     fn ask_answer(&self, params: AskAnswerParams) -> Result<Value, RpcError>;
+    fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError>;
+    fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError>;
+    fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -235,7 +271,7 @@ impl Server {
                 let kind = self.backend.kind(principal);
                 if !method.callers.contains(&kind) {
                     let why = match kind {
-                        CallerKind::Worker => Some(table::WORKER_REFUSAL),
+                        CallerKind::Worker => method.refusal.or(Some(table::WORKER_REFUSAL)),
                         _ => method.refusal,
                     };
                     let why = why.map(|r| format!(": {r}")).unwrap_or_default();
@@ -403,6 +439,15 @@ pub mod tests {
                 "gone" => Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", p.id))),
                 _ => Ok(json!({})),
             }
+        }
+        fn issues_assigned(&self, _: &Principal, p: IssuesAssignedParams) -> Result<Value, RpcError> {
+            Ok(json!({ "project": p.project }))
+        }
+        fn issue_get(&self, _: &Principal, p: IssueGetParams) -> Result<Value, RpcError> {
+            Ok(json!({ "key": p.key }))
+        }
+        fn issue_link_branch(&self, _: &Principal, p: LinkBranchParams) -> Result<Value, RpcError> {
+            Ok(json!({ "branch": p.branch }))
         }
     }
 
@@ -619,6 +664,8 @@ pub mod tests {
             assert_eq!(err.code, REFUSED, "{method}");
             assert!(err.message.contains(table::WORKER_REFUSAL), "{method}: {}", err.message);
         }
+        let link = request("issues.link_branch", json!({"key": "1", "branch": "1-x"}));
+        assert_eq!(server.dispatch(0, &worker, &link).unwrap_err().code, REFUSED);
         let me = server.dispatch(0, &worker, &request("caller", Value::Null)).unwrap();
         assert_eq!(me["kind"], json!("worker"));
         assert!(server.dispatch(0, &worker, &request("ask.create", json!({"question": "q"}))).is_ok());
