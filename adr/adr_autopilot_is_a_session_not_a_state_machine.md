@@ -1,8 +1,8 @@
 ---
 summary: judgment lives in a spawned chat session, mechanics in rust behind tools, so the watcher never spends tokens
 status: current
-updated: 2026-09-23
-source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#205 and #206; no code yet, decision precedes first implementation"
+updated: 2026-09-24
+source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; hard lock from the #201 design 2026-09-24; implemented by gettori/tori#205 and #206; no code yet, decision precedes first implementation"
 ---
 
 # The autopilot is a session, and Rust is the machinery under it
@@ -18,7 +18,8 @@ source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket get
 ## Consequences
 
 - **A Tori spawned session is the exception [[adr_draft_first_chat]] did not have.** That decision says no harness process starts until the first send, because the user's first message is what mints the session. The autopilot has no user first message: Tori spawns it with the brief as the first prompt. The rule still holds for every session a person opens.
-- **Workers are ordinary sessions, not subagents of the autopilot.** [[concept_subagent_lanes]] measured why: a subagent is observable and not addressable, so only the agent that launched one can message it. An autopilot whose workers were subagents could watch them and could not steer them, and the user could not type into one either. Ordinary sessions keep both, which is what makes taking a worker over by typing in it work at all.
+- **Workers are ordinary sessions, not subagents of the autopilot.** [[concept_subagent_lanes]] measured why: a subagent is observable and not addressable, so only the agent that launched one can message it. An autopilot whose workers were subagents could watch them and could not steer them. Ordinary sessions can be steered, and the moment the autopilot stops, every worker is already a session the user can pick up as is, with nothing to convert.
+- **An in-flight worker is locked while the autopilot is on.** The user cannot type into it or close it, and taking one over means stopping the autopilot, which releases every worker at once. The rejected alternative was typing to take a single worker over, with a per worker paused state and a hand back. The lock keeps one driver per session at any time, so the autopilot never steers a session the user is halfway through, and there is no paused state for the watcher to reconcile. Decided in the #201 design, amending #194 and #209.
 - **The autopilot binds an account and a model at spawn like any session.** [[adr_account_is_session_identity]] applies unchanged, so the autopilot is picked from the same agent and catalogue machinery every other session uses rather than getting a path of its own.
 - **Waking is a steer, not a new channel.** The watcher writes one compact line into the session, which is the mechanism [[concept_mid_turn_steer]] already built for reaching a running turn. A worker's transcript never travels: the wake names the item, what happened and the session id, and the autopilot reads the rest itself if it decides to.
 - **The watcher reads Tori's events, never the forge on a timer.** [[concept_forge_rate_budget]] is why: the poll layer is already shaped to one batched call per project per tick, never one per branch unit, and a watcher asking per worker would break that shape. Checks and reviews arrive as events on the same subscription as everything else.
