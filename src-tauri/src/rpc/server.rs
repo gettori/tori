@@ -119,7 +119,7 @@ pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
-    fn session_steer(&self, params: SteerParams) -> Result<Value, RpcError>;
+    fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointParams) -> Result<Value, RpcError>;
@@ -168,7 +168,7 @@ impl Server {
             "sessions.list" => self.backend.sessions_list(params(&req.params)?),
             "session.tail" => self.backend.session_tail(params(&req.params)?),
             "caller" => self.backend.caller(principal),
-            "session.steer" => self.backend.session_steer(params(&req.params)?),
+            "session.steer" => self.backend.session_steer(principal, params(&req.params)?),
             "worktree.new" => self.backend.worktree_new(principal, params(&req.params)?),
             "checkpoints.list" => self.backend.checkpoints_list(params(&req.params)?),
             "checkpoint.diff" => self.backend.checkpoint_diff(params(&req.params)?),
@@ -293,7 +293,7 @@ pub mod tests {
                 Principal::Session(caller) => json!(caller),
             })
         }
-        fn session_steer(&self, p: SteerParams) -> Result<Value, RpcError> {
+        fn session_steer(&self, _: &Principal, p: SteerParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
         fn worktree_new(&self, _: &Principal, p: WorktreeParams) -> Result<Value, RpcError> {
