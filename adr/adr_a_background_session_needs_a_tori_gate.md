@@ -2,7 +2,7 @@
 summary: a background session refuses an outward action without an approval ask_user issued; Tori pre-allows only its own tools
 status: current
 updated: 2026-09-24
-source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#203; narrows the decision recorded as `tori-harness-owns-permissions` (plan \"Defer permissions to the harness, and grow to four harnesses\", branch `chat-fix`, 2026-08-13); no code yet, decision precedes first implementation; the pre-allow narrowing from plan \"tori mcp\" on branch orchestrator, commit cee102ec"
+source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#203; narrows the decision recorded as `tori-harness-owns-permissions` (plan \"Defer permissions to the harness, and grow to four harnesses\", branch `chat-fix`, 2026-08-13); the pre-allow narrowing from plan \"tori mcp\" on branch orchestrator, commit cee102ec; the gate itself from plan \"Approval gate for background sessions\" on branch orchestrator, src-tauri/src/rpc/approvals.rs and rpc/methods.rs (outward)"
 ---
 
 # A background session's outward actions need an approval Tori issued
@@ -43,6 +43,8 @@ The autopilot runs with nobody watching its chat. Its harness prompt either bloc
 - **The refusal has to name what is missing.** A background session that gets a bare denial has no way to tell a policy refusal from a broken tool, and its next move is to retry. The error says which approval it needed.
 - **It partly reverses the reasoning in [[concept_spend_ceilings]].** That page records that the spend gate stopped being available because Tori stopped deciding tool calls at all, so there was no call left to refuse. There is one again, for background sessions. This decision does not revive spend ceilings on it: ceilings are enforced at the turn boundary and that still works, and widening this gate to cost would make it a general permission layer by increments.
 - **The user sees the draft, not just the question.** An approval to post something is only meaningful if what will be posted is on screen, so the question carries the pull request title and body, or the review verdict and its comments.
+- **The approval binds the draft, not only the target.** The outward call is refused unless its title, body, verdict, comments or merge head match what was approved exactly, and a merge is pinned to its head commit, which the host enforces. Only the user settles an approval ask: `ask.answer` from any socket caller is refused on one, so neither a spawner nor a session reaching the socket through `rpc.json` can approve its own post.
+- **Known gaps.** The gate covers Tori's own tools only. A background session can still run `gh pr create` or `curl` from its shell, and `env -u TORI_SOCK -u TORI_CALLER tori pr create` makes it an outside caller that is not gated. And a foreground ACP agent (codex, opencode) raises no permission request for an MCP call, so for those the foreground outward tools run unprompted. Closing either means taking credentials away from the session, which is its own decision.
 
 ## Related
 
