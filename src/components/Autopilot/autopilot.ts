@@ -10,3 +10,45 @@ export const AUTOPILOT_STATES: AutopilotState[] = ["off", "idle", "working", "ne
 export function badgeCount(count: number): string {
   return count > 9 ? "9+" : String(count);
 }
+
+/** A worker's session as its dot shows it. */
+export type WorkerStatus = "working" | "running" | "idle" | "needs";
+
+export type ThreadMessage = { from: "me" | "autopilot" | "system"; text: string };
+
+export type Decision = {
+  kind: DecisionKind;
+  refNumber: number;
+  refKind?: "issue" | "pr";
+  title: string;
+  summary: string;
+  age: string;
+  worker?: string;
+  suggestion?: string;
+};
+
+/** One item the autopilot is running, as a compact row. */
+export type InFlightRow = { refNumber: number; branch: string; status: WorkerStatus; doing: string };
+
+/** One item the autopilot is running, as a card with its recent log. */
+export type WorkerCard = {
+  refNumber: number;
+  title: string;
+  branch: string;
+  /** Line counts, e.g. "+73 -11". */
+  diff: string;
+  status: WorkerStatus;
+  log: string[];
+  /** What it is doing, in words, e.g. "Running tests". */
+  doing: string;
+  /** 0 to 1 while it runs; absent once it waits on the user. */
+  progress?: number;
+};
+
+export type QueuedItem = { refNumber: number; title: string; after: number };
+
+export type ActivityItem = { time: string; text: string; needsYou?: boolean };
+
+export type AutopilotError = { title: string; detail: string };
+
+export type DecisionAction = "approve" | "edit" | "reply" | "dismiss";

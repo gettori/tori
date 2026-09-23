@@ -1,0 +1,150 @@
+@layer components {
+  .popup {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: calc(460px * var(--ui-scale));
+    max-height: 75vh;
+    overflow: hidden;
+    border-radius: var(--tori-radius-xl);
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--tori-font-ui);
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+    flex: none;
+    padding: var(--tori-space-5);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+  }
+
+  .tile {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: calc(30px * var(--ui-scale));
+    height: calc(30px * var(--ui-scale));
+    border-radius: var(--tori-radius-md);
+    background: var(--neutral-subtle);
+    --wheel-ring: var(--canvas-default);
+  }
+
+  .titles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .title {
+    font-size: var(--tori-text-md);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .stateLine {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+  .stateLine[data-state="error"] {
+    color: var(--danger-on-subtle);
+  }
+
+  .kbd {
+    flex: none;
+    padding: 0 var(--tori-space-2);
+    border-radius: var(--tori-radius-sm);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-2xs);
+    color: var(--fg-subtle);
+  }
+
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-6);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--tori-space-5);
+  }
+
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-4);
+  }
+
+  .inFlight {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
+  }
+  .inFlight > :first-child {
+    padding-bottom: var(--tori-space-2);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    height: var(--tori-space-8);
+    padding: 0 var(--tori-space-4);
+    border: none;
+    border-radius: var(--tori-radius-md);
+    background: transparent;
+    color: var(--fg-muted);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .row:hover {
+    background: var(--neutral-hover);
+  }
+  .row:focus-visible {
+    outline: var(--tori-border-thick) solid var(--brand-ring);
+  }
+  .rowRef {
+    flex: none;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-default);
+  }
+  .rowBranch {
+    flex: none;
+    max-width: calc(170px * var(--ui-scale));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+  }
+  .rowDoing {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-sm);
+  }
+  .rowGo {
+    flex: none;
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
+    color: var(--fg-subtle);
+  }
+
+  .foot {
+    flex: none;
+    padding: var(--tori-space-5);
+    border-top: var(--tori-border-thin) solid var(--border-default);
+  }
+}

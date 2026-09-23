@@ -1,0 +1,229 @@
+@layer components {
+  .view {
+    display: grid;
+    grid-template-columns: calc(320px * var(--ui-scale)) minmax(0, 1fr) calc(300px * var(--ui-scale));
+    height: 100%;
+    min-height: 0;
+    background: var(--canvas-default);
+    font-family: var(--tori-font-ui);
+  }
+
+  .workers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-5);
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--tori-space-6) var(--tori-space-6);
+    background: var(--canvas-card);
+    border-right: var(--tori-border-thin) solid var(--border-default);
+  }
+
+  .empty {
+    padding: var(--tori-space-6);
+    border-radius: var(--tori-radius-lg);
+    border: var(--tori-border-thin) dashed var(--border-strong);
+    font-size: var(--tori-text-sm);
+    line-height: var(--tori-line-normal);
+    color: var(--fg-muted);
+  }
+
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-5);
+    overflow: hidden;
+    border-radius: var(--tori-radius-lg);
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+  }
+  .card[data-status="needs"] {
+    border-color: var(--needs-you-border);
+  }
+
+  .cardHead {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    min-width: 0;
+  }
+  .cardRef {
+    flex: none;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-default);
+  }
+  .cardTitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-sm);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .cardBranch {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+  }
+
+  .log {
+    padding: var(--tori-space-3) var(--tori-space-4);
+    border-radius: var(--tori-radius-md);
+    background: var(--neutral-subtle);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+  .logLine {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+
+  .cardFoot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tori-space-4);
+  }
+  .doing {
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+  .doing[data-status="needs"] {
+    color: var(--needs-you-on-subtle);
+  }
+  .watchIcon {
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
+  }
+
+  .progress {
+    --card-fill: 0;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 3px;
+    background: var(--status-progress);
+    transform: scaleX(var(--card-fill));
+    transform-origin: left;
+  }
+
+  .queued {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    min-height: calc(34px * var(--ui-scale));
+    padding: 0 var(--tori-space-5);
+    border-radius: var(--tori-radius-lg);
+    border: var(--tori-border-thin) dashed var(--border-strong);
+  }
+  .queuedTitle {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+  .queuedAfter {
+    flex: none;
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+  }
+
+  .center {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+  }
+  .column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-6);
+    width: 100%;
+    max-width: calc(720px * var(--ui-scale));
+    min-height: 0;
+    padding: var(--tori-space-6) var(--tori-space-7);
+    box-sizing: border-box;
+  }
+  /* Pinned to the bottom by margin, not by justify-content: flex-end, which
+     puts the top of an overflowing thread out of scroll reach. */
+  .scroll {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-6);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .scroll > :first-child {
+    margin-top: auto;
+  }
+
+  .activity {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-5);
+    min-height: 0;
+    padding: var(--tori-space-6);
+    border-left: var(--tori-border-thin) solid var(--border-default);
+  }
+  .activityList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-4);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .activityRow {
+    display: grid;
+    grid-template-columns: calc(40px * var(--ui-scale)) minmax(0, 1fr);
+    gap: var(--tori-space-4);
+    font-size: var(--tori-text-sm);
+    line-height: var(--tori-line-normal);
+  }
+  .activityTime {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+  }
+  .activityText {
+    color: var(--fg-muted);
+  }
+  .activityRow[data-needs-you="true"] .activityTime {
+    color: var(--needs-you-on-subtle);
+  }
+  .activityRow[data-needs-you="true"] .activityText {
+    color: var(--fg-default);
+  }
+
+  .shield {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    border-radius: var(--tori-radius-md);
+    background: var(--neutral-subtle);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+  .shieldIcon {
+    flex: none;
+    width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
+    color: var(--success-fg);
+  }
+}
