@@ -10,6 +10,7 @@ mod auth;
 mod backstop;
 mod blame;
 mod chat;
+mod cli;
 mod checkpoint;
 mod config;
 mod conflict;
@@ -138,6 +139,11 @@ pub fn run() {
         // with the whole environment of the op, askpass markers included, so
         // the argv marker is the only thing telling the two modes apart.
         std::process::exit(credential::run_helper());
+    }
+
+    // Ahead of the env markers, which a `tori` run from a git hook inherits.
+    if cli::is_cli() {
+        std::process::exit(cli::run());
     }
 
     if askpass::is_helper() {

@@ -75,7 +75,7 @@ pub fn build_command(spec: &StartSpec) -> std::process::Command {
     // No login shell runs to set PATH for a directly-spawned child, so the
     // agent binary would be unfindable without this - the same reason
     // `pty.rs`'s `command` tabs use it.
-    cmd.env("PATH", crate::env::augmented_path());
+    cmd.env("PATH", crate::rpc::path_with_cli(&crate::env::augmented_path()));
     cmd.envs(crate::credential::spawn_env());
     cmd.envs(crate::rpc::child_env());
     for (k, v) in &spec.env {

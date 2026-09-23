@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-use super::frame::{RpcError, INTERNAL_ERROR};
+use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{Backend, ListParams, TailParams};
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
@@ -103,6 +103,13 @@ impl TauriBackend {
         }
         live
     }
+
+    fn agent_of(&self, id: &str) -> Option<String> {
+        if let Some(live) = self.live().remove(id).filter(|l| !l.agent.is_empty()) {
+            return Some(live.agent);
+        }
+        listed_sessions(&self.app.state::<SessionIndex>(), None).into_iter().find(|m| m.id == id).map(|m| m.agent)
+    }
 }
 
 impl Backend for TauriBackend {
@@ -116,8 +123,12 @@ impl Backend for TauriBackend {
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
-        let from = history_source(&params.id, &params.agent);
-        let events = tail(read_history(&params.id, &from, &params.agent, None), params.limit.unwrap_or(DEFAULT_TAIL_LIMIT));
+        let agent = match params.agent {
+            Some(agent) => agent,
+            None => self.agent_of(&params.id).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
+        };
+        let from = history_source(&params.id, &agent);
+        let events = tail(read_history(&params.id, &from, &agent, None), params.limit.unwrap_or(DEFAULT_TAIL_LIMIT));
         serde_json::to_value(events).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
 }
