@@ -1,0 +1,115 @@
+@layer components {
+  .wheel {
+    --wheel-size: 14px;
+    --wheel-px: calc(var(--wheel-size) * var(--ui-scale));
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: var(--wheel-px);
+    height: var(--wheel-px);
+    color: var(--fg-muted);
+  }
+
+  .wheel[data-active="true"] {
+    color: var(--progress-on-subtle);
+  }
+  .wheel[data-state="working"][data-active="false"] {
+    color: var(--status-progress);
+  }
+  .wheel[data-state="off"] {
+    color: var(--fg-subtle);
+  }
+  .wheel[data-state="needs"] {
+    color: var(--needs-you-on-subtle);
+  }
+  .wheel[data-state="error"] {
+    color: var(--danger-on-subtle);
+  }
+
+  .glyph {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .wheel[data-state="working"] .glyph {
+    animation: wheel-turn 4.5s linear infinite;
+  }
+
+  @keyframes wheel-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .strike {
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: 50%;
+    height: 1.5px;
+    border-radius: var(--tori-radius-sm);
+    background: currentColor;
+    /* Any 45 degree strike lies on a spoke, so it cuts a gap to read as one. */
+    box-shadow: 0 0 0 1.5px var(--wheel-ring, var(--canvas-card));
+    transform: rotate(-45deg);
+  }
+
+  .badge,
+  .error,
+  .stillDot {
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--tori-font-ui);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--canvas-default);
+    /* The surface the marks lift off; a host on another surface sets it. */
+    box-shadow: 0 0 0 1.5px var(--wheel-ring, var(--canvas-card));
+  }
+
+  .badge {
+    top: calc(-6px * var(--ui-scale));
+    right: calc(-9px * var(--ui-scale));
+    min-width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
+    padding: 0 var(--tori-space-1);
+    border-radius: var(--tori-radius-pill);
+    background: var(--status-needs-you);
+    font-size: var(--tori-text-2xs);
+  }
+
+  .error {
+    right: calc(-6px * var(--ui-scale));
+    bottom: calc(-4px * var(--ui-scale));
+    width: calc(11px * var(--ui-scale));
+    height: calc(11px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--danger-fg);
+    font-size: calc(8.5px * var(--ui-scale));
+  }
+
+  /* Stands in for the turn when motion is reduced, so working still differs
+     from idle by shape. */
+  .stillDot {
+    display: none;
+    right: calc(-3px * var(--ui-scale));
+    bottom: calc(-2px * var(--ui-scale));
+    width: calc(6px * var(--ui-scale));
+    height: calc(6px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--status-progress);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wheel[data-state="working"] .glyph {
+      animation: none;
+    }
+    .stillDot {
+      display: flex;
+    }
+  }
+}

@@ -1,0 +1,86 @@
+@layer components {
+  .card {
+    --arrival-ms: 6000ms;
+    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "dot title buttons"
+      "dot meta meta";
+    align-items: center;
+    column-gap: var(--tori-space-4);
+    row-gap: var(--tori-space-2);
+    width: calc(320px * var(--ui-scale));
+    padding: var(--tori-space-5);
+    overflow: hidden;
+    border-radius: var(--tori-radius-xl);
+    background: var(--canvas-card);
+    border: var(--tori-border-thin) solid var(--needs-you-border);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--tori-font-ui);
+  }
+
+  .dot {
+    grid-area: dot;
+    align-self: start;
+    margin-top: var(--tori-space-2);
+    width: calc(8px * var(--ui-scale));
+    height: calc(8px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--status-needs-you);
+  }
+
+  .title {
+    grid-area: title;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-md);
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+
+  .buttons {
+    grid-area: buttons;
+    display: inline-flex;
+    gap: var(--tori-space-3);
+  }
+
+  .meta {
+    grid-area: meta;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+
+  /* Full width at rest and shrinks by animation, so reduced motion (which ends
+     an animation on its base style, not its last frame) leaves it full. */
+  .countdown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--tori-border-thick);
+    background: var(--status-needs-you);
+    transform-origin: left;
+    animation: arrival-countdown var(--arrival-ms) linear forwards;
+  }
+
+  @keyframes arrival-countdown {
+    to {
+      transform: scaleX(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .countdown {
+      animation: none;
+    }
+  }
+}
