@@ -27,6 +27,7 @@ use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
+use crate::rpc::hub::Channel;
 
 /// What a spawn call actually did, so a caller can tell a fresh session from a
 /// re-subscribe without inspecting the map itself.
@@ -48,6 +49,7 @@ struct Entry {
     pacer: Arc<Pacer>,
     transport: Arc<Mutex<Box<dyn AgentTransport>>>,
     tab_id: String,
+    cwd: String,
     /// Bumped on every re-subscribe. Not used for routing (the listener swap
     /// does that); it exists so a late callback from a previous subscription
     /// can be recognised as stale rather than acted on.
@@ -63,6 +65,41 @@ struct Entry {
 }
 
 type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
+
+/// Where session lifecycle events go: the app socket's hub once it is up.
+pub type Publish = Arc<dyn Fn(&Channel, serde_json::Value) + Send + Sync>;
+
+/// Says `started` and `ended` exactly once each, in that order.
+///
+/// Gated on a set of its own rather than on the session map, because the map
+/// does not order them: `spawn` inserts only after `transport.start`, so a
+/// child that dies at once has its fatal event through `wrap` before there is
+/// an entry to remove.
+#[derive(Default, Clone)]
+struct Lifecycle {
+    publish: Arc<std::sync::OnceLock<Publish>>,
+    announced: Arc<Mutex<HashSet<String>>>,
+}
+
+impl Lifecycle {
+    fn started(&self, id: &str, agent: &str, cwd: &str) {
+        if !lock(&self.announced).insert(id.to_string()) {
+            return;
+        }
+        if let Some(publish) = self.publish.get() {
+            publish(&Channel::Sessions, serde_json::json!({ "kind": "started", "id": id, "agent": agent, "cwd": cwd }));
+        }
+    }
+
+    fn ended(&self, id: &str) {
+        if !lock(&self.announced).remove(id) {
+            return;
+        }
+        if let Some(publish) = self.publish.get() {
+            publish(&Channel::Sessions, serde_json::json!({ "kind": "ended", "id": id }));
+        }
+    }
+}
 
 /// The frames that say what a session *is*, kept so a re-subscribe can be told.
 ///
@@ -241,6 +278,7 @@ pub struct ChatHost {
     /// written from the same place: the sink wrapper, which every live event
     /// passes through exactly once.
     outputs: Arc<Mutex<HashMap<String, OutputCache>>>,
+    lifecycle: Lifecycle,
 }
 
 /// Tauri state wrapper, matching `PtyState`'s shape.
@@ -279,7 +317,13 @@ impl ChatHost {
             bridges: Arc::default(),
             identity: Arc::default(),
             outputs: Arc::default(),
+            lifecycle: Lifecycle::default(),
         }
+    }
+
+    /// Set once, when the app socket comes up. A host with none publishes nothing.
+    pub fn set_publisher(&self, publish: Publish) {
+        let _ = self.lifecycle.publish.set(publish);
     }
 
     /// Attach a session's capture bridge, once `chat_spawn` has bound its
@@ -498,11 +542,15 @@ impl ChatHost {
         let into_pacer = pacer.clone();
         let sink = new_sink(Box::new(move |event| into_pacer.deliver(event)));
         let mut transport = make();
+        let cwd = spec.cwd.clone();
+        // Before the start, so a child that dies immediately still ends after it began.
+        self.lifecycle.started(session_id, &self.registry.agent_of(session_id).unwrap_or_default(), &cwd);
         if let Err(e) = transport.start(spec, sink.clone()) {
             // The claim was taken before the spawn so a refusal never starts a
             // process; a spawn that then fails has to give it back, or the id
             // stays held by a session that does not exist.
             self.registry.release(session_id, tab_id);
+            self.lifecycle.ended(session_id);
             return Err(e);
         }
         if let Some(pid) = transport.child_pid() {
@@ -517,6 +565,7 @@ impl ChatHost {
                 pacer,
                 transport: Arc::new(Mutex::new(transport)),
                 tab_id: tab_id.to_string(),
+                cwd,
                 generation: 0,
                 mirror,
             },
@@ -548,6 +597,7 @@ impl ChatHost {
         let bridges = self.bridges.clone();
         let identity = self.identity.clone();
         let outputs = self.outputs.clone();
+        let lifecycle = self.lifecycle.clone();
         let id = session_id.to_string();
         Box::new(move |mut event| {
             let fatal = ends_session(&event);
@@ -601,6 +651,7 @@ impl ChatHost {
                 if let Some(tab) = tab {
                     registry.release(&id, &tab);
                 }
+                lifecycle.ended(&id);
             }
         })
     }
@@ -701,6 +752,7 @@ impl ChatHost {
         let Some(entry) = entry else { return Ok(()) };
         let result = lock(&entry.transport).close();
         self.registry.release(session_id, &entry.tab_id);
+        self.lifecycle.ended(session_id);
         result
     }
 
@@ -745,6 +797,11 @@ impl ChatHost {
         ids
     }
 
+    /// Every live session with the cwd it was started in.
+    pub fn live_sessions(&self) -> Vec<(String, String)> {
+        lock(&self.sessions).iter().map(|(id, e)| (id.clone(), e.cwd.clone())).collect()
+    }
+
     #[cfg(test)]
     fn generation(&self, session_id: &str) -> Option<u64> {
         lock(&self.sessions).get(session_id).map(|e| e.generation)
@@ -785,10 +842,19 @@ mod tests {
         /// back, and how often it was asked.
         can_replay: bool,
         replays: Arc<AtomicU32>,
+        /// A child that dies before `start` returns, or never starts at all.
+        dies_on_start: bool,
+        refuses_start: bool,
     }
 
     impl AgentTransport for Puppet {
-        fn start(&mut self, _spec: StartSpec, sink: Sink) -> Result<(), String> {
+        fn start(&mut self, spec: StartSpec, sink: Sink) -> Result<(), String> {
+            if self.refuses_start {
+                return Err("no such binary".into());
+            }
+            if self.dies_on_start {
+                emit(&sink, ChatEvent::SessionEnded { session_id: spec.session_id, reason: None });
+            }
             if let Some(out) = &self.sink_out {
                 *lock(out) = Some(sink);
             }
@@ -1805,5 +1871,71 @@ mod tests {
         assert!(err.contains("no live session"), "{err}");
 
         host.dispatch(&ChatCommand::Close { session_id: "s-q".into() }).unwrap();
+    }
+
+    /// What the app socket's `sessions` channel was told, in order.
+    fn published(host: &ChatHost) -> Arc<Mutex<Vec<(String, String)>>> {
+        let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
+        let into = seen.clone();
+        host.set_publisher(Arc::new(move |channel, data| {
+            assert_eq!(*channel, Channel::Sessions);
+            lock(&into).push((data["kind"].as_str().unwrap().to_string(), data["id"].as_str().unwrap().to_string()));
+        }));
+        seen
+    }
+
+    fn began_then_ended(id: &str) -> Vec<(String, String)> {
+        vec![("started".into(), id.into()), ("ended".into(), id.into())]
+    }
+
+    #[test]
+    fn a_closed_session_is_announced_once_each_way_and_a_rewire_says_nothing() {
+        let host = ChatHost::at(temp_store());
+        let seen = published(&host);
+        host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || Box::new(Puppet::default()))
+            .unwrap();
+        host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || unreachable!()).unwrap();
+        host.close("s-life").unwrap();
+        host.close("s-life").unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-life"));
+    }
+
+    #[test]
+    fn a_fatal_event_ends_it_and_a_later_close_does_not_end_it_again() {
+        let host = ChatHost::at(temp_store());
+        let seen = published(&host);
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+        host.spawn_plain("s-fatal", "tab", Collector::default().emit(), spec("s-fatal"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+        let sink = lock(&holder).clone().unwrap();
+        emit(&sink, ChatEvent::SessionEnded { session_id: "s-fatal".into(), reason: None });
+        host.close("s-fatal").unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-fatal"));
+    }
+
+    #[test]
+    fn a_child_that_dies_at_once_still_ends_after_it_began() {
+        let host = ChatHost::at(temp_store());
+        let seen = published(&host);
+        host.spawn_plain("s-quick", "tab", Collector::default().emit(), spec("s-quick"), || {
+            Box::new(Puppet { dies_on_start: true, ..Default::default() })
+        })
+        .unwrap();
+        host.close("s-quick").unwrap();
+        assert_eq!(*lock(&seen), began_then_ended("s-quick"));
+    }
+
+    #[test]
+    fn a_start_that_fails_is_announced_as_ended() {
+        let host = ChatHost::at(temp_store());
+        let seen = published(&host);
+        let result = host.spawn_plain("s-never", "tab", Collector::default().emit(), spec("s-never"), || {
+            Box::new(Puppet { refuses_start: true, ..Default::default() })
+        });
+        assert!(result.is_err());
+        assert_eq!(*lock(&seen), began_then_ended("s-never"));
     }
 }

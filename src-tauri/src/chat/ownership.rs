@@ -530,6 +530,25 @@ impl Registry {
         guard.get(session_id).map(|c| c.profile.clone())
     }
 
+    pub fn agent_of(&self, session_id: &str) -> Option<String> {
+        let guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        guard.get(session_id).map(|c| c.agent.clone())
+    }
+
+    /// Every session this Tori process holds, as `(id, agent)`: chat sessions and
+    /// agents in terminal tabs alike.
+    pub fn held_here(&self) -> Vec<(String, String)> {
+        let guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        let me = std::process::id();
+        guard.iter().filter(|(_, c)| c.tori_pid == me).map(|(id, c)| (id.clone(), c.agent.clone())).collect()
+    }
+
     /// Move an existing claim onto the tab that has just taken the session over.
     /// See [`retag`] for why a rewire has to do this at all.
     pub fn retag(&self, session_id: &str, tab_id: &str) {

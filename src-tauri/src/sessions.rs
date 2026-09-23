@@ -566,7 +566,7 @@ fn acp_meta(s: crate::chat::acp_sessions::AcpSession) -> SessionMeta {
 
 /// Does a session's recorded `cwd` belong to `folder` (the folder itself or a
 /// nested subdir)? This is the cwd-anchored, prefix-matching rule.
-fn cwd_matches(cwd: &str, folder: &str) -> bool {
+pub(crate) fn cwd_matches(cwd: &str, folder: &str) -> bool {
     let c = norm(cwd);
     let f = norm(folder);
     c == f || c.starts_with(&format!("{f}/"))
@@ -599,6 +599,23 @@ fn filter_sort(all: Vec<SessionMeta>, folder: &str, inclusive: bool) -> Vec<Sess
 /// the frontend has no use for an unscoped list.
 pub(crate) fn all_sessions(index: &SessionIndex) -> Vec<SessionMeta> {
     ensure_index(index, &crate::accounts::load())
+}
+
+/// A listing for the app socket: every agent and account, stamped like
+/// `list_sessions`, newest first, narrowed to `folder` and everything under it
+/// (Topic worktrees included) when one is given.
+pub(crate) fn listed_sessions(index: &SessionIndex, folder: Option<&str>) -> Vec<SessionMeta> {
+    let accounts = crate::accounts::load();
+    let all = ensure_index(index, &accounts);
+    let rows = match folder {
+        Some(folder) => filter_sort(all, folder, true),
+        None => {
+            let mut all = all;
+            all.sort_by(|a, b| b.last_active.cmp(&a.last_active));
+            all
+        }
+    };
+    stamp_listing(rows, &load_overlay(), &accounts)
 }
 
 /// The ids of every session anchored at `folder` or under it.

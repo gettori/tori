@@ -40,6 +40,7 @@ pub mod palette;
 mod patch;
 mod presence;
 mod pty;
+mod rpc;
 mod scratch;
 mod search;
 mod sessions;
@@ -65,7 +66,7 @@ use lsp::LspState;
 use presence::TrayState;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch, TouchedIndex};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::menu::Menu;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{Emitter, Manager};
@@ -190,6 +191,17 @@ pub fn run() {
                     app.manage(askpass::AskpassState(inner));
                 }
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
+            }
+
+            // The app level socket the CLI and MCP fronts talk to. Fail-soft like
+            // the askpass bridge: without it Tori runs, nothing outside can ask.
+            match rpc::start(app.handle().clone()) {
+                Ok(state) => {
+                    let hub = state.hub.clone();
+                    app.state::<ChatState>().0.set_publisher(Arc::new(move |channel, data| hub.publish(channel, data)));
+                    app.manage(state);
+                }
+                Err(e) => eprintln!("tori: rpc socket failed to start: {e}"),
             }
 
             // Menu-bar tray (Finding F3/presence): starts empty (no sessions
@@ -612,6 +624,9 @@ pub fn run() {
                 // its own process group so that killing it takes the debuggee
                 // down, which also means quitting does not reach it.
                 app.state::<DapState>().shutdown();
+                if let Some(rpc) = app.try_state::<rpc::RpcState>() {
+                    rpc.shutdown();
+                }
             }
         });
 }
