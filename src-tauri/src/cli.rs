@@ -8,8 +8,9 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 11] = [
+const COMMANDS: [&str; 12] = [
     "sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
+    "ask",
 ];
 
 const USAGE: &str = "usage:
@@ -25,7 +26,9 @@ const USAGE: &str = "usage:
   tori spawn [--agent <id>] [--account <id>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
              [--prompt <text>] [--attach <path>]... [--background] [--json]
   tori open <path> [--line <n>]
-  tori budget [<id>] [--folder <path>] [--json]";
+  tori budget [<id>] [--folder <path>] [--json]
+  tori ask <question>... [--option <text>]... [--timeout <secs>]
+  tori ask --wait <id> [--timeout <secs>]";
 
 pub fn is_cli() -> bool {
     std::env::args().nth(1).is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
@@ -37,6 +40,12 @@ pub fn run() -> i32 {
         Ok(()) => 0,
         // A reader that went away (`tori events | head`) is a normal end.
         Err(Failure::Io(e)) if e.kind() == io::ErrorKind::BrokenPipe => 0,
+        // Not an error, but a script has to tell it from an answer.
+        Err(Failure::Unanswered(id)) => {
+            println!("{id}");
+            eprintln!("tori: no answer yet, poll with: tori ask --wait {id}");
+            2
+        }
         Err(e) => {
             eprintln!("tori: {e}");
             1
@@ -48,6 +57,7 @@ enum Failure {
     Usage(String),
     Client(client::ClientError),
     Io(io::Error),
+    Unanswered(String),
 }
 
 impl std::fmt::Display for Failure {
@@ -56,6 +66,7 @@ impl std::fmt::Display for Failure {
             Failure::Usage(message) => write!(f, "{message}\n{USAGE}"),
             Failure::Client(e) => write!(f, "{e}"),
             Failure::Io(e) => write!(f, "{e}"),
+            Failure::Unanswered(id) => write!(f, "no answer yet for {id}"),
         }
     }
 }
@@ -100,6 +111,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "spawn" => spawn(rest),
         "open" => open(rest),
         "budget" => budget(rest),
+        "ask" => ask(rest),
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
@@ -455,6 +467,25 @@ fn budget(args: &[String]) -> Result<(), Failure> {
         writeln!(out, "{kind}  {used}  {}", window["state"].as_str().unwrap_or(""))?;
     }
     Ok(())
+}
+
+fn ask(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &["option", "timeout", "wait"], &[])?;
+    let timeout = p.number("timeout")?;
+    let asked = match p.value("wait") {
+        Some(id) if p.positional.is_empty() => connect()?.call("ask.wait", json!({ "id": id, "timeout": timeout }))?,
+        Some(_) => return Err(usage("ask --wait takes only the id to poll")),
+        None if p.positional.is_empty() => return Err(usage("ask needs a question")),
+        None => {
+            let options = p.flags.get("option").cloned().unwrap_or_default();
+            let params = json!({ "question": p.positional.join(" "), "options": options, "timeout": timeout });
+            connect()?.call("ask.create", params)?
+        }
+    };
+    match asked["answer"].as_str() {
+        Some(answer) => Ok(writeln!(io::stdout().lock(), "{answer}")?),
+        None => Err(Failure::Unanswered(asked["id"].as_str().unwrap_or("").to_string())),
+    }
 }
 
 fn events(args: &[String]) -> Result<(), Failure> {

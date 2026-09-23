@@ -9,11 +9,12 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
+use super::asks::{Asks, Waited};
 use super::auth::{Caller, Principal};
 use super::bridge::Bridge;
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
+    AskParams, AskWaitParams, Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
     WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
@@ -25,6 +26,7 @@ use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 
 const DEFAULT_LIST_LIMIT: usize = 50;
 const DEFAULT_TAIL_LIMIT: usize = 50;
+const DEFAULT_ASK_WAIT: u64 = 60;
 
 #[derive(Serialize)]
 struct Row {
@@ -155,6 +157,7 @@ pub struct TauriBackend {
     pub app: AppHandle,
     pub states: Arc<SessionStates>,
     pub bridge: Arc<Bridge>,
+    pub asks: Arc<Asks>,
 }
 
 impl TauriBackend {
@@ -233,6 +236,14 @@ impl TauriBackend {
         let project = or_callers(params.project, callers, "project")?;
         let create = crate::worktree::create_worktree(self.app.clone(), project, params.branch, params.from);
         tauri::async_runtime::block_on(create).map_err(refused)
+    }
+
+    fn wait_for_answer(&self, id: &str, timeout: Option<u64>) -> Result<Value, RpcError> {
+        match self.asks.wait(id, std::time::Duration::from_secs(timeout.unwrap_or(DEFAULT_ASK_WAIT))) {
+            Waited::Answered(answer) => Ok(json!({ "id": id, "answer": answer })),
+            Waited::Pending => Ok(json!({ "id": id, "answer": null })),
+            Waited::Unknown => Err(RpcError::new(INVALID_PARAMS, format!("no ask {id}, or its answer was already read"))),
+        }
     }
 
     fn agent_of(&self, id: &str) -> Option<String> {
@@ -395,6 +406,22 @@ impl Backend for TauriBackend {
             "account": account,
             "quota": quota,
         }))
+    }
+
+    fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError> {
+        let Principal::Session(Caller::Chat(session)) = principal else {
+            return Err(refused("ask shows its card in a chat panel, so only a chat's shell can ask for now".into()));
+        };
+        let ask = self.asks.create(session.clone(), params.question, params.options.unwrap_or_default());
+        if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
+            self.asks.forget(&ask.id);
+            return Err(e);
+        }
+        self.wait_for_answer(&ask.id, params.timeout)
+    }
+
+    fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError> {
+        self.wait_for_answer(&params.id, params.timeout)
     }
 }
 

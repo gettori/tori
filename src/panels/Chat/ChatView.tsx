@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
@@ -34,6 +34,8 @@ import {
 import type { Answer } from "./PermissionPrompt";
 import type { HunkRef } from "./ToolCallCard";
 import Button from "../../components/Button/Button";
+import AskCard from "./AskCard";
+import { asksFor } from "../../utils/socketAsks";
 import { type SessionDetail } from "./SessionStats";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import {
@@ -1116,7 +1118,7 @@ export default function ChatView(props: {
       agentId: props.agentId,
       folderPath: props.workspace,
       tabId: props.tabId,
-      status: chatStatus(state),
+      status: asksFor(props.sessionId).length ? "waitingForAnswer" : chatStatus(state),
       background: outstandingBackground(state),
       visible: props.active,
     });
@@ -2141,6 +2143,8 @@ export default function ChatView(props: {
       {/* Selected transcript text goes into the reply as a quote. Scoped to this
           transcript's root, since every attached tab stays mounted. */}
       <QuoteSelection root={() => transcriptEl} onQuote={(text) => composer?.insertBlock(quoteBlock(text))} />
+
+      <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} />}</For>
 
       <PlanCard items={state.plan} />
 

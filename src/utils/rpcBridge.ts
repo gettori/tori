@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { asTabProfile } from "./agentHealth";
 import { quotaBand, quotaState } from "./chatRateLimit";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
+import { loadPendingAsks, showAsk, type SocketAsk } from "./socketAsks";
 import { usageWarnAt } from "./usageSettings";
 import { windowsFor } from "./usageStore";
 
@@ -21,8 +22,8 @@ export function handleRpc<P>(method: string, handler: (params: P) => unknown): (
   };
 }
 
-export function serveRpcBridge(): Promise<UnlistenFn> {
-  return listen<Request>("rpc://request", async ({ payload: { rid, method, params } }) => {
+export async function serveRpcBridge(): Promise<UnlistenFn> {
+  const unlisten = await listen<Request>("rpc://request", async ({ payload: { rid, method, params } }) => {
     try {
       const handler = handlers.get(method);
       if (!handler) throw new Error(`the Tori window cannot answer ${method}`);
@@ -33,6 +34,8 @@ export function serveRpcBridge(): Promise<UnlistenFn> {
       await invoke("rpc_reply", { rid, error }).catch((failed) => console.error(`rpc_reply for ${method}:`, failed));
     }
   });
+  void loadPendingAsks();
+  return unlisten;
 }
 
 handleRpc("window.open", ({ path, line }: { path: string; line: number | null }) => {
@@ -48,4 +51,9 @@ handleRpc("usage.windows", ({ agent, account }: { agent: string; account: string
     const state = quotaState(w, warnAt, now);
     return { kind: w.kind, utilization: w.utilization, resetsAt: w.resetsAt, state, band: quotaBand(w, state) };
   });
+});
+
+handleRpc("ask.show", (ask: SocketAsk) => {
+  showAsk(ask);
+  return {};
 });
