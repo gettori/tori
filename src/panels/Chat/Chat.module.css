@@ -1701,6 +1701,24 @@ button.diffHunkHeader:hover {
   min-height: 0;
 }
 
+.draftOrigin {
+  padding: 0 var(--tori-space-5) var(--tori-space-3);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.draftOriginLink {
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--brand-default);
+  cursor: pointer;
+}
+.draftOriginLink:hover {
+  color: var(--brand-strong);
+  text-decoration: underline;
+}
+
 .refusal {
   color: var(--fg-default);
 }

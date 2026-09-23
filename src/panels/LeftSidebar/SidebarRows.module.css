@@ -431,6 +431,24 @@
 
 /* The Tag chip on a member unit: an IconButton with its border cleared, so the
    row reads a glyph rather than a control until the pointer finds it. */
+/* The issue a unit was started from, as its key. Text rather than a glyph:
+   the key is the thing worth reading. */
+.row .issueChip {
+  flex: none;
+  margin-left: calc(4px * var(--ui-scale));
+  padding: 0 calc(3px * var(--ui-scale));
+  background: none;
+  border: none;
+  border-radius: var(--tori-radius-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.row .issueChip:hover {
+  color: var(--brand-strong);
+}
+
 .row .topicChip,
 .row .topicChip:hover:not(:disabled) {
   flex: none;

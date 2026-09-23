@@ -263,6 +263,17 @@ export function setLinkedScratch(key: ComposerKey, path: string | null) {
   setLinkedScratches((prev) => (path ? { ...prev, [key]: path } : dropKey(prev, key)));
 }
 
+export type DraftOrigin = { display: string; url: string };
+const [origins, setOrigins] = createSignal<Record<ComposerKey, DraftOrigin>>({});
+
+export function draftOriginFor(key: ComposerKey): DraftOrigin | null {
+  return origins()[key] ?? null;
+}
+
+export function setDraftOrigin(key: ComposerKey, origin: DraftOrigin | null) {
+  setOrigins((prev) => (origin ? { ...prev, [key]: origin } : dropKey(prev, key)));
+}
+
 export function draftFor(key: ComposerKey): string {
   return drafts()[key] ?? "";
 }
@@ -304,6 +315,7 @@ export function clearComposer(key: ComposerKey) {
   setAutoSend((prev) => dropKey(prev, key));
   setCounters((prev) => dropKey(prev, key));
   setSeeded((prev) => dropKey(prev, key));
+  setOrigins((prev) => dropKey(prev, key));
 }
 
 function dropKey<T>(record: Record<string, T>, key: string): Record<string, T> {

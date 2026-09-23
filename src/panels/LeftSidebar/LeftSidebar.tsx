@@ -12,7 +12,8 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
-import AddBranchDialog, { type BranchPick } from "../../components/Dialogs/AddBranchDialog";
+import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../components/Dialogs/AddBranchDialog";
+import { errorText, issueDraft, unitIssueOf, type Issue, type IssueRef, type LinkOutcome, type UnitIssue } from "../../utils/issues";
 import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
@@ -226,6 +227,7 @@ type BranchUnit = {
   branch: string | null;
   kind: string; // "worktree" | "plain" | "plain-dir" | "incomplete"
   isCurrent: boolean;
+  issue?: UnitIssue;
 };
 type Branch = { name: string; current: boolean };
 // `icon`/`iconFile` are what the user chose (a Lucide name, or an image in the
@@ -669,6 +671,7 @@ export default function LeftSidebar(props: {
     busy: boolean;
     prefill?: string;
     baseDefault?: string;
+    issues: boolean;
   } | null>(null);
 
   // Drag-to-reorder state for the space tiles.
@@ -1720,6 +1723,7 @@ export default function LeftSidebar(props: {
     // A branch the tree already shows is listed but refused: it is still an
     // answer to "which branches are there" and not one to "which do you want".
     const shown = mode === "worktree" ? "worktree" : "plain";
+    const issues = await invoke<boolean>("issues_source", { projectPath: p.path }).catch(() => false);
     setBranchReq({
       p,
       mode,
@@ -1731,6 +1735,7 @@ export default function LeftSidebar(props: {
       busy: false,
       prefill,
       baseDefault,
+      issues,
     });
     // Quiet and floored at the schedule's cadence, so opening the picker on a
     // container the sweep just covered costs nothing and can never stop to ask
@@ -1803,6 +1808,7 @@ export default function LeftSidebar(props: {
     const { p, mode } = req;
     setBranchReq({ ...req, busy: true });
     try {
+      if (pick.issue) return await startFromIssue(p, mode, pick, pick.issue);
       if (mode === "worktree") {
         // create_worktree DWIMs the target itself (an existing local checks out,
         // a remote-only name is tracked, a brand-new name starts a branch off
@@ -1837,9 +1843,68 @@ export default function LeftSidebar(props: {
       if (pick.kind === "new") selectUnitIn(p, (u) => u.branch === pick.name);
     } catch (e) {
       setBranchReq(null);
-      setError(String(e));
+      setError(errorText(e));
     }
   }
+
+  // Started from an issue. Linking goes first because the host makes the
+  // branch; after that it is added like any other branch, tracking the one the
+  // host made, then the unit remembers its issue and opens on a draft of it.
+  async function startFromIssue(
+    p: Project,
+    mode: "branch" | "worktree",
+    pick: BranchPick,
+    from: { issue: Issue; link: boolean },
+  ) {
+    const { issue, link } = from;
+    if (link) {
+      const outcome = await invoke<LinkOutcome>("issues_link", {
+        projectPath: p.path,
+        key: issue.key,
+        branch: pick.name,
+        base: pick.base ?? null,
+      });
+      if (outcome === "unlinked") {
+        setError(`${pick.name} was already on GitHub, so it is not linked to ${issue.display}`, "info");
+      }
+    }
+    let folder = p.path;
+    if (mode === "worktree") {
+      // No base once linked: with none, `create_worktree` fetches and tracks
+      // the matching remote branch, which is the one the host just made.
+      folder = await invoke<string>("create_worktree", {
+        repoPath: p.path,
+        branch: pick.name,
+        base: link ? null : (pick.base ?? null),
+      });
+    } else {
+      if (link || pick.kind === "remote") await invoke("attach_remote_branch", { repo: p.path, branch: pick.name });
+      else if (pick.kind === "local") await invoke("attach_branch", { repo: p.path, branch: pick.name });
+      else await invoke("new_branch", { repo: p.path, branch: pick.name, base: pick.base ?? null });
+      await invoke("git_checkout", { repoPath: p.path, branch: pick.name });
+    }
+    await invoke("issues_record", { projectPath: p.path, branch: pick.name, issue: unitIssueOf(issue) }).catch((e) =>
+      setError(errorText(e)),
+    );
+    setBranchReq(null);
+    await loadConfig();
+    const unit = selectUnitIn(p, (u) =>
+      mode === "worktree" ? samePath(u.folderPath, folder) : u.branch === pick.name,
+    );
+    emitWith<NewChatAt>(NEW_CHAT_AT, {
+      folderPath: unit?.folderPath ?? folder,
+      projectName: p.name,
+      prompt: issueDraft(issue),
+      origin: { display: issue.display, url: issue.url },
+    });
+  }
+
+  const issueSourceFor = (p: Project): IssueSourceProps => ({
+    assigned: () => invoke<IssueRef[]>("issues_assigned", { projectPath: p.path }),
+    get: (key) => invoke<Issue>("issues_get", { projectPath: p.path, key }),
+    ahead: (base) =>
+      invoke<{ unpushed: boolean }>("branch_status", { repo: p.path, branch: base }).then((s) => s.unpushed),
+  });
 
   // Switch the shared working tree to this branch (runs the checkout guard).
   async function checkoutUnit(g: Space, p: Project, u: BranchUnit) {
@@ -2570,6 +2635,24 @@ export default function LeftSidebar(props: {
         }
         end={
           <>
+            <Show when={u.issue}>
+              {(issue) => (
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={rows.issueChip}
+                  aria-label={`Open issue ${issue().display}`}
+                  label={`${issue().display} ${issue().title}`}
+                  data-issue-chip={issue().key}
+                  onClick={(e: MouseEvent) => {
+                    e.stopPropagation();
+                    void invoke("plugin:opener|open_url", { url: issue().url }).catch(() => {});
+                  }}
+                >
+                  {issue().display}
+                </Tooltip>
+              )}
+            </Show>
             <SyncMarks
               marks={marks()}
               label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
@@ -3405,6 +3488,7 @@ export default function LeftSidebar(props: {
             busy={req().busy}
             prefill={req().prefill}
             baseDefault={req().baseDefault}
+            issues={req().issues ? issueSourceFor(req().p) : undefined}
             onConfirm={(pick) => void confirmAddBranch(pick)}
             onCancel={() => setBranchReq(null)}
           />

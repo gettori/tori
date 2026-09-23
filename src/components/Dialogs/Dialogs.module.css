@@ -950,6 +950,53 @@
   color: var(--fg-muted);
 }
 
+/* Start from an issue. */
+.sourceSwitch {
+  margin-bottom: var(--tori-space-4);
+}
+.issueKey {
+  flex: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.issueStart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-4);
+  margin-top: var(--tori-space-4);
+}
+.issueTitle {
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+}
+.issueBranch {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--brand-strong);
+}
+.issueNote {
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.issueError {
+  margin-top: var(--tori-space-4);
+  font-size: var(--tori-text-sm);
+  color: var(--danger-fg);
+}
+button.createRow {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* What the list below is, and what is still arriving into it. A caps label
    rather than a field label: it names a panel's contents, not a control. */
 .listHead {
