@@ -557,6 +557,7 @@ pub fn run() {
             presence::update_tray,
             presence::set_badge_count,
             rpc::rpc_session_states,
+            rpc::rpc_reply,
             model::model_context_caps,
             agent_config::agent_config_files,
             agent_config::agent_config_new,

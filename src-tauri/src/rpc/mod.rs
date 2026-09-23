@@ -7,6 +7,7 @@
 //! the same lifetime rule as the askpass one in `crate::credential`.
 
 pub mod auth;
+pub mod bridge;
 pub mod client;
 pub mod frame;
 pub mod hub;
@@ -18,9 +19,10 @@ pub mod transport;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use auth::{Caller, Children, Credential};
+use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use hub::Hub;
 use hub::Channel;
 use server::{Server, AUTH_TIMEOUT};
@@ -39,6 +41,7 @@ pub struct RpcState {
     transport: Arc<UnixTransport>,
     pub hub: Arc<Hub>,
     states: Arc<SessionStates>,
+    bridge: Arc<Bridge>,
 }
 
 impl RpcState {
@@ -60,10 +63,19 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let hub = Arc::new(Hub::default());
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
+    let emitter = app.clone();
+    let bridge = Arc::new(Bridge::new(
+        Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
+        REPLY_TIMEOUT,
+    ));
     let server = Arc::new(Server {
         credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
-        backend: Box::new(methods::TauriBackend { app, states: states.clone() }),
+        backend: Box::new(methods::TauriBackend {
+            app,
+            states: states.clone(),
+            bridge: bridge.clone(),
+        }),
         auth_timeout: AUTH_TIMEOUT,
     });
     server::serve(transport.clone() as Arc<dyn Transport>, server);
@@ -79,7 +91,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states })
+    Ok(RpcState { transport, hub, states, bridge })
 }
 
 #[tauri::command]
@@ -87,6 +99,11 @@ pub fn rpc_session_states(rpc: tauri::State<RpcState>, states: Vec<Reported>) {
     for (id, state) in rpc.states.replace(states) {
         rpc.hub.publish(&Channel::Sessions, serde_json::json!({ "kind": "state", "id": id, "state": state }));
     }
+}
+
+#[tauri::command]
+pub fn rpc_reply(rpc: tauri::State<RpcState>, rid: u64, result: Option<serde_json::Value>, error: Option<String>) {
+    rpc.bridge.reply(rid, error.map_or(Ok(result.unwrap_or_default()), Err));
 }
 
 /// A `bin/tori` link beside the socket, so it goes with the socket's private
