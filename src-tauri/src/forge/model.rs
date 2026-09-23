@@ -348,7 +348,7 @@ pub struct PrFile {
 /// numberings of the same region: line 12 on the left is not line 12 on the
 /// right once anything above it changed. A comment that names a line without
 /// naming its side is a comment on whichever line the server guesses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum DiffSide {
     Left,
@@ -362,7 +362,7 @@ pub enum DiffSide {
 /// so it silently means something different the moment the pull request gets a
 /// new commit; GitHub deprecated it for exactly that. The line-and-side form is
 /// re-resolved by the server against the diff it currently has.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DraftComment {
     pub path: String,
@@ -381,7 +381,7 @@ pub struct DraftComment {
 /// viewer authored, which on a single-owner repo is every pull request Tori
 /// opens. They are built and gated rather than omitted, because the gate is
 /// about *this* pull request, not about the app.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ReviewEvent {
     Approve,

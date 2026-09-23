@@ -6,6 +6,7 @@
 //! its env; anything else reads the `rpc.json` bridge file, the same shape and
 //! the same lifetime rule as the askpass one in `crate::credential`.
 
+pub mod approvals;
 pub mod asks;
 pub mod auth;
 pub mod bridge;
@@ -151,7 +152,7 @@ pub fn rpc_asks_pending(rpc: tauri::State<RpcState>) -> Vec<Ask> {
 
 #[tauri::command]
 pub fn rpc_ask_answer(rpc: tauri::State<RpcState>, id: String, answer: String) -> bool {
-    rpc.asks.answer(&id, answer)
+    rpc.asks.answer(&id, answer, asks::By::User).is_ok()
 }
 
 pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts: u64) {

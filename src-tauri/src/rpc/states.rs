@@ -147,6 +147,10 @@ impl SessionStates {
         self.background.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
+    pub fn is_background(&self, id: &str) -> bool {
+        self.background.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
+    }
+
     pub fn mark_worker(&self, id: &str) {
         self.workers.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
     }

@@ -159,7 +159,7 @@ pub struct CreatePr {
 /// Serde-carried because it crosses the Tauri bridge: the picker is the user's
 /// choice and a repo can forbid any of the three, so the refusal has to come
 /// from the server rather than from a default chosen here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum MergeMethod {
     Merge,
@@ -319,11 +319,14 @@ pub trait Forge: Send + Sync {
     /// carries every total; only the reviewer counts cost a second read.
     fn pr_summary(&self, repo: &RepoRef, number: u64) -> Result<PrSummary, ForgeError>;
 
+    /// `expected_head`, when given, is the head commit the merge must land:
+    /// the server refuses it once the branch has moved on.
     fn merge(
         &self,
         repo: &RepoRef,
         number: u64,
         method: MergeMethod,
+        expected_head: Option<&str>,
     ) -> Result<(), ForgeError>;
 
     /// Bring the pull request's head up to date with its base.
@@ -516,6 +519,7 @@ mod tests {
             _repo: &RepoRef,
             _number: u64,
             _method: MergeMethod,
+            _expected_head: Option<&str>,
         ) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }

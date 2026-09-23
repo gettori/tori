@@ -8,9 +8,9 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 13] = [
+const COMMANDS: [&str; 14] = [
     "sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
-    "ask", "mcp",
+    "ask", "pr", "mcp",
 ];
 
 const USAGE: &str = "usage:
@@ -28,9 +28,12 @@ const USAGE: &str = "usage:
              [--prompt <text>] [--attach <path>]... [--background] [--json]
   tori open <path> [--line <n>]
   tori budget [<id>] [--folder <path>] [--json]
-  tori ask <question>... [--option <text>]... [--timeout <secs>]
+  tori ask <question>... [--option <text>]... [--timeout <secs>] [--approval <json> [--project <path>]]
   tori ask --wait <id> [--timeout <secs>]
   tori ask --answer <id> <text>...
+  tori pr create --head <branch> --base <branch> --title <text> [--body <text>] [--draft] [--project <path>] [--approval <id>] [--json]
+  tori pr review <number> --event approve|comment|request-changes [--body <text>] [--comments <json>] [--project <path>] [--approval <id>]
+  tori pr merge <number> --method merge|squash|rebase --head-sha <sha> [--project <path>] [--approval <id>]
   tori mcp";
 
 pub fn is_cli() -> bool {
@@ -116,6 +119,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "open" => open(rest),
         "budget" => budget(rest),
         "ask" => ask(rest),
+        "pr" => pr(rest),
         "mcp" => Ok(crate::mcp::run()?),
         other => Err(usage(format!("unknown command {other}"))),
     }
@@ -514,7 +518,10 @@ fn budget(args: &[String]) -> Result<(), Failure> {
 }
 
 fn ask_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
-    let p = Parsed::new(args, &["option", "timeout", "wait", "answer"], &[])?;
+    let p = Parsed::new(args, &["option", "timeout", "wait", "answer", "approval", "project"], &[])?;
+    if (p.has("approval") || p.has("project")) && (p.has("wait") || p.has("answer")) {
+        return Err(usage("--approval and --project go with a question, not --wait or --answer"));
+    }
     let timeout = p.number("timeout")?;
     Ok(match (p.value("wait"), p.value("answer")) {
         (Some(_), Some(_)) => return Err(usage("ask takes --wait or --answer, not both")),
@@ -525,7 +532,10 @@ fn ask_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
         (None, None) if p.positional.is_empty() => return Err(usage("ask needs a question")),
         (None, None) => {
             let options = p.flags.get("option").cloned().unwrap_or_default();
-            ("ask.create", json!({ "question": p.positional.join(" "), "options": options, "timeout": timeout }))
+            let approval = p.value("approval").map(json_flag("approval")).transpose()?;
+            let project = p.value("project").map(absolute).transpose()?;
+            let question = p.positional.join(" ");
+            ("ask.create", json!({ "question": question, "options": options, "timeout": timeout, "approval": approval, "project": project }))
         }
     })
 }
@@ -536,9 +546,84 @@ fn ask(args: &[String]) -> Result<(), Failure> {
     if method == "ask.answer" {
         return Ok(());
     }
-    match asked["answer"].as_str() {
-        Some(answer) => Ok(writeln!(io::stdout().lock(), "{answer}")?),
-        None => Err(Failure::Unanswered(asked["id"].as_str().unwrap_or("").to_string())),
+    let Some(answer) = asked["answer"].as_str() else {
+        return Err(Failure::Unanswered(asked["id"].as_str().unwrap_or("").to_string()));
+    };
+    let mut out = io::stdout().lock();
+    writeln!(out, "{answer}")?;
+    if let Some(approval_id) = asked["approval_id"].as_str() {
+        writeln!(out, "approval_id: {approval_id}")?;
+    }
+    Ok(())
+}
+
+fn json_flag(name: &'static str) -> impl Fn(&str) -> Result<Value, Failure> {
+    move |raw| serde_json::from_str(raw).map_err(|e| usage(format!("--{name} takes JSON: {e}")))
+}
+
+fn pr_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
+    let Some((sub, rest)) = args.split_first() else {
+        return Err(usage("pr needs a subcommand: create, review or merge"));
+    };
+    let valued = ["head", "base", "title", "body", "event", "comments", "method", "head-sha", "project", "approval"];
+    let p = Parsed::new(rest, &valued, &["draft", "json"])?;
+    let project = p.value("project").map(absolute).transpose()?;
+    let approval_id = p.value("approval");
+    let number = || match p.positional.as_slice() {
+        [n] => n.parse::<u64>().map_err(|_| usage(format!("the pull request number must be a number, got {n}"))),
+        _ => Err(usage(format!("pr {sub} takes one pull request number"))),
+    };
+    let needed = |name: &str| p.value(name).ok_or_else(|| usage(format!("pr {sub} needs --{name}")));
+    Ok(match sub.as_str() {
+        "create" if p.positional.is_empty() => (
+            "pr.create",
+            json!({
+                "head": needed("head")?,
+                "base": needed("base")?,
+                "title": needed("title")?,
+                "body": p.value("body").unwrap_or(""),
+                "draft": p.has("draft"),
+                "project": project,
+                "approval_id": approval_id,
+            }),
+        ),
+        "create" => return Err(usage("pr create takes no positional arguments")),
+        "review" => {
+            let event = match needed("event")? {
+                "approve" => "approve",
+                "comment" => "comment",
+                "request-changes" => "requestChanges",
+                other => return Err(usage(format!("--event is approve, comment or request-changes, got {other}"))),
+            };
+            let comments = p.value("comments").map(json_flag("comments")).transpose()?;
+            let body = p.value("body").unwrap_or("");
+            let params = json!({ "number": number()?, "event": event, "body": body, "comments": comments, "project": project, "approval_id": approval_id });
+            ("review.submit", params)
+        }
+        "merge" => {
+            let params = json!({
+                "number": number()?,
+                "method": needed("method")?,
+                "head_sha": needed("head-sha")?,
+                "project": project,
+                "approval_id": approval_id,
+            });
+            ("pr.merge", params)
+        }
+        other => return Err(usage(format!("unknown pr subcommand {other}: create, review or merge"))),
+    })
+}
+
+fn pr(args: &[String]) -> Result<(), Failure> {
+    let (method, params) = pr_request(args)?;
+    let done = connect()?.call(method, params)?;
+    let mut out = io::stdout().lock();
+    if args.iter().any(|a| a == "--json") {
+        return Ok(writeln!(out, "{done}")?);
+    }
+    match done["url"].as_str() {
+        Some(url) => Ok(writeln!(out, "{url}")?),
+        None => Ok(()),
     }
 }
 
@@ -583,6 +668,35 @@ mod tests {
         let (method, _) = ask_request(&args(&["which", "one?", "--option", "a"])).ok().unwrap();
         assert_eq!(method, "ask.create");
         assert!(USAGE.contains("ask --answer <id>"));
+    }
+
+    #[test]
+    fn ask_carries_an_approval_draft_as_json() {
+        let (method, params) = ask_request(&args(&["open", "it?", "--approval", r#"{"action":"pr.merge","number":7}"#])).ok().unwrap();
+        assert_eq!(method, "ask.create");
+        assert_eq!(params["approval"], json!({ "action": "pr.merge", "number": 7 }));
+        assert!(ask_request(&args(&["q", "--approval", "{not json"])).is_err());
+        assert!(ask_request(&args(&["--wait", "ask-1", "--approval", "{}"])).is_err());
+    }
+
+    #[test]
+    fn pr_commands_map_onto_the_outward_methods() {
+        let (method, params) =
+            pr_request(&args(&["create", "--head", "1-x", "--base", "main", "--title", "T", "--approval", "appr-1"])).ok().unwrap();
+        assert_eq!(method, "pr.create");
+        assert_eq!((params["head"].clone(), params["body"].clone(), params["draft"].clone()), (json!("1-x"), json!(""), json!(false)));
+        assert_eq!(params["approval_id"], json!("appr-1"));
+        assert!(pr_request(&args(&["create", "--head", "1-x"])).is_err(), "base and title are required");
+
+        let (method, params) = pr_request(&args(&["review", "12", "--event", "request-changes", "--body", "no"])).ok().unwrap();
+        assert_eq!((method, params["number"].clone(), params["event"].clone()), ("review.submit", json!(12), json!("requestChanges")));
+        assert!(pr_request(&args(&["review", "12", "--event", "maybe"])).is_err());
+
+        let (method, params) = pr_request(&args(&["merge", "12", "--method", "squash", "--head-sha", "abc"])).ok().unwrap();
+        assert_eq!((method, params["head_sha"].clone()), ("pr.merge", json!("abc")));
+        assert!(pr_request(&args(&["merge", "12", "--method", "squash"])).is_err(), "a merge pins its head");
+        assert!(pr_request(&args(&["close", "12"])).is_err());
+        assert!(USAGE.contains("tori pr merge <number>"));
     }
 
     #[test]

@@ -9,8 +9,8 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    IssueGetParams, IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams, WaitParams,
-    WorktreeParams,
+    IssueGetParams, IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +225,30 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         call: |b, _, v| b.ask_wait(params(v)?),
+    },
+    Method {
+        name: "pr.create",
+        description: "Open a pull request from a pushed branch. A background session needs the approval_id of an approved ask for exactly this draft.",
+        params: schema::<PrCreateParams>,
+        callers: ANYONE,
+        refusal: None,
+        call: |b, p, v| b.pr_create(p, params(v)?),
+    },
+    Method {
+        name: "review.submit",
+        description: "Submit a review on a pull request: a verdict, a body and line comments. A background session needs the approval_id of an approved ask for exactly this draft.",
+        params: schema::<ReviewSubmitParams>,
+        callers: ANYONE,
+        refusal: None,
+        call: |b, p, v| b.review_submit(p, params(v)?),
+    },
+    Method {
+        name: "pr.merge",
+        description: "Merge a pull request at the head commit given. A background session needs the approval_id of an approved ask for exactly this merge.",
+        params: schema::<PrMergeParams>,
+        callers: ANYONE,
+        refusal: None,
+        call: |b, p, v| b.pr_merge(p, params(v)?),
     },
 ];
 

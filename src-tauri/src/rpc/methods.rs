@@ -9,14 +9,16 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::asks::{Asks, Waited};
+use super::approvals::{Approval, Approvals, Draft};
+use super::asks::{Asks, By, NotAnswered, Waited};
 use super::auth::{Caller, Principal};
 use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, IssueGetParams,
-    IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
+    IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
+    SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -166,6 +168,33 @@ fn forge_refused(e: crate::forge::ForgeError) -> RpcError {
     refused(e.to_string())
 }
 
+fn gated_by_approval(
+    approvals: &Approvals,
+    background: Option<&str>,
+    wanted: &Approval,
+    approval_id: Option<&str>,
+    call: impl FnOnce() -> Result<Value, RpcError>,
+) -> Result<Value, RpcError> {
+    let Some(session) = background else { return call() };
+    let id = approvals.reserve(approval_id, session, wanted).map_err(|why| {
+        let action = wanted.draft.action();
+        refused(format!(
+            "{action} from a background session needs an approval for {} in {}: {why}. Call ask_create (`tori ask \
+             --approval` from a shell) with `approval` set to this action and its exact draft, then pass the approval_id \
+             an Approve answer returns",
+            wanted.draft.target(),
+            wanted.project
+        ))
+    })?;
+    let outcome = call();
+    // Kept when the call fails: a refusal from the host changed nothing, so it should not cost a second approval.
+    match outcome {
+        Ok(_) => approvals.spend(&id),
+        Err(_) => approvals.release(&id),
+    }
+    outcome
+}
+
 fn to_json<T: Serialize>(value: T) -> Result<Value, RpcError> {
     serde_json::to_value(value).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
 }
@@ -268,10 +297,32 @@ impl TauriBackend {
 
     fn wait_for_answer(&self, id: &str, timeout: Option<u64>) -> Result<Value, RpcError> {
         match self.asks.wait(id, std::time::Duration::from_secs(timeout.unwrap_or(DEFAULT_ASK_WAIT))) {
-            Waited::Answered(answer) => Ok(json!({ "id": id, "answer": answer })),
+            Waited::Answered { answer, approval_id: None } => Ok(json!({ "id": id, "answer": answer })),
+            Waited::Answered { answer, approval_id: Some(approval_id) } => {
+                Ok(json!({ "id": id, "answer": answer, "approval_id": approval_id }))
+            }
             Waited::Pending => Ok(json!({ "id": id, "answer": null })),
             Waited::Unknown => Err(RpcError::new(INVALID_PARAMS, format!("no ask {id}, or its answer was already read"))),
         }
+    }
+
+    fn background_session<'a>(&self, principal: &'a Principal) -> Option<&'a str> {
+        match principal {
+            Principal::Session(Caller::Chat(id)) if self.states.is_background(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    fn gated_outward(
+        &self,
+        principal: &Principal,
+        project: Option<String>,
+        draft: Draft,
+        approval_id: Option<&str>,
+        call: impl FnOnce(&str) -> Result<Value, RpcError>,
+    ) -> Result<Value, RpcError> {
+        let wanted = Approval { project: self.project(principal, project)?, draft };
+        gated_by_approval(&self.asks.approvals, self.background_session(principal), &wanted, approval_id, || call(&wanted.project))
     }
 
     fn agent_of(&self, id: &str) -> Option<String> {
@@ -483,7 +534,12 @@ impl Backend for TauriBackend {
     }
 
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError> {
-        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default());
+        let principal = Principal::Session(Caller::Chat(session.to_string()));
+        let approval = match params.approval {
+            Some(draft) => Some(Approval { project: self.project(&principal, params.project)?, draft }),
+            None => None,
+        };
+        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default(), approval);
         if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
             self.asks.forget(&ask.id);
             return Err(e);
@@ -507,8 +563,14 @@ impl Backend for TauriBackend {
     }
 
     fn ask_answer(&self, params: AskAnswerParams) -> Result<Value, RpcError> {
-        if !self.asks.answer(&params.id, params.answer) {
-            return Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", params.id)));
+        match self.asks.answer(&params.id, params.answer, By::Socket) {
+            Ok(()) => {}
+            Err(NotAnswered::Unknown) => {
+                return Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", params.id)))
+            }
+            Err(NotAnswered::UsersOnly) => {
+                return Err(refused(format!("{} asks for an approval, which only the user gives, on its card in Tori", params.id)))
+            }
         }
         let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
         Ok(json!({}))
@@ -530,6 +592,38 @@ impl Backend for TauriBackend {
         let outcome = crate::issues::commands::link(&project, &params.key, branch, params.base.as_deref())
             .map_err(forge_refused)?;
         Ok(json!({ "branch": branch, "outcome": outcome }))
+    }
+
+    fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError> {
+        let draft = params.draft();
+        let req = crate::forge::CreatePr {
+            title: params.title,
+            body: params.body,
+            head: params.head,
+            base: params.base,
+            draft: params.draft.unwrap_or(false),
+        };
+        self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
+            to_json(crate::forge::commands::create_pr(project, &req).map_err(forge_refused)?)
+        })
+    }
+
+    fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError> {
+        let draft = params.draft();
+        let comments = params.comments.unwrap_or_default();
+        self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
+            crate::forge::commands::submit_review(project, params.number, params.event, &params.body, &comments)
+                .map_err(forge_refused)?;
+            Ok(json!({}))
+        })
+    }
+
+    fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError> {
+        let draft = params.draft();
+        self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
+            crate::forge::commands::merge(project, params.number, params.method, Some(&params.head_sha)).map_err(forge_refused)?;
+            Ok(json!({}))
+        })
     }
 }
 
@@ -577,6 +671,48 @@ mod tests {
         assert!(states.is_worker("by-chat"));
         assert!(!states.is_worker("by-tab") && !states.is_worker("by-local"));
         assert!(states.background().contains("by-tab"));
+    }
+
+    fn pr_draft() -> Approval {
+        Approval {
+            project: "/p".into(),
+            draft: Draft::PrCreate { head: "1-x".into(), base: "main".into(), title: "T".into(), body: "B".into(), draft: false },
+        }
+    }
+
+    fn opened() -> Result<Value, RpcError> {
+        Ok(json!({ "number": 12 }))
+    }
+
+    #[test]
+    fn a_background_pr_create_without_an_approval_is_refused_naming_what_it_needs() {
+        let approvals = Approvals::default();
+        let ran = std::cell::Cell::new(false);
+        let err = gated_by_approval(&approvals, Some("s1"), &pr_draft(), None, || {
+            ran.set(true);
+            opened()
+        })
+        .unwrap_err();
+        assert_eq!(err.code, REFUSED);
+        for named in ["pr.create", "a pull request from 1-x into main", "/p", "no approval_id", "ask_create"] {
+            assert!(err.message.contains(named), "{named} missing from: {}", err.message);
+        }
+        assert!(!ran.get(), "the forge is never reached");
+    }
+
+    #[test]
+    fn a_background_pr_create_with_its_approval_reaches_the_forge_once() {
+        let approvals = Approvals::default();
+        let id = approvals.grant("s1", pr_draft());
+        assert_eq!(gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap(), json!({ "number": 12 }));
+        let again = gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap_err();
+        assert!(again.message.contains("already spent"), "{}", again.message);
+    }
+
+    #[test]
+    fn a_foreground_pr_create_reaches_the_forge_without_an_approval() {
+        let approvals = Approvals::default();
+        assert!(gated_by_approval(&approvals, None, &pr_draft(), None, opened).is_ok());
     }
 
     #[test]
