@@ -37,9 +37,9 @@
 // a probe that stopped reading, and "no ceiling" is the answer that decides
 // whether Tori's `ask_user` may block. A check that cannot fail is not a check.
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -52,6 +52,10 @@ const AS_JSON = has("--json");
 
 const SLEEP_TOOL = "tori_probe_sleep";
 const PING_TOOL = "tori_probe_ping";
+
+// The names Tori will send, with values no parent environment carries, so an
+// inherited TORI_SOCK from a Tori terminal cannot pass for a delivered one.
+const MARKER_ENV = { TORI_SOCK: `probe-sock-${process.pid}`, TORI_CALLER: `probe-caller-${process.pid}` };
 
 const TOOLS = [
   {
@@ -105,7 +109,7 @@ function serve(name, mark) {
       case "tools/call": {
         const tool = msg.params?.name;
         if (tool === PING_TOOL) {
-          if (mark) for (const key of Object.keys(ACP_ENV)) appendFileSync(mark, `env ${key}=${process.env[key] ?? ""}\n`);
+          if (mark) for (const key of Object.keys(MARKER_ENV)) appendFileSync(mark, `env ${key}=${process.env[key] ?? ""}\n`);
           return ok(msg.id, text(`pong from ${name}`));
         }
         if (tool === SLEEP_TOOL) {
@@ -263,6 +267,7 @@ function openClaude({ cwd, argv, env = {} }) {
   // the wiki, and a field the CLI never sent would read as one it did.
   const arrivals = [];
   const waiters = [];
+  const asked = [];
   let buffer = "";
   let stderr = "";
 
@@ -282,6 +287,17 @@ function openClaude({ cwd, argv, env = {} }) {
       } catch {
         ev = { type: "__unparseable", raw: line };
       }
+      // Only reached under `--permission-prompt-tool stdio`. Allowed so the
+      // turn finishes: that it was asked is the measurement, not the answer.
+      if (ev.type === "control_request" && ev.request?.subtype === "can_use_tool") {
+        asked.push(ev.request.tool_name ?? null);
+        child.stdin.write(
+          `${JSON.stringify({
+            type: "control_response",
+            response: { subtype: "success", request_id: ev.request_id, response: { behavior: "allow", updatedInput: ev.request.input ?? {} } },
+          })}\n`,
+        );
+      }
       events.push(ev);
       arrivals.push(performance.now());
       for (const w of waiters.slice()) {
@@ -296,6 +312,7 @@ function openClaude({ cwd, argv, env = {} }) {
   return {
     events,
     arrivals,
+    asked,
     stderrText: () => stderr,
     send: (obj) => child.stdin.write(`${JSON.stringify(obj)}\n`),
     sendTurn(text) {
@@ -443,8 +460,8 @@ function scrubServers(rows = []) {
   return { probe: rows.filter((r) => isProbe(r.name)), others };
 }
 
-async function claudeTurn({ cwd, argv, prompt }) {
-  const claude = openClaude({ cwd, argv });
+async function claudeTurn({ cwd, argv, prompt, env }) {
+  const claude = openClaude({ cwd, argv, env });
   try {
     claude.sendTurn(prompt);
     const init = await claude.waitFor(isInit, 120_000);
@@ -455,6 +472,7 @@ async function claudeTurn({ cwd, argv, prompt }) {
       probeTools: (init.tools ?? []).filter((t) => t.includes("tori_probe")),
       result: result.subtype,
       ping: findToolOutcome(claude, PING_TOOL),
+      asked: claude.asked,
     };
   } finally {
     claude.close();
@@ -472,6 +490,52 @@ function diffServers(before, after) {
     diff[name] = was === now ? was : `${was} -> ${now}`;
   }
   return { probe: diff, othersBefore: before.others, othersAfter: after.others };
+}
+
+// Tori's claude config leans on a bare `tori` found through a PATH link, env
+// inherited rather than declared, and an allow rule in the injected settings.
+async function injectionChecks(dir) {
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  symlinkSync(process.execPath, join(bin, "toriprobe"));
+  const env = { ...MARKER_ENV, PATH: `${bin}${delimiter}${process.env.PATH}` };
+  const namespaced = `mcp__toriprobe__${PING_TOOL}`;
+
+  const run = async (label, settings) => {
+    const mark = join(dir, `${label}.log`);
+    const config = join(dir, `${label}.mcp.json`);
+    const server = { command: "toriprobe", args: [SELF, "--serve", "--name", "toriprobe", "--mark", mark] };
+    writeFileSync(config, `${JSON.stringify({ mcpServers: { toriprobe: server } }, null, 2)}\n`);
+    const settingsFile = join(dir, `${label}.settings.json`);
+    writeFileSync(settingsFile, `${JSON.stringify(settings, null, 2)}\n`);
+    const turn = await claudeTurn({
+      cwd: dir,
+      env,
+      argv: buildArgv({
+        configs: [config],
+        extra: ["--settings", settingsFile, "--permission-mode", "default", "--permission-prompt-tool", "stdio"],
+      }),
+      prompt: `Call the ${PING_TOOL} tool exactly once, then say ok.`,
+    });
+    return { servers: turn.servers.probe, ping: turn.ping, asked: turn.asked, serverSaw: readMark(mark) };
+  };
+
+  // The calibration comes first and must ask: a rule run that shows no request
+  // means nothing unless the same call without the rule raised one.
+  const calibration = await run("no-rule", {});
+  const withRule = await run("allow-rule", { permissions: { allow: ["mcp__toriprobe__*"] } });
+  const saw = withRule.serverSaw;
+
+  return {
+    answers: {
+      resolvedThroughPath: saw.includes("initialize") && withRule.ping.called && !withRule.ping.isError,
+      envInherited: Object.entries(MARKER_ENV).every(([k, v]) => saw.includes(`env ${k}=${v}`)),
+      calibrationAsked: calibration.asked.includes(namespaced),
+      allowRuleSilencesPrompt: calibration.asked.includes(namespaced) && withRule.ping.called && !withRule.asked.includes(namespaced),
+    },
+    calibration,
+    withRule,
+  };
 }
 
 async function scopes() {
@@ -508,6 +572,7 @@ async function scopes() {
     const withConfig = await inProject([config]);
     const strictControl = await inProject([], ["--strict-mcp-config"]);
     const strictWithConfig = await inProject([config], ["--strict-mcp-config"]);
+    const injection = await injectionChecks(dir);
 
     return {
       mode: "scopes",
@@ -531,6 +596,7 @@ async function scopes() {
         withConfig: strictWithConfig.servers,
         diffFromDefault: diffServers(withConfig.servers, strictWithConfig.servers),
       },
+      injection,
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -618,14 +684,10 @@ function allowOption(params) {
   return pick?.optionId ?? null;
 }
 
-// The names Tori will send, with values no parent environment carries, so an
-// inherited TORI_SOCK from a Tori terminal cannot pass for a delivered one.
-const ACP_ENV = { TORI_SOCK: `probe-sock-${process.pid}`, TORI_CALLER: `probe-caller-${process.pid}` };
-
 // ACP's stdio server shape: `env` is a required array of pairs, not a map.
 function acpServer(name, mark) {
   const spec = serverSpec(name, mark);
-  return { name, command: spec.command, args: spec.args, env: Object.entries(ACP_ENV).map(([n, value]) => ({ name: n, value })) };
+  return { name, command: spec.command, args: spec.args, env: Object.entries(MARKER_ENV).map(([n, value]) => ({ name: n, value })) };
 }
 
 // One process per attempt, so the populated run cannot inherit anything the
@@ -703,7 +765,7 @@ async function acpServers() {
       const answers = {
         serverStarted: serverSaw.includes("initialize"),
         toolCalled: serverSaw.some((m) => m.startsWith("tools/call")),
-        envArrived: Object.entries(ACP_ENV).every(([k, v]) => serverSaw.includes(`env ${k}=${v}`)),
+        envArrived: Object.entries(MARKER_ENV).every(([k, v]) => serverSaw.includes(`env ${k}=${v}`)),
         permissionForMcpCall: (populated?.permissionRequests ?? []).some((t) => String(t).includes(PING_TOOL)),
       };
       results[name] = { answers, empty, populated, serverSaw };
