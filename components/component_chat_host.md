@@ -2,7 +2,7 @@
 summary: spawns one long lived harness child per session and renders its own permission and question prompts, deciding nothing
 status: current
 updated: 2026-09-23
-source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs
+source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71
 ---
 
 # Chat host (Rust)
@@ -101,9 +101,12 @@ Not built: gettori/tori#203 plans a Tori level refusal for outward actions from 
 
 ## Lifecycle on the app socket (2026-09-23)
 
-`ChatHost` publishes `started` and `ended` on the app socket's `sessions` channel ([[component_app_socket]]). The publisher is a `Publish` closure set once in `lib.rs` setup through `set_publisher`. A host with none (every test that doesn't set one) publishes nothing.
+`ChatHost` publishes the chat half of [[concept_socket_event_vocabulary]] on the app socket ([[component_app_socket]]). The publisher is a `Publish` closure, `(session id, event)`, set once in `lib.rs` setup through `set_publisher`. A host with none (every test that doesn't set one) publishes nothing.
 
-- **`started` fires before `transport.start`, and `ended` from three paths:** the fatal branch of `wrap`, `close`, and a start that returns `Err`. A rewire publishes nothing.
+- **`session.started` fires before `transport.start`, and `session.ended` from three paths:** the fatal branch of `wrap` and a start that returns `Err` (`died`), and `close(id, reason)`. `chat_close` takes the reason from the webview: the sidebar delete says `killed`, a tab unmount and app exit `closed`. A rewire publishes nothing.
+- **`Lifecycle` resolves the session's `Place` once, at start**, and every later event reuses it, so `wrap` never reads the config.
+- **`Lifecycle::observe` in `wrap` publishes turns, questions and permissions**, but nothing before the session's `SessionStarted`: see [[gotcha_an_acp_load_hands_history_back_through_the_live_sink]]. A rewire that asks for a replay re-arms that gate.
+- **Turn origin.** `deliver(id, blocks, mid_turn, by)` records `by` before a send, never for a steer into a running turn; the next `TurnStarted` consumes it, `TurnCompleted` clears it. `ChatHost::publish` lets `ask.create` send `session.question` in the session's envelope.
 - **Both are gated on `Lifecycle`'s announced set, not on the session map.** The map can't order them. See [[gotcha_a_chat_childs_fatal_event_can_arrive_before_spawn_inserts_its_entry]].
 - `Entry` now keeps the spawn `cwd`, and `live_sessions()` hands `(id, cwd)` to `sessions.list`. `Registry` gained `agent_of` and `held_here`.
 - `chat_history`'s body moved into `read_history(session_id, &HistorySource, agent, up_to)`, shared with `session.tail`. The whole read now runs through `exec::blocking`, where before only the ACP log half did.
@@ -111,6 +114,9 @@ Not built: gettori/tori#203 plans a Tori level refusal for outward actions from 
 ## Related
 
 - [[component_app_socket]] - where the lifecycle events go, and the second reader of `read_history`
+- [[concept_socket_event_vocabulary]] - the events `Lifecycle` publishes
+- [[gotcha_an_acp_load_hands_history_back_through_the_live_sink]] - why `observe` waits for `SessionStarted`
+- [[gotcha_a_turn_sent_from_outside_the_panel_draws_no_user_bubble]] - why `deliver` draws the user bubble itself
 - [[gotcha_a_chat_childs_fatal_event_can_arrive_before_spawn_inserts_its_entry]] - why lifecycle is gated on its own set
 - [[component_chat_panel]] - the Solid half this feeds
 - [[concept_subagent_lanes]] - the lane model these events and files feed

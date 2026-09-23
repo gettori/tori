@@ -20,6 +20,7 @@ Today there is no app level surface at all. The sockets that exist are per sessi
 
 ## Consequences
 
+- **Everything goes on the app level socket, including events not about a session.** #199 settled the question #177 left open: quota and window events need the app level socket anyway, so every event is published there ([[concept_socket_event_vocabulary]]), and the per session sockets stay for the hook helper only.
 - **The transport is a trait from the first commit, not a later refactor.** A Unix socket now, a TCP or WebSocket listener later, reusing the framing, the auth step and the dispatcher untouched. That is the only thing the phone needs from the first ticket, and retrofitting it after three fronts exist would mean changing all three.
 - **Auth is its own function because it is the part that changes.** The socket carries a token, in the same private `0700` directory under `$TMPDIR` the existing bridges use. A WebSocket front will carry a per device credential instead, and that swap has to stay local to one function. [[gotcha_darwin_caps_unix_socket_paths_at_104_bytes]] constrains where the path can live.
 - **A spawned session finds the socket through its environment**, the way the existing helpers do, which is what lets a session Tori started call back into Tori without configuration. Anything Tori did not spawn reads a `0600` bridge file, `~/.config/tori/rpc.json`, removed at exit only if it names this instance, the same rule as the askpass file. Env wins over the file. See [[component_app_socket]].
@@ -29,7 +30,8 @@ Today there is no app level surface at all. The sockets that exist are per sessi
 
 ## Related
 
-- [[component_app_socket]] - the implementation: transport trait, auth function, hub, and the first two methods
+- [[component_app_socket]] - the implementation: transport trait, auth function, hub, and the methods
+- [[adr_socket_asks_the_webview_until_rust_owns_state]] - how the socket answers for state the webview still owns
 - [[concept_askpass_bridge]] - the existing app level socket pattern this copies, re-exec the binary, private socket, token in env
 - [[concept_pretooluse_capture_hook]] - the second use of that pattern, and the page that records why Tori decides no tool call
 - [[concept_transport_neutral_event_model]] - the same shape one layer up, one normalized event enum behind every consumer
