@@ -313,18 +313,21 @@ fn whoami(args: &[String]) -> Result<(), Failure> {
     if p.has("json") {
         return Ok(writeln!(out, "{me}")?);
     }
-    let caller = &me["caller"];
-    let who = match caller["kind"].as_str() {
-        Some(kind) => format!("{kind} {}", caller["id"].as_str().unwrap_or("")),
-        None => "outside caller".to_string(),
+    Ok(write!(out, "{}", render_whoami(&me))?)
+}
+
+// The kind, not `caller.kind`: a worker's caller is still a chat.
+fn render_whoami(me: &Value) -> String {
+    let mut text = match me["caller"]["id"].as_str() {
+        Some(id) => format!("{} {id}\n", me["kind"].as_str().unwrap_or("")),
+        None => "outside caller\n".to_string(),
     };
-    writeln!(out, "{who}")?;
     for key in ["agent", "account", "cwd"] {
         if let Some(value) = me["identity"][key].as_str() {
-            writeln!(out, "{key}: {value}")?;
+            text.push_str(&format!("{key}: {value}\n"));
         }
     }
-    Ok(())
+    text
 }
 
 fn steer(args: &[String]) -> Result<(), Failure> {
@@ -505,3 +508,18 @@ fn events(args: &[String]) -> Result<(), Failure> {
     Err(Failure::Client(client::ClientError::Closed))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn whoami_names_the_callers_kind() {
+        let worker = json!({
+            "caller": { "kind": "chat", "id": "s2" },
+            "kind": "worker",
+            "identity": { "agent": "codex", "cwd": "/p/wt" },
+        });
+        assert_eq!(render_whoami(&worker), "worker s2\nagent: codex\ncwd: /p/wt\n");
+        assert_eq!(render_whoami(&json!({ "caller": null, "kind": "local", "identity": {} })), "outside caller\n");
+    }
+}

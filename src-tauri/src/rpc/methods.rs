@@ -19,6 +19,7 @@ use super::server::{
     WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
+use super::table::CallerKind;
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock};
@@ -135,6 +136,15 @@ pub fn or_callers(given: Option<String>, callers: impl FnOnce() -> Option<String
     })
 }
 
+fn record_spawn(states: &SessionStates, principal: &Principal, id: &str, background: bool) {
+    if background {
+        states.mark_background(id);
+    }
+    if matches!(principal, Principal::Session(Caller::Chat(_))) {
+        states.mark_worker(id);
+    }
+}
+
 fn refused(message: String) -> RpcError {
     RpcError::new(REFUSED, message)
 }
@@ -241,6 +251,13 @@ impl TauriBackend {
 }
 
 impl Backend for TauriBackend {
+    fn kind(&self, principal: &Principal) -> CallerKind {
+        match principal {
+            Principal::Session(Caller::Chat(id)) if self.states.is_worker(id) => CallerKind::Worker,
+            other => CallerKind::of(other),
+        }
+    }
+
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError> {
         let indexed = listed_sessions(&self.app.state::<SessionIndex>(), params.cwd.as_deref());
         let now = std::time::SystemTime::now()
@@ -352,8 +369,8 @@ impl Backend for TauriBackend {
         let request = json!({ "folder": folder, "agent": agent, "account": account, "prompt": params.prompt, "attach": attach });
         let mut spawned = self.bridge.request("session.spawn", request)?;
         let background = params.background.unwrap_or(false);
-        if let Some(id) = spawned["id"].as_str().filter(|_| background) {
-            self.states.mark_background(id);
+        if let Some(id) = spawned["id"].as_str() {
+            record_spawn(&self.states, principal, id, background);
         }
         spawned["background"] = json!(background);
         Ok(spawned)
@@ -439,6 +456,17 @@ mod tests {
             agent: agent.into(),
             profile: profile.into(),
         }
+    }
+
+    #[test]
+    fn only_a_spawn_by_a_chat_makes_a_worker() {
+        let states = SessionStates::default();
+        record_spawn(&states, &Principal::Session(Caller::Chat("boss".into())), "by-chat", false);
+        record_spawn(&states, &Principal::Session(Caller::Terminal("t1".into())), "by-tab", true);
+        record_spawn(&states, &Principal::Local, "by-local", false);
+        assert!(states.is_worker("by-chat"));
+        assert!(!states.is_worker("by-tab") && !states.is_worker("by-local"));
+        assert!(states.background().contains("by-tab"));
     }
 
     #[test]

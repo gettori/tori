@@ -54,6 +54,7 @@ pub struct SessionStates {
     states: Mutex<HashMap<String, Held>>,
     // Spawned with `--background`, held for #203's gate to read.
     background: Mutex<HashSet<String>>,
+    workers: Mutex<HashSet<String>>,
 }
 
 impl SessionStates {
@@ -101,8 +102,10 @@ impl SessionStates {
         }
         *held = next.into_iter().collect();
         let mut background = self.background.lock().unwrap_or_else(|e| e.into_inner());
+        let mut workers = self.workers.lock().unwrap_or_else(|e| e.into_inner());
         for id in ended {
             background.remove(&id);
+            workers.remove(&id);
         }
         events
     }
@@ -126,6 +129,18 @@ impl SessionStates {
 
     pub fn background(&self) -> HashSet<String> {
         self.background.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn mark_worker(&self, id: &str) {
+        self.workers.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
+    }
+
+    pub fn is_worker(&self, id: &str) -> bool {
+        self.workers.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
+    }
+
+    pub fn forget_worker(&self, id: &str) {
+        self.workers.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
     }
 }
 
@@ -186,6 +201,16 @@ mod tests {
         assert_eq!(states.snapshot().get("p"), Some(&SessionState::Idle));
         let back = states.replace(vec![report("p", SessionState::Idle, Source::Pty)], place, GONE);
         assert!(back.is_empty(), "coming back is not a second start");
+    }
+
+    #[test]
+    fn an_ended_session_is_no_longer_a_worker() {
+        let states = SessionStates::default();
+        states.replace(vec![report("w", SessionState::Working, Source::Chat)], place, GONE);
+        states.mark_worker("w");
+        assert!(states.is_worker("w"));
+        states.replace(vec![], place, GONE);
+        assert!(!states.is_worker("w"));
     }
 
     #[test]

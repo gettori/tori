@@ -3,7 +3,7 @@
 //! `tools/list` both read it, so a row added here is served and published.
 
 use schemars::{json_schema, schema_for, JsonSchema, Schema};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR};
@@ -40,6 +40,10 @@ impl CallerKind {
 }
 
 const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker];
+const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
+
+/// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
+pub const WORKER_REFUSAL: &str = "a worker never addresses the user; finish your turn and your spawner reads it";
 
 type Call = fn(&dyn Backend, &Principal, &Value) -> Result<Value, RpcError>;
 
@@ -84,13 +88,19 @@ pub static METHODS: &[Method] = &[
         params: no_params,
         callers: ANYONE,
         refusal: None,
-        call: |b, p, _| b.caller(p),
+        call: |b, p, _| {
+            let mut me = b.caller(p)?;
+            if let Some(me) = me.as_object_mut() {
+                me.insert("kind".into(), json!(b.kind(p).name()));
+            }
+            Ok(me)
+        },
     },
     Method {
         name: "session.steer",
         description: "Send a message to a live chat session, as a steer mid turn or as its next turn.",
         params: schema::<SteerParams>,
-        callers: ANYONE,
+        callers: NOT_WORKERS,
         refusal: None,
         call: |b, p, v| b.session_steer(p, params(v)?),
     },
@@ -130,7 +140,7 @@ pub static METHODS: &[Method] = &[
         name: "session.spawn",
         description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files.",
         params: schema::<SpawnParams>,
-        callers: ANYONE,
+        callers: NOT_WORKERS,
         refusal: None,
         call: |b, p, v| b.session_spawn(p, params(v)?),
     },
@@ -165,7 +175,7 @@ pub static METHODS: &[Method] = &[
         name: "ask.wait",
         description: "Wait for the answer to a question ask.create returned unanswered.",
         params: schema::<AskWaitParams>,
-        callers: ANYONE,
+        callers: NOT_WORKERS,
         refusal: None,
         call: |b, _, v| b.ask_wait(params(v)?),
     },
