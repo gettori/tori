@@ -16,6 +16,7 @@
   .wheel[data-state="working"][data-active="false"] {
     color: var(--status-progress);
   }
+  .wheel[data-quiet="true"],
   .wheel[data-state="off"] {
     color: var(--fg-subtle);
   }

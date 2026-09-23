@@ -125,6 +125,29 @@ describe("the tab pill", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("will not close a locked tab from the keyboard, the pointer or a middle click", () => {
+    // The autopilot is driving it, so the one way to close it is to stop the
+    // autopilot. The mark takes the close slot, so there is no button to click.
+    const onClose = vi.fn();
+    render(() => (
+      <Tabs.Root defaultValue="a.ts">
+        <Tabs.List aria-label="Open files">
+          <Tab value="a.ts" onClose={onClose} locked={<span data-lock-mark="" />}>
+            a.ts
+          </Tab>
+        </Tabs.List>
+      </Tabs.Root>
+    ));
+    const a = screen.getByRole("tab", { name: "a.ts" });
+    fireEvent.keyDown(a, { key: "Delete" });
+    fireEvent.keyDown(a, { key: "Backspace" });
+    fireEvent(a.parentElement!, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-tab-close]")).toBeNull();
+    expect(document.querySelector("[data-lock-mark]")).not.toBeNull();
+  });
+
   it("renders no close affordance when the strip does not close tabs", () => {
     mount();
     expect(document.querySelector("[data-tab-close]")).toBeNull();

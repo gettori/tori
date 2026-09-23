@@ -86,6 +86,9 @@ export function BranchRow(props: {
   iconLabel?: string;
   selected?: boolean;
   nested?: boolean;
+  /** A mark between the glyph and the name, e.g. the autopilot's wheel on a
+   *  worktree it started. */
+  lead?: JSX.Element;
   end?: JSX.Element;
   /** A second line under the name, for a branch whose pull request has more to
    *  say than the end cluster has width for (`PrLine`). Absent leaves the row
@@ -98,7 +101,12 @@ export function BranchRow(props: {
   const glyph = () => (
     <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
   );
-  const name = () => <span class={styles.label}>{props.label}</span>;
+  const name = () => (
+    <>
+      {props.lead}
+      <span class={styles.label}>{props.label}</span>
+    </>
+  );
   const end = () => <span class={styles.rowEnd}>{props.end}</span>;
   return (
     <div class={`node ${styles.branchNode}`} classList={{ [styles.attemptNode]: props.nested }}>
