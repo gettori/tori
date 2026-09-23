@@ -5,6 +5,7 @@
 //   node dev/mcp-probe.mjs --self-check      # the probe's own server, no harness
 //   node dev/mcp-probe.mjs --argv-check      # two --mcp-config files at once
 //   node dev/mcp-probe.mjs --calibrate       # force a give-up at a known time
+//   node dev/mcp-probe.mjs --scopes          # --mcp-config beside --settings, resume, .mcp.json, strict
 //   node dev/mcp-probe.mjs --serve           # the stdio MCP server itself
 //   node dev/mcp-probe.mjs --json            # machine-readable, any mode
 //
@@ -29,7 +30,7 @@
 // a probe that stopped reading, and "no ceiling" is the answer that decides
 // whether Tori's `ask_user` may block. A check that cannot fail is not a check.
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -392,6 +393,119 @@ async function calibrate() {
   }
 }
 
+const TORI_SETTINGS = join(process.env.HOME, ".config", "tori", "claude-hooks-settings.json");
+const TORI_HOOKS_STATUS = join(process.env.HOME, ".config", "tori", "hooks-status");
+
+const isProbe = (name) => /^(tori)?probe/.test(name);
+
+// The operator's own connectors are named by `system/init` too, and this
+// report gets quoted into a committed wiki. Probe rows are kept whole, every
+// other row is reduced to a count by source and status.
+function scrubServers(rows = []) {
+  const others = {};
+  for (const row of rows) {
+    if (isProbe(row.name)) continue;
+    const key = `${row.source ?? "?"}/${row.status ?? "?"}`;
+    others[key] = (others[key] ?? 0) + 1;
+  }
+  return { probe: rows.filter((r) => isProbe(r.name)), others };
+}
+
+async function claudeTurn({ cwd, argv, prompt }) {
+  const claude = openClaude({ cwd, argv });
+  try {
+    claude.sendTurn(prompt);
+    const init = await claude.waitFor(isInit, 120_000);
+    const result = await claude.waitFor(isResult, 180_000);
+    return {
+      sessionId: init.session_id,
+      servers: scrubServers(init.mcp_servers),
+      probeTools: (init.tools ?? []).filter((t) => t.includes("tori_probe")),
+      result: result.subtype,
+      ping: findToolOutcome(claude, PING_TOOL),
+    };
+  } finally {
+    claude.close();
+  }
+}
+
+function diffServers(before, after) {
+  const index = (rows) => Object.fromEntries(rows.map((r) => [r.name, r]));
+  const a = index(before.probe);
+  const b = index(after.probe);
+  const diff = {};
+  for (const name of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const was = a[name] ? `${a[name].source}/${a[name].status}` : "absent";
+    const now = b[name] ? `${b[name].source}/${b[name].status}` : "absent";
+    diff[name] = was === now ? was : `${was} -> ${now}`;
+  }
+  return { probe: diff, othersBefore: before.others, othersAfter: after.others };
+}
+
+async function scopes() {
+  const dir = mkdtempSync(join(tmpdir(), "tori-mcp-probe-"));
+  const project = mkdtempSync(join(tmpdir(), "tori-mcp-probe-project-"));
+  const noCall = "Say the single word ok. Do not call any tool.";
+  try {
+    const config = writeConfig(dir, "toriprobe");
+    const flags = ["--settings", TORI_SETTINGS];
+    const namespaced = `mcp__toriprobe__${PING_TOOL}`;
+
+    const fresh = await claudeTurn({
+      cwd: dir,
+      argv: buildArgv({ configs: [config], extra: [...flags, "--allowedTools", namespaced] }),
+      prompt: `Call the ${PING_TOOL} tool exactly once, then say ok.`,
+    });
+    const statusFile = join(TORI_HOOKS_STATUS, `${fresh.sessionId}.json`);
+    const hook = existsSync(statusFile) ? JSON.parse(readFileSync(statusFile, "utf8")) : null;
+
+    const resumed = (extra) =>
+      claudeTurn({ cwd: dir, argv: buildArgv({ extra: [...extra, "--resume", fresh.sessionId] }), prompt: noCall });
+    const resumeWithFlags = await resumed(["--mcp-config", config, ...flags]);
+    const resumeWithout = await resumed([]);
+
+    // `.mcp.json` is written into a temp project, never the repo, and nothing
+    // here approves it: the unapproved state is what the control measures.
+    writeFileSync(
+      join(project, ".mcp.json"),
+      `${JSON.stringify({ mcpServers: { probeproject: serverSpec("probeproject") } }, null, 2)}\n`,
+    );
+    const inProject = (configs, extra = []) =>
+      claudeTurn({ cwd: project, argv: buildArgv({ configs, extra: [...flags, ...extra] }), prompt: noCall });
+    const control = await inProject([]);
+    const withConfig = await inProject([config]);
+    const strictControl = await inProject([], ["--strict-mcp-config"]);
+    const strictWithConfig = await inProject([config], ["--strict-mcp-config"]);
+
+    return {
+      mode: "scopes",
+      fresh: {
+        servers: fresh.servers,
+        probeTools: fresh.probeTools,
+        result: fresh.result,
+        ping: fresh.ping,
+        hookFired: hook !== null,
+        hookLastEvent: hook?.event ?? null,
+      },
+      resumeWithFlags: { servers: resumeWithFlags.servers, probeTools: resumeWithFlags.probeTools },
+      resumeWithout: { servers: resumeWithout.servers, probeTools: resumeWithout.probeTools },
+      project: {
+        control: control.servers,
+        withConfig: withConfig.servers,
+        diff: diffServers(control.servers, withConfig.servers),
+      },
+      strict: {
+        control: strictControl.servers,
+        withConfig: strictWithConfig.servers,
+        diffFromDefault: diffServers(withConfig.servers, strictWithConfig.servers),
+      },
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(project, { recursive: true, force: true });
+  }
+}
+
 function report(out) {
   if (AS_JSON) {
     console.log(JSON.stringify(out, null, 2));
@@ -409,7 +523,8 @@ async function main() {
   if (has("--self-check")) return report(await selfCheck());
   if (has("--argv-check")) return report(await argvCheck());
   if (has("--calibrate")) return report(await calibrate());
-  console.error("pick a mode: --self-check, --argv-check, --calibrate, or --serve");
+  if (has("--scopes")) return report(await scopes());
+  console.error("pick a mode: --self-check, --argv-check, --calibrate, --scopes, or --serve");
   process.exit(2);
 }
 
