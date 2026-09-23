@@ -35,7 +35,8 @@ pub struct ListParams {
 #[serde(deny_unknown_fields)]
 pub struct TailParams {
     pub id: String,
-    pub agent: String,
+    // Looked up from the live claims, then the index, when left out.
+    pub agent: Option<String>,
     pub limit: Option<usize>,
 }
 

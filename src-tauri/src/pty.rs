@@ -498,6 +498,8 @@ pub fn pty_spawn(
     for (key, value) in crate::credential::spawn_env().into_iter().chain(crate::rpc::child_env()) {
         cmd.env(key, value);
     }
+    let path = cmd.get_env("PATH").map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    cmd.env("PATH", crate::rpc::path_with_cli(&path));
 
     // Applied last, so a caller pointing an agent at a different home wins over
     // anything set above.
