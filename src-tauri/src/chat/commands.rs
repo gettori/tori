@@ -306,7 +306,7 @@ pub async fn chat_spawn(
         effort.as_deref(),
         &extra_dirs,
     );
-    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token())?);
+    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), chat.transport)?);
 
     let spec = StartSpec {
         session_id: session_id.clone(),

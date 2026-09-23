@@ -48,6 +48,7 @@ use std::thread;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::agents::ChatTransport;
 use crate::owned_state::now_ms;
 
 /// Env markers the helper reads. Set inline on the hook command string rather
@@ -438,6 +439,7 @@ fn sh_quote(s: &str) -> String {
 /// hooks, permissions and config, and must never ship.
 pub fn settings_json(exe: &Path, sock: &Path, token: &str) -> String {
     json!({
+        "permissions": { "allow": [crate::rpc::mcp_allow()] },
         "hooks": {
             "PreToolUse": [{
                 "matcher": matcher(),
@@ -452,13 +454,15 @@ pub fn settings_json(exe: &Path, sock: &Path, token: &str) -> String {
     .to_string()
 }
 
-/// Write the settings file and return the `["--settings", <path>]` args.
+/// Write the settings file and return the `["--settings", <path>]` args, led
+/// by `--mcp-config` for a claude transport. `--mcp-config` is variadic, so
+/// `--settings` has to follow it directly.
 ///
 /// A **path**, not inline JSON. Not for the PTY reason (nothing is typed into a
 /// shell here) but because the command string embeds absolute paths and a token,
 /// and an argv-embedded JSON blob shows the token in `ps` output for every
 /// process on the machine. The file is `0600`.
-pub fn settings_args(session_id: &str, sock: &Path, token: &str) -> Result<Vec<String>, String> {
+pub fn settings_args(session_id: &str, sock: &Path, token: &str, transport: ChatTransport) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);
     if let Some(parent) = path.parent() {
@@ -466,7 +470,12 @@ pub fn settings_args(session_id: &str, sock: &Path, token: &str) -> Result<Vec<S
     }
     std::fs::write(&path, settings_json(&exe, sock, token)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
-    Ok(vec!["--settings".to_string(), path.to_string_lossy().into_owned()])
+    let mut args = match transport {
+        ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),
+        ChatTransport::Acp => Vec::new(),
+    };
+    args.extend(["--settings".to_string(), path.to_string_lossy().into_owned()]);
+    Ok(args)
 }
 
 /// Where a session's `--settings` payload lives. Public so teardown can remove
@@ -771,11 +780,11 @@ mod tests {
     fn the_settings_payload_never_disables_the_users_own_sources() {
         let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok");
         assert!(!text.contains("setting-sources"), "the payload must not touch setting sources");
-        assert!(!text.contains("permissions"), "the payload must not override the user's permissions");
         let parsed: Value = serde_json::from_str(&text).unwrap();
-        // Exactly one key: hooks. Anything else would be layering over settings
-        // the user owns.
-        assert_eq!(parsed.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["hooks"]);
+        // Hooks, and an allow for Tori's own tools only: anything else would be
+        // layering over settings the user owns.
+        assert_eq!(parsed.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["permissions", "hooks"]);
+        assert_eq!(parsed["permissions"], json!({ "allow": ["mcp__tori__*"] }), "only Tori's own tools are pre-allowed");
         assert_eq!(parsed["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["PreToolUse"]);
     }
 
@@ -820,7 +829,7 @@ mod tests {
         let before = std::fs::read(&user_settings).ok();
 
         let session = format!("settings-guard-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok").unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson).unwrap();
 
         let after = std::fs::read(&user_settings).ok();
         assert_eq!(before, after, "~/.claude/settings.json must be byte-identical before and after");
@@ -828,24 +837,25 @@ mod tests {
         // And Tori's own settings file, which claude *is* pointed at, layers only
         // hooks on top - it is a separate file entirely.
         assert_ne!(settings_path(&session), user_settings);
-        assert_eq!(args[1], settings_path(&session).to_string_lossy());
+        assert_eq!(args.last().unwrap(), &settings_path(&session).to_string_lossy());
         let _ = std::fs::remove_file(settings_path(&session));
     }
 
     /// `--settings` **merges**; it is `--setting-sources ''` that would strip the
     /// user's own hooks, permissions and config. Asserted structurally on the
-    /// payload: it declares only a hook and names no source list, so nothing it
-    /// contains can displace the user's settings.
+    /// payload: it declares one hook and one allow rule for Tori's own tools and
+    /// names no source list, so nothing it contains can displace the user's settings.
     #[test]
     fn toris_settings_payload_can_only_add_a_hook_never_replace_the_users() {
         let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok");
         let parsed: Value = serde_json::from_str(&text).unwrap();
 
-        // One key, one hook event, one entry: there is nothing here that could
-        // overwrite a user hook, because a merge unions the arrays.
-        assert_eq!(parsed.as_object().unwrap().len(), 1);
+        // One hook event, one entry and one allow rule: a merge unions the
+        // arrays, so none of it can overwrite a user hook or rule.
+        assert_eq!(parsed.as_object().unwrap().len(), 2);
+        assert_eq!(parsed["permissions"], json!({ "allow": ["mcp__tori__*"] }));
         assert_eq!(parsed["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
-        for forbidden in ["setting-sources", "settingSources", "permissions", "env", "model"] {
+        for forbidden in ["setting-sources", "settingSources", "deny", "defaultMode", "env", "model"] {
             assert!(!text.contains(forbidden), "the payload must not carry {forbidden}");
         }
     }
@@ -855,14 +865,29 @@ mod tests {
     #[test]
     fn the_settings_file_is_a_private_path_not_an_argv_blob() {
         let session = format!("perm-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token").unwrap();
-        assert_eq!(args[0], "--settings");
-        assert!(!args[1].trim_start().starts_with('{'), "a token in argv is visible in `ps`");
-        assert!(!args[1].contains("super-secret-token"));
+        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", ChatTransport::ClaudeStreamJson).unwrap();
+        let [.., flag, file] = args.as_slice() else { panic!("no --settings in {args:?}") };
+        assert_eq!(flag, "--settings");
+        assert!(!file.trim_start().starts_with('{'), "a token in argv is visible in `ps`");
+        assert!(!args.iter().any(|a| a.contains("super-secret-token")));
 
-        let mode = std::fs::metadata(&args[1]).unwrap().permissions().mode() & 0o777;
+        let mode = std::fs::metadata(file).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "the settings file holds a token");
-        let _ = std::fs::remove_file(&args[1]);
+        let _ = std::fs::remove_file(file);
+    }
+
+    #[test]
+    fn a_claude_session_gets_the_mcp_config_right_before_its_settings() {
+        let session = format!("mcp-{}", std::process::id());
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson).unwrap();
+        assert_eq!(args.len(), 4, "{args:?}");
+        assert_eq!((args[0].as_str(), args[2].as_str()), ("--mcp-config", "--settings"));
+        let config: Value = serde_json::from_str(&std::fs::read_to_string(&args[1]).unwrap()).unwrap();
+        assert_eq!(config["mcpServers"]["tori"], json!({ "command": "tori", "args": ["mcp"] }));
+
+        let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp).unwrap();
+        assert_eq!(acp[0], "--settings");
+        let _ = std::fs::remove_file(settings_path(&session));
     }
 
     // ---- against the real CLI ----
