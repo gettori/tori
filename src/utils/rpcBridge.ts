@@ -5,7 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { asTabProfile } from "./agentHealth";
 import { quotaBand, quotaState } from "./chatRateLimit";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
-import { loadPendingAsks, showAsk, type SocketAsk } from "./socketAsks";
+import { closeAsk, loadPendingAsks, showAsk, type SocketAsk } from "./socketAsks";
 import { usageWarnAt } from "./usageSettings";
 import { windowsFor } from "./usageStore";
 
@@ -55,5 +55,10 @@ handleRpc("usage.windows", ({ agent, account }: { agent: string; account: string
 
 handleRpc("ask.show", (ask: SocketAsk) => {
   showAsk(ask);
+  return {};
+});
+
+handleRpc("ask.close", ({ id }: { id: string }) => {
+  closeAsk(id);
   return {};
 });

@@ -18,5 +18,9 @@ export async function loadPendingAsks() {
 
 export async function answerAsk(id: string, answer: string) {
   await invoke<boolean>("rpc_ask_answer", { id, answer });
+  closeAsk(id);
+}
+
+export function closeAsk(id: string) {
   setAsks((prev) => prev.filter((a) => a.id !== id));
 }

@@ -8,8 +8,8 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams,
-    SpawnParams, SteerParams, TailParams, WorktreeParams,
+    params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams,
+    SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,7 @@ const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerK
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
 
 /// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
-pub const WORKER_REFUSAL: &str = "a worker never addresses the user; finish your turn and your spawner reads it";
+pub const WORKER_REFUSAL: &str = "a worker never spawns or steers; finish your turn and your spawner reads it";
 
 type Call = fn(&dyn Backend, &Principal, &Value) -> Result<Value, RpcError>;
 
@@ -103,6 +103,14 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: None,
         call: |b, p, v| b.session_steer(p, params(v)?),
+    },
+    Method {
+        name: "session.wait",
+        description: "Wait for a session to stop working: its state, the question it is waiting on if any, and its last message.",
+        params: schema::<WaitParams>,
+        callers: NOT_WORKERS,
+        refusal: None,
+        call: |b, _, v| b.session_wait(params(v)?),
     },
     Method {
         name: "worktree.new",
@@ -170,7 +178,7 @@ pub static METHODS: &[Method] = &[
         name: "ask.create",
         description: "Ask the user a question in the calling chat and wait for the answer, or return its id to poll with ask.wait.",
         params: schema::<AskParams>,
-        callers: &[CallerKind::Chat],
+        callers: &[CallerKind::Chat, CallerKind::Worker],
         refusal: Some("its card shows in a chat panel, so only a chat session can ask"),
         call: |b, p, v| match p {
             Principal::Session(Caller::Chat(session)) => b.ask_create(session, params(v)?),
@@ -178,10 +186,18 @@ pub static METHODS: &[Method] = &[
         },
     },
     Method {
+        name: "ask.answer",
+        description: "Answer a question another session asked, on the user's behalf; the card in that session goes away.",
+        params: schema::<AskAnswerParams>,
+        callers: NOT_WORKERS,
+        refusal: None,
+        call: |b, _, v| b.ask_answer(params(v)?),
+    },
+    Method {
         name: "ask.wait",
         description: "Wait for the answer to a question ask.create returned unanswered.",
         params: schema::<AskWaitParams>,
-        callers: NOT_WORKERS,
+        callers: ANYONE,
         refusal: None,
         call: |b, _, v| b.ask_wait(params(v)?),
     },

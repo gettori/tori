@@ -16,6 +16,7 @@ const COMMANDS: [&str; 13] = [
 const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
+  tori session wait <id> [--timeout <secs>] [--json]
   tori events [--topic <topic>]...
   tori whoami [--json]
   tori steer <id> <text>...
@@ -29,6 +30,7 @@ const USAGE: &str = "usage:
   tori budget [<id>] [--folder <path>] [--json]
   tori ask <question>... [--option <text>]... [--timeout <secs>]
   tori ask --wait <id> [--timeout <secs>]
+  tori ask --answer <id> <text>...
   tori mcp";
 
 pub fn is_cli() -> bool {
@@ -94,7 +96,8 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "sessions" => sessions(rest),
         "session" => match rest.first().map(String::as_str) {
             Some("tail") => session_tail(&rest[1..]),
-            _ => Err(usage("session needs a subcommand: tail")),
+            Some("wait") => session_wait(&rest[1..]),
+            _ => Err(usage("session needs a subcommand: tail or wait")),
         },
         "events" => events(rest),
         "whoami" => whoami(rest),
@@ -306,6 +309,31 @@ fn transcript(events: &[Value]) -> Vec<String> {
     lines
 }
 
+fn wait_params(args: &[String]) -> Result<(Value, bool), Failure> {
+    let p = Parsed::new(args, &["timeout"], &["json"])?;
+    let [id] = p.positional.as_slice() else {
+        return Err(usage("session wait takes one session id"));
+    };
+    Ok((json!({ "id": id, "timeout": p.number("timeout")? }), p.has("json")))
+}
+
+fn session_wait(args: &[String]) -> Result<(), Failure> {
+    let (params, json) = wait_params(args)?;
+    let settled = connect()?.call("session.wait", params)?;
+    let mut out = io::stdout().lock();
+    if json {
+        return Ok(writeln!(out, "{settled}")?);
+    }
+    writeln!(out, "{}", settled["state"].as_str().unwrap_or(""))?;
+    if let Some(question) = settled["question"]["question"].as_str() {
+        writeln!(out, "asking {}: {question}", settled["question"]["id"].as_str().unwrap_or(""))?;
+    }
+    if let Some(last) = settled["last"].as_str() {
+        writeln!(out, "{last}")?;
+    }
+    Ok(())
+}
+
 fn whoami(args: &[String]) -> Result<(), Failure> {
     let p = Parsed::new(args, &[], &["json"])?;
     let me = connect()?.call("caller", Value::Null)?;
@@ -485,19 +513,29 @@ fn budget(args: &[String]) -> Result<(), Failure> {
     Ok(())
 }
 
-fn ask(args: &[String]) -> Result<(), Failure> {
-    let p = Parsed::new(args, &["option", "timeout", "wait"], &[])?;
+fn ask_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
+    let p = Parsed::new(args, &["option", "timeout", "wait", "answer"], &[])?;
     let timeout = p.number("timeout")?;
-    let asked = match p.value("wait") {
-        Some(id) if p.positional.is_empty() => connect()?.call("ask.wait", json!({ "id": id, "timeout": timeout }))?,
-        Some(_) => return Err(usage("ask --wait takes only the id to poll")),
-        None if p.positional.is_empty() => return Err(usage("ask needs a question")),
-        None => {
+    Ok(match (p.value("wait"), p.value("answer")) {
+        (Some(_), Some(_)) => return Err(usage("ask takes --wait or --answer, not both")),
+        (Some(id), None) if p.positional.is_empty() => ("ask.wait", json!({ "id": id, "timeout": timeout })),
+        (Some(_), None) => return Err(usage("ask --wait takes only the id to poll")),
+        (None, Some(_)) if p.positional.is_empty() => return Err(usage("ask --answer needs the answer text")),
+        (None, Some(id)) => ("ask.answer", json!({ "id": id, "answer": p.positional.join(" ") })),
+        (None, None) if p.positional.is_empty() => return Err(usage("ask needs a question")),
+        (None, None) => {
             let options = p.flags.get("option").cloned().unwrap_or_default();
-            let params = json!({ "question": p.positional.join(" "), "options": options, "timeout": timeout });
-            connect()?.call("ask.create", params)?
+            ("ask.create", json!({ "question": p.positional.join(" "), "options": options, "timeout": timeout }))
         }
-    };
+    })
+}
+
+fn ask(args: &[String]) -> Result<(), Failure> {
+    let (method, params) = ask_request(args)?;
+    let asked = connect()?.call(method, params)?;
+    if method == "ask.answer" {
+        return Ok(());
+    }
     match asked["answer"].as_str() {
         Some(answer) => Ok(writeln!(io::stdout().lock(), "{answer}")?),
         None => Err(Failure::Unanswered(asked["id"].as_str().unwrap_or("").to_string())),
@@ -525,6 +563,26 @@ mod tests {
 
     fn args(all: &[&str]) -> Vec<String> {
         all.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn session_wait_takes_an_id_a_timeout_and_json() {
+        let (params, json) = wait_params(&args(&["w1", "--timeout", "30", "--json"])).ok().unwrap();
+        assert_eq!(params, json!({ "id": "w1", "timeout": 30 }));
+        assert!(json);
+        assert!(wait_params(&args(&[])).is_err());
+        assert!(USAGE.contains("session wait <id>"));
+    }
+
+    #[test]
+    fn ask_answer_names_the_id_and_joins_the_text() {
+        let (method, params) = ask_request(&args(&["--answer", "ask-1", "the", "second", "one"])).ok().unwrap();
+        assert_eq!((method, params), ("ask.answer", json!({ "id": "ask-1", "answer": "the second one" })));
+        assert!(ask_request(&args(&["--answer", "ask-1"])).is_err());
+        assert!(ask_request(&args(&["--answer", "ask-1", "--wait", "ask-2", "x"])).is_err());
+        let (method, _) = ask_request(&args(&["which", "one?", "--option", "a"])).ok().unwrap();
+        assert_eq!(method, "ask.create");
+        assert!(USAGE.contains("ask --answer <id>"));
     }
 
     #[test]
