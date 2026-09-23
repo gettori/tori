@@ -390,7 +390,7 @@ fn write_response(mut stream: &UnixStream, ack: &CaptureAck) -> std::io::Result<
     stream.flush()
 }
 
-fn random_token() -> String {
+pub(crate) fn random_token() -> String {
     let mut buf = [0u8; 16];
     if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
         if f.read_exact(&mut buf).is_ok() {

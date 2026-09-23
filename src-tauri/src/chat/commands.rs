@@ -901,14 +901,55 @@ pub async fn chat_history(
     agent_id: String,
     up_to_prompt_ts: Option<u64>,
 ) -> Result<Vec<ChatEvent>, String> {
-    let source = from_session_id.as_deref().unwrap_or(&session_id);
-    if !keeps_a_transcript(&agent_id) {
-        return log_history(&state, &session_id, source).await;
+    let source = from_session_id.unwrap_or_else(|| session_id.clone());
+    let id = session_id.clone();
+    let mut events = crate::exec::blocking("chat_history", move || {
+        read_history(&id, &history_source(&source, &agent_id), &agent_id, up_to_prompt_ts)
+    })
+    .await;
+    // The cut a live event gets on its way through the sink wrapper. Applied
+    // here because replay does not pass through it, and applied through the
+    // same cache so a backfilled card can fetch its remainder too.
+    state.0.cut_outputs(&session_id, &mut events);
+    Ok(events)
+}
+
+/// Where a session's conversation lives, resolved apart from the read so a test
+/// can point the read at a fixture.
+pub(crate) enum HistorySource {
+    Transcript(String),
+    /// The mirror's log, for an agent that keeps no transcript Tori can read.
+    Log(PathBuf),
+    /// A claude session that has not written its first turn yet.
+    Missing,
+}
+
+/// Resolves the source for reading a conversation. `source` is the session whose history is read.
+pub(crate) fn history_source(source: &str, agent_id: &str) -> HistorySource {
+    if !keeps_a_transcript(agent_id) {
+        return HistorySource::Log(acp_sessions::log_path(source));
     }
-    let Some(path) = crate::sessions::transcript_path(source, &agent_id) else {
-        return Ok(Vec::new());
+    crate::sessions::transcript_path(source, agent_id).map_or(HistorySource::Missing, HistorySource::Transcript)
+}
+
+/// A session's conversation as events stamped with `session_id`, uncut. Shared
+/// by `chat_history` and the app socket's `session.tail`.
+///
+/// `up_to_prompt_ts` is honoured for a transcript only. Rewind is out of scope
+/// for an ACP session, and the panel gates it on the tier, so honouring a cut
+/// nothing sends would be a branch that can only be wrong.
+pub(crate) fn read_history(
+    session_id: &str,
+    from: &HistorySource,
+    agent_id: &str,
+    up_to_prompt_ts: Option<u64>,
+) -> Vec<ChatEvent> {
+    let path = match from {
+        HistorySource::Transcript(path) => path,
+        HistorySource::Log(path) => return history_from_log(session_id, path),
+        HistorySource::Missing => return Vec::new(),
     };
-    let turns = crate::sessions::transcript_turns(&path, &agent_id);
+    let turns = crate::sessions::transcript_turns(path, agent_id);
     let shown = match up_to_prompt_ts.and_then(|ts| super::history::prompt_boundary(&turns, ts)) {
         Some(at) => &turns[..at],
         None => &turns[..],
@@ -916,13 +957,8 @@ pub async fn chat_history(
     // Read whole rather than cut at the rewind boundary: a subagent is placed at
     // its own `Agent` call, so one launched after the cut simply has no call
     // left to hang on and drops out on its own.
-    let subagents = crate::sessions::subagent_transcripts(&path, &agent_id);
-    let mut events = super::history::events_from_turns(&session_id, shown, &subagents);
-    // The cut a live event gets on its way through the sink wrapper. Applied
-    // here because replay does not pass through it, and applied through the
-    // same cache so a backfilled card can fetch its remainder too.
-    state.0.cut_outputs(&session_id, &mut events);
-    Ok(events)
+    let subagents = crate::sessions::subagent_transcripts(path, agent_id);
+    super::history::events_from_turns(session_id, shown, &subagents)
 }
 
 /// Does this agent write a transcript Tori can find on disk?
@@ -938,33 +974,7 @@ pub(crate) fn keeps_a_transcript(agent_id: &str) -> bool {
         .unwrap_or(true)
 }
 
-/// The conversation for an agent that keeps none Tori can read: the log the
-/// mirror wrote beside the session's locator.
-///
-/// Off the IPC thread through `exec::blocking`, per [[adr_no_sync_ipc_commands]]:
-/// this is a file read whose size is the length of a conversation.
-///
-/// `up_to_prompt_ts` has no meaning here and is not taken. Rewind is out of
-/// scope for an ACP session, and the panel gates it on the tier, so honouring a
-/// cut nothing sends would be a branch that can only be wrong.
-async fn log_history(
-    state: &State<'_, ChatState>,
-    session_id: &str,
-    source: &str,
-) -> Result<Vec<ChatEvent>, String> {
-    let path = acp_sessions::log_path(source);
-    let id = session_id.to_string();
-    let mut events =
-        crate::exec::blocking("chat_history_log", move || history_from_log(&id, &path)).await;
-    // The mirror writes what already went through the sink wrapper's cut, so
-    // this is normally a no-op. Applied anyway: it is what makes the cap a
-    // property of the read rather than of whichever build wrote the file.
-    state.0.cut_outputs(session_id, &mut events);
-    Ok(events)
-}
-
-/// The file half of [`log_history`], split out so it is testable without a Tauri
-/// app or an async runtime, exactly as `mark_turn` is.
+/// The mirror log half of [`read_history`].
 fn history_from_log(session_id: &str, path: &std::path::Path) -> Vec<ChatEvent> {
     let (mut events, skipped) = super::mirror::read_log(path);
     // Said out loud rather than counted and dropped. A conversation quietly

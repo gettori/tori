@@ -147,7 +147,7 @@ fn bridge_path() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/askpass.json")
 }
 
-fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Result<()> {
+pub(crate) fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -162,7 +162,7 @@ fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Result<()> {
     std::fs::rename(tmp, path)
 }
 
-fn socket_in_file(path: &Path) -> Option<(String, String)> {
+pub(crate) fn socket_in_file(path: &Path) -> Option<(String, String)> {
     let bridge: BridgeFile = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
     Some((bridge.sock, bridge.token))
 }
