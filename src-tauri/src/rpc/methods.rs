@@ -399,11 +399,8 @@ impl Backend for TauriBackend {
         }))
     }
 
-    fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError> {
-        let Principal::Session(Caller::Chat(session)) = principal else {
-            return Err(refused("ask shows its card in a chat panel, so only a chat's shell can ask for now".into()));
-        };
-        let ask = self.asks.create(session.clone(), params.question, params.options.unwrap_or_default());
+    fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError> {
+        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default());
         if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
             self.asks.forget(&ask.id);
             return Err(e);

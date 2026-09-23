@@ -17,6 +17,7 @@ pub mod methods;
 pub mod quotas;
 pub mod server;
 pub mod states;
+pub mod table;
 pub mod transport;
 
 use std::cell::OnceCell;

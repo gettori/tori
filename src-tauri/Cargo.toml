@@ -57,6 +57,9 @@ async-process = "2"
 # which never answers `initialize` leaves a client waiting forever, so the
 # deadline is Tori's to own - the same finding Phase 1 made about the Claude CLI.
 async-io = "2"
+# The socket params structs' JSON Schema, which `tori mcp` publishes as each
+# tool's `inputSchema`. Already in the tree through the ACP crate.
+schemars = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # `keychain` is the login keychain (the one a desktop app shares with every

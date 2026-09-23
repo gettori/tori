@@ -10,107 +10,139 @@ use std::thread;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::auth::{authenticate, Credential, Principal};
 use super::frame::{
     read_request, to_line, write_line, ReadError, Request, Response, RpcError, INVALID_PARAMS, INVALID_REQUEST,
-    METHOD_NOT_FOUND, UNAUTHORIZED,
+    METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
 };
 use super::hub::{Channel, ConnId, Hub, QUEUE_CAP};
+use super::table::{self, CallerKind};
 use super::transport::{Stream, Transport};
 
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListParams {
+    /// Only sessions whose folder is this one or inside it.
     pub cwd: Option<String>,
+    /// Only sessions running in this Tori right now.
     pub live: Option<bool>,
+    /// At most this many rows, newest first (default 50).
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TailParams {
+    /// The session id.
     pub id: String,
-    // Looked up from the live claims, then the index, when left out.
+    /// The session's agent, looked up from the live claims, then the index, when left out.
     pub agent: Option<String>,
+    /// At most this many events, the last ones (default 50).
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SteerParams {
+    /// The live chat session to send to.
     pub id: String,
+    /// The message, delivered as a steer mid turn or as the next turn otherwise.
     pub text: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorktreeParams {
+    /// The new branch, created in a new worktree.
     pub branch: String,
+    /// The project folder, the caller's own project when left out.
     pub project: Option<String>,
+    /// The ref the new branch starts from.
     pub from: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointsParams {
+    /// The session id.
     pub id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointParams {
+    /// The session id.
     pub id: String,
-    // 1 based, in the order `checkpoints.list` returns.
+    /// The turn, 1 based, in the order `checkpoints.list` returns.
     pub turn: usize,
+    /// Revert even with other live sessions in the same folder.
     pub force: Option<bool>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SpawnParams {
+    /// The agent id, the caller's own agent when left out.
     pub agent: Option<String>,
+    /// The agent account, the caller's own when the agent is the caller's.
     pub account: Option<String>,
+    /// The folder to start in, the caller's own folder when left out.
     pub folder: Option<String>,
+    /// The first message of the new session.
     pub prompt: Option<String>,
+    /// Paths of files attached to the first message.
     pub attach: Option<Vec<String>>,
+    /// Start in a new worktree on this new branch instead of `folder`.
     pub new_worktree: Option<String>,
+    /// The project a `new_worktree` is made in, the caller's own when left out.
     pub project: Option<String>,
+    /// The ref a `new_worktree` branches from.
     pub from: Option<String>,
+    /// Mark the session as running unattended; `sessions.list` flags it `background`.
     pub background: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OpenParams {
+    /// Path of the file to open in the editor.
     pub path: String,
+    /// The 1 based line to put the cursor on.
     pub line: Option<u32>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BudgetParams {
+    /// The session to report, the calling chat session when left out.
     pub id: Option<String>,
+    /// The folder whose usage to report, the session's folder when left out.
     pub folder: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AskParams {
+    /// The question shown to the user in the calling chat.
     pub question: String,
+    /// Answers offered as buttons; the user can still type their own.
     pub options: Option<Vec<String>>,
-    // Seconds to wait for an answer before returning the id to poll.
+    /// Seconds to wait for an answer before returning the id to poll with `ask.wait`.
     pub timeout: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AskWaitParams {
+    /// The id `ask.create` returned.
     pub id: String,
+    /// Seconds to wait for the answer before returning null again.
     pub timeout: Option<u64>,
 }
 
@@ -127,7 +159,7 @@ pub trait Backend: Send + Sync {
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError>;
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
-    fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError>;
+    fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
 }
 
@@ -144,7 +176,7 @@ struct TopicParams {
     topic: String,
 }
 
-fn params<T: DeserializeOwned>(value: &Value) -> Result<T, RpcError> {
+pub(super) fn params<T: DeserializeOwned>(value: &Value) -> Result<T, RpcError> {
     let value = if value.is_null() { json!({}) } else { value.clone() };
     serde_json::from_value(value).map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))
 }
@@ -165,21 +197,16 @@ impl Server {
                 self.hub.unsubscribe(conn, &channel(&req.params)?);
                 Ok(json!({}))
             }
-            "sessions.list" => self.backend.sessions_list(params(&req.params)?),
-            "session.tail" => self.backend.session_tail(params(&req.params)?),
-            "caller" => self.backend.caller(principal),
-            "session.steer" => self.backend.session_steer(principal, params(&req.params)?),
-            "worktree.new" => self.backend.worktree_new(principal, params(&req.params)?),
-            "checkpoints.list" => self.backend.checkpoints_list(params(&req.params)?),
-            "checkpoint.diff" => self.backend.checkpoint_diff(params(&req.params)?),
-            "checkpoint.revert" => self.backend.checkpoint_revert(principal, params(&req.params)?),
-            "session.spawn" => self.backend.session_spawn(principal, params(&req.params)?),
-            "window.open" => self.backend.window_open(params(&req.params)?),
-            "budget" => self.backend.budget(principal, params(&req.params)?),
-            "ask.create" => self.backend.ask_create(principal, params(&req.params)?),
-            "ask.wait" => self.backend.ask_wait(params(&req.params)?),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
-            other => Err(RpcError::new(METHOD_NOT_FOUND, format!("no method {other}"))),
+            name => {
+                let method = table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
+                let kind = CallerKind::of(principal);
+                if !method.callers.contains(&kind) {
+                    let why = method.refusal.map(|r| format!(": {r}")).unwrap_or_default();
+                    return Err(RpcError::new(REFUSED, format!("{name} is not open to a {} caller{why}", kind.name())));
+                }
+                (method.call)(self.backend.as_ref(), principal, &req.params)
+            }
         }
     }
 }
@@ -317,7 +344,7 @@ pub mod tests {
         fn budget(&self, _: &Principal, p: BudgetParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
-        fn ask_create(&self, _: &Principal, p: AskParams) -> Result<Value, RpcError> {
+        fn ask_create(&self, _: &str, p: AskParams) -> Result<Value, RpcError> {
             Ok(json!({ "question": p.question }))
         }
         fn ask_wait(&self, p: AskWaitParams) -> Result<Value, RpcError> {
@@ -455,6 +482,68 @@ pub mod tests {
         c.send_raw("not json\n");
         assert_eq!(c.recv().unwrap()["error"]["code"], json!(crate::rpc::frame::PARSE_ERROR));
         assert_eq!(c.call(4, "sessions.list", Value::Null)["result"][0]["id"], json!("s1"));
+    }
+
+    fn stub_server() -> Server {
+        Server {
+            credential: Credential { process: "tok".into(), children: Arc::default() },
+            hub: Arc::default(),
+            backend: Box::new(StubBackend),
+            auth_timeout: AUTH_TIMEOUT,
+        }
+    }
+
+    fn request(method: &str, params: Value) -> Request {
+        serde_json::from_value(json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})).unwrap()
+    }
+
+    #[test]
+    fn every_spawn_param_is_optional_and_described() {
+        let schema = schemars::schema_for!(SpawnParams).to_value();
+        let properties = schema["properties"].as_object().unwrap();
+        assert_eq!(properties.len(), 9);
+        for (name, field) in properties {
+            assert!(field["description"].as_str().is_some_and(|d| !d.is_empty()), "{name} has no description");
+        }
+        assert!(schema["required"].as_array().is_none_or(|r| r.is_empty()), "{schema}");
+    }
+
+    // Params built from each row's own schema, so a row added later is covered
+    // without touching this test.
+    #[test]
+    fn every_row_dispatches_to_the_backend() {
+        let server = stub_server();
+        for method in table::METHODS {
+            let schema = (method.params)().to_value();
+            let mut sample = serde_json::Map::new();
+            for field in schema["required"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                let value = match schema["properties"][field]["type"].as_str() {
+                    Some("integer") => json!(1),
+                    Some("array") => json!([]),
+                    Some("boolean") => json!(false),
+                    _ => json!("x"),
+                };
+                sample.insert(field.to_string(), value);
+            }
+            let principal = match method.callers[0] {
+                CallerKind::Local => Principal::Local,
+                CallerKind::Terminal => Principal::Session(Caller::Terminal("t1".into())),
+                CallerKind::Chat | CallerKind::Worker => Principal::Session(Caller::Chat("s1".into())),
+            };
+            let outcome = server.dispatch(0, &principal, &request(method.name, Value::Object(sample)));
+            assert!(outcome.is_ok(), "{}: {outcome:?}", method.name);
+        }
+    }
+
+    #[test]
+    fn the_dispatcher_refuses_a_caller_kind_the_row_leaves_out() {
+        let server = stub_server();
+        let tab = Principal::Session(Caller::Terminal("t1".into()));
+        let err = server.dispatch(0, &tab, &request("ask.create", json!({"question": "q"}))).unwrap_err();
+        assert_eq!(err.code, REFUSED);
+        assert!(err.message.contains("terminal") && err.message.contains("ask.create"), "{}", err.message);
+        let chat = Principal::Session(Caller::Chat("s1".into()));
+        assert!(server.dispatch(0, &chat, &request("ask.create", json!({"question": "q"}))).is_ok());
     }
 
     #[test]
