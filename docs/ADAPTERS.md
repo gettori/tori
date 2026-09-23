@@ -197,6 +197,7 @@ args = []                 # optional; the args that select this level
 # --- only read by transport = "acp" ---
 [chat.acp]
 serve_client_fs = false   # optional, default false; advertise Tori's filesystem and terminal to the agent
+send_mcp_servers = false  # optional, default false; hand the agent Tori's MCP servers on `session/new`
 
 # --- v3 only; omit the whole table for an agent Tori does not sign in ---
 [accounts]
@@ -268,6 +269,9 @@ TOML file" from meaning "a new agent is a TOML file plus a pile of
 agent-specific escape hatches". `serve_client_fs` advertises Tori's filesystem
 and terminal to the agent; the default declines both, which is a complete
 configuration rather than a degraded one, since ACP agents do their own I/O.
+`send_mcp_servers` populates `mcpServers` on `session/new`; turn it on only for
+an agent measured calling a server it was handed (`dev/mcp-probe.mjs --acp`),
+since an agent can accept the array and never start the server.
 
 Everything else in the table is an **arg template**, so adding a agent is a
 TOML table rather than a Rust branch. Placeholders are substituted at spawn

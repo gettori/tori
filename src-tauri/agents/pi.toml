@@ -72,5 +72,5 @@ add_dir_args = []
 # Left at the safe default, like every unmeasured ACP adapter.
 #
 # pi-acp 0.0.33 accepts a populated `mcpServers` and never starts the servers
-# (dev/mcp-probe.mjs --acp). No key until #200 stops sending `[]`.
+# (dev/mcp-probe.mjs --acp), so `send_mcp_servers` stays off.
 serve_client_fs = false

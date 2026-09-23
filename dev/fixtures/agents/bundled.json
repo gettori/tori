@@ -149,6 +149,7 @@
         }
       ],
       "acp": {
+        "send_mcp_servers": false,
         "serve_client_fs": false
       }
     },
@@ -212,6 +213,7 @@
       "split_model_names": false,
       "modes": [],
       "acp": {
+        "send_mcp_servers": true,
         "serve_client_fs": false
       }
     },
@@ -271,6 +273,7 @@
       "split_model_names": false,
       "modes": [],
       "acp": {
+        "send_mcp_servers": false,
         "serve_client_fs": false
       }
     },
@@ -321,6 +324,7 @@
       "split_model_names": false,
       "modes": [],
       "acp": {
+        "send_mcp_servers": false,
         "serve_client_fs": false
       }
     },
@@ -360,6 +364,7 @@
       "split_model_names": false,
       "modes": [],
       "acp": {
+        "send_mcp_servers": false,
         "serve_client_fs": false
       }
     },
@@ -401,6 +406,7 @@
       "split_model_names": true,
       "modes": [],
       "acp": {
+        "send_mcp_servers": true,
         "serve_client_fs": false
       }
     },
@@ -454,6 +460,7 @@
       "split_model_names": true,
       "modes": [],
       "acp": {
+        "send_mcp_servers": false,
         "serve_client_fs": false
       }
     },
