@@ -26,7 +26,7 @@
 
 use super::http::{
     classify, graphql_data, paginate_graphql, paginate_rest, ConnectionSpec, GraphqlEndpoint,
-    HttpRequest, NestedSpec, Recording, Transport, PAGE_CAP,
+    HttpRequest, HttpResponse, NestedSpec, Recording, Transport, PAGE_CAP,
 };
 use super::model::{
     AuthState, Capabilities, CheckContext, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
@@ -155,18 +155,24 @@ impl GitHubForge {
         }
     }
 
-    fn graphql(&self, query: &str, vars: Value) -> Result<Value, ForgeError> {
+    pub(crate) fn graphql(&self, query: &str, vars: Value) -> Result<Value, ForgeError> {
+        // GraphQL answers 200 with an `errors` array, so a status check is not
+        // enough on its own. The unwrapping lives in `http` and is shared with
+        // the pagination walker, rather than being written twice and drifting.
+        let resp = self.graphql_response(query, vars)?;
+        graphql_data(&resp)
+    }
+
+    /// The raw answer, for a caller that has to read an error's `type` before
+    /// [`graphql_data`] folds it into a message.
+    pub(crate) fn graphql_response(&self, query: &str, vars: Value) -> Result<HttpResponse, ForgeError> {
         let req = HttpRequest {
             method: "POST",
             url: self.graphql_url.clone(),
             headers: self.headers(),
             body: Some(serde_json::json!({ "query": query, "variables": vars }).to_string()),
         };
-        // GraphQL answers 200 with an `errors` array, so a status check is not
-        // enough on its own. The unwrapping lives in `http` and is shared with
-        // the pagination walker, rather than being written twice and drifting.
-        let resp = self.transport.send(req)?;
-        graphql_data(&resp)
+        self.transport.send(req)
     }
 }
 
@@ -942,6 +948,10 @@ mutation($threadId:ID!,$body:String!){
         let path = format!("/repos/{}/{}/pulls/{number}/update-branch", repo.owner, repo.repo);
         self.send(self.rest("PUT", &path, Some(serde_json::json!({}))))?;
         Ok(())
+    }
+
+    fn issues(&self) -> Option<&dyn crate::issues::IssueSource> {
+        Some(self)
     }
 }
 

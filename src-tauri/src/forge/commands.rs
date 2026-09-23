@@ -880,7 +880,7 @@ fn git_username(provider: Provider) -> &'static str {
 /// Inside the call that failed rather than on the next tick: a token that
 /// expired mid-session is one Tori can replace without the user, and making
 /// them watch a cycle fail first is a pause with nothing behind it.
-fn attempt<T>(
+pub(crate) fn attempt<T>(
     c: &Client,
     run: impl Fn(&dyn Forge) -> Result<T, ForgeError>,
 ) -> Result<T, ForgeError> {
@@ -1101,7 +1101,7 @@ fn login_of(account_id: &str) -> Option<String> {
 
 /// A backstop behind the scheduler's own pause. The kill switch is checked
 /// before resolving, so `forge.enabled` off means no work at all.
-fn gated_client(project_path: &str) -> Result<Client, ForgeError> {
+pub(crate) fn gated_client(project_path: &str) -> Result<Client, ForgeError> {
     if !auth::enabled() {
         return Err(ForgeError::NotAuthenticated);
     }
