@@ -25,6 +25,17 @@ pub struct UnitIssue {
     pub title: String,
 }
 
+impl From<&super::Issue> for UnitIssue {
+    fn from(issue: &super::Issue) -> Self {
+        Self {
+            key: issue.key.clone(),
+            display: issue.display.clone(),
+            url: issue.url.clone(),
+            title: issue.title.clone(),
+        }
+    }
+}
+
 type RepoIssues = HashMap<String, UnitIssue>;
 
 #[derive(Debug, Default, Serialize, Deserialize)]

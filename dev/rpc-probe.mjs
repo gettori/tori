@@ -4,6 +4,10 @@
 //   node dev/rpc-probe.mjs                 # list, tail, then wait for a chat session to start
 //   node dev/rpc-probe.mjs --no-wait       # skip the wait for a `session.started` event
 //   node dev/rpc-probe.mjs --timeout <ms>  # how long to wait for it (default 120000)
+//   node dev/rpc-probe.mjs --no-wait --issue <project> <key>
+//                                          # issues.assigned and issues.get, then link the issue's
+//                                          # suggested branch on GitHub and open a worktree for it.
+//                                          # Makes a real branch on the host.
 //
 // Finds the socket the way a front must: `TORI_SOCK`/`TORI_CALLER` when run
 // inside a Tori terminal, else `~/.config/tori/rpc.json`. Exits non-zero when any
@@ -17,6 +21,8 @@ const args = process.argv.slice(2);
 const wait = !args.includes("--no-wait");
 const timeoutAt = args.indexOf("--timeout");
 const timeoutMs = timeoutAt >= 0 ? Number(args[timeoutAt + 1]) : 120_000;
+const issueAt = args.indexOf("--issue");
+const issue = issueAt >= 0 ? { project: args[issueAt + 1], key: args[issueAt + 2] } : null;
 
 function locate() {
   if (process.env.TORI_SOCK && process.env.TORI_CALLER) {
@@ -98,6 +104,23 @@ const refused = await bad.call("auth", { token: "not-the-token" });
 check(refused.error?.code === -32001, "a wrong token is refused", JSON.stringify(refused.error));
 const hungUp = await Promise.race([bad.closed.then(() => true), new Promise((r) => setTimeout(() => r(false), 2000))]);
 check(hungUp, "and its connection is closed");
+
+if (issue) {
+  const { project, key } = issue;
+  const assigned = await c.call("issues.assigned", { project });
+  check(Array.isArray(assigned.result), "issues.assigned", JSON.stringify(assigned.error ?? assigned.result?.map((i) => `${i.display} ${i.kind}`)));
+  const got = await c.call("issues.get", { project, key });
+  check(!!got.result?.suggestedBranch, "issues.get", JSON.stringify(got.error ?? got.result?.suggestedBranch));
+  const branch = got.result?.suggestedBranch;
+  if (branch) {
+    const link = await c.call("issues.link_branch", { project, key, branch });
+    check(!!link.result?.outcome, "issues.link_branch", JSON.stringify(link.error ?? link.result));
+    const again = await c.call("issues.link_branch", { project, key, branch });
+    check(again.result?.outcome === "alreadyLinked", "a second link is not a second branch", JSON.stringify(again.error ?? again.result));
+    const wt = await c.call("worktree.new", { project, branch, issue: key });
+    check(!!wt.result?.path, "worktree.new with the issue", JSON.stringify(wt.error ?? wt.result));
+  }
+}
 
 if (wait) {
   console.log(`waiting up to ${timeoutMs} ms: start a chat session in Tori`);
