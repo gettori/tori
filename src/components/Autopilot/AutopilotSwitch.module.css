@@ -1,0 +1,130 @@
+@layer components {
+  .switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    font-family: var(--tori-font-ui);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-1);
+    padding: var(--tori-space-1);
+    border-radius: var(--tori-radius-pill);
+    background: var(--neutral-subtle);
+    border: var(--tori-border-thin) solid var(--border-default);
+  }
+  .pill[data-view="workspace"][data-state="needs"] {
+    border-color: var(--needs-you-border);
+  }
+  .pill[data-state="error"] {
+    border-color: var(--danger-border);
+  }
+
+  .segment {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--tori-space-3);
+    min-width: var(--tori-space-8);
+    height: var(--control-height-sm);
+    padding: 0;
+    border: none;
+    border-radius: var(--tori-radius-pill);
+    background: transparent;
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: var(--tori-text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--tori-duration-fast) var(--tori-ease);
+  }
+  .segment:hover {
+    background: var(--neutral-hover);
+    color: var(--fg-default);
+  }
+  .segment:focus-visible {
+    outline: var(--tori-border-thick) solid var(--brand-ring);
+    outline-offset: var(--tori-space-1);
+  }
+
+  .active,
+  .active:hover {
+    padding: 0 var(--tori-space-5) 0 var(--tori-space-4);
+    background: var(--progress-subtle);
+    box-shadow: inset 0 0 0 var(--tori-border-thin) var(--progress-border);
+    color: var(--progress-on-subtle);
+    cursor: default;
+  }
+  /* Room for the badge and the error mark, which hang off the wheel's corner. */
+  .pill[data-state="needs"] .active,
+  .pill[data-state="error"] .active {
+    gap: var(--tori-space-5);
+  }
+  .pill[data-view="workspace"] .active {
+    cursor: pointer;
+  }
+
+  .open::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: var(--tori-radius-pill);
+    box-shadow: 0 0 0 var(--tori-border-thick) var(--brand-ring);
+    pointer-events: none;
+  }
+
+  .icon {
+    width: var(--control-icon);
+    height: var(--control-icon);
+    flex: none;
+  }
+
+  .power {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--control-height);
+    height: var(--control-height);
+    padding: 0;
+    border-radius: var(--tori-radius-pill);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    background: var(--neutral-subtle);
+    color: var(--fg-default);
+    cursor: pointer;
+    transition:
+      background var(--tori-duration-fast) var(--tori-ease),
+      border-color var(--tori-duration-fast) var(--tori-ease);
+  }
+  .power[data-on="true"]:hover {
+    background: var(--danger-subtle);
+    border-color: var(--danger-border);
+  }
+  .power[data-on="false"]:hover {
+    background: var(--neutral-hover);
+  }
+  .power:focus-visible {
+    outline: var(--tori-border-thick) solid var(--brand-ring);
+    outline-offset: var(--tori-space-1);
+  }
+
+  .stop {
+    width: calc(9px * var(--ui-scale));
+    height: calc(9px * var(--ui-scale));
+    border-radius: var(--tori-radius-sm);
+    background: var(--danger-fg);
+  }
+
+  /* A triangle from borders, so it needs no glyph and scales with the UI. */
+  .play {
+    width: 0;
+    height: 0;
+    margin-left: calc(2px * var(--ui-scale));
+    border-style: solid;
+    border-width: calc(5.5px * var(--ui-scale)) 0 calc(5.5px * var(--ui-scale)) calc(9px * var(--ui-scale));
+    border-color: transparent transparent transparent currentColor;
+  }
+}
