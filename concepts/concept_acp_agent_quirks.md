@@ -1,8 +1,8 @@
 ---
 summary: a running list of where real ACP agents disagree with the spec, so the client is built against measured behavior
 status: current
-updated: 2026-08-14
-source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0
+updated: 2026-09-23
+source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0; plan "Probe: --mcp-config beside --settings" (phase 3), branch `orchestrator`, `dev/mcp-probe.mjs --acp` against codex-acp 1.12.0 and pi-acp 0.0.33
 ---
 
 # ACP agent quirks
@@ -13,7 +13,11 @@ ACP is one protocol with several independent implementations, and the gap betwee
 
 ### Session creation
 
-- **Some agents refuse a non-empty `mcpServers`.** *(reported)* An adapter that does not itself speak MCP can fail `session/new` outright when the array is populated, rather than ignoring it. So the payload is empty by default and populated only for an agent whose adapter opts in. This is the first of the two per-agent overrides the transport must carry.
+- **A populated `mcpServers` is accepted by both agents measured, and honoured by one.** *(measured, contradicts the earlier reported refusal)* `node dev/mcp-probe.mjs --acp` opens each bridge twice, `session/new` with `[]` and then with one stdio server, and logs every method that server receives:
+  - `@agentclientprotocol/codex-acp` 1.12.0 on codex-cli 0.155.1: both `ok`. It starts the server (`initialize`, `tools/list`, `tools/call` all arrive), the turn produces a `tool_call` titled `mcp.<server>.<tool>` that completes with the tool's answer, plus a second `Guardian Review` tool call that belongs to codex's own review of the call. It advertises `mcpCapabilities: { http: true, sse: false }`.
+  - `pi-acp` 0.0.33 on pi 0.82.1: both `ok`, and the server never receives a single message. The bridge stores the array on its session object and never reads it again. It advertises `mcpCapabilities: { http: false, sse: false }`. Its turns ended `end_turn` with no model text even with an empty array (auth unverified on this machine), so the turn tells us nothing. The empty server log is the evidence.
+
+  So the refusal risk was not seen, but the quieter failure was: an agent can accept the array and drop it. `send_mcp_servers` still decides per agent whether the array gets populated, and "accepted" is not proof the servers work: the only proof is the server being called. This is the first of the two per-agent overrides the transport must carry.
 - **`cwd` and `mcpServers` are required even when empty.** *(reported)* Omitting either yields `Invalid params` from agents that validate strictly. They are sent unconditionally, never gated on a capability: an empty array is a value, an absent key is a protocol error.
 - **`cwd` must be absolute.** *(documented)* It is also the base for relative paths for the life of the session.
 - **`session/new` may answer `auth_required`.** *(documented)* This is a named error with a user-actionable meaning, not a spawn failure, and it is the only error code on this path worth branching on.
@@ -62,7 +66,7 @@ The licensing boundary matters here: entries marked *(reported)* were learned fr
 
 - [[concept_harness_capability_tiers]] — where an ACP session's measured tier is published, including the affordances it cannot have
 - [[adr_harness_breadth]] — the decision this list is the maintenance cost of
-- [[concept_mcp_config_scopes]] — what Tori would be putting in `mcpServers` if an agent accepted one
+- [[concept_mcp_config_scopes]] — what Tori would be putting in `mcpServers`, which codex-acp honours and pi-acp drops
 - [[concept_capability_resolution]] — the same advertise-then-verify shape, one layer up
 - [[concept_pretooluse_capture_hook]] — the Claude-only mechanism ACP replaces with in-protocol permissions
 - [[component_acp_transport]] — the client every entry here is a constraint on
