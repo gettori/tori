@@ -98,6 +98,22 @@ pub struct BudgetParams {
     pub folder: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AskParams {
+    pub question: String,
+    pub options: Option<Vec<String>>,
+    // Seconds to wait for an answer before returning the id to poll.
+    pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AskWaitParams {
+    pub id: String,
+    pub timeout: Option<u64>,
+}
+
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
@@ -111,6 +127,8 @@ pub trait Backend: Send + Sync {
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError>;
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
+    fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError>;
+    fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -158,6 +176,8 @@ impl Server {
             "session.spawn" => self.backend.session_spawn(principal, params(&req.params)?),
             "window.open" => self.backend.window_open(params(&req.params)?),
             "budget" => self.backend.budget(principal, params(&req.params)?),
+            "ask.create" => self.backend.ask_create(principal, params(&req.params)?),
+            "ask.wait" => self.backend.ask_wait(params(&req.params)?),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             other => Err(RpcError::new(METHOD_NOT_FOUND, format!("no method {other}"))),
         }
@@ -295,6 +315,12 @@ pub mod tests {
             Ok(json!({ "path": p.path }))
         }
         fn budget(&self, _: &Principal, p: BudgetParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
+        }
+        fn ask_create(&self, _: &Principal, p: AskParams) -> Result<Value, RpcError> {
+            Ok(json!({ "question": p.question }))
+        }
+        fn ask_wait(&self, p: AskWaitParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
     }

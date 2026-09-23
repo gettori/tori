@@ -6,6 +6,7 @@
 //! its env; anything else reads the `rpc.json` bridge file, the same shape and
 //! the same lifetime rule as the askpass one in `crate::credential`.
 
+pub mod asks;
 pub mod auth;
 pub mod bridge;
 pub mod client;
@@ -21,6 +22,7 @@ use std::sync::{Arc, OnceLock};
 
 use tauri::{AppHandle, Emitter};
 
+use asks::{Ask, Asks};
 use auth::{Caller, Children, Credential};
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use hub::Hub;
@@ -36,12 +38,14 @@ pub const ENV_CALLER: &str = "TORI_CALLER";
 
 static SOCKET: OnceLock<(String, Arc<Children>)> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
+static ASKS: OnceLock<Arc<Asks>> = OnceLock::new();
 
 pub struct RpcState {
     transport: Arc<UnixTransport>,
     pub hub: Arc<Hub>,
     states: Arc<SessionStates>,
     bridge: Arc<Bridge>,
+    asks: Arc<Asks>,
 }
 
 impl RpcState {
@@ -63,6 +67,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let hub = Arc::new(Hub::default());
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
+    let asks = Arc::new(Asks::default());
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
@@ -75,6 +80,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
             app,
             states: states.clone(),
             bridge: bridge.clone(),
+            asks: asks.clone(),
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
@@ -85,13 +91,14 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         eprintln!("tori: rpc bridge file not written: {e}");
     }
     let _ = SOCKET.set((sock, children));
+    let _ = ASKS.set(asks.clone());
     match link_cli(transport.sock_path()) {
         Ok(dir) => {
             let _ = CLI_DIR.set(dir);
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states, bridge })
+    Ok(RpcState { transport, hub, states, bridge, asks })
 }
 
 #[tauri::command]
@@ -104,6 +111,16 @@ pub fn rpc_session_states(rpc: tauri::State<RpcState>, states: Vec<Reported>) {
 #[tauri::command]
 pub fn rpc_reply(rpc: tauri::State<RpcState>, rid: u64, result: Option<serde_json::Value>, error: Option<String>) {
     rpc.bridge.reply(rid, error.map_or(Ok(result.unwrap_or_default()), Err));
+}
+
+#[tauri::command]
+pub fn rpc_asks_pending(rpc: tauri::State<RpcState>) -> Vec<Ask> {
+    rpc.asks.pending()
+}
+
+#[tauri::command]
+pub fn rpc_ask_answer(rpc: tauri::State<RpcState>, id: String, answer: String) -> bool {
+    rpc.asks.answer(&id, answer)
 }
 
 /// A `bin/tori` link beside the socket, so it goes with the socket's private
@@ -143,9 +160,13 @@ pub fn revoke_env(env: &[(String, String)]) {
     }
 }
 
+// A chat that ended can no longer show its asks, so they go with its token.
 pub fn revoke(caller: &Caller) {
     if let Some((_, children)) = SOCKET.get() {
         children.revoke(caller);
+    }
+    if let (Caller::Chat(session), Some(asks)) = (caller, ASKS.get()) {
+        asks.forget_session(session);
     }
 }
 
