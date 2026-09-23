@@ -2,7 +2,7 @@
 summary: a running list of where real ACP agents disagree with the spec, so the client is built against measured behavior
 status: current
 updated: 2026-09-23
-source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0; plan "Probe: --mcp-config beside --settings" (phase 3), branch `orchestrator`, `dev/mcp-probe.mjs --acp` against codex-acp 1.12.0 and pi-acp 0.0.33
+source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0; plan "Probe: --mcp-config beside --settings" (phase 3), branch `orchestrator`, `dev/mcp-probe.mjs --acp` against codex-acp 1.12.0 and pi-acp 0.0.33; plan "tori mcp" phase 1, same branch, the probe re-run with `opencode acp` 1.18.3 added and two `env` pairs sent
 ---
 
 # ACP agent quirks
@@ -13,9 +13,11 @@ ACP is one protocol with several independent implementations, and the gap betwee
 
 ### Session creation
 
-- **A populated `mcpServers` is accepted by both agents measured, and honoured by one.** *(measured, contradicts the earlier reported refusal)* `node dev/mcp-probe.mjs --acp` opens each bridge twice, `session/new` with `[]` and then with one stdio server, and logs every method that server receives:
+- **A populated `mcpServers` is accepted by all three agents measured, and honoured by two.** *(measured, contradicts the earlier reported refusal)* `node dev/mcp-probe.mjs --acp` opens each bridge twice, `session/new` with `[]` and then with one stdio server carrying `env` pairs `TORI_SOCK` and `TORI_CALLER` (values no parent environment holds), and logs every method that server receives plus the env its tool saw:
   - `@agentclientprotocol/codex-acp` 1.12.0 on codex-cli 0.155.1: both `ok`. It starts the server (`initialize`, `tools/list`, `tools/call` all arrive), the turn produces a `tool_call` titled `mcp.<server>.<tool>` that completes with the tool's answer, plus a second `Guardian Review` tool call that belongs to codex's own review of the call ([[gotcha_codex_guardian_review_names_the_tool_it_reviews]]). It advertises `mcpCapabilities: { http: true, sse: false }`.
+  - `opencode acp` 1.18.3: both `ok`. It starts the server and calls the tool; the `tool_call` is titled `<server>_<tool>` (`toriprobe_tori_probe_ping`), not codex's dotted form, so a client matching tori tools by title must accept both. It sends `notifications/cancelled` to the server after the call has already answered, so a server must treat a cancel for a finished id as a no-op. It advertises `mcpCapabilities: { http: true, sse: true }`.
   - `pi-acp` 0.0.33 on pi 0.82.1: both `ok`, and the server never receives a single message. The bridge stores the array on its session object and never reads it again. It advertises `mcpCapabilities: { http: false, sse: false }`. Its turns ended `end_turn` with no model text even with an empty array (auth unverified on this machine), so the turn tells us nothing. The empty server log is the evidence.
+  - Both honouring agents deliver both `env` pairs to the server child, and neither sends `session/request_permission` for the MCP call in its default mode (codex-acp's `Guardian Review` is a tool call, not a permission request).
 
   So the refusal risk was not seen, but the quieter failure was: an agent can accept the array and drop it. `send_mcp_servers` still decides per agent whether the array gets populated, and "accepted" is not proof the servers work: the only proof is the server being called. This is the first of the two per-agent overrides the transport must carry.
 - **`cwd` and `mcpServers` are required even when empty.** *(reported)* Omitting either yields `Invalid params` from agents that validate strictly. They are sent unconditionally, never gated on a capability: an empty array is a value, an absent key is a protocol error.
@@ -67,7 +69,7 @@ The licensing boundary matters here: entries marked *(reported)* were learned fr
 - [[concept_harness_capability_tiers]] — where an ACP session's measured tier is published, including the affordances it cannot have
 - [[adr_harness_breadth]] — the decision this list is the maintenance cost of
 - [[concept_blocking_tool_call_ceiling]] — how long codex-acp lets an MCP call block (300s), and why pi has no row
-- [[concept_mcp_config_scopes]] — what Tori would be putting in `mcpServers`, which codex-acp honours and pi-acp drops
+- [[concept_mcp_config_scopes]] — what Tori would be putting in `mcpServers`, which codex-acp and opencode honour and pi-acp drops
 - [[concept_capability_resolution]] — the same advertise-then-verify shape, one layer up
 - [[concept_pretooluse_capture_hook]] — the Claude-only mechanism ACP replaces with in-protocol permissions
 - [[component_acp_transport]] — the client every entry here is a constraint on
