@@ -5,6 +5,10 @@ icon = "claude"
 # The CLI these conventions were empirically captured against. The chat
 # transport below is a measurement of this version's wire format, so a drift
 # warning against a newer binary is meaningful rather than cosmetic.
+#
+# Left at 2.1.231 on purpose: only the MCP surface (`--mcp-config` beside
+# `--settings`, `--strict-mcp-config`) was re-measured, on 2.1.278 and 2.1.280
+# with dev/mcp-probe.mjs. The rest of this file was not.
 verified_against = "claude 2.1.231"
 
 [launch]
