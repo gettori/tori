@@ -244,6 +244,32 @@ pub fn revoke(caller: &Caller) {
     }
 }
 
+const MCP_SERVER: &str = "tori";
+
+/// The rule pre-allowed in every settings file Tori injects into a claude it
+/// launches: Tori's own tools, nothing else, and the user's deny rules still
+/// outrank it.
+pub fn mcp_allow() -> String {
+    format!("mcp__{MCP_SERVER}__*")
+}
+
+/// `["--mcp-config", <path>]` naming `tori mcp`, for a claude Tori launches.
+/// One static file for every session: `tori` resolves through the `bin/tori`
+/// link on the child's PATH and `tori mcp` inherits the child's socket env.
+/// Empty if the file cannot be written, so the launch goes on without it.
+pub fn mcp_config_args() -> Vec<String> {
+    let path = dirs::home_dir().unwrap_or_default().join(".config/tori/claude-mcp.json");
+    let config = json!({ "mcpServers": { MCP_SERVER: { "command": "tori", "args": ["mcp"] } } });
+    let written = path
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&path, format!("{config}\n")));
+    match written {
+        Ok(()) => vec!["--mcp-config".to_string(), path.to_string_lossy().into_owned()],
+        Err(_) => Vec::new(),
+    }
+}
+
 pub(crate) fn bridge_path() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/rpc.json")
 }

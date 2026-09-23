@@ -146,6 +146,7 @@ fn claude_settings_json() -> String {
     let cmd = status_writer_command();
     let entry = hook_entry(&cmd);
     let settings = json!({
+        "permissions": { "allow": [crate::rpc::mcp_allow()] },
         "hooks": {
             "UserPromptSubmit": entry,
             "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": cmd }] }],
@@ -183,18 +184,25 @@ fn write_claude_settings_file() -> Result<PathBuf, String> {
 }
 
 /// Extra launch args to append to an agent's args (Tori-launched sessions
-/// only, never editing user config): `["--settings", "<path>"]` for claude,
-/// empty for every other adapter (no verified injection mechanism yet, see
+/// only, never editing user config): `["--mcp-config", "<path>", "--settings",
+/// "<path>"]` for claude, empty for every other adapter (no verified injection mechanism yet, see
 /// `AgentAdapter::hooks`) or if the settings file can't be written.
 #[tauri::command(async)]
 pub fn agent_hook_launch_args(agent_id: String) -> Vec<String> {
-    if !crate::agents::find(&agent_id).map(|a| a.hooks).unwrap_or(false) {
-        return Vec::new();
+    crate::agents::find(&agent_id).map(launch_args).unwrap_or_default()
+}
+
+// Tori's MCP server reaches any claude transport, whether or not its adapter
+// takes the status hooks.
+fn launch_args(adapter: &crate::agents::AgentAdapter) -> Vec<String> {
+    let claude = adapter.chat.as_ref().is_some_and(|c| c.transport == crate::agents::ChatTransport::ClaudeStreamJson);
+    let mut args = if claude { crate::rpc::mcp_config_args() } else { Vec::new() };
+    if adapter.hooks {
+        if let Ok(path) = write_claude_settings_file() {
+            args.extend(["--settings".to_string(), path.to_string_lossy().into_owned()]);
+        }
     }
-    match write_claude_settings_file() {
-        Ok(path) => vec!["--settings".to_string(), path.to_string_lossy().into_owned()],
-        Err(_) => Vec::new(),
-    }
+    args
 }
 
 #[cfg(test)]
@@ -343,15 +351,25 @@ mod tests {
     #[test]
     fn claude_gets_settings_flag_pointing_at_a_short_file_path() {
         let args = agent_hook_launch_args("claude".to_string());
-        assert_eq!(args[0], "--settings");
+        assert_eq!((args[0].as_str(), args[2].as_str()), ("--mcp-config", "--settings"), "{args:?}");
         // Load-bearing: a *path*, not inline JSON - see write_claude_settings_file's
         // doc comment for why an inline blob hangs the shell it's typed into.
-        assert!(!args[1].trim_start().starts_with('{'), "must be a file path, not inline JSON");
-        let text = std::fs::read_to_string(&args[1]).expect("the settings file should exist");
+        assert!(!args[3].trim_start().starts_with('{'), "must be a file path, not inline JSON");
+        let text = std::fs::read_to_string(&args[3]).expect("the settings file should exist");
         let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+        assert_eq!(parsed["permissions"], json!({ "allow": ["mcp__tori__*"] }));
         assert!(parsed["hooks"]["Notification"].is_array());
         assert!(parsed["hooks"]["UserPromptSubmit"].is_array());
         assert!(parsed["hooks"]["PreToolUse"].is_array());
         assert!(parsed["hooks"]["Stop"].is_array());
+    }
+
+    #[test]
+    fn an_adapter_with_hooks_but_no_claude_transport_gets_no_mcp_config() {
+        let mut adapter = crate::agents::find("claude").unwrap().clone();
+        adapter.chat.as_mut().unwrap().transport = crate::agents::ChatTransport::Acp;
+        let args = launch_args(&adapter);
+        assert_eq!(args[0], "--settings", "{args:?}");
+        assert!(!args.iter().any(|a| a == "--mcp-config"));
     }
 }

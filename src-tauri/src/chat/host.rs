@@ -1902,8 +1902,9 @@ mod tests {
     fn a_torn_down_bridge_leaves_no_settings_file_behind() {
         let session = format!("teardown-{}", std::process::id());
         let server = crate::chat::approval::start(Box::new(|_| {})).unwrap();
-        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token()).unwrap();
-        let settings_path = std::path::PathBuf::from(&settings[1]);
+        let transport = crate::agents::ChatTransport::ClaudeStreamJson;
+        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport).unwrap();
+        let settings_path = std::path::PathBuf::from(settings.last().unwrap());
         assert!(settings_path.exists(), "the session was launched with a settings file");
 
         let bridge = SessionBridge::new(server, Arc::new(Mutex::new(SnapshotCache::new(8))), &session);
