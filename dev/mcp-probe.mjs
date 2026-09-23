@@ -7,6 +7,12 @@
 //   node dev/mcp-probe.mjs --calibrate       # force a give-up at a known time
 //   node dev/mcp-probe.mjs --scopes          # --mcp-config beside --settings, resume, .mcp.json, strict
 //   node dev/mcp-probe.mjs --acp             # empty then populated mcpServers, per ACP agent (--agent to pick one)
+//   node dev/mcp-probe.mjs --ceiling         # one long call, timed from the harness's own frames
+//       --sleep <ms>                         #   how long the tool blocks
+//       --server-timeout <ms>                #   claude's per-server `timeout` key in the config
+//       --progress <ms>                      #   emit progress this often, if the harness sent a token
+//       --env KEY=VALUE                      #   any env override, repeatable
+//       --harness codex-acp                  #   time the call through an ACP bridge instead
 //   node dev/mcp-probe.mjs --serve           # the stdio MCP server itself
 //   node dev/mcp-probe.mjs --json            # machine-readable, any mode
 //
@@ -58,7 +64,10 @@ const TOOLS = [
     description: "Blocks for the given number of milliseconds, then answers.",
     inputSchema: {
       type: "object",
-      properties: { ms: { type: "number", description: "How long to block, in milliseconds." } },
+      properties: {
+        ms: { type: "number", description: "How long to block, in milliseconds." },
+        progressEveryMs: { type: "number", description: "Send a progress notification this often while blocked." },
+      },
       required: ["ms"],
       additionalProperties: false,
     },
@@ -71,7 +80,10 @@ function serve(name, mark) {
   const text = (body) => ({ content: [{ type: "text", text: body }] });
 
   const handle = async (msg) => {
-    if (mark && msg.method) appendFileSync(mark, `${msg.method}\n`);
+    if (mark && msg.method) {
+      const token = msg.params?._meta?.progressToken !== undefined ? " progressToken" : "";
+      appendFileSync(mark, `${msg.method}${token}\n`);
+    }
     switch (msg.method) {
       case "initialize":
         // Echo the client's own version back. The probe has no stake in which
@@ -95,8 +107,22 @@ function serve(name, mark) {
         if (tool === PING_TOOL) return ok(msg.id, text(`pong from ${name}`));
         if (tool === SLEEP_TOOL) {
           const ms = Number(msg.params?.arguments?.ms ?? 0);
+          const every = Number(msg.params?.arguments?.progressEveryMs ?? 0);
+          const progressToken = msg.params?._meta?.progressToken;
           const started = Date.now();
+          let sent = 0;
+          // Progress needs a token from the client. Without one the spec forbids
+          // sending it, so a run asking for progress from a harness that never
+          // offers a token measures plain silence, and the mark log says so.
+          const ticker =
+            every > 0 && progressToken !== undefined
+              ? setInterval(() => {
+                  sent++;
+                  write({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken, progress: sent } });
+                }, every)
+              : null;
           await new Promise((r) => setTimeout(r, ms));
+          if (ticker) clearInterval(ticker);
           return ok(msg.id, text(`slept ${Date.now() - started}ms (asked for ${ms}ms)`));
         }
         return write({ jsonrpc: "2.0", id: msg.id, error: { code: -32602, message: `unknown tool ${tool}` } });
@@ -290,9 +316,10 @@ function openClaude({ cwd, argv, env = {} }) {
   };
 }
 
-function writeConfig(dir, name) {
+function writeConfig(dir, name, { timeout, mark } = {}) {
   const path = join(dir, `${name}.mcp.json`);
-  writeFileSync(path, `${JSON.stringify({ mcpServers: { [name]: serverSpec(name) } }, null, 2)}\n`);
+  const server = { ...serverSpec(name, mark), ...(timeout !== undefined ? { timeout } : {}) };
+  writeFileSync(path, `${JSON.stringify({ mcpServers: { [name]: server } }, null, 2)}\n`);
   return path;
 }
 
@@ -519,6 +546,7 @@ function openAcp(spec, cwd) {
   const child = spawn(spec.program, spec.args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
   const pending = new Map();
   const frames = [];
+  const arrivals = [];
   let nextId = 1;
   let buffer = "";
   let stderr = "";
@@ -539,6 +567,7 @@ function openAcp(spec, cwd) {
       } catch {
         continue;
       }
+      if (msg.method && msg.id === undefined) arrivals.push(performance.now());
       if (msg.id !== undefined && pending.has(msg.id) && !msg.method) {
         const waiter = pending.get(msg.id);
         pending.delete(msg.id);
@@ -572,7 +601,7 @@ function openAcp(spec, cwd) {
       }, timeoutMs).unref?.();
     });
 
-  return { call, frames, stderrText: () => stderr, close: () => child.kill("SIGKILL") };
+  return { call, frames, arrivals, stderrText: () => stderr, close: () => child.kill("SIGKILL") };
 }
 
 function allowOption(params) {
@@ -667,6 +696,83 @@ async function acpServers() {
   return { mode: "acp", ...results };
 }
 
+const readMark = (mark) =>
+  existsSync(mark) ? [...new Set(readFileSync(mark, "utf8").split("\n").filter(Boolean))] : [];
+
+async function ceiling() {
+  const sleepMs = Number(val("--sleep", "60000"));
+  const progressEveryMs = Number(val("--progress", "0"));
+  const harness = val("--harness", "claude");
+  const env = Object.fromEntries(
+    args.flatMap((a, i) => (a === "--env" ? [args[i + 1].split(/=(.*)/s).slice(0, 2)] : [])),
+  );
+  const dir = mkdtempSync(join(tmpdir(), "tori-mcp-probe-"));
+  const mark = join(dir, "server-methods.log");
+  const toolArgs = { ms: sleepMs, ...(progressEveryMs ? { progressEveryMs } : {}) };
+  const prompt = `Call the ${SLEEP_TOOL} tool exactly once with arguments ${JSON.stringify(toolArgs)}. Do not explain, do not say anything else.`;
+  const base = { mode: "ceiling", harness, sleepMs, progressEveryMs, env };
+  try {
+    if (harness !== "claude") {
+      return { ...base, ...(await acpCeiling(ACP_AGENTS[harness], dir, mark, prompt, sleepMs)), serverSaw: readMark(mark) };
+    }
+    const serverTimeout = has("--server-timeout") ? Number(val("--server-timeout")) : undefined;
+    const config = writeConfig(dir, "toriprobe", { timeout: serverTimeout, mark });
+    const claude = openClaude({
+      cwd: dir,
+      argv: buildArgv({ configs: [config], extra: ["--allowedTools", `mcp__toriprobe__${SLEEP_TOOL}`] }),
+      env,
+    });
+    try {
+      claude.sendTurn(prompt);
+      await claude.waitFor(isInit, 120_000);
+      await claude.waitFor(isResult, sleepMs + 180_000);
+      return { ...base, serverTimeout: serverTimeout ?? null, outcome: findToolOutcome(claude, SLEEP_TOOL), serverSaw: readMark(mark) };
+    } finally {
+      claude.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function acpCeiling(spec, dir, mark, text, sleepMs) {
+  const acp = openAcp(spec, dir);
+  try {
+    await acp.call("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    });
+    const session = await acp.call("session/new", { cwd: dir, mcpServers: [acpServer("toriprobe", mark)] });
+    const prompt = await acp.call(
+      "session/prompt",
+      { sessionId: session.sessionId, prompt: [{ type: "text", text }] },
+      sleepMs + 240_000,
+    );
+    let startedAt = null;
+    let callId = null;
+    let last = null;
+    for (let i = 0; i < acp.frames.length; i++) {
+      const u = acp.frames[i].params?.update;
+      if (u?.sessionUpdate !== "tool_call" && u?.sessionUpdate !== "tool_call_update") continue;
+      // codex names the tool in its Guardian Review call's title as well, so the
+      // call is picked by the title's suffix and then followed by its own id.
+      if (callId === null && String(u.title ?? "").endsWith(SLEEP_TOOL)) {
+        callId = u.toolCallId;
+        startedAt = acp.arrivals[i];
+      }
+      if (u.toolCallId === callId && (u.status === "completed" || u.status === "failed")) {
+        last = { status: u.status, frame: JSON.stringify(u).slice(0, 600), elapsedMs: Math.round(acp.arrivals[i] - startedAt) };
+      }
+    }
+    return {
+      stopReason: prompt?.stopReason ?? null,
+      outcome: startedAt === null ? "(the model never called the tool)" : last ?? "(called, but no terminal status arrived)",
+    };
+  } finally {
+    acp.close();
+  }
+}
+
 function report(out) {
   if (AS_JSON) {
     console.log(JSON.stringify(out, null, 2));
@@ -686,7 +792,8 @@ async function main() {
   if (has("--calibrate")) return report(await calibrate());
   if (has("--scopes")) return report(await scopes());
   if (has("--acp")) return report(await acpServers());
-  console.error("pick a mode: --self-check, --argv-check, --calibrate, --scopes, --acp, or --serve");
+  if (has("--ceiling")) return report(await ceiling());
+  console.error("pick a mode: --self-check, --argv-check, --calibrate, --scopes, --acp, --ceiling, or --serve");
   process.exit(2);
 }
 
