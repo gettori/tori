@@ -4778,6 +4778,7 @@ dependencies = [
  "portable-pty",
  "regex",
  "rusqlite",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "sha1",
