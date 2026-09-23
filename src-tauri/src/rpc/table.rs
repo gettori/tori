@@ -6,9 +6,9 @@ use schemars::{json_schema, schema_for, JsonSchema, Schema};
 use serde_json::{json, Value};
 
 use super::auth::{Caller, Principal};
-use super::frame::{RpcError, INTERNAL_ERROR};
+use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams,
+    params, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams,
     SpawnParams, SteerParams, TailParams, WorktreeParams,
 };
 
@@ -122,11 +122,17 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "checkpoint.diff",
-        description: "The files a session's turn changed and their unified diff.",
-        params: schema::<CheckpointParams>,
+        description: "The files a session's turn, or run of turns, changed and their unified diff.",
+        params: schema::<CheckpointDiffParams>,
         callers: ANYONE,
         refusal: None,
-        call: |b, _, v| b.checkpoint_diff(params(v)?),
+        call: |b, _, v| {
+            let p: CheckpointDiffParams = params(v)?;
+            if let Some(to) = p.to.filter(|to| *to < p.turn) {
+                return Err(RpcError::new(INVALID_PARAMS, format!("to {to} is before turn {}", p.turn)));
+            }
+            b.checkpoint_diff(p)
+        },
     },
     Method {
         name: "checkpoint.revert",

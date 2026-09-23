@@ -15,7 +15,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskParams, AskWaitParams, Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
+    AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
     WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
@@ -326,8 +326,13 @@ impl Backend for TauriBackend {
         Ok(Value::Array(numbered.collect()))
     }
 
-    fn checkpoint_diff(&self, params: CheckpointParams) -> Result<Value, RpcError> {
+    fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError> {
         let (cwd, ts) = self.checkpoint(&params.id, params.turn)?;
+        if let Some(to) = params.to.filter(|to| *to != params.turn) {
+            let (_, to_ts) = self.checkpoint(&params.id, to)?;
+            let (files, diff) = crate::checkpoint::checkpoint_range_diff(&cwd, &params.id, ts, to_ts).map_err(refused)?;
+            return Ok(json!({ "files": files, "diff": diff }));
+        }
         let files = crate::checkpoint::checkpoint_turn_files(cwd.clone(), params.id.clone(), ts, None, None).map_err(refused)?;
         let mut diff = String::new();
         for file in &files {
