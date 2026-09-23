@@ -2,7 +2,7 @@
 summary: Tori reads claude's three MCP scopes, writes only mcp json, and injects a fourth via --mcp-config, merged not replacing
 status: current
 updated: 2026-09-23
-source: plan "Native Claude chat as the default session surface" (phase 12), branch `chat`; `src-tauri/src/chat/mcp.rs`; `src/panels/Chat/SessionInfo.tsx`; plan "Probe: --mcp-config beside --settings" (phase 2), branch `orchestrator`; `dev/mcp-probe.mjs --scopes`
+source: plan "Native Claude chat as the default session surface" (phase 12), branch `chat`; `src-tauri/src/chat/mcp.rs`; `src/panels/Chat/SessionInfo.tsx`; plan "Probe: --mcp-config beside --settings" (phase 2), branch `orchestrator`; `dev/mcp-probe.mjs --scopes`; plan "tori mcp" phase 2, same branch, the `injection` block of `--scopes` on claude 2.1.280
 ---
 
 # MCP config: three scopes, read all, write one
@@ -40,6 +40,9 @@ Measured on claude 2.1.280 with `node dev/mcp-probe.mjs --scopes` (phase 1's cal
 - **`--strict-mcp-config` replaces every other source.** With it, only the `dynamic` servers are left: the project `.mcp.json` server and every claude.ai connector drop out, and with no `--mcp-config` at all the array is empty. **#200 must not pass it**, since it would silently strip the user's own servers from every Tori-launched session.
 - **The flag is variadic.** `--mcp-config <configs...>` takes several files or JSON strings and eats every bare token after it, so a prompt passed as a positional after it gets read as a config. Put another flag after the configs, or send the prompt over stream-json stdin.
 - **The injected file also carries the per-server `timeout` (ms)**, the one knob that lets a blocking call outlast claude's 30 minute idle default, see [[concept_blocking_tool_call_ceiling]].
+- **A bare `command` resolves through the claude process's PATH.** A config naming `command: "toriprobe"`, found only through a link in a directory the probe put first on PATH, starts and answers. So Tori's config can say `command: "tori"` and lean on the `bin/tori` link; no absolute exe path needed.
+- **The server inherits claude's environment with no `env` in the config.** Two marker vars set on the claude process (`TORI_SOCK`, `TORI_CALLER`, probe-unique values) reached the server child, so one static config works for every session and the per session token rides the env Tori already sets.
+- **An allow rule in the injected `--settings` silences the prompt.** Under `--permission-mode default --permission-prompt-tool stdio`, the same call raised a `can_use_tool` for `mcp__toriprobe__tori_probe_ping` with an empty settings file (the calibration) and raised none with `permissions.allow: ["mcp__toriprobe__*"]`. The wildcard form works in a settings file passed by flag, so no per session settings file is needed for it.
 - **`source` names provenance directly** (`dynamic`, `project`, `claudeai`), so displacement reads off the label rather than from diffing two arrays.
 
 Two things read like approval state and are not. An unapproved `.mcp.json` server comes up `connected` under `-p`, which is what the chat transport runs, so the pending state in [[gotcha_a_newly_written_mcp_json_server_is_pending_not_connected]] was measured on the interactive surface (`claude mcp list`) and does not gate a print-mode session. And a claude.ai connector often shows `pending` in `system/init` because it had not finished connecting when the turn opened, not because anything is waiting on the user.
