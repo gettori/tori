@@ -10,8 +10,12 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use super::auth::{Caller, Principal};
+use super::bridge::Bridge;
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
-use super::server::{Backend, CheckpointParams, CheckpointsParams, ListParams, SteerParams, TailParams, WorktreeParams};
+use super::server::{
+    Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
+    WorktreeParams,
+};
 use super::states::{SessionState, SessionStates};
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
@@ -150,6 +154,7 @@ fn refused(message: String) -> RpcError {
 pub struct TauriBackend {
     pub app: AppHandle,
     pub states: Arc<SessionStates>,
+    pub bridge: Arc<Bridge>,
 }
 
 impl TauriBackend {
@@ -222,6 +227,14 @@ impl TauriBackend {
         others
     }
 
+    fn create_worktree(&self, principal: &Principal, params: WorktreeParams) -> Result<String, RpcError> {
+        let callers =
+            || self.identity(principal).cwd.and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()));
+        let project = or_callers(params.project, callers, "project")?;
+        let create = crate::worktree::create_worktree(self.app.clone(), project, params.branch, params.from);
+        tauri::async_runtime::block_on(create).map_err(refused)
+    }
+
     fn agent_of(&self, id: &str) -> Option<String> {
         if let Some(live) = self.live().remove(id).filter(|l| !l.agent.is_empty()) {
             return Some(live.agent);
@@ -237,7 +250,12 @@ impl Backend for TauriBackend {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        Ok(Value::Array(list(indexed, &self.live(), &self.states.snapshot(), &params, now)))
+        let mut rows = list(indexed, &self.live(), &self.states.snapshot(), &params, now);
+        let background = self.states.background();
+        for row in rows.iter_mut().filter(|row| row["id"].as_str().is_some_and(|id| background.contains(id))) {
+            row["background"] = json!(true);
+        }
+        Ok(Value::Array(rows))
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
@@ -275,12 +293,7 @@ impl Backend for TauriBackend {
     }
 
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
-        let callers =
-            || self.identity(principal).cwd.and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()));
-        let project = or_callers(params.project, callers, "project")?;
-        let create = crate::worktree::create_worktree(self.app.clone(), project, params.branch, params.from);
-        let path = tauri::async_runtime::block_on(create).map_err(refused)?;
-        Ok(json!({ "path": path }))
+        Ok(json!({ "path": self.create_worktree(principal, params)? }))
     }
 
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError> {
@@ -316,6 +329,72 @@ impl Backend for TauriBackend {
         let revert = crate::checkpoint::checkpoint_revert_tree(cwd, params.id, ts, None);
         let outcome = tauri::async_runtime::block_on(revert).map_err(refused)?;
         serde_json::to_value(outcome).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
+    }
+
+    fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError> {
+        let me = self.identity(principal);
+        let attach = params.attach.unwrap_or_default();
+        if let Some(missing) = attach.iter().find(|path| !Path::new(path).is_file()) {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}")));
+        }
+        let folder = match params.new_worktree {
+            Some(branch) => {
+                self.create_worktree(principal, WorktreeParams { branch, project: params.project, from: params.from })?
+            }
+            None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
+        };
+        // Left out, the webview picks the folder's remembered agent and account.
+        // The caller's account only carries over to the caller's own agent.
+        let agent = params.agent.or(me.agent.clone());
+        let account = params.account.or_else(|| if agent == me.agent { me.account } else { None });
+        let request = json!({ "folder": folder, "agent": agent, "account": account, "prompt": params.prompt, "attach": attach });
+        let mut spawned = self.bridge.request("session.spawn", request)?;
+        let background = params.background.unwrap_or(false);
+        if let Some(id) = spawned["id"].as_str().filter(|_| background) {
+            self.states.mark_background(id);
+        }
+        spawned["background"] = json!(background);
+        Ok(spawned)
+    }
+
+    fn window_open(&self, params: OpenParams) -> Result<Value, RpcError> {
+        if !Path::new(&params.path).is_file() {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no file {}", params.path)));
+        }
+        self.bridge.request("window.open", json!({ "path": params.path, "line": params.line }))
+    }
+
+    fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError> {
+        let me = self.identity(principal);
+        let id = params.id.or_else(|| match principal {
+            Principal::Session(Caller::Chat(id)) => Some(id.clone()),
+            _ => None,
+        });
+        let folder = match (params.folder, &id) {
+            (Some(folder), _) => folder,
+            (None, Some(id)) => self.session_cwd(id)?,
+            (None, None) => or_callers(None, || me.cwd.clone(), "folder")?,
+        };
+        let file = crate::chat::usage::load(&crate::chat::usage::usage_path(&folder));
+        let session = id.as_ref().map(|id| file.sessions.get(id).cloned().unwrap_or_default());
+        let (agent, account) = match &id {
+            Some(id) => (self.agent_of(id), self.app.state::<ChatState>().0.registry.profile_of(id)),
+            None => (me.agent, me.account),
+        };
+        let quota = match &agent {
+            Some(agent) => self.bridge.request("usage.windows", json!({ "agent": agent, "account": account }))?,
+            None => Value::Null,
+        };
+        Ok(json!({
+            "id": id,
+            "folder": folder,
+            "session": session,
+            "project": crate::chat::usage::project_total(&file),
+            "budgets": crate::settings::get_settings().budgets,
+            "agent": agent,
+            "account": account,
+            "quota": quota,
+        }))
     }
 }
 

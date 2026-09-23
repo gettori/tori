@@ -2,7 +2,7 @@
 //! webview computes the dot and owns it; this is a copy so `sessions.list` and
 //! the `sessions` topic can answer without a round trip into it.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -23,14 +23,18 @@ pub struct Reported {
 }
 
 #[derive(Default)]
-pub struct SessionStates(Mutex<HashMap<String, SessionState>>);
+pub struct SessionStates {
+    states: Mutex<HashMap<String, SessionState>>,
+    // Spawned with `--background`, held for #203's gate to read.
+    background: Mutex<HashSet<String>>,
+}
 
 impl SessionStates {
     // The webview's whole list rather than a delta, so one a reload lost still
     // gets cleared. A session no longer listed comes back as `Ended`.
     pub fn replace(&self, reported: Vec<Reported>) -> Vec<(String, SessionState)> {
         let next: HashMap<String, SessionState> = reported.into_iter().map(|r| (r.id, r.state)).collect();
-        let mut held = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut held = self.states.lock().unwrap_or_else(|e| e.into_inner());
         let mut moved: BTreeMap<String, SessionState> = held
             .keys()
             .filter(|id| !next.contains_key(*id))
@@ -42,11 +46,23 @@ impl SessionStates {
             }
         }
         *held = next;
+        let mut background = self.background.lock().unwrap_or_else(|e| e.into_inner());
+        moved.iter().filter(|(_, state)| **state == SessionState::Ended).for_each(|(id, _)| {
+            background.remove(id);
+        });
         moved.into_iter().collect()
     }
 
     pub fn snapshot(&self) -> HashMap<String, SessionState> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.states.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn mark_background(&self, id: &str) {
+        self.background.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
+    }
+
+    pub fn background(&self) -> HashSet<String> {
+        self.background.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 

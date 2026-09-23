@@ -70,6 +70,34 @@ pub struct CheckpointParams {
     pub force: Option<bool>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpawnParams {
+    pub agent: Option<String>,
+    pub account: Option<String>,
+    pub folder: Option<String>,
+    pub prompt: Option<String>,
+    pub attach: Option<Vec<String>>,
+    pub new_worktree: Option<String>,
+    pub project: Option<String>,
+    pub from: Option<String>,
+    pub background: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenParams {
+    pub path: String,
+    pub line: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BudgetParams {
+    pub id: Option<String>,
+    pub folder: Option<String>,
+}
+
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
@@ -80,6 +108,9 @@ pub trait Backend: Send + Sync {
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointParams) -> Result<Value, RpcError>;
     fn checkpoint_revert(&self, principal: &Principal, params: CheckpointParams) -> Result<Value, RpcError>;
+    fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError>;
+    fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
+    fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -124,6 +155,9 @@ impl Server {
             "checkpoints.list" => self.backend.checkpoints_list(params(&req.params)?),
             "checkpoint.diff" => self.backend.checkpoint_diff(params(&req.params)?),
             "checkpoint.revert" => self.backend.checkpoint_revert(principal, params(&req.params)?),
+            "session.spawn" => self.backend.session_spawn(principal, params(&req.params)?),
+            "window.open" => self.backend.window_open(params(&req.params)?),
+            "budget" => self.backend.budget(principal, params(&req.params)?),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             other => Err(RpcError::new(METHOD_NOT_FOUND, format!("no method {other}"))),
         }
@@ -253,6 +287,15 @@ pub mod tests {
         }
         fn checkpoint_revert(&self, _: &Principal, p: CheckpointParams) -> Result<Value, RpcError> {
             Ok(json!({ "turn": p.turn }))
+        }
+        fn session_spawn(&self, _: &Principal, p: SpawnParams) -> Result<Value, RpcError> {
+            Ok(json!({ "folder": p.folder }))
+        }
+        fn window_open(&self, p: OpenParams) -> Result<Value, RpcError> {
+            Ok(json!({ "path": p.path }))
+        }
+        fn budget(&self, _: &Principal, p: BudgetParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
         }
     }
 

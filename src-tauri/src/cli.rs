@@ -8,7 +8,9 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 8] = ["sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint"];
+const COMMANDS: [&str; 11] = [
+    "sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
+];
 
 const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
@@ -19,7 +21,11 @@ const USAGE: &str = "usage:
   tori worktree new <branch> [--project <path>] [--from <ref>]
   tori checkpoints <id> [--json]
   tori checkpoint diff <id> <n>
-  tori checkpoint revert <id> <n> [--force]";
+  tori checkpoint revert <id> <n> [--force]
+  tori spawn [--agent <id>] [--account <id>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
+             [--prompt <text>] [--attach <path>]... [--background] [--json]
+  tori open <path> [--line <n>]
+  tori budget [<id>] [--folder <path>] [--json]";
 
 pub fn is_cli() -> bool {
     std::env::args().nth(1).is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
@@ -91,6 +97,9 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
             Some("revert") => checkpoint_revert(&rest[1..]),
             _ => Err(usage("checkpoint needs a subcommand: diff or revert")),
         },
+        "spawn" => spawn(rest),
+        "open" => open(rest),
+        "budget" => budget(rest),
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
@@ -374,6 +383,76 @@ fn checkpoint_revert(args: &[String]) -> Result<(), Failure> {
         for path in outcome[key].as_array().into_iter().flatten().filter_map(Value::as_str) {
             writeln!(out, "{verb} {path}")?;
         }
+    }
+    Ok(())
+}
+
+fn spawn(args: &[String]) -> Result<(), Failure> {
+    let valued = ["agent", "account", "folder", "new-worktree", "project", "from", "prompt", "attach"];
+    let p = Parsed::new(args, &valued, &["background", "json"])?;
+    if !p.positional.is_empty() {
+        return Err(usage("spawn takes no positional arguments: pass the prompt with --prompt"));
+    }
+    if p.has("folder") && p.has("new-worktree") {
+        return Err(usage("pass --folder or --new-worktree, not both"));
+    }
+    let path = |name| p.value(name).map(absolute).transpose();
+    let attach = p.flags.get("attach").into_iter().flatten().map(|a| absolute(a)).collect::<Result<Vec<_>, _>>()?;
+    let params = json!({
+        "agent": p.value("agent"),
+        "account": p.value("account"),
+        "folder": path("folder")?,
+        "new_worktree": p.value("new-worktree"),
+        "project": path("project")?,
+        "from": p.value("from"),
+        "prompt": p.value("prompt"),
+        "attach": attach,
+        "background": p.has("background"),
+    });
+    let spawned = connect()?.call("session.spawn", params)?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{spawned}")?);
+    }
+    Ok(writeln!(out, "{}", spawned["id"].as_str().unwrap_or(""))?)
+}
+
+fn open(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &["line"], &[])?;
+    let [path] = p.positional.as_slice() else {
+        return Err(usage("open takes one file path"));
+    };
+    connect()?.call("window.open", json!({ "path": absolute(path)?, "line": p.number("line")? }))?;
+    Ok(())
+}
+
+fn budget(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &["folder"], &["json"])?;
+    let id = match p.positional.as_slice() {
+        [] => None,
+        [id] => Some(id),
+        _ => return Err(usage("budget takes at most one session id")),
+    };
+    let folder = p.value("folder").map(absolute).transpose()?;
+    let figures = connect()?.call("budget", json!({ "id": id, "folder": folder }))?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{figures}")?);
+    }
+    let dollars = |v: &Value| v.as_f64().map_or("unknown".to_string(), |usd| format!("${usd:.2}"));
+    let ceiling = |v: &Value| v.as_f64().map_or("no budget".to_string(), |usd| format!("of ${usd:.2}"));
+    let budgets = &figures["budgets"];
+    if let Some(session) = figures["session"].as_object() {
+        let spent = dollars(&session["costUsd"]);
+        let id = figures["id"].as_str().unwrap_or("");
+        writeln!(out, "session  {spent} {}  {id}", ceiling(&budgets["sessionUsd"]))?;
+    }
+    let spent = dollars(&figures["project"]["costUsd"]);
+    writeln!(out, "project  {spent} {}  {}", ceiling(&budgets["projectUsd"]), figures["folder"].as_str().unwrap_or(""))?;
+    for window in figures["quota"].as_array().into_iter().flatten() {
+        let used = window["utilization"].as_f64().map_or("?".to_string(), |u| format!("{:.0}%", u * 100.0));
+        let kind = window["kind"].as_str().unwrap_or("");
+        writeln!(out, "{kind}  {used}  {}", window["state"].as_str().unwrap_or(""))?;
     }
     Ok(())
 }
