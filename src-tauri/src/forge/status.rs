@@ -194,25 +194,30 @@ where
 /// Keyed by the **exact ask**, not by the project: a follower given a leader's
 /// answer for a different branch set would silently receive statuses it never
 /// asked about and, worse, miss the ones it did.
-#[derive(Default)]
-pub struct SingleFlight {
-    in_flight: Mutex<HashMap<String, Shared>>,
+pub struct SingleFlight<T = Fetched> {
+    in_flight: Mutex<HashMap<String, Shared<T>>>,
 }
 
-type Answer = Result<Fetched, ForgeError>;
-type Shared = Arc<(Mutex<Option<Answer>>, Condvar)>;
+impl<T> Default for SingleFlight<T> {
+    fn default() -> Self {
+        Self { in_flight: Mutex::new(HashMap::new()) }
+    }
+}
 
-impl SingleFlight {
-    pub fn run<F>(&self, key: String, fetch: F) -> Answer
+type Answer<T = Fetched> = Result<T, ForgeError>;
+type Shared<T> = Arc<(Mutex<Option<Answer<T>>>, Condvar)>;
+
+impl<T: Clone> SingleFlight<T> {
+    pub fn run<F>(&self, key: String, fetch: F) -> Answer<T>
     where
-        F: FnOnce() -> Answer,
+        F: FnOnce() -> Answer<T>,
     {
         let (shared, leading) = {
             let mut map = self.in_flight.lock().unwrap();
             match map.get(&key) {
                 Some(s) => (s.clone(), false),
                 None => {
-                    let s: Shared = Arc::new((Mutex::new(None), Condvar::new()));
+                    let s: Shared<T> = Arc::new((Mutex::new(None), Condvar::new()));
                     map.insert(key.clone(), s.clone());
                     (s, true)
                 }
@@ -237,20 +242,20 @@ impl SingleFlight {
     }
 }
 
-struct Leader<'a> {
-    flight: &'a SingleFlight,
+struct Leader<'a, T> {
+    flight: &'a SingleFlight<T>,
     key: String,
-    shared: Shared,
-    answer: Option<Answer>,
+    shared: Shared<T>,
+    answer: Option<Answer<T>>,
 }
 
-impl Drop for Leader<'_> {
+impl<T> Drop for Leader<'_, T> {
     fn drop(&mut self) {
         // Removed from the map first, so the *next* caller starts a fresh flight
         // rather than joining one that has already answered.
         self.flight.in_flight.lock().unwrap().remove(&self.key);
         let answer = self.answer.take().unwrap_or(Err(ForgeError::Transport {
-            message: "the status request did not complete".into(),
+            message: "the request did not complete".into(),
         }));
         *self.shared.0.lock().unwrap() = Some(answer);
         self.shared.1.notify_all();

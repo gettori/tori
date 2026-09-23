@@ -29,6 +29,7 @@ mod catalog_probe;
 mod health;
 mod hooks;
 mod hot_exit;
+mod issues;
 mod icons;
 mod install;
 mod launch;
@@ -605,6 +606,11 @@ pub fn run() {
             forge::commands::forge_pr_summary,
             forge::commands::forge_merge,
             forge::commands::forge_update_branch,
+            issues::commands::issues_source,
+            issues::commands::issues_assigned,
+            issues::commands::issues_get,
+            issues::commands::issues_link,
+            issues::commands::issues_record,
             settings::get_settings,
             settings::set_settings,
             workspace_settings::get_workspace_settings,

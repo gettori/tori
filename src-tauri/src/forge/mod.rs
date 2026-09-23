@@ -332,6 +332,13 @@ pub trait Forge: Send + Sync {
     /// not be checked out anywhere on this machine, and a local merge would then
     /// have to be pushed, which is two failure modes where the forge offers one.
     fn update_branch(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError>;
+
+    /// The same host as an issue source, where it is one. On the forge rather
+    /// than beside it so an issue call rides this account's client, renewal
+    /// and all.
+    fn issues(&self) -> Option<&dyn crate::issues::IssueSource> {
+        None
+    }
 }
 
 pub fn now_secs() -> u64 {

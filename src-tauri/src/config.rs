@@ -98,6 +98,9 @@ pub struct BranchUnit {
     pub kind: ProjectKind,
     /// Only meaningful for plain repos (the checked-out branch); false otherwise.
     pub is_current: bool,
+    /// The issue this unit was started from, from `issues::store`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue: Option<crate::issues::store::UnitIssue>,
 }
 
 #[derive(Serialize, Clone)]
@@ -395,6 +398,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
                 branch: Some(name),
                 kind: ProjectKind::Plain,
                 is_current: current,
+                issue: None,
             });
         }
     }
@@ -410,6 +414,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
                 branch: Some(b),
                 kind: ProjectKind::Plain,
                 is_current: true,
+                issue: None,
             }),
             None => units.push(BranchUnit {
                 label: basename(path),
@@ -417,6 +422,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
                 branch: None,
                 kind: ProjectKind::Plain,
                 is_current: false,
+                issue: None,
             }),
         }
     }
@@ -456,6 +462,7 @@ fn secondary_worktree_units(real: &[WtEntry], plain: &[BranchUnit]) -> Vec<Branc
             branch: w.branch.clone(),
             kind: ProjectKind::Worktree,
             is_current: false,
+            issue: None,
         })
         .collect()
 }
@@ -485,6 +492,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
             branch: None,
             kind: ProjectKind::PlainDir,
             is_current: false,
+            issue: None,
         }];
     };
 
@@ -513,6 +521,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
             branch: None,
             kind: ProjectKind::Incomplete,
             is_current: false,
+            issue: None,
         }];
     }
 
@@ -528,6 +537,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
             branch: w.branch,
             kind: ProjectKind::Worktree,
             is_current: false,
+            issue: None,
         })
         .collect();
     sort_units(&mut units, default_branch(path));
@@ -687,13 +697,15 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     let mut seen: HashSet<PathBuf> = HashSet::new(); // project dedup (canonical)
     let mut seen_paths: HashSet<PathBuf> = HashSet::new(); // cache eviction (raw)
 
+    let unit_issues = crate::issues::store::IssueStore::load();
     let mut add_project = |spaces: &mut Vec<Space>, gi: usize, ppath: PathBuf| {
         let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
         if !seen.insert(canon) {
             return; // reachable more than once: keep the first
         }
         seen_paths.insert(ppath.clone());
-        let branch_units = cached_probe(index, &ppath);
+        let mut branch_units = cached_probe(index, &ppath);
+        crate::issues::store::attach(&mut branch_units, unit_issues.for_repo(&ppath.to_string_lossy()));
         let project = Project {
             name: basename(&ppath),
             path: ppath.to_string_lossy().into_owned(),

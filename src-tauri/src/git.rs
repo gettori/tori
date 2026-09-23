@@ -2143,6 +2143,18 @@ fn lost_the_prune((ok, error): &(bool, String)) -> bool {
     saw
 }
 
+/// One branch of origin into `refs/remotes`, without asking anyone anything:
+/// what a branch the forge just made needs before a local one can track it.
+pub(crate) fn fetch_branch_quiet(repo: &str, branch: &str) -> Result<(), String> {
+    let mut cmd = quiet_git_command(repo);
+    cmd.args(["fetch", "origin", &format!("+refs/heads/{branch}:refs/remotes/origin/{branch}")]);
+    match crate::git_health::run(&mut cmd) {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+        Err(e) => Err(e),
+    }
+}
+
 /// A `git` that can never ask a human anything. The askpass vars are *unset*
 /// rather than merely not set: a parent shell may have exported them, and a
 /// fetch on a ten-minute timer must not pop a dialog over what you are doing.
@@ -3622,6 +3634,7 @@ diff --git a/f b/f
             branch: Some("main".into()),
             kind,
             is_current: false,
+            issue: None,
         }
     }
 
