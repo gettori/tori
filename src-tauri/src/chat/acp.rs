@@ -57,13 +57,9 @@ pub struct AcpOverrides {
     /// told about them. The key is still always *present* on the wire - an empty
     /// array is a value and an absent key is a protocol error.
     ///
-    /// **Not settable from an adapter TOML**, alone among these, and the reason
-    /// is worth stating: Tori does not yet forward its MCP configuration over
-    /// ACP at all, so the array is empty whichever way this is set. A `[chat.acp]`
-    /// key for it would be a published setting that changes nothing on the wire.
-    /// It stays here as the shape the quirk needs, and becomes a TOML key in the
-    /// same change that populates the array.
-    #[serde(skip)]
+    /// Turned on only for an agent measured *calling* a server it was handed
+    /// (`dev/mcp-probe.mjs --acp`): accepting the array proves nothing, since
+    /// pi-acp 0.0.33 accepts it and never starts the server.
     pub send_mcp_servers: bool,
     /// Advertise the client's filesystem and terminal capabilities.
     ///

@@ -89,6 +89,7 @@ export type ChatConfig = {
 // TOML can spell it.
 export type AcpOverrides = {
   serve_client_fs: boolean;
+  send_mcp_servers?: boolean;
 };
 
 // Mirrors `AccountsConfig` in src-tauri/src/agents.rs, schema v3's [accounts].

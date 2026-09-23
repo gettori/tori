@@ -1870,6 +1870,20 @@ mod tests {
         assert!(chat.effort_extras.is_empty(), "nothing measured on a agent nobody has probed");
     }
 
+    /// Sent only where `dev/mcp-probe.mjs --acp` saw the server called. pi-acp
+    /// accepts the array and drops it, so it stays at the default.
+    #[test]
+    fn only_agents_measured_calling_an_mcp_server_are_sent_one() {
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let sends = |id: &str| {
+            let adapter = reg.iter().find(|a| a.id == id).unwrap_or_else(|| panic!("{id} is bundled"));
+            adapter.chat.as_ref().expect("an ACP chat table").acp.send_mcp_servers
+        };
+        assert!(sends("codex"));
+        assert!(sends("opencode"));
+        assert!(!sends("pi"));
+    }
+
     #[test]
     fn sample_user_toml_for_a_new_agent_loads() {
         let a = load_adapter_str(VALID_MINIMAL, "test").expect("valid user adapter parses");

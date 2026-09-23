@@ -104,7 +104,10 @@ function serve(name, mark) {
         return ok(msg.id, {});
       case "tools/call": {
         const tool = msg.params?.name;
-        if (tool === PING_TOOL) return ok(msg.id, text(`pong from ${name}`));
+        if (tool === PING_TOOL) {
+          if (mark) for (const key of Object.keys(ACP_ENV)) appendFileSync(mark, `env ${key}=${process.env[key] ?? ""}\n`);
+          return ok(msg.id, text(`pong from ${name}`));
+        }
         if (tool === SLEEP_TOOL) {
           const ms = Number(msg.params?.arguments?.ms ?? 0);
           const every = Number(msg.params?.arguments?.progressEveryMs ?? 0);
@@ -535,11 +538,13 @@ async function scopes() {
   }
 }
 
-// The chat launch lines from `codex.toml` and `pi.toml`, pinned the same way,
-// so a result here is a result for the bridge Tori actually spawns.
+// The chat launch lines from `codex.toml`, `pi.toml` and `opencode.toml`, pinned
+// the same way where the TOML pins, so a result here is a result for the bridge
+// Tori actually spawns. `TORI_OPENCODE_BIN` for an opencode off PATH.
 const ACP_AGENTS = {
   "codex-acp": { program: "npx", args: ["-y", "@agentclientprotocol/codex-acp@1.12.0"] },
   "pi-acp": { program: "npx", args: ["-y", "pi-acp@0.0.33"] },
+  opencode: { program: process.env.TORI_OPENCODE_BIN || "opencode", args: ["acp"] },
 };
 
 function openAcp(spec, cwd) {
@@ -547,6 +552,7 @@ function openAcp(spec, cwd) {
   const pending = new Map();
   const frames = [];
   const arrivals = [];
+  const permissions = [];
   let nextId = 1;
   let buffer = "";
   let stderr = "";
@@ -579,6 +585,7 @@ function openAcp(spec, cwd) {
         // Granted, because a refused permission measures a cancelled call
         // rather than whether the tool was reachable. Everything else, fs and
         // terminal included, is refused so the agent never stalls on us.
+        if (msg.method === "session/request_permission") permissions.push(msg.params?.toolCall?.title ?? null);
         const grant = msg.method === "session/request_permission" && allowOption(msg.params);
         child.stdin.write(
           `${JSON.stringify(
@@ -601,7 +608,7 @@ function openAcp(spec, cwd) {
       }, timeoutMs).unref?.();
     });
 
-  return { call, frames, arrivals, stderrText: () => stderr, close: () => child.kill("SIGKILL") };
+  return { call, frames, arrivals, permissions, stderrText: () => stderr, close: () => child.kill("SIGKILL") };
 }
 
 function allowOption(params) {
@@ -611,10 +618,14 @@ function allowOption(params) {
   return pick?.optionId ?? null;
 }
 
+// The names Tori will send, with values no parent environment carries, so an
+// inherited TORI_SOCK from a Tori terminal cannot pass for a delivered one.
+const ACP_ENV = { TORI_SOCK: `probe-sock-${process.pid}`, TORI_CALLER: `probe-caller-${process.pid}` };
+
 // ACP's stdio server shape: `env` is a required array of pairs, not a map.
 function acpServer(name, mark) {
   const spec = serverSpec(name, mark);
-  return { name, command: spec.command, args: spec.args, env: [] };
+  return { name, command: spec.command, args: spec.args, env: Object.entries(ACP_ENV).map(([n, value]) => ({ name: n, value })) };
 }
 
 // One process per attempt, so the populated run cannot inherit anything the
@@ -658,6 +669,7 @@ async function acpAttempt(spec, cwd, mcpServers, withTurn) {
       ? probeCalls.map((c) => ({ title: c.title ?? null, status: c.status ?? null, pong: JSON.stringify(c).includes("pong from") }))
       : "(the turn completed without calling the tool)";
     out.otherToolCalls = calls.size - probeCalls.length;
+    out.permissionRequests = acp.permissions;
     out.reply = acp.frames
       .filter((f) => f.params?.update?.sessionUpdate === "agent_message_chunk")
       .map((f) => f.params.update.content?.text ?? "")
@@ -687,8 +699,14 @@ async function acpServers() {
       // MCP. Otherwise the refusal is auth or the bridge, and is reported as such.
       const populated =
         empty.sessionNew === "ok" ? await acpAttempt(spec, dir, [acpServer("toriprobe", mark)], true) : null;
-      const serverSaw = existsSync(mark) ? [...new Set(readFileSync(mark, "utf8").split("\n").filter(Boolean))] : [];
-      results[name] = { empty, populated, serverSaw };
+      const serverSaw = readMark(mark);
+      const answers = {
+        serverStarted: serverSaw.includes("initialize"),
+        toolCalled: serverSaw.some((m) => m.startsWith("tools/call")),
+        envArrived: Object.entries(ACP_ENV).every(([k, v]) => serverSaw.includes(`env ${k}=${v}`)),
+        permissionForMcpCall: (populated?.permissionRequests ?? []).some((t) => String(t).includes(PING_TOOL)),
+      };
+      results[name] = { answers, empty, populated, serverSaw };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

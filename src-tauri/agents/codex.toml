@@ -145,12 +145,12 @@ add_dir_args = []
 # on the handshake, which is what the ACP transport reads them from.
 
 [chat.acp]
-# Left at the safe default: measured doing its own file I/O, and Tori's MCP
-# configuration is not forwarded over ACP at all.
-#
-# A populated `mcpServers` works here (dev/mcp-probe.mjs --acp, 1.12.0). No
-# key until #200 stops sending `[]` to every agent.
+# Measured doing its own file I/O, so the client's fs stays declined.
 serve_client_fs = false
+# Measured with dev/mcp-probe.mjs --acp on 1.12.0: it starts a server handed in
+# `mcpServers`, passes the `env` pairs through, and the model calls the tool
+# with no `session/request_permission`.
+send_mcp_servers = true
 
 [install]
 # npm names the package that ships the launch binary, and all three verbs were
