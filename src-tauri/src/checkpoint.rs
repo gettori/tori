@@ -565,6 +565,8 @@ pub(crate) fn checkpoint_snapshot_body(session_id: String, repo_path: String, pr
         return Ok(false);
     }
     git_run(&repo_path, &["update-ref", &ref_name(&session_id, prompt_ts), &tree])?;
+    let turn = checkpoints.iter().filter(|c| c.ts < prompt_ts).count() + 1;
+    crate::rpc::publish_checkpoint(&session_id, &repo_path, turn, prompt_ts);
     Ok(true)
 }
 

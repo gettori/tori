@@ -15,7 +15,7 @@ use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
     AuthState, Capabilities, DraftComment, Grant, Paged, PrFile, PrSummary, PullRequest, RepoRef,
-    ReviewComment, ReviewEvent, ReviewThread, StatusReport,
+    ReviewComment, ReviewEvent, ReviewThread, StatusReport, UnitStatus,
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
@@ -1213,7 +1213,30 @@ pub fn forge_unit_statuses(
         attempt(&c, |f| f.unit_statuses(&c.repo, ask))
             .map(|statuses| (statuses, c.forge.rate_snapshot()))
     })?;
+    publish_moved(&project_path, &out.statuses);
     Ok(out)
+}
+
+fn publish_moved(project_path: &str, statuses: &[UnitStatus]) {
+    let moved = status::moved_since_published(project_path, statuses);
+    if moved.is_empty() {
+        return;
+    }
+    let worktrees = crate::worktree::list_worktrees_body(project_path.to_string()).unwrap_or_default();
+    for s in moved {
+        let worktree = worktrees.iter().find(|w| w.branch == s.head_ref);
+        let folder = worktree.map_or(project_path, |w| w.path.as_str());
+        let pull_request = s.pull_request.as_ref().map(|pr| {
+            serde_json::json!({ "number": pr.number, "state": pr.state, "draft": pr.is_draft, "url": pr.url })
+        });
+        crate::rpc::publish_pr(
+            project_path,
+            folder,
+            &s.head_ref,
+            worktree.is_some(),
+            serde_json::json!({ "pull_request": pull_request, "checks": s.checks.state, "review": s.review_decision }),
+        );
+    }
 }
 
 /// Every open pull request on a project, for the Pull Requests panel.

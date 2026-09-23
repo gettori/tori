@@ -134,7 +134,11 @@ export function recordReadings(
     }
     return changed ? { ...prev, [key]: account } : prev;
   });
-  if (changed) scheduleSave();
+  if (!changed) return;
+  scheduleSave();
+  // Rust decides whether a window moved; this is every sample.
+  const readings = incoming.map(({ kind, utilization, resetsAt }) => ({ kind, utilization, resetsAt }));
+  invoke("rpc_quota", { agent: agentId, profile, readings }).catch(() => {});
 }
 
 /**

@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use super::asks::{Asks, Waited};
 use super::auth::{Caller, Principal};
 use super::bridge::Bridge;
-use super::events::{project_of, TurnBy};
+use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskParams, AskWaitParams, Backend, BudgetParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
@@ -133,10 +133,6 @@ pub fn or_callers(given: Option<String>, callers: impl FnOnce() -> Option<String
     given.or_else(callers).ok_or_else(|| {
         RpcError::new(INVALID_PARAMS, format!("pass --{flag}: the caller has no {flag} of its own to default to"))
     })
-}
-
-fn same_folder(a: &str, b: &str) -> bool {
-    cwd_matches(a, b) && cwd_matches(b, a)
 }
 
 fn refused(message: String) -> RpcError {
