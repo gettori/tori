@@ -151,6 +151,16 @@ export const ROLES: Role[] = [
   { id: "status.idle", cssVar: "--status-idle", group: "status" },
   { id: "status.running", cssVar: "--status-running", group: "status" },
 
+  { id: "progress.subtle", cssVar: "--progress-subtle", group: "progress" },
+  { id: "progress.border", cssVar: "--progress-border", group: "progress" },
+  { id: "progress.onSubtle", cssVar: "--progress-on-subtle", group: "progress" },
+  { id: "needsYou.subtle", cssVar: "--needs-you-subtle", group: "needsYou" },
+  { id: "needsYou.border", cssVar: "--needs-you-border", group: "needsYou" },
+  { id: "needsYou.onSubtle", cssVar: "--needs-you-on-subtle", group: "needsYou" },
+  { id: "danger.subtle", cssVar: "--danger-subtle", group: "danger" },
+  { id: "danger.border", cssVar: "--danger-border", group: "danger" },
+  { id: "danger.onSubtle", cssVar: "--danger-on-subtle", group: "danger" },
+
   { id: "brand.default", cssVar: "--brand-default", group: "brand" },
   { id: "brand.strong", cssVar: "--brand-strong", group: "brand" },
   { id: "brand.subtle", cssVar: "--brand-subtle", group: "brand" },
@@ -314,6 +324,19 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "status.needsYou": p.statusNeedsYou,
     "status.idle": p.statusIdle,
     "status.running": p.statusRunning,
+
+    // Opaque mixes into `card`, as `brand.wash` explains, and so the gate can
+    // measure text on them. The text stop pulls the hue toward the theme's own
+    // text: lighter on dark, darker on light, legible on its tint and canvases.
+    "progress.subtle": mix(p.card, p.statusProgress, v({ dark: 0.12, light: 0.07 })),
+    "progress.border": alpha(p.statusProgress, v({ dark: 0.42, light: 0.35 })),
+    "progress.onSubtle": mix(p.statusProgress, p.text, 0.4),
+    "needsYou.subtle": mix(p.card, p.statusNeedsYou, v({ dark: 0.12, light: 0.07 })),
+    "needsYou.border": alpha(p.statusNeedsYou, v({ dark: 0.45, light: 0.4 })),
+    "needsYou.onSubtle": mix(p.statusNeedsYou, p.text, 0.4),
+    "danger.subtle": mix(p.card, p.danger, v({ dark: 0.12, light: 0.07 })),
+    "danger.border": alpha(p.danger, v({ dark: 0.5, light: 0.42 })),
+    "danger.onSubtle": mix(p.danger, p.text, 0.4),
 
     "brand.default": p.brand,
     "brand.strong": p.brandStrong,

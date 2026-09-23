@@ -196,6 +196,16 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "status.idle": graphic(["canvas.default", "canvas.card", "canvas.head"]),
   "status.running": graphic(["canvas.default", "canvas.card", "canvas.head"]),
 
+  "progress.subtle": surface(),
+  "progress.border": exempt("a frame reinforcing a state already carried by a dot, badge or label"),
+  "progress.onSubtle": text(["progress.subtle", ...CANVASES]),
+  "needsYou.subtle": surface(),
+  "needsYou.border": exempt("as progress.border"),
+  "needsYou.onSubtle": text(["needsYou.subtle", ...CANVASES]),
+  "danger.subtle": surface(),
+  "danger.border": exempt("as progress.border"),
+  "danger.onSubtle": text(["danger.subtle", ...CANVASES]),
+
   // `accent.subtle` is in the list because the brand gold IS drawn on a selected
   // row, and that pairing is where it has historically been weakest: gold-600
   // measured 2.95 on the panel head and 2.76 on the selection, which is why the
