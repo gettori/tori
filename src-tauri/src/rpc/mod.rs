@@ -242,6 +242,9 @@ pub fn revoke(caller: &Caller) {
     if let (Caller::Chat(session), Some(asks)) = (caller, ASKS.get()) {
         asks.forget_session(session);
     }
+    if let (Caller::Chat(session), Some((_, states))) = (caller, EVENTS.get()) {
+        states.forget_worker(session);
+    }
 }
 
 pub const MCP_SERVER: &str = "tori";

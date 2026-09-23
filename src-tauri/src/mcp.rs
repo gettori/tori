@@ -84,7 +84,7 @@ fn internal(e: ClientError) -> (i64, String) {
 // change after its MCP server has started.
 fn tools_list(connect: &Connect) -> Result<Value, (i64, String)> {
     let me = connect().and_then(|mut c| c.call("caller", Value::Null)).map_err(internal)?;
-    let kind = me["caller"]["kind"].as_str().unwrap_or("local");
+    let kind = me["kind"].as_str().unwrap_or("local");
     let tools: Vec<Value> = table::METHODS
         .iter()
         .filter(|m| m.callers.iter().any(|k| k.name() == kind))
@@ -188,7 +188,10 @@ mod tests {
                             let method = req["method"].as_str().unwrap().to_string();
                             let reply = match method.as_str() {
                                 "auth" => json!({ "result": {} }),
-                                "caller" => json!({ "result": { "caller": { "kind": kind, "id": "x" }, "identity": { "cwd": "/w" } } }),
+                                "caller" => {
+                                    let caller = if kind == "worker" { "chat" } else { kind };
+                                    json!({ "result": { "caller": { "kind": caller, "id": "x" }, "kind": kind, "identity": { "cwd": "/w" } } })
+                                }
                                 "ask.create" => {
                                     thread::sleep(Duration::from_millis(400));
                                     json!({ "result": { "id": "a1", "answer": null } })

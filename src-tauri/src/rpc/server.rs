@@ -148,6 +148,7 @@ pub struct AskWaitParams {
 
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
+    fn kind(&self, principal: &Principal) -> CallerKind;
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
@@ -200,9 +201,13 @@ impl Server {
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             name => {
                 let method = table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
-                let kind = CallerKind::of(principal);
+                let kind = self.backend.kind(principal);
                 if !method.callers.contains(&kind) {
-                    let why = method.refusal.map(|r| format!(": {r}")).unwrap_or_default();
+                    let why = match kind {
+                        CallerKind::Worker => Some(table::WORKER_REFUSAL),
+                        _ => method.refusal,
+                    };
+                    let why = why.map(|r| format!(": {r}")).unwrap_or_default();
                     return Err(RpcError::new(REFUSED, format!("{name} is not open to a {} caller{why}", kind.name())));
                 }
                 (method.call)(self.backend.as_ref(), principal, &req.params)
@@ -307,7 +312,16 @@ pub mod tests {
 
     pub struct StubBackend;
 
+    // A chat session with this id is treated as a worker.
+    pub const WORKER: &str = "worker";
+
     impl Backend for StubBackend {
+        fn kind(&self, principal: &Principal) -> CallerKind {
+            match principal {
+                Principal::Session(Caller::Chat(id)) if id == WORKER => CallerKind::Worker,
+                other => CallerKind::of(other),
+            }
+        }
         fn sessions_list(&self, p: ListParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": "s1", "limit": p.limit }]))
         }
@@ -316,8 +330,8 @@ pub mod tests {
         }
         fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
             Ok(match principal {
-                Principal::Local => json!("local"),
-                Principal::Session(caller) => json!(caller),
+                Principal::Local => json!({ "caller": null }),
+                Principal::Session(caller) => json!({ "caller": caller }),
             })
         }
         fn session_steer(&self, _: &Principal, p: SteerParams) -> Result<Value, RpcError> {
@@ -441,9 +455,9 @@ pub mod tests {
             assert_eq!(c.call(0, "auth", json!({ "token": token }))["result"], json!({}));
             c.call(1, "caller", Value::Null)["result"].clone()
         };
-        assert_eq!(as_caller(&tab), json!({"kind": "terminal", "id": "t1"}));
-        assert_eq!(as_caller(&chat), json!({"kind": "chat", "id": "s1"}));
-        assert_eq!(as_caller("tok"), json!("local"));
+        assert_eq!(as_caller(&tab), json!({"caller": {"kind": "terminal", "id": "t1"}, "kind": "terminal"}));
+        assert_eq!(as_caller(&chat), json!({"caller": {"kind": "chat", "id": "s1"}, "kind": "chat"}));
+        assert_eq!(as_caller("tok"), json!({"caller": null, "kind": "local"}));
 
         r.children.revoke_token(&tab);
         let mut c = Client::connect(&r);
@@ -544,6 +558,25 @@ pub mod tests {
         assert!(err.message.contains("terminal") && err.message.contains("ask.create"), "{}", err.message);
         let chat = Principal::Session(Caller::Chat("s1".into()));
         assert!(server.dispatch(0, &chat, &request("ask.create", json!({"question": "q"}))).is_ok());
+    }
+
+    #[test]
+    fn a_worker_is_refused_the_four_rows_that_reach_the_user_or_spawn() {
+        let server = stub_server();
+        let worker = Principal::Session(Caller::Chat(WORKER.into()));
+        for (method, params) in [
+            ("ask.create", json!({"question": "q"})),
+            ("ask.wait", json!({"id": "a1"})),
+            ("session.spawn", json!({})),
+            ("session.steer", json!({"id": "s1", "text": "hi"})),
+        ] {
+            let err = server.dispatch(0, &worker, &request(method, params)).unwrap_err();
+            assert_eq!(err.code, REFUSED, "{method}");
+            assert!(err.message.contains(table::WORKER_REFUSAL), "{method}: {}", err.message);
+        }
+        let me = server.dispatch(0, &worker, &request("caller", Value::Null)).unwrap();
+        assert_eq!(me["kind"], json!("worker"));
+        assert!(server.dispatch(0, &worker, &request("sessions.list", json!({}))).is_ok());
     }
 
     #[test]
