@@ -884,7 +884,7 @@ fn probe_acp(
     };
 
     let init_request = initialize_request(overrides);
-    let session_request = new_session_request(&spec.cwd, overrides);
+    let session_request = new_session_request(&spec.cwd, &[]);
     // The commands the agent publishes, which arrive as a notification rather
     // than on any response (measured on pi-acp 0.0.33). Shared with the handler
     // because that is the only thing that can see them, and read back after the
