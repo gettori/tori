@@ -15,6 +15,8 @@ pub const METHOD_NOT_FOUND: i64 = -32601;
 pub const INVALID_PARAMS: i64 = -32602;
 pub const INTERNAL_ERROR: i64 = -32603;
 pub const UNAUTHORIZED: i64 = -32001;
+// Tori understood the call and said no, or the work behind it failed.
+pub const REFUSED: i64 = -32002;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {

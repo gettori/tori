@@ -700,6 +700,10 @@ impl AgentTransport for AcpTransport {
         Ok(true)
     }
 
+    fn echoes_sent_turns(&self) -> bool {
+        true
+    }
+
     fn close(&mut self) -> Result<(), String> {
         // Marked finished *before* the command goes out, so the connection
         // thread's own exit does not also report a session error for a teardown

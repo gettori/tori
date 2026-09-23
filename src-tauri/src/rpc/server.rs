@@ -40,11 +40,46 @@ pub struct TailParams {
     pub limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SteerParams {
+    pub id: String,
+    pub text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorktreeParams {
+    pub branch: String,
+    pub project: Option<String>,
+    pub from: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointsParams {
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointParams {
+    pub id: String,
+    // 1 based, in the order `checkpoints.list` returns.
+    pub turn: usize,
+    pub force: Option<bool>,
+}
+
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
+    fn session_steer(&self, params: SteerParams) -> Result<Value, RpcError>;
+    fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
+    fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
+    fn checkpoint_diff(&self, params: CheckpointParams) -> Result<Value, RpcError>;
+    fn checkpoint_revert(&self, principal: &Principal, params: CheckpointParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -84,6 +119,11 @@ impl Server {
             "sessions.list" => self.backend.sessions_list(params(&req.params)?),
             "session.tail" => self.backend.session_tail(params(&req.params)?),
             "caller" => self.backend.caller(principal),
+            "session.steer" => self.backend.session_steer(params(&req.params)?),
+            "worktree.new" => self.backend.worktree_new(principal, params(&req.params)?),
+            "checkpoints.list" => self.backend.checkpoints_list(params(&req.params)?),
+            "checkpoint.diff" => self.backend.checkpoint_diff(params(&req.params)?),
+            "checkpoint.revert" => self.backend.checkpoint_revert(principal, params(&req.params)?),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             other => Err(RpcError::new(METHOD_NOT_FOUND, format!("no method {other}"))),
         }
@@ -198,6 +238,21 @@ pub mod tests {
                 Principal::Local => json!("local"),
                 Principal::Session(caller) => json!(caller),
             })
+        }
+        fn session_steer(&self, p: SteerParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
+        }
+        fn worktree_new(&self, _: &Principal, p: WorktreeParams) -> Result<Value, RpcError> {
+            Ok(json!({ "branch": p.branch }))
+        }
+        fn checkpoints_list(&self, p: CheckpointsParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
+        }
+        fn checkpoint_diff(&self, p: CheckpointParams) -> Result<Value, RpcError> {
+            Ok(json!({ "turn": p.turn }))
+        }
+        fn checkpoint_revert(&self, _: &Principal, p: CheckpointParams) -> Result<Value, RpcError> {
+            Ok(json!({ "turn": p.turn }))
         }
     }
 
