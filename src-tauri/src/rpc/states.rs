@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::events::{session_event, Place};
+use super::events::{same_folder, session_event, Place};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -110,6 +110,14 @@ impl SessionStates {
     pub fn snapshot(&self) -> HashMap<String, SessionState> {
         let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
         held.iter().map(|(id, h)| (id.clone(), h.state)).collect()
+    }
+
+    pub fn ids_in(&self, folder: &str) -> Vec<String> {
+        let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        let mut ids: Vec<String> =
+            held.iter().filter(|(_, h)| h.folder.as_deref().is_some_and(|f| same_folder(f, folder))).map(|(id, _)| id.clone()).collect();
+        ids.sort();
+        ids
     }
 
     pub fn mark_background(&self, id: &str) {

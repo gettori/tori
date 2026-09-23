@@ -557,6 +557,7 @@ pub fn run() {
             presence::update_tray,
             presence::set_badge_count,
             rpc::rpc_session_states,
+            rpc::rpc_quota,
             rpc::rpc_reply,
             rpc::rpc_asks_pending,
             rpc::rpc_ask_answer,

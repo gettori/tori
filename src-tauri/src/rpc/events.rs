@@ -59,6 +59,10 @@ pub fn project_of(cwd: &str, projects: &[PathBuf]) -> Option<String> {
         .map(|project| project.to_string_lossy().into_owned())
 }
 
+pub fn same_folder(a: &str, b: &str) -> bool {
+    crate::sessions::cwd_matches(a, b) && crate::sessions::cwd_matches(b, a)
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or_default()
 }

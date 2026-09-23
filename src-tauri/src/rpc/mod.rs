@@ -14,6 +14,7 @@ pub mod events;
 pub mod frame;
 pub mod hub;
 pub mod methods;
+pub mod quotas;
 pub mod server;
 pub mod states;
 pub mod transport;
@@ -28,8 +29,10 @@ use tauri::{AppHandle, Emitter};
 use asks::{Ask, Asks};
 use auth::{Caller, Children, Credential};
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
-use events::Place;
-use hub::Hub;
+use events::{session_event, Place};
+use hub::{Channel, Hub};
+use quotas::Quotas;
+use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
 use states::{Held, Reported, SessionStates, Source};
 use transport::{Transport, UnixTransport};
@@ -42,6 +45,9 @@ pub const ENV_CALLER: &str = "TORI_CALLER";
 static SOCKET: OnceLock<(String, Arc<Children>)> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ASKS: OnceLock<Arc<Asks>> = OnceLock::new();
+// For modules with no Tauri state in reach: the checkpoint writer, the forge
+// poll, the quota push.
+static EVENTS: OnceLock<(Arc<Hub>, Arc<SessionStates>)> = OnceLock::new();
 
 pub struct RpcState {
     transport: Arc<UnixTransport>,
@@ -49,6 +55,7 @@ pub struct RpcState {
     states: Arc<SessionStates>,
     bridge: Arc<Bridge>,
     asks: Arc<Asks>,
+    quotas: Quotas,
 }
 
 impl RpcState {
@@ -95,13 +102,14 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     }
     let _ = SOCKET.set((sock, children));
     let _ = ASKS.set(asks.clone());
+    let _ = EVENTS.set((hub.clone(), states.clone()));
     match link_cli(transport.sock_path()) {
         Ok(dir) => {
             let _ = CLI_DIR.set(dir);
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states, bridge, asks })
+    Ok(RpcState { transport, hub, states, bridge, asks, quotas: Quotas::default() })
 }
 
 // Async so resolving a new session's project, which reads the config and lists
@@ -143,6 +151,49 @@ pub fn rpc_asks_pending(rpc: tauri::State<RpcState>) -> Vec<Ask> {
 #[tauri::command]
 pub fn rpc_ask_answer(rpc: tauri::State<RpcState>, id: String, answer: String) -> bool {
     rpc.asks.answer(&id, answer)
+}
+
+pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts: u64) {
+    let Some((hub, _)) = EVENTS.get() else { return };
+    let event = session_event("session.checkpoint", session_id, &Place::of(folder), json!({ "turn": turn, "prompt_ts": prompt_ts }));
+    hub.publish_session(session_id, event);
+}
+
+// `ids` are the live sessions in `folder`, possibly none: a review can land
+// after the worker that opened the PR has ended. A branch checked out nowhere
+// has none, since the sessions in its project's folder are on another branch.
+pub fn publish_pr(project: &str, folder: &str, branch: &str, checked_out: bool, fields: Value) {
+    let Some((hub, states)) = EVENTS.get() else { return };
+    let ids = if checked_out { states.ids_in(folder) } else { Vec::new() };
+    let mut event = json!({
+        "kind": "session.pr",
+        "project": project,
+        "folder": folder,
+        "branch": branch,
+        "ids": ids,
+        "ts": events::now_ms(),
+    });
+    if let (Some(event), Value::Object(fields)) = (event.as_object_mut(), fields) {
+        event.extend(fields);
+    }
+    for id in &ids {
+        hub.publish(&Channel::Session(id.clone()), event.clone());
+    }
+    hub.publish(&Channel::Sessions, event);
+}
+
+#[tauri::command]
+pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<String>, readings: Vec<quotas::Reading>) {
+    if let Some(windows) = rpc.quotas.record(&agent, profile.as_deref(), readings) {
+        let event = json!({
+            "kind": "account.quota",
+            "agent": agent,
+            "account": profile,
+            "windows": windows,
+            "ts": events::now_ms(),
+        });
+        rpc.hub.publish(&Channel::Accounts, event);
+    }
 }
 
 /// A `bin/tori` link beside the socket, so it goes with the socket's private

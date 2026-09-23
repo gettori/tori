@@ -22,7 +22,7 @@
 //! complete one is the failure nobody notices: those units simply never get a
 //! chip, with nothing on screen saying why.
 
-use super::model::{RateSnapshot, RepoRef, StatusReport, UnitStatus};
+use super::model::{CheckState, PrState, RateSnapshot, RepoRef, ReviewDecision, StatusReport, UnitStatus};
 use super::ForgeError;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -255,6 +255,50 @@ impl Drop for Leader<'_> {
         *self.shared.0.lock().unwrap() = Some(answer);
         self.shared.1.notify_all();
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrFacts {
+    pub pull_request: Option<(u64, PrState)>,
+    pub checks: CheckState,
+    pub review: ReviewDecision,
+}
+
+impl PrFacts {
+    pub fn of(status: &UnitStatus) -> Self {
+        Self {
+            pull_request: status.pull_request.as_ref().map(|pr| (pr.number, pr.state)),
+            checks: status.checks.state,
+            review: status.review_decision,
+        }
+    }
+}
+
+// What was last said per (project, branch). Kept apart from the TTL cache, so
+// an expiry or `invalidate_repo` there never reads as a change here.
+#[derive(Default)]
+pub struct Published(HashMap<(String, String), PrFacts>);
+
+impl Published {
+    // A branch seen for the first time only seeds, so a launch is not a burst
+    // of every branch.
+    pub fn moved<'a>(&mut self, project: &str, statuses: &'a [UnitStatus]) -> Vec<&'a UnitStatus> {
+        statuses
+            .iter()
+            .filter(|s| {
+                let now = PrFacts::of(s);
+                let before = self.0.insert((project.to_string(), s.head_ref.clone()), now);
+                before.is_some_and(|b| b != now)
+            })
+            .collect()
+    }
+}
+
+static PUBLISHED: Mutex<Option<Published>> = Mutex::new(None);
+
+pub fn moved_since_published(project: &str, statuses: &[UnitStatus]) -> Vec<UnitStatus> {
+    let mut guard = PUBLISHED.lock().unwrap_or_else(|e| e.into_inner());
+    guard.get_or_insert_with(Published::default).moved(project, statuses).into_iter().cloned().collect()
 }
 
 // --- thin global wrapper ---
@@ -645,5 +689,23 @@ mod tests {
         );
         // And every branch of the larger tick really was in that single query.
         assert!(stub.bodies()[1].contains("u19"));
+    }
+
+    #[test]
+    fn a_pr_change_is_news_once_and_a_first_sighting_is_not() {
+        let mut published = Published::default();
+        let failing = |head: &str| {
+            let mut s = status(head);
+            s.checks.state = CheckState::Failure;
+            s
+        };
+        assert!(published.moved("/p", &[status("main"), status("feat")]).is_empty(), "first tick seeds");
+        invalidate_repo(&RepoRef { owner: "o".into(), repo: "r".into() });
+        assert!(published.moved("/p", &[status("main"), status("feat")]).is_empty(), "a refetch that says the same");
+        let flipped = [status("main"), failing("feat")];
+        let moved = published.moved("/p", &flipped);
+        assert_eq!(moved.iter().map(|s| s.head_ref.as_str()).collect::<Vec<_>>(), ["feat"]);
+        assert!(published.moved("/p", &flipped).is_empty(), "and once only");
+        assert!(published.moved("/other", &flipped).is_empty(), "another project seeds on its own");
     }
 }
