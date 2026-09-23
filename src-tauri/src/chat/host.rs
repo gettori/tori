@@ -717,6 +717,25 @@ impl ChatHost {
         self.dispatch(&ChatCommand::Steer { session_id: session_id.to_string(), blocks })
     }
 
+    // A message from outside the panel (the app socket). The panel did not draw
+    // it, so the host does, unless the transport already puts sent turns in the
+    // stream.
+    pub fn deliver(&self, session_id: &str, blocks: Vec<ContentBlock>, mid_turn: bool) -> Result<(), String> {
+        let entry = lock(&self.sessions).get(session_id).map(|e| (e.sink.clone(), e.transport.clone()));
+        let Some((sink, transport)) = entry else {
+            return Err(format!("no live chat session {session_id}"));
+        };
+        if mid_turn {
+            self.steer(session_id, blocks.clone())?;
+        } else {
+            self.send(session_id, blocks.clone())?;
+        }
+        if !lock(&transport).echoes_sent_turns() {
+            emit(&sink, ChatEvent::UserMessage { session_id: session_id.to_string(), turn_id: String::new(), blocks });
+        }
+        Ok(())
+    }
+
     pub fn interrupt(&self, session_id: &str) -> Result<(), String> {
         self.dispatch(&ChatCommand::Interrupt { session_id: session_id.to_string() })
     }

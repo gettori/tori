@@ -2,19 +2,20 @@
 //! the chat panel read.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use super::auth::{Caller, Principal};
-use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
-use super::server::{Backend, ListParams, TailParams};
+use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
+use super::server::{Backend, CheckpointParams, CheckpointsParams, ListParams, SteerParams, TailParams, WorktreeParams};
 use super::states::{SessionState, SessionStates};
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
-use crate::chat::model::{cap_output, ChatEvent};
+use crate::chat::model::{cap_output, ChatEvent, ContentBlock};
 use crate::chat::ownership::Registry;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 
@@ -120,6 +121,32 @@ fn chat_identity(registry: &Registry, live: &[(String, String)], id: &str) -> Id
     }
 }
 
+// `given`, else the caller's own, else an error naming the flag to pass.
+pub fn or_callers(given: Option<String>, callers: impl FnOnce() -> Option<String>, flag: &str) -> Result<String, RpcError> {
+    given.or_else(callers).ok_or_else(|| {
+        RpcError::new(INVALID_PARAMS, format!("pass --{flag}: the caller has no {flag} of its own to default to"))
+    })
+}
+
+// The deepest project holding `cwd`: a worktree sits inside its project's
+// folder, and `create_worktree` wants the project, not the worktree.
+fn project_of(cwd: &str, projects: &[PathBuf]) -> Option<String> {
+    let cwd = Path::new(cwd);
+    projects
+        .iter()
+        .filter(|project| cwd.starts_with(project))
+        .max_by_key(|project| project.components().count())
+        .map(|project| project.to_string_lossy().into_owned())
+}
+
+fn same_folder(a: &str, b: &str) -> bool {
+    cwd_matches(a, b) && cwd_matches(b, a)
+}
+
+fn refused(message: String) -> RpcError {
+    RpcError::new(REFUSED, message)
+}
+
 pub struct TauriBackend {
     pub app: AppHandle,
     pub states: Arc<SessionStates>,
@@ -151,6 +178,48 @@ impl TauriBackend {
                 chat_identity(&host.registry, &host.live_sessions(), id)
             }
         }
+    }
+
+    fn session_cwd(&self, id: &str) -> Result<String, RpcError> {
+        let host = &self.app.state::<ChatState>().0;
+        host.live_sessions()
+            .into_iter()
+            .find(|(live, _)| live == id)
+            .map(|(_, cwd)| cwd)
+            .or_else(|| {
+                listed_sessions(&self.app.state::<SessionIndex>(), None).into_iter().find(|m| m.id == id).map(|m| m.cwd)
+            })
+            .filter(|cwd| !cwd.is_empty())
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {id}")))
+    }
+
+    fn checkpoint(&self, id: &str, turn: usize) -> Result<(String, u64), RpcError> {
+        let cwd = self.session_cwd(id)?;
+        let list = crate::checkpoint::checkpoint_list(cwd.clone(), id.to_string()).map_err(refused)?;
+        let entry = turn.checked_sub(1).and_then(|i| list.get(i)).ok_or_else(|| {
+            RpcError::new(INVALID_PARAMS, format!("no turn {turn}: {id} has {} checkpoints", list.len()))
+        })?;
+        Ok((cwd, entry.prompt_ts))
+    }
+
+    // Other live sessions writing in `cwd`, which a revert would pull the floor
+    // out from under.
+    fn others_in(&self, cwd: &str, id: &str, principal: &Principal) -> Vec<String> {
+        let host = &self.app.state::<ChatState>().0;
+        let mut others: Vec<String> =
+            host.live_sessions().into_iter().filter(|(live, at)| live != id && same_folder(at, cwd)).map(|(live, _)| live).collect();
+        let ptys = self.app.state::<crate::pty::PtyState>();
+        let own_tab = match principal {
+            Principal::Session(Caller::Terminal(tab)) => Some(tab.as_str()),
+            _ => None,
+        };
+        for tab in ptys.live_ids().unwrap_or_default() {
+            let here = ptys.identity(&tab).is_some_and(|i| i.agent.is_some() && i.cwd.is_some_and(|at| same_folder(&at, cwd)));
+            if here && Some(tab.as_str()) != own_tab {
+                others.push(format!("terminal tab {tab}"));
+            }
+        }
+        others
     }
 
     fn agent_of(&self, id: &str) -> Option<String> {
@@ -186,7 +255,67 @@ impl Backend for TauriBackend {
             Principal::Local => None,
             Principal::Session(caller) => Some(caller),
         };
-        Ok(serde_json::json!({ "caller": caller, "identity": self.identity(principal) }))
+        Ok(json!({ "caller": caller, "identity": self.identity(principal) }))
+    }
+
+    fn session_steer(&self, params: SteerParams) -> Result<Value, RpcError> {
+        let host = &self.app.state::<ChatState>().0;
+        if !host.is_live(&params.id) {
+            let terminal = self.states.snapshot().contains_key(&params.id) || self.live().contains_key(&params.id);
+            let message = match terminal {
+                true => format!("{} is a terminal session: steer reaches chat sessions only", params.id),
+                false => format!("no live session {}", params.id),
+            };
+            return Err(RpcError::new(INVALID_PARAMS, message));
+        }
+        // A session waiting on a prompt is still inside its turn.
+        let mid_turn = matches!(self.states.snapshot().get(&params.id), Some(SessionState::Working | SessionState::NeedsYou));
+        host.deliver(&params.id, vec![ContentBlock::Text { text: params.text }], mid_turn).map_err(refused)?;
+        Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
+    }
+
+    fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
+        let callers =
+            || self.identity(principal).cwd.and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()));
+        let project = or_callers(params.project, callers, "project")?;
+        let create = crate::worktree::create_worktree(self.app.clone(), project, params.branch, params.from);
+        let path = tauri::async_runtime::block_on(create).map_err(refused)?;
+        Ok(json!({ "path": path }))
+    }
+
+    fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError> {
+        let cwd = self.session_cwd(&params.id)?;
+        let list = crate::checkpoint::checkpoint_list(cwd, params.id).map_err(refused)?;
+        let numbered = list.into_iter().enumerate().map(|(i, entry)| {
+            let mut row = serde_json::to_value(entry).unwrap_or_default();
+            row["turn"] = json!(i + 1);
+            row
+        });
+        Ok(Value::Array(numbered.collect()))
+    }
+
+    fn checkpoint_diff(&self, params: CheckpointParams) -> Result<Value, RpcError> {
+        let (cwd, ts) = self.checkpoint(&params.id, params.turn)?;
+        let files = crate::checkpoint::checkpoint_turn_files(cwd.clone(), params.id.clone(), ts, None, None).map_err(refused)?;
+        let mut diff = String::new();
+        for file in &files {
+            let one = crate::checkpoint::checkpoint_diff_file(cwd.clone(), params.id.clone(), ts, file.path.clone(), None)
+                .map_err(refused)?;
+            diff.push_str(&one);
+        }
+        Ok(json!({ "files": files, "diff": diff }))
+    }
+
+    fn checkpoint_revert(&self, principal: &Principal, params: CheckpointParams) -> Result<Value, RpcError> {
+        let (cwd, ts) = self.checkpoint(&params.id, params.turn)?;
+        let others = self.others_in(&cwd, &params.id, principal);
+        if !others.is_empty() && !params.force.unwrap_or(false) {
+            let message = format!("other live sessions in {cwd}: {}. Pass --force to revert anyway", others.join(", "));
+            return Err(refused(message));
+        }
+        let revert = crate::checkpoint::checkpoint_revert_tree(cwd, params.id, ts, None);
+        let outcome = tauri::async_runtime::block_on(revert).map_err(refused)?;
+        serde_json::to_value(outcome).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
 }
 
@@ -205,6 +334,15 @@ mod tests {
             agent: agent.into(),
             profile: profile.into(),
         }
+    }
+
+    #[test]
+    fn a_caller_tori_did_not_start_has_no_project_and_is_told_the_flag() {
+        let local = Identity::default();
+        let err = or_callers(None, || local.cwd.clone(), "project").unwrap_err();
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(err.message.contains("--project"), "{}", err.message);
+        assert_eq!(or_callers(Some("/p".into()), || local.cwd.clone(), "project").ok().as_deref(), Some("/p"));
     }
 
     #[test]

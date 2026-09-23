@@ -8,13 +8,18 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 4] = ["sessions", "session", "events", "whoami"];
+const COMMANDS: [&str; 8] = ["sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint"];
 
 const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
   tori events [--topic <topic>]...
-  tori whoami [--json]";
+  tori whoami [--json]
+  tori steer <id> <text>...
+  tori worktree new <branch> [--project <path>] [--from <ref>]
+  tori checkpoints <id> [--json]
+  tori checkpoint diff <id> <n>
+  tori checkpoint revert <id> <n> [--force]";
 
 pub fn is_cli() -> bool {
     std::env::args().nth(1).is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
@@ -75,6 +80,17 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         },
         "events" => events(rest),
         "whoami" => whoami(rest),
+        "steer" => steer(rest),
+        "worktree" => match rest.first().map(String::as_str) {
+            Some("new") => worktree_new(&rest[1..]),
+            _ => Err(usage("worktree needs a subcommand: new")),
+        },
+        "checkpoints" => checkpoints(rest),
+        "checkpoint" => match rest.first().map(String::as_str) {
+            Some("diff") => checkpoint_diff(&rest[1..]),
+            Some("revert") => checkpoint_revert(&rest[1..]),
+            _ => Err(usage("checkpoint needs a subcommand: diff or revert")),
+        },
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
@@ -283,6 +299,80 @@ fn whoami(args: &[String]) -> Result<(), Failure> {
     for key in ["agent", "account", "cwd"] {
         if let Some(value) = me["identity"][key].as_str() {
             writeln!(out, "{key}: {value}")?;
+        }
+    }
+    Ok(())
+}
+
+fn steer(args: &[String]) -> Result<(), Failure> {
+    // No flags, so a `--word` in the message stays part of it.
+    let [id, words @ ..] = args else {
+        return Err(usage("steer takes a session id and the text to send"));
+    };
+    if words.is_empty() {
+        return Err(usage("steer needs the text to send"));
+    }
+    let delivered = connect()?.call("session.steer", json!({ "id": id, "text": words.join(" ") }))?;
+    let how = delivered["delivered"].as_str().unwrap_or("sent");
+    Ok(writeln!(io::stdout().lock(), "{how}: {id}")?)
+}
+
+fn worktree_new(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &["project", "from"], &[])?;
+    let [branch] = p.positional.as_slice() else {
+        return Err(usage("worktree new takes one branch name"));
+    };
+    let project = p.value("project").map(absolute).transpose()?;
+    let made = connect()?.call("worktree.new", json!({ "branch": branch, "project": project, "from": p.value("from") }))?;
+    Ok(writeln!(io::stdout().lock(), "{}", made["path"].as_str().unwrap_or(""))?)
+}
+
+// The socket resolves paths in the app's cwd, not this shell's.
+fn absolute(path: &str) -> Result<String, Failure> {
+    Ok(std::path::absolute(path)?.to_string_lossy().into_owned())
+}
+
+fn checkpoints(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["json"])?;
+    let [id] = p.positional.as_slice() else {
+        return Err(usage("checkpoints takes one session id"));
+    };
+    let list = connect()?.call("checkpoints.list", json!({ "id": id }))?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{list}")?);
+    }
+    for row in list.as_array().into_iter().flatten() {
+        let number = |key: &str| row[key].as_u64().unwrap_or(0);
+        let files = number("file_count");
+        let noun = if files == 1 { "file" } else { "files" };
+        writeln!(out, "{:>3}  {}  {files} {noun}", number("turn"), row["kind"].as_str().unwrap_or(""))?;
+    }
+    Ok(())
+}
+
+fn checkpoint_turn(args: &[String], switches: &[&str]) -> Result<Value, Failure> {
+    let p = Parsed::new(args, &[], switches)?;
+    let [id, turn] = p.positional.as_slice() else {
+        return Err(usage("takes a session id and a turn number from tori checkpoints"));
+    };
+    let turn: usize = turn.parse().map_err(|_| usage(format!("turn must be a number, got {turn}")))?;
+    Ok(json!({ "id": id, "turn": turn, "force": p.has("force").then_some(true) }))
+}
+
+fn checkpoint_diff(args: &[String]) -> Result<(), Failure> {
+    let params = checkpoint_turn(args, &[])?;
+    let diff = connect()?.call("checkpoint.diff", params)?;
+    Ok(write!(io::stdout().lock(), "{}", diff["diff"].as_str().unwrap_or(""))?)
+}
+
+fn checkpoint_revert(args: &[String]) -> Result<(), Failure> {
+    let params = checkpoint_turn(args, &["force"])?;
+    let outcome = connect()?.call("checkpoint.revert", params)?;
+    let mut out = io::stdout().lock();
+    for (key, verb) in [("restored", "restored"), ("deleted", "deleted")] {
+        for path in outcome[key].as_array().into_iter().flatten().filter_map(Value::as_str) {
+            writeln!(out, "{verb} {path}")?;
         }
     }
     Ok(())

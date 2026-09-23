@@ -190,6 +190,12 @@ pub trait AgentTransport: Send {
     /// The child's pid, for the persisted claim's orphan record. `None` before
     /// `start` or after the child has been reaped.
     fn child_pid(&self) -> Option<u32>;
+
+    /// Whether [`Self::send`] puts the user's own turn into the stream. When it
+    /// does not, the host draws a message that came from outside the panel.
+    fn echoes_sent_turns(&self) -> bool {
+        false
+    }
 }
 
 /// The trait's test double. It lives beside the trait rather than in the host's
