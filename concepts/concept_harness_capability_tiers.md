@@ -52,6 +52,7 @@ The declaration has to read something real rather than be maintained by hand. `A
 
 - [[concept_transport_neutral_event_model]] - the event half of the same discipline
 - [[concept_acp_agent_quirks]] - where the per-agent variance behind the ACP floor is recorded
+- [[concept_blocking_tool_call_ceiling]] - the measured per-harness limit on a blocking MCP call
 - [[concept_rewind_by_fork]] - the measured value behind `rewind: fork`
 - [[concept_mid_turn_steer]] - the measured value behind the steer tier
 - [[concept_spend_ceilings]] - why ACP publishes `false`, and it is not the hook

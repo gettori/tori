@@ -14,7 +14,7 @@ ACP is one protocol with several independent implementations, and the gap betwee
 ### Session creation
 
 - **A populated `mcpServers` is accepted by both agents measured, and honoured by one.** *(measured, contradicts the earlier reported refusal)* `node dev/mcp-probe.mjs --acp` opens each bridge twice, `session/new` with `[]` and then with one stdio server, and logs every method that server receives:
-  - `@agentclientprotocol/codex-acp` 1.12.0 on codex-cli 0.155.1: both `ok`. It starts the server (`initialize`, `tools/list`, `tools/call` all arrive), the turn produces a `tool_call` titled `mcp.<server>.<tool>` that completes with the tool's answer, plus a second `Guardian Review` tool call that belongs to codex's own review of the call. It advertises `mcpCapabilities: { http: true, sse: false }`.
+  - `@agentclientprotocol/codex-acp` 1.12.0 on codex-cli 0.155.1: both `ok`. It starts the server (`initialize`, `tools/list`, `tools/call` all arrive), the turn produces a `tool_call` titled `mcp.<server>.<tool>` that completes with the tool's answer, plus a second `Guardian Review` tool call that belongs to codex's own review of the call ([[gotcha_codex_guardian_review_names_the_tool_it_reviews]]). It advertises `mcpCapabilities: { http: true, sse: false }`.
   - `pi-acp` 0.0.33 on pi 0.82.1: both `ok`, and the server never receives a single message. The bridge stores the array on its session object and never reads it again. It advertises `mcpCapabilities: { http: false, sse: false }`. Its turns ended `end_turn` with no model text even with an empty array (auth unverified on this machine), so the turn tells us nothing. The empty server log is the evidence.
 
   So the refusal risk was not seen, but the quieter failure was: an agent can accept the array and drop it. `send_mcp_servers` still decides per agent whether the array gets populated, and "accepted" is not proof the servers work: the only proof is the server being called. This is the first of the two per-agent overrides the transport must carry.
@@ -66,6 +66,7 @@ The licensing boundary matters here: entries marked *(reported)* were learned fr
 
 - [[concept_harness_capability_tiers]] — where an ACP session's measured tier is published, including the affordances it cannot have
 - [[adr_harness_breadth]] — the decision this list is the maintenance cost of
+- [[concept_blocking_tool_call_ceiling]] — how long codex-acp lets an MCP call block (300s), and why pi has no row
 - [[concept_mcp_config_scopes]] — what Tori would be putting in `mcpServers`, which codex-acp honours and pi-acp drops
 - [[concept_capability_resolution]] — the same advertise-then-verify shape, one layer up
 - [[concept_pretooluse_capture_hook]] — the Claude-only mechanism ACP replaces with in-protocol permissions
