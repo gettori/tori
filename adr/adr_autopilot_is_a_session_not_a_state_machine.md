@@ -34,3 +34,4 @@ source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket get
 - [[concept_spend_ceilings]] - the ceiling that still applies, at the turn boundary
 - [[adr_one_protocol_several_fronts]] - the protocol its tools reach Tori through
 - [[adr_a_background_session_needs_a_tori_gate]] - what it may not do without asking first
+- [[adr_a_workers_questions_bubble_up_to_its_spawner]]: how a worker's questions reach the session that spawned it

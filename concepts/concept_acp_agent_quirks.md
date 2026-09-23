@@ -1,8 +1,8 @@
 ---
-summary: a running list of where real ACP agents disagree with the spec, so the client is built against measured behavior
+summary: where real ACP agents disagree with the spec; codex and opencode honour mcpServers and get tori mcp, pi drops it
 status: current
-updated: 2026-09-23
-source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0; plan "Probe: --mcp-config beside --settings" (phase 3), branch `orchestrator`, `dev/mcp-probe.mjs --acp` against codex-acp 1.12.0 and pi-acp 0.0.33; plan "tori mcp" phase 1, same branch, the probe re-run with `opencode acp` 1.18.3 added and two `env` pairs sent
+updated: 2026-09-24
+source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0; plan "Probe: --mcp-config beside --settings" (phase 3), branch `orchestrator`, `dev/mcp-probe.mjs --acp` against codex-acp 1.12.0 and pi-acp 0.0.33; plan "tori mcp" phase 1, same branch, the probe re-run with `opencode acp` 1.18.3 added and two `env` pairs sent; commits d9e20873, 5963da85, src-tauri/src/chat/acp_transport.rs (tori_mcp_server)
 ---
 
 # ACP agent quirks
@@ -19,7 +19,7 @@ ACP is one protocol with several independent implementations, and the gap betwee
   - `pi-acp` 0.0.33 on pi 0.82.1: both `ok`, and the server never receives a single message. The bridge stores the array on its session object and never reads it again. It advertises `mcpCapabilities: { http: false, sse: false }`. Its turns ended `end_turn` with no model text even with an empty array (auth unverified on this machine), so the turn tells us nothing. The empty server log is the evidence.
   - Both honouring agents deliver both `env` pairs to the server child, and neither sends `session/request_permission` for the MCP call in its default mode (codex-acp's `Guardian Review` is a tool call, not a permission request).
 
-  So the refusal risk was not seen, but the quieter failure was: an agent can accept the array and drop it. `send_mcp_servers` still decides per agent whether the array gets populated, and "accepted" is not proof the servers work: the only proof is the server being called. This is the first of the two per-agent overrides the transport must carry.
+  So the refusal risk was not seen, but the quieter failure was: an agent can accept the array and drop it. `send_mcp_servers` is an adapter TOML key, on for codex and opencode, and decides per agent whether the array gets populated. When it is on, `session/new` and `session/load` both carry `tori mcp` ([[component_tori_mcp]]) with `TORI_SOCK` and `TORI_CALLER` minted for that session, and "accepted" is not proof the servers work: the only proof is the server being called. This is the first of the two per-agent overrides the transport must carry.
 - **`cwd` and `mcpServers` are required even when empty.** *(reported)* Omitting either yields `Invalid params` from agents that validate strictly. They are sent unconditionally, never gated on a capability: an empty array is a value, an absent key is a protocol error.
 - **`cwd` must be absolute.** *(documented)* It is also the base for relative paths for the life of the session.
 - **`session/new` may answer `auth_required`.** *(documented)* This is a named error with a user-actionable meaning, not a spawn failure, and it is the only error code on this path worth branching on.
@@ -75,3 +75,4 @@ The licensing boundary matters here: entries marked *(reported)* were learned fr
 - [[component_acp_transport]] — the client every entry here is a constraint on
 - [[concept_acp_config_options]] — the one verb behind every mid-session switch
 - [[concept_acp_session_locator]] — the advertise-then-verify rule applied to history
+- [[component_tori_mcp]]: the server `send_mcp_servers` hands an ACP session
