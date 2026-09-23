@@ -73,6 +73,10 @@ export interface TabProps
    *  announced path is Delete or Backspace on the focused tab. See the note on
    *  the component. */
   onClose?: (e: MouseEvent | KeyboardEvent) => void;
+  /** Something else is driving this tab (the autopilot), so it cannot be
+   *  closed: this mark takes the close slot, and Delete, Backspace and a middle
+   *  click do nothing. Say why in `tooltip`. */
+  locked?: JSX.Element;
   /** Hover/focus tooltip - typically the full path behind a truncated label.
    *  Unlike `Button` and `IconButton` this does *not* backfill the accessible
    *  name; see the note on the component. */
@@ -131,6 +135,7 @@ export default function Tab(props: TabProps) {
     "children",
     "trailing",
     "onClose",
+    "locked",
     "class",
     "type",
     "tooltip",
@@ -142,7 +147,7 @@ export default function Tab(props: TabProps) {
   // so a call site's own `onKeyDown` would otherwise be dropped without a word.
   const onKeyDown = (e: KeyboardEvent) => {
     (rest.onKeyDown as ((e: KeyboardEvent) => void) | undefined)?.(e);
-    if (!local.onClose) return;
+    if (!local.onClose || local.locked) return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
     e.preventDefault();
     e.stopPropagation();
@@ -151,7 +156,7 @@ export default function Tab(props: TabProps) {
 
   // `auxclick` fires for the right button too, and that one opens the menu.
   const onAuxClick = (e: MouseEvent) => {
-    if (row.inert || !local.onClose || e.button !== 1) return;
+    if (row.inert || !local.onClose || local.locked || e.button !== 1) return;
     e.preventDefault();
     local.onClose(e);
   };
@@ -178,6 +183,7 @@ export default function Tab(props: TabProps) {
       data-tab-pill=""
       class={local.class}
       classList={{ [styles.pill]: true }}
+      data-locked={local.locked ? "" : undefined}
       onAuxClick={onAuxClick}
     >
       <Show
@@ -216,7 +222,11 @@ export default function Tab(props: TabProps) {
           {content()}
         </Tabs.Trigger>
       </Show>
-      {local.onClose && (
+      {local.locked ? (
+        <span class={styles.lockSlot} aria-hidden="true">
+          {local.locked}
+        </span>
+      ) : local.onClose && (
         <button
           type="button"
           class={styles.close}

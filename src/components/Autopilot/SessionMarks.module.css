@@ -1,0 +1,54 @@
+@layer components {
+  .lock {
+    display: inline-flex;
+    align-items: center;
+    color: var(--fg-subtle);
+  }
+
+  .lockIcon {
+    width: calc(11px * var(--ui-scale));
+    height: calc(11px * var(--ui-scale));
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    height: var(--control-height-xs);
+    padding: 0 var(--tori-space-4);
+    border-radius: var(--tori-radius-md);
+    background: var(--progress-subtle);
+    border: var(--tori-border-thin) solid var(--progress-border);
+    color: var(--progress-on-subtle);
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-xs);
+    font-weight: 500;
+    white-space: nowrap;
+    --wheel-ring: var(--progress-subtle);
+  }
+
+  .hairline {
+    display: block;
+    height: var(--tori-border-thick);
+    background: linear-gradient(90deg, transparent 38%, var(--status-progress) 52%, transparent 66%);
+    background-size: 200% 100%;
+    opacity: 0.8;
+    animation: driving-sweep 3.2s linear infinite;
+  }
+
+  @keyframes driving-sweep {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hairline {
+      animation: none;
+      background-position: 50% 0;
+    }
+  }
+}

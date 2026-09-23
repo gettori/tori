@@ -295,8 +295,15 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/Terminal/HistoryPanel.tsx",
     {
-      count: 3,
-      reason: `one ${TRUNCATION}, one ${ROW_ONCLICK}, and one that is still a row onClick but now reads as a prop of ContextMenu, which passes it through`,
+      count: 2,
+      reason: `one ${TRUNCATION} and one ${ROW_ONCLICK}`,
+    },
+  ],
+  [
+    "panels/Terminal/HistoryRow.tsx",
+    {
+      count: 1,
+      reason: `a row onClick that reads as a prop of ContextMenu, which passes it through. Moved out of HistoryPanel.tsx with the row`,
     },
   ],
   [

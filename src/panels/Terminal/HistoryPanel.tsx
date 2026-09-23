@@ -4,10 +4,9 @@ import { ChevronRight } from "lucide-solid";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
-import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import Popover from "../../components/Popover/Popover";
-import TabMark from "./TabMark";
+import HistoryRow from "./HistoryRow";
 import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 import { sessions, historical, checkHistorical, markAdopted, type SessionMeta } from "../../utils/sessionStore";
 import { sessionStatus, sessionCertainty } from "../../utils/sessionActivity";
@@ -170,40 +169,18 @@ export default function HistoryPanel(props: {
     // `For` gives each item its own owner, so this fires when the row goes.
     onCleanup(() => releaseMenu(s.id));
     return (
-      <ContextMenu
-        class={styles.row}
-        classList={{ [styles.rowActive]: isActive(s) }}
-        role="option"
-        aria-selected={isActive(s)}
-        title={label(s)}
-        onClick={() => act(s, "open")}
+      <HistoryRow
+        label={label(s)}
+        agentId={s.agent ?? "claude"}
+        status={sessionStatus(s.id)}
+        certainty={sessionCertainty(s.id)}
+        profile={s.profile_label}
+        when={ago(s.last_active)}
+        active={isActive(s)}
         items={rowMenu(s)}
-        // The trigger is inside the panel but the surface is not: the wrapper
-        // portals it out, which is what keeps it clear of `.panel`'s `overflow:
-        // hidden` and its z-index.
-        //
-        // Non-modal, deliberately: a modal menu would `aria-hidden` the very panel
-        // it is asking about a row in. See the wrapper's module comment.
-        onOpenChange={(open) => (open ? setMenuRow(s.id) : releaseMenu(s.id))}
-      >
-        {/* One glyph position for agent and status together, the tab strip's rule
-            rather than the sidebar's four-glyph one: these rows are scanned, and
-            a row that changes shape when a session merely goes quiet pulls the
-            eye to the wrong one. */}
-        <TabMark
-          agentId={s.agent ?? "claude"}
-          status={sessionStatus(s.id)}
-          certainty={sessionCertainty(s.id)}
-        />
-        <span class={styles.rowLabel}>{label(s)}</span>
-        {/* The backend sends a label only when there is a second account to tell
-            this one apart from, so a machine that never added one renders exactly
-            the list it rendered before. */}
-        <Show when={s.profile_label}>
-          {(profile) => <span class={styles.rowProfile}>{profile()}</span>}
-        </Show>
-        <span class={styles.rowWhen}>{ago(s.last_active)}</span>
-      </ContextMenu>
+        onOpen={() => act(s, "open")}
+        onMenuOpenChange={(open) => (open ? setMenuRow(s.id) : releaseMenu(s.id))}
+      />
     );
   };
 

@@ -11,6 +11,9 @@ export interface WheelProps {
   count?: number;
   /** Sits on an active (tinted) segment, so idle and working take the tint's text. */
   active?: boolean;
+  /** Recede to the subtle tone, for a mark that is history rather than news:
+   *  a row the autopilot started but is not driving now. */
+  quiet?: boolean;
   /** Side in px before `--ui-scale`. */
   size?: number;
   class?: string;
@@ -26,6 +29,7 @@ export default function Wheel(props: WheelProps) {
       classList={{ [props.class ?? ""]: !!props.class }}
       data-state={props.state}
       data-active={props.active ? "true" : "false"}
+      data-quiet={props.quiet ? "true" : undefined}
       style={{ "--wheel-size": `${props.size ?? 14}px` }}
       aria-hidden="true"
     >

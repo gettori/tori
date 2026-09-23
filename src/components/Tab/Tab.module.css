@@ -40,6 +40,19 @@
     linear-gradient(to bottom, var(--brand-subtle), transparent);
 }
 
+/* Driven by the autopilot. A layer of its own rather than part of the
+   background, which hover, selection and a blurred pane all rewrite. */
+.pill[data-locked]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--tori-border-thick);
+  background: var(--status-progress);
+  pointer-events: none;
+}
+
 /* A strip whose pane does not hold focus draws no selection at all: the fill and
    the rail both say "this is the one", and two panes saying it at once is two
    answers to a question with one. The label keeps its brighter colour, which
@@ -118,9 +131,18 @@
   cursor: pointer;
 }
 
+.lockSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(2px * var(--ui-scale));
+  margin-right: calc(6px * var(--ui-scale));
+}
+
 /* The button already carries the pill's right padding, so the close sits closer
    to the label than the pill edge without it. */
-.pill:has(.close) .tab {
+.pill:has(.close) .tab,
+.pill:has(.lockSlot) .tab {
   padding-right: calc(4px * var(--ui-scale));
 }
 
