@@ -32,6 +32,7 @@ Backgrounded ops (e.g. loading `origin/*` for a remote-branch picker) have no TT
 
 ## Related
 
+- [[component_app_socket]] - the app level JSON-RPC socket that copies this socket, token and bridge-file pattern
 - [[gotcha_darwin_caps_unix_socket_paths_at_104_bytes]]
 - [[gotcha_git_calls_askpass_once_per_field_as_separate_processes]]
 - [[gotcha_ssh_askpass_needs_require_force_and_only_fires_without_a_tty]]

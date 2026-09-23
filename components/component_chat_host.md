@@ -1,7 +1,7 @@
 ---
 summary: spawns one long lived harness child per session and renders its own permission and question prompts, deciding nothing
 status: current
-updated: 2026-09-04
+updated: 2026-09-23
 source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs
 ---
 
@@ -99,8 +99,19 @@ Three things this forced in `claude_transport.rs`:
 
 Not built: gettori/tori#203 plans a Tori level refusal for outward actions from a session flagged `background`. It lives on the protocol's own outward methods and not in `map_control_request`, so "it decides no tool call" stays true of every session a person opened. See [[adr_a_background_session_needs_a_tori_gate]].
 
+## Lifecycle on the app socket (2026-09-23)
+
+`ChatHost` publishes `started` and `ended` on the app socket's `sessions` channel ([[component_app_socket]]). The publisher is a `Publish` closure set once in `lib.rs` setup through `set_publisher`. A host with none (every test that doesn't set one) publishes nothing.
+
+- **`started` fires before `transport.start`, and `ended` from three paths:** the fatal branch of `wrap`, `close`, and a start that returns `Err`. A rewire publishes nothing.
+- **Both are gated on `Lifecycle`'s announced set, not on the session map.** The map can't order them. See [[gotcha_a_chat_childs_fatal_event_can_arrive_before_spawn_inserts_its_entry]].
+- `Entry` now keeps the spawn `cwd`, and `live_sessions()` hands `(id, cwd)` to `sessions.list`. `Registry` gained `agent_of` and `held_here`.
+- `chat_history`'s body moved into `read_history(session_id, &HistorySource, agent, up_to)`, shared with `session.tail`. The whole read now runs through `exec::blocking`, where before only the ACP log half did.
+
 ## Related
 
+- [[component_app_socket]] - where the lifecycle events go, and the second reader of `read_history`
+- [[gotcha_a_chat_childs_fatal_event_can_arrive_before_spawn_inserts_its_entry]] - why lifecycle is gated on its own set
 - [[component_chat_panel]] - the Solid half this feeds
 - [[concept_subagent_lanes]] - the lane model these events and files feed
 - [[component_agent_adapter_registry]] - where the `[chat]` transport table lives

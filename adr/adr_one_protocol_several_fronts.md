@@ -2,7 +2,7 @@
 summary: one json-rpc protocol on an app level socket, with the cli, the mcp server and a later websocket as fronts on it
 status: current
 updated: 2026-09-23
-source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#197, #198, #199 and #200; no code yet, decision precedes first implementation"
+source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#197, #198, #199 and #200; the socket landed in commit 392d36b0 (#197)"
 ---
 
 # One protocol on one socket, and every front is a client of it
@@ -22,13 +22,14 @@ Today there is no app level surface at all. The sockets that exist are per sessi
 
 - **The transport is a trait from the first commit, not a later refactor.** A Unix socket now, a TCP or WebSocket listener later, reusing the framing, the auth step and the dispatcher untouched. That is the only thing the phone needs from the first ticket, and retrofitting it after three fronts exist would mean changing all three.
 - **Auth is its own function because it is the part that changes.** The socket carries a token, in the same private `0700` directory under `$TMPDIR` the existing bridges use. A WebSocket front will carry a per device credential instead, and that swap has to stay local to one function. [[gotcha_darwin_caps_unix_socket_paths_at_104_bytes]] constrains where the path can live.
-- **A spawned session finds the socket through its environment**, the way the existing helpers do, which is what lets a session Tori started call back into Tori without configuration.
+- **A spawned session finds the socket through its environment**, the way the existing helpers do, which is what lets a session Tori started call back into Tori without configuration. Anything Tori did not spawn reads a `0600` bridge file, `~/.config/tori/rpc.json`, removed at exit only if it names this instance, the same rule as the askpass file. Env wins over the file. See [[component_app_socket]].
 - **The boundary rule is a second decision riding this page.** "One protocol with fronts" and "only what Tori alone knows" are separately reversible: a single fat protocol fronting git and the forge satisfies the first and breaks the second. An amendment that widens what is exposed belongs here, under this heading, rather than in a new page whose title is about fronts.
 - **The MCP front inherits a trap that is not Tori's.** A server written into `mcp.json` loads as pending, not connected, and its approval lives in a file Tori deliberately never writes. See [[gotcha_a_newly_written_mcp_json_server_is_pending_not_connected]] and [[concept_mcp_config_scopes]].
 - **Nothing here changes who decides a tool call.** A front is a way to reach Tori, not a new authority. The one narrowing is [[adr_a_background_session_needs_a_tori_gate]], and it is scoped to sessions flagged background.
 
 ## Related
 
+- [[component_app_socket]] - the implementation: transport trait, auth function, hub, and the first two methods
 - [[concept_askpass_bridge]] - the existing app level socket pattern this copies, re-exec the binary, private socket, token in env
 - [[concept_pretooluse_capture_hook]] - the second use of that pattern, and the page that records why Tori decides no tool call
 - [[concept_transport_neutral_event_model]] - the same shape one layer up, one normalized event enum behind every consumer
