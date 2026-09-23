@@ -257,6 +257,21 @@
     --status-idle: #2dd4bf;
     --status-running: #7d8ba1;
 
+    /* progress */
+    --progress-subtle: #2f2a3f;
+    --progress-border: rgba(192, 132, 252, 0.42);
+    --progress-on-subtle: #ceacf7;
+
+    /* needsYou */
+    --needs-you-subtle: #362831;
+    --needs-you-border: rgba(251, 113, 133, 0.45);
+    --needs-you-on-subtle: #f2a1b0;
+
+    /* danger */
+    --danger-subtle: #33272f;
+    --danger-border: rgba(224, 108, 117, 0.5);
+    --danger-on-subtle: #e29ea6;
+
     /* brand */
     --brand-default: #d9a468;
     --brand-strong: #d9bd85;
@@ -425,6 +440,21 @@
     --status-needs-you: #e11d48;
     --status-idle: #0d9488;
     --status-running: #64748b;
+
+    /* progress */
+    --progress-subtle: #ebe6f3;
+    --progress-border: rgba(124, 58, 237, 0.35);
+    --progress-on-subtle: #562f9a;
+
+    /* needsYou */
+    --needs-you-subtle: #f2e4e7;
+    --needs-you-border: rgba(225, 29, 72, 0.4);
+    --needs-you-on-subtle: #931d37;
+
+    /* danger */
+    --danger-subtle: #f0e4e5;
+    --danger-border: rgba(202, 33, 45, 0.42);
+    --danger-on-subtle: #852027;
 
     /* brand */
     --brand-default: #7e5e2f;
