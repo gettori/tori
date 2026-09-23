@@ -130,6 +130,7 @@ import {
   offerToComposer,
   routeFor,
   setDraft,
+  setDraftOrigin,
 } from "../../utils/chatCompose";
 import { handleRpc, serveRpcBridge } from "../../utils/rpcBridge";
 import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
@@ -1051,14 +1052,16 @@ export default function Terminal(props: {
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
-    offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName }) => {
+    offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName, prompt, origin }) => {
       // A reused worktree folder can have stored tabs coming back, and those
       // win: a draft is only for a strip that would otherwise sit empty.
       await stripReady(folderPath);
-      if (tabsIn(folderPath).length) return;
+      if (!prompt && tabsIn(folderPath).length) return;
       const agent = draftAgent(folderPath, folderPath);
       if (!agent) return;
-      openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
+      const id = openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
+      if (prompt) setDraft(id, prompt);
+      if (origin) setDraftOrigin(id, origin);
     });
     offSpawnForSocket = handleRpc("session.spawn", spawnForSocket);
     unlistenRpc = await serveRpcBridge();

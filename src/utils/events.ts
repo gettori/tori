@@ -2,6 +2,7 @@
 import type { ContentBlock } from "./chatTypes";
 import type { AgentId } from "./agents";
 import type { EditorToggleKey } from "./settingsCatalog";
+import type { DraftOrigin } from "./chatCompose";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -580,9 +581,16 @@ export const NEW_SESSION = "tori:new-session";
 export type NewSession = { folderPath: string; projectName: string; agent?: string };
 
 // Payload-carrying event: open a chat draft in a branch-unit folder the sidebar
-// just created, so a new worktree does not land on an empty strip.
+// just created, so a new worktree does not land on an empty strip. With a
+// `prompt` (a unit started from an issue) the draft opens even beside tabs the
+// folder already has.
 export const NEW_CHAT_AT = "tori:new-chat-at";
-export type NewChatAt = { folderPath: string; projectName: string };
+export type NewChatAt = {
+  folderPath: string;
+  projectName: string;
+  prompt?: string;
+  origin?: DraftOrigin;
+};
 
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under

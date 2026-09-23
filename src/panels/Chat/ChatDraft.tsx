@@ -23,7 +23,8 @@ import { composerAttachments } from "./composerAttachments";
 import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
 import { paletteProviders } from "./agentPaletteData";
 import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
-import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
+import { dropPending, draftFor, draftOriginFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
+import { invoke } from "@tauri-apps/api/core";
 import { draftPick, hasPick, resetDraftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
 import {
@@ -266,6 +267,21 @@ export default function ChatDraft(props: {
           has not started has nothing to say about itself, and a placeholder
           would be chrome the user reads once and then reads past forever. */}
       <div class={styles.draftFill} />
+
+      <Show when={draftOriginFor(props.tabId)}>
+        {(origin) => (
+          <div class={styles.draftOrigin}>
+            from{" "}
+            <button
+              type="button"
+              class={styles.draftOriginLink}
+              onClick={() => void invoke("plugin:opener|open_url", { url: origin().url }).catch(() => {})}
+            >
+              {origin().display}
+            </button>
+          </div>
+        )}
+      </Show>
 
       <Composer
         running={false}

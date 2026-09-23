@@ -1,12 +1,15 @@
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
-import { Check, ChevronsUpDown, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
+import { Check, ChevronsUpDown, CircleDot, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Checkbox from "../Checkbox/Checkbox";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import Popover from "../Popover/Popover";
+import SegmentedControl from "../SegmentedControl/SegmentedControl";
+import { errorText, type Issue, type IssueRef } from "../../utils/issues";
 
 /** Where the chosen branch is, which is what says how to add it: a local one is
  *  attached, a remote-only one is tracked, and a name that is neither is made. */
@@ -18,6 +21,18 @@ export type BranchPick = {
    *  `origin/main`): the backend resolves a remote-only one. Only ever set on
    *  a `new` pick, and absent when the repo offered nothing to base on. */
   base?: string;
+  /** Started from an issue: the unit remembers it, and `link` asks for the
+   *  branch to be made on the host under the issue first. */
+  issue?: { issue: Issue; link: boolean };
+};
+
+/** What the dialog needs from the issue source. Withheld when the project has
+ *  none, which is what hides the Issue tab. */
+export type IssueSourceProps = {
+  assigned: () => Promise<IssueRef[]>;
+  get: (key: string) => Promise<Issue>;
+  /** Whether the local `base` holds commits its remote does not. */
+  ahead: (base: string) => Promise<boolean>;
 };
 
 /** The folder a worktree for `branch` would get, matching `pick_worktree_folder`
@@ -115,6 +130,7 @@ export default function AddBranchDialog(props: {
    *  neither list has leaves the picker empty, and the backend keeps its own
    *  guess. */
   baseDefault?: string;
+  issues?: IssueSourceProps;
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
 }) {
@@ -155,6 +171,93 @@ export default function AddBranchDialog(props: {
   const deletable = (name: string) =>
     !!props.onDeleteAsk && kinds().get(name) === "local" && !taken().has(name);
 
+  const [source, setSource] = createSignal<"branch" | "issue">("branch");
+  const [issueQuery, setIssueQuery] = createSignal("");
+  const [assigned, setAssigned] = createSignal<IssueRef[] | null>(null);
+  const [issueError, setIssueError] = createSignal<string | null>(null);
+  const [loadingKey, setLoadingKey] = createSignal<string | null>(null);
+  const [issue, setIssue] = createSignal<Issue | null>(null);
+  const [issueName, setIssueName] = createSignal("");
+  const [link, setLink] = createSignal(true);
+  const [ahead, setAhead] = createSignal(false);
+
+  createEffect(
+    on(source, (s) => {
+      queueMicrotask(() => input?.focus());
+      if (s !== "issue" || assigned() !== null || !props.issues) return;
+      props.issues
+        .assigned()
+        .then((list) => setAssigned(list.filter((i) => i.kind === "issue")))
+        .catch((e) => {
+          setAssigned([]);
+          setIssueError(errorText(e));
+        });
+    }, { defer: true }),
+  );
+
+  const issueMatches = createMemo(() => {
+    const q = issueQuery().trim().toLowerCase().replace(/^#/, "");
+    const list = assigned() ?? [];
+    return q ? list.filter((i) => i.key.includes(q) || i.title.toLowerCase().includes(q)) : list;
+  });
+  const issueOptions = createMemo<ComboboxOption[]>(() =>
+    issueMatches().map((i) => ({ value: i.key, label: i.title })),
+  );
+  const displays = createMemo(() => new Map((assigned() ?? []).map((i) => [i.key, i.display])));
+  const unlistedKey = () => {
+    const m = issueQuery().trim().match(/^#?(\d+)$/);
+    return m && !displays().has(m[1]) ? m[1] : null;
+  };
+
+  function loadIssue(key: string) {
+    if (!props.issues || loadingKey()) return;
+    setLoadingKey(key);
+    setIssueError(null);
+    props.issues
+      .get(key)
+      .then((i) => {
+        setIssue(i);
+        setIssueName(i.suggestedBranch);
+        queueMicrotask(() => primary?.focus());
+      })
+      .catch((e) => setIssueError(errorText(e)))
+      .finally(() => setLoadingKey(null));
+  }
+
+  const issueKind = (name: string): BranchKind => kinds().get(name) ?? "new";
+  // The host makes the branch from its own copy of the base, so the base has
+  // to be there, and a branch that already exists here is not the host's to make.
+  const linkable = () =>
+    issueKind(issueName().trim()) !== "local" && !!base() && props.remotes.includes(base());
+  const linkNote = () => {
+    const name = issueName().trim();
+    if (!name) return null;
+    if (issueKind(name) === "local") return `${name} already exists here, so it will not be linked`;
+    if (!linkable()) return base() ? `${base()} is not on the remote, so the branch stays local` : null;
+    if (link() && ahead()) return `${base()} has commits the remote does not; the branch starts from the remote's ${base()}`;
+    return null;
+  };
+
+  createEffect(() => {
+    const b = base();
+    if (source() !== "issue" || !link() || !props.issues || !props.locals.includes(b)) return setAhead(false);
+    const current = (v: boolean) => base() === b && setAhead(v);
+    props.issues.ahead(b).then(current).catch(() => current(false));
+  });
+
+  const issueChoice = (): BranchPick | null => {
+    const found = issue();
+    const name = issueName().trim();
+    if (!found || !name) return null;
+    const kind = issueKind(name);
+    return {
+      name,
+      kind,
+      base: kind === "new" ? base() || undefined : undefined,
+      issue: { issue: found, link: link() && linkable() },
+    };
+  };
+
   // A parked row the list no longer has - its branch was just deleted - is not
   // an answer to anything.
   createEffect(() => {
@@ -179,6 +282,7 @@ export default function AddBranchDialog(props: {
   // The parked row, or the typed name when there is no row to park on. Typing
   // clears the park, so the two can never both be live.
   const choice = (): BranchPick | null => {
+    if (source() === "issue") return issueChoice();
     const parked = picked();
     if (parked) return parked;
     const fresh = newName();
@@ -188,7 +292,9 @@ export default function AddBranchDialog(props: {
   /** The row drawn as chosen, which is a row and never a typed new name. A
    *  memo, so the effect below fires on the choice changing rather than on
    *  every keystroke and every list that lands. */
-  const parked = createMemo(() => (choice()?.kind === "new" ? null : (choice()?.name ?? null)));
+  const parked = createMemo(() =>
+    source() === "issue" || choice()?.kind === "new" ? null : (choice()?.name ?? null),
+  );
 
   // Picking answers the list's question, so the next thing to press is the one
   // that commits it. Kobalte hands the filter its focus back as part of
@@ -283,132 +389,234 @@ export default function AddBranchDialog(props: {
             disabled={props.busy || !choice() || already()}
             onClick={() => confirm()}
           >
-            {props.busy ? "Working…" : `Add ${noun()}`}
+            {props.busy
+              ? "Working…"
+              : source() === "issue"
+                ? `Start from ${issue()?.display ?? "issue"}`
+                : `Add ${noun()}`}
           </Button>
         </>
       }
     >
-      <Combobox
-        class={styles.pickerField}
-        listClass={styles.branchList}
-        options={options()}
-        query={query()}
-        onQueryChange={(q) => {
-          // Kobalte echoes a value written into the field back as an input
-          // change, so without this a prefill would clear the pick it opened on
-          // before anybody touched the keyboard.
-          if (q === query()) return;
-          setQuery(q);
-          setPicked(null);
-        }}
-        onSelect={press}
-        onKeyDown={onKeyDown}
-        picked={parked()}
-        inputRef={(el) => (input = el)}
-        placeholder="Filter branches, or type a new name"
-        aria-label="Filter branches, or type a new name"
-        listLabel="Branches"
-        emptyLabel="No branch matches"
-        itemComponent={(option) => (
-          <>
-            <Icon
-              icon={glyphFor(option.value)}
-              class={styles.branchGlyph}
-              classList={{ [styles.branchGlyphPicked]: parked() === option.value }}
-              aria-hidden="true"
-            />
-            <span class={styles.branchName}>{option.label}</span>
-            <Show when={taken().has(option.value)}>
-              <span class={styles.branchTag}>
-                {props.mode === "worktree" ? "in a worktree" : "checked out"}
-              </span>
-            </Show>
-            <Show when={deletable(option.value)}>
-              {/* Not a button: see the note about `option` above. Hidden from
-                  the accessibility tree because the header carries the same
-                  action for everyone who is not holding a mouse. */}
-              <span
-                class={styles.branchDelete}
+      <Show when={props.issues}>
+        <SegmentedControl
+          class={styles.sourceSwitch}
+          size="sm"
+          aria-label="Start from"
+          options={[
+            { value: "branch", label: "Branch" },
+            { value: "issue", label: "Issue" },
+          ]}
+          value={source()}
+          onChange={setSource}
+        />
+      </Show>
+      <Show when={source() === "issue"}>
+        <Combobox
+          class={styles.pickerField}
+          listClass={styles.branchList}
+          options={issueOptions()}
+          query={issueQuery()}
+          onQueryChange={(q) => {
+            if (q !== issueQuery()) setIssueQuery(q);
+          }}
+          onSelect={loadIssue}
+          onKeyDown={(e) => {
+            const key = unlistedKey();
+            if (e.key !== "Enter" || issueOptions().length || !key) return;
+            e.preventDefault();
+            loadIssue(key);
+          }}
+          picked={issue()?.key ?? null}
+          inputRef={(el) => (input = el)}
+          placeholder="Filter assigned issues, or type a number"
+          aria-label="Filter assigned issues, or type a number"
+          listLabel="Assigned issues"
+          emptyLabel={assigned() === null ? "Loading…" : "No assigned issue matches"}
+          itemComponent={(option) => (
+            <>
+              <Icon
+                icon={issue()?.key === option.value ? Check : CircleDot}
+                class={styles.branchGlyph}
+                classList={{ [styles.branchGlyphPicked]: issue()?.key === option.value }}
                 aria-hidden="true"
-                onClick={(e) => {
-                  // The row's own click commits a pick, and this is not one.
-                  e.stopPropagation();
-                  props.onDeleteAsk?.(option.value);
-                }}
-              >
-                <Icon icon={Trash2} />
-              </span>
-            </Show>
-          </>
-        )}
-        aboveList={
-          <>
-            {/* Not while a row is parked: the row is the choice then, and two
-                things painted as chosen is one too many. */}
-            <Show when={!picked() && newName()}>
-              {(name) => (
-                <div class={styles.createRow}>
-                  <Icon icon={Plus} aria-hidden="true" />
-                  <span class={styles.createLead}>Create branch</span>
-                  <span class={styles.createName}>{name()}</span>
-                  <span class={styles.createFrom}>from</span>
-                  <BasePicker value={base()} branches={entries()} onChange={setBase} />
-                </div>
-              )}
-            </Show>
-            {/* One at a time, and in front of the create row: a delete waiting
-                for an answer is the only thing on this surface that can lose
-                work. */}
-            <Show when={props.deleting}>
-              {(del) => (
-                <div class={styles.deleteRow} role="group" aria-label={`Delete ${del().branch}`}>
-                  <Icon icon={Trash2} aria-hidden="true" />
-                  <span class={styles.createLead}>Delete branch</span>
-                  <span class={styles.createName}>{del().branch}</span>
-                  <span class={styles.deleteState}>
-                    {del().unpushed === null
-                      ? "checking…"
-                      : del().unpushed
-                        ? "has commits the remote does not"
-                        : "pushed"}
-                  </span>
-                  <Button size="xs" onClick={() => props.onDeleteCancel?.()}>
-                    Cancel
-                  </Button>
-                  <Button
-                    ref={(el) => (deleteButton = el)}
-                    size="xs"
-                    variant="danger"
-                    disabled={del().busy}
-                    onClick={() => props.onDeleteConfirm?.()}
-                  >
-                    {del().busy ? "Deleting…" : "Delete"}
-                  </Button>
-                </div>
-              )}
-            </Show>
-            <div class={styles.listHead}>
-              <span>{heading()}</span>
-              <Show when={props.fetching}>
-                <span class={styles.fetching}>
-                  <span class={styles.fetchDot} aria-hidden="true" />
-                  fetching remote…
+              />
+              <span class={styles.issueKey}>{displays().get(option.value)}</span>
+              <span class={styles.branchName}>{option.label}</span>
+            </>
+          )}
+          aboveList={
+            <>
+              <Show when={issueError()}>{(message) => <div class={styles.issueError}>{message()}</div>}</Show>
+              <Show when={unlistedKey()}>
+                {(key) => (
+                  <button type="button" class={styles.createRow} onClick={() => loadIssue(key())}>
+                    <Icon icon={CircleDot} aria-hidden="true" />
+                    <span class={styles.createLead}>{loadingKey() === key() ? "Opening" : "Open issue"}</span>
+                    <span class={styles.createName}>#{key()}</span>
+                  </button>
+                )}
+              </Show>
+              <Show when={issue()}>
+                {(found) => (
+                  <div class={styles.issueStart}>
+                    <div class={styles.issueTitle}>
+                      <span class={styles.issueKey}>{found().display}</span> {found().title}
+                    </div>
+                    <div class={styles.createRow}>
+                      <Icon icon={Plus} aria-hidden="true" />
+                      <input
+                        class={styles.issueBranch}
+                        value={issueName()}
+                        onInput={(e) => setIssueName(e.currentTarget.value)}
+                        aria-label="Branch name"
+                        spellcheck={false}
+                      />
+                      <Show when={issueKind(issueName().trim()) === "new"}>
+                        <span class={styles.createFrom}>from</span>
+                        <BasePicker value={base()} branches={entries()} onChange={setBase} />
+                      </Show>
+                    </div>
+                    <Checkbox
+                      checked={link() && linkable()}
+                      disabled={!linkable()}
+                      onChange={setLink}
+                      label="Link the branch to the issue on GitHub"
+                    />
+                    <Show when={linkNote()}>{(note) => <div class={styles.issueNote}>{note()}</div>}</Show>
+                  </div>
+                )}
+              </Show>
+              <div class={styles.listHead}>
+                <span>{assigned() === null ? "loading…" : `${assigned()!.length} assigned to you`}</span>
+              </div>
+            </>
+          }
+        />
+      </Show>
+      <Show when={source() === "branch"}>
+        <Combobox
+          class={styles.pickerField}
+          listClass={styles.branchList}
+          options={options()}
+          query={query()}
+          onQueryChange={(q) => {
+            // Kobalte echoes a value written into the field back as an input
+            // change, so without this a prefill would clear the pick it opened on
+            // before anybody touched the keyboard.
+            if (q === query()) return;
+            setQuery(q);
+            setPicked(null);
+          }}
+          onSelect={press}
+          onKeyDown={onKeyDown}
+          picked={parked()}
+          inputRef={(el) => (input = el)}
+          placeholder="Filter branches, or type a new name"
+          aria-label="Filter branches, or type a new name"
+          listLabel="Branches"
+          emptyLabel="No branch matches"
+          itemComponent={(option) => (
+            <>
+              <Icon
+                icon={glyphFor(option.value)}
+                class={styles.branchGlyph}
+                classList={{ [styles.branchGlyphPicked]: parked() === option.value }}
+                aria-hidden="true"
+              />
+              <span class={styles.branchName}>{option.label}</span>
+              <Show when={taken().has(option.value)}>
+                <span class={styles.branchTag}>
+                  {props.mode === "worktree" ? "in a worktree" : "checked out"}
                 </span>
               </Show>
-              <Show when={props.onFetch}>
-                <IconButton
-                  class={styles.listHeadAction}
-                  size="sm"
-                  icon={<Icon icon={RefreshCw} />}
-                  tooltip="Fetch branches from the remote"
-                  disabled={props.fetching}
-                  onClick={() => props.onFetch?.()}
-                />
+              <Show when={deletable(option.value)}>
+                {/* Not a button: see the note about `option` above. Hidden from
+                    the accessibility tree because the header carries the same
+                    action for everyone who is not holding a mouse. */}
+                <span
+                  class={styles.branchDelete}
+                  aria-hidden="true"
+                  onClick={(e) => {
+                    // The row's own click commits a pick, and this is not one.
+                    e.stopPropagation();
+                    props.onDeleteAsk?.(option.value);
+                  }}
+                >
+                  <Icon icon={Trash2} />
+                </span>
               </Show>
-            </div>
-          </>
-        }
-      />
+            </>
+          )}
+          aboveList={
+            <>
+              {/* Not while a row is parked: the row is the choice then, and two
+                  things painted as chosen is one too many. */}
+              <Show when={!picked() && newName()}>
+                {(name) => (
+                  <div class={styles.createRow}>
+                    <Icon icon={Plus} aria-hidden="true" />
+                    <span class={styles.createLead}>Create branch</span>
+                    <span class={styles.createName}>{name()}</span>
+                    <span class={styles.createFrom}>from</span>
+                    <BasePicker value={base()} branches={entries()} onChange={setBase} />
+                  </div>
+                )}
+              </Show>
+              {/* One at a time, and in front of the create row: a delete waiting
+                  for an answer is the only thing on this surface that can lose
+                  work. */}
+              <Show when={props.deleting}>
+                {(del) => (
+                  <div class={styles.deleteRow} role="group" aria-label={`Delete ${del().branch}`}>
+                    <Icon icon={Trash2} aria-hidden="true" />
+                    <span class={styles.createLead}>Delete branch</span>
+                    <span class={styles.createName}>{del().branch}</span>
+                    <span class={styles.deleteState}>
+                      {del().unpushed === null
+                        ? "checking…"
+                        : del().unpushed
+                          ? "has commits the remote does not"
+                          : "pushed"}
+                    </span>
+                    <Button size="xs" onClick={() => props.onDeleteCancel?.()}>
+                      Cancel
+                    </Button>
+                    <Button
+                      ref={(el) => (deleteButton = el)}
+                      size="xs"
+                      variant="danger"
+                      disabled={del().busy}
+                      onClick={() => props.onDeleteConfirm?.()}
+                    >
+                      {del().busy ? "Deleting…" : "Delete"}
+                    </Button>
+                  </div>
+                )}
+              </Show>
+              <div class={styles.listHead}>
+                <span>{heading()}</span>
+                <Show when={props.fetching}>
+                  <span class={styles.fetching}>
+                    <span class={styles.fetchDot} aria-hidden="true" />
+                    fetching remote…
+                  </span>
+                </Show>
+                <Show when={props.onFetch}>
+                  <IconButton
+                    class={styles.listHeadAction}
+                    size="sm"
+                    icon={<Icon icon={RefreshCw} />}
+                    tooltip="Fetch branches from the remote"
+                    disabled={props.fetching}
+                    onClick={() => props.onFetch?.()}
+                  />
+                </Show>
+              </div>
+            </>
+          }
+        />
+      </Show>
     </Dialog>
   );
 }
