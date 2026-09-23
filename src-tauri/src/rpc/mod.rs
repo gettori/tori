@@ -244,7 +244,7 @@ pub fn revoke(caller: &Caller) {
     }
 }
 
-const MCP_SERVER: &str = "tori";
+pub const MCP_SERVER: &str = "tori";
 
 /// The rule pre-allowed in every settings file Tori injects into a claude it
 /// launches: Tori's own tools, nothing else, and the user's deny rules still
@@ -268,6 +268,15 @@ pub fn mcp_config_args() -> Vec<String> {
         Ok(()) => vec!["--mcp-config".to_string(), path.to_string_lossy().into_owned()],
         Err(_) => Vec::new(),
     }
+}
+
+/// The `tori` link and a socket env minted for `caller`, for an MCP server an
+/// agent launches with an explicit command and env. `None` when the socket
+/// never came up. The token goes with `revoke(caller)` like the agent's own.
+pub fn mcp_launch(caller: Caller) -> Option<(PathBuf, Vec<(String, String)>)> {
+    let dir = CLI_DIR.get()?;
+    let env = child_env(caller);
+    (!env.is_empty()).then(|| (dir.join("tori"), env))
 }
 
 pub(crate) fn bridge_path() -> PathBuf {

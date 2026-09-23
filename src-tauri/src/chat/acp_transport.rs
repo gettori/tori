@@ -34,8 +34,8 @@ use std::thread;
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    AuthMethod, CancelNotification, InitializeRequest, InitializeResponse, ListSessionsRequest,
-    LoadSessionRequest, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
+    AuthMethod, CancelNotification, EnvVariable, InitializeRequest, InitializeResponse, ListSessionsRequest,
+    LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
     SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId,
     SessionModeId, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
@@ -904,8 +904,11 @@ async fn drive_session(
         },
     );
 
+    // Sent again on every load: an agent starts the servers per session/new or
+    // session/load, and a resumed chat would otherwise come back without them.
+    let servers = mcp_servers(overrides, || tori_mcp_server(&shared.session_id));
     let OpenedSession { session_id: session, config_options } =
-        open_session(conn, shared, sink, cwd, agent, overrides, &init).await?;
+        open_session(conn, shared, sink, cwd, agent, &servers, &init).await?;
     adopt_session(shared, sink, cwd, &config_options);
     // **After the chat is open, never before it.** Enumerating an agent's other
     // sessions is worth one request on a connection that already exists, but it
@@ -944,7 +947,8 @@ async fn drive_session(
                 // The whole conversation is about to come back, its user turns
                 // included, and none of those is the echo of a live prompt.
                 shared.forget_echoed();
-                let request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
+                let mut request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
+                request.mcp_servers = servers.clone();
                 match conn.send_request(request).block_task().await {
                     // The replayed `session/update`s have already landed by the
                     // time this answers, so announcing the session here puts
@@ -1176,20 +1180,30 @@ pub fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
 ///
 /// `cwd` and `mcpServers` are both sent unconditionally, never gated on a
 /// capability: per [[concept_acp_agent_quirks]] an empty array is a value and an
-/// absent key is a protocol error to agents that validate strictly. What the
-/// override controls is whether the array is *populated*, because an adapter
-/// that does not speak MCP can fail `session/new` outright when it is.
+/// absent key is a protocol error to agents that validate strictly. Whether the
+/// array is *populated* is the caller's call.
 /// Shared with the catalogue probe for the same reason as
 /// [`initialize_request`]: the options a probe reads are the ones this exact
 /// payload asks for.
-pub fn new_session_request(cwd: &str, _overrides: &AcpOverrides) -> NewSessionRequest {
+pub fn new_session_request(cwd: &str, mcp_servers: &[McpServer]) -> NewSessionRequest {
     let mut request = NewSessionRequest::new(std::path::PathBuf::from(cwd));
-    // Empty either way today, and deliberately not written as a branch on
-    // `send_mcp_servers`: populating this needs Tori's MCP configuration mapped
-    // onto ACP's server types, which nothing here does yet. A conditional whose
-    // two arms are the same value reads like a setting that works.
-    request.mcp_servers = Vec::new();
+    request.mcp_servers = mcp_servers.to_vec();
     request
+}
+
+// Empty unless the adapter opts in: an agent that does not speak MCP can fail
+// `session/new` outright on a populated array. No token is minted when it is off.
+fn mcp_servers(overrides: &AcpOverrides, tori: impl FnOnce() -> Option<McpServer>) -> Vec<McpServer> {
+    match overrides.send_mcp_servers {
+        true => tori().into_iter().collect(),
+        false => Vec::new(),
+    }
+}
+
+fn tori_mcp_server(session_id: &str) -> Option<McpServer> {
+    let (exe, env) = crate::rpc::mcp_launch(crate::rpc::auth::Caller::Chat(session_id.to_string()))?;
+    let env = env.into_iter().map(|(name, value)| EnvVariable::new(name, value)).collect();
+    Some(McpServer::Stdio(McpServerStdio::new(crate::rpc::MCP_SERVER, exe).args(vec!["mcp".to_string()]).env(env)))
 }
 
 /// Does this agent advertise `session/list`?
@@ -1397,13 +1411,14 @@ async fn open_session(
     sink: &Sink,
     cwd: &str,
     agent: &str,
-    overrides: &AcpOverrides,
+    servers: &[McpServer],
     init: &InitializeResponse,
 ) -> Result<OpenedSession, String> {
     if let Some(record) = acp_sessions::read(&shared.session_id) {
         if init.agent_capabilities.load_session {
             let session_id = SessionId::new(record.acp_session_id.as_str());
-            let request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
+            let mut request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
+            request.mcp_servers = servers.to_vec();
             match conn.send_request(request).block_task().await {
                 Ok(loaded) => {
                     return Ok(OpenedSession {
@@ -1440,7 +1455,7 @@ async fn open_session(
     }
 
     let opened = conn
-        .send_request(new_session_request(cwd, overrides))
+        .send_request(new_session_request(cwd, servers))
         .block_task()
         .await
         .map_err(|e| describe_session_failure(&e, &init.auth_methods))?;
@@ -2048,8 +2063,28 @@ mod tests {
     /// present either way.
     #[test]
     fn mcp_servers_are_empty_unless_the_adapter_opts_in() {
-        let request = new_session_request("/tmp", &AcpOverrides::default());
+        let off = mcp_servers(&AcpOverrides::default(), || panic!("no token is minted for an agent that opted out"));
+        let request = new_session_request("/tmp", &off);
         assert!(request.mcp_servers.is_empty());
+        let wire = serde_json::to_value(&request).unwrap();
+        assert_eq!(wire["mcpServers"], serde_json::json!([]));
+
+        let tori = McpServer::Stdio(
+            McpServerStdio::new("tori", "/sock/bin/tori")
+                .args(vec!["mcp".to_string()])
+                .env(vec![EnvVariable::new("TORI_SOCK", "/sock/s"), EnvVariable::new("TORI_CALLER", "tok")]),
+        );
+        let on = AcpOverrides { send_mcp_servers: true, ..Default::default() };
+        let wire = serde_json::to_value(new_session_request("/tmp", &mcp_servers(&on, || Some(tori)))).unwrap();
+        assert_eq!(
+            wire["mcpServers"],
+            serde_json::json!([{
+                "name": "tori",
+                "command": "/sock/bin/tori",
+                "args": ["mcp"],
+                "env": [{ "name": "TORI_SOCK", "value": "/sock/s" }, { "name": "TORI_CALLER", "value": "tok" }],
+            }])
+        );
     }
 
     /// The second override. Declining fs and terminal is the default and is a
