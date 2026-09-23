@@ -1,8 +1,8 @@
 ---
-summary: a background session refuses an outward action without an approval ask_user issued, ordinary sessions unchanged
+summary: a background session refuses an outward action without an approval ask_user issued; Tori pre-allows only its own tools
 status: current
-updated: 2026-09-23
-source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#203; narrows the decision recorded as `tori-harness-owns-permissions` (plan \"Defer permissions to the harness, and grow to four harnesses\", branch `chat-fix`, 2026-08-13); no code yet, decision precedes first implementation"
+updated: 2026-09-24
+source: "design conversation 2026-09-23 captured in gettori/tori#194; ticket gettori/tori#195; implemented by gettori/tori#203; narrows the decision recorded as `tori-harness-owns-permissions` (plan \"Defer permissions to the harness, and grow to four harnesses\", branch `chat-fix`, 2026-08-13); no code yet, decision precedes first implementation; the pre-allow narrowing from plan \"tori mcp\" on branch orchestrator, commit cee102ec"
 ---
 
 # A background session's outward actions need an approval Tori issued
@@ -20,6 +20,10 @@ Two things retired it. On claude 2.1.231 the CLI gained `--permission-prompt-too
 What was left is a capture and only a capture, deliberately fail open, because whatever goes wrong the agent is still going to ask, and denying there would be Tori gating by the back door on the one path built to have stopped. See [[concept_pretooluse_capture_hook]], [[component_chat_host]] and [[component_acp_transport]].
 
 The unstated premise in all of it is that **the harness prompt is on your screen**. A second gate is redundant when the first one is visible, and worse than redundant when it suppresses it.
+
+## A second narrowing: Tori's own tools are pre-allowed
+
+Every Tori launched claude session, foreground included, carries `permissions.allow: ["mcp__tori__*"]` in the settings Tori already injects, so the tools of `tori mcp` ([[component_tori_mcp]]) never raise a prompt. This decides tool calls, so it is a narrowing of `tori-harness-owns-permissions`, recorded here as one. It stays inside the rule's spirit for three reasons: it uses the harness's own rule mechanism rather than a hook, the user's deny rules still outrank it under claude's precedence, and it ends no permission chain for any other tool. The ACP agents that get the server (codex, opencode) raised no permission request for an MCP call in their default mode, so nothing is written for them. Rejected: pre-allowing in background sessions only, a second settings variant for a distinction this gate already draws.
 
 ## Why it stops holding in the background
 
@@ -50,3 +54,4 @@ The autopilot runs with nobody watching its chat. Its harness prompt either bloc
 - [[concept_spend_ceilings]] - the enforcement point that died with the old gate, and stays dead here
 - [[adr_autopilot_is_a_session_not_a_state_machine]] - the session this exists for
 - [[adr_one_protocol_several_fronts]] - where the outward actions live as methods
+- [[component_tori_mcp]]: the tools the second narrowing pre-allows
