@@ -1,7 +1,8 @@
 //! `sessions.list` and `session.tail`, read from the same stores the sidebar and
 //! the chat panel read.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -10,6 +11,7 @@ use tauri::{AppHandle, Manager};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{Backend, ListParams, TailParams};
+use super::states::{SessionState, SessionStates};
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
 use crate::chat::model::{cap_output, ChatEvent};
@@ -24,6 +26,8 @@ struct Row {
     #[serde(flatten)]
     meta: SessionMeta,
     live: bool,
+    // `None` for a live session the webview has not reported yet.
+    state: Option<SessionState>,
 }
 
 /// A session this Tori is running right now, joined from the claims (agent) and
@@ -52,7 +56,13 @@ fn live_row(id: &str, live: &Live, now: u64) -> SessionMeta {
 
 /// Indexed rows stamped `live`, with live sessions the index has not seen yet
 /// (no transcript written) put first, since they are the newest there are.
-fn list(indexed: Vec<SessionMeta>, live: &BTreeMap<String, Live>, params: &ListParams, now: u64) -> Vec<Value> {
+fn list(
+    indexed: Vec<SessionMeta>,
+    live: &BTreeMap<String, Live>,
+    states: &HashMap<String, SessionState>,
+    params: &ListParams,
+    now: u64,
+) -> Vec<Value> {
     let seen: HashSet<&str> = indexed.iter().map(|m| m.id.as_str()).collect();
     let fresh: Vec<SessionMeta> = live
         .iter()
@@ -63,7 +73,13 @@ fn list(indexed: Vec<SessionMeta>, live: &BTreeMap<String, Live>, params: &ListP
     fresh
         .into_iter()
         .chain(indexed)
-        .map(|meta| Row { live: live.contains_key(&meta.id), meta })
+        .map(|meta| {
+            // A PTY agent tab that started fresh holds no claim, so the
+            // webview's report is the only thing saying it is live.
+            let state = states.get(&meta.id).copied();
+            let live = live.contains_key(&meta.id) || state.is_some();
+            Row { state: state.or((!live).then_some(SessionState::Ended)), live, meta }
+        })
         .filter(|row| !params.live.unwrap_or(false) || row.live)
         .take(params.limit.unwrap_or(DEFAULT_LIST_LIMIT))
         .filter_map(|row| serde_json::to_value(row).ok())
@@ -106,6 +122,7 @@ fn chat_identity(registry: &Registry, live: &[(String, String)], id: &str) -> Id
 
 pub struct TauriBackend {
     pub app: AppHandle,
+    pub states: Arc<SessionStates>,
 }
 
 impl TauriBackend {
@@ -151,7 +168,7 @@ impl Backend for TauriBackend {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        Ok(Value::Array(list(indexed, &self.live(), &params, now)))
+        Ok(Value::Array(list(indexed, &self.live(), &self.states.snapshot(), &params, now)))
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
@@ -219,7 +236,7 @@ mod tests {
     #[test]
     fn rows_are_stamped_live_and_a_live_session_not_yet_indexed_comes_first() {
         let indexed = vec![meta("a", "/p", 30), meta("b", "/p", 20)];
-        let rows = list(indexed, &live(&[("b", "/p"), ("new", "/p/wt")]), &ListParams::default(), 99);
+        let rows = list(indexed, &live(&[("b", "/p"), ("new", "/p/wt")]), &HashMap::new(), &ListParams::default(), 99);
         assert_eq!(ids(&rows), ["new", "a", "b"]);
         assert_eq!(rows.iter().map(|r| r["live"].as_bool().unwrap()).collect::<Vec<_>>(), [true, false, true]);
         assert_eq!((rows[0]["agent"].clone(), rows[0]["cwd"].clone()), (json!("codex"), json!("/p/wt")));
@@ -229,14 +246,14 @@ mod tests {
     fn live_only_limit_and_cwd_narrow_the_list() {
         let indexed = vec![meta("a", "/p", 30), meta("b", "/p", 20)];
         let only_live = ListParams { live: Some(true), ..Default::default() };
-        assert_eq!(ids(&list(indexed.clone(), &live(&[("b", "/p")]), &only_live, 99)), ["b"]);
+        assert_eq!(ids(&list(indexed.clone(), &live(&[("b", "/p")]), &HashMap::new(), &only_live, 99)), ["b"]);
 
         let one = ListParams { limit: Some(1), ..Default::default() };
-        assert_eq!(ids(&list(indexed.clone(), &live(&[]), &one, 99)), ["a"]);
+        assert_eq!(ids(&list(indexed.clone(), &live(&[]), &HashMap::new(), &one, 99)), ["a"]);
 
         // The indexed rows arrive already narrowed; the fresh live ones are narrowed here.
         let under = ListParams { cwd: Some("/p".into()), ..Default::default() };
-        assert_eq!(ids(&list(indexed, &live(&[("x", "/elsewhere"), ("y", "/p/sub")]), &under, 99)), ["y", "a", "b"]);
+        assert_eq!(ids(&list(indexed, &live(&[("x", "/elsewhere"), ("y", "/p/sub")]), &HashMap::new(), &under, 99)), ["y", "a", "b"]);
     }
 
     fn fixture(name: &str) -> String {

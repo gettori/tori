@@ -25,6 +25,7 @@ import type { LiveTab } from "./events";
 import { sessions, type SessionMeta } from "./sessionStore";
 import { liveChats, liveChatIds } from "./chatSessions";
 import {
+  socketState,
   statusFromDot,
   type SessionStatus,
   type LiveSessionStatus,
@@ -506,6 +507,23 @@ createRoot(() => {
     invoke("set_badge_count", {
       count: unattendedNeedsYouCount(liveSessionDots(), attended()),
     }).catch(() => {});
+  });
+
+  // The app socket answers `tori sessions` and the `sessions` topic from this
+  // copy. Sent only when a state moved, since PTY activity rebuilds the list on
+  // every quiet and active edge.
+  let pushed = "";
+  createEffect(() => {
+    const byId = new Map<string, string>();
+    for (const s of liveSessionStatuses()) {
+      const state = socketState(s.status);
+      if (state) byId.set(s.sessionId, state);
+    }
+    const states = [...byId].sort(([a], [b]) => a.localeCompare(b)).map(([id, state]) => ({ id, state }));
+    const key = JSON.stringify(states);
+    if (key === pushed) return;
+    pushed = key;
+    invoke("rpc_session_states", { states }).catch(() => {});
   });
 });
 
