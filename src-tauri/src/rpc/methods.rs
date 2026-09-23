@@ -15,8 +15,8 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
-    WorktreeParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, ListParams, OpenParams, SpawnParams, SteerParams, TailParams,
+    WaitParams, WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -29,6 +29,7 @@ use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 const DEFAULT_LIST_LIMIT: usize = 50;
 const DEFAULT_TAIL_LIMIT: usize = 50;
 const DEFAULT_ASK_WAIT: u64 = 60;
+const DEFAULT_SESSION_WAIT: u64 = 60;
 
 #[derive(Serialize)]
 struct Row {
@@ -110,6 +111,17 @@ fn tail(mut events: Vec<ChatEvent>, limit: usize) -> Vec<ChatEvent> {
         }
     }
     tail
+}
+
+/// The main agent's text from the latest turn that has any, whole.
+fn last_assistant_text(events: &[ChatEvent]) -> Option<String> {
+    let main = |event: &ChatEvent| match event {
+        ChatEvent::TextDelta { turn_id, text, agent_id: None, .. } => Some((turn_id.clone(), text.clone())),
+        _ => None,
+    };
+    let (last_turn, _) = events.iter().rev().find_map(main)?;
+    let text: String = events.iter().filter_map(main).filter(|(turn, _)| *turn == last_turn).map(|(_, text)| text).collect();
+    Some(text)
 }
 
 // What a method falls back to when a param is left out. All empty for a
@@ -311,6 +323,26 @@ impl Backend for TauriBackend {
         Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
     }
 
+    fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError> {
+        let host = &self.app.state::<ChatState>().0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
+        let state = loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            match self.states.wait_settled(&params.id, left) {
+                Some(state) => break state,
+                // Live but not yet in the webview's first report after its spawn.
+                None if host.is_live(&params.id) && !left.is_zero() => std::thread::sleep(std::time::Duration::from_millis(200)),
+                None if host.is_live(&params.id) => break SessionState::Working,
+                None => return Err(RpcError::new(INVALID_PARAMS, format!("no live session {}", params.id))),
+            }
+        };
+        let last = self.agent_of(&params.id).and_then(|agent| {
+            let from = history_source(&params.id, &agent);
+            last_assistant_text(&read_history(&params.id, &from, &agent, None))
+        });
+        Ok(json!({ "id": params.id, "state": state, "question": self.asks.pending_for(&params.id), "last": last }))
+    }
+
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
         Ok(json!({ "path": self.create_worktree(principal, params)? }))
     }
@@ -444,6 +476,14 @@ impl Backend for TauriBackend {
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError> {
         self.wait_for_answer(&params.id, params.timeout)
     }
+
+    fn ask_answer(&self, params: AskAnswerParams) -> Result<Value, RpcError> {
+        if !self.asks.answer(&params.id, params.answer) {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", params.id)));
+        }
+        let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
+        Ok(json!({}))
+    }
 }
 
 #[cfg(test)]
@@ -461,6 +501,24 @@ mod tests {
             agent: agent.into(),
             profile: profile.into(),
         }
+    }
+
+    fn delta(turn: &str, text: &str, agent_id: Option<&str>) -> ChatEvent {
+        ChatEvent::TextDelta { session_id: "s1".into(), turn_id: turn.into(), text: text.into(), agent_id: agent_id.map(String::from) }
+    }
+
+    #[test]
+    fn the_last_message_is_the_latest_turns_main_agent_text_joined() {
+        let events = vec![
+            delta("t1", "first ", None),
+            delta("t1", "answer", None),
+            delta("t2", "sec", None),
+            delta("t2", "ond", None),
+            delta("t2", "a subagent's aside", Some("sub-1")),
+        ];
+        assert_eq!(last_assistant_text(&events).as_deref(), Some("second"));
+        assert_eq!(last_assistant_text(&[delta("t3", "only a subagent", Some("sub-1"))]), None);
+        assert_eq!(last_assistant_text(&[]), None);
     }
 
     #[test]

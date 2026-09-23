@@ -3,7 +3,8 @@
 //! the `sessions` topic can answer without a round trip into it.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,6 +53,7 @@ pub struct Held {
 #[derive(Default)]
 pub struct SessionStates {
     states: Mutex<HashMap<String, Held>>,
+    settled: Condvar,
     // Spawned with `--background`, held for #203's gate to read.
     background: Mutex<HashSet<String>>,
     workers: Mutex<HashSet<String>>,
@@ -107,7 +109,21 @@ impl SessionStates {
             background.remove(&id);
             workers.remove(&id);
         }
+        self.settled.notify_all();
         events
+    }
+
+    pub fn wait_settled(&self, id: &str, timeout: Duration) -> Option<SessionState> {
+        let deadline = Instant::now() + timeout;
+        let mut held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            let state = held.get(id)?.state;
+            let left = deadline.saturating_duration_since(Instant::now());
+            if state != SessionState::Working || left.is_zero() {
+                return Some(state);
+            }
+            held = self.settled.wait_timeout(held, left).unwrap_or_else(|e| e.into_inner()).0;
+        }
     }
 
     pub fn snapshot(&self) -> HashMap<String, SessionState> {
@@ -201,6 +217,20 @@ mod tests {
         assert_eq!(states.snapshot().get("p"), Some(&SessionState::Idle));
         let back = states.replace(vec![report("p", SessionState::Idle, Source::Pty)], place, GONE);
         assert!(back.is_empty(), "coming back is not a second start");
+    }
+
+    #[test]
+    fn a_waiter_wakes_when_the_session_settles() {
+        let states = std::sync::Arc::new(SessionStates::default());
+        states.replace(vec![report("w", SessionState::Working, Source::Chat)], place, GONE);
+        assert_eq!(states.wait_settled("w", Duration::from_millis(20)), Some(SessionState::Working));
+        assert_eq!(states.wait_settled("nobody", Duration::from_secs(5)), None);
+        let flipping = states.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(30));
+            flipping.replace(vec![report("w", SessionState::Idle, Source::Chat)], place, GONE);
+        });
+        assert_eq!(states.wait_settled("w", Duration::from_secs(5)), Some(SessionState::Idle));
     }
 
     #[test]

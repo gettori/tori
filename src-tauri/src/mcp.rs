@@ -14,7 +14,7 @@ use crate::rpc::frame::{to_line, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERRO
 use crate::rpc::table::{self, Method};
 
 // Under codex-acp's 300s kill of a tool call, see [[concept_blocking_tool_call_ceiling]].
-const ASK_TIMEOUT_SECS: u64 = 240;
+const BLOCKING_CALL_TIMEOUT_SECS: u64 = 240;
 const PATH_ARGS: [&str; 3] = ["folder", "project", "path"];
 
 pub type Connect = Arc<dyn Fn() -> Result<Client, ClientError> + Send + Sync>;
@@ -106,8 +106,8 @@ fn tools_call(connect: &Connect, params: &Value) -> Result<Value, (i64, String)>
         .find(|m| tool_name(m) == name)
         .ok_or_else(|| (INVALID_PARAMS, format!("no tool {name}")))?;
     let mut args = params["arguments"].as_object().cloned().unwrap_or_default();
-    if matches!(method.name, "ask.create" | "ask.wait") && !args.contains_key("timeout") {
-        args.insert("timeout".into(), json!(ASK_TIMEOUT_SECS));
+    if matches!(method.name, "ask.create" | "ask.wait" | "session.wait") && !args.contains_key("timeout") {
+        args.insert("timeout".into(), json!(BLOCKING_CALL_TIMEOUT_SECS));
     }
     let mut socket = connect().map_err(internal)?;
     if has_relative_path(&args) {
@@ -277,11 +277,11 @@ mod tests {
         for tool in ["sessions_list", "session_spawn", "ask_create", "ask_wait"] {
             assert!(chat.iter().any(|t| t == tool), "{tool} missing from {chat:?}");
         }
-        for kind in ["terminal", "worker"] {
-            let tools = listed(kind);
-            assert!(tools.iter().any(|t| t == "sessions_list"), "{kind}: {tools:?}");
-            assert!(!tools.iter().any(|t| t == "ask_create"), "{kind} was offered ask_create");
-        }
+        let terminal = listed("terminal");
+        assert!(!terminal.iter().any(|t| t == "ask_create"), "a terminal was offered ask_create");
+        let worker = listed("worker");
+        assert!(worker.iter().any(|t| t == "ask_create"), "{worker:?}");
+        assert!(!worker.iter().any(|t| t == "session_spawn"), "a worker was offered session_spawn");
     }
 
     #[test]
@@ -293,11 +293,13 @@ mod tests {
                 call(1, "sessions_list", json!({ "limit": 3 })),
                 call(2, "ask_wait", json!({ "id": "a1" })),
                 call(3, "window_open", json!({ "path": "/f" })),
+                call(4, "session_wait", json!({ "id": "w1" })),
             ],
         );
-        assert_eq!(*fake.connections.lock().unwrap(), 3);
+        assert_eq!(*fake.connections.lock().unwrap(), 4);
         assert_eq!(fake.params_of("sessions.list"), [json!({ "limit": 3 })]);
-        assert_eq!(fake.params_of("ask.wait"), [json!({ "id": "a1", "timeout": ASK_TIMEOUT_SECS })]);
+        assert_eq!(fake.params_of("ask.wait"), [json!({ "id": "a1", "timeout": BLOCKING_CALL_TIMEOUT_SECS })]);
+        assert_eq!(fake.params_of("session.wait"), [json!({ "id": "w1", "timeout": BLOCKING_CALL_TIMEOUT_SECS })]);
         let refused = replies.iter().find(|r| r["id"] == json!(3)).unwrap();
         assert_eq!(refused["result"]["isError"], json!(true));
         assert_eq!(refused["result"]["content"][0]["text"], json!("no window"));

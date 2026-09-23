@@ -81,6 +81,10 @@ impl Asks {
         }
     }
 
+    pub fn pending_for(&self, session: &str) -> Option<Ask> {
+        self.held().values().find(|h| h.answer.is_none() && h.ask.session == session).map(|h| h.ask.clone())
+    }
+
     pub fn pending(&self) -> Vec<Ask> {
         self.held().values().filter(|h| h.answer.is_none()).map(|h| h.ask.clone()).collect()
     }

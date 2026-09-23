@@ -58,6 +58,15 @@ pub struct SteerParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct WaitParams {
+    /// The session to wait on.
+    pub id: String,
+    /// Seconds to wait for it to stop working before answering anyway (default 60).
+    pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WorktreeParams {
     /// The new branch, created in a new worktree.
     pub branch: String,
@@ -150,6 +159,15 @@ pub struct AskParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct AskAnswerParams {
+    /// The id of a question `ask.create` raised in another session.
+    pub id: String,
+    /// The answer, handed to whoever is waiting on that id.
+    pub answer: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AskWaitParams {
     /// The id `ask.create` returned.
     pub id: String,
@@ -164,6 +182,7 @@ pub trait Backend: Send + Sync {
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
+    fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError>;
@@ -173,6 +192,7 @@ pub trait Backend: Send + Sync {
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
+    fn ask_answer(&self, params: AskAnswerParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -348,6 +368,9 @@ pub mod tests {
         fn session_steer(&self, _: &Principal, p: SteerParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
+        fn session_wait(&self, p: WaitParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id, "state": "idle", "question": null, "last": null }))
+        }
         fn worktree_new(&self, _: &Principal, p: WorktreeParams) -> Result<Value, RpcError> {
             Ok(json!({ "branch": p.branch }))
         }
@@ -374,6 +397,12 @@ pub mod tests {
         }
         fn ask_wait(&self, p: AskWaitParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
+        }
+        fn ask_answer(&self, p: AskAnswerParams) -> Result<Value, RpcError> {
+            match p.id.as_str() {
+                "gone" => Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", p.id))),
+                _ => Ok(json!({})),
+            }
         }
     }
 
@@ -572,22 +601,28 @@ pub mod tests {
     }
 
     #[test]
-    fn a_worker_is_refused_the_four_rows_that_reach_the_user_or_spawn() {
+    fn an_ask_is_answered_once_and_never_by_a_worker() {
+        let server = stub_server();
+        let answer = |who: &Principal, id: &str| server.dispatch(0, who, &request("ask.answer", json!({"id": id, "answer": "yes"})));
+        assert!(answer(&Principal::Local, "open").is_ok());
+        assert_eq!(answer(&Principal::Local, "gone").unwrap_err().code, INVALID_PARAMS);
+        let worker = Principal::Session(Caller::Chat(WORKER.into()));
+        assert_eq!(answer(&worker, "open").unwrap_err().code, REFUSED);
+    }
+
+    #[test]
+    fn a_worker_is_refused_spawn_and_steer_but_may_ask() {
         let server = stub_server();
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
-        for (method, params) in [
-            ("ask.create", json!({"question": "q"})),
-            ("ask.wait", json!({"id": "a1"})),
-            ("session.spawn", json!({})),
-            ("session.steer", json!({"id": "s1", "text": "hi"})),
-        ] {
+        for (method, params) in [("session.spawn", json!({})), ("session.steer", json!({"id": "s1", "text": "hi"}))] {
             let err = server.dispatch(0, &worker, &request(method, params)).unwrap_err();
             assert_eq!(err.code, REFUSED, "{method}");
             assert!(err.message.contains(table::WORKER_REFUSAL), "{method}: {}", err.message);
         }
         let me = server.dispatch(0, &worker, &request("caller", Value::Null)).unwrap();
         assert_eq!(me["kind"], json!("worker"));
-        assert!(server.dispatch(0, &worker, &request("sessions.list", json!({}))).is_ok());
+        assert!(server.dispatch(0, &worker, &request("ask.create", json!({"question": "q"}))).is_ok());
+        assert!(server.dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"}))).is_ok());
     }
 
     #[test]
