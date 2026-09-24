@@ -2,7 +2,7 @@
 summary: a worker asks like any session; its spawner sees the question in session.wait and settles it with ask.answer
 status: current
 updated: 2026-09-24
-source: plan "tori mcp: the MCP front on the socket" (phase 9, revised after phase 8) on branch orchestrator; commits 928f500e, a375fb7a; src-tauri/src/rpc/table.rs (WORKER_REFUSAL); src-tauri/src/rpc/states.rs (wait_settled); src-tauri/src/rpc/methods.rs (session_wait)
+source: plan "tori mcp: the MCP front on the socket" (phase 9, revised after phase 8) on branch orchestrator; commits 928f500e, a375fb7a; src-tauri/src/rpc/table.rs (WORKER_REFUSAL); src-tauri/src/rpc/states.rs (wait_settled); src-tauri/src/rpc/methods.rs (session_wait); the approval exception from plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce
 ---
 
 # A worker's questions bubble up to its spawner
@@ -27,6 +27,7 @@ Only `session.spawn` and `session.steer` are refused to a worker, with "a worker
 
 - Autopilot is just a spawner that waits. Nothing here changes when it arrives.
 - A permission pending in the worker (`can_use_tool`, ACP `request_permission`) shows in `session.wait` only as `needs_you` with `question: null`. Routing it to the spawner is the gate in [[adr_a_background_session_needs_a_tori_gate]].
+- **An approval ask is the exception.** An ask carrying an `approval` is the user's alone: `ask.answer` refuses it for every socket caller, the spawner included, so no agent approves its own worker's post. Its card is mirrored into the worker's root background chat instead, so the user answers it where they are looking. See [[adr_a_background_session_needs_a_tori_gate]].
 - An ask the worker's harness cancels still leaves its card up until someone answers it, and nobody reads that answer.
 - Worker marks live in `SessionStates` and do not survive a Tori restart.
 
