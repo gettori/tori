@@ -2,7 +2,7 @@
 summary: Tori reads claude's three MCP scopes, writes only .mcp.json, injects tori mcp via --mcp-config with its tools pre-allowed
 status: current
 updated: 2026-09-24
-source: plan "Native Claude chat as the default session surface" (phase 12), branch `chat`; `src-tauri/src/chat/mcp.rs`; `src/panels/Chat/SessionInfo.tsx`; plan "Probe: --mcp-config beside --settings" (phase 2), branch `orchestrator`; `dev/mcp-probe.mjs --scopes`; plan "tori mcp" phase 2, same branch, the `injection` block of `--scopes` on claude 2.1.280; commit cee102ec, src-tauri/src/rpc/mod.rs (mcp_config_args, mcp_allow)
+source: plan "Native Claude chat as the default session surface" (phase 12), branch `chat`; `src-tauri/src/chat/mcp.rs`; `src/panels/Chat/SessionInfo.tsx`; plan "Probe: --mcp-config beside --settings" (phase 2), branch `orchestrator`; `dev/mcp-probe.mjs --scopes`; plan "tori mcp" phase 2, same branch, the `injection` block of `--scopes` on claude 2.1.280; commit cee102ec, src-tauri/src/rpc/mod.rs (mcp_config_args, mcp_allow); plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce
 ---
 
 # MCP config: three scopes, read all, write one
@@ -47,7 +47,7 @@ Measured on claude 2.1.280 with `node dev/mcp-probe.mjs --scopes` (phase 1's cal
 
 ### What Tori injects
 
-Every Tori launched claude session, chat or PTY tab, spawn or resume, gets `--mcp-config ~/.config/tori/claude-mcp.json`, one static file naming `tori` with `command: "tori", args: ["mcp"]` and no `env` ([[component_tori_mcp]]). It goes directly before `--settings`, so the variadic flag stops at a flag. Both injected settings files (the per session one from `approval::settings_args` and the PTY one from `hooks`) carry `permissions.allow: ["mcp__tori__*"]`, so Tori's own tools never prompt. The user's deny rules still outrank it. That pre-allow is a recorded narrowing of `tori-harness-owns-permissions`, see [[adr_a_background_session_needs_a_tori_gate]].
+Every Tori launched claude session, chat or PTY tab, spawn or resume, gets `--mcp-config ~/.config/tori/claude-mcp.json`, one static file naming `tori` with `command: "tori", args: ["mcp"]` and no `env` ([[component_tori_mcp]]). It goes directly before `--settings`, so the variadic flag stops at a flag. Both injected settings files (the per session one from `approval::settings_args` and the PTY one from `hooks`) pre-allow Tori's tools through `rpc::mcp_allow(background)`: `mcp__tori__*` for a background chat, and otherwise every method row not marked `outward`, named one by one, so the outward tools raise the harness prompt. The PTY file always takes the foreground list. The user's deny rules still outrank both. That pre-allow is a recorded narrowing of `tori-harness-owns-permissions`, see [[adr_a_background_session_needs_a_tori_gate]].
 
 Two things read like approval state and are not. An unapproved `.mcp.json` server comes up `connected` under `-p`, which is what the chat transport runs, so the pending state in [[gotcha_a_newly_written_mcp_json_server_is_pending_not_connected]] was measured on the interactive surface (`claude mcp list`) and does not gate a print-mode session. And a claude.ai connector often shows `pending` in `system/init` because it had not finished connecting when the turn opened, not because anything is waiting on the user.
 
