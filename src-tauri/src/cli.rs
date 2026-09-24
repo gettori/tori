@@ -17,6 +17,9 @@ const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
   tori session wait <id> [--timeout <secs>] [--json]
+  tori session pending <id> [--json]
+  tori session answer <session> <id> <text>...
+  tori session answer <session> <id> --each <text>...
   tori events [--topic <topic>]...
   tori whoami [--json]
   tori steer <id> <text>...
@@ -107,7 +110,9 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "session" => match rest.first().map(String::as_str) {
             Some("tail") => session_tail(&rest[1..]),
             Some("wait") => session_wait(&rest[1..]),
-            _ => Err(usage("session needs a subcommand: tail or wait")),
+            Some("pending") => session_pending(&rest[1..]),
+            Some("answer") => session_answer(&rest[1..]),
+            _ => Err(usage("session needs a subcommand: tail, wait, pending or answer")),
         },
         "events" => events(rest),
         "whoami" => whoami(rest),
@@ -347,6 +352,49 @@ fn session_wait(args: &[String]) -> Result<(), Failure> {
     if let Some(last) = settled["last"].as_str() {
         writeln!(out, "{last}")?;
     }
+    Ok(())
+}
+
+fn session_pending(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["json"])?;
+    let [id] = p.positional.as_slice() else {
+        return Err(usage("session pending takes one session id"));
+    };
+    let rows = connect()?.call("session.pending", json!({ "id": id }))?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{rows}")?);
+    }
+    for row in rows.as_array().into_iter().flatten() {
+        let text = match row["kind"].as_str() {
+            Some("permission") => format!("{} {}", row["tool"].as_str().unwrap_or(""), row["detail"].as_str().unwrap_or("")),
+            Some("question") => {
+                let questions = row["questions"].as_array().into_iter().flatten();
+                questions.filter_map(|q| q["question"].as_str()).collect::<Vec<_>>().join(" | ")
+            }
+            _ => row["text"].as_str().unwrap_or("").to_string(),
+        };
+        writeln!(out, "{} {}: {}", row["kind"].as_str().unwrap_or(""), row["id"].as_str().unwrap_or(""), text.trim_end())?;
+    }
+    Ok(())
+}
+
+fn answer_params(args: &[String]) -> Result<Value, Failure> {
+    let p = Parsed::new(args, &["each"], &[])?;
+    let [session, id, words @ ..] = p.positional.as_slice() else {
+        return Err(usage("session answer takes a session id, the id to answer and the answer"));
+    };
+    let answer = match (p.flags.get("each"), words) {
+        (Some(each), []) => json!(each),
+        (None, words) if !words.is_empty() => json!(words.join(" ")),
+        _ => return Err(usage("session answer takes the answer as words or as --each, one per question, not both")),
+    };
+    Ok(json!({ "session": session, "id": id, "answer": answer }))
+}
+
+fn session_answer(args: &[String]) -> Result<(), Failure> {
+    let params = answer_params(args)?;
+    connect()?.call("session.answer", params)?;
     Ok(())
 }
 

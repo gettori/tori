@@ -10,13 +10,13 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::approvals::{Approval, Approvals, Draft};
-use super::asks::{Asks, By, NotAnswered, Waited};
+use super::asks::{Ask, Asks, By, NotAnswered, Waited};
 use super::auth::{Caller, Principal};
 use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, PendingParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -25,7 +25,7 @@ use super::table::CallerKind;
 use crate::autopilot::{AutopilotStore, Observed};
 use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history};
-use crate::chat::host::ChatState;
+use crate::chat::host::{ChatState, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock};
 use crate::chat::ownership::Registry;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
@@ -162,6 +162,21 @@ fn record_spawn(states: &SessionStates, principal: &Principal, id: &str, backgro
     }
     if let Principal::Session(Caller::Chat(spawner)) = principal {
         states.mark_worker(id, spawner);
+    }
+}
+
+fn pending_rows(session: &str, asks: Vec<Ask>, native: Vec<Waiting>) -> Vec<Value> {
+    let asks = asks.into_iter().filter(|ask| ask.session == session);
+    let mut rows: Vec<Value> =
+        asks.map(|ask| json!({ "kind": "ask", "id": ask.id, "text": ask.question, "options": ask.options })).collect();
+    rows.extend(native.into_iter().filter_map(|waiting| serde_json::to_value(waiting).ok()));
+    rows
+}
+
+fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Result<(), RpcError> {
+    match (caller, spawner) {
+        (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
+        _ => Err(refused(format!("only the session that spawned {session} answers for it"))),
     }
 }
 
@@ -419,6 +434,20 @@ impl Backend for TauriBackend {
             last_assistant_text(&read_history(&params.id, &from, &agent, None))
         });
         Ok(json!({ "id": params.id, "state": state, "question": self.asks.pending_for(&params.id), "last": last }))
+    }
+
+    fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError> {
+        let native = self.app.state::<ChatState>().0.waiting(&params.id);
+        Ok(Value::Array(pending_rows(&params.id, self.asks.pending(), native)))
+    }
+
+    fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError> {
+        // A retired autopilot id stands for the current one.
+        let spawner = self.states.spawner_of(&params.session).map(|s| super::current_spawner(&s));
+        answers_for(principal, spawner, &params.session)?;
+        let host = &self.app.state::<ChatState>().0;
+        host.settle(&params.session, &params.id, &params.answer.into_list()).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        Ok(json!({ "answered": params.id }))
     }
 
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
@@ -905,5 +934,50 @@ mod tests {
         assert!(read_history("nope", &HistorySource::Missing, "claude", None).is_empty());
         let missing = std::env::temp_dir().join("tori-rpc-tail-missing.jsonl");
         assert!(read_history("nope", &HistorySource::Log(missing), "codex", None).is_empty());
+    }
+
+    #[test]
+    fn pending_lists_a_tori_ask_a_native_question_and_a_permission_with_their_ids() {
+        let ask = |id: &str, session: &str| Ask {
+            id: id.into(),
+            session: session.into(),
+            question: "ship it?".into(),
+            options: vec!["yes".into()],
+            approval: None,
+            shown_in: Vec::new(),
+            item: None,
+        };
+        let question = crate::chat::model::ChatQuestion {
+            question: "Which one?".into(),
+            header: "Pick".into(),
+            multi_select: false,
+            options: Vec::new(),
+        };
+        let native = vec![
+            Waiting::Question { id: "toolu_q".into(), request_id: "r1".into(), agent_id: None, questions: vec![question] },
+            Waiting::Permission {
+                id: "toolu_p".into(),
+                request_id: "r2".into(),
+                agent_id: None,
+                tool: "Bash".into(),
+                detail: Some("ls".into()),
+            },
+        ];
+        let rows = pending_rows("w1", vec![ask("ask-1", "w1"), ask("ask-2", "other")], native);
+        let kinds: Vec<(&str, &str)> = rows.iter().map(|r| (r["kind"].as_str().unwrap(), r["id"].as_str().unwrap())).collect();
+        assert_eq!(kinds, [("ask", "ask-1"), ("question", "toolu_q"), ("permission", "toolu_p")]);
+        assert_eq!(rows[0]["text"], "ship it?");
+        assert_eq!(rows[2]["tool"], "Bash");
+        assert!(rows[1].get("request_id").is_none(), "the host's request id stays inside: {}", rows[1]);
+    }
+
+    #[test]
+    fn only_the_spawner_answers_for_a_worker() {
+        let chat = |id: &str| Principal::Session(Caller::Chat(id.into()));
+        assert!(answers_for(&chat("pilot"), Some("pilot".into()), "w1").is_ok());
+        for (caller, spawner) in [(chat("other"), Some("pilot".into())), (chat("pilot"), None), (Principal::Local, Some("pilot".into()))] {
+            let err = answers_for(&caller, spawner, "w1").unwrap_err();
+            assert_eq!(err.code, REFUSED, "{}", err.message);
+        }
     }
 }

@@ -400,10 +400,14 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
 // one lost its spawner link with the old process, and a retired autopilot id
 // stands for the current autopilot.
 pub fn mark_spawned_worker(session: &str, spawner: &str) {
-    let spawner = RUNNER.get().map_or_else(|| spawner.to_string(), |r| r.resolve_spawner(spawner));
+    let spawner = current_spawner(spawner);
     if let Some((_, states)) = EVENTS.get() {
         states.mark_worker(session, &spawner);
     }
+}
+
+pub fn current_spawner(spawner: &str) -> String {
+    RUNNER.get().map_or_else(|| spawner.to_string(), |r| r.resolve_spawner(spawner))
 }
 
 // Called by `chat_spawn` before the child starts, so its first outward call already meets the gate.

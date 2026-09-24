@@ -71,6 +71,41 @@ pub struct WaitParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct PendingParams {
+    /// The session whose open questions and permission prompts to list.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Answer {
+    One(String),
+    Each(Vec<String>),
+}
+
+impl Answer {
+    pub fn into_list(self) -> Vec<String> {
+        match self {
+            Answer::One(one) => vec![one],
+            Answer::Each(each) => each,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SessionAnswerParams {
+    /// The session you spawned that is waiting.
+    pub session: String,
+    /// The id `session.pending` gave the question or permission prompt.
+    pub id: String,
+    /// `allow` or `deny` for a permission. For a question, an option's label or your own words, as a list with
+    /// one answer per question when it asks several.
+    pub answer: Answer,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WorktreeParams {
     /// The new branch, created in a new worktree.
     pub branch: String,
@@ -409,6 +444,8 @@ pub trait Backend: Send + Sync {
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
+    fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError>;
+    fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError>;
@@ -613,6 +650,12 @@ pub mod tests {
         }
         fn session_wait(&self, p: WaitParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id, "state": "idle", "question": null, "last": null }))
+        }
+        fn session_pending(&self, p: PendingParams) -> Result<Value, RpcError> {
+            Ok(json!([{ "kind": "ask", "id": p.id }]))
+        }
+        fn session_answer(&self, _: &Principal, p: SessionAnswerParams) -> Result<Value, RpcError> {
+            Ok(json!({ "answered": p.id }))
         }
         fn worktree_new(&self, _: &Principal, p: WorktreeParams) -> Result<Value, RpcError> {
             Ok(json!({ "branch": p.branch }))
@@ -904,6 +947,24 @@ pub mod tests {
         assert!(err.message.contains("terminal") && err.message.contains("ask.create"), "{}", err.message);
         let chat = Principal::Session(Caller::Chat("s1".into()));
         assert!(server.dispatch(0, &chat, &request("ask.create", json!({"question": "q"}))).is_ok());
+    }
+
+    #[test]
+    fn session_answer_is_refused_to_a_worker_a_shell_and_a_terminal() {
+        let server = stub_server();
+        let answer = || request("session.answer", json!({"session": "w1", "id": "toolu_1", "answer": "allow"}));
+        for caller in [
+            Principal::Session(Caller::Chat(WORKER.into())),
+            Principal::Local,
+            Principal::Session(Caller::Terminal("t1".into())),
+        ] {
+            let err = server.dispatch(0, &caller, &answer()).unwrap_err();
+            assert_eq!(err.code, REFUSED, "{caller:?}");
+            assert!(err.message.contains("only the session that spawned"), "{}", err.message);
+        }
+        assert!(server.dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &answer()).is_ok());
+        let each = request("session.answer", json!({"session": "w1", "id": "toolu_1", "answer": ["a", "b"]}));
+        assert!(server.dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &each).is_ok());
     }
 
     #[test]
