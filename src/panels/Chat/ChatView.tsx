@@ -2148,7 +2148,7 @@ export default function ChatView(props: {
           transcript's root, since every attached tab stays mounted. */}
       <QuoteSelection root={() => transcriptEl} onQuote={(text) => composer?.insertBlock(quoteBlock(text))} />
 
-      <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} />}</For>
+      <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} here={props.sessionId} />}</For>
 
       <PlanCard items={state.plan} />
 

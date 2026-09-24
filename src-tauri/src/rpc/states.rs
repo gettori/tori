@@ -160,6 +160,18 @@ impl SessionStates {
         self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), spawner.to_string());
     }
 
+    // The topmost background session in `id`'s spawn chain, `id` itself
+    // included; `None` when `id` is not background.
+    pub fn root_background(&self, id: &str) -> Option<String> {
+        let background = self.background.lock().unwrap_or_else(|e| e.into_inner());
+        let spawned_by = self.spawned_by.lock().unwrap_or_else(|e| e.into_inner());
+        let mut root = background.contains(id).then(|| id.to_string())?;
+        while let Some(parent) = spawned_by.get(&root).filter(|p| background.contains(p.as_str())) {
+            root = parent.clone();
+        }
+        Some(root)
+    }
+
     pub fn is_worker(&self, id: &str) -> bool {
         self.workers.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
     }
@@ -241,6 +253,22 @@ mod tests {
             flipping.replace(vec![report("w", SessionState::Idle, Source::Chat)], place, GONE);
         });
         assert_eq!(states.wait_settled("w", Duration::from_secs(5)), Some(SessionState::Idle));
+    }
+
+    #[test]
+    fn a_workers_root_is_the_topmost_background_session_above_it() {
+        let states = SessionStates::default();
+        states.mark_background("autopilot");
+        states.mark_worker("worker", "autopilot");
+        states.mark_background("worker");
+        states.mark_worker("helper", "worker");
+        states.mark_background("helper");
+        assert_eq!(states.root_background("helper").as_deref(), Some("autopilot"));
+        assert_eq!(states.root_background("autopilot").as_deref(), Some("autopilot"));
+        states.mark_worker("fg", "autopilot");
+        assert_eq!(states.root_background("fg"), None, "a foreground session has no root");
+        states.forget_worker("worker");
+        assert_eq!(states.root_background("helper").as_deref(), Some("worker"), "an ended link stops the walk");
     }
 
     #[test]
