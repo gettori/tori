@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    HoldResolveParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    HoldResolveParams, IssueGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
@@ -121,6 +121,24 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_wait(params(v)?),
+    },
+    Method {
+        name: "session.pending",
+        description: "What a session is waiting on: questions it asked with ask.create, and its agent's own questions and permission prompts, each with its id.",
+        params: schema::<PendingParams>,
+        callers: NOT_WORKERS,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.session_pending(params(v)?),
+    },
+    Method {
+        name: "session.answer",
+        description: "Answer a question or permission prompt a session you spawned is waiting on, by the id session.pending gave it. An id nothing waits on any more is an error.",
+        params: schema::<SessionAnswerParams>,
+        callers: &[CallerKind::Chat],
+        refusal: Some("only the session that spawned a worker answers for it"),
+        outward: true,
+        call: |b, p, v| b.session_answer(p, params(v)?),
     },
     Method {
         name: "worktree.new",
