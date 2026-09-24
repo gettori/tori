@@ -292,6 +292,7 @@ pub fn dir() -> PathBuf {
 }
 
 type Publish = Box<dyn Fn(Value) + Send + Sync>;
+type Closed = Box<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Default)]
 struct Held {
@@ -306,6 +307,9 @@ pub struct AutopilotStore {
     // would replace what this build cannot see.
     unreadable: HashMap<&'static str, String>,
     publish: Publish,
+    // Told the id of an item that just became done or failed, with the lock
+    // released, so it may call into `Asks` without ever nesting the two locks.
+    closed: Closed,
 }
 
 fn load<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String> {
@@ -327,7 +331,15 @@ impl AutopilotStore {
             Projects::default()
         });
         let held = Held { items: queue.items, projects: projects.projects };
-        Self { dir, held: Mutex::new(held), unreadable, publish }
+        Self { dir, held: Mutex::new(held), unreadable, publish, closed: Box::new(|_| {}) }
+    }
+
+    pub fn on_closed(self, closed: Closed) -> Self {
+        Self { closed, ..self }
+    }
+
+    pub fn has(&self, id: &str) -> bool {
+        self.lock().items.iter().any(|i| i.id == id)
     }
 
     fn lock(&self) -> MutexGuard<'_, Held> {
@@ -343,17 +355,22 @@ impl AutopilotStore {
     }
 
     pub fn update(&self, target: Target, patch: Patch) -> Result<Item, UpdateError> {
-        let item = {
+        let (item, was_open) = {
             let mut held = self.lock();
             let mut next = held.items.clone();
             let mint = || format!("item-{}", crate::chat::approval::random_token());
+            let before = |id: &str| held.items.iter().find(|i| i.id == id).map(|i| i.state);
             let item = apply(&mut next, target, patch, now_ms(), mint)?;
+            let was_open = before(&item.id).is_none_or(|state| !state.terminal());
             self.save(QUEUE, json!({ "items": next }))?;
             held.items = next;
             self.log(json!({ "item": item }));
-            item
+            (item, was_open)
         };
         self.changed(&item, None);
+        if was_open && item.state.terminal() {
+            (self.closed)(&item.id);
+        }
         Ok(item)
     }
 

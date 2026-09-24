@@ -197,6 +197,9 @@ pub struct AskParams {
     pub approval: Option<Draft>,
     /// The project an `approval` is for, the caller's own project when left out.
     pub project: Option<String>,
+    /// The autopilot item an `approval` holds up. The ask then survives the asking chat and a restart,
+    /// and is withdrawn when the item is done or failed.
+    pub item: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -373,8 +376,29 @@ impl ProjectSetParams {
     }
 }
 
-pub fn autopilot_state(store: &AutopilotStore, observe: impl FnOnce(&[crate::autopilot::Item]) -> Observed) -> Result<Value, RpcError> {
-    serde_json::to_value(store.state(observe)).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
+pub fn autopilot_state(
+    store: &AutopilotStore,
+    holds: Vec<super::asks::Hold>,
+    observe: impl FnOnce(&[crate::autopilot::Item]) -> Observed,
+) -> Result<Value, RpcError> {
+    let mut state = serde_json::to_value(store.state(observe)).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+    state["holds"] = json!(holds);
+    Ok(state)
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HoldResolveParams {
+    /// The ask id of the hold.
+    pub id: String,
+}
+
+// Withdraws, never approves: approving is the user's answer on the card.
+pub fn hold_resolve(asks: &super::asks::Asks, id: &str) -> Result<Value, RpcError> {
+    if !asks.withdraw(id) {
+        return Err(RpcError::new(INVALID_PARAMS, format!("no open hold {id}")));
+    }
+    Ok(json!({ "id": id, "answer": super::asks::WITHDRAWN }))
 }
 
 /// What the methods read. Tauri state in the app, a stub in tests.
@@ -404,6 +428,7 @@ pub trait Backend: Send + Sync {
     fn autopilot_state(&self) -> Result<Value, RpcError>;
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError>;
+    fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -556,6 +581,7 @@ pub mod tests {
     #[derive(Default)]
     pub struct StubBackend {
         pub autopilot: Option<AutopilotStore>,
+        pub asks: Option<Arc<crate::rpc::asks::Asks>>,
     }
 
     // A chat session with this id is treated as a worker.
@@ -639,7 +665,10 @@ pub mod tests {
         }
         fn autopilot_state(&self) -> Result<Value, RpcError> {
             match &self.autopilot {
-                Some(store) => autopilot_state(store, |_| Observed::default()),
+                Some(store) => {
+                    let holds = self.asks.as_ref().map(|asks| asks.holds()).unwrap_or_default();
+                    autopilot_state(store, holds, |_| Observed::default())
+                }
                 None => Ok(json!({ "items": [], "projects": {} })),
             }
         }
@@ -659,6 +688,12 @@ pub mod tests {
                     p.apply(store, project)
                 }
                 None => Ok(json!({ "project": p.project })),
+            }
+        }
+        fn autopilot_hold_resolve(&self, p: HoldResolveParams) -> Result<Value, RpcError> {
+            match &self.asks {
+                Some(asks) => hold_resolve(asks, &p.id),
+                None => Ok(json!({ "id": p.id })),
             }
         }
     }
@@ -894,7 +929,7 @@ pub mod tests {
     fn an_item_update_without_an_id_makes_one_open_item_per_source() {
         let dir = crate::autopilot::tests::temp_dir("dispatch-upsert");
         let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
-        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store) }), ..stub_server() };
+        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store), ..StubBackend::default() }), ..stub_server() };
         let update = |who: &Principal, params: Value| server.dispatch(0, who, &request("autopilot.item.update", params));
         let key = json!({"kind": "ship", "source": {"type": "issue", "key": "12", "project": "/p"}, "project": "/p"});
         let first = update(&Principal::Local, key.clone()).unwrap();
@@ -905,6 +940,38 @@ pub mod tests {
         assert_eq!(update(&Principal::Local, json!({"id": first["id"], "project": "/p"})).unwrap_err().code, INVALID_PARAMS);
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
         assert_eq!(update(&worker, json!({"id": fresh["id"], "state": "done"})).unwrap_err().code, REFUSED);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_resolved_hold_is_withdrawn_never_approved_and_state_shows_the_open_ones() {
+        use crate::rpc::approvals::{Approval, Draft, APPROVE};
+        use crate::rpc::asks::{Asks, By, Waited, WITHDRAWN};
+        let dir = crate::autopilot::tests::temp_dir("dispatch-holds");
+        let asks = Arc::new(Asks::with_holds(dir.join("holds.json"), Box::new(|_| {})));
+        let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store), asks: Some(asks.clone()) }), ..stub_server() };
+        let draft = Draft::PrMerge { number: 7, method: crate::forge::MergeMethod::Squash, head_sha: "abc".into() };
+        let ask = |item: &str| {
+            let approval = Some(Approval { project: "/p".into(), draft: draft.clone() });
+            asks.create("s1".into(), "merge?".into(), vec![], approval, None, Some(item.into())).id
+        };
+        let open = ask("item-1");
+        let approved = ask("item-2");
+        asks.answer(&approved, APPROVE.into(), By::User).unwrap();
+
+        let state = server.dispatch(0, &Principal::Local, &request("autopilot.state", json!({}))).unwrap();
+        assert_eq!(state["holds"].as_array().map(Vec::len), Some(2));
+
+        let resolve = |id: &str| server.dispatch(0, &Principal::Local, &request("autopilot.hold.resolve", json!({ "id": id })));
+        for id in [&open, &approved] {
+            let resolved = resolve(id).unwrap();
+            assert_eq!(resolved["answer"], WITHDRAWN);
+            assert!(resolved.get("approval_id").is_none(), "{resolved}");
+            assert_eq!(asks.wait(id, Duration::ZERO), Waited::Answered { answer: WITHDRAWN.into(), approval_id: None }, "an unread grant goes too");
+        }
+        assert!(asks.holds().is_empty());
+        assert_eq!(resolve(&open).unwrap_err().code, INVALID_PARAMS, "a hold is withdrawn once");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    HoldResolveParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
@@ -299,6 +299,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("a project's contract is the user's and the autopilot's to set"),
         outward: false,
         call: |b, p, v| b.autopilot_project_set(p, params(v)?),
+    },
+    Method {
+        name: "autopilot.hold.resolve",
+        description: "Withdraw a hold: its card closes and a waiting ask.wait reads Withdrawn. It never approves; only the user does, on the card.",
+        params: schema::<HoldResolveParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("withdrawing a hold is the autopilot's call"),
+        outward: false,
+        call: |b, _, v| b.autopilot_hold_resolve(params(v)?),
     },
 ];
 

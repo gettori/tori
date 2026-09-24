@@ -81,17 +81,21 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let hub = Arc::new(Hub::default());
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
-    let asks = Arc::new(Asks::default());
-    let autopilot_hub = hub.clone();
-    let autopilot = Arc::new(AutopilotStore::open(
-        crate::autopilot::dir(),
-        Box::new(move |event| autopilot_hub.publish(&Channel::Autopilot, event)),
-    ));
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
         REPLY_TIMEOUT,
     ));
+    let holds_hub = hub.clone();
+    let asks = Arc::new(Asks::with_holds(
+        crate::autopilot::dir().join("holds.json"),
+        Box::new(move |event| holds_hub.publish(&Channel::Autopilot, event)),
+    ));
+    let autopilot_hub = hub.clone();
+    let autopilot = Arc::new(
+        AutopilotStore::open(crate::autopilot::dir(), Box::new(move |event| autopilot_hub.publish(&Channel::Autopilot, event)))
+            .on_closed(withdraw_holds(asks.clone(), bridge.clone())),
+    );
     let server = Arc::new(Server {
         credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
@@ -146,6 +150,23 @@ pub fn rpc_session_states(
         let id = event["id"].as_str().unwrap_or_default().to_string();
         publish_session(&rpc.hub, &rpc.autopilot, &id, event);
     }
+}
+
+// The cards close on a thread of their own: the webview's reply can take up to
+// `REPLY_TIMEOUT`, and the item update that closed the item should not wait on it.
+fn withdraw_holds(asks: Arc<Asks>, bridge: Arc<Bridge>) -> Box<dyn Fn(&str) + Send + Sync> {
+    Box::new(move |item| {
+        let ids = asks.withdraw_item(item);
+        if ids.is_empty() {
+            return;
+        }
+        let bridge = bridge.clone();
+        std::thread::spawn(move || {
+            for id in ids {
+                let _ = bridge.request("ask.close", json!({ "id": id }));
+            }
+        });
+    })
 }
 
 // An item whose session ended keeps its stored state, but what the autopilot sees of it changed.
@@ -339,6 +360,60 @@ mod tests {
         assert_eq!(event["params"]["topic"], "autopilot");
         assert_eq!(event["params"]["data"]["kind"], "autopilot.changed");
         assert_eq!(event["params"]["data"]["item"]["session_live"], false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn merge_approval() -> Option<approvals::Approval> {
+        let draft = approvals::Draft::PrMerge { number: 7, method: crate::forge::MergeMethod::Squash, head_sha: "abc".into() };
+        Some(approvals::Approval { project: "/p".into(), draft })
+    }
+
+    #[test]
+    fn a_hold_changing_reaches_the_autopilot_topic() {
+        let hub = Arc::new(Hub::default());
+        let (tx, rx) = sync_channel(hub::QUEUE_CAP);
+        hub.subscribe(hub.register(tx, Box::new(|| {})), Channel::Autopilot);
+        let dir = crate::autopilot::tests::temp_dir("hold-event");
+        let publisher = hub.clone();
+        let asks = Asks::with_holds(dir.join("holds.json"), Box::new(move |event| publisher.publish(&Channel::Autopilot, event)));
+        let ask = asks.create("s1".into(), "merge?".into(), vec![], merge_approval(), None, Some("item-1".into()));
+        let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(event["params"]["data"]["hold"]["ask"], json!(ask.id));
+        asks.withdraw(&ask.id);
+        let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(event["params"]["data"]["cleared"], true);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_item_closing_while_its_hold_is_answered_blocks_neither() {
+        let dir = crate::autopilot::tests::temp_dir("close-race");
+        let asks = Arc::new(Asks::with_holds(dir.join("holds.json"), Box::new(|_| {})));
+        let bridge = Arc::new(Bridge::new(Box::new(|_| Err("no webview".into())), std::time::Duration::from_millis(10)));
+        let store = Arc::new(AutopilotStore::open(dir.clone(), Box::new(|_| {})).on_closed(withdraw_holds(asks.clone(), bridge)));
+        let source = Source::Pr { number: 7, repo: "o/r".into() };
+        let item = store.update(Target::Key { kind: Kind::Review, source, project: "/p".into() }, Patch::default()).unwrap().id;
+        let ask = asks.create("s1".into(), "merge?".into(), vec![], merge_approval(), None, Some(item.clone())).id;
+
+        let (done_tx, done) = std::sync::mpsc::channel();
+        let (closing, answering) = (store.clone(), asks.clone());
+        let (item_id, ask_id) = (item.clone(), ask.clone());
+        let tx = done_tx.clone();
+        std::thread::spawn(move || {
+            let state = Patch { state: Some(crate::autopilot::State::Done), ..Patch::default() };
+            closing.update(Target::Id(item_id), state).unwrap();
+            tx.send(()).unwrap();
+        });
+        std::thread::spawn(move || {
+            let _ = answering.answer(&ask_id, approvals::APPROVE.into(), asks::By::User);
+            done_tx.send(()).unwrap();
+        });
+        for _ in 0..2 {
+            done.recv_timeout(std::time::Duration::from_secs(5)).expect("neither side blocks");
+        }
+        assert!(asks.holds().is_empty(), "a done item holds nothing up");
+        let read = asks.wait(&ask, std::time::Duration::ZERO);
+        assert_eq!(read, asks::Waited::Answered { answer: asks::WITHDRAWN.into(), approval_id: None }, "whichever landed first");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

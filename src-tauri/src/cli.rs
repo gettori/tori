@@ -39,6 +39,7 @@ const USAGE: &str = "usage:
                       [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>] [--json]
   tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
                          [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--json]
+  tori autopilot hold resolve <id> [--json]
   tori mcp";
 
 pub fn is_cli() -> bool {
@@ -639,7 +640,7 @@ fn pr(args: &[String]) -> Result<(), Failure> {
 
 fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     let Some((sub, rest)) = args.split_first() else {
-        return Err(usage("autopilot needs a subcommand: state, item or project"));
+        return Err(usage("autopilot needs a subcommand: state, item, project or hold"));
     };
     match sub.as_str() {
         "state" => {
@@ -702,7 +703,14 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             });
             Ok(("autopilot.project.set", params))
         }
-        other => Err(usage(format!("unknown autopilot subcommand {other}: state, item or project"))),
+        "hold" => {
+            let p = Parsed::new(rest, &[], &["json"])?;
+            match p.positional.as_slice() {
+                [verb, id] if verb == "resolve" => Ok(("autopilot.hold.resolve", json!({ "id": id }))),
+                _ => Err(usage("autopilot hold takes: resolve <id>")),
+            }
+        }
+        other => Err(usage(format!("unknown autopilot subcommand {other}: state, item, project or hold"))),
     }
 }
 
@@ -716,17 +724,30 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
     match method {
         "autopilot.item.update" => return Ok(writeln!(out, "{}", done["id"].as_str().unwrap_or(""))?),
         "autopilot.project.set" => return Ok(write!(out, "{}", render_contract(&done))?),
+        "autopilot.hold.resolve" => return Ok(writeln!(out, "withdrawn: {}", done["id"].as_str().unwrap_or(""))?),
         _ => {}
     }
     let table: Vec<[String; 6]> = done["items"].as_array().into_iter().flatten().map(item_cells).collect();
     write_table(&mut out, ["ID", "KIND", "STATE", "SOURCE", "SESSION", "NOTE"], &table)?;
     let projects = done["projects"].as_object().cloned().unwrap_or_default();
-    if projects.is_empty() {
-        return Ok(());
+    if !projects.is_empty() {
+        let table: Vec<[String; 5]> = projects.iter().map(|(path, contract)| project_cells(path, contract)).collect();
+        writeln!(out)?;
+        write_table(&mut out, ["PROJECT", "SHIPS", "AUTONOMY", "PICKUP", "AGENT"], &table)?;
     }
-    let table: Vec<[String; 5]> = projects.iter().map(|(path, contract)| project_cells(path, contract)).collect();
-    writeln!(out)?;
-    write_table(&mut out, ["PROJECT", "SHIPS", "AUTONOMY", "PICKUP", "AGENT"], &table)
+    let holds = done["holds"].as_array().cloned().unwrap_or_default();
+    if !holds.is_empty() {
+        let table: Vec<[String; 4]> = holds.iter().map(hold_cells).collect();
+        writeln!(out)?;
+        write_table(&mut out, ["HOLD", "ITEM", "ACTION", "ANSWER"], &table)?;
+    }
+    Ok(())
+}
+
+fn hold_cells(hold: &Value) -> [String; 4] {
+    let text = |key: &str| hold[key].as_str().unwrap_or("").to_string();
+    let answer = hold["answer"].as_str().unwrap_or("waiting").to_string();
+    [text("ask"), text("item"), hold["draft"]["action"].as_str().unwrap_or("").to_string(), answer]
 }
 
 fn render_contract(contract: &Value) -> String {
@@ -868,6 +889,11 @@ mod tests {
         assert_eq!((params["project"].clone(), params["ships"].clone()), (json!("/p"), json!(null)), "a flag left out keeps its value");
         assert!(autopilot_request(&args(&["project", "/p"])).is_err());
         assert!(USAGE.contains("tori autopilot project"));
+
+        assert_eq!(autopilot_request(&args(&["hold", "resolve", "ask-1"])).ok(), Some(("autopilot.hold.resolve", json!({ "id": "ask-1" }))));
+        assert!(autopilot_request(&args(&["hold", "approve", "ask-1"])).is_err(), "a hold is approved on its card, never here");
+        assert!(autopilot_request(&args(&["hold", "resolve"])).is_err());
+        assert!(USAGE.contains("tori autopilot hold resolve <id>"));
         assert!(USAGE.contains("tori autopilot state"));
     }
 
