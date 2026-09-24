@@ -1,4 +1,4 @@
-import { Show, createEffect, on, onCleanup } from "solid-js";
+import { Show, createEffect, createMemo, on, onCleanup } from "solid-js";
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
 import AutopilotView from "../../components/Autopilot/AutopilotView";
@@ -93,7 +93,9 @@ export function CockpitSwitch() {
 
 export function CockpitView() {
   const error = () => runner().state === "error";
-  const live = () => attachable(runner()) || (error() && runner().session !== null);
+  // A memo, so an idle/working flip does not remount the chat: the old view's
+  // detach names the same tab and would cut off the new one's listener.
+  const live = createMemo(() => attachable(runner()) || (error() && runner().session !== null));
   return (
     <div class={styles.overlay}>
       <AutopilotView
