@@ -650,6 +650,16 @@ export default function ChatView(props: {
         const pending = parked.splice(0, parked.length);
         backfilled = true;
         for (const ev of pending) handleLive(ev);
+        // A question or permission asked while no view was attached reached
+        // nobody live, and history has it without the id that answers it.
+        void invoke<unknown[]>("chat_waiting", { sessionId: props.sessionId })
+          .then((raw) => {
+            for (const item of raw) {
+              const ev = parseChatEvent(item);
+              if (ev) handleLive(ev);
+            }
+          })
+          .catch(() => {});
         // A turn Tori still believed was open when it last went away. Read
         // *after* the backfill so the notice lands at the end of the replayed
         // history, where that turn actually is. Consumed as it is read, so it
@@ -1136,6 +1146,7 @@ export default function ChatView(props: {
       status: asksFor(props.sessionId).length ? "waitingForAnswer" : chatStatus(state),
       background: outstandingBackground(state),
       visible: props.active,
+      worker: props.spawner !== undefined,
     });
   });
 

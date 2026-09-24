@@ -540,6 +540,11 @@ pub async fn chat_answer_question(
     state.0.answer_question(&session_id, &tool_use_id, &request_id, &answers)
 }
 
+#[tauri::command]
+pub fn chat_waiting(state: State<'_, ChatState>, session_id: String) -> Vec<ChatEvent> {
+    state.0.waiting_events(&session_id)
+}
+
 // --- spend ceilings --------------------------------------------------------
 
 /// Record one completed turn against this session's running total.
