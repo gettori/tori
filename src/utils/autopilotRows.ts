@@ -149,25 +149,43 @@ export function decisionOf(ask: SocketAsk, items: ItemRow[], holds: Hold[], aske
 const COUNT = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
 const counted = (n: number, one: string, many: string) => `${COUNT[n] ?? n} ${n === 1 ? one : many}`;
 
+const waitBelow = (crew: number) =>
+  crew === 0 ? "" : crew === 1 ? " The worker waits below." : crew === 2 ? " Both workers wait below." : " The crew waits below.";
+
+function onDeck(crew: number, queued: number): string {
+  const deck = crew ? `${counted(crew, "worker", "workers")} on deck` : "Nobody on deck yet";
+  return queued ? `${deck} and ${counted(queued, "waiting", "waiting").toLowerCase()} at the dock.` : `${deck}.`;
+}
+
 /** The banner's words for where the autopilot stands. */
-export function heroFor(state: AutopilotState, calls: number, crew: number): Omit<CockpitHero, "stats"> {
+export function heroFor(state: AutopilotState, calls: number, crew: number, queued: number): Omit<CockpitHero, "stats"> {
   switch (state) {
     case "needs":
       return {
         eyebrow: "Holding course",
         title: `${counted(calls, "call", "calls")} for the captain.`,
-        body: crew ? "The ship holds its heading while you decide. The crew waits below." : "The ship holds its heading while you decide.",
+        body: `The ship holds its heading while you decide.${waitBelow(crew)}`,
       };
     case "working":
-      return crew
-        ? { eyebrow: "Under sail", title: `${counted(crew, "worker", "workers")} at the oars.`, body: "Sit back. I will call you when something needs your say." }
-        : { eyebrow: "Under sail", title: "Plotting a course.", body: "Sit back. I will call you when something needs your say." };
+      return {
+        eyebrow: "Cruising",
+        title: "Smooth sailing.",
+        body: `${onDeck(crew, queued)} Kick back, the autopilot rings when it needs you.`,
+      };
     case "idle":
-      return { eyebrow: "At anchor", title: "Calm waters.", body: "Hand me a ticket or a PR when you are ready." };
+      return {
+        eyebrow: "Anchored",
+        title: "Anchored in a calm bay.",
+        body: "Nothing on deck. Hand the autopilot a ticket or a PR and it sets sail.",
+      };
     case "error":
-      return { eyebrow: "Adrift", title: "The autopilot stopped.", body: "Restart it and it picks up from its log. Workers keep running." };
+      return {
+        eyebrow: "Choppy water",
+        title: "A squall passed through.",
+        body: "The autopilot session dropped. Restart it when you are ready, the crew keeps working.",
+      };
     case "off":
-      return { eyebrow: "In harbor", title: "The ship is docked.", body: "Start the autopilot to set sail." };
+      return { eyebrow: "Docked", title: "In harbor.", body: "Start the autopilot to set sail." };
   }
 }
 

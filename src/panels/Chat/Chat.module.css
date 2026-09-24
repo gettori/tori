@@ -2866,6 +2866,8 @@ button.attachmentBody:hover {
 
 .chat[data-cockpit] .composerBox {
   border-color: var(--progress-border);
+  border-radius: calc(22px * var(--ui-scale));
+  box-shadow: 0 0 0 calc(4px * var(--ui-scale)) var(--progress-subtle), var(--shadow-md);
 }
 
 .chat[data-cockpit] .sendButton {

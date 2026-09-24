@@ -2,6 +2,7 @@ import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "sol
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
 import AutopilotView from "../../components/Autopilot/AutopilotView";
+import { pickScene } from "../../components/Autopilot/Horizon";
 import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
@@ -92,6 +93,11 @@ export function CockpitSwitch() {
   );
 }
 
+const dockedToday = (now: number) => {
+  const midnight = new Date(now).setHours(0, 0, 0, 0);
+  return items().filter((i) => i.state === "done" && i.updated >= midnight).length;
+};
+
 export function CockpitView() {
   const error = () => runner().state === "error";
   // A memo, so an idle/working flip does not remount the chat: the old view's
@@ -102,13 +108,15 @@ export function CockpitView() {
   onCleanup(() => clearInterval(tick));
   const hero = () => {
     const crew = workerCards(items()).length;
+    const state = autopilotNow();
     const since = runner().since;
+    const first =
+      state === "idle"
+        ? { label: "Docked today", value: String(dockedToday(now())) }
+        : { label: "Underway", value: since === null ? "0m" : underway(since, now()) };
     return {
-      ...heroFor(autopilotNow(), decisions().length, crew),
-      stats: [
-        { label: "Underway", value: since === null ? "-" : underway(since, now()) },
-        { label: "Crew", value: String(crew) },
-      ],
+      ...heroFor(state, decisions().length, crew, queuedItems(items()).length),
+      stats: [first, { label: "Crew", value: String(crew) }],
     };
   };
   return (
@@ -116,6 +124,7 @@ export function CockpitView() {
       <AutopilotView
         state={autopilotNow()}
         hero={hero()}
+        scene={pickScene(new Date(now()).getHours())}
         workers={workerCards(items())}
         emptyWorkers="The deck is quiet. Hand the autopilot a ticket or a PR."
         queue={queuedItems(items())}
