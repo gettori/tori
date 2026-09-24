@@ -4,6 +4,8 @@
     grid-template-columns: calc(320px * var(--ui-scale)) minmax(0, 1fr) calc(300px * var(--ui-scale));
     height: 100%;
     min-height: 0;
+    box-sizing: border-box;
+    border-top: var(--tori-border-thick) solid var(--status-progress);
     background: var(--canvas-default);
     font-family: var(--tori-font-ui);
   }
@@ -16,16 +18,17 @@
     overflow-y: auto;
     padding: var(--tori-space-6) var(--tori-space-6);
     background: var(--canvas-card);
-    border-right: var(--tori-border-thin) solid var(--border-default);
+    border-right: var(--tori-border-thin) solid var(--progress-border);
   }
 
   .empty {
     padding: var(--tori-space-6);
     border-radius: var(--tori-radius-lg);
-    border: var(--tori-border-thin) dashed var(--border-strong);
-    font-size: var(--tori-text-sm);
+    border: var(--tori-border-thin) dashed var(--progress-border);
+    background: var(--progress-subtle);
+    font-size: var(--tori-text-md);
     line-height: var(--tori-line-normal);
-    color: var(--fg-muted);
+    color: var(--progress-on-subtle);
   }
 
   .card {
@@ -38,9 +41,18 @@
     border-radius: var(--tori-radius-lg);
     background: var(--canvas-default);
     border: var(--tori-border-thin) solid var(--border-default);
+    transition: border-color var(--tori-duration-fast) var(--tori-ease);
+  }
+  .card:hover {
+    border-color: var(--progress-border);
+  }
+  .card[data-status="working"] {
+    border-color: var(--progress-border);
+    box-shadow: inset var(--tori-border-thick) 0 0 var(--status-progress);
   }
   .card[data-status="needs"] {
     border-color: var(--needs-you-border);
+    box-shadow: inset var(--tori-border-thick) 0 0 var(--status-needs-you);
   }
 
   .cardHead {
@@ -52,15 +64,15 @@
   .cardRef {
     flex: none;
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
-    color: var(--fg-default);
+    font-size: var(--tori-text-sm);
+    color: var(--progress-on-subtle);
   }
   .cardTitle {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-lg);
     font-weight: 600;
     color: var(--fg-default);
   }
@@ -69,17 +81,17 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
+    font-size: var(--tori-text-sm);
     color: var(--fg-subtle);
   }
 
   .contract {
-    font-size: var(--tori-text-xs);
+    font-size: var(--tori-text-sm);
     color: var(--fg-muted);
   }
   .contract > summary {
     cursor: pointer;
-    color: var(--fg-subtle);
+    color: var(--progress-on-subtle);
   }
   .contractText {
     margin: var(--tori-space-2) 0 0;
@@ -91,7 +103,7 @@
     border-radius: var(--tori-radius-md);
     background: var(--neutral-subtle);
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-2xs);
+    font-size: var(--tori-text-xs);
     line-height: 1.6;
     color: var(--fg-muted);
   }
@@ -108,7 +120,7 @@
     gap: var(--tori-space-4);
   }
   .doing {
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     color: var(--fg-muted);
   }
   .doing[data-status="needs"] {
@@ -135,7 +147,7 @@
     display: flex;
     align-items: center;
     gap: var(--tori-space-4);
-    min-height: calc(34px * var(--ui-scale));
+    min-height: calc(38px * var(--ui-scale));
     padding: 0 var(--tori-space-5);
     border-radius: var(--tori-radius-lg);
     border: var(--tori-border-thin) dashed var(--border-strong);
@@ -146,12 +158,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     color: var(--fg-muted);
   }
   .queuedAfter {
     flex: none;
-    font-size: var(--tori-text-xs);
+    font-size: var(--tori-text-sm);
     color: var(--fg-subtle);
   }
 
@@ -160,6 +172,7 @@
     justify-content: center;
     min-width: 0;
     min-height: 0;
+    background: radial-gradient(ellipse 80% 45% at 50% 0%, var(--progress-subtle), transparent);
   }
   .column {
     display: flex;
@@ -200,30 +213,59 @@
     gap: var(--tori-space-5);
     min-height: 0;
     padding: var(--tori-space-6);
-    border-left: var(--tori-border-thin) solid var(--border-default);
+    background: var(--canvas-card);
+    border-left: var(--tori-border-thin) solid var(--progress-border);
   }
   .activityList {
+    --dot: calc(7px * var(--ui-scale));
+    --time-col: calc(44px * var(--ui-scale));
     display: flex;
     flex-direction: column;
-    gap: var(--tori-space-4);
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
   }
+  /* A timeline: a dot per line, joined by a rule down to the next one. */
   .activityRow {
+    position: relative;
     display: grid;
-    grid-template-columns: calc(40px * var(--ui-scale)) minmax(0, 1fr);
-    gap: var(--tori-space-4);
-    font-size: var(--tori-text-sm);
+    grid-template-columns: var(--time-col) var(--dot) minmax(0, 1fr);
+    grid-template-areas: "time dot text";
+    column-gap: var(--tori-space-4);
+    padding-bottom: var(--tori-space-5);
+    font-size: var(--tori-text-md);
     line-height: var(--tori-line-normal);
   }
+  .activityRow::before {
+    content: "";
+    grid-area: dot;
+    width: var(--dot);
+    height: var(--dot);
+    margin-top: calc((1lh - var(--dot)) / 2);
+    border-radius: var(--tori-radius-pill);
+    background: var(--status-progress);
+  }
+  .activityRow:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: calc(1lh / 2 + var(--dot));
+    bottom: 0;
+    left: calc(var(--time-col) + var(--tori-space-4) + var(--dot) / 2);
+    width: var(--tori-border-thin);
+    background: var(--progress-border);
+  }
   .activityTime {
+    grid-area: time;
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
+    font-size: var(--tori-text-sm);
     color: var(--fg-subtle);
   }
   .activityText {
+    grid-area: text;
     color: var(--fg-muted);
+  }
+  .activityRow[data-needs-you="true"]::before {
+    background: var(--status-needs-you);
   }
   .activityRow[data-needs-you="true"] .activityTime {
     color: var(--needs-you-on-subtle);
@@ -238,9 +280,9 @@
     gap: var(--tori-space-4);
     padding: var(--tori-space-4) var(--tori-space-5);
     border-radius: var(--tori-radius-md);
-    background: var(--neutral-subtle);
-    font-size: var(--tori-text-xs);
-    color: var(--fg-muted);
+    background: var(--progress-subtle);
+    font-size: var(--tori-text-sm);
+    color: var(--progress-on-subtle);
   }
   .shieldIcon {
     flex: none;

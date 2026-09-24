@@ -1104,7 +1104,9 @@ function App() {
           <WindowControls showSidebar={showSidebar()} />
         </div>
         <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
-        <CockpitSwitch />
+        <div class="topbar-center">
+          <CockpitSwitch />
+        </div>
         <DevBadge />
         <UsageStrip />
         <UpdatePill suppressed={firstRunOpen()} />
