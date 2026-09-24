@@ -210,6 +210,7 @@ pub struct TauriBackend {
     pub bridge: Arc<Bridge>,
     pub asks: Arc<Asks>,
     pub autopilot: Arc<AutopilotStore>,
+    pub runner: Arc<super::runner::Runner>,
 }
 
 impl TauriBackend {
@@ -497,6 +498,10 @@ impl Backend for TauriBackend {
             "prompt": params.prompt,
             "attach": attach,
             "background": background,
+            "spawner": match principal {
+                Principal::Session(Caller::Chat(spawner)) if background => Some(spawner.clone()),
+                _ => None,
+            },
         });
         let mut spawned = self.bridge.request("session.spawn", request)?;
         if let Some(id) = spawned["id"].as_str() {
@@ -649,7 +654,7 @@ impl Backend for TauriBackend {
     }
 
     fn autopilot_state(&self) -> Result<Value, RpcError> {
-        super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
+        let mut state = super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
             let reported = self.states.snapshot().into_iter().filter(|(_, state)| *state != SessionState::Ended).map(|(id, _)| id);
             let chats = self.app.state::<ChatState>().0.live_sessions().into_iter().map(|(id, _)| id);
             let prs = crate::autopilot::open_prs(items)
@@ -661,7 +666,9 @@ impl Backend for TauriBackend {
                 })
                 .collect();
             Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items), prs }
-        })
+        })?;
+        state["runner"] = json!(self.runner.status());
+        Ok(state)
     }
 
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError> {
@@ -681,6 +688,16 @@ impl Backend for TauriBackend {
         let resolved = super::server::hold_resolve(&self.asks, &params.id)?;
         let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
         Ok(resolved)
+    }
+
+    fn autopilot_start(&self) -> Result<Value, RpcError> {
+        let status = self.runner.start().map_err(refused)?;
+        Ok(json!(status))
+    }
+
+    fn autopilot_stop(&self) -> Result<Value, RpcError> {
+        let status = self.runner.stop().map_err(refused)?;
+        Ok(json!(status))
     }
 }
 

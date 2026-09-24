@@ -234,6 +234,39 @@ impl Asks {
         }
     }
 
+    // A restarted autopilot is a new session id: what the old one asked, and the
+    // worker cards mirrored to it, belong to the new one. Returns the moved asks.
+    pub fn rebind_session(&self, from: &str, to: &str) -> Vec<Ask> {
+        let (moved, holds) = {
+            let mut held = self.held();
+            let mut moved = Vec::new();
+            for entry in held.values_mut() {
+                let mut touched = entry.ask.session == from;
+                if touched {
+                    entry.ask.session = to.to_string();
+                }
+                for shown in entry.ask.shown_in.iter_mut().filter(|s| *s == from) {
+                    *shown = to.to_string();
+                    touched = true;
+                }
+                entry.ask.shown_in.dedup();
+                if touched {
+                    moved.push(entry);
+                }
+            }
+            let holds: Vec<Hold> = moved.iter().filter_map(|h| hold_of(h)).collect();
+            let moved: Vec<Ask> = moved.into_iter().map(|h| h.ask.clone()).collect();
+            if !holds.is_empty() {
+                self.save(&held);
+            }
+            (moved, holds)
+        };
+        for hold in holds {
+            self.publish(Some(hold), false);
+        }
+        moved
+    }
+
     pub fn answer(&self, id: &str, answer: String, by: By) -> Result<(), NotAnswered> {
         let hold = {
             let mut held = self.held();

@@ -19,7 +19,7 @@ use super::acp_sessions;
 use super::acp_transport::AcpTransport;
 use super::approval;
 use super::claude_transport::ClaudeTransport;
-use super::host::{ChatState, SessionBridge, Spawned};
+use super::host::{ChatHost, ChatState, SessionBridge, Spawned};
 use super::mirror::Mirror;
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
@@ -28,7 +28,7 @@ use super::model::{
     QuestionAnswer,
 };
 use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
-use super::transport::{AgentTransport, StartSpec};
+use super::transport::{AgentTransport, Emit, StartSpec};
 
 /// Build a transport for a declared wire protocol.
 ///
@@ -202,8 +202,72 @@ pub async fn chat_spawn(
     // call already meets the approval gate, and its settings pre-allow the
     // outward tools that gate decides.
     background: Option<bool>,
+    // The session that spawned this worker, carried by the tab so a resume
+    // after a relaunch can link it back.
+    spawner: Option<String>,
     on_event: Channel<ChatEvent>,
 ) -> Result<SpawnResult, String> {
+    spawn_session(
+        &state.0,
+        SpawnRequest {
+            session_id,
+            tab_id,
+            agent_id,
+            cwd,
+            resume,
+            fork_from,
+            profile,
+            model,
+            mode,
+            effort,
+            extra_dirs,
+            visible,
+            background: background.unwrap_or(false),
+            spawner,
+        },
+        Box::new(move |event| {
+            let _ = on_event.send(event);
+        }),
+    )
+}
+
+/// What `chat_spawn` takes, for a caller that has no webview to hand a
+/// `Channel` from.
+pub struct SpawnRequest {
+    pub session_id: String,
+    pub tab_id: String,
+    pub agent_id: String,
+    pub cwd: String,
+    pub resume: bool,
+    pub fork_from: Option<String>,
+    pub profile: Option<String>,
+    pub model: Option<String>,
+    pub mode: Option<String>,
+    pub effort: Option<String>,
+    pub extra_dirs: Vec<String>,
+    pub visible: bool,
+    pub background: bool,
+    pub spawner: Option<String>,
+}
+
+/// `chat_spawn` with the sink passed in, so Rust can start a session too.
+pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<SpawnResult, String> {
+    let SpawnRequest {
+        session_id,
+        tab_id,
+        agent_id,
+        cwd,
+        resume,
+        fork_from,
+        profile,
+        model,
+        mode,
+        effort,
+        extra_dirs,
+        visible,
+        background,
+        spawner,
+    } = req;
     let adapter = agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
     let chat = adapter
         .chat
@@ -213,7 +277,6 @@ pub async fn chat_spawn(
     // A re-subscribe must not go through the claim at all: the session is
     // already ours, and re-claiming would report `AlreadyMineFocus` and refuse to
     // rewire the tab that is asking.
-    let host = &state.0;
     let live = host.is_live(&session_id);
 
     // **A remount rewires and stops.** Everything below builds a *new* capture
@@ -226,9 +289,7 @@ pub async fn chat_spawn(
         let spawned = host.spawn(
             &session_id,
             &tab_id,
-            Box::new(move |event| {
-                let _ = on_event.send(event);
-            }),
+            emit,
             StartSpec::default(),
             // The live session already owns its mirror; the rewire path reuses
             // that one and ignores this.
@@ -310,9 +371,11 @@ pub async fn chat_spawn(
         effort.as_deref(),
         &extra_dirs,
     );
-    let background = background.unwrap_or(false);
     if background {
         crate::rpc::mark_background(&session_id);
+        if let (true, Some(spawner)) = (resume, &spawner) {
+            crate::rpc::mark_resumed_worker(&session_id, spawner);
+        }
     }
     args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), chat.transport, background)?);
 
@@ -346,9 +409,7 @@ pub async fn chat_spawn(
     let spawned = host.spawn(
         &session_id,
         &tab_id,
-        Box::new(move |event| {
-            let _ = on_event.send(event);
-        }),
+        emit,
         spec,
         mirror,
         move || {

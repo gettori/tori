@@ -712,6 +712,24 @@ pub struct Format {
     pub disabled: Vec<String>,
 }
 
+/// What the autopilot session runs as. `enabled` is written only by
+/// `autopilot.start` and `autopilot.stop`, so `set_settings` keeps the file's
+/// value over the frontend's copy. An unset agent means claude.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Autopilot {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -759,6 +777,8 @@ pub struct Settings {
     pub dap: Dap,
     #[serde(default)]
     pub format: Format,
+    #[serde(default)]
+    pub autopilot: Autopilot,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -899,9 +919,11 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     let store = crate::exec::named_lock("settings");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut settings = settings;
-    // Rust writes the picks (`edit_forge_picks`), and the frontend's copy of
-    // them can be older than the file.
-    settings.forge.picks = load_from(&settings_path()).forge.picks;
+    // Rust writes the picks (`edit_forge_picks`) and the autopilot's switch, and
+    // the frontend's copy of either can be older than the file.
+    let on_disk = load_from(&settings_path());
+    settings.forge.picks = on_disk.forge.picks;
+    settings.autopilot.enabled = on_disk.autopilot.enabled;
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
     Ok(settings)
@@ -919,6 +941,24 @@ pub fn forget_default_profile(adapter_id: &str, profile_id: &str) {
     let store = crate::exec::named_lock("settings");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     forget_default_profile_in(&settings_path(), adapter_id, profile_id);
+}
+
+/// Load-modify-save on the autopilot's switch, under the same lock and for the
+/// same reason as `forget_default_profile`.
+pub fn set_autopilot_enabled(enabled: bool) -> Result<(), String> {
+    let store = crate::exec::named_lock("settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let path = settings_path();
+    let mut settings = load_from(&path);
+    if settings.autopilot.enabled == enabled {
+        return Ok(());
+    }
+    settings.autopilot.enabled = enabled;
+    save_to(&path, &settings)
+}
+
+pub fn autopilot() -> Autopilot {
+    load_from(&settings_path()).autopilot
 }
 
 /// Load-modify-save on the forge picks, under the same lock and for the same
