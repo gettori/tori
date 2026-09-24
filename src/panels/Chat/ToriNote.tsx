@@ -13,6 +13,8 @@ export function toriLabel(note: ToriNote, sessionName: (id: string) => string | 
   switch (note.kind) {
     case "brief":
       return "Tori started the autopilot with its brief";
+    case "resume":
+      return "Tori resumed the autopilot";
     case "wake": {
       const whats = note.body.split("\n").map(wakeWhat).filter((w): w is string => !!w);
       return whats.length ? `Tori: a worker reports ${whats.join("; ")}` : "Tori woke the autopilot";

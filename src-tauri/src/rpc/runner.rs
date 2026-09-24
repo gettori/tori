@@ -1,10 +1,11 @@
 //! The autopilot's own session: started, stopped and restarted by Rust, so it
 //! runs with no tab open. See [[adr_autopilot_is_a_session_not_a_state_machine]].
 //!
-//! Every start is a fresh session id. What an earlier id held (its workers, its
-//! holds, the approval cards mirrored to it) moves to the new one, and
-//! `runner.json` keeps the ids it retired so a worker resumed after a relaunch
-//! still finds its way back.
+//! A start resumes the last session unless it died; see
+//! [[adr_every_autopilot_start_is_a_fresh_session]]. A fresh id takes over what
+//! the earlier one held (its workers, its holds, the approval cards mirrored to
+//! it), and `runner.json` keeps the ids it retired so a worker resumed after a
+//! relaunch still finds its way back.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -30,6 +31,9 @@ const BRIEF: &str = "resources/autopilot/brief.md";
 // An ACP agent answers `session/new` before it can take a model or a turn.
 const STARTED_TIMEOUT: Duration = Duration::from_secs(60);
 const RETIRED_KEPT: usize = 20;
+// The brief is already in a resumed transcript; this restarts its opening steps.
+const RESUMED: &str = "Tori stopped you and has now resumed this session. Start the way the brief says: \
+read the state, reconcile it, and tell me in one short message what changed while you were not running.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,13 +59,11 @@ pub struct Status {
     // Where the session runs, for a view that attaches to it.
     pub cwd: Option<String>,
     pub error: Option<RunnerError>,
-    // When it was turned on, in ms; a restart after a death keeps it.
-    pub since: Option<u64>,
 }
 
 impl Status {
     fn off() -> Self {
-        Self { state: RunnerState::Off, session: None, agent: None, cwd: None, error: None, since: None }
+        Self { state: RunnerState::Off, session: None, agent: None, cwd: None, error: None }
     }
 
     // Keeps the session that failed, so its transcript can still be read.
@@ -94,6 +96,12 @@ struct RunnerFile {
     previous: Option<String>,
     #[serde(default)]
     retired: Vec<String>,
+    // The agent the current session runs on; another agent cannot resume it.
+    #[serde(default)]
+    agent: Option<String>,
+    // The current session ended in a death, so its transcript may not resume.
+    #[serde(default)]
+    died: bool,
 }
 
 impl RunnerFile {
@@ -101,8 +109,14 @@ impl RunnerFile {
         std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
 
+    fn resumable(&self, agent: &str) -> Option<String> {
+        self.current.clone().filter(|_| !self.died && self.agent.as_deref() == Some(agent))
+    }
+
     // The id the new session replaces, if there was one.
-    fn start(&mut self, id: &str) -> Option<String> {
+    fn start(&mut self, id: &str, agent: &str) -> Option<String> {
+        self.died = false;
+        self.agent = Some(agent.to_string());
         let previous = self.current.replace(id.to_string());
         if let Some(prev) = &previous {
             self.retired.retain(|r| r != prev);
@@ -199,7 +213,7 @@ impl Runner {
             Some("session.turn_ended") => self.set_turn(id, RunnerState::Idle),
             Some("session.ended") => {
                 let reason = serde_json::from_value(event["reason"].clone()).unwrap_or(EndReason::Closed);
-                self.ended(reason);
+                self.ended(id, reason);
             }
             _ => {}
         }
@@ -210,7 +224,7 @@ impl Runner {
         self.set(Status { state, session: Some(id.to_string()), error: None, ..status });
     }
 
-    fn ended(self: &Arc<Self>, reason: EndReason) {
+    fn ended(self: &Arc<Self>, id: &str, reason: EndReason) {
         let next = {
             let mut inner = self.inner();
             let next = after_end(reason, inner.deaths);
@@ -219,6 +233,9 @@ impl Runner {
             }
             next
         };
+        if reason == EndReason::Died {
+            self.mark_died(id);
+        }
         match next {
             AfterEnd::Restart => self.launch(),
             AfterEnd::Fail => self.set(self.status().failed(
@@ -243,14 +260,20 @@ impl Runner {
     // restart comes from the publishing thread while the old session is still
     // being torn down.
     fn launch(self: &Arc<Self>) {
-        let id = new_session_id();
         let agent = crate::settings::autopilot().agent;
+        let resume = RunnerFile::load(&self.file_path()).resumable(&agent);
+        let id = resume.clone().unwrap_or_else(new_session_id);
         let cwd = Some(self.session_dir().to_string_lossy().into_owned());
-        let since = self.status().since.or_else(|| Some(crate::owned_state::now_ms()));
-        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None, since });
+        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None });
         let runner = self.clone();
         std::thread::spawn(move || {
-            if let Err(detail) = runner.launch_as(&id) {
+            let mut id = id;
+            let mut result = runner.launch_as(&id, resume.is_some());
+            if result.is_err() && resume.is_some() && runner.is_current(&id) {
+                id = runner.start_fresh_instead(&id);
+                result = runner.launch_as(&id, false);
+            }
+            if let Err(detail) = result {
                 if runner.is_current(&id) {
                     runner.set(runner.status().failed("The autopilot could not start", detail));
                 }
@@ -258,11 +281,32 @@ impl Runner {
         });
     }
 
+    // A resume that failed falls back to a fresh session. The status names the
+    // new id first, so the old one's end is not read as the autopilot's.
+    fn start_fresh_instead(&self, old: &str) -> String {
+        let fresh = new_session_id();
+        self.set(Status { session: Some(fresh.clone()), ..self.status() });
+        let _ = self.app.state::<ChatState>().0.close(old, EndReason::Closed);
+        fresh
+    }
+
+    fn mark_died(&self, id: &str) {
+        let path = self.file_path();
+        let mut file = RunnerFile::load(&path);
+        if file.current.as_deref() != Some(id) {
+            return;
+        }
+        file.died = true;
+        if let Ok(text) = serde_json::to_string_pretty(&file) {
+            let _ = write_atomically(&path, &text);
+        }
+    }
+
     fn is_current(&self, id: &str) -> bool {
         self.inner().status.session.as_deref() == Some(id)
     }
 
-    fn launch_as(&self, id: &str) -> Result<(), String> {
+    fn launch_as(&self, id: &str, resume: bool) -> Result<(), String> {
         let brief = self.brief()?;
         let picks = crate::settings::autopilot();
         let agent_id = picks.agent.clone();
@@ -270,13 +314,15 @@ impl Runner {
         let transport = adapter.chat.as_ref().ok_or_else(|| format!("{} has no chat transport", adapter.label))?.transport;
         let acp = matches!(transport, ChatTransport::Acp);
 
-        let path = self.file_path();
-        let mut file = RunnerFile::load(&path);
-        if let Some(previous) = file.start(id) {
-            self.rebind(&previous, id);
+        if !resume {
+            let path = self.file_path();
+            let mut file = RunnerFile::load(&path);
+            if let Some(previous) = file.start(id, &agent_id) {
+                self.rebind(&previous, id);
+            }
+            std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+            write_atomically(&path, &serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?)?;
         }
-        std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
-        write_atomically(&path, &serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?)?;
 
         let cwd = self.session_dir();
         std::fs::create_dir_all(&cwd).map_err(|e| format!("could not make {}: {e}", cwd.display()))?;
@@ -291,7 +337,7 @@ impl Runner {
                 tab_id: format!("autopilot-{id}"),
                 agent_id,
                 cwd: cwd.to_string_lossy().into_owned(),
-                resume: false,
+                resume,
                 fork_from: None,
                 profile: picks.profile.clone(),
                 // An ACP pick is a request after open, sent below.
@@ -324,7 +370,11 @@ impl Runner {
                 host.set_model(id, model, picks.effort.clone())?;
             }
         }
-        let text = super::events::from_tori("brief", None, &brief);
+        let text = if resume {
+            super::events::from_tori("resume", None, RESUMED)
+        } else {
+            super::events::from_tori("brief", None, &brief)
+        };
         host.deliver(id, vec![ContentBlock::Text { text }], false, TurnBy::Local)
     }
 
@@ -427,11 +477,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("runner.json");
         let mut file = RunnerFile::load(&path);
-        file.start("s1");
+        file.start("s1", "claude");
         write_atomically(&path, &serde_json::to_string(&file).unwrap()).unwrap();
 
         let mut file = RunnerFile::load(&path);
-        let previous = file.start("s2").expect("the file kept the old id");
+        let previous = file.start("s2", "claude").expect("the file kept the old id");
         assert_eq!(previous, "s1");
         let (states, asks, held, workers) = restart(&dir, &previous, "s2");
         assert_moved(&states, &asks, &held, &workers, "s2");
