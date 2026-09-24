@@ -23,6 +23,8 @@ export type ItemRow = {
   created: number;
   updated: number;
   note?: string | null;
+  title?: string | null;
+  contract?: string | null;
   session_live?: boolean;
 };
 
@@ -56,7 +58,8 @@ export function itemRef(item: ItemRow): Ref {
   return /^\d+$/.test(item.source.key) ? Number(item.source.key) : item.source.key;
 }
 
-const itemTitle = (item: ItemRow) => `${item.kind === "review" ? "Review" : "Ship"} in ${lastSegment(item.project)}`;
+const itemTitle = (item: ItemRow) =>
+  item.title || `${item.kind === "review" ? "Review" : "Ship"} in ${lastSegment(item.project)}`;
 
 const inFlight = (items: ItemRow[]) =>
   items.filter((i) => i.state === "running" || i.state === "waiting_on_you").sort((a, b) => a.created - b.created);
@@ -80,6 +83,7 @@ export const workerCards = (items: ItemRow[]): WorkerCard[] =>
   inFlight(items).map((i) => ({
     refNumber: itemRef(i),
     title: itemTitle(i),
+    contract: i.contract ?? undefined,
     branch: i.worktree ? lastSegment(i.worktree) : "",
     diff: "",
     status: workerStatus(i),

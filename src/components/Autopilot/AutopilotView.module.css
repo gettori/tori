@@ -73,6 +73,19 @@
     color: var(--fg-subtle);
   }
 
+  .contract {
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+  .contract > summary {
+    cursor: pointer;
+    color: var(--fg-subtle);
+  }
+  .contractText {
+    margin: var(--tori-space-2) 0 0;
+    white-space: pre-wrap;
+  }
+
   .log {
     padding: var(--tori-space-3) var(--tori-space-4);
     border-radius: var(--tori-radius-md);

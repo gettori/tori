@@ -39,6 +39,8 @@ export type InFlightRow = { refNumber: Ref; branch: string; status: WorkerStatus
 export type WorkerCard = {
   refNumber: Ref;
   title: string;
+  /** What to build, how it ships and what is out of scope. */
+  contract?: string;
   branch: string;
   /** Line counts, e.g. "+73 -11". */
   diff: string;

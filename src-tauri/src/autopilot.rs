@@ -78,6 +78,10 @@ pub struct Item {
     pub updated: u64,
     #[serde(default)]
     pub note: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub contract: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -158,6 +162,8 @@ pub struct Patch {
     pub session: Option<String>,
     pub pr_url: Option<String>,
     pub note: Option<String>,
+    pub title: Option<String>,
+    pub contract: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -222,6 +228,8 @@ fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: im
                         created: now,
                         updated: now,
                         note: None,
+                        title: None,
+                        contract: None,
                     });
                     items.len() - 1
                 }
@@ -235,6 +243,8 @@ fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: im
         (&mut item.session, patch.session),
         (&mut item.pr_url, patch.pr_url),
         (&mut item.note, patch.note),
+        (&mut item.title, patch.title),
+        (&mut item.contract, patch.contract),
     ] {
         if value.is_some() {
             *field = value;
@@ -617,6 +627,8 @@ pub mod tests {
             created: 1,
             updated: 1,
             note: None,
+            title: None,
+            contract: None,
         }
     }
 
@@ -624,9 +636,20 @@ pub mod tests {
     fn a_reopened_store_reads_back_what_was_written() {
         let dir = temp_dir("round-trip");
         let store = quiet(&dir);
-        let made = store.update(issue("12"), Patch { session: Some("s1".into()), note: Some("started".into()), ..state(State::Running) }).unwrap();
+        let patch = Patch {
+            session: Some("s1".into()),
+            note: Some("started".into()),
+            title: Some("Fix the login redirect".into()),
+            contract: Some("Build: the redirect. Ships: a PR. Out: the signup page.".into()),
+            ..state(State::Running)
+        };
+        let made = store.update(issue("12"), patch).unwrap();
         let again = quiet(&dir);
         assert_eq!(again.lock().items, vec![made.clone()]);
+        assert_eq!(made.title.as_deref(), Some("Fix the login redirect"));
+        let old = r#"{"id": "i1", "kind": "ship", "source": {"type": "pr", "number": 7, "repo": "o/r"}, "project": "/p", "state": "queued", "created": 1, "updated": 1}"#;
+        let old: Item = serde_json::from_str(old).unwrap();
+        assert_eq!((old.title, old.contract), (None, None), "an item written before these fields still loads");
         let log = std::fs::read_to_string(dir.join(LOG)).unwrap();
         assert_eq!(log.lines().count(), 1, "one line per write");
         assert_eq!(again.update(Target::Id("nope".into()), Patch::default()), Err(UpdateError::NoItem("nope".into())));
