@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, IssueGetParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -552,8 +552,16 @@ impl Backend for TauriBackend {
             Some(draft) => Some(Approval { project: self.project(&principal, params.project)?, draft }),
             None => None,
         };
+        if let Some(item) = &params.item {
+            if approval.is_none() {
+                return Err(RpcError::new(INVALID_PARAMS, "item goes with an approval: only an approval holds an item up"));
+            }
+            if !self.autopilot.has(item) {
+                return Err(RpcError::new(INVALID_PARAMS, format!("no autopilot item {item}")));
+            }
+        }
         let mirror = self.states.root_background(session);
-        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default(), approval, mirror);
+        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default(), approval, mirror, params.item);
         if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
             self.asks.forget(&ask.id);
             return Err(e);
@@ -641,7 +649,7 @@ impl Backend for TauriBackend {
     }
 
     fn autopilot_state(&self) -> Result<Value, RpcError> {
-        super::server::autopilot_state(&self.autopilot, |items| {
+        super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
             let reported = self.states.snapshot().into_iter().filter(|(_, state)| *state != SessionState::Ended).map(|(id, _)| id);
             let chats = self.app.state::<ChatState>().0.live_sessions().into_iter().map(|(id, _)| id);
             Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items) }
@@ -659,6 +667,12 @@ impl Backend for TauriBackend {
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError> {
         let project = self.project(principal, params.project.clone())?;
         params.apply(&self.autopilot, project)
+    }
+
+    fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError> {
+        let resolved = super::server::hold_resolve(&self.asks, &params.id)?;
+        let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
+        Ok(resolved)
     }
 }
 
