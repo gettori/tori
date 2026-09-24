@@ -4,6 +4,8 @@ import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { type ToriNote } from "../../utils/toriNote";
 import { findSession } from "../../utils/sessionStore";
+// The tray's template mark: one colour, so it can take the text's.
+import toriMark from "../../../src-tauri/icons/tray.png";
 import styles from "./Chat.module.css";
 
 // A wake line is `item <id>: <what>, session <sid>` or `session <sid>: <what>`.
@@ -36,7 +38,7 @@ export default function ToriNoteRow(props: { note: ToriNote }) {
   return (
     <div class={styles.toriRow}>
       <div class={styles.toriLine}>
-        <img class={styles.toriMark} src="/favicon.png" alt="" draggable={false} />
+        <span class={styles.toriMark} style={{ "--mark": `url(${toriMark})` }} aria-hidden="true" />
         <span>{toriLabel(props.note, nameOf)}</span>
         <Tooltip
           as="button"
