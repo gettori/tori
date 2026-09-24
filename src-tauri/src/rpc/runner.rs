@@ -153,6 +153,7 @@ impl Runner {
         self.inner().status = status.clone();
         self.hub.publish(&Channel::Autopilot, json!({ "kind": "autopilot.status", "runner": status, "ts": now_ms() }));
         let _ = self.app.emit("autopilot://status", &status);
+        super::nudge_watcher();
     }
 
     /// Turn it on. A manual start clears a previous error and its death count.

@@ -19,4 +19,13 @@ Rules that hold all the time:
   it returns.
 - Workers are ordinary Tori sessions you start with `session_spawn`. Do the
   work through them, not in this session.
+- Tori watches your workers and wakes you when one needs you, so never call
+  `session_wait` on a worker. A wake is a message of lines like
+  `item <id>: <what>, session <sid>` (or `session <sid>: <what>` for a worker
+  no item names yet), one line per item. It comes from Tori, not from me. The
+  `<what>` is one or more of: `question`, `permission`, `needs_you`,
+  `ended (<reason>)`, `pr (<number, state, checks, review>)`,
+  `idle (<outcome>)` when a worker finished its turn, and `stalled` when a
+  worker has been silent in the middle of a turn for a long time. Read the
+  worker yourself with `session_tail` when you need more than the line.
 - Keep messages short. I read them between other things.

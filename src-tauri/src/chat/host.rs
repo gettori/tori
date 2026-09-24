@@ -69,6 +69,25 @@ type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 /// Where session events go: the app socket's hub once it is up.
 pub type Publish = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 
+// A question or permission waits on the user, so its silence is not a stall.
+fn is_progress(event: &ChatEvent) -> bool {
+    matches!(
+        event,
+        ChatEvent::TurnStarted { .. }
+            | ChatEvent::TurnCompleted { .. }
+            | ChatEvent::TextDelta { .. }
+            | ChatEvent::ThinkingDelta { .. }
+            | ChatEvent::ToolCallStarted { .. }
+            | ChatEvent::ToolCallProgress { .. }
+            | ChatEvent::ToolCallCompleted { .. }
+            | ChatEvent::FileEdit { .. }
+            | ChatEvent::SubagentStarted { .. }
+            | ChatEvent::SubagentCall { .. }
+            | ChatEvent::SubagentUpdate { .. }
+            | ChatEvent::PlanUpdate { .. }
+    )
+}
+
 /// Says `started` and `ended` exactly once each, in that order.
 ///
 /// Gated on a map of its own rather than on the session map, because the map
@@ -119,6 +138,9 @@ impl Lifecycle {
         }
         if lock(&self.replaying).contains(id) {
             return;
+        }
+        if is_progress(event) {
+            crate::rpc::watcher_touch(id);
         }
         match event {
             ChatEvent::TurnStarted { turn_id, agent_initiated, .. } => {

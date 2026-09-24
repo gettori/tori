@@ -265,7 +265,12 @@ fn pr_key(item: &Item) -> Option<PrKey> {
     if let Source::Pr { number, repo } = &item.source {
         return Some((repo.to_lowercase(), *number));
     }
-    let url = item.pr_url.as_deref()?.trim_end_matches('/');
+    pr_key_of_url(item.pr_url.as_deref()?)
+}
+
+// A GitHub `/pull/N` or GitLab `/-/merge_requests/N` URL.
+fn pr_key_of_url(url: &str) -> Option<PrKey> {
+    let url = url.trim_end_matches('/');
     let (rest, number) = url.rsplit_once('/')?;
     let repo_url = rest.strip_suffix("/pull").or_else(|| rest.strip_suffix("/-/merge_requests"))?;
     let (_host, repo) = repo_url.split_once("://").map_or(repo_url, |(_, path)| path).split_once('/')?;
@@ -533,6 +538,28 @@ impl AutopilotStore {
         }
         let held = self.lock();
         Snapshot { items: reconcile(&held.items, &seen.live, &seen.worktrees), projects: held.projects.clone() }
+    }
+
+    /// The open item `session` works on.
+    pub fn item_for_session(&self, session: &str) -> Option<String> {
+        self.lock().items.iter().find(|i| !i.state.terminal() && i.session.as_deref() == Some(session)).map(|i| i.id.clone())
+    }
+
+    /// Open items a pull request event is about, as (item, its session): by the
+    /// PR itself, or by the worktree it is checked out in, so an item hears of
+    /// its PR after its worker ended.
+    pub fn items_for_pr(&self, url: Option<&str>, worktree: Option<&str>) -> Vec<(String, Option<String>)> {
+        let key = url.and_then(pr_key_of_url);
+        self.lock()
+            .items
+            .iter()
+            .filter(|i| !i.state.terminal())
+            .filter(|i| {
+                (key.is_some() && pr_key(i) == key)
+                    || worktree.zip(i.worktree.as_deref()).is_some_and(|(a, b)| same_folder(a, b))
+            })
+            .map(|i| (i.id.clone(), i.session.clone()))
+            .collect()
     }
 
     pub fn session_ended(&self, session: &str) {

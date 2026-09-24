@@ -37,7 +37,8 @@ pub enum EndReason {
 }
 
 // On the wire: "user", {"session": id}, {"tab": id}, "local" for a caller Tori
-// did not spawn, "agent" for a turn the agent opened itself.
+// did not spawn, "agent" for a turn the agent opened itself, "watcher" for a
+// wake the autopilot's watcher sent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnBy {
@@ -46,6 +47,7 @@ pub enum TurnBy {
     Tab(String),
     Local,
     Agent,
+    Watcher,
 }
 
 // The deepest project holding `cwd`: a worktree sits inside its project's
@@ -90,6 +92,12 @@ mod tests {
         let projects = vec![PathBuf::from("/code/work"), PathBuf::from("/code/work/tori")];
         assert_eq!(project_of("/code/work/tori/wt/feat", &projects).as_deref(), Some("/code/work/tori"));
         assert_eq!(project_of("/elsewhere", &projects), None);
+    }
+
+    #[test]
+    fn a_wake_is_credited_to_the_watcher_on_the_wire() {
+        assert_eq!(serde_json::to_value(TurnBy::Watcher).unwrap(), "watcher");
+        assert_eq!(serde_json::to_value(TurnBy::Session("s1".into())).unwrap(), json!({ "session": "s1" }));
     }
 
     #[test]
