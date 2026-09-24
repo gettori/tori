@@ -1,5 +1,5 @@
 ---
-summary: rpc/runner.rs owns the autopilot session: fresh id per start, one restart only on a death, status from turn events
+summary: rpc/runner.rs owns the autopilot session: resumes it unless it died, one restart only on a death, status from turn events
 status: current
 updated: 2026-09-24
 source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205; commits eff34ef6, 4b309f03, 7dfdc1a9; src-tauri/src/rpc/runner.rs, src-tauri/src/rpc/mod.rs, src-tauri/src/settings.rs, src-tauri/resources/autopilot/brief.md
@@ -14,7 +14,7 @@ source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, 
 It owns the one autopilot session: spawning it, knowing its state, and handing its links on when it is replaced. It does **not** own what the autopilot decided (that is [[component_autopilot_store]]) or how anything is drawn ([[component_autopilot_cockpit]]).
 
 - **Start** writes `settings.autopilot.enabled = true`, resets the death count and launches unless one is running. **Stop** writes `enabled = false`, sets `off`, then closes the session with `Closed`. Only these two write `enabled`: `set_settings` keeps the file's value over the frontend's copy, the same rule as `forge.picks`, so a stale save from the panel cannot flip it.
-- **Launch** mints a fresh session id ([[adr_every_autopilot_start_is_a_fresh_session]]), sets `starting` with the agent and cwd, and runs the rest on a thread: an ACP agent can take a minute to open. It reads the bundled `resources/autopilot/brief.md`, records the id in `runner.json`, rebinds the previous id's links, and calls `chat::commands::spawn_session` with `background: true`, `visible: false`, cwd `~/.config/tori/autopilot/session/` ([[component_chat_host]]). A stop that lands mid start closes the fresh session once it spawns.
+- **Launch** resumes `runner.json`'s current id when it did not die and runs on the same agent, else mints a fresh one ([[adr_every_autopilot_start_is_a_fresh_session]]). It sets `starting` with the agent and cwd and runs the rest on a thread: an ACP agent can take a minute to open. A fresh start records the id and agent in `runner.json`, rebinds the previous id's links and delivers the bundled `resources/autopilot/brief.md`; a resume delivers a short `resume` note. Both go through `chat::commands::spawn_session` with `background: true`, `visible: false`, cwd `~/.config/tori/autopilot/session/` ([[component_chat_host]]). A resume that fails to start falls back to a fresh id, closing the old one after the status names the new. A stop that lands mid start closes the session once it spawns. A death sets `died` in `runner.json`, so the restart is fresh.
 - **The model pick.** For claude, model and effort go in argv. For an ACP agent they are not argv: the runner's own sink waits (up to 60 s) for `SessionStarted`, then calls `set_model`, before delivering the brief.
 - **Restart** happens only on a `died` end, and only once; a second death sets `error {title, detail}` and keeps the dead session id so its transcript can be read. `closed` and `killed` never restart, so app shutdown neither restarts nor touches `enabled`. A manual start resets the count.
 - **Autostart** at launch when `enabled` is set, called from `lib.rs` after the state is managed.
@@ -38,7 +38,7 @@ Status goes out twice: as the socket kind `autopilot.status` on the `autopilot` 
 ## Related
 
 - [[adr_autopilot_is_a_session_not_a_state_machine]]: why the autopilot is a session at all
-- [[adr_every_autopilot_start_is_a_fresh_session]]: the fresh id and the rebind
+- [[adr_every_autopilot_start_is_a_fresh_session]]: resume or fresh, and the rebind
 - [[adr_a_background_session_needs_a_tori_gate]]: what `background: true` buys
 - [[component_autopilot_cockpit]]: what draws the status
 - [[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]]: why the view attaches late
