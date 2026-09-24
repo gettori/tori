@@ -570,6 +570,8 @@ pub fn run() {
             rpc::autopilot_start,
             rpc::autopilot_stop,
             rpc::autopilot_status,
+            rpc::autopilot_state,
+            rpc::autopilot_log,
             model::model_context_caps,
             agent_config::agent_config_files,
             agent_config::agent_config_new,

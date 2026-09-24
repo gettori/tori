@@ -14,11 +14,16 @@ export function badgeCount(count: number): string {
 /** A worker's session as its dot shows it. */
 export type WorkerStatus = "working" | "running" | "idle" | "needs";
 
+/** An issue key or a pull request number, as `#` shows it. */
+export type Ref = number | string;
+
 export type ThreadMessage = { from: "me" | "autopilot" | "system"; text: string };
 
 export type Decision = {
+  /** The ask it answers. */
+  id?: string;
   kind: DecisionKind;
-  refNumber: number;
+  refNumber?: Ref;
   refKind?: "issue" | "pr";
   title: string;
   summary: string;
@@ -28,11 +33,11 @@ export type Decision = {
 };
 
 /** One item the autopilot is running, as a compact row. */
-export type InFlightRow = { refNumber: number; branch: string; status: WorkerStatus; doing: string };
+export type InFlightRow = { refNumber: Ref; branch: string; status: WorkerStatus; doing: string };
 
 /** One item the autopilot is running, as a card with its recent log. */
 export type WorkerCard = {
-  refNumber: number;
+  refNumber: Ref;
   title: string;
   branch: string;
   /** Line counts, e.g. "+73 -11". */
@@ -45,7 +50,7 @@ export type WorkerCard = {
   progress?: number;
 };
 
-export type QueuedItem = { refNumber: number; title: string; after: number };
+export type QueuedItem = { refNumber: Ref; title: string; after?: Ref };
 
 export type ActivityItem = { time: string; text: string; needsYou?: boolean };
 

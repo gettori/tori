@@ -2,15 +2,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createSignal } from "solid-js";
 import type {
+  ActivityItem,
   AutopilotError,
   AutopilotState,
   AutopilotView,
+  Decision,
+  DecisionAction,
   ThreadMessage,
 } from "../components/Autopilot/autopilot";
 import type { ChatEvent } from "./chatTypes";
 import { pushToast } from "../components/Toasts/Toasts";
 import { on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
-import { allAsks, type SocketAsk } from "./socketAsks";
+import { allAsks, answerAsk, type SocketAsk } from "./socketAsks";
+import { activityOf, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
+import { findSession } from "./sessionStore";
 
 /** Mirrors `Status` in src-tauri/src/rpc/runner.rs. */
 export type RunnerStatus = {
@@ -97,6 +102,41 @@ export async function sendToAutopilot(text: string) {
   });
 }
 
+const [items, setItems] = createSignal<ItemRow[]>([]);
+const [holds, setHolds] = createSignal<Hold[]>([]);
+const [activity, setActivity] = createSignal<ActivityItem[]>([]);
+export { items, activity };
+
+const ACTIVITY_KEPT = 50;
+
+// Newest first; the log read at start is older than anything that arrived live meanwhile.
+function addActivity(events: AutopilotEvent[], older = false) {
+  const lines = events.flatMap((e) => activityOf(e, items()) ?? []).reverse();
+  setActivity((prev) => (older ? [...prev, ...lines] : [...lines, ...prev]).slice(0, ACTIVITY_KEPT));
+}
+
+let firstLive: number | null = null;
+
+function applyChange(e: AutopilotEvent) {
+  firstLive ??= e.ts;
+  const item = e.item;
+  if (item) setItems((prev) => (prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? item : i)) : [...prev, item]));
+  const hold = e.hold;
+  if (hold) setHolds((prev) => [...prev.filter((h) => h.ask !== hold.ask), ...(e.cleared ? [] : [hold])]);
+  addActivity([e]);
+}
+
+async function loadAutopilot() {
+  const state = await invoke<{ items: ItemRow[]; holds: Hold[] }>("autopilot_state").catch(() => null);
+  if (state) {
+    setItems(state.items);
+    setHolds(state.holds);
+  }
+  const logged = await invoke<AutopilotEvent[]>("autopilot_log", { limit: ACTIVITY_KEPT }).catch(() => []);
+  // A line at or after the first live event was already added by it.
+  addActivity(logged.filter((e) => firstLive === null || e.ts < firstLive), true);
+}
+
 let started = false;
 
 export function watchAutopilot() {
@@ -113,6 +153,8 @@ export function watchAutopilot() {
   void invoke<RunnerStatus>("autopilot_status")
     .then(setRunner)
     .catch(() => {});
+  void listen<AutopilotEvent>("autopilot://changed", (e) => applyChange(e.payload)).catch(() => {});
+  void loadAutopilot();
 }
 
 /** What waits on the user: every hold, and any other card shown in the autopilot's chat. */
@@ -146,6 +188,28 @@ export function autopilotState(
 
 export const decisions = () => decisionsFor(allAsks(), runner().session);
 export const autopilotNow = () => autopilotState(runner(), decisions().length);
+
+const askerName = (session: string) => {
+  const meta = findSession(session)?.session;
+  return meta?.name || meta?.title || session.slice(0, 8);
+};
+
+export const decisionCards = (): Decision[] => decisions().map((a) => decisionOf(a, items(), holds(), askerName));
+
+const openView = () => {
+  setPopupOpen(false);
+  setView("autopilot");
+};
+
+// Only an approval has a known yes and no; a question, or an edit or reply,
+// goes to the view's chat, where the card takes words.
+export function decide(action: DecisionAction, decision: Decision) {
+  const ask = allAsks().find((a) => a.id === decision.id);
+  if (!ask) return;
+  const answer = !ask.approval ? undefined : action === "approve" ? "Approve" : action === "dismiss" ? "Reject" : undefined;
+  if (answer === undefined) return openView();
+  answerAsk(ask.id, answer).catch((e) => pushToast(`The answer did not reach the asker: ${String(e)}`));
+}
 
 // The answer is not applied: `autopilot://status` carries every change, and a
 // late reply could overwrite a newer one.

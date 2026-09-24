@@ -11,6 +11,7 @@ import type {
   Decision,
   DecisionAction,
   QueuedItem,
+  Ref,
   ThreadMessage,
   WorkerCard,
 } from "./autopilot";
@@ -31,8 +32,8 @@ export interface AutopilotViewProps {
   shield: string;
   /** Shown in the error state. */
   error?: AutopilotError;
-  onWatch?: (refNumber: number) => void;
-  onOpenWorker?: (refNumber: number) => void;
+  onWatch?: (refNumber: Ref) => void;
+  onOpenWorker?: (refNumber: Ref) => void;
   onDecision?: (action: DecisionAction, decision: Decision) => void;
   onStart?: () => void;
   onRestart?: () => void;
@@ -71,7 +72,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
                   <span class={styles.cardTitle}>{w.title}</span>
                 </div>
                 <span class={styles.cardBranch}>
-                  {w.branch}, {w.diff}
+                  {w.diff ? `${w.branch}, ${w.diff}` : w.branch}
                 </span>
                 <div class={styles.log}>
                   <For each={w.log}>{(line) => <div class={styles.logLine}>{line}</div>}</For>
@@ -103,7 +104,9 @@ export default function AutopilotView(props: AutopilotViewProps) {
               <div class={styles.queued}>
                 <span class={styles.cardRef}>{ref(q.refNumber)}</span>
                 <span class={styles.queuedTitle}>{q.title}</span>
-                <span class={styles.queuedAfter}>after {ref(q.after)}</span>
+                <Show when={q.after !== undefined}>
+                  <span class={styles.queuedAfter}>after {ref(q.after!)}</span>
+                </Show>
               </div>
             )}
           </For>

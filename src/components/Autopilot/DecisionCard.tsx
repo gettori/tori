@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import { ArrowUpRight, Eye, GitMerge, GitPullRequest, MessageCircleQuestion, type LucideIcon } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
-import type { DecisionKind } from "./autopilot";
+import type { DecisionKind, Ref } from "./autopilot";
 import styles from "./DecisionCard.module.css";
 
 const KINDS: Record<DecisionKind, { label: string; icon: LucideIcon }> = {
@@ -15,7 +15,7 @@ const KINDS: Record<DecisionKind, { label: string; icon: LucideIcon }> = {
 export interface DecisionCardProps {
   kind: DecisionKind;
   /** The ticket or PR number the decision is about. */
-  refNumber: number;
+  refNumber?: Ref;
   /** A PR ref reads "PR #45", a ticket ref just "#123". */
   refKind?: "issue" | "pr";
   title: string;
@@ -44,13 +44,15 @@ export default function DecisionCard(props: DecisionCardProps) {
   const refText = () => `${props.refKind === "pr" ? "PR " : ""}#${props.refNumber}`;
 
   return (
-    <article class={styles.card} data-focused={props.focused ? "true" : "false"} aria-label={`${kind().label} ${refText()}`}>
+    <article class={styles.card} data-focused={props.focused ? "true" : "false"} aria-label={props.refNumber === undefined ? kind().label : `${kind().label} ${refText()}`}>
       <header class={styles.head}>
         <span class={styles.kind}>
           <Icon icon={kind().icon} class={styles.kindIcon} />
           {kind().label}
         </span>
-        <span class={styles.ref}>{refText()}</span>
+        <Show when={props.refNumber !== undefined}>
+          <span class={styles.ref}>{refText()}</span>
+        </Show>
         <span class={styles.title}>{props.title}</span>
         <span class={styles.age}>{props.age}</span>
       </header>

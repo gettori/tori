@@ -79,6 +79,15 @@ impl RpcState {
     }
 }
 
+// The webview is not a socket subscriber, so the channel is mirrored to it.
+fn autopilot_publisher(hub: &Arc<Hub>, app: &AppHandle) -> Box<dyn Fn(Value) + Send + Sync> {
+    let (hub, app) = (hub.clone(), app.clone());
+    Box::new(move |event| {
+        let _ = app.emit("autopilot://changed", &event);
+        hub.publish(&Channel::Autopilot, event);
+    })
+}
+
 pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let transport = Arc::new(UnixTransport::bind()?);
     let token = crate::chat::approval::random_token();
@@ -90,14 +99,9 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
         REPLY_TIMEOUT,
     ));
-    let holds_hub = hub.clone();
-    let asks = Arc::new(Asks::with_holds(
-        crate::autopilot::dir().join("holds.json"),
-        Box::new(move |event| holds_hub.publish(&Channel::Autopilot, event)),
-    ));
-    let autopilot_hub = hub.clone();
+    let asks = Arc::new(Asks::with_holds(crate::autopilot::dir().join("holds.json"), autopilot_publisher(&hub, &app)));
     let autopilot = Arc::new(
-        AutopilotStore::open(crate::autopilot::dir(), Box::new(move |event| autopilot_hub.publish(&Channel::Autopilot, event)))
+        AutopilotStore::open(crate::autopilot::dir(), autopilot_publisher(&hub, &app))
             .on_closed(withdraw_holds(asks.clone(), bridge.clone())),
     );
     let runner = Arc::new(Runner::new(
@@ -249,6 +253,26 @@ pub fn autopilot_start(rpc: tauri::State<RpcState>) -> Result<runner::Status, St
 #[tauri::command]
 pub fn autopilot_stop(rpc: tauri::State<RpcState>) -> Result<runner::Status, String> {
     rpc.runner.stop()
+}
+
+// Async: reading it asks the forge for open pull requests.
+#[tauri::command(async)]
+pub fn autopilot_state(app: AppHandle, rpc: tauri::State<RpcState>) -> Result<Value, String> {
+    use server::Backend;
+    let backend = methods::TauriBackend {
+        app,
+        states: rpc.states.clone(),
+        bridge: rpc.bridge.clone(),
+        asks: rpc.asks.clone(),
+        autopilot: rpc.autopilot.clone(),
+        runner: rpc.runner.clone(),
+    };
+    backend.autopilot_state().map_err(|e| e.message)
+}
+
+#[tauri::command]
+pub fn autopilot_log(rpc: tauri::State<RpcState>, limit: usize) -> Vec<Value> {
+    rpc.autopilot.recent_log(limit)
 }
 
 #[tauri::command]
