@@ -35,6 +35,7 @@ import {
   type Checkpoints,
   type PanePins,
   type Agent,
+  type AutopilotSettings,
   type Typography,
   type ActiveLineHighlight,
   type EditorDefaults,
@@ -94,6 +95,8 @@ export const setBudgets = (b: Partial<Budgets>) =>
   saveSettings({ ...settings, budgets: { ...settings.budgets, ...b } });
 export const setAgent = (h: Partial<Agent>) =>
   saveSettings({ ...settings, agent: { ...settings.agent, ...h } });
+export const setAutopilot = (a: Partial<Omit<AutopilotSettings, "enabled">>) =>
+  saveSettings({ ...settings, autopilot: { ...settings.autopilot, ...a } });
 
 /** The workspace an override would be written to, by its folder name. The
  *  editor pane owns which workspace is selected; the panel reads it rather than

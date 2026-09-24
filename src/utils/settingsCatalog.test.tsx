@@ -97,6 +97,7 @@ describe("the tab grouping", () => {
     expect(SETTING_TABS.map((t) => t.id)).toEqual([
       "agents",
       "chat",
+      "autopilot",
       "editor",
       "panes",
       "servers",
@@ -111,6 +112,7 @@ describe("the tab grouping", () => {
     expect(SETTING_TABS.map((t) => t.sections)).toEqual([
       ["agents"],
       ["chat", "checkpoints"],
+      ["autopilot"],
       ["editor", "editing"],
       ["panes"],
       ["lsp"],

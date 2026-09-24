@@ -42,6 +42,7 @@ export type SettingSection =
   | "editing"
   | "checkpoints"
   | "chat"
+  | "autopilot"
   | "panes"
   | "root"
   | "danger";
@@ -58,6 +59,7 @@ export type SettingSection =
 export type SettingTab =
   | "agents"
   | "chat"
+  | "autopilot"
   | "editor"
   | "servers"
   | "debuggers"
@@ -80,7 +82,8 @@ export type SettingTabDef = {
   /** The rail draws a heading whenever this changes, so this list's order is
    *  the rail's order. */
   group: SettingGroup;
-  /** A lucide icon id, kebab-case, **as a name rather than the component.**
+  /** A lucide icon id, kebab-case, or `wheel` for the autopilot's own mark,
+   *  **as a name rather than the component.**
    *  This module is reachable from the terminal's chunk (see the module
    *  comment), so importing six icon components here would drag lucide in with
    *  them. The panel maps the name to the component at the point of render. */
@@ -106,6 +109,7 @@ export type SettingTabDef = {
 export const SETTING_TABS: SettingTabDef[] = [
   { id: "agents", label: "Agents", group: "Workbench", icon: "bot", sections: ["agents"] },
   { id: "chat", label: "Chat", group: "Workbench", icon: "message-square", sections: ["chat", "checkpoints"] },
+  { id: "autopilot", label: "Autopilot", group: "Workbench", icon: "wheel", sections: ["autopilot"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
   { id: "servers", label: "LSP", group: "Languages", icon: "braces", sections: ["lsp"] },
@@ -150,6 +154,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   editing: "Editor",
   checkpoints: "Checkpoints",
   chat: "Chat",
+  autopilot: "Autopilot",
   panes: "Panes",
   root: "Base folder",
   danger: "Danger zone",
@@ -550,6 +555,19 @@ export const SETTINGS: SettingEntry[] = [
     section: "chat",
     label: "Attach long pastes as files",
     hint: "A paste over 30 lines or 3000 characters becomes a file chip. Off keeps every paste in the box.",
+  },
+
+  {
+    id: "autopilot-on",
+    section: "autopilot",
+    label: "Run the autopilot",
+    hint: "Starts a background session that reads the queue and works through it. Stays on across a relaunch until you turn it off.",
+  },
+  {
+    id: "autopilot-model",
+    section: "autopilot",
+    label: "Autopilot model",
+    hint: "The agent, account, model and effort the next autopilot start runs on.",
   },
 
   {

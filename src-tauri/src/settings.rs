@@ -714,20 +714,35 @@ pub struct Format {
 
 /// What the autopilot session runs as. `enabled` is written only by
 /// `autopilot.start` and `autopilot.stop`, so `set_settings` keeps the file's
-/// value over the frontend's copy. An unset agent means claude.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+/// value over the frontend's copy.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Autopilot {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
-    pub agent: Option<String>,
+    #[serde(default = "default_autopilot_agent", deserialize_with = "autopilot_agent")]
+    pub agent: String,
     #[serde(default)]
     pub profile: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub effort: Option<String>,
+}
+
+impl Default for Autopilot {
+    fn default() -> Self {
+        Self { enabled: false, agent: default_autopilot_agent(), profile: None, model: None, effort: None }
+    }
+}
+
+fn default_autopilot_agent() -> String {
+    "claude".into()
+}
+
+// A file saved before a pick holds `null` or "", and both mean the default.
+fn autopilot_agent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.filter(|a| !a.is_empty()).unwrap_or_else(default_autopilot_agent))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]

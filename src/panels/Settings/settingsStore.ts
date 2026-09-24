@@ -314,7 +314,7 @@ export type Settings = {
  *  from here keeps whatever the file says. */
 export type AutopilotSettings = {
   enabled: boolean;
-  agent: string | null;
+  agent: string;
   profile: string | null;
   model: string | null;
   effort: string | null;
@@ -398,7 +398,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
-  autopilot: { enabled: false, agent: null, profile: null, model: null, effort: null },
+  autopilot: { enabled: false, agent: "claude", profile: null, model: null, effort: null },
 };
 
 /**
