@@ -517,6 +517,17 @@ impl Forge for GitLabForge {
         }
     }
 
+    fn pull_request_states(&self, repo: &RepoRef, numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError> {
+        self.require_token()?;
+        if numbers.is_empty() {
+            return Ok(vec![]);
+        }
+        let iids: String = numbers.iter().map(|n| format!("&iids[]={n}")).collect();
+        let path = format!("/projects/{}/merge_requests?state=all&per_page=100{iids}", project(repo));
+        let (items, _) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        items.iter().map(|v| pr_from(v).map(|pr| (pr.number, pr.state))).collect()
+    }
+
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
         self.require_token()?;
         let path =

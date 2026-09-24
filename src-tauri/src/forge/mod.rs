@@ -39,7 +39,7 @@ pub mod token;
 
 use model::{
     AuthState, Capabilities, DraftComment, Grant, OrgAccess, Paged, PrFile, PrSummary,
-    PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus,
+    PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus,
     Viewer,
 };
 use serde::{Deserialize, Serialize};
@@ -237,6 +237,10 @@ pub trait Forge: Send + Sync {
         repo: &RepoRef,
         branches: &[String],
     ) -> Result<Vec<UnitStatus>, ForgeError>;
+
+    /// Whether each of these pull requests is open, closed or merged, in one
+    /// request. A number the host does not answer for is left out.
+    fn pull_request_states(&self, repo: &RepoRef, numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError>;
 
     /// Every file a pull request touches, each with the forge's own patch.
     ///
@@ -466,6 +470,9 @@ mod tests {
                     review_decision: ReviewDecision::None,
                 })
                 .collect())
+        }
+        fn pull_request_states(&self, _repo: &RepoRef, _numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError> {
+            Ok(vec![])
         }
         fn pull_request_files(
             &self,

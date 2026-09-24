@@ -8,18 +8,22 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::forge::model::PrState;
 use crate::owned_state::{now_ms, write_atomically};
 use crate::rpc::events::same_folder;
 
 const QUEUE: &str = "queue.json";
 const PROJECTS: &str = "projects.json";
 const LOG: &str = "log.jsonl";
+const PR_STATES_TTL: Duration = Duration::from_secs(30);
+const CLOSED_NOTE: &str = "its pull request was closed without merging";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -194,6 +198,8 @@ pub struct Observed {
     pub live: HashSet<String>,
     // Project -> the worktrees git lists for it; `None` where git could not be read.
     pub worktrees: HashMap<String, Option<Vec<PathBuf>>>,
+    // Project -> the states its origin gave, by (`owner/name`, number); absent where the forge failed.
+    pub prs: HashMap<String, HashMap<PrKey, PrState>>,
 }
 
 fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: impl FnOnce() -> String) -> Result<Item, UpdateError> {
@@ -250,6 +256,76 @@ fn set_contract(projects: &mut BTreeMap<String, Contract>, project: String, patc
         }
     }
     (key, contract.clone())
+}
+
+// (`owner/name` lowercased, number): a number alone would match another repo's PR.
+pub type PrKey = (String, u64);
+
+fn pr_key(item: &Item) -> Option<PrKey> {
+    if let Source::Pr { number, repo } = &item.source {
+        return Some((repo.to_lowercase(), *number));
+    }
+    let url = item.pr_url.as_deref()?.trim_end_matches('/');
+    let (rest, number) = url.rsplit_once('/')?;
+    let repo_url = rest.strip_suffix("/pull").or_else(|| rest.strip_suffix("/-/merge_requests"))?;
+    let (_host, repo) = repo_url.split_once("://").map_or(repo_url, |(_, path)| path).split_once('/')?;
+    Some((repo.to_lowercase(), number.parse().ok()?))
+}
+
+// What a closed PR means is the autopilot's call, so it only gets a note.
+fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, now: u64) -> Vec<Item> {
+    let mut changed = Vec::new();
+    for item in items.iter_mut().filter(|i| !i.state.terminal()) {
+        let Some(state) = pr_key(item).and_then(|key| prs.get(&item.project)?.get(&key)) else { continue };
+        match state {
+            PrState::Merged => item.state = State::Done,
+            PrState::Closed if item.note.as_deref() != Some(CLOSED_NOTE) => item.note = Some(CLOSED_NOTE.to_string()),
+            _ => continue,
+        }
+        item.updated = now;
+        changed.push(item.clone());
+    }
+    changed
+}
+
+/// The PR numbers of every open item, by project.
+pub fn open_prs(items: &[Item]) -> HashMap<String, Vec<u64>> {
+    let mut by_project: HashMap<String, Vec<u64>> = HashMap::new();
+    for item in items.iter().filter(|i| !i.state.terminal()) {
+        if let Some((_, number)) = pr_key(item) {
+            by_project.entry(item.project.clone()).or_default().push(number);
+        }
+    }
+    by_project
+}
+
+struct Fetched {
+    at: Instant,
+    states: HashMap<PrKey, PrState>,
+    asked: HashSet<u64>,
+}
+
+#[derive(Default)]
+pub struct PrStates {
+    fetched: Mutex<HashMap<String, Fetched>>,
+}
+
+impl PrStates {
+    pub fn get(
+        &self,
+        project: &str,
+        numbers: &[u64],
+        fetch: impl FnOnce(&[u64]) -> Result<Vec<(PrKey, PrState)>, crate::forge::ForgeError>,
+    ) -> Option<HashMap<PrKey, PrState>> {
+        let fresh = |f: &Fetched| f.at.elapsed() < PR_STATES_TTL && numbers.iter().all(|n| f.asked.contains(n));
+        if let Some(hit) = self.fetched.lock().unwrap_or_else(|e| e.into_inner()).get(project).filter(|f| fresh(f)) {
+            return Some(hit.states.clone());
+        }
+        let states: HashMap<PrKey, PrState> = fetch(numbers).ok()?.into_iter().collect();
+        let entry = Fetched { at: Instant::now(), states: states.clone(), asked: numbers.iter().copied().collect() };
+        self.fetched.lock().unwrap_or_else(|e| e.into_inner()).insert(project.to_string(), entry);
+        Some(states)
+    }
 }
 
 fn canon(path: &Path) -> PathBuf {
@@ -310,6 +386,7 @@ pub struct AutopilotStore {
     // Told the id of an item that just became done or failed, with the lock
     // released, so it may call into `Asks` without ever nesting the two locks.
     closed: Closed,
+    pub pr_states: PrStates,
 }
 
 fn load<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String> {
@@ -331,7 +408,7 @@ impl AutopilotStore {
             Projects::default()
         });
         let held = Held { items: queue.items, projects: projects.projects };
-        Self { dir, held: Mutex::new(held), unreadable, publish, closed: Box::new(|_| {}) }
+        Self { dir, held: Mutex::new(held), unreadable, publish, closed: Box::new(|_| {}), pr_states: PrStates::default() }
     }
 
     pub fn on_closed(self, closed: Closed) -> Self {
@@ -355,23 +432,37 @@ impl AutopilotStore {
     }
 
     pub fn update(&self, target: Target, patch: Patch) -> Result<Item, UpdateError> {
-        let (item, was_open) = {
+        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let changed = self.write(|items| apply(items, target, patch, now_ms(), mint).map(|item| vec![item]))?;
+        changed.into_iter().next().ok_or_else(|| UpdateError::Write("the update changed nothing".into()))
+    }
+
+    // One save for every item `change` returns, then, with the lock released,
+    // their events and the `closed` hook for each that just became terminal.
+    fn write(&self, change: impl FnOnce(&mut Vec<Item>) -> Result<Vec<Item>, UpdateError>) -> Result<Vec<Item>, UpdateError> {
+        let (changed, closed) = {
             let mut held = self.lock();
             let mut next = held.items.clone();
-            let mint = || format!("item-{}", crate::chat::approval::random_token());
-            let before = |id: &str| held.items.iter().find(|i| i.id == id).map(|i| i.state);
-            let item = apply(&mut next, target, patch, now_ms(), mint)?;
-            let was_open = before(&item.id).is_none_or(|state| !state.terminal());
+            let changed = change(&mut next)?;
+            if changed.is_empty() {
+                return Ok(changed);
+            }
+            let was_open = |id: &str| held.items.iter().find(|i| i.id == id).is_none_or(|i| !i.state.terminal());
+            let closed: Vec<String> = changed.iter().filter(|i| i.state.terminal() && was_open(&i.id)).map(|i| i.id.clone()).collect();
             self.save(QUEUE, json!({ "items": next }))?;
             held.items = next;
-            self.log(json!({ "item": item }));
-            (item, was_open)
+            for item in &changed {
+                self.log(json!({ "item": item }));
+            }
+            (changed, closed)
         };
-        self.changed(&item, None);
-        if was_open && item.state.terminal() {
-            (self.closed)(&item.id);
+        for item in &changed {
+            self.changed(item, None);
         }
-        Ok(item)
+        for id in &closed {
+            (self.closed)(id);
+        }
+        Ok(changed)
     }
 
     pub fn set_project(&self, project: String, patch: ContractPatch) -> Result<Contract, UpdateError> {
@@ -410,6 +501,9 @@ impl AutopilotStore {
     pub fn state(&self, observe: impl FnOnce(&[Item]) -> Observed) -> Snapshot {
         let snapshot = self.lock().items.clone();
         let seen = observe(&snapshot);
+        if let Err(e) = self.write(|items| Ok(settle(items, &seen.prs, now_ms()))) {
+            eprintln!("tori: merged pull requests not recorded: {e}");
+        }
         let held = self.lock();
         Snapshot { items: reconcile(&held.items, &seen.live, &seen.worktrees), projects: held.projects.clone() }
     }
@@ -544,6 +638,70 @@ pub mod tests {
         let reopened = quiet(&dir).state(|_| Observed::default());
         assert_eq!(reopened.projects, BTreeMap::from([("/p".to_string(), set)]), "one project, however it is spelled");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_merged_pull_request_closes_its_item_and_nothing_else_moves() {
+        let dir = temp_dir("merged");
+        let (closed_tx, closed) = channel();
+        let closed_tx = Mutex::new(closed_tx);
+        let store = quiet(&dir).on_closed(Box::new(move |id| closed_tx.lock().unwrap().send(id.to_string()).unwrap()));
+        let review = |number| Target::Key { kind: Kind::Review, source: Source::Pr { number, repo: "o/r".into() }, project: "/p".into() };
+        let merged = store.update(review(1), state(State::Running)).unwrap().id;
+        let shut = store.update(review(2), state(State::Running)).unwrap().id;
+        let open = store.update(review(3), state(State::Running)).unwrap().id;
+        let shipped = store.update(issue("9"), Patch { pr_url: Some("https://github.com/o/r/pull/4".into()), ..state(State::WaitingOnYou) }).unwrap().id;
+        let unknown = store.update(issue("10"), Patch { pr_url: Some("https://github.com/o/r/pull/5".into()), ..state(State::Running) }).unwrap().id;
+        let fork = Target::Key { kind: Kind::Review, source: Source::Pr { number: 6, repo: "Someone/Else".into() }, project: "/p".into() };
+        let elsewhere = store.update(fork, state(State::Running)).unwrap().id;
+        let key = |n| ("o/r".to_string(), n);
+        let states = HashMap::from([
+            (key(1), PrState::Merged),
+            (key(2), PrState::Closed),
+            (key(3), PrState::Open),
+            (key(4), PrState::Merged),
+            (key(6), PrState::Merged),
+        ]);
+        let prs = HashMap::from([("/p".to_string(), states)]);
+
+        let rows = store.state(|_| Observed { prs: prs.clone(), ..Observed::default() }).items;
+        let by_id = |id: &str| rows.iter().find(|r| r.item.id == id).unwrap().item.clone();
+        assert_eq!((by_id(&merged).state, by_id(&shipped).state), (State::Done, State::Done));
+        assert_eq!((by_id(&shut).state, by_id(&shut).note.as_deref()), (State::Running, Some(CLOSED_NOTE)));
+        assert_eq!((by_id(&open).state, by_id(&unknown).state), (State::Running, State::Running));
+        assert_eq!(by_id(&elsewhere).state, State::Running, "o/r#6 merging says nothing about someone/else#6");
+        let mut hooked: Vec<String> = closed.try_iter().collect();
+        hooked.sort();
+        let mut expected = vec![merged.clone(), shipped.clone()];
+        expected.sort();
+        assert_eq!(hooked, expected, "the merged items' holds get dropped");
+
+        store.state(|_| Observed { prs, ..Observed::default() });
+        let lines = std::fs::read_to_string(dir.join(LOG)).unwrap().lines().count();
+        assert_eq!(lines, 6 + 3, "a second read with the same answer writes nothing");
+        assert_eq!(quiet(&dir).lock().items.iter().filter(|i| i.state == State::Done).count(), 2, "and the first was persisted");
+
+        let forge_down = quiet(&dir).state(|_| Observed::default());
+        assert_eq!(forge_down.items.iter().filter(|r| r.item.state == State::Running).count(), 4, "no answer changes nothing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_second_lookup_within_the_ttl_asks_the_forge_nothing() {
+        let cache = PrStates::default();
+        let calls = std::cell::Cell::new(0);
+        let fetch = |numbers: &[u64]| {
+            calls.set(calls.get() + 1);
+            Ok(numbers.iter().map(|n| (("o/r".to_string(), *n), PrState::Open)).collect())
+        };
+        assert!(cache.get("/p", &[1, 2], fetch).is_some());
+        assert!(cache.get("/p", &[2], fetch).is_some());
+        assert_eq!(calls.get(), 1);
+        assert!(cache.get("/p", &[3], fetch).is_some(), "a number not asked before is asked for");
+        assert_eq!(calls.get(), 2);
+        assert!(cache.get("/q", &[1], |_| Err(crate::forge::ForgeError::NoRemote)).is_none());
+        assert!(cache.get("/q", &[1], fetch).is_some(), "a failure is not cached");
+        assert_eq!(calls.get(), 3);
     }
 
     #[test]
