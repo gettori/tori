@@ -181,13 +181,8 @@
     --tori-scene-ink: #f5efff;
     --tori-scene-ink-muted: #cbbfe6;
     --tori-scene-eyebrow: #d8b4fe;
-    --tori-scene-scrim: rgba(18, 13, 32, 0.62);
-    --tori-scene-scrim-mid: rgba(18, 13, 32, 0.42);
     --tori-scene-dim-top: rgba(34, 30, 46, 0.82);
     --tori-scene-dim-bottom: rgba(22, 20, 29, 0.5);
-    --tori-scene-gauge: rgba(20, 14, 36, 0.45);
-    --tori-scene-gauge-border: rgba(216, 180, 254, 0.18);
-    --tori-scene-gauge-label: #a996cf;
   }
 
   /* ---- BEGIN GENERATED ROLE TOKENS. Run scripts/gen-tokens.mjs; do not edit by hand. ---- */

@@ -6,7 +6,7 @@ import { pickScene } from "../../components/Autopilot/Horizon";
 import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
-import { heroFor, inFlightRows, queuedItems, underway, workerCards } from "../../utils/autopilotRows";
+import { heroFor, inFlightRows, queuedItems, workerCards } from "../../utils/autopilotRows";
 import {
   activity,
   attachable,
@@ -93,11 +93,6 @@ export function CockpitSwitch() {
   );
 }
 
-const dockedToday = (now: number) => {
-  const midnight = new Date(now).setHours(0, 0, 0, 0);
-  return items().filter((i) => i.state === "done" && i.updated >= midnight).length;
-};
-
 export function CockpitView() {
   const error = () => runner().state === "error";
   // A memo, so an idle/working flip does not remount the chat: the old view's
@@ -106,19 +101,7 @@ export function CockpitView() {
   const [now, setNow] = createSignal(Date.now());
   const tick = setInterval(() => setNow(Date.now()), 30_000);
   onCleanup(() => clearInterval(tick));
-  const hero = () => {
-    const crew = workerCards(items()).length;
-    const state = autopilotNow();
-    const since = runner().since;
-    const first =
-      state === "idle"
-        ? { label: "Docked today", value: String(dockedToday(now())) }
-        : { label: "Underway", value: since === null ? "0m" : underway(since, now()) };
-    return {
-      ...heroFor(state, decisions().length, crew, queuedItems(items()).length),
-      stats: [first, { label: "Crew", value: String(crew) }],
-    };
-  };
+  const hero = () => heroFor(autopilotNow(), decisions().length, workerCards(items()).length, queuedItems(items()).length);
   return (
     <div class={styles.overlay}>
       <AutopilotView

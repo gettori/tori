@@ -7,7 +7,6 @@ export type CockpitHero = {
   eyebrow: string;
   title: string;
   body: string;
-  stats: { label: string; value: string }[];
 };
 
 export type DecisionKind = "pr" | "review" | "merge" | "question";
