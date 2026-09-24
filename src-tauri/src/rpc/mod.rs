@@ -28,6 +28,7 @@ use std::sync::{Arc, OnceLock};
 
 use tauri::{AppHandle, Emitter};
 
+use crate::autopilot::AutopilotStore;
 use asks::{Ask, Asks};
 use auth::{Caller, Children, Credential};
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
@@ -57,6 +58,7 @@ pub struct RpcState {
     states: Arc<SessionStates>,
     bridge: Arc<Bridge>,
     asks: Arc<Asks>,
+    pub autopilot: Arc<AutopilotStore>,
     quotas: Quotas,
 }
 
@@ -80,6 +82,11 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
     let asks = Arc::new(Asks::default());
+    let autopilot_hub = hub.clone();
+    let autopilot = Arc::new(AutopilotStore::open(
+        crate::autopilot::dir(),
+        Box::new(move |event| autopilot_hub.publish(&Channel::Autopilot, event)),
+    ));
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
@@ -93,6 +100,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
             states: states.clone(),
             bridge: bridge.clone(),
             asks: asks.clone(),
+            autopilot: autopilot.clone(),
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
@@ -111,7 +119,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states, bridge, asks, quotas: Quotas::default() })
+    Ok(RpcState { transport, hub, states, bridge, asks, autopilot, quotas: Quotas::default() })
 }
 
 // Async so resolving a new session's project, which reads the config and lists
@@ -136,7 +144,16 @@ pub fn rpc_session_states(
     };
     for event in rpc.states.replace(states, place_of, alive) {
         let id = event["id"].as_str().unwrap_or_default().to_string();
-        rpc.hub.publish_session(&id, event);
+        publish_session(&rpc.hub, &rpc.autopilot, &id, event);
+    }
+}
+
+// An item whose session ended keeps its stored state, but what the autopilot sees of it changed.
+pub fn publish_session(hub: &Hub, autopilot: &AutopilotStore, id: &str, event: Value) {
+    let ended = event["kind"] == "session.ended";
+    hub.publish_session(id, event);
+    if ended {
+        autopilot.session_ended(id);
     }
 }
 
@@ -296,4 +313,32 @@ pub fn mcp_launch(caller: Caller) -> Option<(PathBuf, Vec<(String, String)>)> {
 
 pub(crate) fn bridge_path() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/rpc.json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::autopilot::{Kind, Patch, Source, Target};
+    use std::sync::mpsc::sync_channel;
+
+    #[test]
+    fn an_items_session_ending_reaches_the_autopilot_topic() {
+        let hub = Arc::new(Hub::default());
+        let (tx, rx) = sync_channel(hub::QUEUE_CAP);
+        hub.subscribe(hub.register(tx, Box::new(|| {})), Channel::Autopilot);
+        let dir = crate::autopilot::tests::temp_dir("session-ended");
+        let publisher = hub.clone();
+        let store = AutopilotStore::open(dir.clone(), Box::new(move |event| publisher.publish(&Channel::Autopilot, event)));
+        let source = Source::Pr { number: 7, repo: "o/r".into() };
+        let target = Target::Key { kind: Kind::Review, source, project: "/p".into() };
+        store.update(target, Patch { session: Some("s1".into()), ..Patch::default() }).unwrap();
+        rx.try_recv().unwrap();
+
+        publish_session(&hub, &store, "s1", session_event("session.ended", "s1", &Place::default(), json!({ "reason": "died" })));
+        let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(event["params"]["topic"], "autopilot");
+        assert_eq!(event["params"]["data"]["kind"], "autopilot.changed");
+        assert_eq!(event["params"]["data"]["item"]["session_live"], false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

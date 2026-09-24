@@ -17,11 +17,12 @@ use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, IssueGetParams,
-    IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
+    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
+use crate::autopilot::{AutopilotStore, Observed};
 use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::ChatState;
@@ -208,6 +209,7 @@ pub struct TauriBackend {
     pub states: Arc<SessionStates>,
     pub bridge: Arc<Bridge>,
     pub asks: Arc<Asks>,
+    pub autopilot: Arc<AutopilotStore>,
 }
 
 impl TauriBackend {
@@ -636,6 +638,23 @@ impl Backend for TauriBackend {
             crate::forge::commands::merge(project, params.number, params.method, Some(&params.head_sha)).map_err(forge_refused)?;
             Ok(json!({}))
         })
+    }
+
+    fn autopilot_state(&self) -> Result<Value, RpcError> {
+        let rows = self.autopilot.state(|items| {
+            let reported = self.states.snapshot().into_iter().filter(|(_, state)| *state != SessionState::Ended).map(|(id, _)| id);
+            let chats = self.app.state::<ChatState>().0.live_sessions().into_iter().map(|(id, _)| id);
+            Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items) }
+        });
+        Ok(json!({ "items": rows }))
+    }
+
+    fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError> {
+        let project = match params.id {
+            Some(_) => params.project.clone(),
+            None => Some(self.project(principal, params.project.clone())?),
+        };
+        params.apply(&self.autopilot, project)
     }
 }
 

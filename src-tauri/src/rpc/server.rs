@@ -16,10 +16,11 @@ use serde_json::{json, Value};
 
 use super::approvals::Draft;
 use super::auth::{authenticate, Credential, Principal};
+use crate::autopilot::{AutopilotStore, Kind, Patch, Source, State, Target, UpdateError};
 use crate::forge::model::{DraftComment, ReviewEvent};
 use crate::forge::MergeMethod;
 use super::frame::{
-    read_request, to_line, write_line, ReadError, Request, Response, RpcError, INVALID_PARAMS, INVALID_REQUEST,
+    read_request, to_line, write_line, ReadError, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
 };
 use super::hub::{Channel, ConnId, Hub, QUEUE_CAP};
@@ -296,6 +297,48 @@ impl PrMergeParams {
     }
 }
 
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ItemUpdateParams {
+    /// The item to update. Left out, the item for this kind, source and project that is not done or failed is
+    /// updated, or made when there is none, so a retry never makes a second one.
+    pub id: Option<String>,
+    /// What the item is for; needed without an id.
+    pub kind: Option<Kind>,
+    /// Where the item came from; needed without an id.
+    pub source: Option<Source>,
+    /// The project folder, the caller's own project when left out without an id.
+    pub project: Option<String>,
+    /// Its new state.
+    pub state: Option<State>,
+    /// The worktree it runs in.
+    pub worktree: Option<String>,
+    /// The session working on it.
+    pub session: Option<String>,
+    /// Its pull request's url.
+    pub pr_url: Option<String>,
+    /// A line on where it stands.
+    pub note: Option<String>,
+}
+
+impl ItemUpdateParams {
+    /// `project` is the one resolved for a new item; with an id it must be left out.
+    pub fn apply(self, store: &AutopilotStore, project: Option<String>) -> Result<Value, RpcError> {
+        let target = match (self.id, self.kind, self.source, project) {
+            (Some(id), None, None, None) => Target::Id(id),
+            (Some(_), ..) => return Err(RpcError::new(INVALID_PARAMS, "kind, source and project name a new item: with an id pass only what changes")),
+            (None, Some(kind), Some(source), Some(project)) => Target::Key { kind, source, project },
+            (None, ..) => return Err(RpcError::new(INVALID_PARAMS, "without an id, pass kind, source and project")),
+        };
+        let patch = Patch { state: self.state, worktree: self.worktree, session: self.session, pr_url: self.pr_url, note: self.note };
+        match store.update(target, patch) {
+            Ok(item) => serde_json::to_value(item).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string())),
+            Err(e @ UpdateError::NoItem(_)) => Err(RpcError::new(INVALID_PARAMS, e.to_string())),
+            Err(e @ UpdateError::Write(_)) => Err(RpcError::new(INTERNAL_ERROR, e.to_string())),
+        }
+    }
+}
+
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
     fn kind(&self, principal: &Principal) -> CallerKind;
@@ -320,6 +363,8 @@ pub trait Backend: Send + Sync {
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError>;
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
+    fn autopilot_state(&self) -> Result<Value, RpcError>;
+    fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -468,7 +513,11 @@ pub mod tests {
     use std::io::{BufRead, Write};
     use std::os::unix::net::UnixStream;
 
-    pub struct StubBackend;
+    // Echoes like every other stub method, unless given a real queue to write.
+    #[derive(Default)]
+    pub struct StubBackend {
+        pub autopilot: Option<AutopilotStore>,
+    }
 
     // A chat session with this id is treated as a worker.
     pub const WORKER: &str = "worker";
@@ -549,6 +598,18 @@ pub mod tests {
         fn pr_merge(&self, _: &Principal, p: PrMergeParams) -> Result<Value, RpcError> {
             Ok(json!({ "number": p.number }))
         }
+        fn autopilot_state(&self) -> Result<Value, RpcError> {
+            Ok(json!({ "items": [] }))
+        }
+        fn autopilot_item_update(&self, _: &Principal, p: ItemUpdateParams) -> Result<Value, RpcError> {
+            match &self.autopilot {
+                Some(store) => {
+                    let project = p.project.clone();
+                    p.apply(store, project)
+                }
+                None => Ok(json!({ "id": p.id })),
+            }
+        }
     }
 
     pub struct Running {
@@ -570,7 +631,7 @@ pub mod tests {
         let server = Arc::new(Server {
             credential: Credential { process: "tok".into(), children: children.clone() },
             hub: hub.clone(),
-            backend: Box::new(StubBackend),
+            backend: Box::<StubBackend>::default(),
             auth_timeout: timeout,
         });
         serve(transport.clone(), server);
@@ -687,7 +748,7 @@ pub mod tests {
         Server {
             credential: Credential { process: "tok".into(), children: Arc::default() },
             hub: Arc::default(),
-            backend: Box::new(StubBackend),
+            backend: Box::<StubBackend>::default(),
             auth_timeout: AUTH_TIMEOUT,
         }
     }
@@ -776,6 +837,24 @@ pub mod tests {
         assert_eq!(me["kind"], json!("worker"));
         assert!(server.dispatch(0, &worker, &request("ask.create", json!({"question": "q"}))).is_ok());
         assert!(server.dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"}))).is_ok());
+    }
+
+    #[test]
+    fn an_item_update_without_an_id_makes_one_open_item_per_source() {
+        let dir = crate::autopilot::tests::temp_dir("dispatch-upsert");
+        let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store) }), ..stub_server() };
+        let update = |who: &Principal, params: Value| server.dispatch(0, who, &request("autopilot.item.update", params));
+        let key = json!({"kind": "ship", "source": {"type": "issue", "key": "12", "project": "/p"}, "project": "/p"});
+        let first = update(&Principal::Local, key.clone()).unwrap();
+        assert_eq!(update(&Principal::Local, key.clone()).unwrap()["id"], first["id"], "a retry finds the item it made");
+        assert_eq!(update(&Principal::Local, json!({"id": first["id"], "state": "failed"})).unwrap()["state"], "failed");
+        let fresh = update(&Principal::Local, key).unwrap();
+        assert_ne!(fresh["id"], first["id"], "a failed item is closed, so the same source opens a new one");
+        assert_eq!(update(&Principal::Local, json!({"id": first["id"], "project": "/p"})).unwrap_err().code, INVALID_PARAMS);
+        let worker = Principal::Session(Caller::Chat(WORKER.into()));
+        assert_eq!(update(&worker, json!({"id": fresh["id"], "state": "done"})).unwrap_err().code, REFUSED);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

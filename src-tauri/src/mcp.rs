@@ -15,7 +15,7 @@ use crate::rpc::table::{self, Method};
 
 // Under codex-acp's 300s kill of a tool call, see [[concept_blocking_tool_call_ceiling]].
 const BLOCKING_CALL_TIMEOUT_SECS: u64 = 240;
-const PATH_ARGS: [&str; 3] = ["folder", "project", "path"];
+const PATH_ARGS: [&str; 4] = ["folder", "project", "path", "worktree"];
 
 pub type Connect = Arc<dyn Fn() -> Result<Client, ClientError> + Send + Sync>;
 type Out = Arc<Mutex<dyn Write + Send>>;
