@@ -5,7 +5,7 @@ import IconButton from "../IconButton/IconButton";
 import DecisionCard from "./DecisionCard";
 import Wheel from "./Wheel";
 import { ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
-import type { AutopilotError, AutopilotState, Decision, DecisionAction, InFlightRow, ThreadMessage } from "./autopilot";
+import type { AutopilotError, AutopilotState, Decision, DecisionAction, InFlightRow, Ref, ThreadMessage } from "./autopilot";
 import styles from "./AutopilotPopup.module.css";
 
 export interface AutopilotPopupProps {
@@ -20,7 +20,7 @@ export interface AutopilotPopupProps {
   /** Shown in the error state. */
   error?: AutopilotError;
   onOpenView?: () => void;
-  onOpenWorker?: (refNumber: number) => void;
+  onOpenWorker?: (refNumber: Ref) => void;
   onDecision?: (action: DecisionAction, decision: Decision) => void;
   onStart?: () => void;
   onRestart?: () => void;

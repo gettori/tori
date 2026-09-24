@@ -2,19 +2,19 @@ import { For, Show, createSignal, type JSX } from "solid-js";
 import { ArrowUp, TriangleAlert } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
-import type { Decision, DecisionAction, ThreadMessage, WorkerStatus } from "./autopilot";
+import type { Decision, DecisionAction, Ref, ThreadMessage, WorkerStatus } from "./autopilot";
 import styles from "./ShellParts.module.css";
 
 // Pieces the popup and the Autopilot view both draw.
 
-export const ref = (n: number) => `#${n}`;
+export const ref = (n: Ref) => `#${n}`;
 
 /** A decision card's buttons, routed to one handler with the decision attached. */
 export function decisionHandlers(
   d: Decision,
   on: {
     onDecision?: (action: DecisionAction, decision: Decision) => void;
-    onOpenWorker?: (refNumber: number) => void;
+    onOpenWorker?: (refNumber: Ref) => void;
   },
 ) {
   return {
@@ -22,7 +22,7 @@ export function decisionHandlers(
     onEdit: () => on.onDecision?.("edit", d),
     onReply: () => on.onDecision?.("reply", d),
     onDismiss: () => on.onDecision?.("dismiss", d),
-    onOpenWorker: () => on.onOpenWorker?.(d.refNumber),
+    onOpenWorker: () => d.refNumber !== undefined && on.onOpenWorker?.(d.refNumber),
   };
 }
 

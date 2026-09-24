@@ -367,6 +367,29 @@ pub fn dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/autopilot")
 }
 
+// Read backwards from the end: the log only grows, and a caller wants its last few lines.
+fn tail_lines(path: &Path, limit: usize) -> Vec<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const CHUNK: u64 = 8192;
+    let Ok(mut file) = std::fs::File::open(path) else { return Vec::new() };
+    let Ok(mut start) = file.seek(SeekFrom::End(0)) else { return Vec::new() };
+    let mut buf = Vec::new();
+    while start > 0 && buf.iter().filter(|&&b| b == b'\n').count() <= limit {
+        let step = CHUNK.min(start);
+        start -= step;
+        let mut chunk = vec![0; step as usize];
+        if file.seek(SeekFrom::Start(start)).and_then(|_| file.read_exact(&mut chunk)).is_err() {
+            return Vec::new();
+        }
+        chunk.extend(buf);
+        buf = chunk;
+    }
+    let text = String::from_utf8_lossy(&buf);
+    // Mid-file, the first line read is a fragment.
+    let lines: Vec<&str> = text.lines().skip(usize::from(start > 0)).collect();
+    lines[lines.len().saturating_sub(limit)..].iter().map(|l| l.to_string()).collect()
+}
+
 type Publish = Box<dyn Fn(Value) + Send + Sync>;
 type Closed = Box<dyn Fn(&str) + Send + Sync>;
 
@@ -493,6 +516,10 @@ impl AutopilotStore {
         if let Err(e) = appended {
             eprintln!("tori: autopilot log not appended: {e}");
         }
+    }
+
+    pub fn recent_log(&self, limit: usize) -> Vec<Value> {
+        tail_lines(&self.dir.join(LOG), limit).iter().filter_map(|l| serde_json::from_str(l).ok()).collect()
     }
 
     // `observe` runs unlocked, since it shells out to git and later the forge;

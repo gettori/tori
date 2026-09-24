@@ -5,10 +5,15 @@ import AutopilotView from "../../components/Autopilot/AutopilotView";
 import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
+import { inFlightRows, queuedItems, workerCards } from "../../utils/autopilotRows";
 import {
+  activity,
   attachable,
   autopilotNow,
+  decide,
+  decisionCards,
   decisions,
+  items,
   loadThread,
   popupOpen,
   runner,
@@ -93,12 +98,12 @@ export function CockpitView() {
     <div class={styles.overlay}>
       <AutopilotView
         state={autopilotNow()}
-        workers={[]}
+        workers={workerCards(items())}
         emptyWorkers="Nothing in flight."
-        queue={[]}
+        queue={queuedItems(items())}
         messages={[]}
         decisions={[]}
-        activity={[]}
+        activity={activity()}
         shield="Nothing leaves this machine until you approve it."
         error={runner().error ?? undefined}
         chat={live() ? <CockpitChat status={runner()} reading={error()} /> : undefined}
@@ -129,10 +134,11 @@ export function CockpitPopup() {
       <AutopilotPopup
         state={autopilotNow()}
         stateLine={STATE_LINE[autopilotNow()]}
-        decisions={[]}
-        inFlight={[]}
+        decisions={decisionCards()}
+        inFlight={inFlightRows(items())}
         messages={thread()}
         error={runner().error ?? undefined}
+        onDecision={decide}
         composer={
           <Composer
             dense
