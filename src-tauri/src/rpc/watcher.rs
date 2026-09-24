@@ -598,6 +598,7 @@ mod tests {
             agent: None,
             cwd: None,
             error: None,
+            since: None,
         });
         let (watcher, _rx) = Watcher::new(states, store, status);
         watcher.core().set_pilot(RunnerState::Idle, Some("pilot".into()));

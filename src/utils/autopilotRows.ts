@@ -1,5 +1,7 @@
 import type {
   ActivityItem,
+  AutopilotState,
+  CockpitHero,
   Decision,
   DecisionKind,
   InFlightRow,
@@ -142,4 +144,35 @@ export function decisionOf(ask: SocketAsk, items: ItemRow[], holds: Hold[], aske
     age: asked ? ago(Math.floor(asked / 1000)) : "",
     worker: approval ? undefined : asker(ask.session),
   };
+}
+
+const COUNT = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+const counted = (n: number, one: string, many: string) => `${COUNT[n] ?? n} ${n === 1 ? one : many}`;
+
+/** The banner's words for where the autopilot stands. */
+export function heroFor(state: AutopilotState, calls: number, crew: number): Omit<CockpitHero, "stats"> {
+  switch (state) {
+    case "needs":
+      return {
+        eyebrow: "Holding course",
+        title: `${counted(calls, "call", "calls")} for the captain.`,
+        body: crew ? "The ship holds its heading while you decide. The crew waits below." : "The ship holds its heading while you decide.",
+      };
+    case "working":
+      return crew
+        ? { eyebrow: "Under sail", title: `${counted(crew, "worker", "workers")} at the oars.`, body: "Sit back. I will call you when something needs your say." }
+        : { eyebrow: "Under sail", title: "Plotting a course.", body: "Sit back. I will call you when something needs your say." };
+    case "idle":
+      return { eyebrow: "At anchor", title: "Calm waters.", body: "Hand me a ticket or a PR when you are ready." };
+    case "error":
+      return { eyebrow: "Adrift", title: "The autopilot stopped.", body: "Restart it and it picks up from its log. Workers keep running." };
+    case "off":
+      return { eyebrow: "In harbor", title: "The ship is docked.", body: "Start the autopilot to set sail." };
+  }
+}
+
+/** How long it has been on, as the banner's Underway reads it. */
+export function underway(since: number, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - since) / 60_000));
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }

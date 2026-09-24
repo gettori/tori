@@ -55,11 +55,13 @@ pub struct Status {
     // Where the session runs, for a view that attaches to it.
     pub cwd: Option<String>,
     pub error: Option<RunnerError>,
+    // When it was turned on, in ms; a restart after a death keeps it.
+    pub since: Option<u64>,
 }
 
 impl Status {
     fn off() -> Self {
-        Self { state: RunnerState::Off, session: None, agent: None, cwd: None, error: None }
+        Self { state: RunnerState::Off, session: None, agent: None, cwd: None, error: None, since: None }
     }
 
     // Keeps the session that failed, so its transcript can still be read.
@@ -244,7 +246,8 @@ impl Runner {
         let id = new_session_id();
         let agent = crate::settings::autopilot().agent;
         let cwd = Some(self.session_dir().to_string_lossy().into_owned());
-        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None });
+        let since = self.status().since.or_else(|| Some(crate::owned_state::now_ms()));
+        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None, since });
         let runner = self.clone();
         std::thread::spawn(move || {
             if let Err(detail) = runner.launch_as(&id) {

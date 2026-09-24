@@ -1,13 +1,14 @@
 import { For, Show, type JSX } from "solid-js";
-import { ArrowUpRight, ShieldCheck } from "lucide-solid";
+import { Anchor, ArrowUpRight } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
-import { ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
+import { CaptainsCall, ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
 import type {
   ActivityItem,
   AutopilotError,
   AutopilotState,
+  CockpitHero,
   Decision,
   DecisionAction,
   QueuedItem,
@@ -40,6 +41,7 @@ export interface AutopilotViewProps {
   onViewLog?: () => void;
   /** The live conversation, in place of the drawn thread and composer. */
   chat?: JSX.Element;
+  hero: CockpitHero;
 }
 
 /** The full window Autopilot view: what is in flight on the left, the
@@ -52,6 +54,9 @@ export default function AutopilotView(props: AutopilotViewProps) {
       <Show when={props.state === "error" && props.error}>
         {(error) => <ErrorBanner {...error()} onRestart={props.onRestart} onViewLog={props.onViewLog} />}
       </Show>
+      <Show when={props.decisions.length}>
+        <CaptainsCall count={props.decisions.length} />
+      </Show>
       <For each={props.decisions}>
         {(d, i) => <DecisionCard {...d} focused={i() === props.focused} {...decisionHandlers(d, props)} />}
       </For>
@@ -61,19 +66,20 @@ export default function AutopilotView(props: AutopilotViewProps) {
   return (
     <div class={styles.view}>
       <aside class={styles.workers} aria-label="In flight">
-        <SectionHead label="In flight" count={props.workers.length} />
+        <SectionHead label="Crew on deck" count={props.workers.length} />
         <Show when={props.workers.length} fallback={<div class={styles.empty}>{props.emptyWorkers}</div>}>
           <For each={props.workers}>
             {(w) => (
               <article class={styles.card} data-status={w.status}>
                 <div class={styles.cardHead}>
-                  <StatusDot status={w.status} />
-                  <span class={styles.cardRef}>{ref(w.refNumber)}</span>
-                  <span class={styles.cardTitle}>{w.title}</span>
+                  <span class={styles.ring} data-status={w.status}>
+                    {ref(w.refNumber)}
+                  </span>
+                  <div class={styles.cardName}>
+                    <span class={styles.cardTitle}>{w.title}</span>
+                    <span class={styles.cardBranch}>{w.diff ? `${w.branch} \u00b7 ${w.diff}` : w.branch}</span>
+                  </div>
                 </div>
-                <span class={styles.cardBranch}>
-                  {w.diff ? `${w.branch}, ${w.diff}` : w.branch}
-                </span>
                 <Show when={w.contract}>
                   {(contract) => (
                     <details class={styles.contract}>
@@ -82,11 +88,14 @@ export default function AutopilotView(props: AutopilotViewProps) {
                     </details>
                   )}
                 </Show>
-                <div class={styles.log}>
-                  <For each={w.log}>{(line) => <div class={styles.logLine}>{line}</div>}</For>
-                </div>
+                <Show when={w.log.length}>
+                  <div class={styles.log}>
+                    <For each={w.log}>{(line) => <div class={styles.logLine}>{line}</div>}</For>
+                  </div>
+                </Show>
                 <div class={styles.cardFoot}>
                   <span class={styles.doing} data-status={w.status}>
+                    <StatusDot status={w.status} />
                     {w.doing}
                   </span>
                   <Button
@@ -106,7 +115,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
           </For>
         </Show>
         <Show when={props.queue.length}>
-          <SectionHead label="Queued" count={props.queue.length} />
+          <SectionHead label="Waiting at the dock" count={props.queue.length} />
           <For each={props.queue}>
             {(q) => (
               <div class={styles.queued}>
@@ -122,6 +131,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
       </aside>
 
       <section class={styles.center} aria-label="Conversation">
+        <Hero {...props.hero} state={props.state} />
         <div class={styles.column} data-live={props.chat ? "true" : "false"}>
           <div class={styles.scroll}>
             <Show when={off()}>
@@ -159,7 +169,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
       </section>
 
       <aside class={styles.activity} aria-label="Activity">
-        <SectionHead label="Activity" />
+        <SectionHead label="Ship's log" />
         <div class={styles.activityList}>
           <For each={props.activity}>
             {(a) => (
@@ -170,11 +180,45 @@ export default function AutopilotView(props: AutopilotViewProps) {
             )}
           </For>
         </div>
-        <div class={styles.shield}>
-          <Icon icon={ShieldCheck} class={styles.shieldIcon} />
+        <div class={styles.harbor}>
+          <span class={styles.harborLabel}>
+            <Icon icon={Anchor} class={styles.harborIcon} />
+            Harbor
+          </span>
           {props.shield}
         </div>
       </aside>
     </div>
+  );
+}
+
+/** A sunset over the water: the banner, with the state on its first line. */
+function Hero(props: CockpitHero & { state: AutopilotState }) {
+  return (
+    <header class={styles.hero} data-state={props.state}>
+      <div class={styles.sun} aria-hidden="true" />
+      <svg class={styles.waves} viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true">
+        <path class={styles.waveFar} d="M0 34 C 150 18, 300 44, 450 30 S 750 16, 900 32 S 1100 42, 1200 28 V80 H0 Z" />
+        <path class={styles.waveNear} d="M0 58 C 200 44, 380 70, 600 56 S 960 44, 1200 58 V80 H0 Z" />
+      </svg>
+      <div class={styles.heroText}>
+        <span class={styles.eyebrow}>
+          <span class={styles.eyebrowDot} />
+          {props.eyebrow}
+        </span>
+        <h1 class={styles.heroTitle}>{props.title}</h1>
+        <p class={styles.heroBody}>{props.body}</p>
+      </div>
+      <div class={styles.stats}>
+        <For each={props.stats}>
+          {(s) => (
+            <div class={styles.stat}>
+              <span class={styles.statLabel}>{s.label}</span>
+              <span class={styles.statValue}>{s.value}</span>
+            </div>
+          )}
+        </For>
+      </div>
+    </header>
   );
 }

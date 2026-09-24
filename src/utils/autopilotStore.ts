@@ -25,6 +25,7 @@ export type RunnerStatus = {
   agent: string | null;
   cwd: string | null;
   error: AutopilotError | null;
+  since: number | null;
 };
 
 const OFF: RunnerStatus = {
@@ -33,6 +34,7 @@ const OFF: RunnerStatus = {
   agent: null,
   cwd: null,
   error: null,
+  since: null,
 };
 
 const [runner, setRunner] = createSignal<RunnerStatus>(OFF);

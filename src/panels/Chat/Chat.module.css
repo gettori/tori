@@ -2816,3 +2816,61 @@ button.attachmentBody:hover {
 .srOnly {
   composes: srOnly from "../../styles/patterns.module.css";
 }
+
+/* ---- the autopilot's cockpit ----
+   The same transcript on the cockpit's canvas: the autopilot's face beside its
+   replies, your prompts in its violet, and what waits on you as cards. */
+
+.chat[data-cockpit] {
+  background: transparent;
+}
+
+.markedReply {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(14px * var(--ui-scale));
+  margin-top: calc(6px * var(--ui-scale));
+}
+
+.markedReply > .assistant {
+  flex: 1;
+  min-width: 0;
+  padding-top: calc(4px * var(--ui-scale));
+}
+
+.chat[data-cockpit] .userBubble {
+  padding: calc(10px * var(--ui-scale)) calc(18px * var(--ui-scale));
+  border-color: var(--progress-border);
+  border-radius: var(--tori-radius-xl);
+  background: var(--progress-subtle);
+}
+
+.cockpitCall {
+  width: 100%;
+  max-width: var(--chat-measure);
+  margin-inline: auto;
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale)) 0;
+  box-sizing: border-box;
+}
+
+.chat[data-cockpit] .banner {
+  width: calc(100% - 32px * var(--ui-scale));
+  max-width: calc(var(--chat-measure) - 32px * var(--ui-scale));
+  margin: calc(8px * var(--ui-scale)) auto 0;
+  padding: calc(14px * var(--ui-scale)) calc(18px * var(--ui-scale));
+  box-sizing: border-box;
+  border: 1px solid var(--needs-you-border);
+  border-radius: var(--tori-radius-xl);
+  color: var(--fg-default);
+}
+
+.chat[data-cockpit] .composerBox {
+  border-color: var(--progress-border);
+}
+
+.chat[data-cockpit] .sendButton {
+  width: calc(40px * var(--ui-scale));
+  height: calc(40px * var(--ui-scale));
+  background: var(--status-progress);
+  color: var(--canvas-default);
+}

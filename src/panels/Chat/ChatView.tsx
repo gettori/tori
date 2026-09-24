@@ -185,6 +185,7 @@ import {
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
+import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
 import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
@@ -266,6 +267,9 @@ export default function ChatView(props: {
   /** A session this view watches but does not own, such as the autopilot's:
    *  unmounting leaves it running instead of closing it. */
   detach?: boolean;
+  /** Drawn for the autopilot's cockpit: its marks, no status strip, and no
+   *  pickers, since the autopilot's picks live in Settings. */
+  cockpit?: boolean;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
@@ -1975,7 +1979,7 @@ export default function ChatView(props: {
   }
 
   return (
-    <div class={`${styles.chat} ${props.active ? styles.active : ""}`}>
+    <div class={`${styles.chat} ${props.active ? styles.active : ""}`} data-cockpit={props.cockpit ? "true" : undefined}>
       <Show when={overCap()}>
         <div class={styles.banner}>
           <span class={styles.bannerText}>{capSaid()}</span>
@@ -2055,7 +2059,7 @@ export default function ChatView(props: {
           Nor for a chat that has not been started: there is no connection to
           report the health of, and Reconnect would spawn the very child the tab
           is deliberately doing without. */}
-      <Show when={props.started && !refused()}>
+      <Show when={props.started && !refused() && !props.cockpit}>
         <StatusStrip
           health={connectionHealth(state)}
           running={running()}
@@ -2164,12 +2168,20 @@ export default function ChatView(props: {
         blockedIn={blockedIn}
         onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
         onRewind={onRewind}
+        replyMark={props.cockpit ? ReplyMark : undefined}
       />
       </Show>
       {/* Selected transcript text goes into the reply as a quote. Scoped to this
           transcript's root, since every attached tab stays mounted. */}
       <QuoteSelection root={() => transcriptEl} onQuote={(text) => composer?.insertBlock(quoteBlock(text))} />
 
+      <Show when={props.cockpit && asksFor(props.sessionId).length}>
+        {(count) => (
+          <div class={styles.cockpitCall}>
+            <CaptainsCall count={count()} />
+          </div>
+        )}
+      </Show>
       <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} here={props.sessionId} />}</For>
 
       <PlanCard items={state.plan} />
@@ -2229,7 +2241,7 @@ export default function ChatView(props: {
         // effort. All the switches land at the same next-turn boundary, so
         // they sit together in the bar under the input.
         controls={
-          <>
+          props.cockpit ? undefined : <>
             {/* Model, then its thinking level, then the mode. The order is the
                 dependency: the effort levels on offer are a property of the
                 selected model, so the control that decides them comes first,
