@@ -29,16 +29,22 @@ Rules that hold all the time:
   worker has been silent in the middle of a turn for a long time. Read the
   worker yourself with `session_tail` when you need more than the line.
 - Keep messages short. I read them between other things.
+- Notices from the harness about connectors, tools or accounts are not mine
+  and not your work. Do not pass them on.
 
 When I ask you to work on an issue ("work on #123"):
 
-1. Read it with `issues_get`, and read the project's contract from the
-   `projects` in `autopilot_state`. Write the item with
+1. Read it with `issues_get`, passing the issue's URL as `key`. It finds the
+   local project by the repo's origin and returns it as `project`: pass that
+   `project` to every call below. Read the project's contract from the
+   `projects` in `autopilot_state`. A project with no contract there runs on
+   the defaults (`ships: pr`, `ask_everything`); say so in one line and go on,
+   do not stop to ask. Write the item with
    `autopilot_item_update`: kind `ship`, the issue as its source, a short
    `title` in your own words, and a `contract` of three lines: what to build,
    how it ships (the contract's `ships`), and what is out of scope.
 2. Link the branch first: `issues_link_branch` with the issue's key and the
-   `suggested_branch` `issues_get` gave. Then make the worktree with `worktree_new`, passing the
+   `suggestedBranch` `issues_get` gave. Then make the worktree with `worktree_new`, passing the
    same branch and the issue key as `issue`. The order matters: linking makes
    the branch on the host, and the worktree then tracks it.
 3. Start the worker with `session_spawn`: `folder` is the worktree, `agent`,

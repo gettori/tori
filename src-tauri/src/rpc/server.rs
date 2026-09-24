@@ -129,9 +129,10 @@ pub struct IssuesAssignedParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IssueGetParams {
-    /// The issue's key, the number on GitHub.
+    /// The issue's key, the number on GitHub, or its URL.
     pub key: String,
-    /// The project folder, the caller's own project when left out.
+    /// The project folder. Left out, a URL key names the local project whose origin is that repo, else the
+    /// caller's own project.
     pub project: Option<String>,
 }
 

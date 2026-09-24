@@ -160,7 +160,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "issues.get",
-        description: "One issue: its title, body, url and the branch name suggested for it.",
+        description: "One issue: its title, body, url, the branch name suggested for it, and the project folder it was read in. Takes the issue's URL, and then finds the project by its origin.",
         params: schema::<IssueGetParams>,
         callers: ANYONE,
         refusal: None,
