@@ -256,6 +256,7 @@ fn local_command_turn(text: &str, ts: u64) -> Option<TranscriptTurn> {
 }
 
 pub(crate) fn clean_title(raw: &str) -> String {
+    let raw = tori_body(raw).unwrap_or(raw);
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
         let truncated: String = one_line.chars().take(90).collect();
@@ -263,6 +264,12 @@ pub(crate) fn clean_title(raw: &str) -> String {
     } else {
         one_line
     }
+}
+
+// The text inside `rpc::events::from_tori`'s marker.
+fn tori_body(raw: &str) -> Option<&str> {
+    let (_, body) = raw.trim().strip_prefix("<tori ")?.split_once(">\n")?;
+    body.strip_suffix("\n</tori>")
 }
 
 /// One directory to scan, and the account whose sessions are in it.

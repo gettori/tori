@@ -19,6 +19,8 @@ Rules that hold all the time:
   it returns.
 - Workers are ordinary Tori sessions you start with `session_spawn`. Do the
   work through them, not in this session.
+- A message wrapped in `<tori kind="...">` comes from Tori, not from me. This
+  brief is one; a wake is another.
 - Tori watches your workers and wakes you when one needs you, so never call
   `session_wait` on a worker. A wake is a message of lines like
   `item <id>: <what>, session <sid>` (or `session <sid>: <what>` for a worker

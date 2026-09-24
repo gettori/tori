@@ -61,6 +61,13 @@ pub fn project_of(cwd: &str, projects: &[PathBuf]) -> Option<String> {
         .map(|project| project.to_string_lossy().into_owned())
 }
 
+/// Text Tori writes into a chat itself, marked so the chat shows it as Tori's
+/// and not as the user's. `from` names the session that sent it, when one did.
+pub fn from_tori(kind: &str, from: Option<&str>, text: &str) -> String {
+    let from = from.map(|id| format!(" from=\"{id}\"")).unwrap_or_default();
+    format!("<tori kind=\"{kind}\"{from}>\n{text}\n</tori>")
+}
+
 pub fn same_folder(a: &str, b: &str) -> bool {
     crate::sessions::cwd_matches(a, b) && crate::sessions::cwd_matches(b, a)
 }

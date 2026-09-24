@@ -321,7 +321,8 @@ impl Runner {
                 host.set_model(id, model, picks.effort.clone())?;
             }
         }
-        host.deliver(id, vec![ContentBlock::Text { text: brief }], false, TurnBy::Local)
+        let text = super::events::from_tori("brief", None, &brief);
+        host.deliver(id, vec![ContentBlock::Text { text }], false, TurnBy::Local)
     }
 
     fn brief(&self) -> Result<String, String> {

@@ -16,6 +16,7 @@ import { on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
 import { allAsks, answerAsk, type SocketAsk } from "./socketAsks";
 import { activityOf, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
 import { findSession } from "./sessionStore";
+import { toriNote } from "./toriNote";
 
 /** Mirrors `Status` in src-tauri/src/rpc/runner.rs. */
 export type RunnerStatus = {
@@ -52,15 +53,11 @@ const THREAD_KEPT = 6;
  *  left out, each turn's text joined, only the last few. */
 export function threadFrom(events: ChatEvent[]): ThreadMessage[] {
   const out: ThreadMessage[] = [];
-  let seenBrief = false;
   let reply: ThreadMessage | null = null;
   for (const e of events) {
     if (e.type === "userMessage") {
       reply = null;
-      if (!seenBrief) {
-        seenBrief = true;
-        continue;
-      }
+      if (toriNote(e.blocks)) continue;
       const text = e.blocks
         .flatMap((b) => (b.type === "text" ? [b.text] : []))
         .join("\n");
