@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    IssueGetParams, IssuesAssignedParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
@@ -272,6 +272,24 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: true,
         call: |b, p, v| b.pr_merge(p, params(v)?),
+    },
+    Method {
+        name: "autopilot.state",
+        description: "The autopilot's queue: each item with its stored state, whether its session is live and whether its worktree is gone.",
+        params: no_params,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, _| b.autopilot_state(),
+    },
+    Method {
+        name: "autopilot.item.update",
+        description: "Update an autopilot item by id. Without an id, update the open item for a kind, source and project, or make it: safe to retry.",
+        params: schema::<ItemUpdateParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("the queue is the autopilot's to change"),
+        outward: false,
+        call: |b, p, v| b.autopilot_item_update(p, params(v)?),
     },
 ];
 

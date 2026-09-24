@@ -6,6 +6,7 @@ mod agents;
 mod askpass;
 mod attachments;
 mod attempts;
+mod autopilot;
 mod auth;
 mod backstop;
 mod blame;
@@ -205,8 +206,8 @@ pub fn run() {
             // the askpass bridge: without it Tori runs, nothing outside can ask.
             match rpc::start(app.handle().clone()) {
                 Ok(state) => {
-                    let hub = state.hub.clone();
-                    app.state::<ChatState>().0.set_publisher(Arc::new(move |id, data| hub.publish_session(id, data)));
+                    let (hub, autopilot) = (state.hub.clone(), state.autopilot.clone());
+                    app.state::<ChatState>().0.set_publisher(Arc::new(move |id, data| rpc::publish_session(&hub, &autopilot, id, data)));
                     app.manage(state);
                 }
                 Err(e) => eprintln!("tori: rpc socket failed to start: {e}"),

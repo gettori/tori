@@ -8,9 +8,9 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 14] = [
+const COMMANDS: [&str; 15] = [
     "sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
-    "ask", "pr", "mcp",
+    "ask", "pr", "autopilot", "mcp",
 ];
 
 const USAGE: &str = "usage:
@@ -34,6 +34,9 @@ const USAGE: &str = "usage:
   tori pr create --head <branch> --base <branch> --title <text> [--body <text>] [--draft] [--project <path>] [--approval <id>] [--json]
   tori pr review <number> --event approve|comment|request-changes [--body <text>] [--comments <json>] [--project <path>] [--approval <id>]
   tori pr merge <number> --method merge|squash|rebase --head-sha <sha> [--project <path>] [--approval <id>]
+  tori autopilot state [--json]
+  tori autopilot item [<id>] [--kind ship|review --issue <key> | --pr <number> --repo <owner/name>] [--project <path>]
+                      [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>] [--json]
   tori mcp";
 
 pub fn is_cli() -> bool {
@@ -120,6 +123,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "budget" => budget(rest),
         "ask" => ask(rest),
         "pr" => pr(rest),
+        "autopilot" => autopilot(rest),
         "mcp" => Ok(crate::mcp::run()?),
         other => Err(usage(format!("unknown command {other}"))),
     }
@@ -194,14 +198,18 @@ fn sessions(args: &[String]) -> Result<(), Failure> {
     }
     let rows = rows.as_array().cloned().unwrap_or_default();
     let table: Vec<[String; 7]> = rows.iter().map(session_cells).collect();
-    let header = ["ID", "AGENT", "ACCOUNT", "STATE", "BRANCH", "FOLDER", "TITLE"].map(String::from);
+    write_table(&mut out, ["ID", "AGENT", "ACCOUNT", "STATE", "BRANCH", "FOLDER", "TITLE"], &table)
+}
+
+fn write_table<const N: usize>(out: &mut impl Write, header: [&str; N], table: &[[String; N]]) -> Result<(), Failure> {
+    let header = header.map(String::from);
     let mut widths = header.clone().map(|h| h.len());
-    for row in &table {
+    for row in table {
         for (w, cell) in widths.iter_mut().zip(row) {
             *w = (*w).max(cell.chars().count());
         }
     }
-    for row in std::iter::once(&header).chain(&table) {
+    for row in std::iter::once(&header).chain(table) {
         let line: Vec<String> = row.iter().zip(widths).map(|(cell, w)| format!("{cell:<w$}")).collect();
         writeln!(out, "{}", line.join("  ").trim_end())?;
     }
@@ -627,6 +635,91 @@ fn pr(args: &[String]) -> Result<(), Failure> {
     }
 }
 
+fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
+    let Some((sub, rest)) = args.split_first() else {
+        return Err(usage("autopilot needs a subcommand: state or item"));
+    };
+    match sub.as_str() {
+        "state" => {
+            let p = Parsed::new(rest, &[], &["json"])?;
+            if !p.positional.is_empty() {
+                return Err(usage("autopilot state takes no arguments"));
+            }
+            Ok(("autopilot.state", json!({})))
+        }
+        "item" => {
+            let valued = ["kind", "issue", "pr", "repo", "project", "state", "worktree", "session", "pr-url", "note"];
+            let p = Parsed::new(rest, &valued, &["json"])?;
+            let id = match p.positional.as_slice() {
+                [] => None,
+                [id] => Some(id),
+                _ => return Err(usage("autopilot item takes at most one item id")),
+            };
+            let project = p.value("project").map(absolute).transpose()?;
+            let source = match (p.value("issue"), p.value("pr"), p.value("repo")) {
+                (None, None, None) => None,
+                (Some(key), None, None) => {
+                    let project = project.as_ref().ok_or_else(|| usage("--issue needs --project, the project the issue is in"))?;
+                    Some(json!({ "type": "issue", "key": key, "project": project }))
+                }
+                (None, Some(number), Some(repo)) => {
+                    let number: u64 = number.parse().map_err(|_| usage(format!("--pr takes a pull request number, got {number}")))?;
+                    Some(json!({ "type": "pr", "number": number, "repo": repo }))
+                }
+                (None, Some(_), None) => return Err(usage("--pr needs --repo <owner/name>")),
+                _ => return Err(usage("pass --issue <key>, or --pr <number> with --repo <owner/name>")),
+            };
+            let params = json!({
+                "id": id,
+                "kind": p.value("kind"),
+                "source": source,
+                "project": project,
+                "state": p.value("state").map(|s| s.replace('-', "_")),
+                "worktree": p.value("worktree").map(absolute).transpose()?,
+                "session": p.value("session"),
+                "pr_url": p.value("pr-url"),
+                "note": p.value("note"),
+            });
+            Ok(("autopilot.item.update", params))
+        }
+        other => Err(usage(format!("unknown autopilot subcommand {other}: state or item"))),
+    }
+}
+
+fn autopilot(args: &[String]) -> Result<(), Failure> {
+    let (method, params) = autopilot_request(args)?;
+    let done = connect()?.call(method, params)?;
+    let mut out = io::stdout().lock();
+    if args.iter().any(|a| a == "--json") {
+        return Ok(writeln!(out, "{done}")?);
+    }
+    if method == "autopilot.item.update" {
+        return Ok(writeln!(out, "{}", done["id"].as_str().unwrap_or(""))?);
+    }
+    let table: Vec<[String; 6]> = done["items"].as_array().into_iter().flatten().map(item_cells).collect();
+    write_table(&mut out, ["ID", "KIND", "STATE", "SOURCE", "SESSION", "NOTE"], &table)
+}
+
+fn item_cells(row: &Value) -> [String; 6] {
+    let text = |key: &str| row[key].as_str().unwrap_or("").to_string();
+    let source = &row["source"];
+    let source = match source["type"].as_str() {
+        Some("issue") => format!("issue {}", source["key"].as_str().unwrap_or("")),
+        Some("pr") => format!("{}#{}", source["repo"].as_str().unwrap_or(""), source["number"]),
+        _ => String::new(),
+    };
+    let session = match row["session_live"].as_bool() {
+        Some(true) => "live",
+        Some(false) => "ended",
+        None => "",
+    };
+    let state = match row["worktree_gone"].as_bool() {
+        Some(true) => format!("{} (worktree gone)", text("state").replace('_', " ")),
+        _ => text("state").replace('_', " "),
+    };
+    [text("id"), text("kind"), state, source, session.to_string(), clip(&text("note"), 60)]
+}
+
 fn events(args: &[String]) -> Result<(), Failure> {
     let p = Parsed::new(args, &["topic"], &[])?;
     let topics = p.flags.get("topic").cloned().unwrap_or_else(|| vec!["sessions".to_string(), "accounts".to_string()]);
@@ -697,6 +790,39 @@ mod tests {
         assert!(pr_request(&args(&["merge", "12", "--method", "squash"])).is_err(), "a merge pins its head");
         assert!(pr_request(&args(&["close", "12"])).is_err());
         assert!(USAGE.contains("tori pr merge <number>"));
+    }
+
+    #[test]
+    fn autopilot_commands_map_onto_the_autopilot_methods() {
+        assert_eq!(autopilot_request(&args(&["state", "--json"])).ok(), Some(("autopilot.state", json!({}))));
+        assert!(autopilot_request(&args(&["state", "x"])).is_err());
+
+        let (method, params) =
+            autopilot_request(&args(&["item", "--kind", "review", "--pr", "7", "--repo", "o/r", "--project", "/p", "--state", "waiting-on-you"])).ok().unwrap();
+        assert_eq!(method, "autopilot.item.update");
+        assert_eq!(params["source"], json!({ "type": "pr", "number": 7, "repo": "o/r" }));
+        assert_eq!((params["id"].clone(), params["state"].clone()), (json!(null), json!("waiting_on_you")));
+
+        let (_, params) = autopilot_request(&args(&["item", "--kind", "ship", "--issue", "12", "--project", "/p"])).ok().unwrap();
+        assert_eq!(params["source"], json!({ "type": "issue", "key": "12", "project": "/p" }));
+        assert!(autopilot_request(&args(&["item", "--issue", "12"])).is_err(), "an issue source names its project");
+        assert!(autopilot_request(&args(&["item", "--pr", "7"])).is_err(), "a pull request source names its repo");
+        assert!(autopilot_request(&args(&["item", "--pr", "x", "--repo", "o/r"])).is_err());
+
+        let (_, params) = autopilot_request(&args(&["item", "item-1", "--note", "blocked on CI"])).ok().unwrap();
+        assert_eq!((params["id"].clone(), params["note"].clone()), (json!("item-1"), json!("blocked on CI")));
+        assert!(autopilot_request(&args(&["item", "a", "b"])).is_err());
+        assert!(autopilot_request(&args(&["hold"])).is_err());
+        assert!(USAGE.contains("tori autopilot state"));
+    }
+
+    #[test]
+    fn a_state_row_says_when_its_session_ended_or_its_worktree_is_gone() {
+        let row = json!({
+            "id": "item-1", "kind": "ship", "state": "running", "source": { "type": "pr", "number": 7, "repo": "o/r" },
+            "session_live": false, "worktree_gone": true, "note": null,
+        });
+        assert_eq!(item_cells(&row), ["item-1", "ship", "running (worktree gone)", "o/r#7", "ended", ""].map(String::from));
     }
 
     #[test]
