@@ -258,6 +258,9 @@ export default function ChatView(props: {
   /** Set when this tab is a rewind of `forkFrom`: the checkpoint the tree was
    *  put back to, which is also where the replayed history is cut. */
   rewindTo?: number;
+  /** Spawned unattended. Passed on every spawn, resumes included, so the
+   *  backend gates this session's outward tools. */
+  background?: boolean;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
@@ -880,6 +883,7 @@ export default function ChatView(props: {
             // at full price until the first time somebody looked at it and
             // looked away.
             visible: props.active,
+            background: props.background ?? false,
             onEvent: channel,
           }),
         )

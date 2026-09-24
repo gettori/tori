@@ -1903,7 +1903,7 @@ mod tests {
         let session = format!("teardown-{}", std::process::id());
         let server = crate::chat::approval::start(Box::new(|_| {})).unwrap();
         let transport = crate::agents::ChatTransport::ClaudeStreamJson;
-        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport).unwrap();
+        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport, false).unwrap();
         let settings_path = std::path::PathBuf::from(settings.last().unwrap());
         assert!(settings_path.exists(), "the session was launched with a settings file");
 

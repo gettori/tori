@@ -250,11 +250,22 @@ pub fn revoke(caller: &Caller) {
 
 pub const MCP_SERVER: &str = "tori";
 
-/// The rule pre-allowed in every settings file Tori injects into a claude it
+/// The rules pre-allowed in every settings file Tori injects into a claude it
 /// launches: Tori's own tools, nothing else, and the user's deny rules still
-/// outrank it.
-pub fn mcp_allow() -> String {
-    format!("mcp__{MCP_SERVER}__*")
+/// outrank them. A foreground session leaves the outward tools to the harness's
+/// prompt; a background one has Tori's approval gate in its place.
+pub fn mcp_allow(background: bool) -> Vec<String> {
+    if background {
+        return vec![format!("mcp__{MCP_SERVER}__*")];
+    }
+    table::METHODS.iter().filter(|m| !m.outward).map(|m| format!("mcp__{MCP_SERVER}__{}", m.name.replace('.', "_"))).collect()
+}
+
+// Called by `chat_spawn` before the child starts, so its first outward call already meets the gate.
+pub fn mark_background(session: &str) {
+    if let Some((_, states)) = EVENTS.get() {
+        states.mark_background(session);
+    }
 }
 
 /// `["--mcp-config", <path>]` naming `tori mcp`, for a claude Tori launches.

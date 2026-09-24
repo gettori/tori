@@ -146,7 +146,7 @@ fn claude_settings_json() -> String {
     let cmd = status_writer_command();
     let entry = hook_entry(&cmd);
     let settings = json!({
-        "permissions": { "allow": [crate::rpc::mcp_allow()] },
+        "permissions": { "allow": crate::rpc::mcp_allow(false) },
         "hooks": {
             "UserPromptSubmit": entry,
             "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": cmd }] }],
@@ -357,7 +357,7 @@ mod tests {
         assert!(!args[3].trim_start().starts_with('{'), "must be a file path, not inline JSON");
         let text = std::fs::read_to_string(&args[3]).expect("the settings file should exist");
         let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
-        assert_eq!(parsed["permissions"], json!({ "allow": ["mcp__tori__*"] }));
+        assert_eq!(parsed["permissions"], json!({ "allow": crate::rpc::mcp_allow(false) }));
         assert!(parsed["hooks"]["Notification"].is_array());
         assert!(parsed["hooks"]["UserPromptSubmit"].is_array());
         assert!(parsed["hooks"]["PreToolUse"].is_array());

@@ -128,7 +128,7 @@ beforeEach(async () => {
  * Mount the chat the way the panel does, with `started` under the test's
  * control: the panel flips it on `onStart`, and so does this.
  */
-function mount(started = false) {
+function mount(started = false, background?: boolean) {
   const [isStarted, setStarted] = createSignal(started);
   const r = render(() => (
     <ChatView
@@ -149,6 +149,7 @@ function mount(started = false) {
       onRewindFrom={() => {}}
       onFirstSendFailed={() => {}}
       onProfileResolved={() => {}}
+      background={background}
     />
   ));
   return { ...r, started: isStarted };
@@ -194,6 +195,15 @@ describe("a restored chat opened to read", () => {
     await waitFor(() => expect(spawns()).toHaveLength(1));
     expect(spawns()[0]!.args.sessionId).toBe(SESSION);
     expect(spawns()[0]!.args.resume).toBe(true);
+    expect(spawns()[0]!.args.background).toBe(false);
+  });
+
+  it("resumes a background chat marked background", async () => {
+    mount(false, true);
+    await waitFor(() => expect(historyCalls()).toHaveLength(1));
+    await send("carry on");
+    await waitFor(() => expect(spawns()).toHaveLength(1));
+    expect(spawns()[0]!.args.background).toBe(true);
   });
 
   it("sends the held message once the session can take a turn, and only then", async () => {
