@@ -125,19 +125,89 @@ pub fn load_secret_from(entry: &Entry) -> Result<Option<Secret>, ForgeError> {
 // --- thin wrappers over the real entries ---
 
 pub fn save_secret(account_id: &str, secret: &Secret) -> Result<(), ForgeError> {
+    #[cfg(all(debug_assertions, not(test)))]
+    return dev_file::save(account_id, secret);
+    #[allow(unreachable_code)]
     save_secret_to(&account_entry(account_id)?, secret)
 }
 
 pub fn load_secret(account_id: &str) -> Result<Option<Secret>, ForgeError> {
+    #[cfg(all(debug_assertions, not(test)))]
+    return Ok(dev_file::read().remove(account_id));
+    #[allow(unreachable_code)]
     load_secret_from(&account_entry(account_id)?)
 }
 
 pub fn delete_secret(account_id: &str) -> Result<(), ForgeError> {
+    #[cfg(all(debug_assertions, not(test)))]
+    return dev_file::delete(account_id);
+    #[allow(unreachable_code)]
     delete_from(&account_entry(account_id)?)
 }
 
 pub fn load_legacy() -> Result<Option<String>, ForgeError> {
+    #[cfg(all(debug_assertions, not(test)))]
+    return Ok(None);
+    #[allow(unreachable_code)]
     load_from(&Entry::new(LEGACY_SERVICE, LEGACY_USER).map_err(map_err)?)
+}
+
+/// Where a dev build keeps forge secrets instead of the keychain. A keychain
+/// item trusts the code signature that wrote it, and a dev build's ad hoc
+/// signature changes on every rebuild, so each hot reload asked for the login
+/// password again. Release builds never compile this.
+#[cfg(all(debug_assertions, not(test)))]
+mod dev_file {
+    use super::{ForgeError, Secret};
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    fn path() -> PathBuf {
+        dirs::home_dir().unwrap_or_default().join(".config/tori/dev-forge-secrets.json")
+    }
+
+    pub fn read() -> BTreeMap<String, Secret> {
+        std::fs::read_to_string(path())
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    fn write(all: &BTreeMap<String, Secret>) -> Result<(), ForgeError> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let fail = |e: std::io::Error| ForgeError::Transport { message: format!("dev secrets: {e}") };
+        let path = path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(fail)?;
+        }
+        let tmp = path.with_extension("json.tmp");
+        let _ = std::fs::remove_file(&tmp);
+        let text = serde_json::to_string(all)
+            .map_err(|e| ForgeError::Malformed { message: format!("secret: {e}") })?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+            .map_err(fail)?;
+        file.write_all(text.as_bytes()).map_err(fail)?;
+        std::fs::rename(tmp, path).map_err(fail)
+    }
+
+    pub fn save(account_id: &str, secret: &Secret) -> Result<(), ForgeError> {
+        let mut all = read();
+        all.insert(account_id.to_string(), secret.clone());
+        write(&all)
+    }
+
+    pub fn delete(account_id: &str) -> Result<(), ForgeError> {
+        let mut all = read();
+        if all.remove(account_id).is_some() {
+            write(&all)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
