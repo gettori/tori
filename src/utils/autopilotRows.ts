@@ -157,8 +157,20 @@ function onDeck(crew: number, queued: number): string {
   return queued ? `${deck} and ${counted(queued, "waiting", "waiting").toLowerCase()} at the dock.` : `${deck}.`;
 }
 
+/** More workers out than the chat limit allows, which the cockpit shows as a storm. Zero is no limit. */
+export const overLimit = (crew: number, limit: number) => limit > 0 && crew > limit;
+
 /** The banner's words for where the autopilot stands. */
-export function heroFor(state: AutopilotState, calls: number, crew: number, queued: number): CockpitHero {
+export function heroFor(state: AutopilotState, calls: number, crew: number, queued: number, limit: number): CockpitHero {
+  if ((state === "working" || state === "idle") && overLimit(crew, limit)) {
+    return {
+      eyebrow: "Rough seas",
+      title: "The crew is stretched thin.",
+      body: `${onDeck(crew, queued)} That is past your limit of ${limit} running chats, so expect a slower voyage.`,
+    };
+  }
+  // The autopilot's own turn can be over while its workers still run.
+  if (state === "idle" && crew > 0) state = "working";
   switch (state) {
     case "needs":
       return {

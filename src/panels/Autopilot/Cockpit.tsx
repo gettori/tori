@@ -6,7 +6,8 @@ import { pickScene } from "../../components/Autopilot/Horizon";
 import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
-import { heroFor, inFlightRows, queuedItems, workerCards } from "../../utils/autopilotRows";
+import { heroFor, inFlightRows, overLimit, queuedItems, workerCards } from "../../utils/autopilotRows";
+import { settings } from "../Settings/settingsStore";
 import {
   activity,
   attachable,
@@ -101,13 +102,16 @@ export function CockpitView() {
   const [now, setNow] = createSignal(Date.now());
   const tick = setInterval(() => setNow(Date.now()), 30_000);
   onCleanup(() => clearInterval(tick));
-  const hero = () => heroFor(autopilotNow(), decisions().length, workerCards(items()).length, queuedItems(items()).length);
+  const crew = () => workerCards(items()).length;
+  const limit = () => settings.chatDefaults.maxConcurrentChats;
+  const hero = () => heroFor(autopilotNow(), decisions().length, crew(), queuedItems(items()).length, limit());
+  const scene = () => (overLimit(crew(), limit()) ? "storm" : pickScene(new Date(now()).getHours()));
   return (
     <div class={styles.overlay}>
       <AutopilotView
         state={autopilotNow()}
         hero={hero()}
-        scene={pickScene(new Date(now()).getHours())}
+        scene={scene()}
         workers={workerCards(items())}
         emptyWorkers="The deck is quiet. Hand the autopilot a ticket or a PR."
         queue={queuedItems(items())}
