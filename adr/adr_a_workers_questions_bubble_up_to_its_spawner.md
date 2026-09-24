@@ -25,7 +25,7 @@ Only `session.spawn` and `session.steer` are refused to a worker, with "a worker
 
 ## Consequences
 
-- Autopilot is just a spawner that waits. Nothing here changes when it arrives.
+- The autopilot does not wait: its watcher wakes it on a worker's question, end or idle, and its brief says never to call `session_wait` ([[component_autopilot_watcher]]). `session.wait` stays for any other spawner.
 - A permission pending in the worker (`can_use_tool`, ACP `request_permission`) shows in `session.wait` only as `needs_you` with `question: null`. Routing it to the spawner is the gate in [[adr_a_background_session_needs_a_tori_gate]].
 - **An approval ask is the exception.** An ask carrying an `approval` is the user's alone: `ask.answer` refuses it for every socket caller, the spawner included, so no agent approves its own worker's post. Its card is mirrored into the worker's root background chat instead, so the user answers it where they are looking. See [[adr_a_background_session_needs_a_tori_gate]].
 - An ask the worker's harness cancels still leaves its card up until someone answers it, and nobody reads that answer.

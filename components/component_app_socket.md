@@ -2,7 +2,7 @@
 summary: one JSON-RPC unix socket per Tori process: methods in one table with caller kinds, per child tokens, a webview bridge
 status: current
 updated: 2026-09-24
-source: gettori/tori#197 and #198 on branch orchestrator; commits 392d36b0, ae2bbe65, 15f6b615, f66f5da7, 9c01ba2a, 85430c9e; src-tauri/src/rpc/{mod,frame,transport,auth,hub,server,methods,states,bridge,asks,client}.rs; dev/rpc-probe.mjs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; plan "tori mcp" commits b69f5ada, 928f500e, 12bcab53, a375fb7a, src-tauri/src/rpc/table.rs; gettori/tori#202 commit 982c9bed; plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; src-tauri/src/rpc/approvals.rs
+source: gettori/tori#197 and #198 on branch orchestrator; commits 392d36b0, ae2bbe65, 15f6b615, f66f5da7, 9c01ba2a, 85430c9e; src-tauri/src/rpc/{mod,frame,transport,auth,hub,server,methods,states,bridge,asks,client}.rs; dev/rpc-probe.mjs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; plan "tori mcp" commits b69f5ada, 928f500e, 12bcab53, a375fb7a, src-tauri/src/rpc/table.rs; gettori/tori#202 commit 982c9bed; plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; src-tauri/src/rpc/approvals.rs; gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commits eff34ef6, 669596a1
 ---
 
 # App socket (Rust)
@@ -26,7 +26,7 @@ Layering, bottom up. Nothing above `transport.rs` sees a unix socket:
 - `events.rs`: the envelope (`session_event`, `Place`), `EndReason`, `TurnBy`, `project_of` and `same_folder`. See [[concept_socket_event_vocabulary]].
 - `quotas.rs`: `Quotas`, the last windows per `(agent, profile)`, so `account.quota` goes out when one moves.
 - `bridge.rs`: `Bridge`, the request/reply channel to the webview for what only it can answer. See below.
-- `asks.rs`: `Asks`, the questions `tori ask` put up and their answers.
+- `asks.rs`: `Asks`, the questions `tori ask` put up and their answers, and the holds it persists to `holds.json`.
 - `client.rs`: the blocking client the `tori` CLI uses ([[component_tori_cli]]).
 
 ## Interface
@@ -39,6 +39,8 @@ Layering, bottom up. Nothing above `transport.rs` sees a unix socket:
 - `session.spawn {agent?, account?, folder?, prompt?, attach?, new_worktree?, project?, from?, background?}`, `window.open {path, line?}`, `budget {id?, folder?}`, `ask.create {question, options?, timeout?, approval?, project?}`, `ask.wait {id, timeout?}`, `ask.answer {id, answer}`. An Approve on an approval ask comes back as `{id, answer, approval_id}` from `ask.create` or `ask.wait`.
 - `pr.create {head, base, title, body, draft?, project?, approval_id?}`, `review.submit {number, event, body, comments?, project?, approval_id?}`, `pr.merge {number, method, head_sha, project?, approval_id?}`: the outward rows, marked `outward: true` in the table. They reach the forge through `forge::commands::{create_pr, submit_review, merge}` over the gated client; `merge` passes `head_sha` as the expected head, which GitHub and GitLab enforce.
 - `issues.assigned {project?, refresh?}`, `issues.get {key, project?}`, `issues.link_branch {key, branch, base?, project?}` (not workers). They call the issue source's core straight from `TauriBackend`, no bridge. `worktree.new` with an `issue` looks the issue up before making the worktree, so a bad key leaves nothing, then records it on the unit. See [[component_issue_source]].
+- `autopilot.state` (anyone), `autopilot.item.update {id? | kind, source, project?; state?, worktree?, session?, pr_url?, note?}`, `autopilot.project.set {project?, ships?, autonomy?, pickup?, agent?, account?, model?}`, `autopilot.hold.resolve {id}` (not workers). They read and write [[component_autopilot_store]]; `state` answers `{items, projects, holds, runner}`.
+- `autopilot.start`, `autopilot.stop`: admitted by the `NOT_SESSIONS` preset (`Local`, `Terminal`), so no agent session, worker or not, can switch the autopilot on. They call [[component_autopilot_runner]]; the webview reaches the same runner through Tauri commands.
 - `session.wait {id, timeout?}` (default 60s): blocks on `SessionStates::wait_settled` (a `Condvar` notified by `replace`) until the session is anything but `working`, then returns `{id, state, question, last}`: its pending ask, and the main agent's text of its latest turn. A live session not yet reported is re-polled, so a wait right after a spawn does not error.
 - Notifications are `event {topic, data}`. Session events have a dotted `kind` and go on both `sessions` and `session:<id>` through `Hub::publish_session`; `account.quota` goes on `accounts`. The kinds, their fields and where each is noticed are in [[concept_socket_event_vocabulary]].
 - `rpc_session_states` (async) takes `{id, state, source, folder, tab?}` and `rpc_quota` takes `{agent, profile, readings}`. Modules without Tauri state publish through `rpc::publish_checkpoint` and `rpc::publish_pr`, which read a process wide `(Hub, SessionStates)` and do nothing before the socket is up.
@@ -55,6 +57,8 @@ The webview owns session status, spawning, the concurrent cap, quota readings an
 - **`budget`** reads spend (`chat::usage`) and budgets (`settings`) in Rust and asks the webview only for quota windows (`usage.windows`).
 - **Workers.** A session spawned by a chat caller is marked a worker in `SessionStates` (cleared on end and by `rpc::revoke`). Its rows refuse it `session.spawn`, `session.steer`, `session.wait` and `ask.answer`; a row that names its own `refusal` gives that sentence instead of the generic worker one (`issues.link_branch` does). It may still ask, and its spawner reads the question through `session.wait` and answers it with `ask.answer`, which also drops the card through the bridge's `ask.close`.
 - **The approval gate.** Background is decided at spawn: `session.spawn` marks a child background if asked or if its spawner is (`spawns_background`), sends the flag to the webview, and `chat_spawn` marks it through `rpc::mark_background` before the child starts. `SessionStates` keeps `spawned_by` for workers and `root_background(id)` walks it to the topmost background session. For a background caller an outward row runs `gated_by_approval`: `Approvals::reserve` checks the id against the session, action, target, project and exact draft, the call runs, and the approval is spent on success and released on failure. Approvals are minted in `Asks::answer` only for an exact `Approve` from `By::User` (the `rpc_ask_answer` command); `By::Socket` on an approval ask is refused, so `ask.answer` never settles one. An approval ask's `shown_in` adds the asker's root background session, so a worker's card also shows in the autopilot's chat. See [[adr_a_background_session_needs_a_tori_gate]].
+- **Holds.** `ask.create {item}` needs an `approval` and an item the store has. Such an ask is a hold: `Asks::with_holds` writes it through to `~/.config/tori/autopilot/holds.json` on every change and publishes `autopilot.changed` with the lock released. A hold outlives its chat and a restart. Either way, an Approve nobody read goes back to pending, since the grant is gone, and a Reject nobody read still goes to the next `ask.wait`. `withdraw` answers `Withdrawn` and never mints an approval, which is what `autopilot.hold.resolve` and an item closing both do. `rpc::start` builds the bridge before `Asks` and the store, since the store's `on_closed` hook needs both.
+- **`session.ended` reaches the autopilot** through `rpc::publish_session(hub, autopilot, id, event)`, the one publisher for both the ChatHost events (`lib.rs`) and PTY ends (`rpc_session_states`).
 - **Asks live in Rust.** `ask.create` refuses anything but a chat or worker caller, shows the card through `ask.show`, and waits. Ids are random, since reading an answer consumes it. The webview reloads open asks from `rpc_asks_pending` and answers with `rpc_ask_answer`, so a reload loses neither. `ChatView` reports `waitingForAnswer` while a card is open, which is what drives the dot and the notification. A chat ending forgets its asks through `rpc::revoke`.
 
 ## Why publish never blocks
@@ -72,6 +76,9 @@ The webview owns session status, spawning, the concurrent cap, quota readings an
 - [[component_tori_cli]]: the first front
 - [[component_tori_mcp]]: the MCP front, built from the method table
 - [[component_issue_source]]: what the `issues.*` rows call
+- [[component_autopilot_store]]: what the `autopilot.*` rows read and write
+- [[component_autopilot_runner]]: what `autopilot.start|stop` call
+- [[gotcha_the_webview_is_not_a_hub_subscriber]]: why a channel the UI reads is mirrored as a Tauri event
 - [[adr_socket_asks_the_webview_until_rust_owns_state]]: why state is pushed and actions are asked
 - [[gotcha_codex_shell_drops_env_names_containing_token_key_or_secret]]: why the env var is `TORI_CALLER`
 - [[gotcha_a_turn_sent_from_outside_the_panel_draws_no_user_bubble]]: what `session.steer` has to draw itself

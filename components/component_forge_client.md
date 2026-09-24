@@ -2,7 +2,7 @@
 summary: forge client owns the OAuth device flow, keychain credential and caches in Rust, and the token never crosses the bridge
 status: current
 updated: 2026-09-24
-source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd; gettori/tori#202 commit f8a61936"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd; gettori/tori#202 commit f8a61936"; gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8
 ---
 
 # Forge client (Rust)
@@ -34,6 +34,7 @@ Everything Tori knows about a forge's HTTP API. It owns the provider trait, the 
 - `status.rs:198` - `SingleFlight<T = Fetched>`, so two triggers make one request; generic so the assigned-issues list reuses it
 - `Forge::issues()` - the same host as an issue source, `None` by default, `Some(self)` on GitHub ([[component_issue_source]])
 - `github.rs` `graphql_response` - the raw GraphQL answer, beside `graphql`, for a caller that must read an error's `type` ([[gotcha_github_graphql_answers_a_missing_number_with_a_not_found_error]])
+- `Forge::pull_request_states(repo, numbers)` - open, closed or merged for many PRs in one request: aliased `pullRequest(number:)` on GitHub, an `iids[]` list on GitLab. `commands::pull_request_states` goes through `gated_client` and keys each answer by `owner/name`, for [[component_autopilot_store]]
 - `prs.rs:135` - `push_then_create`, always in that order, never a pre-check on ahead/behind
 - `commands.rs` - the Tauri surface, including `landing()`, which invalidates both caches for a repo on a successful merge
 
