@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
@@ -290,6 +290,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("the queue is the autopilot's to change"),
         outward: false,
         call: |b, p, v| b.autopilot_item_update(p, params(v)?),
+    },
+    Method {
+        name: "autopilot.project.set",
+        description: "Set how the autopilot works in a project: how work ships, how far it goes before asking, whether it picks up work unasked, and the agent, account and model its workers use. Fields left out keep their value.",
+        params: schema::<ProjectSetParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("a project's contract is the user's and the autopilot's to set"),
+        outward: false,
+        call: |b, p, v| b.autopilot_project_set(p, params(v)?),
     },
 ];
 

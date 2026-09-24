@@ -37,6 +37,8 @@ const USAGE: &str = "usage:
   tori autopilot state [--json]
   tori autopilot item [<id>] [--kind ship|review --issue <key> | --pr <number> --repo <owner/name>] [--project <path>]
                       [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>] [--json]
+  tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
+                         [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--json]
   tori mcp";
 
 pub fn is_cli() -> bool {
@@ -637,7 +639,7 @@ fn pr(args: &[String]) -> Result<(), Failure> {
 
 fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     let Some((sub, rest)) = args.split_first() else {
-        return Err(usage("autopilot needs a subcommand: state or item"));
+        return Err(usage("autopilot needs a subcommand: state, item or project"));
     };
     match sub.as_str() {
         "state" => {
@@ -682,7 +684,25 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             });
             Ok(("autopilot.item.update", params))
         }
-        other => Err(usage(format!("unknown autopilot subcommand {other}: state or item"))),
+        "project" => {
+            let valued = ["project", "ships", "autonomy", "pickup", "agent", "account", "model"];
+            let p = Parsed::new(rest, &valued, &["json"])?;
+            if !p.positional.is_empty() {
+                return Err(usage("autopilot project takes only flags: name the project with --project"));
+            }
+            let choice = |name: &str| p.value(name).map(|v| v.replace('-', "_"));
+            let params = json!({
+                "project": p.value("project").map(absolute).transpose()?,
+                "ships": choice("ships"),
+                "autonomy": choice("autonomy"),
+                "pickup": choice("pickup"),
+                "agent": p.value("agent"),
+                "account": p.value("account"),
+                "model": p.value("model"),
+            });
+            Ok(("autopilot.project.set", params))
+        }
+        other => Err(usage(format!("unknown autopilot subcommand {other}: state, item or project"))),
     }
 }
 
@@ -693,11 +713,39 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
     if args.iter().any(|a| a == "--json") {
         return Ok(writeln!(out, "{done}")?);
     }
-    if method == "autopilot.item.update" {
-        return Ok(writeln!(out, "{}", done["id"].as_str().unwrap_or(""))?);
+    match method {
+        "autopilot.item.update" => return Ok(writeln!(out, "{}", done["id"].as_str().unwrap_or(""))?),
+        "autopilot.project.set" => return Ok(write!(out, "{}", render_contract(&done))?),
+        _ => {}
     }
     let table: Vec<[String; 6]> = done["items"].as_array().into_iter().flatten().map(item_cells).collect();
-    write_table(&mut out, ["ID", "KIND", "STATE", "SOURCE", "SESSION", "NOTE"], &table)
+    write_table(&mut out, ["ID", "KIND", "STATE", "SOURCE", "SESSION", "NOTE"], &table)?;
+    let projects = done["projects"].as_object().cloned().unwrap_or_default();
+    if projects.is_empty() {
+        return Ok(());
+    }
+    let table: Vec<[String; 5]> = projects.iter().map(|(path, contract)| project_cells(path, contract)).collect();
+    writeln!(out)?;
+    write_table(&mut out, ["PROJECT", "SHIPS", "AUTONOMY", "PICKUP", "AGENT"], &table)
+}
+
+fn render_contract(contract: &Value) -> String {
+    let mut text = String::new();
+    for key in ["ships", "autonomy", "pickup", "agent", "account", "model"] {
+        if let Some(value) = contract[key].as_str() {
+            text.push_str(&format!("{key}: {}\n", value.replace('_', " ")));
+        }
+    }
+    text
+}
+
+fn project_cells(path: &str, contract: &Value) -> [String; 5] {
+    let text = |key: &str| contract[key].as_str().unwrap_or("").replace('_', " ");
+    let agent = match (contract["agent"].as_str(), contract["model"].as_str()) {
+        (Some(agent), Some(model)) => format!("{agent} {model}"),
+        (agent, model) => agent.or(model).unwrap_or("").to_string(),
+    };
+    [home_relative(path), text("ships"), text("autonomy"), text("pickup"), agent]
 }
 
 fn item_cells(row: &Value) -> [String; 6] {
@@ -813,6 +861,13 @@ mod tests {
         assert_eq!((params["id"].clone(), params["note"].clone()), (json!("item-1"), json!("blocked on CI")));
         assert!(autopilot_request(&args(&["item", "a", "b"])).is_err());
         assert!(autopilot_request(&args(&["hold"])).is_err());
+
+        let (method, params) = autopilot_request(&args(&["project", "--project", "/p", "--autonomy", "auto-until-outward", "--model", "opus"])).ok().unwrap();
+        assert_eq!(method, "autopilot.project.set");
+        assert_eq!(params["autonomy"], json!("auto_until_outward"));
+        assert_eq!((params["project"].clone(), params["ships"].clone()), (json!("/p"), json!(null)), "a flag left out keeps its value");
+        assert!(autopilot_request(&args(&["project", "/p"])).is_err());
+        assert!(USAGE.contains("tori autopilot project"));
         assert!(USAGE.contains("tori autopilot state"));
     }
 
