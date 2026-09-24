@@ -215,7 +215,6 @@ function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey }) {
       <Show when={props.state === "error"}>
         <div class={styles.dim} />
       </Show>
-      <div class={styles.scrim} />
       <div class={styles.heroRow}>
         <div class={styles.heroText}>
           <span class={styles.eyebrow}>
@@ -224,16 +223,6 @@ function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey }) {
           </span>
           <h1 class={styles.heroTitle}>{props.title}</h1>
           <p class={styles.heroBody}>{props.body}</p>
-        </div>
-        <div class={styles.stats}>
-          <For each={props.stats}>
-            {(s) => (
-              <div class={styles.stat}>
-                <span class={styles.statLabel}>{s.label}</span>
-                <span class={styles.statValue}>{s.value}</span>
-              </div>
-            )}
-          </For>
         </div>
       </div>
     </header>

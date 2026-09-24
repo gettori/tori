@@ -12,13 +12,7 @@ const ap = (text: string): ThreadMessage => ({ from: "autopilot", text });
 const sys = (text: string): ThreadMessage => ({ from: "system", text });
 const act = (time: string, text: string, needsYou = false): ActivityItem => ({ time, text, needsYou });
 
-const hero = (state: AutopilotState, calls: number, crew: number, first: [string, string]): CockpitHero => ({
-  ...heroFor(state, calls, crew, crew ? 1 : 0),
-  stats: [
-    { label: first[0], value: first[1] },
-    { label: "Crew", value: String(crew) },
-  ],
-});
+const hero = (state: AutopilotState, calls: number, crew: number): CockpitHero => heroFor(state, calls, crew, crew ? 1 : 0);
 
 const LOGIN = "tori/123-login-redirect";
 const AVATAR = "tori/131-avatar-cache";
@@ -84,7 +78,7 @@ const error = { title: "Autopilot session exited (signal 9)", detail: "Restartin
 export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   off: {
     state: "off",
-    hero: hero("off", 0, 0, ["Underway", "0m"]),
+    hero: hero("off", 0, 0),
     scene: "night",
     workers: [],
     emptyWorkers: "Nothing in flight. Workers from earlier are normal sessions now.",
@@ -96,7 +90,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   idle: {
     state: "idle",
-    hero: hero("idle", 0, 0, ["Docked today", "1"]),
+    hero: hero("idle", 0, 0),
     scene: "morning",
     workers: [],
     emptyWorkers: "Nothing in flight. Give the autopilot a ticket or a PR.",
@@ -118,7 +112,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   working: {
     state: "working",
-    hero: hero("working", 0, 2, ["Underway", "16m"]),
+    hero: hero("working", 0, 2),
     scene: "midday",
     workers: [
       login({
@@ -137,7 +131,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   needs: {
     state: "needs",
-    hero: hero("needs", 2, 2, ["Underway", "16m"]),
+    hero: hero("needs", 2, 2),
     scene: "dusk",
     workers: [
       login({
@@ -167,7 +161,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   error: {
     state: "error",
-    hero: hero("error", 0, 2, ["Underway", "9m"]),
+    hero: hero("error", 0, 2),
     scene: "golden",
     workers: [
       login({ log: ["> edit src/auth/session.ts", "$ pnpm test auth"], doing: "Running tests", progress: 0.64 }),

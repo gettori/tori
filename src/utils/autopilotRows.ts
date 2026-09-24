@@ -158,7 +158,7 @@ function onDeck(crew: number, queued: number): string {
 }
 
 /** The banner's words for where the autopilot stands. */
-export function heroFor(state: AutopilotState, calls: number, crew: number, queued: number): Omit<CockpitHero, "stats"> {
+export function heroFor(state: AutopilotState, calls: number, crew: number, queued: number): CockpitHero {
   switch (state) {
     case "needs":
       return {
@@ -187,10 +187,4 @@ export function heroFor(state: AutopilotState, calls: number, crew: number, queu
     case "off":
       return { eyebrow: "Docked", title: "In harbor.", body: "Start the autopilot to set sail." };
   }
-}
-
-/** How long it has been on, as the banner's Underway reads it. */
-export function underway(since: number, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - since) / 60_000));
-  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }

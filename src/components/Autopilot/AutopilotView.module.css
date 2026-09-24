@@ -226,16 +226,10 @@
     height: calc(176px * var(--ui-scale));
     overflow: hidden;
   }
-  .dim,
-  .scrim {
+  .dim {
     position: absolute;
     inset: 0;
-  }
-  .dim {
     background: linear-gradient(180deg, var(--tori-scene-dim-top), var(--tori-scene-dim-bottom));
-  }
-  .scrim {
-    background: linear-gradient(90deg, var(--tori-scene-scrim) 0%, var(--tori-scene-scrim-mid) 35%, transparent 62%);
   }
   .heroRow {
     position: absolute;
@@ -297,35 +291,6 @@
     font-size: var(--tori-text-xl);
     line-height: 1.5;
     color: var(--tori-scene-ink-muted);
-  }
-
-  .stats {
-    display: flex;
-    gap: var(--tori-space-4);
-    flex: none;
-  }
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: var(--tori-space-1);
-    min-width: calc(96px * var(--ui-scale));
-    padding: calc(9px * var(--ui-scale)) var(--tori-space-5);
-    border-radius: var(--tori-radius-xl);
-    background: var(--tori-scene-gauge);
-    border: var(--tori-border-thin) solid var(--tori-scene-gauge-border);
-    backdrop-filter: blur(6px);
-  }
-  .statLabel {
-    font-size: var(--tori-text-xs);
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--tori-scene-gauge-label);
-  }
-  .statValue {
-    font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xl);
-    color: var(--tori-scene-ink);
   }
 
   .column {
