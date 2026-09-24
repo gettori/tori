@@ -198,6 +198,10 @@ pub struct SpawnParams {
     pub from: Option<String>,
     /// Mark the session as running unattended; `sessions.list` flags it `background`.
     pub background: Option<bool>,
+    /// The model it opens on, the project contract's when left out.
+    pub model: Option<String>,
+    /// The effort level it opens on.
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -898,7 +902,7 @@ pub mod tests {
     fn every_spawn_param_is_optional_and_described() {
         let schema = schemars::schema_for!(SpawnParams).to_value();
         let properties = schema["properties"].as_object().unwrap();
-        assert_eq!(properties.len(), 9);
+        assert_eq!(properties.len(), 11);
         for (name, field) in properties {
             assert!(field["description"].as_str().is_some_and(|d| !d.is_empty()), "{name} has no description");
         }

@@ -1040,7 +1040,8 @@ export default function ChatView(props: {
    * default the user set after adding their second login.
    */
   createEffect(() => {
-    if (remembered || !canSend()) return;
+    // A background worker runs on its project contract's picks, not the user's.
+    if (remembered || props.background || !canSend()) return;
     remembered = true;
     rememberChatPrefs(props.workspace, {
       agent: props.agentId,

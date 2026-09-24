@@ -1706,6 +1706,8 @@ export default function Terminal(props: {
     folder: string;
     agent: string | null;
     account: string | null;
+    model: string | null;
+    effort: string | null;
     prompt: string | null;
     attach: string[];
     background: boolean;
@@ -1717,6 +1719,7 @@ export default function Terminal(props: {
     if (!chatCapable(findAdapter(agentId))) throw new Error(`${agentId} has no chat surface`);
     const profile = p.account !== null ? asTabProfile(p.account) : draftProfile(p.folder, p.folder, agentId);
     const tabId = chatId();
+    if (p.model !== null || p.effort !== null) setDraftPick(tabId, { model: p.model, effort: p.effort });
     const mentions = attachmentSources(chatTier(findAdapter(agentId).chat?.transport)).mentions;
     const kinds = p.attach.map((path, i) => {
       const verdict = checkAttachment({ name: path.split("/").pop() || path, mediaType: "", bytes: null }, i, mentions);
