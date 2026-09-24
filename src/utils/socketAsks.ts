@@ -24,7 +24,7 @@ const [asks, setAsks] = createSignal<SocketAsk[]>([]);
 export const asksFor = (session: string) => asks().filter((a) => (a.shown_in ?? [a.session]).includes(session));
 
 export function showAsk(ask: SocketAsk) {
-  setAsks((prev) => (prev.some((a) => a.id === ask.id) ? prev : [...prev, ask]));
+  setAsks((prev) => (prev.some((a) => a.id === ask.id) ? prev.map((a) => (a.id === ask.id ? ask : a)) : [...prev, ask]));
 }
 
 export async function loadPendingAsks() {

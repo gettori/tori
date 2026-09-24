@@ -429,6 +429,8 @@ pub trait Backend: Send + Sync {
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError>;
     fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError>;
+    fn autopilot_start(&self) -> Result<Value, RpcError>;
+    fn autopilot_stop(&self) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -695,6 +697,12 @@ pub mod tests {
                 Some(asks) => hold_resolve(asks, &p.id),
                 None => Ok(json!({ "id": p.id })),
             }
+        }
+        fn autopilot_start(&self) -> Result<Value, RpcError> {
+            Ok(json!({ "state": "starting" }))
+        }
+        fn autopilot_stop(&self) -> Result<Value, RpcError> {
+            Ok(json!({ "state": "off" }))
         }
     }
 

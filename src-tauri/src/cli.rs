@@ -35,6 +35,7 @@ const USAGE: &str = "usage:
   tori pr review <number> --event approve|comment|request-changes [--body <text>] [--comments <json>] [--project <path>] [--approval <id>]
   tori pr merge <number> --method merge|squash|rebase --head-sha <sha> [--project <path>] [--approval <id>]
   tori autopilot state [--json]
+  tori autopilot start|stop [--json]
   tori autopilot item [<id>] [--kind ship|review --issue <key> | --pr <number> --repo <owner/name>] [--project <path>]
                       [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>] [--json]
   tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
@@ -640,7 +641,7 @@ fn pr(args: &[String]) -> Result<(), Failure> {
 
 fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     let Some((sub, rest)) = args.split_first() else {
-        return Err(usage("autopilot needs a subcommand: state, item, project or hold"));
+        return Err(usage("autopilot needs a subcommand: state, start, stop, item, project or hold"));
     };
     match sub.as_str() {
         "state" => {
@@ -649,6 +650,13 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 return Err(usage("autopilot state takes no arguments"));
             }
             Ok(("autopilot.state", json!({})))
+        }
+        "start" | "stop" => {
+            let p = Parsed::new(rest, &[], &["json"])?;
+            if !p.positional.is_empty() {
+                return Err(usage(format!("autopilot {sub} takes no arguments")));
+            }
+            Ok((if sub == "start" { "autopilot.start" } else { "autopilot.stop" }, json!({})))
         }
         "item" => {
             let valued = ["kind", "issue", "pr", "repo", "project", "state", "worktree", "session", "pr-url", "note"];
@@ -710,7 +718,16 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 _ => Err(usage("autopilot hold takes: resolve <id>")),
             }
         }
-        other => Err(usage(format!("unknown autopilot subcommand {other}: state, item, project or hold"))),
+        other => Err(usage(format!("unknown autopilot subcommand {other}: state, start, stop, item, project or hold"))),
+    }
+}
+
+fn runner_line(runner: &Value) -> String {
+    let state = runner["state"].as_str().unwrap_or("off");
+    match (runner["session"].as_str(), runner["error"]["title"].as_str()) {
+        (_, Some(title)) => format!("{state}: {title}"),
+        (Some(session), None) => format!("{state} {session}"),
+        (None, None) => state.to_string(),
     }
 }
 
@@ -725,8 +742,10 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
         "autopilot.item.update" => return Ok(writeln!(out, "{}", done["id"].as_str().unwrap_or(""))?),
         "autopilot.project.set" => return Ok(write!(out, "{}", render_contract(&done))?),
         "autopilot.hold.resolve" => return Ok(writeln!(out, "withdrawn: {}", done["id"].as_str().unwrap_or(""))?),
+        "autopilot.start" | "autopilot.stop" => return Ok(writeln!(out, "{}", runner_line(&done))?),
         _ => {}
     }
+    writeln!(out, "autopilot: {}", runner_line(&done["runner"]))?;
     let table: Vec<[String; 6]> = done["items"].as_array().into_iter().flatten().map(item_cells).collect();
     write_table(&mut out, ["ID", "KIND", "STATE", "SOURCE", "SESSION", "NOTE"], &table)?;
     let projects = done["projects"].as_object().cloned().unwrap_or_default();

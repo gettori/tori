@@ -16,6 +16,7 @@ pub mod frame;
 pub mod hub;
 pub mod methods;
 pub mod quotas;
+pub mod runner;
 pub mod server;
 pub mod states;
 pub mod table;
@@ -35,6 +36,7 @@ use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use events::{session_event, Place};
 use hub::{Channel, Hub};
 use quotas::Quotas;
+use runner::Runner;
 use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
 use states::{Held, Reported, SessionStates, Source};
@@ -48,6 +50,7 @@ pub const ENV_CALLER: &str = "TORI_CALLER";
 static SOCKET: OnceLock<(String, Arc<Children>)> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ASKS: OnceLock<Arc<Asks>> = OnceLock::new();
+static RUNNER: OnceLock<Arc<Runner>> = OnceLock::new();
 // For modules with no Tauri state in reach: the checkpoint writer, the forge
 // poll, the quota push.
 static EVENTS: OnceLock<(Arc<Hub>, Arc<SessionStates>)> = OnceLock::new();
@@ -59,6 +62,7 @@ pub struct RpcState {
     bridge: Arc<Bridge>,
     asks: Arc<Asks>,
     pub autopilot: Arc<AutopilotStore>,
+    pub runner: Arc<Runner>,
     quotas: Quotas,
 }
 
@@ -96,6 +100,14 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         AutopilotStore::open(crate::autopilot::dir(), Box::new(move |event| autopilot_hub.publish(&Channel::Autopilot, event)))
             .on_closed(withdraw_holds(asks.clone(), bridge.clone())),
     );
+    let runner = Arc::new(Runner::new(
+        app.clone(),
+        hub.clone(),
+        states.clone(),
+        asks.clone(),
+        bridge.clone(),
+        crate::autopilot::dir(),
+    ));
     let server = Arc::new(Server {
         credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
@@ -105,6 +117,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
             bridge: bridge.clone(),
             asks: asks.clone(),
             autopilot: autopilot.clone(),
+            runner: runner.clone(),
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
@@ -116,6 +129,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     }
     let _ = SOCKET.set((sock, children));
     let _ = ASKS.set(asks.clone());
+    let _ = RUNNER.set(runner.clone());
     let _ = EVENTS.set((hub.clone(), states.clone()));
     match link_cli(transport.sock_path()) {
         Ok(dir) => {
@@ -123,7 +137,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states, bridge, asks, autopilot, quotas: Quotas::default() })
+    Ok(RpcState { transport, hub, states, bridge, asks, autopilot, runner, quotas: Quotas::default() })
 }
 
 // Async so resolving a new session's project, which reads the config and lists
@@ -172,6 +186,9 @@ fn withdraw_holds(asks: Arc<Asks>, bridge: Arc<Bridge>) -> Box<dyn Fn(&str) + Se
 // An item whose session ended keeps its stored state, but what the autopilot sees of it changed.
 pub fn publish_session(hub: &Hub, autopilot: &AutopilotStore, id: &str, event: Value) {
     let ended = event["kind"] == "session.ended";
+    if let Some(runner) = RUNNER.get() {
+        runner.observe(id, &event);
+    }
     hub.publish_session(id, event);
     if ended {
         autopilot.session_ended(id);
@@ -297,6 +314,15 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
         return vec![format!("mcp__{MCP_SERVER}__*")];
     }
     table::METHODS.iter().filter(|m| !m.outward).map(|m| format!("mcp__{MCP_SERVER}__{}", m.name.replace('.', "_"))).collect()
+}
+
+// A worker resumed after a relaunch lost its spawner link with the old process.
+// A retired autopilot id stands for the current autopilot.
+pub fn mark_resumed_worker(session: &str, spawner: &str) {
+    let spawner = RUNNER.get().map_or_else(|| spawner.to_string(), |r| r.resolve_spawner(spawner));
+    if let Some((_, states)) = EVENTS.get() {
+        states.mark_worker(session, &spawner);
+    }
 }
 
 // Called by `chat_spawn` before the child starts, so its first outward call already meets the gate.

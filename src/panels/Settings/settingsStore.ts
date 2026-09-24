@@ -306,6 +306,18 @@ export type Settings = {
   dap: { disabled: string[] };
   /** Mirrors `Format` in src-tauri/src/settings.rs. */
   format: { byExtension: Record<string, string>; disabled: string[] };
+  /** Mirrors `Autopilot` in src-tauri/src/settings.rs. */
+  autopilot: AutopilotSettings;
+};
+
+/** `enabled` is written only by `autopilot.start` and `autopilot.stop`; a save
+ *  from here keeps whatever the file says. */
+export type AutopilotSettings = {
+  enabled: boolean;
+  agent: string | null;
+  profile: string | null;
+  model: string | null;
+  effort: string | null;
 };
 
 /** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
@@ -386,6 +398,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
+  autopilot: { enabled: false, agent: null, profile: null, model: null, effort: null },
 };
 
 /**

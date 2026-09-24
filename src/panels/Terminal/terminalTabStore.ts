@@ -74,6 +74,9 @@ export type OpenTerm = {
   // spawned). Carried into every spawn and resume of the session, which is what
   // puts Tori's approval gate in front of its outward tools.
   background?: boolean;
+  // Chat tabs a session spawned: that session's id, so a resume after a
+  // relaunch links the worker back to it.
+  spawner?: string;
   // Fresh (non-resumed) agent tabs only: when this tab was spawned, epoch
   // seconds. Used to attribute the session that appears afterward (see
   // `backfillFreshSessions`).

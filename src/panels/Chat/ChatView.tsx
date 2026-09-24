@@ -261,6 +261,8 @@ export default function ChatView(props: {
   /** Spawned unattended. Passed on every spawn, resumes included, so the
    *  backend gates this session's outward tools. */
   background?: boolean;
+  /** The session that spawned this one, for a resume to link it back to. */
+  spawner?: string;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
@@ -884,6 +886,7 @@ export default function ChatView(props: {
             // looked away.
             visible: props.active,
             background: props.background ?? false,
+            spawner: props.spawner ?? null,
             onEvent: channel,
           }),
         )

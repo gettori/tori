@@ -42,6 +42,8 @@ impl CallerKind {
 
 const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker];
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
+// A person at a shell or an outside client; no agent session can start a spend.
+const NOT_SESSIONS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal];
 
 /// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
 pub const WORKER_REFUSAL: &str = "a worker never spawns or steers; finish your turn and your spawner reads it";
@@ -281,6 +283,24 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, _| b.autopilot_state(),
+    },
+    Method {
+        name: "autopilot.start",
+        description: "Turn the autopilot on: start its session with the brief, and start it again when Tori launches. Answers the runner's status.",
+        params: no_params,
+        callers: NOT_SESSIONS,
+        refusal: Some("turning the autopilot on is the user's call"),
+        outward: false,
+        call: |b, _, _| b.autopilot_start(),
+    },
+    Method {
+        name: "autopilot.stop",
+        description: "Turn the autopilot off: close its session. The queue on disk and every worker session stay as they are.",
+        params: no_params,
+        callers: NOT_SESSIONS,
+        refusal: Some("turning the autopilot off is the user's call"),
+        outward: false,
+        call: |b, _, _| b.autopilot_stop(),
     },
     Method {
         name: "autopilot.item.update",
