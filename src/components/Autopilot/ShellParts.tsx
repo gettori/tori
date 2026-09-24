@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show, createSignal, type JSX } from "solid-js";
 import { ArrowUp, TriangleAlert } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
@@ -82,6 +82,40 @@ export function Thread(props: { messages: ThreadMessage[]; dense?: boolean; chil
   );
 }
 
+/** The popup's one-line composer: Enter sends and clears. */
+export function Composer(props: { placeholder: string; disabled?: boolean; dense?: boolean; onSend: (text: string) => void }) {
+  const [text, setText] = createSignal("");
+  const send = () => {
+    const t = text().trim();
+    if (!t || props.disabled) return;
+    props.onSend(t);
+    setText("");
+  };
+  return (
+    <div class={styles.composer} data-disabled={props.disabled ? "true" : "false"} data-dense={props.dense ? "true" : "false"}>
+      <div class={styles.composerField}>
+        <input
+          class={styles.input}
+          value={text()}
+          placeholder={props.placeholder}
+          disabled={props.disabled}
+          aria-label={props.placeholder}
+          onInput={(e) => setText(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.isComposing) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+      </div>
+      <button type="button" class={styles.send} aria-label="Send" disabled={props.disabled || !text().trim()} onClick={send}>
+        <Icon icon={ArrowUp} class={styles.sendIcon} />
+      </button>
+    </div>
+  );
+}
+
 /** A picture of the composer: the real one is the Chat panel's, wired in #205. */
 export function ComposerShell(props: { placeholder: string; disabled?: boolean; hints?: JSX.Element; dense?: boolean }) {
   return (
@@ -134,9 +168,13 @@ export function ErrorBanner(props: {
         <Button size="sm" onClick={() => props.onRestart?.()}>
           Restart now
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => props.onViewLog?.()}>
-          View log
-        </Button>
+        <Show when={props.onViewLog}>
+          {(onViewLog) => (
+            <Button size="sm" variant="ghost" onClick={() => onViewLog()()}>
+              View log
+            </Button>
+          )}
+        </Show>
         <Show when={props.turnOff}>
           <Button size="sm" variant="ghost" onClick={() => props.onTurnOff?.()}>
             Turn off

@@ -106,6 +106,7 @@ html {
 }
 
 .body {
+  position: relative;
   flex: 1;
   display: flex;
   min-height: 0;

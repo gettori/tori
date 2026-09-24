@@ -17,9 +17,13 @@ export type SocketAsk = {
   // The panels showing the card; absent from a build older than approvals, where
   // it was the asker's alone.
   shown_in?: string[];
+  // The autopilot item an approval is for, which makes it a hold.
+  item?: string;
 };
 
 const [asks, setAsks] = createSignal<SocketAsk[]>([]);
+
+export const allAsks = asks;
 
 export const asksFor = (session: string) => asks().filter((a) => (a.shown_in ?? [a.session]).includes(session));
 

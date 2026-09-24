@@ -263,6 +263,9 @@ export default function ChatView(props: {
   background?: boolean;
   /** The session that spawned this one, for a resume to link it back to. */
   spawner?: string;
+  /** A session this view watches but does not own, such as the autopilot's:
+   *  unmounting leaves it running instead of closing it. */
+  detach?: boolean;
   active: boolean;
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
@@ -1083,6 +1086,10 @@ export default function ChatView(props: {
   onCleanup(() => {
     dropLiveChat(props.sessionId);
     if (!props.started) return;
+    if (props.detach) {
+      void invoke("chat_detach", { sessionId: props.sessionId, tabId: props.tabId }).catch(() => {});
+      return;
+    }
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
   });
 

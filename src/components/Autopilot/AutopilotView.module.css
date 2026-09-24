@@ -171,6 +171,15 @@
   .scroll > :first-child {
     margin-top: auto;
   }
+  .column[data-live="true"] .scroll {
+    flex: 0 1 auto;
+  }
+  .chat {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
   .activity {
     display: flex;

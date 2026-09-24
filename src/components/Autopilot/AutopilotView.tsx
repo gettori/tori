@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import { ArrowUpRight, ShieldCheck } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
@@ -37,6 +37,8 @@ export interface AutopilotViewProps {
   onStart?: () => void;
   onRestart?: () => void;
   onViewLog?: () => void;
+  /** The live conversation, in place of the drawn thread and composer. */
+  chat?: JSX.Element;
 }
 
 /** The full window Autopilot view: what is in flight on the left, the
@@ -44,6 +46,16 @@ export interface AutopilotViewProps {
  *  what it is handed and owns no state. The title bar above it is the host's. */
 export default function AutopilotView(props: AutopilotViewProps) {
   const off = () => props.state === "off";
+  const banners = () => (
+    <>
+      <Show when={props.state === "error" && props.error}>
+        {(error) => <ErrorBanner {...error()} onRestart={props.onRestart} onViewLog={props.onViewLog} />}
+      </Show>
+      <For each={props.decisions}>
+        {(d, i) => <DecisionCard {...d} focused={i() === props.focused} {...decisionHandlers(d, props)} />}
+      </For>
+    </>
+  );
 
   return (
     <div class={styles.view}>
@@ -99,7 +111,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
       </aside>
 
       <section class={styles.center} aria-label="Conversation">
-        <div class={styles.column}>
+        <div class={styles.column} data-live={props.chat ? "true" : "false"}>
           <div class={styles.scroll}>
             <Show when={off()}>
               <OffNotice
@@ -108,28 +120,30 @@ export default function AutopilotView(props: AutopilotViewProps) {
                 onStart={props.onStart}
               />
             </Show>
-            <Thread messages={props.messages}>
-              <Show when={props.state === "error" && props.error}>
-                {(error) => <ErrorBanner {...error()} onRestart={props.onRestart} onViewLog={props.onViewLog} />}
-              </Show>
-              <For each={props.decisions}>
-                {(d, i) => <DecisionCard {...d} focused={i() === props.focused} {...decisionHandlers(d, props)} />}
-              </For>
-            </Thread>
+            <Show when={!props.chat} fallback={banners()}>
+              <Thread messages={props.messages}>{banners()}</Thread>
+            </Show>
           </div>
-          <ComposerShell
-            disabled={off() || props.state === "error"}
-            placeholder={off() ? "Start the autopilot to message it" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
-            hints={
-              <KeyHints
+          <Show
+            when={props.chat}
+            fallback={
+              <ComposerShell
+                disabled={off() || props.state === "error"}
+                placeholder={off() ? "Start the autopilot to message it" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
                 hints={
-                  props.decisions.length
-                    ? [[["\u2318\u21e7J"], "workspace"], [["J", "K"], "move"], [["A"], "approve"], [["R"], "reply"]]
-                    : [[["\u2318\u21e7J"], "workspace"]]
+                  <KeyHints
+                    hints={
+                      props.decisions.length
+                        ? [[["\u2318\u21e7J"], "workspace"], [["J", "K"], "move"], [["A"], "approve"], [["R"], "reply"]]
+                        : [[["\u2318\u21e7J"], "workspace"]]
+                    }
+                  />
                 }
               />
             }
-          />
+          >
+            <div class={styles.chat}>{props.chat}</div>
+          </Show>
         </div>
       </section>
 

@@ -125,6 +125,27 @@
     font-size: var(--tori-text-sm);
     color: var(--fg-subtle);
   }
+  .input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+  }
+  .input::placeholder {
+    color: var(--fg-subtle);
+  }
+  button.send {
+    border: none;
+    cursor: pointer;
+  }
+  button.send:disabled {
+    cursor: default;
+  }
   .composerHints {
     flex: none;
     font-size: var(--tori-text-2xs);

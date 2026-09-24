@@ -932,6 +932,12 @@ pub struct BeforeContent {
 }
 
 #[tauri::command]
+pub async fn chat_detach(state: State<'_, ChatState>, session_id: String, tab_id: String) -> Result<(), String> {
+    state.0.detach(&session_id, &tab_id);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn chat_close(
     state: State<'_, ChatState>,
     session_id: String,

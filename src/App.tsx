@@ -161,6 +161,8 @@ import {
   resetZoom,
 } from './panels/Settings/settingsStore';
 import './styles/reset.css';
+import { CockpitPopup, CockpitSwitch, CockpitView } from './panels/Autopilot/Cockpit';
+import { popupOpen, view } from './utils/autopilotStore';
 import './styles/tokens.css';
 import './styles/base.css';
 import './App.css';
@@ -1103,6 +1105,7 @@ function App() {
           <WindowControls showSidebar={showSidebar()} />
         </div>
         <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
+        <CockpitSwitch />
         <DevBadge />
         <UsageStrip />
         <UpdatePill suppressed={firstRunOpen()} />
@@ -1189,6 +1192,12 @@ function App() {
             <Dock />
           </div>
         </div>
+        <Show when={view() === 'autopilot'}>
+          <CockpitView />
+        </Show>
+        <Show when={view() === 'workspace' && popupOpen()}>
+          <CockpitPopup />
+        </Show>
       </div>
 
       <Show when={omnibox()} keyed>

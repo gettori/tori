@@ -52,16 +52,20 @@ pub struct RunnerError {
 pub struct Status {
     pub state: RunnerState,
     pub session: Option<String>,
+    pub agent: Option<String>,
+    // Where the session runs, for a view that attaches to it.
+    pub cwd: Option<String>,
     pub error: Option<RunnerError>,
 }
 
 impl Status {
     fn off() -> Self {
-        Self { state: RunnerState::Off, session: None, error: None }
+        Self { state: RunnerState::Off, session: None, agent: None, cwd: None, error: None }
     }
 
-    fn error(title: &str, detail: String) -> Self {
-        Self { state: RunnerState::Error, session: None, error: Some(RunnerError { title: title.into(), detail }) }
+    // Keeps the session that failed, so its transcript can still be read.
+    fn failed(self, title: &str, detail: String) -> Self {
+        Self { state: RunnerState::Error, error: Some(RunnerError { title: title.into(), detail }), ..self }
     }
 }
 
@@ -134,6 +138,10 @@ impl Runner {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn session_dir(&self) -> PathBuf {
+        self.dir.join("session")
+    }
+
     fn file_path(&self) -> PathBuf {
         self.dir.join("runner.json")
     }
@@ -196,7 +204,8 @@ impl Runner {
     }
 
     fn set_turn(&self, id: &str, state: RunnerState) {
-        self.set(Status { state, session: Some(id.to_string()), error: None });
+        let status = self.status();
+        self.set(Status { state, session: Some(id.to_string()), error: None, ..status });
     }
 
     fn ended(self: &Arc<Self>, reason: EndReason) {
@@ -210,7 +219,7 @@ impl Runner {
         };
         match next {
             AfterEnd::Restart => self.launch(),
-            AfterEnd::Fail => self.set(Status::error(
+            AfterEnd::Fail => self.set(self.status().failed(
                 "The autopilot stopped twice",
                 "Its session died, was restarted, and died again. Restart it to try once more.".into(),
             )),
@@ -233,12 +242,14 @@ impl Runner {
     // being torn down.
     fn launch(self: &Arc<Self>) {
         let id = new_session_id();
-        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), error: None });
+        let agent = crate::settings::autopilot().agent.filter(|a| !a.is_empty()).unwrap_or_else(|| DEFAULT_AGENT.to_string());
+        let cwd = Some(self.session_dir().to_string_lossy().into_owned());
+        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None });
         let runner = self.clone();
         std::thread::spawn(move || {
             if let Err(detail) = runner.launch_as(&id) {
                 if runner.is_current(&id) {
-                    runner.set(Status::error("The autopilot could not start", detail));
+                    runner.set(runner.status().failed("The autopilot could not start", detail));
                 }
             }
         });
@@ -264,7 +275,7 @@ impl Runner {
         std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         write_atomically(&path, &serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?)?;
 
-        let cwd = self.dir.join("session");
+        let cwd = self.session_dir();
         std::fs::create_dir_all(&cwd).map_err(|e| format!("could not make {}: {e}", cwd.display()))?;
 
         let (started_tx, started_rx) = mpsc::channel();
