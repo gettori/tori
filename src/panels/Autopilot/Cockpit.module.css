@@ -1,0 +1,17 @@
+@layer components {
+  /* Over the workspace rather than in its place: unmounting it would close
+     every chat tab under it. */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: var(--canvas-default);
+  }
+  .popupAnchor {
+    position: absolute;
+    top: var(--tori-space-3);
+    left: 50%;
+    z-index: 800;
+    transform: translateX(-50%);
+  }
+}

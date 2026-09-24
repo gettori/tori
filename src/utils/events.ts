@@ -93,6 +93,8 @@ export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 // Global UI zoom (Cmd+ / Cmd- / Cmd0), consumed by App.tsx, which drives the
 // zoom multiplier in settingsStore. Scales chrome, editor, and terminal together.
 export const ZOOM_IN = "tori:zoom-in";
+export const TOGGLE_AUTOPILOT_VIEW = "tori:toggle-autopilot-view";
+export const TOGGLE_AUTOPILOT_POPUP = "tori:toggle-autopilot-popup";
 export const ZOOM_OUT = "tori:zoom-out";
 export const ZOOM_RESET = "tori:zoom-reset";
 

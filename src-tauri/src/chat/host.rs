@@ -865,6 +865,22 @@ impl ChatHost {
         }
     }
 
+    /// Stop sending this session's events to `tab_id`, and leave it running.
+    ///
+    /// Only while that tab still drives it: a view that remounted has already
+    /// rewired the session to its new tab, and detaching then would blind it.
+    /// The listener stays wrapped, so a death still ends the session.
+    pub fn detach(&self, session_id: &str, tab_id: &str) {
+        let found = lock(&self.sessions)
+            .get(session_id)
+            .filter(|e| e.tab_id == tab_id)
+            .map(|e| (e.listener.clone(), e.mirror.clone()));
+        if let Some((listener, mirror)) = found {
+            *lock(&listener) = Some(self.wrap(session_id, Box::new(|_| {}), mirror));
+            self.set_visible(session_id, false);
+        }
+    }
+
     pub fn is_live(&self, session_id: &str) -> bool {
         lock(&self.sessions).contains_key(session_id)
     }

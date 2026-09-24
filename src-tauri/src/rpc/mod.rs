@@ -239,6 +239,23 @@ pub fn publish_pr(project: &str, folder: &str, branch: &str, checked_out: bool, 
     hub.publish(&Channel::Sessions, event);
 }
 
+// The webview's own switch: not a socket caller, so it goes around the
+// `NOT_SESSIONS` rows to the same runner.
+#[tauri::command]
+pub fn autopilot_start(rpc: tauri::State<RpcState>) -> Result<runner::Status, String> {
+    rpc.runner.start()
+}
+
+#[tauri::command]
+pub fn autopilot_stop(rpc: tauri::State<RpcState>) -> Result<runner::Status, String> {
+    rpc.runner.stop()
+}
+
+#[tauri::command]
+pub fn autopilot_status(rpc: tauri::State<RpcState>) -> runner::Status {
+    rpc.runner.status()
+}
+
 #[tauri::command]
 pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<String>, readings: Vec<quotas::Reading>) {
     if let Some(windows) = rpc.quotas.record(&agent, profile.as_deref(), readings) {

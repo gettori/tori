@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import { ArrowUpRight, SquareArrowOutUpRight } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
@@ -26,6 +26,8 @@ export interface AutopilotPopupProps {
   onRestart?: () => void;
   onViewLog?: () => void;
   onTurnOff?: () => void;
+  /** A live input, in place of the drawn composer. */
+  composer?: JSX.Element;
 }
 
 /** The autopilot summoned over Workspace: what needs you, what is running,
@@ -112,11 +114,18 @@ export default function AutopilotPopup(props: AutopilotPopupProps) {
       </div>
 
       <footer class={styles.foot}>
-        <ComposerShell
-          dense
-          disabled={muted()}
-          placeholder={off() ? "Start the autopilot to message it" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
-        />
+        <Show
+          when={props.composer}
+          fallback={
+            <ComposerShell
+              dense
+              disabled={muted()}
+              placeholder={off() ? "Start the autopilot to message it" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
+            />
+          }
+        >
+          {props.composer}
+        </Show>
       </footer>
     </section>
   );

@@ -74,6 +74,8 @@ describe("the canonical binding table", () => {
         "toggle-sidebar",
         "toggle-terminal",
         "zoom-in",
+        "autopilot-view",
+        "autopilot-popup",
         "zoom-out",
         "zoom-reset",
       ].sort(),
@@ -253,7 +255,7 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
 
   it("ignores unmodified and wrongly-modified keys", () => {
     expect(dispatchHotkey(key("k"))).toBe(false);
-    expect(dispatchHotkey(key("j", { meta: true, shift: true }))).toBe(false);
+    expect(dispatchHotkey(key("k", { meta: true, shift: true }))).toBe(false);
     expect(dispatchHotkey(key("Tab", { ctrl: true, shift: true }))).toBe(false);
     // ⌘0 resets zoom, but ⌘⇧0 is deliberately unbound.
     expect(dispatchHotkey(key("0", { meta: true, shift: true }))).toBe(false);
