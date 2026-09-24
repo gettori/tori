@@ -12,7 +12,7 @@ const ap = (text: string): ThreadMessage => ({ from: "autopilot", text });
 const sys = (text: string): ThreadMessage => ({ from: "system", text });
 const act = (time: string, text: string, needsYou = false): ActivityItem => ({ time, text, needsYou });
 
-const hero = (state: AutopilotState, calls: number, crew: number): CockpitHero => heroFor(state, calls, crew, crew ? 1 : 0);
+const hero = (state: AutopilotState, calls: number, crew: number): CockpitHero => heroFor(state, calls, crew, crew ? 1 : 0, 4);
 
 const LOGIN = "tori/123-login-redirect";
 const AVATAR = "tori/131-avatar-cache";
