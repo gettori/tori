@@ -268,7 +268,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "pr.create",
-        description: "Open a pull request from a pushed branch. A background session needs the approval_id of an approved ask for exactly this draft.",
+        description: "Push head_sha to the head branch on origin, never forced, then open a pull request from it. Refused once the local branch has moved past head_sha. A background session needs the approval_id of an approved ask for exactly this draft.",
         params: schema::<PrCreateParams>,
         callers: ANYONE,
         refusal: None,

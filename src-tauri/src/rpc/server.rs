@@ -262,8 +262,10 @@ pub struct AskWaitParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PrCreateParams {
-    /// The branch the pull request is from, already pushed.
+    /// The branch the pull request is from.
     pub head: String,
+    /// The commit pushed to `head` on origin first; refused when the local branch has moved past it.
+    pub head_sha: String,
     /// The branch it merges into.
     pub base: String,
     /// The pull request's title.
@@ -286,6 +288,7 @@ impl PrCreateParams {
             title: self.title.clone(),
             body: self.body.clone(),
             draft: self.draft.unwrap_or(false),
+            head_sha: self.head_sha.clone(),
         }
     }
 }

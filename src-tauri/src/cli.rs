@@ -34,7 +34,7 @@ const USAGE: &str = "usage:
   tori ask <question>... [--option <text>]... [--timeout <secs>] [--approval <json> [--project <path>]]
   tori ask --wait <id> [--timeout <secs>]
   tori ask --answer <id> <text>...
-  tori pr create --head <branch> --base <branch> --title <text> [--body <text>] [--draft] [--project <path>] [--approval <id>] [--json]
+  tori pr create --head <branch> --head-sha <sha> --base <branch> --title <text> [--body <text>] [--draft] [--project <path>] [--approval <id>] [--json]
   tori pr review <number> --event approve|comment|request-changes [--body <text>] [--comments <json>] [--project <path>] [--approval <id>]
   tori pr merge <number> --method merge|squash|rebase --head-sha <sha> [--project <path>] [--approval <id>]
   tori autopilot state [--json]
@@ -642,6 +642,7 @@ fn pr_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
             "pr.create",
             json!({
                 "head": needed("head")?,
+                "head_sha": needed("head-sha")?,
                 "base": needed("base")?,
                 "title": needed("title")?,
                 "body": p.value("body").unwrap_or(""),
@@ -916,7 +917,9 @@ mod tests {
     #[test]
     fn pr_commands_map_onto_the_outward_methods() {
         let (method, params) =
-            pr_request(&args(&["create", "--head", "1-x", "--base", "main", "--title", "T", "--approval", "appr-1"])).ok().unwrap();
+            pr_request(&args(&["create", "--head", "1-x", "--head-sha", "abc", "--base", "main", "--title", "T", "--approval", "appr-1"]))
+                .ok()
+                .unwrap();
         assert_eq!(method, "pr.create");
         assert_eq!((params["head"].clone(), params["body"].clone(), params["draft"].clone()), (json!("1-x"), json!(""), json!(false)));
         assert_eq!(params["approval_id"], json!("appr-1"));

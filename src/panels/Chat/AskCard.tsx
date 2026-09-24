@@ -18,7 +18,7 @@ function ApprovalDraft(props: { approval: AskApproval }) {
           <>
             <strong>{pr().title}</strong>
             <span class={styles.askDraftMeta}>
-              {pr().head} into {pr().base}
+              {pr().head} at {pr().head_sha} into {pr().base}
               {pr().draft ? ", as a draft" : ""}
             </span>
             <pre class={styles.askDraftBody}>{pr().body}</pre>

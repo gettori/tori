@@ -43,11 +43,12 @@ describe("an approval card", () => {
           title: "Gate outward actions",
           body: "Closes the gap.",
           draft: true,
+          head_sha: "abc123",
         })}
       />
     ));
     expect(screen.getByText("Gate outward actions")).toBeTruthy();
-    expect(screen.getByText(/203-gate into main, as a draft/)).toBeTruthy();
+    expect(screen.getByText(/203-gate at abc123 into main, as a draft/)).toBeTruthy();
     expect(screen.getByText("Closes the gap.")).toBeTruthy();
     expect(screen.getByText("/work/repo")).toBeTruthy();
   });
