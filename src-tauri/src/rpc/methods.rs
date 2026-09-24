@@ -165,6 +165,39 @@ fn record_spawn(states: &SessionStates, principal: &Principal, id: &str, backgro
     }
 }
 
+// `https://<host>/<owner>/<name>/issues/<n>`, GitLab's `/-/issues/<n>`, or
+// `<owner>/<name>#<n>`: the repo, lowercased, and the issue's key.
+fn issue_ref(key: &str) -> Option<(String, String)> {
+    let key = key.trim().trim_end_matches('/');
+    let (repo, number) = match key.split_once('#') {
+        Some((repo, number)) => (repo, number),
+        None => {
+            let (before, number) = key.rsplit_once("/issues/")?;
+            let before = before.strip_suffix("/-").unwrap_or(before);
+            let path = before.split_once("://").map_or(before, |(_, path)| path);
+            (path.split_once('/')?.1, number)
+        }
+    };
+    number.parse::<u64>().ok()?;
+    repo.contains('/').then(|| (repo.to_lowercase(), number.to_string()))
+}
+
+fn project_for_repo(repo: &str, dirs: &[std::path::PathBuf], origin: impl Fn(&str) -> Option<String>) -> Result<String, RpcError> {
+    let matches: Vec<String> = dirs
+        .iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .filter(|dir| {
+            let parsed = origin(dir).and_then(|url| crate::forge::remote::parse(&url).ok());
+            parsed.is_some_and(|r| format!("{}/{}", r.repo.owner, r.repo.repo).to_lowercase() == repo)
+        })
+        .collect();
+    match matches.as_slice() {
+        [one] => Ok(one.clone()),
+        [] => Err(RpcError::new(INVALID_PARAMS, format!("no project here has {repo} as its origin: pass project"))),
+        many => Err(RpcError::new(INVALID_PARAMS, format!("several projects have {repo} as their origin, pass one as project: {}", many.join(", ")))),
+    }
+}
+
 fn pending_rows(session: &str, asks: Vec<Ask>, native: Vec<Waiting>) -> Vec<Value> {
     let asks = asks.into_iter().filter(|ask| ask.session == session);
     let mut rows: Vec<Value> =
@@ -663,8 +696,17 @@ impl Backend for TauriBackend {
     }
 
     fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError> {
-        let project = self.project(principal, params.project)?;
-        to_json(crate::issues::commands::get(&project, &params.key).map_err(forge_refused)?)
+        let (project, key) = match (params.project, issue_ref(&params.key)) {
+            (Some(project), named) => (project, named.map_or(params.key, |(_, key)| key)),
+            (None, Some((repo, key))) => {
+                let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
+                (project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?, key)
+            }
+            (None, None) => (self.project(principal, None)?, params.key),
+        };
+        let mut issue = to_json(crate::issues::commands::get(&project, &key).map_err(forge_refused)?)?;
+        issue["project"] = json!(project);
+        Ok(issue)
     }
 
     fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError> {
