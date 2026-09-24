@@ -10,6 +10,7 @@ import {
   on,
   onCleanup,
   onMount,
+  type JSX,
 } from "solid-js";
 import { Brain, FoldVertical, Info, TriangleAlert, Webhook } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -258,6 +259,8 @@ export default function MessageList(props: {
    *  never recorded. */
   rewindTsFor?: (turnId: string) => number | null;
   onRewind?: (promptTs: number) => void;
+  /** Drawn beside each reply, for a view that puts a face on the agent. */
+  replyMark?: () => JSX.Element;
   /** Whether the agent opened this turn for itself, which a background
    *  subagent's finishing makes it do. Such a turn answers no prompt, so it
    *  must not claim the one above it. */
@@ -565,9 +568,23 @@ export default function MessageList(props: {
               {(it) => (
                 <>
                   <TurnAnchor itemId={it().id} />
-                  <div class={styles.assistant}>
-                    <Markdown text={it().text} cwd={props.cwd} />
-                  </div>
+                  <Show
+                    when={props.replyMark}
+                    fallback={
+                      <div class={styles.assistant}>
+                        <Markdown text={it().text} cwd={props.cwd} />
+                      </div>
+                    }
+                  >
+                    {(mark) => (
+                      <div class={styles.markedReply}>
+                        {mark()()}
+                        <div class={styles.assistant}>
+                          <Markdown text={it().text} cwd={props.cwd} />
+                        </div>
+                      </div>
+                    )}
+                  </Show>
                 </>
               )}
             </Match>

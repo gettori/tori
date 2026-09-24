@@ -1,11 +1,9 @@
 @layer components {
   .view {
     display: grid;
-    grid-template-columns: calc(320px * var(--ui-scale)) minmax(0, 1fr) calc(300px * var(--ui-scale));
+    grid-template-columns: calc(340px * var(--ui-scale)) minmax(0, 1fr) calc(340px * var(--ui-scale));
     height: 100%;
     min-height: 0;
-    box-sizing: border-box;
-    border-top: var(--tori-border-thick) solid var(--status-progress);
     background: var(--canvas-default);
     font-family: var(--tori-font-ui);
   }
@@ -16,63 +14,85 @@
     gap: var(--tori-space-5);
     min-height: 0;
     overflow-y: auto;
-    padding: var(--tori-space-6) var(--tori-space-6);
-    background: var(--canvas-card);
-    border-right: var(--tori-border-thin) solid var(--progress-border);
+    padding: var(--tori-space-7) var(--tori-space-6);
+    border-right: var(--tori-border-thin) solid var(--border-default);
   }
 
   .empty {
     padding: var(--tori-space-6);
     border-radius: var(--tori-radius-lg);
     border: var(--tori-border-thin) dashed var(--progress-border);
-    background: var(--progress-subtle);
-    font-size: var(--tori-text-md);
+    font-size: var(--tori-text-lg);
     line-height: var(--tori-line-normal);
-    color: var(--progress-on-subtle);
+    color: var(--fg-muted);
   }
 
   .card {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: var(--tori-space-3);
-    padding: var(--tori-space-5);
+    gap: var(--tori-space-5);
+    padding: var(--tori-space-5) var(--tori-space-5) var(--tori-space-4);
     overflow: hidden;
-    border-radius: var(--tori-radius-lg);
-    background: var(--canvas-default);
+    border-radius: var(--tori-radius-xl);
+    background: var(--canvas-card);
     border: var(--tori-border-thin) solid var(--border-default);
     transition: border-color var(--tori-duration-fast) var(--tori-ease);
   }
-  .card:hover {
-    border-color: var(--progress-border);
-  }
+  .card:hover,
   .card[data-status="working"] {
     border-color: var(--progress-border);
-    box-shadow: inset var(--tori-border-thick) 0 0 var(--status-progress);
   }
   .card[data-status="needs"] {
     border-color: var(--needs-you-border);
-    box-shadow: inset var(--tori-border-thick) 0 0 var(--status-needs-you);
   }
 
   .cardHead {
     display: flex;
     align-items: center;
-    gap: var(--tori-space-4);
+    gap: var(--tori-space-5);
+    min-width: 0;
+  }
+  /* The ref in a lifebuoy: its colour is the worker's state. */
+  .ring {
+    display: grid;
+    place-items: center;
+    flex: none;
+    box-sizing: border-box;
+    width: calc(48px * var(--ui-scale));
+    height: calc(48px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    border: calc(3px * var(--ui-scale)) solid var(--status-running);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-default);
+  }
+  .ring[data-status="working"] {
+    border-color: var(--status-progress);
+  }
+  .ring[data-status="idle"] {
+    border-color: var(--status-idle);
+  }
+  .ring[data-status="needs"] {
+    border-color: var(--status-needs-you);
+  }
+  .cardName {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
     min-width: 0;
   }
   .cardRef {
     flex: none;
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-sm);
-    color: var(--progress-on-subtle);
+    font-size: var(--tori-text-md);
+    color: var(--fg-muted);
   }
   .cardTitle {
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--tori-text-lg);
+    font-size: var(--tori-text-2xl);
     font-weight: 600;
     color: var(--fg-default);
   }
@@ -81,12 +101,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     color: var(--fg-subtle);
   }
 
   .contract {
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     color: var(--fg-muted);
   }
   .contract > summary {
@@ -94,17 +114,18 @@
     color: var(--progress-on-subtle);
   }
   .contractText {
-    margin: var(--tori-space-2) 0 0;
+    margin: var(--tori-space-3) 0 0;
     white-space: pre-wrap;
+    line-height: var(--tori-line-normal);
   }
 
   .log {
-    padding: var(--tori-space-3) var(--tori-space-4);
-    border-radius: var(--tori-radius-md);
-    background: var(--neutral-subtle);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    border-radius: var(--tori-radius-lg);
+    background: var(--canvas-default);
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
-    line-height: 1.6;
+    font-size: var(--tori-text-md);
+    line-height: 1.7;
     color: var(--fg-muted);
   }
   .logLine {
@@ -120,15 +141,25 @@
     gap: var(--tori-space-4);
   }
   .doing {
-    font-size: var(--tori-text-md);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    min-width: 0;
+    font-size: var(--tori-text-lg);
     color: var(--fg-muted);
+  }
+  .doing[data-status="working"] {
+    color: var(--progress-on-subtle);
+  }
+  .doing[data-status="idle"] {
+    color: var(--status-idle);
   }
   .doing[data-status="needs"] {
     color: var(--needs-you-on-subtle);
   }
   .watchIcon {
-    width: calc(12px * var(--ui-scale));
-    height: calc(12px * var(--ui-scale));
+    width: calc(13px * var(--ui-scale));
+    height: calc(13px * var(--ui-scale));
   }
 
   .progress {
@@ -146,8 +177,8 @@
   .queued {
     display: flex;
     align-items: center;
-    gap: var(--tori-space-4);
-    min-height: calc(38px * var(--ui-scale));
+    gap: var(--tori-space-5);
+    min-height: calc(48px * var(--ui-scale));
     padding: 0 var(--tori-space-5);
     border-radius: var(--tori-radius-lg);
     border: var(--tori-border-thin) dashed var(--border-strong);
@@ -158,28 +189,171 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--tori-text-md);
-    color: var(--fg-muted);
+    font-size: var(--tori-text-xl);
+    color: var(--fg-default);
   }
   .queuedAfter {
     flex: none;
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     color: var(--fg-subtle);
   }
 
   .center {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     min-width: 0;
     min-height: 0;
-    background: radial-gradient(ellipse 80% 45% at 50% 0%, var(--progress-subtle), transparent);
   }
+
+  /* ---- the banner: dusk over the water ---- */
+  .hero {
+    --dusk-high: color-mix(in oklab, var(--status-progress) 42%, var(--canvas-default));
+    --dusk-low: color-mix(in oklab, var(--status-progress) 24%, var(--canvas-default));
+    --sun: color-mix(in oklab, var(--attention-fg) 80%, var(--canvas-default));
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--tori-space-7);
+    box-sizing: border-box;
+    width: 100%;
+    min-height: calc(230px * var(--ui-scale));
+    padding: var(--tori-space-7) calc(56px * var(--ui-scale)) calc(84px * var(--ui-scale));
+    overflow: hidden;
+    background: linear-gradient(180deg, var(--dusk-high), var(--dusk-low));
+  }
+  .sun {
+    position: absolute;
+    right: calc(24% - 40px * var(--ui-scale));
+    bottom: calc(30px * var(--ui-scale));
+    width: calc(84px * var(--ui-scale));
+    height: calc(84px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--sun);
+    box-shadow: 0 0 calc(48px * var(--ui-scale)) calc(14px * var(--ui-scale)) color-mix(in oklab, var(--sun) 45%, transparent);
+    animation: glow 6s ease-in-out infinite alternate;
+  }
+  .waves {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    width: 100%;
+    height: calc(64px * var(--ui-scale));
+  }
+  .waveFar {
+    fill: color-mix(in oklab, var(--status-progress) 30%, var(--canvas-default));
+    animation: drift 14s ease-in-out infinite alternate;
+  }
+  .waveNear {
+    fill: var(--canvas-default);
+    animation: drift 10s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes glow {
+    to {
+      transform: translateY(calc(-4px * var(--ui-scale)));
+      box-shadow: 0 0 calc(64px * var(--ui-scale)) calc(20px * var(--ui-scale)) color-mix(in oklab, var(--sun) 55%, transparent);
+    }
+  }
+  @keyframes drift {
+    to {
+      transform: translateX(calc(-18px * var(--ui-scale)));
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sun,
+    .waveFar,
+    .waveNear {
+      animation: none;
+    }
+  }
+
+  .heroText {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-4);
+    min-width: 0;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    font-size: var(--tori-text-md);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--progress-on-subtle);
+  }
+  .eyebrowDot {
+    width: calc(8px * var(--ui-scale));
+    height: calc(8px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--status-progress);
+  }
+  .hero[data-state="idle"] .eyebrowDot {
+    background: var(--status-idle);
+  }
+  .hero[data-state="needs"] .eyebrowDot,
+  .hero[data-state="error"] .eyebrowDot {
+    background: var(--status-needs-you);
+  }
+  .hero[data-state="off"] .eyebrowDot {
+    background: var(--status-running);
+  }
+  .heroTitle {
+    margin: 0;
+    font-size: calc(34px * var(--ui-scale));
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--fg-default);
+  }
+  .heroBody {
+    margin: 0;
+    font-size: var(--tori-text-2xl);
+    line-height: var(--tori-line-normal);
+    color: var(--fg-muted);
+  }
+
+  .stats {
+    position: relative;
+    display: flex;
+    gap: var(--tori-space-4);
+    flex: none;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-2);
+    min-width: calc(120px * var(--ui-scale));
+    padding: var(--tori-space-4) var(--tori-space-5);
+    border-radius: var(--tori-radius-lg);
+    background: color-mix(in oklab, var(--canvas-default) 55%, transparent);
+    border: var(--tori-border-thin) solid var(--progress-border);
+  }
+  .statLabel {
+    font-size: var(--tori-text-xs);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--progress-on-subtle);
+  }
+  .statValue {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-3xl);
+    color: var(--fg-default);
+  }
+
   .column {
     display: flex;
     flex-direction: column;
     gap: var(--tori-space-6);
+    flex: 1 1 auto;
     width: 100%;
-    max-width: calc(720px * var(--ui-scale));
+    max-width: calc(860px * var(--ui-scale));
     min-height: 0;
     padding: var(--tori-space-6) var(--tori-space-7);
     box-sizing: border-box;
@@ -201,6 +375,7 @@
     flex: 0 1 auto;
   }
   .chat {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -210,84 +385,92 @@
   .activity {
     display: flex;
     flex-direction: column;
-    gap: var(--tori-space-5);
+    gap: var(--tori-space-6);
     min-height: 0;
-    padding: var(--tori-space-6);
-    background: var(--canvas-card);
-    border-left: var(--tori-border-thin) solid var(--progress-border);
+    padding: var(--tori-space-7) var(--tori-space-6);
+    border-left: var(--tori-border-thin) solid var(--border-default);
   }
   .activityList {
-    --dot: calc(7px * var(--ui-scale));
-    --time-col: calc(44px * var(--ui-scale));
+    --dot: calc(11px * var(--ui-scale));
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
   }
-  /* A timeline: a dot per line, joined by a rule down to the next one. */
+  /* A timeline: a ring per entry, joined by a rule down to the next one. */
   .activityRow {
     position: relative;
     display: grid;
-    grid-template-columns: var(--time-col) var(--dot) minmax(0, 1fr);
-    grid-template-areas: "time dot text";
-    column-gap: var(--tori-space-4);
-    padding-bottom: var(--tori-space-5);
-    font-size: var(--tori-text-md);
+    grid-template-columns: var(--dot) minmax(0, 1fr);
+    grid-template-areas:
+      "dot time"
+      ". text";
+    column-gap: var(--tori-space-5);
+    row-gap: var(--tori-space-1);
+    padding-bottom: var(--tori-space-6);
     line-height: var(--tori-line-normal);
   }
   .activityRow::before {
     content: "";
     grid-area: dot;
+    align-self: center;
+    box-sizing: border-box;
     width: var(--dot);
     height: var(--dot);
-    margin-top: calc((1lh - var(--dot)) / 2);
     border-radius: var(--tori-radius-pill);
-    background: var(--status-progress);
+    border: calc(2px * var(--ui-scale)) solid var(--status-progress);
   }
   .activityRow:not(:last-child)::after {
     content: "";
     position: absolute;
-    top: calc(1lh / 2 + var(--dot));
-    bottom: 0;
-    left: calc(var(--time-col) + var(--tori-space-4) + var(--dot) / 2);
-    width: var(--tori-border-thin);
-    background: var(--progress-border);
+    top: calc(var(--tori-space-6) + var(--dot) / 2);
+    bottom: calc(-1 * var(--tori-space-1));
+    left: calc(var(--dot) / 2);
+    border-left: var(--tori-border-thin) dashed var(--progress-border);
   }
   .activityTime {
     grid-area: time;
     font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     color: var(--fg-subtle);
   }
   .activityText {
     grid-area: text;
-    color: var(--fg-muted);
+    font-size: var(--tori-text-xl);
+    color: var(--fg-default);
   }
   .activityRow[data-needs-you="true"]::before {
-    background: var(--status-needs-you);
+    border-color: var(--status-needs-you);
   }
   .activityRow[data-needs-you="true"] .activityTime {
     color: var(--needs-you-on-subtle);
   }
-  .activityRow[data-needs-you="true"] .activityText {
+
+  .harbor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-5) var(--tori-space-6);
+    border-radius: var(--tori-radius-xl);
+    background: var(--progress-subtle);
+    border: var(--tori-border-thin) solid var(--progress-border);
+    font-size: var(--tori-text-xl);
+    line-height: var(--tori-line-normal);
     color: var(--fg-default);
   }
-
-  .shield {
-    display: flex;
+  .harborLabel {
+    display: inline-flex;
     align-items: center;
-    gap: var(--tori-space-4);
-    padding: var(--tori-space-4) var(--tori-space-5);
-    border-radius: var(--tori-radius-md);
-    background: var(--progress-subtle);
-    font-size: var(--tori-text-sm);
+    gap: var(--tori-space-3);
+    font-size: var(--tori-text-md);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     color: var(--progress-on-subtle);
   }
-  .shieldIcon {
-    flex: none;
-    width: calc(14px * var(--ui-scale));
-    height: calc(14px * var(--ui-scale));
-    color: var(--success-fg);
+  .harborIcon {
+    width: calc(15px * var(--ui-scale));
+    height: calc(15px * var(--ui-scale));
   }
 }

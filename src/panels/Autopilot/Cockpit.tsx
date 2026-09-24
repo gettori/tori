@@ -1,11 +1,11 @@
-import { Show, createEffect, createMemo, on, onCleanup } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
 import AutopilotView from "../../components/Autopilot/AutopilotView";
 import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
-import { inFlightRows, queuedItems, workerCards } from "../../utils/autopilotRows";
+import { heroFor, inFlightRows, queuedItems, underway, workerCards } from "../../utils/autopilotRows";
 import {
   activity,
   attachable,
@@ -61,6 +61,7 @@ function CockpitChat(props: { status: RunnerStatus; reading: boolean }) {
           onStart={() => void startAutopilot()}
           background
           detach
+          cockpit
           active
           onForkSession={noFork}
           onForkFrom={noFork}
@@ -96,12 +97,27 @@ export function CockpitView() {
   // A memo, so an idle/working flip does not remount the chat: the old view's
   // detach names the same tab and would cut off the new one's listener.
   const live = createMemo(() => attachable(runner()) || (error() && runner().session !== null));
+  const [now, setNow] = createSignal(Date.now());
+  const tick = setInterval(() => setNow(Date.now()), 30_000);
+  onCleanup(() => clearInterval(tick));
+  const hero = () => {
+    const crew = workerCards(items()).length;
+    const since = runner().since;
+    return {
+      ...heroFor(autopilotNow(), decisions().length, crew),
+      stats: [
+        { label: "Underway", value: since === null ? "-" : underway(since, now()) },
+        { label: "Crew", value: String(crew) },
+      ],
+    };
+  };
   return (
     <div class={styles.overlay}>
       <AutopilotView
         state={autopilotNow()}
+        hero={hero()}
         workers={workerCards(items())}
-        emptyWorkers="Nothing in flight."
+        emptyWorkers="The deck is quiet. Hand the autopilot a ticket or a PR."
         queue={queuedItems(items())}
         messages={[]}
         decisions={[]}

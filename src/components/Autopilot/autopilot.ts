@@ -2,6 +2,14 @@ export type AutopilotState = "off" | "idle" | "working" | "needs" | "error";
 
 export type AutopilotView = "autopilot" | "workspace";
 
+/** The cockpit's banner: where the ship stands, in a line and a sentence. */
+export type CockpitHero = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  stats: { label: string; value: string }[];
+};
+
 export type DecisionKind = "pr" | "review" | "merge" | "question";
 
 export const AUTOPILOT_STATES: AutopilotState[] = ["off", "idle", "working", "needs", "error"];

@@ -1,7 +1,8 @@
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { ArrowUp, TriangleAlert } from "lucide-solid";
+import { ArrowUp, Bell, TriangleAlert } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
+import { WheelGlyph } from "./Wheel";
 import type { Decision, DecisionAction, Ref, ThreadMessage, WorkerStatus } from "./autopilot";
 import styles from "./ShellParts.module.css";
 
@@ -28,6 +29,26 @@ export function decisionHandlers(
 
 export function StatusDot(props: { status: WorkerStatus }) {
   return <span class={styles.dot} data-status={props.status} aria-hidden="true" />;
+}
+
+/** The autopilot's face beside each thing it says. */
+export function ReplyMark() {
+  return (
+    <span class={styles.replyMark} aria-hidden="true">
+      <WheelGlyph class={styles.replyGlyph} />
+    </span>
+  );
+}
+
+/** The heading over what waits on the user. */
+export function CaptainsCall(props: { count: number }) {
+  return (
+    <div class={styles.call}>
+      <Icon icon={Bell} class={styles.callIcon} />
+      Captain's call
+      <span class={styles.callCount}>{props.count}</span>
+    </div>
+  );
 }
 
 export function SectionHead(props: { label: string; count?: number; children?: JSX.Element }) {
@@ -67,7 +88,16 @@ export function Thread(props: { messages: ThreadMessage[]; dense?: boolean; chil
           <Show
             when={m.from === "system"}
             fallback={
-              <div class={m.from === "me" ? styles.mine : styles.theirs}>{m.text}</div>
+              <Show when={m.from === "me"} fallback={
+                <div class={styles.theirs}>
+                  <Show when={!props.dense}>
+                    <ReplyMark />
+                  </Show>
+                  <span>{m.text}</span>
+                </div>
+              }>
+                <div class={styles.mine}>{m.text}</div>
+              </Show>
             }
           >
             <div class={styles.system}>

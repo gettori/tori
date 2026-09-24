@@ -19,26 +19,52 @@
   .sectionHead {
     display: flex;
     align-items: center;
-    gap: var(--tori-space-3);
+    gap: var(--tori-space-4);
     padding: 0 var(--tori-space-1);
-    font-size: var(--tori-text-lg);
+    font-size: var(--tori-text-md);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
   .sectionLabel {
-    font-weight: 600;
-    color: var(--fg-default);
+    color: var(--progress-on-subtle);
   }
   .sectionCount {
-    min-width: calc(18px * var(--ui-scale));
-    padding: 0 var(--tori-space-3);
-    box-sizing: border-box;
+    color: var(--fg-subtle);
+  }
+
+  .replyMark {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: calc(30px * var(--ui-scale));
+    height: calc(30px * var(--ui-scale));
     border-radius: var(--tori-radius-pill);
     background: var(--progress-subtle);
     box-shadow: inset 0 0 0 var(--tori-border-thin) var(--progress-border);
-    font-size: var(--tori-text-sm);
+    color: var(--status-progress);
+  }
+  .replyGlyph {
+    width: calc(17px * var(--ui-scale));
+    height: calc(17px * var(--ui-scale));
+  }
+
+  .call {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    font-size: var(--tori-text-md);
     font-weight: 600;
-    line-height: calc(18px * var(--ui-scale));
-    text-align: center;
-    color: var(--progress-on-subtle);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--needs-you-on-subtle);
+  }
+  .callIcon {
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
+  }
+  .callCount {
+    color: var(--fg-subtle);
   }
 
   .keyHints {
@@ -67,7 +93,7 @@
     flex-direction: column;
     justify-content: flex-end;
     gap: var(--tori-space-6);
-    font-size: var(--tori-text-md);
+    font-size: var(--tori-text-xl);
     line-height: var(--tori-line-normal);
     color: var(--fg-default);
   }
@@ -79,11 +105,15 @@
   .mine {
     align-self: flex-end;
     max-width: 80%;
-    padding: var(--tori-space-4) var(--tori-space-5);
-    border-radius: var(--tori-radius-xl) var(--tori-radius-xl) var(--tori-radius-sm) var(--tori-radius-xl);
-    background: var(--neutral-subtle);
+    padding: var(--tori-space-4) var(--tori-space-6);
+    border-radius: var(--tori-radius-xl);
+    background: var(--progress-subtle);
+    border: var(--tori-border-thin) solid var(--progress-border);
   }
   .theirs {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--tori-space-5);
     text-wrap: pretty;
   }
   .system {
@@ -104,11 +134,11 @@
     display: flex;
     align-items: center;
     gap: var(--tori-space-4);
-    min-height: calc(44px * var(--ui-scale));
-    padding: 0 var(--tori-space-3) 0 var(--tori-space-5);
+    min-height: calc(64px * var(--ui-scale));
+    padding: 0 var(--tori-space-4) 0 var(--tori-space-6);
     border-radius: var(--tori-radius-xl);
-    background: var(--canvas-input);
-    border: var(--tori-border-thin) solid var(--border-strong);
+    background: var(--canvas-card);
+    border: var(--tori-border-thin) solid var(--progress-border);
     box-shadow: var(--shadow-md);
   }
   .composer[data-dense="true"] {
@@ -126,14 +156,22 @@
     flex: 1 1 auto;
     min-width: 0;
   }
+  .composer:not([data-dense="true"]) .composerField {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--tori-space-2);
+  }
   .placeholder {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-xl);
     color: var(--fg-subtle);
+  }
+  .composer[data-dense="true"] .placeholder {
+    font-size: var(--tori-text-sm);
   }
   .input {
     flex: 1 1 auto;
@@ -165,11 +203,15 @@
     display: grid;
     place-items: center;
     flex: none;
+    width: calc(44px * var(--ui-scale));
+    height: calc(44px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--status-progress);
+    color: var(--canvas-default);
+  }
+  .composer[data-dense="true"] .send {
     width: var(--control-height);
     height: var(--control-height);
-    border-radius: var(--tori-radius-md);
-    background: var(--neutral-subtle);
-    color: var(--fg-muted);
   }
   .sendIcon {
     width: calc(14px * var(--ui-scale));

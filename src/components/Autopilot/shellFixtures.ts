@@ -3,13 +3,22 @@
 // colour.
 import type { AutopilotPopupProps } from "./AutopilotPopup";
 import type { AutopilotViewProps } from "./AutopilotView";
-import type { ActivityItem, AutopilotState, Decision, ThreadMessage, WorkerCard } from "./autopilot";
+import { heroFor } from "../../utils/autopilotRows";
+import type { ActivityItem, AutopilotState, CockpitHero, Decision, ThreadMessage, WorkerCard } from "./autopilot";
 import { ref } from "./ShellParts";
 
 const me = (text: string): ThreadMessage => ({ from: "me", text });
 const ap = (text: string): ThreadMessage => ({ from: "autopilot", text });
 const sys = (text: string): ThreadMessage => ({ from: "system", text });
 const act = (time: string, text: string, needsYou = false): ActivityItem => ({ time, text, needsYou });
+
+const hero = (state: AutopilotState, calls: number, crew: number, underway: string): CockpitHero => ({
+  ...heroFor(state, calls, crew),
+  stats: [
+    { label: "Underway", value: underway },
+    { label: "Crew", value: String(crew) },
+  ],
+});
 
 const LOGIN = "tori/123-login-redirect";
 const AVATAR = "tori/131-avatar-cache";
@@ -75,6 +84,7 @@ const error = { title: "Autopilot session exited (signal 9)", detail: "Restartin
 export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   off: {
     state: "off",
+    hero: hero("off", 0, 0, "0m"),
     workers: [],
     emptyWorkers: "Nothing in flight. Workers from earlier are normal sessions now.",
     queue: [],
@@ -85,6 +95,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   idle: {
     state: "idle",
+    hero: hero("idle", 0, 0, "1h 12m"),
     workers: [],
     emptyWorkers: "Nothing in flight. Give the autopilot a ticket or a PR.",
     queue: [],
@@ -105,6 +116,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   working: {
     state: "working",
+    hero: hero("working", 0, 2, "5m"),
     workers: [
       login({
         log: ["> edit src/auth/session.ts", "> write tests/auth/redirect.test.ts", "$ pnpm test auth"],
@@ -122,6 +134,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   needs: {
     state: "needs",
+    hero: hero("needs", 2, 2, "16m"),
     workers: [
       login({
         status: "idle",
@@ -150,6 +163,7 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   },
   error: {
     state: "error",
+    hero: hero("error", 0, 2, "9m"),
     workers: [
       login({ log: ["> edit src/auth/session.ts", "$ pnpm test auth"], doing: "Running tests", progress: 0.64 }),
       avatar({ log: ["$ pnpm install", "  resolving 412 packages..."], doing: "Installing dependencies", progress: 0.2 }),
