@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 
 use super::approvals::Draft;
 use super::auth::{authenticate, Credential, Principal};
-use crate::autopilot::{AutopilotStore, Kind, Patch, Source, State, Target, UpdateError};
+use crate::autopilot::{AutopilotStore, Autonomy, ContractPatch, Kind, Observed, Patch, Pickup, Ships, Source, State, Target, UpdateError};
 use crate::forge::model::{DraftComment, ReviewEvent};
 use crate::forge::MergeMethod;
 use super::frame::{
@@ -339,6 +339,44 @@ impl ItemUpdateParams {
     }
 }
 
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectSetParams {
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// How finished work leaves the machine.
+    pub ships: Option<Ships>,
+    /// How far the autopilot goes before asking.
+    pub autonomy: Option<Autonomy>,
+    /// Whether new work is queued without asking.
+    pub pickup: Option<Pickup>,
+    /// The agent the project's workers run.
+    pub agent: Option<String>,
+    /// The agent account they run under.
+    pub account: Option<String>,
+    /// The model they use.
+    pub model: Option<String>,
+}
+
+impl ProjectSetParams {
+    pub fn apply(self, store: &AutopilotStore, project: String) -> Result<Value, RpcError> {
+        let patch = ContractPatch {
+            ships: self.ships,
+            autonomy: self.autonomy,
+            pickup: self.pickup,
+            agent: self.agent,
+            account: self.account,
+            model: self.model,
+        };
+        let contract = store.set_project(project, patch).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+        serde_json::to_value(contract).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
+    }
+}
+
+pub fn autopilot_state(store: &AutopilotStore, observe: impl FnOnce(&[crate::autopilot::Item]) -> Observed) -> Result<Value, RpcError> {
+    serde_json::to_value(store.state(observe)).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
+}
+
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
     fn kind(&self, principal: &Principal) -> CallerKind;
@@ -365,6 +403,7 @@ pub trait Backend: Send + Sync {
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
     fn autopilot_state(&self) -> Result<Value, RpcError>;
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
+    fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -599,7 +638,10 @@ pub mod tests {
             Ok(json!({ "number": p.number }))
         }
         fn autopilot_state(&self) -> Result<Value, RpcError> {
-            Ok(json!({ "items": [] }))
+            match &self.autopilot {
+                Some(store) => autopilot_state(store, |_| Observed::default()),
+                None => Ok(json!({ "items": [], "projects": {} })),
+            }
         }
         fn autopilot_item_update(&self, _: &Principal, p: ItemUpdateParams) -> Result<Value, RpcError> {
             match &self.autopilot {
@@ -608,6 +650,15 @@ pub mod tests {
                     p.apply(store, project)
                 }
                 None => Ok(json!({ "id": p.id })),
+            }
+        }
+        fn autopilot_project_set(&self, _: &Principal, p: ProjectSetParams) -> Result<Value, RpcError> {
+            match &self.autopilot {
+                Some(store) => {
+                    let project = p.project.clone().unwrap_or_default();
+                    p.apply(store, project)
+                }
+                None => Ok(json!({ "project": p.project })),
             }
         }
     }
