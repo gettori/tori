@@ -160,6 +160,10 @@ impl SessionStates {
         self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), spawner.to_string());
     }
 
+    pub fn spawner_of(&self, id: &str) -> Option<String> {
+        self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned()
+    }
+
     pub fn rebind_spawner(&self, from: &str, to: &str) {
         let mut spawned_by = self.spawned_by.lock().unwrap_or_else(|e| e.into_inner());
         spawned_by.values_mut().filter(|s| *s == from).for_each(|s| *s = to.to_string());

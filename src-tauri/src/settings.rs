@@ -728,16 +728,29 @@ pub struct Autopilot {
     pub model: Option<String>,
     #[serde(default)]
     pub effort: Option<String>,
+    #[serde(default = "default_stall_minutes")]
+    pub stall_minutes: u32,
 }
 
 impl Default for Autopilot {
     fn default() -> Self {
-        Self { enabled: false, agent: default_autopilot_agent(), profile: None, model: None, effort: None }
+        Self {
+            enabled: false,
+            agent: default_autopilot_agent(),
+            profile: None,
+            model: None,
+            effort: None,
+            stall_minutes: default_stall_minutes(),
+        }
     }
 }
 
 fn default_autopilot_agent() -> String {
     "claude".into()
+}
+
+fn default_stall_minutes() -> u32 {
+    20
 }
 
 // A file saved before a pick holds `null` or "", and both mean the default.

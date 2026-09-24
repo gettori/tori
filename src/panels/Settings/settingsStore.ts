@@ -318,6 +318,7 @@ export type AutopilotSettings = {
   profile: string | null;
   model: string | null;
   effort: string | null;
+  stallMinutes: number;
 };
 
 /** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
@@ -398,7 +399,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
-  autopilot: { enabled: false, agent: "claude", profile: null, model: null, effort: null },
+  autopilot: { enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20 },
 };
 
 /**

@@ -1,5 +1,5 @@
 import { createMemo, onMount } from "solid-js";
-import { Group, Row, idsIn, setAutopilot, type PaneProps } from "../../components/paneKit";
+import { Group, Row, Stepper, idsIn, setAutopilot, type PaneProps } from "../../components/paneKit";
 import { settings } from "../../settingsStore";
 import Switch from "../../../../components/Switch/Switch";
 import ModelPicker from "../../../Chat/ModelPicker";
@@ -81,6 +81,17 @@ export default function AutopilotPane(props: PaneProps) {
           onHighlightAgent={(agent, profile) => probeOnHighlight(agent, profile)}
           onRecheckAgent={(agent, profile) => recheckAgent(agent, profile)}
           onFixAgent={openAgentCard}
+        />
+      </Row>
+
+      <Row {...props} id="autopilot-stall" label="Worker stalled after">
+        <Stepper
+          value={settings.autopilot.stallMinutes}
+          min={5}
+          max={240}
+          step={5}
+          onChange={(stallMinutes) => setAutopilot({ stallMinutes })}
+          aria-label="Worker stalled after"
         />
       </Row>
     </Group>

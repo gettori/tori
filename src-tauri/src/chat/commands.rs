@@ -371,10 +371,12 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         effort.as_deref(),
         &extra_dirs,
     );
+    // Marked before the child starts, so its first question already reaches the
+    // autopilot's watcher; `session.spawn` only learns the id after the spawn.
     if background {
         crate::rpc::mark_background(&session_id);
-        if let (true, Some(spawner)) = (resume, &spawner) {
-            crate::rpc::mark_resumed_worker(&session_id, spawner);
+        if let Some(spawner) = &spawner {
+            crate::rpc::mark_spawned_worker(&session_id, spawner);
         }
     }
     args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), chat.transport, background)?);

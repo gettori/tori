@@ -21,13 +21,14 @@ pub mod server;
 pub mod states;
 pub mod table;
 pub mod transport;
+pub mod watcher;
 
 use std::cell::OnceCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::autopilot::AutopilotStore;
 use asks::{Ask, Asks};
@@ -41,6 +42,7 @@ use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
 use states::{Held, Reported, SessionStates, Source};
 use transport::{Transport, UnixTransport};
+use watcher::Watcher;
 
 pub const ENV_SOCK: &str = "TORI_SOCK";
 // Not `TORI_TOKEN`: codex's shell tool carries default excludes for names like
@@ -51,6 +53,7 @@ static SOCKET: OnceLock<(String, Arc<Children>)> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ASKS: OnceLock<Arc<Asks>> = OnceLock::new();
 static RUNNER: OnceLock<Arc<Runner>> = OnceLock::new();
+static WATCHER: OnceLock<Arc<Watcher>> = OnceLock::new();
 // For modules with no Tauri state in reach: the checkpoint writer, the forge
 // poll, the quota push.
 static EVENTS: OnceLock<(Arc<Hub>, Arc<SessionStates>)> = OnceLock::new();
@@ -112,6 +115,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         bridge.clone(),
         crate::autopilot::dir(),
     ));
+    start_watcher(&app, &states, &autopilot, &runner);
     let server = Arc::new(Server {
         credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
@@ -170,6 +174,21 @@ pub fn rpc_session_states(
     }
 }
 
+fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
+    let status = runner.clone();
+    let (watcher, nudges) = Watcher::new(states.clone(), autopilot.clone(), Box::new(move || status.status()));
+    let _ = WATCHER.set(watcher.clone());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let deliver = |session: &str, text: String| {
+            let host = &app.state::<crate::chat::host::ChatState>().0;
+            host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], false, events::TurnBy::Watcher)
+        };
+        let stall = || std::time::Duration::from_secs(u64::from(crate::settings::autopilot().stall_minutes) * 60);
+        watcher.run(nudges, deliver, stall);
+    });
+}
+
 // The cards close on a thread of their own: the webview's reply can take up to
 // `REPLY_TIMEOUT`, and the item update that closed the item should not wait on it.
 fn withdraw_holds(asks: Arc<Asks>, bridge: Arc<Bridge>) -> Box<dyn Fn(&str) + Send + Sync> {
@@ -193,9 +212,25 @@ pub fn publish_session(hub: &Hub, autopilot: &AutopilotStore, id: &str, event: V
     if let Some(runner) = RUNNER.get() {
         runner.observe(id, &event);
     }
+    if let Some(watcher) = WATCHER.get() {
+        watcher.session_event(id, &event);
+    }
     hub.publish_session(id, event);
     if ended {
         autopilot.session_ended(id);
+    }
+}
+
+pub fn nudge_watcher() {
+    if let Some(watcher) = WATCHER.get() {
+        watcher.nudge();
+    }
+}
+
+// Work in a session's stream, which is what a stall is the absence of.
+pub fn watcher_touch(session: &str) {
+    if let Some(watcher) = WATCHER.get() {
+        watcher.touch(session);
     }
 }
 
@@ -236,6 +271,10 @@ pub fn publish_pr(project: &str, folder: &str, branch: &str, checked_out: bool, 
     });
     if let (Some(event), Value::Object(fields)) = (event.as_object_mut(), fields) {
         event.extend(fields);
+    }
+    if let Some(watcher) = WATCHER.get() {
+        let url = event["pull_request"]["url"].as_str();
+        watcher.pr_event(url, checked_out.then_some(folder), &ids, &event);
     }
     for id in &ids {
         hub.publish(&Channel::Session(id.clone()), event.clone());
@@ -357,9 +396,10 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
     table::METHODS.iter().filter(|m| !m.outward).map(|m| format!("mcp__{MCP_SERVER}__{}", m.name.replace('.', "_"))).collect()
 }
 
-// A worker resumed after a relaunch lost its spawner link with the old process.
-// A retired autopilot id stands for the current autopilot.
-pub fn mark_resumed_worker(session: &str, spawner: &str) {
+// Called by `chat_spawn` for a background worker, fresh or resumed. A resumed
+// one lost its spawner link with the old process, and a retired autopilot id
+// stands for the current autopilot.
+pub fn mark_spawned_worker(session: &str, spawner: &str) {
     let spawner = RUNNER.get().map_or_else(|| spawner.to_string(), |r| r.resolve_spawner(spawner));
     if let Some((_, states)) = EVENTS.get() {
         states.mark_worker(session, &spawner);

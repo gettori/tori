@@ -569,6 +569,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Autopilot model",
     hint: "The agent, account, model and effort the next autopilot start runs on.",
   },
+  {
+    id: "autopilot-stall",
+    section: "autopilot",
+    label: "Worker stalled after",
+    hint: "Minutes a worker can sit silent in the middle of a turn before the autopilot hears it stalled. Waiting on your answer does not count.",
+  },
 
   {
     id: "base-folder",
