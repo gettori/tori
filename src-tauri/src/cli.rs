@@ -40,7 +40,8 @@ const USAGE: &str = "usage:
   tori autopilot state [--json]
   tori autopilot start|stop [--json]
   tori autopilot item [<id>] [--kind ship|review --issue <key> | --pr <number> --repo <owner/name>] [--project <path>]
-                      [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>] [--json]
+                      [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>]
+                      [--title <text>] [--contract <text>] [--json]
   tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
                          [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--json]
   tori autopilot hold resolve <id> [--json]
@@ -709,7 +710,7 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             Ok((if sub == "start" { "autopilot.start" } else { "autopilot.stop" }, json!({})))
         }
         "item" => {
-            let valued = ["kind", "issue", "pr", "repo", "project", "state", "worktree", "session", "pr-url", "note"];
+            let valued = ["kind", "issue", "pr", "repo", "project", "state", "worktree", "session", "pr-url", "note", "title", "contract"];
             let p = Parsed::new(rest, &valued, &["json"])?;
             let id = match p.positional.as_slice() {
                 [] => None,
@@ -740,6 +741,8 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 "session": p.value("session"),
                 "pr_url": p.value("pr-url"),
                 "note": p.value("note"),
+                "title": p.value("title"),
+                "contract": p.value("contract"),
             });
             Ok(("autopilot.item.update", params))
         }

@@ -74,6 +74,14 @@ export default function AutopilotView(props: AutopilotViewProps) {
                 <span class={styles.cardBranch}>
                   {w.diff ? `${w.branch}, ${w.diff}` : w.branch}
                 </span>
+                <Show when={w.contract}>
+                  {(contract) => (
+                    <details class={styles.contract}>
+                      <summary>Contract</summary>
+                      <p class={styles.contractText}>{contract()}</p>
+                    </details>
+                  )}
+                </Show>
                 <div class={styles.log}>
                   <For each={w.log}>{(line) => <div class={styles.logLine}>{line}</div>}</For>
                 </div>

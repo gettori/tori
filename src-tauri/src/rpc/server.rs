@@ -361,6 +361,10 @@ pub struct ItemUpdateParams {
     pub pr_url: Option<String>,
     /// A line on where it stands.
     pub note: Option<String>,
+    /// What the work is, in a few words, shown on its card.
+    pub title: Option<String>,
+    /// What to build, how it ships and what is out of scope.
+    pub contract: Option<String>,
 }
 
 impl ItemUpdateParams {
@@ -372,7 +376,15 @@ impl ItemUpdateParams {
             (None, Some(kind), Some(source), Some(project)) => Target::Key { kind, source, project },
             (None, ..) => return Err(RpcError::new(INVALID_PARAMS, "without an id, pass kind, source and project")),
         };
-        let patch = Patch { state: self.state, worktree: self.worktree, session: self.session, pr_url: self.pr_url, note: self.note };
+        let patch = Patch {
+            state: self.state,
+            worktree: self.worktree,
+            session: self.session,
+            pr_url: self.pr_url,
+            note: self.note,
+            title: self.title,
+            contract: self.contract,
+        };
         match store.update(target, patch) {
             Ok(item) => serde_json::to_value(item).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string())),
             Err(e @ UpdateError::NoItem(_)) => Err(RpcError::new(INVALID_PARAMS, e.to_string())),
