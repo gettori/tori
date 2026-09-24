@@ -437,9 +437,9 @@ fn sh_quote(s: &str) -> String {
 /// settings rather than replacing them: their hooks still load and fire
 /// alongside ours. Passing `--setting-sources ''` would silently disable their
 /// hooks, permissions and config, and must never ship.
-pub fn settings_json(exe: &Path, sock: &Path, token: &str) -> String {
+pub fn settings_json(exe: &Path, sock: &Path, token: &str, background: bool) -> String {
     json!({
-        "permissions": { "allow": [crate::rpc::mcp_allow()] },
+        "permissions": { "allow": crate::rpc::mcp_allow(background) },
         "hooks": {
             "PreToolUse": [{
                 "matcher": matcher(),
@@ -462,13 +462,19 @@ pub fn settings_json(exe: &Path, sock: &Path, token: &str) -> String {
 /// shell here) but because the command string embeds absolute paths and a token,
 /// and an argv-embedded JSON blob shows the token in `ps` output for every
 /// process on the machine. The file is `0600`.
-pub fn settings_args(session_id: &str, sock: &Path, token: &str, transport: ChatTransport) -> Result<Vec<String>, String> {
+pub fn settings_args(
+    session_id: &str,
+    sock: &Path,
+    token: &str,
+    transport: ChatTransport,
+    background: bool,
+) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, settings_json(&exe, sock, token)).map_err(|e| e.to_string())?;
+    std::fs::write(&path, settings_json(&exe, sock, token, background)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
     let mut args = match transport {
         ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),
@@ -770,7 +776,7 @@ mod tests {
     fn toris_deadline_is_strictly_inside_the_one_the_cli_is_told() {
         assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS);
         let settings: Value =
-            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok")).unwrap();
+            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false)).unwrap();
         assert_eq!(settings["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"], HOOK_TIMEOUT_SECS);
     }
 
@@ -778,13 +784,14 @@ mod tests {
     /// would strip them, and must never ship.
     #[test]
     fn the_settings_payload_never_disables_the_users_own_sources() {
-        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok");
+        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false);
         assert!(!text.contains("setting-sources"), "the payload must not touch setting sources");
         let parsed: Value = serde_json::from_str(&text).unwrap();
         // Hooks, and an allow for Tori's own tools only: anything else would be
         // layering over settings the user owns.
         assert_eq!(parsed.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["permissions", "hooks"]);
-        assert_eq!(parsed["permissions"], json!({ "allow": ["mcp__tori__*"] }), "only Tori's own tools are pre-allowed");
+        let allowed = parsed["permissions"]["allow"].as_array().unwrap();
+        assert!(allowed.iter().all(|rule| rule.as_str().is_some_and(|r| r.starts_with("mcp__tori__"))), "only Tori's own tools");
         assert_eq!(parsed["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["PreToolUse"]);
     }
 
@@ -794,7 +801,7 @@ mod tests {
     #[test]
     fn the_hook_matches_the_write_tools_and_only_those() {
         let parsed: Value =
-            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok")).unwrap();
+            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false)).unwrap();
         let matcher = parsed["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap().to_string();
         let named: Vec<&str> = matcher.split('|').collect();
         assert_eq!(named, super::super::snapshot::WRITE_TOOLS.to_vec());
@@ -829,7 +836,7 @@ mod tests {
         let before = std::fs::read(&user_settings).ok();
 
         let session = format!("settings-guard-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false).unwrap();
 
         let after = std::fs::read(&user_settings).ok();
         assert_eq!(before, after, "~/.claude/settings.json must be byte-identical before and after");
@@ -847,13 +854,13 @@ mod tests {
     /// names no source list, so nothing it contains can displace the user's settings.
     #[test]
     fn toris_settings_payload_can_only_add_a_hook_never_replace_the_users() {
-        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok");
+        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false);
         let parsed: Value = serde_json::from_str(&text).unwrap();
 
-        // One hook event, one entry and one allow rule: a merge unions the
-        // arrays, so none of it can overwrite a user hook or rule.
+        // One hook event, one entry and allow rules for Tori's tools: a merge
+        // unions the arrays, so none of it can overwrite a user hook or rule.
         assert_eq!(parsed.as_object().unwrap().len(), 2);
-        assert_eq!(parsed["permissions"], json!({ "allow": ["mcp__tori__*"] }));
+        assert_eq!(parsed["permissions"], json!({ "allow": crate::rpc::mcp_allow(false) }));
         assert_eq!(parsed["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
         for forbidden in ["setting-sources", "settingSources", "deny", "defaultMode", "env", "model"] {
             assert!(!text.contains(forbidden), "the payload must not carry {forbidden}");
@@ -865,7 +872,7 @@ mod tests {
     #[test]
     fn the_settings_file_is_a_private_path_not_an_argv_blob() {
         let session = format!("perm-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", ChatTransport::ClaudeStreamJson).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", ChatTransport::ClaudeStreamJson, false).unwrap();
         let [.., flag, file] = args.as_slice() else { panic!("no --settings in {args:?}") };
         assert_eq!(flag, "--settings");
         assert!(!file.trim_start().starts_with('{'), "a token in argv is visible in `ps`");
@@ -879,15 +886,33 @@ mod tests {
     #[test]
     fn a_claude_session_gets_the_mcp_config_right_before_its_settings() {
         let session = format!("mcp-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false).unwrap();
         assert_eq!(args.len(), 4, "{args:?}");
         assert_eq!((args[0].as_str(), args[2].as_str()), ("--mcp-config", "--settings"));
         let config: Value = serde_json::from_str(&std::fs::read_to_string(&args[1]).unwrap()).unwrap();
         assert_eq!(config["mcpServers"]["tori"], json!({ "command": "tori", "args": ["mcp"] }));
 
-        let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp).unwrap();
+        let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp, false).unwrap();
         assert_eq!(acp[0], "--settings");
         let _ = std::fs::remove_file(settings_path(&session));
+    }
+
+    #[test]
+    fn only_a_background_session_pre_allows_the_outward_tools() {
+        let allowed = |background| {
+            let session = format!("allow-{background}-{}", std::process::id());
+            let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, background).unwrap();
+            let settings: Value = serde_json::from_str(&std::fs::read_to_string(&args[3]).unwrap()).unwrap();
+            let _ = std::fs::remove_file(settings_path(&session));
+            settings["permissions"]["allow"].clone()
+        };
+        assert_eq!(allowed(true), json!(["mcp__tori__*"]));
+        let foreground = allowed(false);
+        let rules: Vec<&str> = foreground.as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(rules.contains(&"mcp__tori__sessions_list") && rules.contains(&"mcp__tori__ask_create"), "{rules:?}");
+        for outward in ["mcp__tori__pr_create", "mcp__tori__review_submit", "mcp__tori__pr_merge", "mcp__tori__*"] {
+            assert!(!rules.contains(&outward), "{outward} must be left to the harness prompt");
+        }
     }
 
     // ---- against the real CLI ----
@@ -939,7 +964,7 @@ mod tests {
         let session = crate::chat::claude_transport::tests::uuid_like();
         let (server, observed) = observing_server();
         let settings_file = cwd.join("tori-settings.json");
-        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token())).unwrap();
+        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token(), false)).unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();
@@ -1035,7 +1060,7 @@ mod tests {
         let session = crate::chat::claude_transport::tests::uuid_like();
         let (server, observed) = observing_server();
         let settings_file = cwd.join("tori-settings.json");
-        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token())).unwrap();
+        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token(), false)).unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();

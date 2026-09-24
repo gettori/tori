@@ -198,6 +198,10 @@ pub async fn chat_spawn(
     // background tab would otherwise stream at full price until the first time
     // somebody looked at it and then looked away.
     visible: bool,
+    // Spawned unattended: marked before the child starts, so its first outward
+    // call already meets the approval gate, and its settings pre-allow the
+    // outward tools that gate decides.
+    background: Option<bool>,
     on_event: Channel<ChatEvent>,
 ) -> Result<SpawnResult, String> {
     let adapter = agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
@@ -306,7 +310,11 @@ pub async fn chat_spawn(
         effort.as_deref(),
         &extra_dirs,
     );
-    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), chat.transport)?);
+    let background = background.unwrap_or(false);
+    if background {
+        crate::rpc::mark_background(&session_id);
+    }
+    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), chat.transport, background)?);
 
     let spec = StartSpec {
         session_id: session_id.clone(),

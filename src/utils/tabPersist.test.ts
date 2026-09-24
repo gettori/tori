@@ -86,6 +86,19 @@ describe("toStore", () => {
     expect(parseStore(JSON.stringify(out))["/w/a"].tabs[0].rewindTo).toBe(1700);
   });
 
+  it("keeps a background chat's flag, so its resume comes back gated", () => {
+    const out = toStore(
+      [
+        tab({ id: "1", kind: "chat", program: "claude", sessionId: "c1", background: true }),
+        tab({ id: "2", kind: "chat", program: "claude", sessionId: "c2" }),
+      ],
+      {},
+      100,
+    );
+    expect(parseStore(JSON.stringify(out))["/w/a"].tabs[0].background).toBe(true);
+    expect("background" in out["/w/a"].tabs[1]).toBe(false);
+  });
+
   it("persists a chat tab alongside the agent, shell and command kinds", () => {
     const out = toStore(
       [

@@ -54,9 +54,11 @@ pub struct Held {
 pub struct SessionStates {
     states: Mutex<HashMap<String, Held>>,
     settled: Condvar,
-    // Spawned with `--background`, held for #203's gate to read.
+    // Spawned unattended, read by the approval gate on every outward call.
     background: Mutex<HashSet<String>>,
     workers: Mutex<HashSet<String>>,
+    // Worker -> the chat session that spawned it.
+    spawned_by: Mutex<HashMap<String, String>>,
 }
 
 impl SessionStates {
@@ -105,9 +107,11 @@ impl SessionStates {
         *held = next.into_iter().collect();
         let mut background = self.background.lock().unwrap_or_else(|e| e.into_inner());
         let mut workers = self.workers.lock().unwrap_or_else(|e| e.into_inner());
+        let mut spawned_by = self.spawned_by.lock().unwrap_or_else(|e| e.into_inner());
         for id in ended {
             background.remove(&id);
             workers.remove(&id);
+            spawned_by.remove(&id);
         }
         self.settled.notify_all();
         events
@@ -151,8 +155,9 @@ impl SessionStates {
         self.background.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
     }
 
-    pub fn mark_worker(&self, id: &str) {
+    pub fn mark_worker(&self, id: &str, spawner: &str) {
         self.workers.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
+        self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), spawner.to_string());
     }
 
     pub fn is_worker(&self, id: &str) -> bool {
@@ -161,6 +166,7 @@ impl SessionStates {
 
     pub fn forget_worker(&self, id: &str) {
         self.workers.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
+        self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
     }
 }
 
@@ -241,10 +247,13 @@ mod tests {
     fn an_ended_session_is_no_longer_a_worker() {
         let states = SessionStates::default();
         states.replace(vec![report("w", SessionState::Working, Source::Chat)], place, GONE);
-        states.mark_worker("w");
+        states.mark_worker("w", "boss");
+        states.mark_background("w");
         assert!(states.is_worker("w"));
         states.replace(vec![], place, GONE);
         assert!(!states.is_worker("w"));
+        assert!(!states.is_background("w"));
+        assert!(states.spawned_by.lock().unwrap().is_empty(), "its spawner link went with it");
     }
 
     #[test]

@@ -151,12 +151,16 @@ pub fn or_callers(given: Option<String>, callers: impl FnOnce() -> Option<String
     })
 }
 
+fn spawns_background(states: &SessionStates, principal: &Principal, asked: bool) -> bool {
+    asked || matches!(principal, Principal::Session(Caller::Chat(spawner)) if states.is_background(spawner))
+}
+
 fn record_spawn(states: &SessionStates, principal: &Principal, id: &str, background: bool) {
     if background {
         states.mark_background(id);
     }
-    if matches!(principal, Principal::Session(Caller::Chat(_))) {
-        states.mark_worker(id);
+    if let Principal::Session(Caller::Chat(spawner)) = principal {
+        states.mark_worker(id, spawner);
     }
 }
 
@@ -483,9 +487,16 @@ impl Backend for TauriBackend {
         // The caller's account only carries over to the caller's own agent.
         let agent = params.agent.or(me.agent.clone());
         let account = params.account.or_else(|| if agent == me.agent { me.account } else { None });
-        let request = json!({ "folder": folder, "agent": agent, "account": account, "prompt": params.prompt, "attach": attach });
+        let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
+        let request = json!({
+            "folder": folder,
+            "agent": agent,
+            "account": account,
+            "prompt": params.prompt,
+            "attach": attach,
+            "background": background,
+        });
         let mut spawned = self.bridge.request("session.spawn", request)?;
-        let background = params.background.unwrap_or(false);
         if let Some(id) = spawned["id"].as_str() {
             record_spawn(&self.states, principal, id, background);
         }
@@ -660,6 +671,20 @@ mod tests {
         assert_eq!(last_assistant_text(&events).as_deref(), Some("second"));
         assert_eq!(last_assistant_text(&[delta("t3", "only a subagent", Some("sub-1"))]), None);
         assert_eq!(last_assistant_text(&[]), None);
+    }
+
+    #[test]
+    fn a_background_session_spawns_background_children_whatever_they_ask() {
+        let states = SessionStates::default();
+        states.mark_background("autopilot");
+        let autopilot = Principal::Session(Caller::Chat("autopilot".into()));
+        assert!(spawns_background(&states, &autopilot, false));
+        record_spawn(&states, &autopilot, "worker", spawns_background(&states, &autopilot, false));
+        assert!(states.is_background("worker") && states.is_worker("worker"));
+        let foreground = Principal::Session(Caller::Chat("mine".into()));
+        assert!(!spawns_background(&states, &foreground, false));
+        assert!(spawns_background(&states, &foreground, true));
+        assert!(!spawns_background(&states, &Principal::Local, false));
     }
 
     #[test]

@@ -55,6 +55,8 @@ pub struct Method {
     pub callers: &'static [CallerKind],
     /// Appended to the dispatcher's refusal of a caller kind not in `callers`.
     pub refusal: Option<&'static str>,
+    /// Its effect is visible outside this machine, so the harness asks before it runs in a foreground session.
+    pub outward: bool,
     pub call: Call,
 }
 
@@ -73,6 +75,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<ListParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.sessions_list(params(v)?),
     },
     Method {
@@ -81,6 +84,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<TailParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.session_tail(params(v)?),
     },
     Method {
@@ -89,6 +93,7 @@ pub static METHODS: &[Method] = &[
         params: no_params,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, p, _| {
             let mut me = b.caller(p)?;
             if let Some(me) = me.as_object_mut() {
@@ -103,6 +108,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<SteerParams>,
         callers: NOT_WORKERS,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.session_steer(p, params(v)?),
     },
     Method {
@@ -111,6 +117,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<WaitParams>,
         callers: NOT_WORKERS,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.session_wait(params(v)?),
     },
     Method {
@@ -119,6 +126,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<WorktreeParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.worktree_new(p, params(v)?),
     },
     Method {
@@ -127,6 +135,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<IssuesAssignedParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.issues_assigned(p, params(v)?),
     },
     Method {
@@ -135,6 +144,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<IssueGetParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.issue_get(p, params(v)?),
     },
     Method {
@@ -143,6 +153,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<LinkBranchParams>,
         callers: NOT_WORKERS,
         refusal: Some("making a branch on the host is the spawner's call"),
+        outward: false,
         call: |b, p, v| b.issue_link_branch(p, params(v)?),
     },
     Method {
@@ -151,6 +162,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<CheckpointsParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.checkpoints_list(params(v)?),
     },
     Method {
@@ -159,6 +171,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<CheckpointDiffParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, _, v| {
             let p: CheckpointDiffParams = params(v)?;
             if let Some(to) = p.to.filter(|to| *to < p.turn) {
@@ -173,6 +186,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<CheckpointParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.checkpoint_revert(p, params(v)?),
     },
     Method {
@@ -181,6 +195,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<SpawnParams>,
         callers: NOT_WORKERS,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.session_spawn(p, params(v)?),
     },
     Method {
@@ -189,6 +204,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<OpenParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.window_open(params(v)?),
     },
     Method {
@@ -197,6 +213,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<BudgetParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, p, v| b.budget(p, params(v)?),
     },
     Method {
@@ -205,6 +222,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<AskParams>,
         callers: &[CallerKind::Chat, CallerKind::Worker],
         refusal: Some("its card shows in a chat panel, so only a chat session can ask"),
+        outward: false,
         call: |b, p, v| match p {
             Principal::Session(Caller::Chat(session)) => b.ask_create(session, params(v)?),
             _ => Err(RpcError::new(INTERNAL_ERROR, "ask.create reached with a caller its row does not admit")),
@@ -216,6 +234,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<AskAnswerParams>,
         callers: NOT_WORKERS,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.ask_answer(params(v)?),
     },
     Method {
@@ -224,6 +243,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<AskWaitParams>,
         callers: ANYONE,
         refusal: None,
+        outward: false,
         call: |b, _, v| b.ask_wait(params(v)?),
     },
     Method {
@@ -232,6 +252,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<PrCreateParams>,
         callers: ANYONE,
         refusal: None,
+        outward: true,
         call: |b, p, v| b.pr_create(p, params(v)?),
     },
     Method {
@@ -240,6 +261,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<ReviewSubmitParams>,
         callers: ANYONE,
         refusal: None,
+        outward: true,
         call: |b, p, v| b.review_submit(p, params(v)?),
     },
     Method {
@@ -248,6 +270,7 @@ pub static METHODS: &[Method] = &[
         params: schema::<PrMergeParams>,
         callers: ANYONE,
         refusal: None,
+        outward: true,
         call: |b, p, v| b.pr_merge(p, params(v)?),
     },
 ];

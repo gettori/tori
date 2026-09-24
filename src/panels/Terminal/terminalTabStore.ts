@@ -70,6 +70,10 @@ export type OpenTerm = {
   // fork. The checkpoint the worktree was put back to, which is also where the
   // replayed history is cut.
   rewindTo?: number;
+  // Chat tabs: spawned unattended (by the autopilot, or by a session it
+  // spawned). Carried into every spawn and resume of the session, which is what
+  // puts Tori's approval gate in front of its outward tools.
+  background?: boolean;
   // Fresh (non-resumed) agent tabs only: when this tab was spawned, epoch
   // seconds. Used to attribute the session that appears afterward (see
   // `backfillFreshSessions`).

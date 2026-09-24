@@ -565,6 +565,7 @@ export default function Terminal(props: {
           // rides along only so the tab keeps saying the agent remembers turns
           // that were undone, which is still true.
           rewindTo: d.rewindTo,
+          background: d.background,
         },
         false,
       );
@@ -1621,7 +1622,7 @@ export default function Terminal(props: {
     baseName: string,
     agentId: string,
     profile: string | null = null,
-    session?: { sessionId: string; forkFrom?: string; rewindTo?: number },
+    session?: { sessionId: string; forkFrom?: string; rewindTo?: number; background?: boolean },
     // Restore hands its stored id in so the tab comes back as itself, and takes
     // the focus itself once the whole strip is back; every other caller is
     // opening a tab that has never existed and wants to be looking at it.
@@ -1706,6 +1707,7 @@ export default function Terminal(props: {
     account: string | null;
     prompt: string | null;
     attach: string[];
+    background: boolean;
   }) {
     await stripReady(p.folder);
     const agentId = p.agent ?? draftAgent(p.folder, p.folder);
@@ -1728,7 +1730,8 @@ export default function Terminal(props: {
     if (text) markAutoSend(tabId, text);
     const sessionId = crypto.randomUUID();
     const name = p.folder.split("/").pop() || "chat";
-    openChatTab(p.folder, p.folder, name, agentId, profile, { sessionId }, tabId, false);
+    const session = p.background ? { sessionId, background: true } : { sessionId };
+    openChatTab(p.folder, p.folder, name, agentId, profile, session, tabId, false);
     return { id: sessionId, tab: tabId, folder: p.folder, agent: agentId };
   }
 
@@ -2395,6 +2398,7 @@ export default function Terminal(props: {
         onProfileResolved={(profile) => recordChatProfile(t.id, profile)}
         forkFrom={t.forkFrom}
         rewindTo={t.rewindTo}
+        background={t.background}
       />
     );
   };

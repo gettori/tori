@@ -71,6 +71,9 @@ export type PersistedTab = {
   // in this session's own transcript, so a restore resumes rather than forking
   // a second time.
   rewindTo?: number;
+  // Chat tabs spawned unattended, so a resume comes back behind the approval
+  // gate rather than as an ordinary session.
+  background?: boolean;
 };
 
 export type WorkspaceTabs = {
@@ -99,6 +102,7 @@ export type OpenTabLike = {
   profile: string | null;
   sessionId?: string;
   rewindTo?: number;
+  background?: boolean;
   /** Chat tabs: whether a child is attached right now. A restored chat opened
    *  only to read its transcript has a session id and no child, and holds
    *  unsent text exactly as a draft does. Absent reads as no child, which is
@@ -154,6 +158,7 @@ export function toStore(
       ...(t.profile ? { profile: t.profile } : {}),
       ...(t.sessionId ? { sessionId: t.sessionId } : {}),
       ...(t.rewindTo ? { rewindTo: t.rewindTo } : {}),
+      ...(t.background ? { background: true } : {}),
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
       ...(keepPick && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
     });
