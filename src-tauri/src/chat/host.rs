@@ -235,37 +235,40 @@ impl Waiting {
     }
 }
 
-type WaitingMap = Arc<Mutex<HashMap<String, Vec<Waiting>>>>;
+// Each prompt with the event that raised it, for a view that attaches after it was asked.
+type WaitingMap = Arc<Mutex<HashMap<String, Vec<(Waiting, ChatEvent)>>>>;
 
 // A background subagent outlives its parent's turn, and so can its prompt.
 fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) {
     let mut waiting = lock(waiting);
     match event {
         ChatEvent::QuestionRequest { tool_use_id, request_id, agent_id, questions, .. } => {
-            waiting.entry(id.to_string()).or_default().push(Waiting::Question {
+            let asked = Waiting::Question {
                 id: tool_use_id.clone(),
                 request_id: request_id.clone(),
                 agent_id: agent_id.clone(),
                 questions: questions.clone(),
-            });
+            };
+            waiting.entry(id.to_string()).or_default().push((asked, event.clone()));
         }
         ChatEvent::PermissionRequest { tool_use_id, request_id, agent_id, tool_name, input, .. } => {
-            waiting.entry(id.to_string()).or_default().push(Waiting::Permission {
+            let asked = Waiting::Permission {
                 id: tool_use_id.clone(),
                 request_id: request_id.clone(),
                 agent_id: agent_id.clone(),
                 tool: tool_name.clone(),
                 detail: permission_detail(input),
-            });
+            };
+            waiting.entry(id.to_string()).or_default().push((asked, event.clone()));
         }
         ChatEvent::ToolCallCompleted { tool_use_id, .. } => {
             if let Some(list) = waiting.get_mut(id) {
-                list.retain(|w| w.id() != tool_use_id);
+                list.retain(|(w, _)| w.id() != tool_use_id);
             }
         }
         ChatEvent::TurnCompleted { .. } => {
             if let Some(list) = waiting.get_mut(id) {
-                list.retain(Waiting::by_subagent);
+                list.retain(|(w, _)| w.by_subagent());
             }
         }
         _ => {}
@@ -644,12 +647,19 @@ impl ChatHost {
 
     /// The native questions and permission prompts a session is blocked on.
     pub fn waiting(&self, session_id: &str) -> Vec<Waiting> {
-        lock(&self.waiting).get(session_id).cloned().unwrap_or_default()
+        lock(&self.waiting).get(session_id).into_iter().flatten().map(|(w, _)| w.clone()).collect()
+    }
+
+    /// The events that raised what a session is still waiting on. A view that
+    /// attached after they went out has them only from history, without the
+    /// request id that makes them answerable.
+    pub fn waiting_events(&self, session_id: &str) -> Vec<ChatEvent> {
+        lock(&self.waiting).get(session_id).into_iter().flatten().map(|(_, e)| e.clone()).collect()
     }
 
     fn forget_waiting(&self, session_id: &str, id: &str) {
         if let Some(list) = lock(&self.waiting).get_mut(session_id) {
-            list.retain(|w| w.id() != id);
+            list.retain(|(w, _)| w.id() != id);
         }
     }
 

@@ -54,12 +54,13 @@ When I ask you to work on an issue ("work on #123"):
    worktree on the item and set it `running`.
 
 When a wake names a worker's `question` or `permission`, call
-`session_pending` for that session. It lists what the worker is waiting on,
+`session_pending` with that session as `id`. It lists what the worker is waiting on,
 each with an id:
 
 - An `ask` row is answered with `ask_answer`.
-- A `question` row is answered with `session_answer`, one answer per entry in
-  its `questions`, in order: an option's label or your own words.
+- A `question` row is answered with `session_answer` (`session`, the row's
+  `id`, and `answer`), one answer per entry in its `questions`, in order: an
+  option's label or your own words.
 - A `permission` row is answered with `session_answer`, `allow` or `deny`.
 
 Answer it yourself only when the issue and the contract make the answer

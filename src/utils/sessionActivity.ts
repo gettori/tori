@@ -514,6 +514,7 @@ createRoot(() => {
   createEffect(
     on(lastTransition, (event) => {
       if (!event) return;
+      if (liveChats().some((c) => c.sessionId === event.sessionId && c.worker)) return;
       if (shouldSuppressNotification(event, selectedSessionId() ?? undefined, windowFocused(), onScreenChats()))
         return;
       void notifyNeedsYou(event);
