@@ -133,9 +133,16 @@ pub fn save_secret(account_id: &str, secret: &Secret) -> Result<(), ForgeError> 
 
 pub fn load_secret(account_id: &str) -> Result<Option<Secret>, ForgeError> {
     #[cfg(all(debug_assertions, not(test)))]
-    return Ok(dev_file::read().remove(account_id));
-    #[allow(unreachable_code)]
-    load_secret_from(&account_entry(account_id)?)
+    if let Some(secret) = dev_file::read().remove(account_id) {
+        return Ok(Some(secret));
+    }
+    let secret = load_secret_from(&account_entry(account_id)?)?;
+    // Copied once so the keychain is asked once, not on every reload.
+    #[cfg(all(debug_assertions, not(test)))]
+    if let Some(secret) = &secret {
+        dev_file::save(account_id, secret)?;
+    }
+    Ok(secret)
 }
 
 pub fn delete_secret(account_id: &str) -> Result<(), ForgeError> {
@@ -152,10 +159,10 @@ pub fn load_legacy() -> Result<Option<String>, ForgeError> {
     load_from(&Entry::new(LEGACY_SERVICE, LEGACY_USER).map_err(map_err)?)
 }
 
-/// Where a dev build keeps forge secrets instead of the keychain. A keychain
-/// item trusts the code signature that wrote it, and a dev build's ad hoc
-/// signature changes on every rebuild, so each hot reload asked for the login
-/// password again. Release builds never compile this.
+/// Where a dev build keeps forge secrets, seeded from the keychain on first
+/// read. A keychain item trusts the code signature that wrote it, and a dev
+/// build's ad hoc signature changes on every rebuild, so each hot reload asked
+/// for the login password again. Release builds never compile this.
 #[cfg(all(debug_assertions, not(test)))]
 mod dev_file {
     use super::{ForgeError, Secret};
