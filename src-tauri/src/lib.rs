@@ -575,8 +575,6 @@ pub fn run() {
             agent_config::agent_config_new,
             agent_config::agent_config_delete,
             agent_plugins::agent_plugins,
-            launch::open_in_vscode,
-            launch::open_in_ghostty,
             launch::reveal_in_finder,
             worktree::list_worktrees,
             worktree::create_worktree,

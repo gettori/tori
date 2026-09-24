@@ -200,18 +200,6 @@ describe("Toolbar for a Topic", () => {
     expect(onActiveRoot).not.toHaveBeenCalled();
   });
 
-  // The two hand-offs moved to the right end of the topbar
-  // (`components/HandOffs`), so the crumb row carries no launch buttons at all
-  // now. Asserted rather than assumed: a crumb that grew one back would put a
-  // second Ghostty button on the bar.
-  it("carries no launch buttons, only the crumb and its chips", async () => {
-    render(() => <Toolbar selected={topicSel(B) as never} />);
-    await waitFor(() => expect(chip("web")).toBeTruthy());
-
-    expect(screen.queryByRole("button", { name: /Ghostty/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /VSCode/ })).toBeNull();
-  });
-
   it("draws the sync chip at every level that has something to say", async () => {
     const cases = [
       [upstream({ ahead: 2, behind: 1 }), "diverged"],

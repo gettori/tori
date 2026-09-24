@@ -48,7 +48,6 @@ import { ensureFirstRunLoaded, firstRunOpen } from './utils/firstRun';
 import UpdatePill from './components/UpdatePill/UpdatePill';
 import UsageStrip from './components/UsageStrip/UsageStrip';
 import DevBadge from './components/DevBadge/DevBadge';
-import HandOffs from './components/HandOffs/HandOffs';
 import Button from './components/Button/Button';
 import Icon from './components/Icon/Icon';
 import { Settings as SettingsIcon } from 'lucide-solid';
@@ -1109,9 +1108,6 @@ function App() {
         <DevBadge />
         <UsageStrip />
         <UpdatePill suppressed={firstRunOpen()} />
-        {/* The right end of the bar is the ways out of what you are looking at:
-            open it elsewhere, or open the settings for it. */}
-        <HandOffs selected={selected()} />
         <Button
           class="topbar-gear"
           variant="ghost"

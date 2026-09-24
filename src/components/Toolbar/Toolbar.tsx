@@ -15,10 +15,6 @@ import styles from "./Toolbar.module.css";
 // session title, and its figures sit in the chat's status strip beside the
 // conversation they describe.
 //
-// It used to end in the two hand-offs out of the app as well. Those are
-// `components/HandOffs` now, at the right end of the topbar: a crumb is elastic
-// and a button pinned to the end of one is never twice in the same place.
-//
 // For a Topic the crumb is its name and branch, followed by one chip per
 // member: the present ones switch the active root, the rest wear their state.
 export default function Toolbar(props: { selected: Selection | null; onActiveRoot?: (root: string) => void }) {
