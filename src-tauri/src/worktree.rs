@@ -997,6 +997,40 @@ mod tests {
     }
 
     #[test]
+    fn a_worktree_for_a_branch_only_on_origin_tracks_it() {
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        git(&src, &["branch", "207-ticket-flow"]);
+
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["remote", "add", "origin", src.to_str().unwrap()]);
+        git(&repo, &["fetch", "-q", "origin", "+refs/heads/207-ticket-flow:refs/remotes/origin/207-ticket-flow"]);
+        let repo_s = repo.to_string_lossy().into_owned();
+        let container = repo.join(".tori/worktrees");
+        std::fs::create_dir_all(&container).unwrap();
+
+        let made = create_worktree_in(&repo_s, "207-ticket-flow", &container, None).unwrap();
+        let upstream = Command::new("git")
+            .arg("-C")
+            .arg(&made)
+            .args(["rev-parse", "--abbrev-ref", "207-ticket-flow@{u}"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&upstream.stdout).trim(), "origin/207-ticket-flow");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn link_shared_noop_without_shared_dir() {
         let tmp = unique_tmp();
         let container = tmp.join("proj");
