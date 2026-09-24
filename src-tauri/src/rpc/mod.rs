@@ -182,6 +182,7 @@ fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<A
     std::thread::spawn(move || {
         let deliver = |session: &str, text: String| {
             let host = &app.state::<crate::chat::host::ChatState>().0;
+            let text = events::from_tori("wake", None, &text);
             host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], false, events::TurnBy::Watcher)
         };
         let stall = || std::time::Duration::from_secs(u64::from(crate::settings::autopilot().stall_minutes) * 60);

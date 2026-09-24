@@ -20,6 +20,8 @@ import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
+import ToriNoteRow from "./ToriNote";
+import { toriNote } from "../../utils/toriNote";
 import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -530,6 +532,9 @@ export default function MessageList(props: {
                 it, and reading it as an ordinary prompt would suggest the reply
                 below answers only that. It opens no turn group: `turnOpeners`
                 counts assistant-side rows only. */}
+            <Match when={item.kind === "user" && toriNote(item.blocks)}>
+              {(note) => <ToriNoteRow note={note()} />}
+            </Match>
             <Match when={item.kind === "user" && item}>
               {(it) => (
                 <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>

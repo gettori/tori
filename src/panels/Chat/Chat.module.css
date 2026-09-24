@@ -223,6 +223,57 @@
   margin-top: calc(12px * var(--ui-scale));
 }
 
+/* Text Tori wrote itself (a brief, a wake, another session's steer): centered
+   and quiet, since it is neither side of the conversation. */
+.toriRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: calc(12px * var(--ui-scale));
+}
+
+.toriLine {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  font-size: var(--tori-text-xs);
+  color: var(--fg-subtle);
+}
+
+.toriMark {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+.toriInfo {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.toriInfo:hover,
+.toriInfo[aria-expanded="true"] {
+  color: var(--fg-default);
+}
+
+.toriBody {
+  max-width: min(85%, calc(640px * var(--ui-scale)));
+  max-height: calc(320px * var(--ui-scale));
+  overflow: auto;
+  margin: calc(6px * var(--ui-scale)) 0 0;
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  background: var(--canvas-card);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
+  white-space: pre-wrap;
+  color: var(--fg-muted);
+}
+
 .userBubble {
   position: relative;
   min-width: 0;

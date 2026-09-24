@@ -467,7 +467,11 @@ impl Backend for TauriBackend {
             Principal::Session(Caller::Chat(id)) => TurnBy::Session(id.clone()),
             Principal::Session(Caller::Terminal(tab)) => TurnBy::Tab(tab.clone()),
         };
-        host.deliver(&params.id, vec![ContentBlock::Text { text: params.text }], mid_turn, by).map_err(refused)?;
+        let text = match principal {
+            Principal::Session(Caller::Chat(from)) => super::events::from_tori("steer", Some(from), &params.text),
+            _ => params.text,
+        };
+        host.deliver(&params.id, vec![ContentBlock::Text { text }], mid_turn, by).map_err(refused)?;
         Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
     }
 
