@@ -550,7 +550,8 @@ impl Backend for TauriBackend {
             Some(draft) => Some(Approval { project: self.project(&principal, params.project)?, draft }),
             None => None,
         };
-        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default(), approval);
+        let mirror = self.states.root_background(session);
+        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default(), approval, mirror);
         if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
             self.asks.forget(&ask.id);
             return Err(e);

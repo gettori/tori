@@ -16,6 +16,9 @@ pub struct Ask {
     pub question: String,
     pub options: Vec<String>,
     pub approval: Option<Approval>,
+    // The chat panels showing the card: the asker's, plus its root background
+    // session's for an approval a worker asked, since nobody watches the worker.
+    pub shown_in: Vec<String>,
 }
 
 struct Held {
@@ -52,14 +55,23 @@ pub struct Asks {
 }
 
 impl Asks {
-    pub fn create(&self, session: String, question: String, options: Vec<String>, approval: Option<Approval>) -> Ask {
+    pub fn create(
+        &self,
+        session: String,
+        question: String,
+        options: Vec<String>,
+        approval: Option<Approval>,
+        mirror: Option<String>,
+    ) -> Ask {
         // Unguessable, since any caller can wait on an id and reading an answer consumes it.
         let id = format!("ask-{}", crate::chat::approval::random_token());
         let options = match approval {
             Some(_) => vec![APPROVE.to_string(), REJECT.to_string()],
             None => options,
         };
-        let ask = Ask { id: id.clone(), session, question, options, approval };
+        let mirror = mirror.filter(|m| approval.is_some() && *m != session);
+        let shown_in = std::iter::once(session.clone()).chain(mirror).collect();
+        let ask = Ask { id: id.clone(), session, question, options, approval, shown_in };
         self.held().insert(id, Held { ask: ask.clone(), answer: None, approval_id: None });
         ask
     }
@@ -134,13 +146,14 @@ mod tests {
 
     fn asks_with_one() -> (Arc<Asks>, Ask) {
         let asks = Arc::new(Asks::default());
-        let ask = asks.create("s1".into(), "ok?".into(), vec!["yes".into(), "no".into()], None);
+        let ask = asks.create("s1".into(), "ok?".into(), vec!["yes".into(), "no".into()], None, Some("root".into()));
         (asks, ask)
     }
 
     #[test]
     fn an_answer_inside_the_window_wakes_the_waiter() {
         let (asks, ask) = asks_with_one();
+        assert_eq!(ask.shown_in, ["s1"], "only an approval is mirrored");
         let answering = asks.clone();
         let id = ask.id.clone();
         std::thread::spawn(move || {
@@ -164,7 +177,7 @@ mod tests {
 
     fn approval_ask(asks: &Asks) -> Ask {
         let draft = Draft::PrMerge { number: 7, method: MergeMethod::Squash, head_sha: "abc".into() };
-        asks.create("s1".into(), "merge?".into(), vec!["sure".into()], Some(Approval { project: "/p".into(), draft }))
+        asks.create("s1".into(), "merge?".into(), vec!["sure".into()], Some(Approval { project: "/p".into(), draft }), Some("root".into()))
     }
 
     #[test]
@@ -172,6 +185,7 @@ mod tests {
         let asks = Asks::default();
         let ask = approval_ask(&asks);
         assert_eq!(ask.options, [APPROVE, REJECT], "an approval offers only these two");
+        assert_eq!(ask.shown_in, ["s1", "root"], "a worker's approval shows in its root's chat too");
         assert_eq!(asks.wait(&ask.id, Duration::from_millis(10)), Waited::Pending);
         asks.answer(&ask.id, APPROVE.into(), By::User).unwrap();
         let Waited::Answered { answer, approval_id: Some(approval_id) } = asks.wait(&ask.id, Duration::ZERO) else {
