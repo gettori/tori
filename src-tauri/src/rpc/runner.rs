@@ -27,7 +27,6 @@ use crate::chat::model::{ChatEvent, ContentBlock};
 use crate::owned_state::write_atomically;
 
 const BRIEF: &str = "resources/autopilot/brief.md";
-const DEFAULT_AGENT: &str = "claude";
 // An ACP agent answers `session/new` before it can take a model or a turn.
 const STARTED_TIMEOUT: Duration = Duration::from_secs(60);
 const RETIRED_KEPT: usize = 20;
@@ -242,7 +241,7 @@ impl Runner {
     // being torn down.
     fn launch(self: &Arc<Self>) {
         let id = new_session_id();
-        let agent = crate::settings::autopilot().agent.filter(|a| !a.is_empty()).unwrap_or_else(|| DEFAULT_AGENT.to_string());
+        let agent = crate::settings::autopilot().agent;
         let cwd = Some(self.session_dir().to_string_lossy().into_owned());
         self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None });
         let runner = self.clone();
@@ -262,7 +261,7 @@ impl Runner {
     fn launch_as(&self, id: &str) -> Result<(), String> {
         let brief = self.brief()?;
         let picks = crate::settings::autopilot();
-        let agent_id = picks.agent.clone().filter(|a| !a.is_empty()).unwrap_or_else(|| DEFAULT_AGENT.to_string());
+        let agent_id = picks.agent.clone();
         let adapter = crate::agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
         let transport = adapter.chat.as_ref().ok_or_else(|| format!("{} has no chat transport", adapter.label))?.transport;
         let acp = matches!(transport, ChatTransport::Acp);

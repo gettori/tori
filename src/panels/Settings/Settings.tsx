@@ -26,6 +26,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-solid";
+import { WheelGlyph } from "../../components/Autopilot/Wheel";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
@@ -38,6 +39,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import AdvancedPane from "./panes/AdvancedPane/AdvancedPane";
 import AgentsPane from "./panes/AgentsPane/AgentsPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
+import AutopilotPane from "./panes/AutopilotPane/AutopilotPane";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
@@ -76,6 +78,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   "wand-sparkles": WandSparkles,
   "shield-check": ShieldCheck,
   palette: Palette,
+  wheel: WheelGlyph,
   plug: Plug,
   "columns-2": Columns2,
   "folder-cog": FolderCog,
@@ -84,6 +87,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 const PANES: Record<SettingTab, Component<PaneProps>> = {
   agents: AgentsPane,
   chat: ChatPane,
+  autopilot: AutopilotPane,
   editor: EditorPane,
   servers: ServersPane,
   debuggers: DebuggersPane,

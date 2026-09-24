@@ -1,9 +1,31 @@
-import { Show } from "solid-js";
+import { Show, splitProps } from "solid-js";
+import type { LucideProps } from "lucide-solid";
 import { badgeCount, type AutopilotState } from "./autopilot";
 import styles from "./Wheel.module.css";
 
 const SPOKES =
   "M14.6 12H22.2M13.84 13.84L19.21 19.21M12 14.6V22.2M10.16 13.84L4.79 19.21M9.4 12H1.8M10.16 10.16L4.79 4.79M12 9.4V1.8M13.84 10.16L19.21 4.79";
+
+/** The bare wheel, shaped like a lucide icon so an icon slot can take it. */
+export function WheelGlyph(props: LucideProps) {
+  const [local, rest] = splitProps(props, ["size", "strokeWidth"]);
+  return (
+    <svg
+      width={local.size ?? 24}
+      height={local.size ?? 24}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width={local.strokeWidth ?? 2.3}
+      stroke-linecap="round"
+      {...rest}
+    >
+      <circle cx="12" cy="12" r="6.6" />
+      <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
+      <path d={SPOKES} />
+    </svg>
+  );
+}
 
 export interface WheelProps {
   state: AutopilotState;
@@ -33,11 +55,7 @@ export default function Wheel(props: WheelProps) {
       style={{ "--wheel-size": `${props.size ?? 14}px` }}
       aria-hidden="true"
     >
-      <svg class={styles.glyph} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round">
-        <circle cx="12" cy="12" r="6.6" />
-        <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
-        <path d={SPOKES} />
-      </svg>
+      <WheelGlyph class={styles.glyph} />
       <Show when={props.state === "off"}>
         <span class={styles.strike} />
       </Show>
