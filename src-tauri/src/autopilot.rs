@@ -507,6 +507,10 @@ impl AutopilotStore {
         Ok(contract)
     }
 
+    pub fn contract(&self, project: &str) -> Option<Contract> {
+        self.lock().projects.iter().find(|(known, _)| same_folder(known, project)).map(|(_, c)| c.clone())
+    }
+
     // The file write already succeeded, so a failed log line is not a failed write.
     fn log(&self, entry: Value) {
         let mut line = json!({ "ts": now_ms() });

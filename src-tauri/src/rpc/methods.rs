@@ -22,7 +22,7 @@ use super::server::{
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
-use crate::autopilot::{AutopilotStore, Observed};
+use crate::autopilot::{AutopilotStore, Contract, Observed};
 use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history};
 use crate::chat::host::{ChatState, Waiting};
@@ -178,6 +178,28 @@ fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Re
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
         _ => Err(refused(format!("only the session that spawned {session} answers for it"))),
     }
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Picks {
+    agent: Option<String>,
+    account: Option<String>,
+    model: Option<String>,
+}
+
+// A contract's account and model belong to its agent, so they fill in only when
+// the session runs that agent, or the contract names none.
+fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity) -> Picks {
+    let empty = Contract::default();
+    let contract = contract.unwrap_or(&empty);
+    let agent = given.agent.or_else(|| contract.agent.clone()).or_else(|| me.agent.clone());
+    let contract_applies = contract.agent.is_none() || contract.agent == agent;
+    let account = given
+        .account
+        .or_else(|| contract_applies.then(|| contract.account.clone()).flatten())
+        .or_else(|| if agent == me.agent { me.account.clone() } else { None });
+    let model = given.model.or_else(|| contract_applies.then(|| contract.model.clone()).flatten());
+    Picks { agent, account, model }
 }
 
 fn refused(message: String) -> RpcError {
@@ -511,19 +533,22 @@ impl Backend for TauriBackend {
         }
         let folder = match params.new_worktree {
             Some(branch) => {
-                self.create_worktree(principal, WorktreeParams { branch, project: params.project, from: params.from, issue: None })?
+                self.create_worktree(principal, WorktreeParams { branch, project: params.project.clone(), from: params.from, issue: None })?
             }
             None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
         };
-        // Left out, the webview picks the folder's remembered agent and account.
-        // The caller's account only carries over to the caller's own agent.
-        let agent = params.agent.or(me.agent.clone());
-        let account = params.account.or_else(|| if agent == me.agent { me.account } else { None });
+        // Left out everywhere, the webview picks the folder's remembered agent and account.
+        let project = params.project.or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
+        let contract = project.and_then(|project| self.autopilot.contract(&project));
+        let given = Picks { agent: params.agent, account: params.account, model: params.model };
+        let Picks { agent, account, model } = fill_picks(given, contract.as_ref(), &me);
         let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
         let request = json!({
             "folder": folder,
             "agent": agent,
             "account": account,
+            "model": model,
+            "effort": params.effort,
             "prompt": params.prompt,
             "attach": attach,
             "background": background,
@@ -979,5 +1004,27 @@ mod tests {
             let err = answers_for(&caller, spawner, "w1").unwrap_err();
             assert_eq!(err.code, REFUSED, "{}", err.message);
         }
+    }
+
+    #[test]
+    fn spawn_picks_fill_from_the_contract_and_an_explicit_value_wins() {
+        let me = Identity { agent: Some("claude".into()), account: Some("work".into()), cwd: None };
+        let s = |v: &str| Some(v.to_string());
+        let contract = Contract { agent: s("codex"), account: s("team"), model: s("gpt-5"), ..Default::default() };
+
+        let filled = fill_picks(Picks::default(), Some(&contract), &me);
+        assert_eq!(filled, Picks { agent: s("codex"), account: s("team"), model: s("gpt-5") });
+
+        let explicit = Picks { agent: None, account: None, model: s("gpt-5-mini") };
+        assert_eq!(fill_picks(explicit, Some(&contract), &me).model, s("gpt-5-mini"));
+
+        let other_agent = Picks { agent: s("claude"), ..Default::default() };
+        let filled = fill_picks(other_agent, Some(&contract), &me);
+        assert_eq!(filled, Picks { agent: s("claude"), account: s("work"), model: None }, "codex's model is not claude's");
+
+        let any_agent = Contract { model: s("opus"), ..Default::default() };
+        assert_eq!(fill_picks(Picks::default(), Some(&any_agent), &me).model, s("opus"));
+
+        assert_eq!(fill_picks(Picks::default(), None, &me), Picks { agent: s("claude"), account: s("work"), model: None });
     }
 }
