@@ -677,6 +677,7 @@ impl Backend for TauriBackend {
 
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError> {
         let draft = params.draft();
+        let sha = params.head_sha;
         let req = crate::forge::CreatePr {
             title: params.title,
             body: params.body,
@@ -684,8 +685,15 @@ impl Backend for TauriBackend {
             base: params.base,
             draft: params.draft.unwrap_or(false),
         };
+        let askpass = self.app.state::<crate::askpass::AskpassState>().0.clone();
         self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
-            to_json(crate::forge::commands::create_pr(project, &req).map_err(forge_refused)?)
+            let push = || {
+                let lock = crate::exec::repo_lock(project);
+                let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                crate::git::push_sha(project, "origin", &req.head, &sha, askpass.sock_path(), askpass.token())
+            };
+            let create = || crate::forge::commands::create_pr(project, &req);
+            to_json(crate::forge::prs::push_then_create(push, create).map_err(forge_refused)?)
         })
     }
 
@@ -818,7 +826,14 @@ mod tests {
     fn pr_draft() -> Approval {
         Approval {
             project: "/p".into(),
-            draft: Draft::PrCreate { head: "1-x".into(), base: "main".into(), title: "T".into(), body: "B".into(), draft: false },
+            draft: Draft::PrCreate {
+                head: "1-x".into(),
+                base: "main".into(),
+                title: "T".into(),
+                body: "B".into(),
+                draft: false,
+                head_sha: "abc".into(),
+            },
         }
     }
 
@@ -836,7 +851,7 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(err.code, REFUSED);
-        for named in ["pr.create", "a pull request from 1-x into main", "/p", "no approval_id", "ask_create"] {
+        for named in ["pr.create", "a pull request from 1-x at abc into main", "/p", "no approval_id", "ask_create"] {
             assert!(err.message.contains(named), "{named} missing from: {}", err.message);
         }
         assert!(!ran.get(), "the forge is never reached");
@@ -849,6 +864,52 @@ mod tests {
         assert_eq!(gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap(), json!({ "number": 12 }));
         let again = gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap_err();
         assert!(again.message.contains("already spent"), "{}", again.message);
+    }
+
+    #[test]
+    fn a_failed_push_or_create_keeps_the_approval_and_a_retry_spends_it() {
+        let approvals = Approvals::default();
+        let id = approvals.grant("s1", pr_draft());
+        let creates = std::cell::Cell::new(0);
+        let attempt = |push: Result<(), String>, create: Result<(), &str>| {
+            gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), || {
+                let opened = crate::forge::prs::push_then_create(
+                    || push,
+                    || {
+                        creates.set(creates.get() + 1);
+                        create.map(|()| sample_pr()).map_err(|message| crate::forge::ForgeError::Transport { message: message.into() })
+                    },
+                );
+                to_json(opened.map_err(forge_refused)?)
+            })
+        };
+
+        let err = attempt(Err("! [rejected] feature (non-fast-forward)".into()), Ok(())).unwrap_err();
+        assert!(err.message.contains("non-fast-forward"), "{}", err.message);
+        assert_eq!(creates.get(), 0, "a rejected push never reaches the forge");
+        assert!(attempt(Ok(()), Err("422")).is_err());
+        assert_eq!(creates.get(), 1);
+        assert_eq!(attempt(Ok(()), Ok(())).unwrap()["number"], json!(12), "the same approval opens it on retry");
+        let spent = attempt(Ok(()), Ok(())).unwrap_err();
+        assert!(spent.message.contains("already spent"), "{}", spent.message);
+    }
+
+    fn sample_pr() -> crate::forge::model::PullRequest {
+        crate::forge::model::PullRequest {
+            number: 12,
+            title: "T".into(),
+            body: None,
+            state: crate::forge::model::PrState::Open,
+            is_draft: false,
+            author: "a".into(),
+            created_at: "2026-09-25T00:00:00Z".into(),
+            comments: 0,
+            head_ref: "1-x".into(),
+            base_ref: "main".into(),
+            head_sha: "abc".into(),
+            url: "https://github.com/o/r/pull/12".into(),
+            mergeable_state: crate::forge::model::MergeableState::Unknown,
+        }
     }
 
     #[test]

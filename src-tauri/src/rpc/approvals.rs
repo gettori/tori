@@ -31,6 +31,9 @@ pub enum Draft {
         /// Open it as a draft.
         #[serde(default)]
         draft: bool,
+        /// The commit pushed as the head; the push is refused once the branch has moved on.
+        #[serde(default)]
+        head_sha: String,
     },
     #[serde(rename = "review.submit")]
     ReviewSubmit {
@@ -66,7 +69,7 @@ impl Draft {
 
     pub fn target(&self) -> String {
         match self {
-            Draft::PrCreate { head, base, .. } => format!("a pull request from {head} into {base}"),
+            Draft::PrCreate { head, base, head_sha, .. } => format!("a pull request from {head} at {head_sha} into {base}"),
             Draft::ReviewSubmit { number, event, .. } => format!("a {event:?} review on #{number}"),
             Draft::PrMerge { number, head_sha, .. } => format!("merging #{number} at {head_sha}"),
         }
@@ -146,7 +149,14 @@ mod tests {
     fn pr(body: &str) -> Approval {
         Approval {
             project: "/p".into(),
-            draft: Draft::PrCreate { head: "1-x".into(), base: "main".into(), title: "T".into(), body: body.into(), draft: false },
+            draft: Draft::PrCreate {
+                head: "1-x".into(),
+                base: "main".into(),
+                title: "T".into(),
+                body: body.into(),
+                draft: false,
+                head_sha: "abc".into(),
+            },
         }
     }
 

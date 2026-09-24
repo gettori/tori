@@ -2340,6 +2340,27 @@ pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &
     }
 }
 
+/// Push exactly the approved commit to `branch` on `remote`, never forced.
+///
+/// Refused when the local branch has moved past `sha`: what was approved is that
+/// commit, and whatever landed after it was never looked at.
+pub fn push_sha(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Path, token: &str) -> Result<(), String> {
+    let at = git_capture(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}^{{commit}}")])
+        .map_err(|_| format!("no local branch {branch}"))?;
+    if at != sha {
+        return Err(format!("{branch} moved to {at} after {sha} was approved: ask again for the new head"));
+    }
+    let op_id = next_op_id();
+    let mut cmd = git_command(repo, &op_id, sock, token);
+    let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);
+    cmd.args(["push", remote, &format!("{sha}:refs/heads/{branch}")]);
+    match crate::git_health::run(&mut cmd) {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+        Err(e) => Err(e),
+    }
+}
+
 /// Background `git push` through the askpass bridge, a sibling of `git_fetch`:
 /// runs on its own thread. Emits `git://push-done` on success and
 /// `git://push-error` on failure; both carry the repo path so the UI can
@@ -3337,6 +3358,34 @@ diff --git a/f b/f
         git(&local, &["checkout", "-q", "main"]);
         git(&local, &["remote", "add", "origin", &remote.to_string_lossy()]);
         (local, remote)
+    }
+
+    #[test]
+    fn push_sha_pushes_the_approved_commit_and_refuses_a_moved_branch_or_a_rejected_push() {
+        let (local, remote) = repo_with_remote();
+        let (p, r) = (local.to_string_lossy().into_owned(), remote.to_string_lossy().into_owned());
+        let sock = Path::new("/tmp/tori-push-sha-test/s");
+        let approved = git_capture(&p, &["rev-parse", "feature"]).unwrap();
+        push_sha(&p, "origin", "feature", &approved, sock, "tok").unwrap();
+        assert_eq!(git_capture(&r, &["rev-parse", "refs/heads/feature"]).unwrap(), approved);
+
+        git(&local, &["checkout", "-q", "feature"]);
+        std::fs::write(local.join("f.txt"), "v2").unwrap();
+        git(&local, &["commit", "-q", "-am", "after the approval"]);
+        let err = push_sha(&p, "origin", "feature", &approved, sock, "tok").unwrap_err();
+        assert!(err.contains("moved"), "{err}");
+        assert_eq!(git_capture(&r, &["rev-parse", "refs/heads/feature"]).unwrap(), approved, "nothing went out");
+
+        let head = git_capture(&p, &["rev-parse", "feature"]).unwrap();
+        git(&local, &["checkout", "-q", "main"]);
+        std::fs::write(local.join("g.txt"), "elsewhere").unwrap();
+        git(&local, &["add", "g.txt"]);
+        git(&local, &["commit", "-q", "-m", "someone else's"]);
+        git(&local, &["push", "-q", "--force", "origin", "main:refs/heads/feature"]);
+        let err = push_sha(&p, "origin", "feature", &head, sock, "tok").unwrap_err();
+        assert!(err.contains("rejected") || err.contains("non-fast-forward"), "never forced: {err}");
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
     }
 
     #[test]
