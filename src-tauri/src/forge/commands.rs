@@ -14,7 +14,7 @@ use super::accounts::{
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
-    AuthState, Capabilities, DraftComment, Grant, Paged, PrFile, PrSummary, PullRequest, RepoRef,
+    AuthState, Capabilities, DraftComment, Grant, Paged, PrFile, PrState, PrSummary, PullRequest, RepoRef,
     ReviewComment, ReviewEvent, ReviewThread, StatusReport, UnitStatus,
 };
 use super::remote::{self, Remote};
@@ -1162,6 +1162,15 @@ pub fn forge_create_pr(
     let pr = attempt(&c, |f| f.create_pull_request(&c.repo, &req))?;
     prs::record_created(&c.repo, pr.clone());
     Ok(pr)
+}
+
+/// Each pull request's state, keyed by the `owner/name` it was asked of, through
+/// the gated client since nothing on screen asked.
+pub fn pull_request_states(project_path: &str, numbers: &[u64]) -> Result<Vec<((String, u64), PrState)>, ForgeError> {
+    let c = gated_client(project_path)?;
+    let repo = format!("{}/{}", c.repo.owner, c.repo.repo).to_lowercase();
+    let states = attempt(&c, |f| f.pull_request_states(&c.repo, numbers))?;
+    Ok(states.into_iter().map(|(n, state)| ((repo.clone(), n), state)).collect())
 }
 
 /// Opens a pull request for a socket caller, through the gated client since

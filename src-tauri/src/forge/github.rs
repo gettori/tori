@@ -617,6 +617,39 @@ impl Forge for GitHubForge {
         }
     }
 
+    fn pull_request_states(&self, repo: &RepoRef, numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError> {
+        self.require_token()?;
+        if numbers.is_empty() {
+            return Ok(vec![]);
+        }
+        let selections = numbers.iter().map(|n| format!("p{n}: pullRequest(number:{n}) {{ state }}")).collect::<Vec<_>>().join("\n");
+        let query = format!("query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}");
+        let resp = self.graphql_response(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
+        // A number the repo does not have fails its own alias only, and the
+        // rest still answer in `data`: one stale number must not blind the lot.
+        let data = match graphql_data(&resp) {
+            Ok(data) => data,
+            Err(e @ ForgeError::Api { status: 200, .. }) => serde_json::from_str::<Value>(&resp.body)
+                .ok()
+                .and_then(|v| v.get("data").cloned())
+                .filter(|d| d.get("repository").is_some_and(|r| !r.is_null()))
+                .ok_or(e)?,
+            Err(e) => return Err(e),
+        };
+        let repository = data.get("repository").ok_or_else(|| ForgeError::Malformed { message: "no repository in response".into() })?;
+        Ok(numbers
+            .iter()
+            .filter_map(|n| {
+                let state = match repository.get(format!("p{n}"))?.get("state")?.as_str()? {
+                    "MERGED" => PrState::Merged,
+                    "CLOSED" => PrState::Closed,
+                    _ => PrState::Open,
+                };
+                Some((*n, state))
+            })
+            .collect())
+    }
+
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
         self.require_token()?;
         let path = format!("/repos/{}/{}/pulls?state=open&per_page=100", repo.owner, repo.repo);

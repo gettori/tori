@@ -652,7 +652,15 @@ impl Backend for TauriBackend {
         super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
             let reported = self.states.snapshot().into_iter().filter(|(_, state)| *state != SessionState::Ended).map(|(id, _)| id);
             let chats = self.app.state::<ChatState>().0.live_sessions().into_iter().map(|(id, _)| id);
-            Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items) }
+            let prs = crate::autopilot::open_prs(items)
+                .into_iter()
+                .filter_map(|(project, numbers)| {
+                    let fetch = |numbers: &[u64]| crate::forge::commands::pull_request_states(&project, numbers);
+                    let states = self.autopilot.pr_states.get(&project, &numbers, fetch)?;
+                    Some((project, states))
+                })
+                .collect();
+            Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items), prs }
         })
     }
 
