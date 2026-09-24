@@ -3,6 +3,7 @@ import { Anchor, ArrowUpRight } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
+import Horizon, { type SceneKey } from "./Horizon";
 import { CaptainsCall, ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
 import type {
   ActivityItem,
@@ -42,6 +43,8 @@ export interface AutopilotViewProps {
   /** The live conversation, in place of the drawn thread and composer. */
   chat?: JSX.Element;
   hero: CockpitHero;
+  /** The time of day the banner shows. */
+  scene: SceneKey;
 }
 
 /** The full window Autopilot view: what is in flight on the left, the
@@ -67,12 +70,24 @@ export default function AutopilotView(props: AutopilotViewProps) {
     <div class={styles.view}>
       <aside class={styles.workers} aria-label="In flight">
         <SectionHead label="Crew on deck" count={props.workers.length} />
-        <Show when={props.workers.length} fallback={<div class={styles.empty}>{props.emptyWorkers}</div>}>
+        <Show
+          when={props.workers.length}
+          fallback={
+            <div class={styles.empty}>
+              <span class={styles.emptyTitle}>Everyone's on shore leave</span>
+              {props.emptyWorkers}
+            </div>
+          }
+        >
           <For each={props.workers}>
             {(w) => (
               <article class={styles.card} data-status={w.status}>
                 <div class={styles.cardHead}>
-                  <span class={styles.ring} data-status={w.status}>
+                  <span
+                    class={styles.ring}
+                    data-status={w.status}
+                    style={w.status === "working" && w.progress != null ? { "--p": `${w.progress * 100}%` } : undefined}
+                  >
                     {ref(w.refNumber)}
                   </span>
                   <div class={styles.cardName}>
@@ -131,7 +146,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
       </aside>
 
       <section class={styles.center} aria-label="Conversation">
-        <Hero {...props.hero} state={props.state} />
+        <Hero {...props.hero} state={props.state} scene={props.scene} />
         <div class={styles.column} data-live={props.chat ? "true" : "false"}>
           <div class={styles.scroll}>
             <Show when={off()}>
@@ -192,32 +207,34 @@ export default function AutopilotView(props: AutopilotViewProps) {
   );
 }
 
-/** A sunset over the water: the banner, with the state on its first line. */
-function Hero(props: CockpitHero & { state: AutopilotState }) {
+/** The time of day over the water: the banner, with the state on its first line. */
+function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey }) {
   return (
     <header class={styles.hero} data-state={props.state}>
-      <div class={styles.sun} aria-hidden="true" />
-      <svg class={styles.waves} viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true">
-        <path class={styles.waveFar} d="M0 34 C 150 18, 300 44, 450 30 S 750 16, 900 32 S 1100 42, 1200 28 V80 H0 Z" />
-        <path class={styles.waveNear} d="M0 58 C 200 44, 380 70, 600 56 S 960 44, 1200 58 V80 H0 Z" />
-      </svg>
-      <div class={styles.heroText}>
-        <span class={styles.eyebrow}>
-          <span class={styles.eyebrowDot} />
-          {props.eyebrow}
-        </span>
-        <h1 class={styles.heroTitle}>{props.title}</h1>
-        <p class={styles.heroBody}>{props.body}</p>
-      </div>
-      <div class={styles.stats}>
-        <For each={props.stats}>
-          {(s) => (
-            <div class={styles.stat}>
-              <span class={styles.statLabel}>{s.label}</span>
-              <span class={styles.statValue}>{s.value}</span>
-            </div>
-          )}
-        </For>
+      <Horizon scene={props.scene} />
+      <Show when={props.state === "error"}>
+        <div class={styles.dim} />
+      </Show>
+      <div class={styles.scrim} />
+      <div class={styles.heroRow}>
+        <div class={styles.heroText}>
+          <span class={styles.eyebrow}>
+            <span class={styles.eyebrowDot} />
+            {props.eyebrow}
+          </span>
+          <h1 class={styles.heroTitle}>{props.title}</h1>
+          <p class={styles.heroBody}>{props.body}</p>
+        </div>
+        <div class={styles.stats}>
+          <For each={props.stats}>
+            {(s) => (
+              <div class={styles.stat}>
+                <span class={styles.statLabel}>{s.label}</span>
+                <span class={styles.statValue}>{s.value}</span>
+              </div>
+            )}
+          </For>
+        </div>
       </div>
     </header>
   );

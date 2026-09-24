@@ -62,6 +62,31 @@
   .callIcon {
     width: calc(16px * var(--ui-scale));
     height: calc(16px * var(--ui-scale));
+    transform-origin: 50% 10%;
+    animation: ring 2.8s ease-in-out infinite;
+  }
+  @keyframes ring {
+    0%,
+    100% {
+      transform: rotate(0);
+    }
+    20% {
+      transform: rotate(14deg);
+    }
+    40% {
+      transform: rotate(-12deg);
+    }
+    60% {
+      transform: rotate(6deg);
+    }
+    80% {
+      transform: rotate(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .callIcon {
+      animation: none;
+    }
   }
   .callCount {
     color: var(--fg-subtle);

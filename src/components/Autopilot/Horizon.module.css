@@ -1,0 +1,27 @@
+@layer components {
+  .horizon {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .scene {
+    position: absolute;
+    inset: 0;
+    animation: arrive 1.2s ease;
+  }
+  .scene > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  @keyframes arrive {
+    from {
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scene {
+      animation: none;
+    }
+  }
+}

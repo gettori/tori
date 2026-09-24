@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import type { JSX } from "solid-js";
+import { For, type JSX } from "solid-js";
 import AutopilotPopup from "./AutopilotPopup";
 import AutopilotSwitch from "./AutopilotSwitch";
 import AutopilotView from "./AutopilotView";
+import Horizon, { SCENE_KEYS } from "./Horizon";
 import type { AutopilotState } from "./autopilot";
 import { POPUP, VIEW } from "./shellFixtures";
 
@@ -58,6 +59,21 @@ export const ViewOff = view("off");
 export const ViewIdle = view("idle");
 export const ViewWorking = view("working");
 export const ViewNeedsYou = view("needs");
+
+/** Every time of day the banner can show, from dawn to night. */
+export const Scenes: Story = {
+  render: () => (
+    <div style={{ display: "flex", "flex-direction": "column", gap: "12px" }}>
+      <For each={SCENE_KEYS}>
+        {(scene) => (
+          <div style={{ position: "relative", height: "176px" }}>
+            <Horizon scene={scene} />
+          </div>
+        )}
+      </For>
+    </div>
+  ),
+};
 export const ViewError = view("error");
 
 /** The popup as it drops under the switch; the dimmed editor behind it is the host's. */
