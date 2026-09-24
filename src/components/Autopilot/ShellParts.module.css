@@ -21,14 +21,24 @@
     align-items: center;
     gap: var(--tori-space-3);
     padding: 0 var(--tori-space-1);
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-lg);
   }
   .sectionLabel {
     font-weight: 600;
     color: var(--fg-default);
   }
   .sectionCount {
-    color: var(--fg-muted);
+    min-width: calc(18px * var(--ui-scale));
+    padding: 0 var(--tori-space-3);
+    box-sizing: border-box;
+    border-radius: var(--tori-radius-pill);
+    background: var(--progress-subtle);
+    box-shadow: inset 0 0 0 var(--tori-border-thin) var(--progress-border);
+    font-size: var(--tori-text-sm);
+    font-weight: 600;
+    line-height: calc(18px * var(--ui-scale));
+    text-align: center;
+    color: var(--progress-on-subtle);
   }
 
   .keyHints {

@@ -134,22 +134,40 @@ async function loadAutopilot() {
   addActivity(logged.filter((e) => firstLive === null || e.ts < firstLive), true);
 }
 
+// Only a live turn on or off moves the view, so a launch with the autopilot
+// already running still opens on the workspace.
+let statusKnown = false;
+
+function followRunner(was: RunnerStatus["state"], now: RunnerStatus["state"]) {
+  if (!statusKnown) return;
+  if (was === "off" && now !== "off") {
+    setPopupOpen(false);
+    setView("autopilot");
+  } else if (was !== "off" && now === "off") {
+    setPopupOpen(false);
+    setView("workspace");
+  }
+}
+
 let started = false;
 
 export function watchAutopilot() {
   if (started) return;
   started = true;
   on(TOGGLE_AUTOPILOT_VIEW, () => {
+    if (runner().state === "off") return;
     setPopupOpen(false);
     setView(view() === "autopilot" ? "workspace" : "autopilot");
   });
   on(TOGGLE_AUTOPILOT_POPUP, () => view() === "workspace" && setPopupOpen(!popupOpen()));
-  void listen<RunnerStatus>("autopilot://status", (e) =>
-    setRunner(e.payload),
-  ).catch(() => {});
+  void listen<RunnerStatus>("autopilot://status", (e) => {
+    followRunner(runner().state, e.payload.state);
+    setRunner(e.payload);
+  }).catch(() => {});
   void invoke<RunnerStatus>("autopilot_status")
     .then(setRunner)
-    .catch(() => {});
+    .catch(() => {})
+    .finally(() => (statusKnown = true));
   void listen<AutopilotEvent>("autopilot://changed", (e) => applyChange(e.payload)).catch(() => {});
   void loadAutopilot();
 }
