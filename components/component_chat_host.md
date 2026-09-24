@@ -1,8 +1,8 @@
 ---
 summary: spawns one long lived harness child per session and renders its own permission and question prompts, deciding nothing
 status: current
-updated: 2026-09-23
-source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71
+updated: 2026-09-24
+source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; gettori/tori#205 commits eff34ef6, 4b309f03
 ---
 
 # Chat host (Rust)
@@ -110,6 +110,12 @@ Not built: gettori/tori#203 plans a Tori level refusal for outward actions from 
 - **Both are gated on `Lifecycle`'s announced set, not on the session map.** The map can't order them. See [[gotcha_a_chat_childs_fatal_event_can_arrive_before_spawn_inserts_its_entry]].
 - `Entry` now keeps the spawn `cwd`, and `live_sessions()` hands `(id, cwd)` to `sessions.list`. `Registry` gained `agent_of` and `held_here`.
 - `chat_history`'s body moved into `read_history(session_id, &HistorySource, agent, up_to)`, shared with `session.tail`. The whole read now runs through `exec::blocking`, where before only the ACP log half did.
+
+## Spawned from Rust, and detached (2026-09-24)
+
+- **`spawn_session(host, SpawnRequest, emit)`** is `chat_spawn`'s body, taking any `Emit`; `chat_spawn` is a thin wrapper. [[component_autopilot_runner]] calls it with its own sink. `SpawnRequest` gained `spawner`: on a resume of a background session it re-marks the worker under its spawner, resolved through the runner's alias.
+- **`chat_detach(session, tab)`** swaps the sink to a no-op and hides the session, instead of closing it, but only when that tab still drives the session: a keyed remount has already rewired it. The `wrap` stays, so a death still ends the session and publishes. `ChatView` takes a `detach` prop to call it on unmount ([[component_autopilot_cockpit]]).
+- A view must not attach while Rust is still spawning: [[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]].
 
 ## Related
 

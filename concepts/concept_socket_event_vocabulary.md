@@ -1,8 +1,8 @@
 ---
 summary: every socket event shares one envelope; each kind is published where Rust already sees it, pushed from the webview only where it owns the state
 status: current
-updated: 2026-09-23
-source: gettori/tori#199 on branch orchestrator; commits 25551855, 3a04d580, 52615c71; src-tauri/src/rpc/{events,states,quotas,mod}.rs; src-tauri/src/chat/host.rs (Lifecycle); src-tauri/src/forge/status.rs (Published); src/utils/sessionActivity.ts (socketReports)
+updated: 2026-09-24
+source: gettori/tori#199 on branch orchestrator; commits 25551855, 3a04d580, 52615c71; src-tauri/src/rpc/{events,states,quotas,mod}.rs; src-tauri/src/chat/host.rs (Lifecycle); src-tauri/src/forge/status.rs (Published); src/utils/sessionActivity.ts (socketReports); gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8
 ---
 
 # Socket event vocabulary
@@ -24,8 +24,9 @@ What the app socket ([[component_app_socket]]) says happened, for the watcher, t
 | `session.checkpoint` | `turn`, `prompt_ts` | `checkpoint_snapshot_body`, only after `update-ref` | both |
 | `session.pr` | `branch`, `ids`, `pull_request`, `checks`, `review` (no single `id`) | `forge_unit_statuses` through `status::moved_since_published` | branch |
 | `account.quota` | `agent`, `account`, `windows` | `rpc_quota`, pushed by `recordReadings` | account |
+| `autopilot.changed` | one of `item` (a row, `session_live: false` on a session end), `project`+`contract`, or `hold`+`cleared` | the store's writes, `rpc::publish_session` on `session.ended`, `Asks` for holds | autopilot |
 
-- **`by`** is `"user"`, `{"session": id}`, `{"tab": id}`, `"local"` or `"agent"`. `deliver` records it before a send, only when the delivery starts a turn; the next `TurnStarted` consumes it and `TurnCompleted` clears it, so a steer into a running turn is never credited to the next one.
+- **`by`** is `"user"`, `{"session": id}`, `{"tab": id}`, `"local"`, `"agent"` or `"watcher"` (a wake the autopilot's watcher sent, [[component_autopilot_watcher]]). `deliver` records it before a send, only when the delivery starts a turn; the next `TurnStarted` consumes it and `TurnCompleted` clears it, so a steer into a running turn is never credited to the next one.
 - **`detail`** is one line from the tool input (command, file path, path, url or pattern, 200 chars), never the input: a Write carries the whole file.
 - **Place is resolved once per session.** `Place::of` reads the config and lists the discovery root, so `Lifecycle` resolves it at start and `SessionStates` caches it per id. Folders are compared with `events::same_folder`, never as strings ([[concept_one_directory_two_spellings]]).
 - **Modules with no Tauri state** reach the hub through `rpc::publish_checkpoint` and `rpc::publish_pr`, which do nothing before the socket is up.
@@ -46,3 +47,4 @@ What the app socket ([[component_app_socket]]) says happened, for the watcher, t
 - [[adr_socket_asks_the_webview_until_rust_owns_state]] - why quota and state are pushed rather than asked
 - [[adr_one_protocol_several_fronts]] - why every event goes on the one app level socket
 - [[component_tori_cli]] - `tori events`, the first subscriber
+- [[component_autopilot_store]] - what publishes `autopilot.changed`
