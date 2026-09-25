@@ -898,6 +898,7 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
     // not just the caller: the sidebar tree AND the terminal tab titles, which
     // otherwise keep the name they were created with (an un-refreshed rename).
     let _ = app.emit("sessions://changed", SessionsChanged::all());
+    crate::rpc::sessions_changed();
     Ok(())
 }
 
@@ -1132,12 +1133,14 @@ pub fn sessions_running(
     state: State<'_, crate::chat::host::ChatState>,
     sessions: Vec<SessionRef>,
 ) -> Result<Vec<String>, String> {
-    Ok(resolve_running(
-        sessions,
-        found_by_pattern,
-        agent_command_lines,
-        |ids| state.0.registry.sessions_with_live_child(ids),
-    ))
+    let asked: Vec<(String, String)> = sessions.iter().map(|s| (s.id.clone(), s.agent.clone())).collect();
+    let running = running_now(&state.0.registry, sessions);
+    crate::rpc::note_running(&asked, &running);
+    Ok(running)
+}
+
+pub(crate) fn running_now(registry: &crate::chat::ownership::Registry, sessions: Vec<SessionRef>) -> Vec<String> {
+    resolve_running(sessions, found_by_pattern, agent_command_lines, |ids| registry.sessions_with_live_child(ids))
 }
 
 #[derive(Serialize, Default)]
@@ -1813,6 +1816,7 @@ pub fn sessions_watch_start(
                 let touched = WATCH_TOUCHED.lock().ok().and_then(|mut t| t.take()).unwrap_or_default();
                 let folders = folders_for(&app_handle.state::<SessionIndex>(), &touched);
                 let _ = app_handle.emit("sessions://changed", SessionsChanged { folders });
+                crate::rpc::sessions_changed();
             }
         }
     });
