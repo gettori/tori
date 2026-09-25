@@ -65,7 +65,8 @@ function modeLabel(mode: PermissionMode): string {
  */
 export default function PermissionPrompt(props: {
   card: ToolItem;
-  onAnswer: (answer: Answer) => void;
+  /** Absent where nothing can be sent: the prompt shows what is asked and offers no answer. */
+  onAnswer?: (answer: Answer) => void;
   /** Switch the session's permission mode, for a `setMode` the agent offered.
    *  Absent in contexts that cannot change the mode, which hides the action
    *  rather than offering one that would do nothing. */
@@ -74,7 +75,7 @@ export default function PermissionPrompt(props: {
   const [feedback, setFeedback] = createSignal<string | null>(null);
   const [showInput, setShowInput] = createSignal(false);
 
-  const allow = (scope: PermissionScope) => props.onAnswer({ decision: "allow", scope, reason: null });
+  const allow = (scope: PermissionScope) => props.onAnswer?.({ decision: "allow", scope, reason: null });
 
   /** The mode switches the agent itself proposed, e.g. "stop asking about
    *  edits". Only `setMode` is rendered here: `addRules` and `addDirectories`
@@ -87,7 +88,7 @@ export default function PermissionPrompt(props: {
 
   function sendDenial() {
     const reason = (feedback() ?? "").trim();
-    props.onAnswer({ decision: "deny", scope: "once", reason: reason || null });
+    props.onAnswer?.({ decision: "deny", scope: "once", reason: reason || null });
   }
 
   const digest = () => toolDigest(props.card);
@@ -135,66 +136,68 @@ export default function PermissionPrompt(props: {
         <pre class={styles.promptInput}>{inputText(props.card.input)}</pre>
       </Show>
 
-      <Show
-        when={feedback() === null}
-        fallback={
-          <div class={styles.promptFeedback}>
-            <textarea
-              class={styles.promptReason}
-              rows="2"
-              autofocus
-              placeholder="Why not, and what to do instead. This reaches the model as the tool result."
-              value={feedback() ?? ""}
-              onInput={(e) => setFeedback(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendDenial();
-                }
-              }}
-            />
-            <div class={styles.promptActions}>
-              <Button size="sm" variant="primary" onClick={sendDenial}>
-                Send denial
-              </Button>
-              <Button size="sm" onClick={() => setFeedback(null)}>
-                Back
-              </Button>
+      <Show when={props.onAnswer}>
+        <Show
+          when={feedback() === null}
+          fallback={
+            <div class={styles.promptFeedback}>
+              <textarea
+                class={styles.promptReason}
+                rows="2"
+                autofocus
+                placeholder="Why not, and what to do instead. This reaches the model as the tool result."
+                value={feedback() ?? ""}
+                onInput={(e) => setFeedback(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendDenial();
+                  }
+                }}
+              />
+              <div class={styles.promptActions}>
+                <Button size="sm" variant="primary" onClick={sendDenial}>
+                  Send denial
+                </Button>
+                <Button size="sm" onClick={() => setFeedback(null)}>
+                  Back
+                </Button>
+              </div>
             </div>
+          }
+        >
+          <div class={styles.promptActions}>
+            <Button size="sm" variant="primary" onClick={() => allow("once")}>
+              Allow once
+            </Button>
+            <Button size="sm" onClick={() => allow("session")}>
+              Allow for this session
+            </Button>
+            <Button size="sm" onClick={() => allow("project")}>
+              Always in this project
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => props.onAnswer?.({ decision: "deny", scope: "once", reason: null })}>
+              Deny
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>
+              Deny with feedback
+            </Button>
+            {/* The agent's own offers, after Tori's. A mode switch answers a
+                different question from this one call ("stop asking about edits"),
+                so it reads as an aside rather than a fourth way to say yes. */}
+            <For each={modeOffers()}>
+              {(offer) => (
+                <Show when={offer.type === "setMode" ? offer.mode : null}>
+                  {(mode) => (
+                    <Button size="sm" variant="ghost" onClick={() => props.onSetMode?.(mode())}>
+                      Switch to {modeLabel(mode())}
+                    </Button>
+                  )}
+                </Show>
+              )}
+            </For>
           </div>
-        }
-      >
-        <div class={styles.promptActions}>
-          <Button size="sm" variant="primary" onClick={() => allow("once")}>
-            Allow once
-          </Button>
-          <Button size="sm" onClick={() => allow("session")}>
-            Allow for this session
-          </Button>
-          <Button size="sm" onClick={() => allow("project")}>
-            Always in this project
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => props.onAnswer({ decision: "deny", scope: "once", reason: null })}>
-            Deny
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>
-            Deny with feedback
-          </Button>
-          {/* The agent's own offers, after Tori's. A mode switch answers a
-              different question from this one call ("stop asking about edits"),
-              so it reads as an aside rather than a fourth way to say yes. */}
-          <For each={modeOffers()}>
-            {(offer) => (
-              <Show when={offer.type === "setMode" ? offer.mode : null}>
-                {(mode) => (
-                  <Button size="sm" variant="ghost" onClick={() => props.onSetMode?.(mode())}>
-                    Switch to {modeLabel(mode())}
-                  </Button>
-                )}
-              </Show>
-            )}
-          </For>
-        </div>
+        </Show>
       </Show>
     </div>
   );

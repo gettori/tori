@@ -177,6 +177,8 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
+import { isLocked } from "../../utils/autopilotStore";
+import { LockMark } from "../../components/Autopilot/SessionMarks";
 import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -915,7 +917,7 @@ export default function Terminal(props: {
   // under it, so no agent keeps running in a folder that is about to vanish.
   const offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => {
     for (const t of open()) {
-      if (isUnderPath(t.cwd, path)) closeId(t.id);
+      if (isUnderPath(t.cwd, path)) closeId(t.id, true);
     }
   });
   onCleanup(offPurge);
@@ -924,7 +926,7 @@ export default function Terminal(props: {
   // it touched so the persisted store drops it rather than restoring it later.
   const offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
     for (const t of open()) {
-      if (t.workspace === workspace) closeId(t.id);
+      if (t.workspace === workspace) closeId(t.id, true);
     }
     touched.add(workspace);
     saveTabStore(open(), activeByWorkspace());
@@ -2085,8 +2087,11 @@ export default function Terminal(props: {
     for (const t of inertTabs()) closeId(t.id);
   }
 
-  function closeId(id: string) {
+  // `purge` is for a folder or workspace that is going away: a worker left
+  // running there would outlive its folder, lock or not.
+  function closeId(id: string, purge = false) {
     const t = open().find((o) => o.id === id);
+    if (t && !purge && sessionLocked(t)) return;
     // A chat tab hosts no PTY: `pty_kill` on its id would find nothing, and the
     // stream-json child would keep running (and keep its session id claimed).
     // Unmounting ChatView ends it; this only has to not kill the wrong thing.
@@ -2253,6 +2258,7 @@ export default function Terminal(props: {
   // closing over this panel's state; the strip and stage below render through
   // the registry with no per-kind switches of their own.
   const asTerm = (u: UnifiedTab) => (u as TerminalUnifiedTab).term;
+  const sessionLocked = (t: OpenTerm) => t.kind === "chat" && isLocked(t.sessionId);
   // Which surface is on screen. With a pane tree, that is per pane (two panes
   // can each show a terminal); with none, the workspace's own visible tab, as
   // it was before panes could split.
@@ -2668,6 +2674,7 @@ export default function Terminal(props: {
     trailingRank: 20,
     activate: (u) => selectTab(asTerm(u)),
     close: (u, e) => close(u.id, e),
+    locked: (u) => (sessionLocked(asTerm(u)) ? <LockMark /> : undefined),
     stage: kind === "chat" ? chatStage : ptyStage,
     // Pane hosting (plan phase 7): the shell-pinned pane draws this panel's
     // strip and adopts every open tab's host - all workspaces, so a workspace

@@ -214,6 +214,15 @@ fn pending_rows(session: &str, asks: Vec<Ask>, native: Vec<Waiting>) -> Vec<Valu
     rows
 }
 
+// Only the autopilot steers a session it has locked; a person stops it first.
+fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Result<(), RpcError> {
+    match caller {
+        _ if !locked => Ok(()),
+        Principal::Session(Caller::Chat(id)) if Some(id.as_str()) == autopilot => Ok(()),
+        _ => Err(refused(super::LOCKED.to_string())),
+    }
+}
+
 fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Result<(), RpcError> {
     match (caller, spawner) {
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
@@ -495,6 +504,8 @@ impl Backend for TauriBackend {
             };
             return Err(RpcError::new(INVALID_PARAMS, message));
         }
+        let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, &params.id);
+        may_steer(principal, locked, self.runner.status().session.as_deref())?;
         // A session waiting on a prompt is still inside its turn.
         let mid_turn = matches!(self.states.snapshot().get(&params.id), Some(SessionState::Working | SessionState::NeedsYou));
         let by = match principal {
@@ -919,6 +930,22 @@ mod tests {
         assert_eq!(last_assistant_text(&events).as_deref(), Some("second"));
         assert_eq!(last_assistant_text(&[delta("t3", "only a subagent", Some("sub-1"))]), None);
         assert_eq!(last_assistant_text(&[]), None);
+    }
+
+    #[test]
+    fn a_locked_session_is_steered_by_the_autopilot_alone() {
+        let pilot = Some("pilot");
+        let autopilot = Principal::Session(Caller::Chat("pilot".into()));
+        assert!(may_steer(&autopilot, true, pilot).is_ok());
+        for person in [
+            Principal::Local,
+            Principal::Session(Caller::Terminal("tab".into())),
+            Principal::Session(Caller::Chat("another-chat".into())),
+        ] {
+            let refused = may_steer(&person, true, pilot).unwrap_err();
+            assert!(refused.message.contains("stop the autopilot to type"), "{}", refused.message);
+            assert!(may_steer(&person, false, pilot).is_ok(), "an unlocked session is anyone's");
+        }
     }
 
     #[test]

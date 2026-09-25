@@ -559,6 +559,18 @@ impl AutopilotStore {
         self.lock().items.iter().find(|i| !i.state.terminal() && i.session.as_deref() == Some(session)).map(|i| i.id.clone())
     }
 
+    /// The state of the item that names `session`, an open one over a closed one.
+    pub fn state_for_session(&self, session: &str) -> Option<State> {
+        let items = &self.lock().items;
+        let named = || items.iter().filter(|i| i.session.as_deref() == Some(session));
+        named().find(|i| !i.state.terminal()).or_else(|| named().next_back()).map(|i| i.state)
+    }
+
+    /// Every session an item names.
+    pub fn sessions(&self) -> Vec<String> {
+        self.lock().items.iter().filter_map(|i| i.session.clone()).collect()
+    }
+
     /// Open items a pull request event is about, as (item, its session): by the
     /// PR itself, or by the worktree it is checked out in, so an item hears of
     /// its PR after its worker ended.
