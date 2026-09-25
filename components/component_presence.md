@@ -2,7 +2,7 @@
 summary: OS notification, tray and dock badge read one shared rising edge tracker so they cannot disagree on needs you
 status: current
 updated: 2026-09-25
-source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd
+source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", phase notification-click
 ---
 
 # Presence (OS notification, tray, dock badge)
@@ -14,7 +14,7 @@ Presence takes [[concept_needs_you_floor]]'s per-session dot state outside the w
 ## Responsibilities
 
 - **`presence.ts`'s state machine** (`stepPresence`/`markAttended`): pure, fully unit-tested (9 tests, no DOM/Solid), the same "extract the decision into pure functions" pattern [[concept_needs_you_floor]]'s `note_output`/`check_quiet` used. Fires exactly once on a session's quiet+blocked-candidate **rising edge** — never on a re-render while it stays needs-you — and tracks a per-session **attended** flag: cleared by a rising edge (a fresh block is always unattended), set when that session's tab is focused while unattended. `liveCounts`/`unattendedNeedsYouCount`/`shouldSuppressNotification` are derived, also pure.
-- **OS notification**: fires on the tracked rising edge, suppressed when the app is focused and that session's tab is already the active one (you're already looking at it). A new needs-you transition re-arms a previously attended session's notification.
+- **OS notification**: fires on the tracked rising edge, suppressed when the app is focused and that session's tab is already the active one (you're already looking at it). A new needs-you transition re-arms a previously attended session's notification. `notifyNeedsYou` hands it to Rust's `notify_needs_you` with a `{folder, session}` target, since the plugin's own send never reports a click ([[gotcha_the_notification_plugins_desktop_send_never_reports_a_click]]). A click brings the window forward and emits `nav://open`, which the sidebar answers like any other link ([[concept_in_app_navigation]]). Quota notifications still go through the plugin: they name an account, so there is no one place a click could land.
 - **Tray** (`presence.rs`'s `update_tray`/`TrayEntry`, built via `build_tray` in `lib.rs`'s `.setup()`): running/needs-you counts with per-session menu entries; a menu click emits `tray://focus-session` for the frontend to focus that tab. `build_tray`'s failure is handled the same non-fatal way as the askpass bridge ([[component_askpass]]) — log + continue, no tray rather than no app — rather than a bare `?` that would have crashed the whole app on a platform tray quirk or missing icon.
 - **Dock badge** (`presence.rs`'s `set_badge_count`, `Window::set_badge_count(Option<i64>)`): count of sessions in an unattended-needs-you state, decremented as each is attended, re-armed by a new transition.
 - **New dependencies grounded in current docs before use** (per this repo's `/gg` convention of checking third-party API surfaces rather than guessing): `tauri-plugin-notification`, `tauri`'s built-in `tray-icon` feature, and the built-in `Window::set_badge_count` — confirmed against `v2.tauri.app`/`docs.rs` before writing any code against them.
@@ -23,8 +23,9 @@ Presence takes [[concept_needs_you_floor]]'s per-session dot state outside the w
 
 - `src-tauri/src/presence.rs:16` — `TrayState`/`TrayEntry`.
 - `src-tauri/src/presence.rs:30` — `update_tray`.
-- `src-tauri/src/presence.rs:80` — `set_badge_count`.
-- `src/utils/presence.ts` — the state machine, `notifyNeedsYou`, `onNeedsYouNotificationClick`.
+- `src-tauri/src/presence.rs:81` — `notify_needs_you`.
+- `src-tauri/src/presence.rs` — `set_badge_count`.
+- `src/utils/presence.ts` — the state machine, `notifyNeedsYou`.
 - `src/panels/LeftSidebar/LeftSidebar.tsx` — `liveSessionDots` (the shared per-session dot+metadata memo all three surfaces read), `notePresence` wiring.
 
 ## Connections
@@ -41,4 +42,5 @@ A worker (a chat another session spawned, `LiveChat.spawner`) raises no OS notif
 - [[component_chat_panel]] - the chat-side contributor.
 - [[concept_needs_you_floor]] — the signal presence reacts to.
 - [[component_autopilot_runner]]: the autopilot whose workers stay quiet while it runs.
-- A residual uncertainty (flagged, not hidden): whether a plain notification-body click (no registered action button) reaches the notification plugin's `onAction` callback wasn't fully confirmed from docs alone; implemented on the reasonable assumption it does, not yet confirmed by an actual click in the running app.
+- [[gotcha_a_dev_builds_notifications_are_terminals]]: why a notification can show in dev and not in a bundle.
+- Settled in #218: a plain body click never reached the plugin's `onAction` on desktop. The listener is gone, and a click now reaches Rust instead.
