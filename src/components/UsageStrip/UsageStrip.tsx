@@ -31,9 +31,9 @@ import styles from "./UsageStrip.module.css";
 // answer "how much is left".
 //
 // **Three states, not two.** A reading past its reset is not an old number, it
-// is a wrong one, so it renders as the word "reset" with no percentage rather
-// than dimmed the way a merely-old reading is. Drawing 98% on a quota that has
-// since emptied is the failure this distinction exists to prevent.
+// is a wrong one, so it renders as 0%, the level a fresh window starts at,
+// rather than dimmed the way a merely-old reading is. Drawing 98% on a quota
+// that has since emptied is the failure this distinction exists to prevent.
 //
 // Colour comes from the attention and danger roles, never the blocking tier.
 // The tier means "this stopped the turn" and `scripts/check-tokens.mjs` check 10
@@ -195,24 +195,11 @@ function UsageBar(props: {
       <Show when={!props.compact}>
         <span class={styles.kind}>{limitTypeShort(props.reading.kind)}</span>
       </Show>
-      <Show
-        when={temporal() !== "expired"}
-        // The level belongs to a window that has since reset, so a percentage
-        // here would describe a quota that no longer exists.
-        fallback={<span class={styles.figure}>reset</span>}
-      >
-        <Show when={!props.compact}>
-          <span class={styles.track} aria-hidden="true">
-            <Show when={pct() !== null}>
-              <span class={styles.fill} style={{ width: `${Math.min(100, pct()!)}%` }} />
-            </Show>
-          </span>
-        </Show>
-        {/* One decimal, the same figure the settings card carries. A whole
-            percent hides the movement on a weekly window, where a day of work
-            is worth a point or two. */}
-        <span class={styles.figure}>{pct() === null ? "?" : `${pct()!.toFixed(1)}%`}</span>
-      </Show>
+      {/* The level read belongs to a window that has since reset, so it would
+          describe a quota that no longer exists. */}
+      <span class={styles.figure}>
+        {temporal() === "expired" ? "0%" : pct() === null ? "?" : `${Math.round(pct()!)}%`}
+      </span>
     </span>
   );
 }
