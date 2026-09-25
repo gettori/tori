@@ -7,9 +7,8 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // asserted here: the status the tab mark renders from, the rollup badges, the OS
 // notification and the dock badge.
 //
-// Both tiers are run, because only the PTY one can starve: `computeSessionDot`
-// returns on `chatStatus` at its first line, so a chat never reads a tail state
-// and a chat-based check would certify a broken PTY build.
+// Both tiers are run: a PTY tab's status is only Rust's dot, while a chat
+// reports its own, so a chat-based check alone would certify a broken PTY path.
 const REPO = "/root/work/repo";
 const MAIN = `${REPO}/main`;
 
@@ -49,6 +48,7 @@ const ptySession = {
   created_at: 1_700_000_000,
   name: null,
   agent: "claude",
+  home: { project: REPO, folder: MAIN, branch: "main" },
 };
 
 const liveTabs = [
@@ -59,7 +59,6 @@ const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   handlers: {} as Record<string, (e: { payload: unknown }) => void>,
   notifications: [] as unknown[],
-  tail: "done" as string,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -75,7 +74,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "git_origin") return Promise.resolve(null);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
-    if (cmd === "session_tail_state") return Promise.resolve(bridge.tail);
     return Promise.resolve(null);
   },
 }));
@@ -102,7 +100,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { sessionStatus, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { noteDots, sessionStatus, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { setLiveChat, dropLiveChat } = await import("../../utils/chatSessions");
 
 const row = async (label: string) => (await screen.findByText(label)).parentElement!;
@@ -116,23 +114,17 @@ describe("a blocked agent reaches every surface from a fully collapsed tree", ()
     bridge.calls.length = 0;
     bridge.handlers = {};
     bridge.notifications.length = 0;
-    bridge.tail = "done";
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    // Deliberately no `tori.expanded.v1`: nothing in the tree is open, which is
-    // the state that used to starve the composition.
   });
   afterEach(() => dropLiveChat("chat-1"));
 
-  it("marks the PTY tier from its tail, badges its rows, notifies and bumps the dock", async () => {
-    bridge.tail = "blocked-candidate";
+  it("marks the PTY tier from Rust's dot, badges its rows, notifies and bumps the dock", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
 
-    await waitFor(() => expect(bridge.handlers["pty://activity"]).toBeTruthy());
-    // A blocked agent is a *quiet* PTY with a pending tool_use in its tail.
-    bridge.handlers["pty://activity"]({ payload: { id: "tab-1", state: "quiet" } });
-    bridge.handlers["sessions://changed"]({ payload: null });
+    await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
+    noteDots([{ id: "pty-1", dot: "needsYou", certainty: "exact", home: ptySession.home }]);
 
     // What the tab mark renders from.
     await waitFor(() => expect(sessionStatus("pty-1")).toBe("waitingForApproval"));
@@ -155,9 +147,9 @@ describe("a blocked agent reaches every surface from a fully collapsed tree", ()
     expect(lastArgs("update_tray")?.needsYou).toBe(1);
   });
 
-  // The same claim for the tier that reports itself. Nothing about the tail or
-  // the probe is involved, so this is purely a check that merging the two tiers
-  // into one status list left the chat side reaching the same places.
+  // The same claim for the tier that reports itself. Its status is its own; the
+  // dot and the unit row the out-of-window surfaces and rollups read still come
+  // from Rust, so this checks the chat side reaches the same places.
   it("does the same for a chat, whose status is its own to report", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
     await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
@@ -172,6 +164,7 @@ describe("a blocked agent reaches every surface from a fully collapsed tree", ()
       // Not the tab on screen, so the notification is not suppressed.
       visible: false,
     });
+    noteDots([{ id: "chat-1", dot: "needsYou", certainty: "exact", home: ptySession.home }]);
 
     await waitFor(() => expect(sessionStatus("chat-1")).toBe("waitingForApproval"));
 

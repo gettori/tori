@@ -49,6 +49,7 @@ const onHidden = {
   created_at: 1_700_000_000,
   name: null,
   agent: "claude",
+  home: { project: BIG, folder: folderOf(HIDDEN_LABEL), branch: HIDDEN_LABEL },
 };
 
 const liveTabs = [
@@ -77,7 +78,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "git_origin") return Promise.resolve(null);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
-    if (cmd === "session_tail_state") return Promise.resolve("done");
     return Promise.resolve(null);
   },
 }));
@@ -104,7 +104,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { noteDots, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 
 type Selection = Parameters<typeof LeftSidebar>[0]["selected"];
 
@@ -186,6 +186,7 @@ describe("a project card truncates a long branch list", () => {
 
     const more = (await screen.findByText("4 more branches")).parentElement!;
     await settle();
+    noteDots([{ id: onHidden.id, dot: "solid", certainty: "inferred", home: onHidden.home }]);
 
     // wt-08 is behind the cut, so without this the running agent would report
     // on no row at all.

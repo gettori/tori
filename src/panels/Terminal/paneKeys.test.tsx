@@ -48,7 +48,6 @@ vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }
 vi.mock("../../utils/sessionActivity", () => ({
   sessionStatus: (id: string) => bridge.status[id] ?? "none",
   liveSessionStatuses: () => [],
-  notePtyActivity: () => {},
 }));
 vi.mock("../../utils/chatSessions", () => ({
   liveChats: () => bridge.chats,

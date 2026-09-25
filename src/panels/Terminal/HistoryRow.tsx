@@ -2,7 +2,7 @@ import { Show, type JSX } from "solid-js";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import type { SessionStatus } from "../../utils/sessionStatus";
-import type { StatusCertainty } from "../../utils/sessionDot";
+import type { StatusCertainty } from "../../utils/sessionStatus";
 import TabMark from "./TabMark";
 import styles from "./HistoryPanel.module.css";
 

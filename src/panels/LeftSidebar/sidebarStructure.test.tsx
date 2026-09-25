@@ -79,6 +79,7 @@ const session = (id: string, cwd: string, branch: string | null) => ({
   created_at: 1_700_000_000,
   name: null,
   agent: "claude",
+  home: { project: cwd === NOTES ? NOTES : REPO, folder: cwd, branch },
 });
 
 const onFeat = session("on-feat", `${REPO}/feat`, "feat");
@@ -134,7 +135,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "git_origin") return Promise.resolve(null);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
-    if (cmd === "session_tail_state") return Promise.resolve("done");
     return Promise.resolve(null);
   },
 }));
@@ -161,7 +161,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { noteDots, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { OPEN_IN_EDITOR } = await import("../../utils/events");
 const { syntheticId } = await import("../../utils/syntheticTabs");
 const { syncUnits } = await import("../../utils/branchSync");
@@ -177,11 +177,14 @@ const mount = (expandedKeys: string[] = []) => {
   ));
 };
 
-/** Drive the scanner event: a session hosted in a tab is never probed by the
- *  folder sweep, so nothing would resolve its status without it. */
+/** Rust's dot for each tab-hosted session, placed under its own unit row. */
+const report = (dot: "solid" | "working", ...ss: ReturnType<typeof session>[]) =>
+  noteDots(ss.map((x) => ({ id: x.id, dot, certainty: "inferred" as const, home: x.home })));
+
+/** Both tab-hosted sessions running and quiet. */
 const settle = async () => {
   await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
-  bridge.handlers["sessions://changed"]({ payload: null });
+  report("solid", onFeat, inNotes);
 };
 
 describe("the sidebar levels that outlive the session rows", () => {
@@ -665,15 +668,13 @@ describe("what a branch row says about its remote", () => {
     mount(["p:work/repo"]);
     await waitFor(async () => expect((await marks("feat")).length).toBe(3));
 
-    await waitFor(() => expect(bridge.handlers["pty://activity"]).toBeTruthy());
-    bridge.handlers["pty://activity"]({ payload: { id: "tab-1", state: "active" } });
-    bridge.handlers["sessions://changed"]({ payload: null });
+    report("working", onFeat);
 
     // Two of those three are being rewritten as you read them, and the third is
     // "uncommitted changes" on a row where an agent is writing files.
     await waitFor(async () => expect(await marks("feat")).toEqual([]));
 
-    bridge.handlers["pty://activity"]({ payload: { id: "tab-1", state: "quiet" } });
+    report("solid", onFeat);
     await waitFor(async () => expect((await marks("feat")).length).toBe(3));
   });
 

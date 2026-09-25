@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::states::{Reported, SessionState, Source};
 use crate::config::{BranchUnit, ProjectKind};
+use crate::unit_home::Home;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,15 +192,17 @@ struct Inner {
     activity: HashMap<String, Activity>,
     probes: HashMap<String, Probe>,
     probed_at: Option<Instant>,
-    dots: BTreeMap<String, (Dot, Certainty)>,
+    dots: BTreeMap<String, Change>,
 }
 
-/// One session's dot as it last changed, for the topic and the webview mirror.
+/// One session's dot and the unit row it sits under, as it last changed, for
+/// the topic and the webview mirror.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Change {
     pub id: String,
     pub dot: Dot,
     pub certainty: Certainty,
+    pub home: Option<Home>,
     #[serde(skip)]
     pub folder: String,
 }
@@ -275,7 +278,11 @@ impl Dots {
     }
 
     pub fn dot(&self, id: &str) -> (Dot, Certainty) {
-        self.inner().dots.get(id).copied().unwrap_or((Dot::None, Certainty::Inferred))
+        self.inner().dots.get(id).map_or((Dot::None, Certainty::Inferred), |c| (c.dot, c.certainty))
+    }
+
+    pub fn all(&self) -> Vec<Change> {
+        self.inner().dots.values().cloned().collect()
     }
 
     /// Compose every known session. Returns what `SessionStates` should hold,
@@ -283,7 +290,7 @@ impl Dots {
     pub fn compose_all(
         &self,
         meta: &HashMap<String, Meta>,
-        home_folder: impl Fn(&str) -> Option<String>,
+        home_of: impl Fn(&str, Option<&str>) -> Option<Home>,
         tail_blocked: impl Fn(&str, &Meta) -> bool,
     ) -> (Vec<Reported>, Vec<Change>) {
         let mut inner = self.inner();
@@ -296,7 +303,6 @@ impl Dots {
 
         let mut reports = Vec::new();
         let mut dots = BTreeMap::new();
-        let mut folders = HashMap::new();
         for id in ids {
             let tab = facts.tabs.iter().find(|t| t.session == id && t.live);
             let chat = facts.chats.iter().find(|c| c.session == id);
@@ -304,12 +310,10 @@ impl Dots {
             let pty = tab.and_then(|t| inner.activity.get(&t.id).copied());
             let session = meta.get(id);
             let blocked = tab.is_some() && running && pty == Some(Activity::Quiet) && session.is_some_and(|m| tail_blocked(id, m));
-            let folder = tab
-                .map(|t| t.workspace.clone())
-                .or_else(|| chat.map(|c| c.folder.clone()))
-                .or_else(|| home_folder(id))
-                .unwrap_or_default();
             let branch = session.map(|m| m.branch.as_str()).filter(|b| !b.is_empty());
+            let hosted = tab.map(|t| t.workspace.clone()).or_else(|| chat.map(|c| c.folder.clone()));
+            let home = hosted.as_deref().or(session.map(|m| m.cwd.as_str())).and_then(|at| home_of(at, branch));
+            let folder = hosted.or_else(|| home.as_ref().map(|h| h.folder.clone())).unwrap_or_default();
             let input = Inputs {
                 chat_status: chat.map(|c| c.status),
                 has_live_tab: tab.is_some(),
@@ -319,8 +323,8 @@ impl Dots {
                 forge_attention: forge_attention(&facts.forge, &folder, branch),
             };
             let composed = compose(&input);
-            dots.insert(id.to_string(), (composed.dot, composed.certainty));
-            folders.insert(id.to_string(), folder.clone());
+            let change = Change { id: id.to_string(), dot: composed.dot, certainty: composed.certainty, home, folder };
+            dots.insert(id.to_string(), change);
             let Some(state) = composed.state else { continue };
             if let Some(chat) = chat {
                 reports.push(Reported { id: id.into(), state, source: Source::Chat, folder: Some(chat.folder.clone()), tab: None });
@@ -332,14 +336,9 @@ impl Dots {
             }
         }
 
-        let mut changes = Vec::new();
-        for (id, (dot, certainty)) in &dots {
-            if inner.dots.get(id) != Some(&(*dot, *certainty)) {
-                changes.push(Change { id: id.clone(), dot: *dot, certainty: *certainty, folder: folders[id].clone() });
-            }
-        }
-        for (id, _) in inner.dots.iter().filter(|(id, (dot, _))| !dots.contains_key(*id) && *dot != Dot::None) {
-            changes.push(Change { id: id.clone(), dot: Dot::None, certainty: Certainty::Inferred, folder: String::new() });
+        let mut changes: Vec<Change> = dots.iter().filter(|(id, c)| inner.dots.get(*id) != Some(*c)).map(|(_, c)| c.clone()).collect();
+        for (id, _) in inner.dots.iter().filter(|(id, c)| !dots.contains_key(*id) && c.dot != Dot::None) {
+            changes.push(Change { id: id.clone(), dot: Dot::None, certainty: Certainty::Inferred, home: None, folder: String::new() });
         }
         inner.dots = dots;
         (reports, changes)
@@ -385,7 +384,7 @@ mod tests {
 
     #[test]
     fn reproduces_the_status_golden() {
-        let cases: Vec<Value> = serde_json::from_str(include_str!("../../../src/utils/__fixtures__/sessionDot.golden.json")).unwrap();
+        let cases: Vec<Value> = serde_json::from_str(include_str!("fixtures/sessionDot.golden.json")).unwrap();
         assert!(!cases.is_empty());
         for case in &cases {
             assert_eq!(compose(&inputs(&case["inputs"])).dot, dot(&case["dot"]), "{case}");
@@ -394,7 +393,7 @@ mod tests {
 
     #[test]
     fn reproduces_the_ci_golden() {
-        let cases: Vec<Value> = serde_json::from_str(include_str!("../../../src/utils/__fixtures__/sessionDotCi.golden.json")).unwrap();
+        let cases: Vec<Value> = serde_json::from_str(include_str!("fixtures/sessionDotCi.golden.json")).unwrap();
         assert!(!cases.is_empty());
         for case in &cases {
             let mut input = inputs(&case["inputs"]);
@@ -436,11 +435,11 @@ mod tests {
     fn a_detached_session_that_stops_running_drops_to_none() {
         let dots = Dots::default();
         dots.note_running(&[("d".into(), "claude".into())], &HashSet::from(["d".to_string()]));
-        dots.compose_all(&HashMap::new(), |_| None, |_, _| false);
+        dots.compose_all(&HashMap::new(), |_, _| None, |_, _| false);
         assert_eq!(dots.dot("d").0, Dot::Hollow);
         assert_eq!(dots.to_probe(), [("d".to_string(), "claude".to_string())]);
         dots.note_running(&[("d".into(), "claude".into())], &HashSet::new());
-        let (_, changes) = dots.compose_all(&HashMap::new(), |_| None, |_, _| false);
+        let (_, changes) = dots.compose_all(&HashMap::new(), |_, _| None, |_, _| false);
         assert_eq!(changes.iter().map(|c| c.dot).collect::<Vec<_>>(), [Dot::None]);
     }
 }

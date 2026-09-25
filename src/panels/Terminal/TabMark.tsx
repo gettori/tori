@@ -9,7 +9,7 @@ import {
   statusPresentation,
   type SessionStatus,
 } from "../../utils/sessionStatus";
-import type { StatusCertainty } from "../../utils/sessionDot";
+import type { StatusCertainty } from "../../utils/sessionStatus";
 import styles from "./TabMark.module.css";
 
 /**

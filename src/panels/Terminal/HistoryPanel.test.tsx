@@ -39,7 +39,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_sessions") return Promise.resolve(bridge.listings[String(args.folder)] ?? []);
     if (cmd === "folder_historical") return Promise.resolve(bridge.historical);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
-    if (cmd === "session_tail_state") return Promise.resolve("done");
     return Promise.resolve(null);
   },
 }));
@@ -53,7 +52,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 const { default: HistoryPanel } = await import("./HistoryPanel");
 const { expectNoAxeViolations } = await import("../../test/axe");
 const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { noteLiveTabs, probeBatch, resetSessionActivityForTests } = await import(
+const { noteDots, noteLiveTabs, resetSessionActivityForTests } = await import(
   "../../utils/sessionActivity"
 );
 const { SESSION_ACTION } = await import("../../utils/events");
@@ -322,19 +321,17 @@ describe("what a History row can do", () => {
   // and a row that changes shape when a session goes quiet pulls the eye to the
   // wrong one. Only the state that is a request gets a second element.
   it("keeps its shape between idle and executing, and badges only a request", async () => {
-    bridge.running = ["s1"];
     noteLiveTabs([
       { id: "tab-1", workspace: REPO, kind: "agent", sessionId: "s1", agent: "claude", state: "live" },
     ]);
-    await probeBatch([{ id: "s1", agent: "claude" }]);
+    noteDots([{ id: "s1", dot: "solid", certainty: "inferred", home: null }]);
     await open();
 
     const glyph = () => screen.getAllByRole("option")[0].firstElementChild!;
     const idle = glyph().className;
     expect(glyph().childElementCount).toBe(1);
 
-    const { notePtyActivity } = await import("../../utils/sessionActivity");
-    notePtyActivity("tab-1", "active");
+    noteDots([{ id: "s1", dot: "working", certainty: "inferred", home: null }]);
     await waitFor(() => expect(glyph().className).not.toBe(idle));
     expect(glyph().childElementCount).toBe(1); // still one glyph: no shape change
   });

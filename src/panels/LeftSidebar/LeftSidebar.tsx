@@ -97,11 +97,9 @@ import {
   probeBatch,
   probeSession,
   probeActive,
-  notePtyActivity,
-  refreshTailStates,
   liveSessionStatuses,
+  inUnit,
 } from "../../utils/sessionActivity";
-import { belongsToUnit } from "../../utils/unitAttribution";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
 import { resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
 import { compactAgo } from "../../utils/compactAge";
@@ -799,16 +797,9 @@ export default function LeftSidebar(props: {
   const [windowFocused, setWindowFocused] = createSignal(true);
   createEffect(() => noteAttention(props.selected?.sessionId ?? null, windowFocused()));
 
-  // Both halves of the join are triggers. The store used to fill only on an
-  // expansion the user drove, so `liveTabs` alone was a workable stand-in for
-  // "something changed"; now the store fills on its own, and a tab whose session
-  // arrives after the tab did would never get its first tail read.
-  createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshTailStates()));
-
   // Turn-level checkpoints (Finding E): snapshot the working tree at each new
   // human prompt, live-tab sessions only, gated by the checkpoints setting.
-  // Reuses the same live-tab x sessions() join as refreshTailStates above;
-  // the actual rising-edge detection lives in checkpoints.ts so it can be
+  // The actual rising-edge detection lives in checkpoints.ts so it can be
   // unit-tested off this component.
   async function refreshCheckpointTicks() {
     if (!appSettings.checkpoints.enabled) return;
@@ -851,24 +842,19 @@ export default function LeftSidebar(props: {
     return rollupStatuses(liveSessionStatuses().filter(pred));
   }
 
-  // Does this live session belong to `u`? Keyed off the status list's own
-  // recorded branch rather than off a per-row session array, so the rollup no
-  // longer depends on the rows existing - which is what Phase 6 deletes. A
-  // plain project's sibling branch units share one `folderPath` and are told
-  // apart only by that branch, so `belongsToUnit` is the whole of the answer.
-  function statusInUnit(s: LiveSessionStatus, p: Project, u: BranchUnit) {
-    return (
-      s.folderPath === u.folderPath &&
-      belongsToUnit({ branch: s.recordedBranch }, u, p.branchUnits)
-    );
+  // Does this live session belong to `u`? Keyed off the unit row Rust placed
+  // it under rather than off a per-row session array, so the rollup does not
+  // depend on the rows existing.
+  function statusInUnit(s: LiveSessionStatus, u: BranchUnit) {
+    return inUnit(s.home, u);
   }
 
   // No session has a row of its own any more, so a rollup is never a second
   // report of something already on screen: the row that shows it is the only
   // place it appears. Whether to count at all is now purely a question of which
   // *rows* are rendered, which each call site knows.
-  function bubbleForUnits(p: Project, us: readonly BranchUnit[]) {
-    return bubbleFor((s) => us.some((u) => statusInUnit(s, p, u)));
+  function bubbleForUnits(us: readonly BranchUnit[]) {
+    return bubbleFor((s) => us.some((u) => statusInUnit(s, u)));
   }
 
   /// The files a catch-up would fight over, for a tooltip rather than a report.
@@ -2607,7 +2593,7 @@ export default function LeftSidebar(props: {
   function unitNode(g: Space, p: Project, u: BranchUnit, attempt?: AttemptRecord) {
     // One rollup for the row: the glyph's pulse and the status chip are two
     // readings of the same fact, and computing it twice is how they drift.
-    const rollup = () => bubbleForUnits(p, [u]);
+    const rollup = () => bubbleForUnits([u]);
     const sync = () => syncFor(u.folderPath, u.branch);
     // While an agent holds this row, the row is about the agent. Half of these
     // marks are being rewritten as you read them, since an executing agent is
@@ -2749,7 +2735,7 @@ export default function LeftSidebar(props: {
         count={hidden().length}
         open={open()}
         onClick={() => toggle(key)}
-        end={statusBubble(() => (open() ? null : bubbleForUnits(p, hidden())))}
+        end={statusBubble(() => (open() ? null : bubbleForUnits(hidden())))}
       />
     );
   }
@@ -2791,7 +2777,7 @@ export default function LeftSidebar(props: {
           // their sessions and the group would roll up an empty set.
           if (open()) for (const u of units()) void fetchSessions(u.folderPath);
         }}
-        end={statusBubble(() => (open() ? null : bubbleForUnits(p, units())))}
+        end={statusBubble(() => (open() ? null : bubbleForUnits(units())))}
       >
         <Show when={open()}>
           <For each={grp.members}>
@@ -2814,7 +2800,6 @@ export default function LeftSidebar(props: {
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
-  let unlistenActivity: UnlistenFn | undefined;
   let unlistenTrayFocus: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenTopics: UnlistenFn | undefined;
@@ -2846,10 +2831,6 @@ export default function LeftSidebar(props: {
       void refreshSessions(e.payload?.folders ?? undefined);
       probeActive();
     });
-    unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>(
-      "pty://activity",
-      (e) => notePtyActivity(e.payload.id, e.payload.state),
-    );
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
     unlistenTrayFocus = await listen<string>("tray://focus-session", (e) =>
@@ -2863,11 +2844,6 @@ export default function LeftSidebar(props: {
       setWindowFocused(focused);
       if (focused) {
         probeActive();
-        // Re-read tail state too, not just liveness: a finished session emits no
-        // more transcript writes or PTY edges, so a stale `blocked-candidate`
-        // (e.g. a frozen hook Notification) would otherwise never be re-queried.
-        // Refocusing the window re-syncs it, clearing a wrongly-pinned amber dot.
-        void refreshTailStates();
         // The forge's own focus tick. `startForgePolling` also listens for the
         // DOM focus event; this is the signal the rest of the sidebar has always
         // trusted for a native refocus. Both go through `pollOnFocus`, so
@@ -2917,7 +2893,6 @@ export default function LeftSidebar(props: {
     unlistenConfig?.();
     unlistenTopics?.();
     unlistenSessions?.();
-    unlistenActivity?.();
     unlistenTrayFocus?.();
     unlistenNavOpen?.();
     unlistenFetchDone?.();
@@ -3322,9 +3297,9 @@ export default function LeftSidebar(props: {
                     {forgeDoorNode(p)}
                     {statusBubble(() =>
                       plainDir()
-                        ? bubbleForUnits(p, [folderUnit()])
+                        ? bubbleForUnits([folderUnit()])
                         : !popen()
-                          ? bubbleForUnits(p, allUnits())
+                          ? bubbleForUnits(allUnits())
                           : null,
                     )}
                   </>

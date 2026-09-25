@@ -1,13 +1,33 @@
 // A plain repo's branch units share one folder and differ only by recorded
 // branch, so the folder alone cannot say which row a session sits under.
 
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use serde::Serialize;
 
-use crate::config::{BranchUnit, ProjectKind, Space};
+use crate::config::{BranchUnit, ProjectIndex, ProjectKind, Space};
+
+// The sidebar lists every tracked folder in one burst, and each listing wants
+// the tree, so a resolve is shared for a moment rather than repeated per folder.
+const FRESH: Duration = Duration::from_secs(2);
+static SPACES: Mutex<Option<(Instant, Arc<Vec<Space>>)>> = Mutex::new(None);
+
+/// The configured tree, resolved at most once per `FRESH`.
+pub fn spaces(index: &ProjectIndex) -> Arc<Vec<Space>> {
+    let mut held = SPACES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, spaces)) = held.as_ref().filter(|(at, _)| at.elapsed() < FRESH) {
+        return spaces.clone();
+    }
+    let spaces = Arc::new(crate::config::get_config_body(index).map(|c| c.spaces).unwrap_or_default());
+    *held = Some((Instant::now(), spaces.clone()));
+    spaces
+}
 
 /// The row a session sits under: its project, and the unit inside it, which is
 /// its folder plus, for a plain repo, the branch that tells siblings apart.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Home {
     pub project: String,
     pub folder: String,

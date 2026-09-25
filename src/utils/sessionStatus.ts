@@ -1,13 +1,21 @@
 // The shared status vocabulary: the four states Tori can detect, what to call
 // them, and the rollup arithmetic over a set of them. Pure and stateless.
 //
-// The composed list itself belongs to `sessionActivity`, which owns the probe,
-// PTY-activity and tail-state inputs it is built from. Keeping the vocabulary
-// separate is what lets `sessionDot` depend on it without depending on any of
-// that machinery.
-// Type-only, so the pair stays a one-way value dependency (sessionDot imports
-// `dotFromStatus` from here) rather than a runtime import cycle.
-import type { SessionDot, StatusCertainty } from "./sessionDot";
+// The composed list itself belongs to `sessionActivity`, which reads the dots
+// Rust composes.
+
+/** The sidebar dot Rust composes for a session (`rpc/dots.rs`). */
+export type SessionDot = "solid" | "hollow" | "working" | "needsYou" | "none";
+
+/** How Tori came to know a dot: measured from the session's own event stream,
+ *  or inferred from a probe plus a transcript tail. Rendered only on the exact
+ *  side, because marking the inferred side would change how every pre-chat
+ *  session renders. */
+export type StatusCertainty = "exact" | "inferred";
+
+/** The unit row a session sits under, as Rust placed it: its project, the
+ *  unit's folder, and for a plain repo the branch that tells siblings apart. */
+export type SessionHome = { project: string; folder: string; branch: string | null };
 
 export type SessionStatus =
   | "executing"
@@ -145,14 +153,10 @@ export type LiveSessionStatus = {
   projectName: string;
   folderPath: string;
   tabId: string;
-  /** The branch the session's transcript recorded, joined from the session
-   *  store rather than read off the tab: a tab descriptor carries no branch,
-   *  and without one a plain repo's sibling branch units - which share a single
-   *  `folderPath` - cannot tell their sessions apart. Absent for a session with
-   *  no transcript yet, and for one that recorded no branch. */
-  recordedBranch?: string;
-  /** Joined from the same place, for the one attribution case that turns on it:
-   *  a branchless session's files are whatever the checkout currently is. */
+  /** The unit row Rust placed the session under, which a plain repo's sibling
+   *  units (sharing one `folderPath`) need to tell their sessions apart. */
+  home?: SessionHome | null;
+  /** The agent, joined from the session store, since a tab carries none. */
   agent?: string;
 };
 

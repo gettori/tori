@@ -10,7 +10,6 @@ const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   listing: [] as unknown[],
   running: [] as string[],
-  tail: "done" as string,
   surface: "chat" as "chat" | "agent",
   // Sessions with a live process of any kind, and the subset of those whose
   // driver is not this Tori. They are separate answers because a chat child
@@ -44,7 +43,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "session_running") return Promise.resolve(bridge.liveHere.includes(String(args?.id)));
     if (cmd === "session_running_elsewhere")
       return Promise.resolve(bridge.elsewhere.includes(String(args?.id)));
-    if (cmd === "session_tail_state") return Promise.resolve(bridge.tail);
     if (cmd === "chat_orphans") return Promise.resolve([]);
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
     if (cmd === "profile_spawn_env") return Promise.resolve({});
@@ -71,13 +69,9 @@ vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }
 const { default: Terminal } = await import("./Terminal");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const {
-  noteLiveTabs,
-  probeBatch,
-  notePtyActivity,
-  refreshTailStates,
-  resetSessionActivityForTests,
-} = await import("../../utils/sessionActivity");
+const { noteDots, noteLiveTabs, resetSessionActivityForTests } = await import(
+  "../../utils/sessionActivity"
+);
 type LiveTab = import("../../utils/events").LiveTab;
 
 // The tab bar measures itself to decide what fits. jsdom reports every width as
@@ -130,7 +124,6 @@ describe("the History button on the tab bar", () => {
     bridge.calls.length = 0;
     bridge.listing = [];
     bridge.running = [];
-    bridge.tail = "done";
     bridge.surface = "chat";
     bridge.liveHere = [];
     bridge.elsewhere = [];
@@ -185,18 +178,16 @@ describe("the History button on the tab bar", () => {
 
   // A claude started in a terminal outside Tori. Nothing hosts it, so with the
   // panel shut this badge is the only thing that says it is there at all.
-  it("badges a session running here with no tab, and clears on the next probe", async () => {
+  it("badges a session running here with no tab, and clears when it exits", async () => {
     bridge.listing = [session("outsider")];
-    bridge.running = ["outsider"];
     mount();
     await trackFolders([REPO]);
-    await probeBatch([{ id: "outsider", agent: "claude" }]);
+    noteDots([{ id: "outsider", dot: "hollow", certainty: "inferred", home: null }]);
 
     await waitFor(() => expect(screen.getByTitle("1 session running here with no tab open")).toBeTruthy());
 
-    // It exited: the next probe trigger is what notices, and the badge goes.
-    bridge.running = [];
-    await probeBatch([{ id: "outsider", agent: "claude" }]);
+    // It exited: Rust's next dot says so, and the badge goes.
+    noteDots([{ id: "outsider", dot: "none", certainty: "inferred", home: null }]);
     await waitFor(() =>
       expect(screen.queryByTitle("1 session running here with no tab open")).toBeNull(),
     );
@@ -236,26 +227,25 @@ describe("the mark a PTY agent tab wears", () => {
     resetSessionActivityForTests();
     bridge.calls.length = 0;
     bridge.listing = [session("s1")];
-    bridge.running = ["s1"];
-    bridge.tail = "done";
     bridge.liveHere = ["s1"];
     bridge.elsewhere = [];
     localStorage.clear();
-    // The PTY route, so the selection opens an agent tab rather than a chat: the
-    // inferred tier is the only one that can starve, and it is the one this is
-    // about.
+    // The PTY route, so the selection opens an agent tab rather than a chat: its
+    // mark reads only Rust's dot, and that is what this is about.
     bridge.surface = "agent";
   });
 
-  it("pulses while working and badges when its tail reads blocked, without claiming a measurement", async () => {
+  it("pulses while working and badges when Rust reads it blocked, without claiming a measurement", async () => {
     mount({ ...branchSelection, sessionId: "s1", agent: "claude", sessionFile: `${REPO}/.t/s1.jsonl`, sessionCwd: REPO });
     await trackFolders([REPO]);
     await waitFor(() => expect(screen.getByTestId("pty")).toBeTruthy());
-    await probeBatch([{ id: "s1", agent: "claude" }]);
+    const rust = (dot: "solid" | "working" | "needsYou") =>
+      noteDots([{ id: "s1", dot, certainty: "inferred", home: null }]);
+    rust("solid");
 
-    // Idle: probed and alive, nothing happening. Plainly labelled - this tier is
-    // inferred from a pgrep probe and a transcript tail, and only the exact side
-    // is marked, so "(measured)" stays chat's.
+    // Idle: alive, nothing happening. Plainly labelled - Rust reports this tier
+    // as inferred, and only the exact side is marked, so "(measured)" stays
+    // chat's.
     const idleMark = await screen.findByTitle("Idle");
     // The class string is read now, not later: it is the same live element that
     // the working state re-styles in place, which is the whole point of it.
@@ -264,16 +254,13 @@ describe("the mark a PTY agent tab wears", () => {
     expect(screen.queryByTitle("Idle (measured)")).toBeNull();
 
     // Working: same glyph, different treatment. The tab must not change shape.
-    const tabId = (await import("../../utils/sessionActivity")).liveSessionStatuses()[0].tabId;
-    notePtyActivity(tabId, "active");
+    rust("working");
     const workingMark = await screen.findByTitle("Executing");
     expect(workingMark.className).not.toBe(idleClass);
     expect(workingMark.childElementCount).toBe(1);
 
     // Blocked: the one state that is a request, so it gets a second element.
-    bridge.tail = "blocked-candidate";
-    notePtyActivity(tabId, "quiet");
-    await refreshTailStates();
+    rust("needsYou");
     const blocked = await screen.findByTitle("Waiting for approval");
     expect(blocked.childElementCount).toBe(2);
   });

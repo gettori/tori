@@ -7,36 +7,24 @@
 // sidebar. `chatSessions.ts` is the model - a module-level store the surfaces
 // read, rather than state a panel lends out.
 //
-// **Three tiers, in descending certainty**, decided by the pure
-// `computeSessionDot` (see `sessionDot.ts`, pinned by a golden fixture). This
-// module only gathers that function's inputs and keeps them fresh:
-//
-//   * a **chat** reports its own status through its event stream (exact);
-//   * a **PTY agent tab** is composed from a pgrep probe, PTY output activity
-//     and the transcript tail (inferred);
-//   * a **detached** session, with no tab at all, caps at "running".
-//
-// Four things it cannot derive and must be told, via the `note*` setters: the
-// live tab set, which space and project owns a folder, what the sidebar has
-// selected, and whether the window has focus. Everything else it owns.
+// **Rust composes every dot** (`rpc/dots.rs`, pinned by the golden fixtures
+// there) from the facts this module reports and what Rust measures itself, and
+// hands the result back on `sessions://dots`. A chat's own status is still read
+// here, raw, because the revert guard has to see a turn start on the same tick.
 import { createSignal, createMemo, createEffect, createRoot, on } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { LiveTab } from "./events";
 import { sessions, type SessionMeta } from "./sessionStore";
 import { liveChats, liveChatIds, type LiveChat } from "./chatSessions";
 import {
   statusFromDot,
+  type SessionDot,
+  type SessionHome,
   type SessionStatus,
   type LiveSessionStatus,
-} from "./sessionStatus";
-import {
-  computeSessionDot,
-  dotCertainty,
-  type SessionDot,
-  type SessionDotInputs,
   type StatusCertainty,
-} from "./sessionDot";
-import { belongsToUnit, type AttributableUnit } from "./unitAttribution";
+} from "./sessionStatus";
 import {
   notePresence,
   markSessionAttended,
@@ -50,22 +38,22 @@ import {
   type LiveSessionDot,
 } from "./presence";
 
-// Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
-export type TailState = "working" | "done" | "blocked-candidate";
-
 /** Which space and project owns a branch-unit folder. Display metadata for the
  *  tray and the notification, which the store cannot work out for itself. */
 export type FolderOwner = { spaceName: string; projectName: string };
 
-/** One branch-unit as the CI attribution needs it: enough to run
- *  `belongsToUnit` against, plus whether its pull request is in a state worth
+/** One branch-unit as the CI attribution needs it: enough for Rust to place a
+ *  session under it, plus whether its pull request is in a state worth
  *  someone's attention.
  *
  *  Fed rather than derived because the forge status is keyed by *project path*
  *  and a session knows only its folder; only the sidebar holds both. The shape
  *  deliberately carries no dot and no status, so the effect that produces it
  *  cannot end up reading the dots it is about to change. */
-export type ForgeUnit = AttributableUnit & {
+export type ForgeUnit = {
+  kind: string;
+  branch: string | null;
+  isCurrent: boolean;
   folderPath: string;
   /** The project the unit belongs to. A worktree project's units each have
    *  their own folder, so the folder alone cannot group siblings, and the
@@ -117,11 +105,19 @@ export function noteForgeUnits(units: readonly ForgeUnit[]) {
 // selection, sessions://changed, window focus) - never a periodic pgrep.
 const [probes, setProbes] = createSignal<Record<string, { agent: string; running: boolean }>>({});
 
-// PTY activity is keyed by the *tab* id (pty_spawn's id), not the session id:
-// `pty://activity` fires per hosted shell, so it is cross-referenced through
-// the tab set. Transcript-tail state is keyed by session id instead.
-const [ptyActivity, setPtyActivity] = createSignal<Record<string, "active" | "quiet">>({});
-const [tailStates, setTailStates] = createSignal<Record<string, TailState>>({});
+// What Rust last composed per session: the dot, how it knows it, and the unit
+// row the session sits under.
+export type RustDot = { id: string; dot: SessionDot; certainty: StatusCertainty; home: SessionHome | null };
+const [rustDots, setRustDots] = createSignal<Record<string, RustDot>>({});
+
+export function noteDots(changes: readonly RustDot[] | undefined) {
+  if (!changes?.length) return;
+  setRustDots((m) => {
+    const next = { ...m };
+    for (const c of changes) next[c.id] = c;
+    return next;
+  });
+}
 
 /** Probe a set of sessions at once. Every id asked about is recorded, including
  *  the ones that came back absent, so a session that has since exited flips to
@@ -162,90 +158,7 @@ export function probeActive() {
   if (want.length > 0) void probeBatch(want);
 }
 
-/** Record a PTY liveness edge, and re-read that session's tail when it moves.
- *  The hooks-status file carrying claude's ground-truth status is not
- *  file-watched, so without this the UI only refreshes on a transcript write
- *  (itself trailing-debounced), leaving a stale `blocked-candidate` pinned
- *  after the user answers - which flaps the dot needsYou<->working on every TUI
- *  redraw and re-fires the notification each time. */
-export function notePtyActivity(tabId: string, state: "active" | "quiet") {
-  const prev = ptyActivity()[tabId];
-  setPtyActivity((m) => ({ ...m, [tabId]: state }));
-  if (prev === state) return;
-  const tab = liveTabs().find((t) => t.id === tabId);
-  if (tab?.sessionId) void refreshTailStateForSession(tab.sessionId);
-}
-
-/** Re-read the transcript tail of every live agent tab. */
-export async function refreshTailStates() {
-  const live = liveTabs().filter((t) => t.kind === "agent" && t.sessionId);
-  if (!live.length) return;
-  const all = Object.values(sessions()).flat();
-  const updates: Record<string, TailState> = {};
-  await Promise.all(
-    live.map(async (t) => {
-      const meta = all.find((s) => s.id === t.sessionId);
-      if (!meta) return;
-      const agent = meta.agent ?? "claude";
-      const state = await invoke<TailState>("session_tail_state", {
-        id: meta.id,
-        path: meta.path,
-        agent,
-      }).catch(() => null);
-      if (state) updates[t.sessionId!] = state;
-    }),
-  );
-  if (Object.keys(updates).length) setTailStates((m) => ({ ...m, ...updates }));
-}
-
-/** Re-read one session's tail on demand. */
-export async function refreshTailStateForSession(sessionId: string) {
-  const t = liveTabs().find((t) => t.kind === "agent" && t.sessionId === sessionId);
-  if (!t) return;
-  const meta = Object.values(sessions())
-    .flat()
-    .find((s) => s.id === sessionId);
-  if (!meta) return;
-  const agent = meta.agent ?? "claude";
-  const state = await invoke<TailState>("session_tail_state", {
-    id: meta.id,
-    path: meta.path,
-    agent,
-  }).catch(() => null);
-  if (state) setTailStates((m) => ({ ...m, [sessionId]: state }));
-}
-
 // --- composition ------------------------------------------------------------
-
-/// Does the branch-unit this session belongs to want looking at?
-///
-/// The attribution is `belongsToUnit`, the same rule the sidebar's rollup badges
-/// use, and for the same reason: a plain repo's sibling branch-units share one
-/// folder and are told apart only by the branch a session recorded, so a second
-/// implementation here is how a red chip on `feat` ends up ringing for the
-/// session on `main`. Siblings are filtered by folder, which for a plain repo is
-/// exactly its set of units and for every other kind is the single unit that
-/// owns the folder - the case `belongsToUnit` answers before it looks at any of
-/// them.
-/// Grouped by folder once per feed, for the same reason as `sessionHomes`: this
-/// is asked per live session on every recompute, and re-filtering the whole unit
-/// list each time makes the cost the product of the two.
-const unitsByFolder = createMemo(() => {
-  const byFolder = new Map<string, ForgeUnit[]>();
-  for (const u of forgeUnits()) {
-    const list = byFolder.get(u.folderPath);
-    if (list) list.push(u);
-    else byFolder.set(u.folderPath, [u]);
-  }
-  return byFolder;
-});
-
-function unitWantsAttention(folderPath: string | undefined, branch: string | undefined): boolean {
-  if (!folderPath) return false;
-  const siblings = unitsByFolder().get(folderPath);
-  if (!siblings) return false;
-  return siblings.some((u) => u.attention && belongsToUnit({ branch }, u, siblings));
-}
 
 /// The project `root` belongs to, or null when no unit list places it.
 ///
@@ -282,10 +195,10 @@ export type BranchOwner = { folderPath: string; session: SessionMeta };
 /// unit's checkout, which is *not* the project path, so the project is found
 /// through the unit list rather than assumed to equal `root`.
 ///
-/// The attribution is `belongsToUnit`, the same rule Phase 7's CI raise and the
-/// sidebar's rollup badges follow. A plain repo's sibling units share one folder
-/// and are told apart only by the branch a session recorded, so a second rule
-/// here is how a review comment on `feat` ends up in the agent working on `main`.
+/// The attribution is Rust's, the same one the sidebar's rollup badges read. A
+/// plain repo's sibling units share one folder and are told apart only by the
+/// branch a session recorded, so a second rule here is how a review comment on
+/// `feat` ends up in the agent working on `main`.
 ///
 /// Most recently active, not "the live one": a session with no tab open is still
 /// the one that wrote the branch, and safe-send resumes it. Picking a live
@@ -293,10 +206,7 @@ export type BranchOwner = { folderPath: string; session: SessionMeta };
 export function branchOwner(root: string, branch: string): BranchOwner | null {
   const unit = projectUnitFor(root, branch);
   if (!unit) return null;
-  const siblings = forgeUnits().filter((u) => u.folderPath === unit.folderPath);
-  const mine = (sessions()[unit.folderPath] ?? []).filter((s) =>
-    belongsToUnit({ branch: s.branch }, unit, siblings),
-  );
+  const mine = (sessions()[unit.folderPath] ?? []).filter((s) => inUnit(s.home, unit));
   const owner = mine.reduce<SessionMeta | null>(
     (best, s) => (best === null || s.last_active > best.last_active ? s : best),
     null,
@@ -304,59 +214,35 @@ export function branchOwner(root: string, branch: string): BranchOwner | null {
   return owner ? { folderPath: unit.folderPath, session: owner } : null;
 }
 
-/// Where each session lives: the folder it sits in and the branch it recorded.
-///
-/// The folder comes from the store's own key rather than from a tab, because a
-/// **detached** session has no tab and no chat - and a detached session is one
-/// of the two the CI raise has to reach. Reading it off `cwd` would work for a
-/// worktree and quietly stop working for anything re-homed.
-///
-/// Indexed once per store change rather than scanned per session: `sessionDot`
-/// is called for every live session by both memos, and those recompute as often
-/// as PTY activity does, so a per-call walk of every folder would be quadratic
-/// on the hottest path this module has.
-const sessionHomes = createMemo(() => {
-  const homes = new Map<string, { folder: string; branch?: string }>();
-  for (const [folder, list] of Object.entries(sessions())) {
-    for (const s of list) if (!homes.has(s.id)) homes.set(s.id, { folder, branch: s.branch || undefined });
-  }
-  return homes;
-});
-
-function sessionDotInputs(id: string): SessionDotInputs {
-  // A tab short of `live` hosts nothing, so it is not the "live tab" the dot
-  // rules mean: an inert tab would otherwise turn a dead session's dot solid
-  // and suppress the hollow one that says "running, with nothing driving it".
-  const tab = liveTabs().find((t) => t.sessionId === id && t.state === "live");
-  const chat = liveChats().find((c) => c.sessionId === id);
-  const home = sessionHomes().get(id);
-  return {
-    chatStatus: chat?.status,
-    hasLiveTab: !!tab,
-    running: probes()[id]?.running === true,
-    ptyActivity: tab ? ptyActivity()[tab.id] : undefined,
-    tailState: tailStates()[id],
-    forgeAttention: unitWantsAttention(
-      tab?.workspace ?? chat?.folderPath ?? home?.folder,
-      home?.branch,
-    ),
-  };
+/** Whether a session whose unit row is `home` sits under `unit`. */
+export function inUnit(home: SessionHome | null | undefined, unit: { folderPath: string; branch: string | null }): boolean {
+  return !!home && home.folder === unit.folderPath && (home.branch ?? null) === (unit.branch ?? null);
 }
 
 export function sessionDot(id: string): SessionDot {
-  return computeSessionDot(sessionDotInputs(id));
+  return rustDots()[id]?.dot ?? "none";
 }
 
 /** Whether this session's status was measured or inferred, for the marker the
  *  row renders. Only the exact side is marked. */
 export function sessionCertainty(id: string): StatusCertainty {
-  return dotCertainty(sessionDotInputs(id));
+  return rustDots()[id]?.certainty ?? "inferred";
 }
 
-/** The same dot in the Antigravity status vocabulary: a pure remap. */
-export function sessionStatus(id: string): SessionStatus {
-  return statusFromDot(sessionDot(id));
+// A chat's own status, raised only where a red check can raise it. Not routed
+// through the dot, which would flatten `budgetStopped` into an approval that
+// does not exist, and would lag the turn the revert guard must see at once.
+function chatStatus(c: LiveChat): SessionStatus {
+  const raised = (c.status === "idle" || c.status === "running") && sessionDot(c.sessionId) === "needsYou";
+  return raised ? "waitingForApproval" : c.status;
 }
+
+export function sessionStatus(id: string): SessionStatus {
+  const chat = liveChats().find((c) => c.sessionId === id);
+  return chat ? chatStatus(chat) : statusFromDot(sessionDot(id));
+}
+
+const homeOf = (id: string, meta: SessionMeta | undefined) => rustDots()[id]?.home ?? meta?.home ?? null;
 
 // Every live session's composed dot plus display metadata, recomputed whenever
 // any input changes. Shared by the presence tracker, the tray and the dock
@@ -376,11 +262,6 @@ const liveSessionDots = createMemo<LiveSessionDot[]>(() => {
       tabId: t.id,
     });
   }
-  // The chat tier needs none of the composition above: its own event stream
-  // says when a turn is running and when a tool call is blocked. It still goes
-  // through `sessionDot` rather than straight to `dotFromStatus`, because the
-  // forge raise sits outside the tiers and a chat on a branch with failing
-  // checks is in exactly the same position as a PTY agent on one.
   for (const c of liveChats()) {
     live.push({
       sessionId: c.sessionId,
@@ -399,9 +280,8 @@ const liveSessionDots = createMemo<LiveSessionDot[]>(() => {
 // diff gate all read, so both tiers belong in it: a chat that is waiting is
 // waiting on exactly the same terms as a blocked PTY agent, and a consumer that
 // had to union the two lists itself would be a second place for them to
-// disagree. `recordedBranch` and `agent` come from the session store rather
-// than from the tab, because a tab descriptor carries neither, and without them
-// a plain repo's sibling branch units cannot tell their sessions apart.
+// disagree. `home` is the unit row Rust placed the session under, and `agent`
+// comes from the session store, since a tab descriptor carries neither.
 const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
   const all = Object.values(sessions()).flat();
   const live: LiveSessionStatus[] = [];
@@ -417,7 +297,7 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
       projectName: owner?.projectName ?? "",
       folderPath: t.workspace,
       tabId: t.id,
-      recordedBranch: meta?.branch || undefined,
+      home: homeOf(t.sessionId, meta),
       agent: meta?.agent,
     });
   }
@@ -426,21 +306,13 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
     const owner = folderOwners()[c.folderPath];
     live.push({
       sessionId: c.sessionId,
-      // Only `idle` and `running` are taken from the composed answer, because
-      // they are the only two the forge raise can lift. Routing every status
-      // through it would round-trip through the dot vocabulary, and that trip is
-      // lossy on purpose: `budgetStopped` and `waitingForApproval` share one
-      // dot, and only one of them comes back. Flattening the pair is the exact
-      // thing `budgetStopped` was introduced to stop - it would tell the user to
-      // answer a prompt that does not exist.
-      status:
-        c.status === "idle" || c.status === "running" ? sessionStatus(c.sessionId) : c.status,
+      status: chatStatus(c),
       sessionName: c.sessionName,
       spaceName: owner?.spaceName ?? "",
       projectName: owner?.projectName ?? "",
       folderPath: c.folderPath,
       tabId: c.tabId,
-      recordedBranch: meta?.branch || undefined,
+      home: homeOf(c.sessionId, meta),
       agent: meta?.agent,
     });
   }
@@ -499,6 +371,13 @@ const onScreenChats = () => new Set(liveChats().filter((c) => c.visible).map((c)
 // the tray and the dock badge must keep tracking whether or not the sidebar is
 // mounted, and there is nothing to dispose short of the app closing.
 createRoot(() => {
+  // Listening before the fetch, so no change can land in between and be lost.
+  void Promise.resolve()
+    .then(() => listen<RustDot[]>("sessions://dots", (e) => noteDots(e.payload)))
+    .then(() => invoke<RustDot[]>("session_dots"))
+    .then(noteDots)
+    .catch(() => {});
+
   // Feed the presence tracker on every change, so the OS notification, tray and
   // badge share one source of truth instead of re-deriving it independently.
   createEffect(() => notePresence(liveSessionDots()));
@@ -553,8 +432,7 @@ createRoot(() => {
  *  test that renders twice inherits the first render's probes and tails. */
 export function resetSessionActivityForTests() {
   setProbes({});
-  setPtyActivity({});
-  setTailStates({});
+  setRustDots({});
   setLiveTabs([]);
   setFolderOwners({});
   setSelectedSessionId(null);

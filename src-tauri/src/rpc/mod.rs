@@ -190,6 +190,12 @@ pub fn nudge_probe() {
     nudge(Nudge::Probe);
 }
 
+// The whole set, for a webview that has just loaded and missed every change.
+#[tauri::command]
+pub fn session_dots() -> Vec<dots::Change> {
+    COMPOSER.get().map(|c| c.dots.all()).unwrap_or_default()
+}
+
 pub fn session_dot(id: &str) -> (dots::Dot, dots::Certainty) {
     COMPOSER.get().map_or((dots::Dot::None, dots::Certainty::Inferred), |c| c.dots.dot(id))
 }
@@ -253,19 +259,15 @@ impl Composer {
             *metas = (rows, wanted.into_iter().collect());
         }
         let spaces = OnceCell::new();
-        let home_folder = |id: &str| {
-            let meta = metas.0.get(id)?;
-            let spaces = spaces.get_or_init(|| {
-                crate::config::get_config_body(&self.app.state::<crate::config::ProjectIndex>()).map(|c| c.spaces).unwrap_or_default()
-            });
-            let branch = Some(meta.branch.as_str()).filter(|b| !b.is_empty());
-            crate::unit_home::home_of(spaces, &meta.cwd, branch).map(|h| h.folder)
+        let home_of = |at: &str, branch: Option<&str>| {
+            let spaces = spaces.get_or_init(|| crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()));
+            crate::unit_home::home_of(spaces, at, branch)
         };
         let tail_blocked = |id: &str, meta: &dots::Meta| {
             crate::sessions::session_tail_state_body(id.to_string(), meta.path.clone(), meta.agent.clone())
                 .is_ok_and(|t| t == crate::sessions::TailState::BlockedCandidate)
         };
-        let (reports, changes) = self.dots.compose_all(&metas.0, home_folder, tail_blocked);
+        let (reports, changes) = self.dots.compose_all(&metas.0, home_of, tail_blocked);
 
         let chats: HashSet<String> = self.app.state::<crate::chat::host::ChatState>().0.live_sessions().into_iter().map(|(id, _)| id).collect();
         let tabs: HashSet<String> = self.app.state::<crate::pty::PtyState>().live_ids().unwrap_or_default().into_iter().collect();

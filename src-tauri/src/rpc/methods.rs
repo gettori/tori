@@ -478,10 +478,8 @@ impl Backend for TauriBackend {
             row["background"] = json!(true);
         }
         let spaces = match rows.is_empty() {
-            true => Vec::new(),
-            false => crate::config::get_config_body(&self.app.state::<crate::config::ProjectIndex>())
-                .map(|c| c.spaces)
-                .unwrap_or_default(),
+            true => Default::default(),
+            false => crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()),
         };
         super::refresh_dots_if_stale();
         for row in &mut rows {

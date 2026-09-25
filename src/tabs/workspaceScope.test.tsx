@@ -60,7 +60,6 @@ vi.mock("../panels/Chat/ChatView", () => ({
 vi.mock("../utils/sessionActivity", () => ({
   sessionStatus: () => "none",
   liveSessionStatuses: () => [],
-  notePtyActivity: () => {},
 }));
 vi.mock("../utils/chatSessions", () => ({
   liveChats: () => [],
