@@ -39,3 +39,4 @@ It runs on its own thread, never inside a publish callback. The thread sleeps un
 - [[component_autopilot_store]]: the items a wake is labelled with
 - [[concept_socket_event_vocabulary]]: the events it reads, and `by: "watcher"`
 - [[adr_a_workers_questions_bubble_up_to_its_spawner]]: why the autopilot no longer waits on workers
+- [[concept_tori_notes]]: how a wake is marked and drawn

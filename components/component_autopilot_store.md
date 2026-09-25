@@ -1,8 +1,8 @@
 ---
 summary: the autopilot queue and project contracts on disk; reads derive liveness and worktrees, only a merged PR is written back
 status: current
-updated: 2026-09-24
-source: gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs
+updated: 2026-09-25
+source: gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5
 ---
 
 # Autopilot store
@@ -13,7 +13,7 @@ source: gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk";
 
 It owns `queue.json` (items), `projects.json` (one contract per project) and `log.jsonl` (one line per write). It does **not** own holds: `holds.json` belongs to `Asks` ([[component_app_socket]]). It stores decisions only. Whether an item's session is live and whether its worktree still exists are worked out on every read and never saved ([[adr_autopilot_stores_decisions_and_derives_facts]]).
 
-- **Item**: id, kind `ship|review`, source `issue {key, project}` or `pr {number, repo}`, project, state `proposed|queued|running|waiting_on_you|taken_over|done|failed`, worktree, session, pr_url, note, timestamps. `done` and `failed` are terminal.
+- **Item**: id, kind `ship|review`, source `issue {key, project}` or `pr {number, repo}`, project, state `proposed|queued|running|waiting_on_you|taken_over|done|failed`, worktree, session, pr_url, note, title, contract, timestamps. `title` is what a cockpit card reads (else "Ship in <project>"), and `contract` the autopilot's short statement of what to build and how it ships; both are optional and serde default, so an older `queue.json` loads, and `note` stays the status line the next update overwrites. `done` and `failed` are terminal.
 - **Contract**: `ships: pr|local`, `autonomy: ask_everything|auto_until_outward`, `pickup: ask|auto`, optional agent, account and model. `#[serde(default)]` on the container, so a missing field reads as its cautious default.
 - Projects are compared with `same_folder`, never as strings ([[concept_one_directory_two_spellings]]), in the upsert key and in the contract map.
 
