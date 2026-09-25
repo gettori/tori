@@ -69,12 +69,24 @@ fn path_hash(cwd: &str) -> u64 {
 /// the renamed file present but empty, which for a state store reads as "nothing
 /// here" and is exactly the silent state atomic replacement exists to avoid.
 pub fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
+    replace(path, text, 0o644)
+}
+
+/// `write_atomically` for a file holding secrets: the temp is created `0600`,
+/// so the contents are never readable by anyone else, not even before the rename.
+pub fn write_private(path: &Path, text: &str) -> Result<(), String> {
+    replace(path, text, 0o600)
+}
+
+fn replace(path: &Path, text: &str, mode: u32) -> Result<(), String> {
     use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
     let parent = path.parent().ok_or("no parent directory")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let tmp = parent.join(format!(".{}.tmp", path.file_name().unwrap_or_default().to_string_lossy()));
+    let _ = std::fs::remove_file(&tmp);
     {
-        let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(mode).open(&tmp).map_err(|e| e.to_string())?;
         f.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
         f.sync_all().map_err(|e| e.to_string())?;
     }

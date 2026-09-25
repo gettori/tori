@@ -77,6 +77,13 @@ pub enum Before {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct MintParams {
+    /// What to call the device, shown beside it later.
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct InterruptParams {
     /// The live chat session whose turn to stop.
     pub id: String,
@@ -544,6 +551,7 @@ pub trait Backend: Send + Sync {
     fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError>;
     fn autopilot_start(&self) -> Result<Value, RpcError>;
     fn autopilot_stop(&self) -> Result<Value, RpcError>;
+    fn device_mint(&self, params: MintParams) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -574,7 +582,11 @@ impl Server {
         match req.method.as_str() {
             "subscribe" => {
                 let channel = channel(&req.params)?;
-                if matches!(channel, Channel::Sessions | Channel::Session(_)) {
+                let sessions = matches!(channel, Channel::Sessions | Channel::Session(_));
+                if !sessions && self.backend.kind(principal) == CallerKind::Device {
+                    return Err(RpcError::new(REFUSED, "a device subscribes to sessions and session:<id> only"));
+                }
+                if sessions {
                     self.backend.watching_sessions();
                 }
                 self.hub.subscribe(conn, channel);
@@ -732,6 +744,7 @@ pub mod tests {
             Ok(match principal {
                 Principal::Local => json!({ "caller": null }),
                 Principal::Session(caller) => json!({ "caller": caller }),
+                Principal::Device(id) => json!({ "caller": { "kind": "device", "id": id } }),
             })
         }
         fn session_steer(&self, _: &Principal, p: SteerParams) -> Result<Value, RpcError> {
@@ -839,6 +852,9 @@ pub mod tests {
         fn autopilot_stop(&self) -> Result<Value, RpcError> {
             Ok(json!({ "state": "off" }))
         }
+        fn device_mint(&self, p: MintParams) -> Result<Value, RpcError> {
+            Ok(json!({ "name": p.name }))
+        }
     }
 
     pub struct Running {
@@ -858,7 +874,7 @@ pub mod tests {
         let hub = Arc::new(Hub::default());
         let children = Arc::new(Children::default());
         let server = Arc::new(Server {
-            credential: Credential { process: "tok".into(), children: children.clone() },
+            credential: Credential::Local { process: "tok".into(), children: children.clone() },
             hub: hub.clone(),
             backend: Box::<StubBackend>::default(),
             auth_timeout: timeout,
@@ -975,7 +991,7 @@ pub mod tests {
 
     fn stub_server() -> Server {
         Server {
-            credential: Credential { process: "tok".into(), children: Arc::default() },
+            credential: Credential::Local { process: "tok".into(), children: Arc::default() },
             hub: Arc::default(),
             backend: Box::<StubBackend>::default(),
             auth_timeout: AUTH_TIMEOUT,
@@ -1024,6 +1040,7 @@ pub mod tests {
                 CallerKind::Local => Principal::Local,
                 CallerKind::Terminal => Principal::Session(Caller::Terminal("t1".into())),
                 CallerKind::Chat | CallerKind::Worker => Principal::Session(Caller::Chat("s1".into())),
+                CallerKind::Device => Principal::Device("d1".into()),
             };
             let outcome = server.dispatch(0, &principal, &request(method.name, Value::Object(sample)));
             assert!(outcome.is_ok(), "{}: {outcome:?}", method.name);
@@ -1084,6 +1101,58 @@ pub mod tests {
         assert_eq!(me["kind"], json!("worker"));
         assert!(server.dispatch(0, &worker, &request("ask.create", json!({"question": "q"}))).is_ok());
         assert!(server.dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"}))).is_ok());
+    }
+
+    #[test]
+    fn a_device_reads_and_drives_chats_and_nothing_else() {
+        let open: Vec<&str> = table::METHODS.iter().filter(|m| m.callers.contains(&CallerKind::Device)).map(|m| m.name).collect();
+        assert_eq!(
+            open,
+            [
+                "sessions.list",
+                "session.tail",
+                "caller",
+                "session.history",
+                "session.interrupt",
+                "session.steer",
+                "session.pending",
+                "ask.answer",
+                "projects.list",
+            ]
+        );
+        let server = stub_server();
+        let device = Principal::Device("d1".into());
+        let err = server.dispatch(0, &device, &request("session.spawn", json!({}))).unwrap_err();
+        assert_eq!(err.code, REFUSED);
+        assert!(err.message.contains("device"), "{}", err.message);
+        assert_eq!(server.dispatch(0, &device, &request("caller", Value::Null)).unwrap()["kind"], json!("device"));
+    }
+
+    #[test]
+    fn a_device_subscribes_to_sessions_only() {
+        let server = stub_server();
+        let device = Principal::Device("d1".into());
+        let subscribe = |topic: &str| server.dispatch(0, &device, &request("subscribe", json!({ "topic": topic })));
+        assert!(subscribe("sessions").is_ok());
+        assert!(subscribe("session:s1").is_ok());
+        for topic in ["autopilot", "accounts"] {
+            assert_eq!(subscribe(topic).unwrap_err().code, REFUSED, "{topic}");
+        }
+        assert!(server.dispatch(0, &Principal::Local, &request("subscribe", json!({"topic": "autopilot"}))).is_ok());
+    }
+
+    #[test]
+    fn only_a_local_caller_mints_a_device() {
+        let server = stub_server();
+        let mint = || request("device.mint", json!({"name": "phone"}));
+        assert!(server.dispatch(0, &Principal::Local, &mint()).is_ok());
+        for caller in [
+            Principal::Session(Caller::Terminal("t1".into())),
+            Principal::Session(Caller::Chat("s1".into())),
+            Principal::Device("d1".into()),
+        ] {
+            assert_eq!(server.dispatch(0, &caller, &mint()).unwrap_err().code, REFUSED, "{caller:?}");
+        }
     }
 
     #[test]

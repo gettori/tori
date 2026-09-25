@@ -10,6 +10,7 @@ pub mod approvals;
 pub mod asks;
 pub mod auth;
 pub mod bridge;
+pub mod devices;
 pub mod client;
 pub mod dots;
 pub mod events;
@@ -67,6 +68,7 @@ pub struct RpcState {
     asks: Arc<Asks>,
     pub autopilot: Arc<AutopilotStore>,
     pub runner: Arc<Runner>,
+    devices: Arc<devices::Devices>,
     quotas: Quotas,
 }
 
@@ -98,6 +100,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let hub = Arc::new(Hub::default());
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
+    let devices = Arc::new(devices::Devices::open(devices_path()));
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
@@ -119,7 +122,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     start_watcher(&app, &states, &autopilot, &runner);
     start_composer(&app, &hub, &states, &autopilot);
     let server = Arc::new(Server {
-        credential: Credential { process: token.clone(), children: children.clone() },
+        credential: Credential::Local { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend {
             app,
@@ -128,6 +131,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
             asks: asks.clone(),
             autopilot: autopilot.clone(),
             runner: runner.clone(),
+            devices: devices.clone(),
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
@@ -147,7 +151,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states, bridge, asks, autopilot, runner, quotas: Quotas::default() })
+    Ok(RpcState { transport, hub, states, bridge, asks, autopilot, runner, devices, quotas: Quotas::default() })
 }
 
 // What only the webview knows about its tabs, chats and forge poll; every
@@ -518,6 +522,7 @@ pub fn autopilot_state(app: AppHandle, rpc: tauri::State<RpcState>) -> Result<Va
         asks: rpc.asks.clone(),
         autopilot: rpc.autopilot.clone(),
         runner: rpc.runner.clone(),
+        devices: rpc.devices.clone(),
     };
     backend.autopilot_state().map_err(|e| e.message)
 }
@@ -710,6 +715,10 @@ pub fn mcp_launch(caller: Caller) -> Option<(PathBuf, Vec<(String, String)>)> {
 
 pub(crate) fn bridge_path() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".config/tori/rpc.json")
+}
+
+fn devices_path() -> PathBuf {
+    dirs::home_dir().unwrap_or_default().join(".config/tori/devices.json")
 }
 
 #[cfg(test)]

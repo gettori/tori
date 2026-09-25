@@ -8,6 +8,9 @@
 //                                          # issues.assigned and issues.get, then link the issue's
 //                                          # suggested branch on GitHub and open a worktree for it.
 //                                          # Makes a real branch on the host.
+//   node dev/rpc-probe.mjs --no-wait --mint <name>
+//                                          # device.mint: adds a device for the remote front and
+//                                          # prints its credential, shown only this once.
 //
 // Finds the socket the way a front must: `TORI_SOCK`/`TORI_CALLER` when run
 // inside a Tori terminal, else `~/.config/tori/rpc.json`. Exits non-zero when any
@@ -23,6 +26,8 @@ const timeoutAt = args.indexOf("--timeout");
 const timeoutMs = timeoutAt >= 0 ? Number(args[timeoutAt + 1]) : 120_000;
 const issueAt = args.indexOf("--issue");
 const issue = issueAt >= 0 ? { project: args[issueAt + 1], key: args[issueAt + 2] } : null;
+const mintAt = args.indexOf("--mint");
+const mint = mintAt >= 0 ? args[mintAt + 1] : null;
 
 function locate() {
   if (process.env.TORI_SOCK && process.env.TORI_CALLER) {
@@ -120,6 +125,12 @@ if (issue) {
     const wt = await c.call("worktree.new", { project, branch, issue: key });
     check(!!wt.result?.path, "worktree.new with the issue", JSON.stringify(wt.error ?? wt.result));
   }
+}
+
+if (mint) {
+  const minted = await c.call("device.mint", { name: mint });
+  check(!!minted.result?.credential, "device.mint", JSON.stringify(minted.error ?? { id: minted.result.id, name: minted.result.name }));
+  if (minted.result) console.log(`     credential ${minted.result.credential}`);
 }
 
 if (wait) {
