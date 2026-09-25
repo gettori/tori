@@ -46,6 +46,8 @@ pub enum Draft {
         /// Line comments held with the review.
         #[serde(default)]
         comments: Vec<DraftComment>,
+        /// The head commit the comments were drawn against; the review is refused once the pull request has moved on.
+        head_sha: String,
     },
     #[serde(rename = "pr.merge")]
     PrMerge {
@@ -70,7 +72,7 @@ impl Draft {
     pub fn target(&self) -> String {
         match self {
             Draft::PrCreate { head, base, head_sha, .. } => format!("a pull request from {head} at {head_sha} into {base}"),
-            Draft::ReviewSubmit { number, event, .. } => format!("a {event:?} review on #{number}"),
+            Draft::ReviewSubmit { number, event, head_sha, .. } => format!("a {event:?} review on #{number} at {head_sha}"),
             Draft::PrMerge { number, head_sha, .. } => format!("merging #{number} at {head_sha}"),
         }
     }

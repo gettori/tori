@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    HoldResolveParams, IssueGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    HoldResolveParams, IssueGetParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
@@ -142,7 +142,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "worktree.new",
-        description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue.",
+        description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue. With pr, the worktree is on that pull request's head commit, forks included, on branch pr-<number>, and head_sha is returned.",
         params: schema::<WorktreeParams>,
         callers: ANYONE,
         refusal: None,
@@ -265,6 +265,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.ask_wait(params(v)?),
+    },
+    Method {
+        name: "pr.get",
+        description: "One pull request to review: its title, body, author, base, head and head_sha, its files with the line ranges a comment may anchor to on each side, whether it is yours, what verdicts the host has, and the project folder it was read in. Takes the pull request's URL, and then finds the project by its origin.",
+        params: schema::<PrGetParams>,
+        callers: NOT_WORKERS,
+        refusal: None,
+        outward: false,
+        call: |b, p, v| b.pr_get(p, params(v)?),
     },
     Method {
         name: "pr.create",

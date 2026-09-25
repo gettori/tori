@@ -650,6 +650,12 @@ impl Forge for GitHubForge {
             .collect())
     }
 
+    fn pull_request(&self, repo: &RepoRef, number: u64) -> Result<PullRequest, ForgeError> {
+        self.require_token()?;
+        let path = format!("/repos/{}/{}/pulls/{number}", repo.owner, repo.repo);
+        pr_from_rest(&self.send(self.rest("GET", &path, None))?)
+    }
+
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
         self.require_token()?;
         let path = format!("/repos/{}/{}/pulls?state=open&per_page=100", repo.owner, repo.repo);
@@ -850,6 +856,7 @@ mutation($threadId:ID!,$body:String!){
         event: ReviewEvent,
         body: &str,
         comments: &[DraftComment],
+        head_sha: Option<&str>,
     ) -> Result<(), ForgeError> {
         self.require_token()?;
         // `line`/`side` and never `position`. `position` counts lines from the
@@ -876,11 +883,16 @@ mutation($threadId:ID!,$body:String!){
                 v
             })
             .collect();
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "event": event.wire(),
             "body": body,
             "comments": comments,
         });
+        // Without it the server re-resolves every anchor against whatever the
+        // diff is when the review lands, so a push in between moves comments.
+        if let Some(sha) = head_sha {
+            payload["commit_id"] = serde_json::json!(sha);
+        }
         let path = format!("/repos/{}/{}/pulls/{number}/reviews", repo.owner, repo.repo);
         self.send(self.rest("POST", &path, Some(payload)))?;
         Ok(())
@@ -1460,7 +1472,7 @@ mod tests {
             },
         ];
 
-        f.submit_review(&repo(), 42, ReviewEvent::Comment, "looks close", &comments).unwrap();
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "looks close", &comments, None).unwrap();
 
         let sent: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
         assert_eq!(sent["event"], "COMMENT");
@@ -1474,6 +1486,21 @@ mod tests {
         // null, which GitHub rejects.
         assert!(sent["comments"][1].get("start_line").is_none(), "got {}", sent["comments"][1]);
         assert!(!stub.bodies()[0].contains("position"), "position is deprecated and drifts");
+    }
+
+    #[test]
+    fn a_pinned_review_names_its_commit_and_an_unpinned_one_does_not() {
+        let (f, stub) = forge(vec![
+            StubTransport::json(200, r#"{"id":1,"state":"COMMENTED"}"#),
+            StubTransport::json(200, r#"{"id":2,"state":"COMMENTED"}"#),
+        ]);
+        let sha = "9f1c2a3b4d5e6f708192a3b4c5d6e7f809a1b2c3";
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "b", &[], Some(sha)).unwrap();
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "b", &[], None).unwrap();
+        let pinned: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
+        let loose: Value = serde_json::from_str(&stub.bodies()[1]).unwrap();
+        assert_eq!(pinned["commit_id"], sha);
+        assert!(loose.get("commit_id").is_none(), "got {loose}");
     }
 
     #[test]
@@ -1544,7 +1571,7 @@ mod tests {
         let ok = || StubTransport::json(200, r#"{"id":1}"#);
         let (f, stub) = forge(vec![ok(), ok(), ok()]);
         for event in [ReviewEvent::Approve, ReviewEvent::Comment, ReviewEvent::RequestChanges] {
-            f.submit_review(&repo(), 42, event, "body", &[]).unwrap();
+            f.submit_review(&repo(), 42, event, "body", &[], None).unwrap();
         }
         let events: Vec<String> = stub
             .bodies()
@@ -1563,7 +1590,7 @@ mod tests {
             422,
             r#"{"message":"Validation Failed","errors":[{"message":"Can not approve your own pull request"}]}"#,
         )]);
-        let err = f.submit_review(&repo(), 42, ReviewEvent::Approve, "", &[]).unwrap_err();
+        let err = f.submit_review(&repo(), 42, ReviewEvent::Approve, "", &[], None).unwrap_err();
         assert!(format!("{err}").contains("Can not approve your own pull request"), "got {err}");
     }
 

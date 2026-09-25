@@ -1359,15 +1359,19 @@ pub fn forge_set_thread_resolved(
 /// path and the fetched path telling the same kind of truth.
 #[tauri::command(async)]
 pub fn forge_viewer(account_id: String) -> Result<String, ForgeErrorDto> {
-    if !auth::enabled() || !auth::may_call(&account_id) {
-        return Err(ForgeError::NotAuthenticated.into());
+    Ok(viewer_login(&account_id)?)
+}
+
+fn viewer_login(account_id: &str) -> Result<String, ForgeError> {
+    if !auth::enabled() || !auth::may_call(account_id) {
+        return Err(ForgeError::NotAuthenticated);
     }
-    if let AuthState::SignedIn { login } = auth::state(&account_id) {
+    if let AuthState::SignedIn { login } = auth::state(account_id) {
         if !login.is_empty() {
             return Ok(login);
         }
     }
-    Ok(learn_login(&account_id)?)
+    learn_login(account_id)
 }
 
 /// Submit a review: a verdict, a body, and the line comments held with it.
@@ -1384,19 +1388,37 @@ pub fn forge_submit_review(
     body: String,
     comments: Vec<DraftComment>,
 ) -> Result<(), ForgeErrorDto> {
-    Ok(submit_review(&project_path, number, event, &body, &comments)?)
+    Ok(submit_review(&project_path, number, event, &body, &comments, None)?)
 }
 
-/// The review a socket caller submits, the same call the review panel makes.
+/// The review a socket caller submits, the same call the review panel makes,
+/// pinned to `head_sha` when the caller drew its comments against one.
 pub fn submit_review(
     project_path: &str,
     number: u64,
     event: ReviewEvent,
     body: &str,
     comments: &[DraftComment],
+    head_sha: Option<&str>,
 ) -> Result<(), ForgeError> {
     let c = gated_client(project_path)?;
-    attempt(&c, |f| f.submit_review(&c.repo, number, event, body, comments))
+    attempt(&c, |f| f.submit_review(&c.repo, number, event, body, comments, head_sha))
+}
+
+/// One pull request by its number, for a socket caller.
+pub fn pull_request(project_path: &str, number: u64) -> Result<PullRequest, ForgeError> {
+    let c = gated_client(project_path)?;
+    attempt(&c, |f| f.pull_request(&c.repo, number))
+}
+
+/// One pull request with its files, whether the signed in account wrote it,
+/// and what the host lets a review say, for a socket caller about to review it.
+pub fn pr_view(project_path: &str, number: u64) -> Result<super::pr_view::PrView, ForgeError> {
+    let c = gated_client(project_path)?;
+    let pr = attempt(&c, |f| f.pull_request(&c.repo, number))?;
+    let files = attempt(&c, |f| f.pull_request_files(&c.repo, number))?;
+    let login = viewer_login(&c.account_id)?;
+    Ok(super::pr_view::view(pr, files, &login, c.forge.capabilities()))
 }
 
 /// Post one line comment on its own, anchored to the commit the patch came from.

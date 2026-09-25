@@ -4,7 +4,7 @@ import type { DraftComment, MergeMethod, ReviewEvent } from "./forgeTypes";
 
 export type AskApproval = { project: string } & (
   | { action: "pr.create"; head: string; base: string; title: string; body: string; draft: boolean; head_sha: string }
-  | { action: "review.submit"; number: number; event: ReviewEvent; body: string; comments: DraftComment[] }
+  | { action: "review.submit"; number: number; event: ReviewEvent; body: string; comments: DraftComment[]; head_sha: string }
   | { action: "pr.merge"; number: number; method: MergeMethod; head_sha: string }
 );
 
