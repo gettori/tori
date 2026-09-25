@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
 import AutopilotView from "../../components/Autopilot/AutopilotView";
@@ -137,9 +137,18 @@ export function CockpitPopup() {
     const target = e.target as Node;
     if (!anchor.contains(target) && !(target instanceof Element && target.closest("[aria-label='Autopilot']"))) setPopupOpen(false);
   };
+  // Under the switch, its right edge on the switch's.
+  const place = () => {
+    const at = document.querySelector(".topbar-switch")?.getBoundingClientRect();
+    const body = anchor.offsetParent?.getBoundingClientRect();
+    if (at && body) anchor.style.setProperty("--anchor-right", `${body.right - at.right}px`);
+  };
+  onMount(place);
+  window.addEventListener("resize", place);
   window.addEventListener("keydown", onKey);
   window.addEventListener("pointerdown", onPointer);
   onCleanup(() => {
+    window.removeEventListener("resize", place);
     window.removeEventListener("keydown", onKey);
     window.removeEventListener("pointerdown", onPointer);
   });
