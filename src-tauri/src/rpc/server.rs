@@ -555,7 +555,6 @@ pub trait Backend: Send + Sync {
 }
 
 pub struct Server {
-    pub credential: Credential,
     pub hub: Arc<Hub>,
     pub backend: Box<dyn Backend>,
     pub auth_timeout: Duration,
@@ -614,13 +613,14 @@ impl Server {
     }
 }
 
-/// Accept on its own thread until the transport shuts down.
-pub fn serve(transport: Arc<dyn Transport>, server: Arc<Server>) {
+/// Accept on its own thread until the transport shuts down. A front is a
+/// transport and the credential it accepts; every front shares one server.
+pub fn serve(transport: Arc<dyn Transport>, credential: Arc<Credential>, server: Arc<Server>) {
     thread::spawn(move || loop {
         match transport.accept() {
             Ok(Some(stream)) => {
-                let server = server.clone();
-                thread::spawn(move || handle(&server, stream));
+                let (server, credential) = (server.clone(), credential.clone());
+                thread::spawn(move || handle(&server, &credential, stream));
             }
             Ok(None) => break,
             // A failed accept (a client that hung up mid handshake) is that
@@ -630,7 +630,7 @@ pub fn serve(transport: Arc<dyn Transport>, server: Arc<Server>) {
     });
 }
 
-fn handle(server: &Server, mut stream: Box<dyn Stream>) {
+fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>) {
     let Ok(read_half) = stream.try_clone_box() else { return };
     let mut reader = BufReader::new(read_half);
 
@@ -638,7 +638,7 @@ fn handle(server: &Server, mut stream: Box<dyn Stream>) {
     // thread forever.
     let _ = stream.set_read_timeout(Some(server.auth_timeout));
     let authed = match read_request(&mut reader) {
-        Ok(Some(first)) => match authenticate(&first, &server.credential) {
+        Ok(Some(first)) => match authenticate(&first, credential) {
             Ok(principal) => {
                 let reply = Response::ok(first.id.clone().unwrap_or(Value::Null), json!({}));
                 if write_line(&mut stream, &to_line(&reply)).is_err() {
@@ -873,13 +873,9 @@ pub mod tests {
         let transport = Arc::new(UnixTransport::bind().unwrap());
         let hub = Arc::new(Hub::default());
         let children = Arc::new(Children::default());
-        let server = Arc::new(Server {
-            credential: Credential::Local { process: "tok".into(), children: children.clone() },
-            hub: hub.clone(),
-            backend: Box::<StubBackend>::default(),
-            auth_timeout: timeout,
-        });
-        serve(transport.clone(), server);
+        let server = Arc::new(Server { hub: hub.clone(), backend: Box::<StubBackend>::default(), auth_timeout: timeout });
+        let credential = Arc::new(Credential::Local { process: "tok".into(), children: children.clone() });
+        serve(transport.clone(), credential, server);
         Running { transport, hub, children }
     }
 
@@ -991,7 +987,6 @@ pub mod tests {
 
     fn stub_server() -> Server {
         Server {
-            credential: Credential::Local { process: "tok".into(), children: Arc::default() },
             hub: Arc::default(),
             backend: Box::<StubBackend>::default(),
             auth_timeout: AUTH_TIMEOUT,

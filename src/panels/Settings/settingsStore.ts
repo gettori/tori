@@ -308,6 +308,9 @@ export type Settings = {
   format: { byExtension: Record<string, string>; disabled: string[] };
   /** Mirrors `Autopilot` in src-tauri/src/settings.rs. */
   autopilot: AutopilotSettings;
+  /** Mirrors `Remote` in src-tauri/src/settings.rs. Written only by `remote_set`;
+   *  a save from here keeps whatever the file says. */
+  remote: { enabled: boolean; address: string | null; port: number };
 };
 
 /** `available` is the feature: off, there is no cockpit. `enabled` is whether it
@@ -405,6 +408,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
   autopilot: { available: false, enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20, compactAt: null, maxWorkers: 2 },
+  remote: { enabled: false, address: null, port: 47821 },
 };
 
 /**

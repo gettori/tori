@@ -60,6 +60,12 @@ async-io = "2"
 # The socket params structs' JSON Schema, which `tori mcp` publishes as each
 # tool's `inputSchema`. Already in the tree through the ACP crate.
 schemars = "1"
+# The WebSocket front a phone connects to. Sync, so it keeps the socket's
+# thread per connection model with no async runtime.
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+# getifaddrs, for the addresses the remote front may bind. Already in the lock
+# file under half the tree.
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The notification plugin's desktop send never reports a click, so a needs-you

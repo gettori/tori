@@ -8,6 +8,7 @@
 
 pub mod approvals;
 pub mod asks;
+pub mod awake;
 pub mod auth;
 pub mod bridge;
 pub mod devices;
@@ -18,11 +19,13 @@ pub mod frame;
 pub mod hub;
 pub mod methods;
 pub mod quotas;
+pub mod remote;
 pub mod runner;
 pub mod server;
 pub mod states;
 pub mod table;
 pub mod transport;
+pub mod ws;
 pub mod watcher;
 
 use std::cell::OnceCell;
@@ -39,6 +42,7 @@ use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use events::{session_event, Place};
 use hub::{Channel, Hub};
 use quotas::Quotas;
+use remote::Remote;
 use runner::Runner;
 use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
@@ -62,6 +66,7 @@ static EVENTS: OnceLock<(Arc<Hub>, Arc<SessionStates>)> = OnceLock::new();
 
 pub struct RpcState {
     transport: Arc<UnixTransport>,
+    remote: Arc<Remote>,
     pub hub: Arc<Hub>,
     states: Arc<SessionStates>,
     bridge: Arc<Bridge>,
@@ -81,6 +86,7 @@ impl RpcState {
         if crate::credential::socket_in_file(&path).is_some_and(|(sock, _)| sock == ours) {
             let _ = std::fs::remove_file(path);
         }
+        self.remote.stop();
         self.transport.shutdown();
     }
 }
@@ -122,7 +128,6 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     start_watcher(&app, &states, &autopilot, &runner);
     start_composer(&app, &hub, &states, &autopilot);
     let server = Arc::new(Server {
-        credential: Credential::Local { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend {
             app,
@@ -135,7 +140,10 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
-    server::serve(transport.clone() as Arc<dyn Transport>, server);
+    let local = Arc::new(Credential::Local { process: token.clone(), children: children.clone() });
+    server::serve(transport.clone() as Arc<dyn Transport>, local, server.clone());
+    let remote = Arc::new(Remote::new(server, devices.clone()));
+    remote.apply(&crate::settings::remote());
 
     let sock = transport.sock_path().to_string_lossy().into_owned();
     if let Err(e) = crate::credential::write_bridge(&bridge_path(), &sock, &token) {
@@ -151,7 +159,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, hub, states, bridge, asks, autopilot, runner, devices, quotas: Quotas::default() })
+    Ok(RpcState { transport, remote, hub, states, bridge, asks, autopilot, runner, devices, quotas: Quotas::default() })
 }
 
 // What only the webview knows about its tabs, chats and forge poll; every
@@ -497,6 +505,24 @@ pub fn publish_pr(project: &str, folder: &str, branch: &str, checked_out: bool, 
         hub.publish(&Channel::Session(id.clone()), event.clone());
     }
     hub.publish(&Channel::Sessions, event);
+}
+
+// The remote front's switch, address and port. Only this writes them, so a
+// stale settings save cannot turn a network listener on.
+#[tauri::command(async)]
+pub fn remote_set(rpc: tauri::State<RpcState>, remote: crate::settings::Remote) -> Result<remote::Status, String> {
+    crate::settings::set_remote(remote.clone())?;
+    Ok(rpc.remote.apply(&remote))
+}
+
+#[tauri::command]
+pub fn remote_status(rpc: tauri::State<RpcState>) -> remote::Status {
+    rpc.remote.status()
+}
+
+#[tauri::command(async)]
+pub fn remote_interfaces() -> Vec<remote::Interface> {
+    remote::interfaces()
 }
 
 // The webview's own switch: not a socket caller, so it goes around the
