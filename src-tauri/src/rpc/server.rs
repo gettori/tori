@@ -478,6 +478,7 @@ pub fn hold_resolve(asks: &super::asks::Asks, id: &str) -> Result<Value, RpcErro
 
 /// What the methods read. Tauri state in the app, a stub in tests.
 pub trait Backend: Send + Sync {
+    fn watching_sessions(&self) {}
     fn kind(&self, principal: &Principal) -> CallerKind;
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
@@ -538,7 +539,11 @@ impl Server {
     pub fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         match req.method.as_str() {
             "subscribe" => {
-                self.hub.subscribe(conn, channel(&req.params)?);
+                let channel = channel(&req.params)?;
+                if matches!(channel, Channel::Sessions | Channel::Session(_)) {
+                    self.backend.watching_sessions();
+                }
+                self.hub.subscribe(conn, channel);
                 Ok(json!({}))
             }
             "unsubscribe" => {

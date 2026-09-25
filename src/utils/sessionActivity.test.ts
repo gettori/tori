@@ -43,7 +43,7 @@ const {
   sessionCertainty,
   liveSessionDots,
   liveSessionStatuses,
-  socketReports,
+  sessionFacts,
   shouldPollAccumulatedDiff,
   branchOwner,
   relayed,
@@ -486,11 +486,9 @@ describe("a failing check on the branch a session owns", () => {
     expect(trayEntries(live)).toEqual([{ id: "pty", label: "⚠ title of pty (repo)" }]);
   });
 
-  it("tells the app socket the agent is idle, since the socket carries the check as its own event", async () => {
+  it("hands Rust the raw facts, with no dot composed", async () => {
     await seedSessions([meta("pty", "main")]);
     noteLiveTabs([tab("t1", "pty")]);
-    bridge.running = ["pty"];
-    await probeBatch([{ id: "pty", agent: "claude" }]);
     setLiveChat({
       sessionId: "c-idle",
       sessionName: "the idle chat",
@@ -502,11 +500,13 @@ describe("a failing check on the branch a session owns", () => {
     });
     noteForgeUnits([unit("main", true)]);
 
-    expect(sessionStatus("pty")).toBe("waitingForApproval");
-    expect(socketReports()).toEqual([
-      { id: "c-idle", state: "idle", source: "chat", folder: FOLDER },
-      { id: "pty", state: "idle", source: "pty", folder: FOLDER, tab: "t1" },
-    ]);
+    expect(sessionFacts()).toEqual({
+      tabs: [{ id: "t1", session: "pty", live: true, workspace: FOLDER, agent: "claude" }],
+      chats: [
+        { session: "c-idle", status: "idle", folder: FOLDER, visible: false, spawner: undefined, name: "the idle chat" },
+      ],
+      forge: [{ folderPath: FOLDER, kind: "worktree", branch: "main", isCurrent: false, attention: true }],
+    });
     dropLiveChat("c-idle");
   });
 

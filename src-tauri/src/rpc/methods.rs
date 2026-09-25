@@ -455,6 +455,10 @@ impl TauriBackend {
 }
 
 impl Backend for TauriBackend {
+    fn watching_sessions(&self) {
+        super::nudge_probe();
+    }
+
     fn kind(&self, principal: &Principal) -> CallerKind {
         match principal {
             Principal::Session(Caller::Chat(id)) if self.states.is_worker(id) => CallerKind::Worker,
@@ -479,7 +483,11 @@ impl Backend for TauriBackend {
                 .map(|c| c.spaces)
                 .unwrap_or_default(),
         };
+        super::refresh_dots_if_stale();
         for row in &mut rows {
+            let (dot, certainty) = super::session_dot(row["id"].as_str().unwrap_or_default());
+            row["dot"] = json!(dot);
+            row["certainty"] = json!(certainty);
             let cwd = row["cwd"].as_str().unwrap_or_default();
             let branch = row["branch"].as_str().filter(|b| !b.is_empty());
             if let Some(home) = crate::unit_home::home_of(&spaces, cwd, branch) {

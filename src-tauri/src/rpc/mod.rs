@@ -11,6 +11,7 @@ pub mod asks;
 pub mod auth;
 pub mod bridge;
 pub mod client;
+pub mod dots;
 pub mod events;
 pub mod frame;
 pub mod hub;
@@ -24,7 +25,7 @@ pub mod transport;
 pub mod watcher;
 
 use std::cell::OnceCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
@@ -40,7 +41,7 @@ use quotas::Quotas;
 use runner::Runner;
 use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
-use states::{Held, Reported, SessionStates, Source};
+use states::{Held, SessionStates, Source};
 use transport::{Transport, UnixTransport};
 use watcher::Watcher;
 
@@ -116,6 +117,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         crate::autopilot::dir(),
     ));
     start_watcher(&app, &states, &autopilot, &runner);
+    start_composer(&app, &hub, &states, &autopilot);
     let server = Arc::new(Server {
         credential: Credential { process: token.clone(), children: children.clone() },
         hub: hub.clone(),
@@ -148,30 +150,173 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     Ok(RpcState { transport, hub, states, bridge, asks, autopilot, runner, quotas: Quotas::default() })
 }
 
-// Async so resolving a new session's project, which reads the config and lists
-// the discovery root, stays off the main thread.
+// What only the webview knows about its tabs, chats and forge poll; every
+// composition after this reads it.
 #[tauri::command(async)]
-pub fn rpc_session_states(
-    rpc: tauri::State<RpcState>,
+pub fn rpc_session_facts(
     chat: tauri::State<crate::chat::host::ChatState>,
     pty: tauri::State<crate::pty::PtyState>,
-    states: Vec<Reported>,
+    facts: dots::Facts,
 ) {
+    let Some(composer) = COMPOSER.get() else { return };
     let chats: HashSet<String> = chat.0.live_sessions().into_iter().map(|(id, _)| id).collect();
     let tabs: HashSet<String> = pty.live_ids().unwrap_or_default().into_iter().collect();
-    let projects = OnceCell::new();
-    let place_of = |folder: &str| Place {
-        project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),
-        folder: Some(folder.to_string()),
+    composer.dots.replace(facts, |tab| tabs.contains(tab), |id| chats.contains(id));
+    nudge(Nudge::Compose);
+}
+
+pub fn note_pty_activity(tab: &str, state: &str) {
+    let activity = match state {
+        "active" => dots::Activity::Active,
+        _ => dots::Activity::Quiet,
     };
-    let alive = |id: &str, held: &Held| match held.source {
-        Source::Chat => chats.contains(id),
-        Source::Pty => held.tab.as_ref().is_some_and(|tab| tabs.contains(tab)),
-    };
-    for event in rpc.states.replace(states, place_of, alive) {
-        let id = event["id"].as_str().unwrap_or_default().to_string();
-        publish_session(&rpc.hub, &rpc.autopilot, &id, event);
+    if COMPOSER.get().is_some_and(|c| c.dots.note_activity(tab, activity)) {
+        nudge(Nudge::Compose);
     }
+}
+
+pub fn note_running(asked: &[(String, String)], running: &[String]) {
+    let Some(composer) = COMPOSER.get() else { return };
+    composer.dots.note_running(asked, &running.iter().cloned().collect());
+    nudge(Nudge::Compose);
+}
+
+// A transcript moved: its tail may have, and a session may have exited.
+pub fn sessions_changed() {
+    nudge(Nudge::Changed);
+}
+
+pub fn nudge_probe() {
+    nudge(Nudge::Probe);
+}
+
+pub fn session_dot(id: &str) -> (dots::Dot, dots::Certainty) {
+    COMPOSER.get().map_or((dots::Dot::None, dots::Certainty::Inferred), |c| c.dots.dot(id))
+}
+
+// So a socket caller never waits on the webview to notice a session exited.
+// Queued rather than run inline, which would put a pgrep on the caller's call.
+pub fn refresh_dots_if_stale() {
+    if COMPOSER.get().is_some_and(|c| c.dots.probed_at().is_none_or(|at| at.elapsed() >= STALE_PROBE)) {
+        nudge(Nudge::Probe);
+    }
+}
+
+const STALE_PROBE: std::time::Duration = std::time::Duration::from_secs(5);
+
+#[derive(PartialEq)]
+enum Nudge {
+    Compose,
+    Probe,
+    Changed,
+}
+
+static COMPOSER: OnceLock<Arc<Composer>> = OnceLock::new();
+static NUDGE: OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<Nudge>>> = OnceLock::new();
+
+fn nudge(what: Nudge) {
+    if let Some(tx) = NUDGE.get() {
+        let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(what);
+    }
+}
+
+struct Composer {
+    app: AppHandle,
+    hub: Arc<Hub>,
+    states: Arc<SessionStates>,
+    autopilot: Arc<AutopilotStore>,
+    dots: dots::Dots,
+    // Index rows per session, and every id already looked up, so a session with
+    // no transcript yet does not re-walk the index on every composition.
+    metas: std::sync::Mutex<(HashMap<String, dots::Meta>, HashSet<String>)>,
+}
+
+impl Composer {
+    fn probe(&self) {
+        let want = self.dots.to_probe();
+        let refs = want.iter().map(|(id, agent)| crate::sessions::SessionRef { id: id.clone(), agent: agent.clone() }).collect();
+        let running = crate::sessions::running_now(&self.app.state::<crate::chat::host::ChatState>().0.registry, refs);
+        self.dots.note_running(&want, &running.into_iter().collect());
+    }
+
+    // One at a time, so the events two compositions publish never interleave.
+    fn compose(&self, reindex: bool) {
+        let mut metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
+        let wanted = self.dots.wants_meta();
+        if reindex || wanted.iter().any(|id| !metas.1.contains(id)) {
+            let all = crate::sessions::all_sessions(&self.app.state::<crate::sessions::SessionIndex>());
+            let rows = all
+                .into_iter()
+                .filter(|m| wanted.contains(&m.id))
+                .map(|m| (m.id.clone(), dots::Meta { agent: m.agent, path: m.path, branch: m.branch, cwd: m.cwd }))
+                .collect();
+            *metas = (rows, wanted.into_iter().collect());
+        }
+        let spaces = OnceCell::new();
+        let home_folder = |id: &str| {
+            let meta = metas.0.get(id)?;
+            let spaces = spaces.get_or_init(|| {
+                crate::config::get_config_body(&self.app.state::<crate::config::ProjectIndex>()).map(|c| c.spaces).unwrap_or_default()
+            });
+            let branch = Some(meta.branch.as_str()).filter(|b| !b.is_empty());
+            crate::unit_home::home_of(spaces, &meta.cwd, branch).map(|h| h.folder)
+        };
+        let tail_blocked = |id: &str, meta: &dots::Meta| {
+            crate::sessions::session_tail_state_body(id.to_string(), meta.path.clone(), meta.agent.clone())
+                .is_ok_and(|t| t == crate::sessions::TailState::BlockedCandidate)
+        };
+        let (reports, changes) = self.dots.compose_all(&metas.0, home_folder, tail_blocked);
+
+        let chats: HashSet<String> = self.app.state::<crate::chat::host::ChatState>().0.live_sessions().into_iter().map(|(id, _)| id).collect();
+        let tabs: HashSet<String> = self.app.state::<crate::pty::PtyState>().live_ids().unwrap_or_default().into_iter().collect();
+        let projects = OnceCell::new();
+        let place_of = |folder: &str| Place {
+            project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),
+            folder: Some(folder.to_string()),
+        };
+        let alive = |id: &str, held: &Held| match held.source {
+            Source::Chat => chats.contains(id),
+            Source::Pty => held.tab.as_ref().is_some_and(|tab| tabs.contains(tab)),
+        };
+        for event in self.states.replace(reports, place_of, alive) {
+            let id = event["id"].as_str().unwrap_or_default().to_string();
+            publish_session(&self.hub, &self.autopilot, &id, event);
+        }
+        // Straight to the hub: a dot is not something the runner or the
+        // watcher acts on, and a red check reaches them as `session.pr`.
+        for change in &changes {
+            let place = if change.folder.is_empty() { Place::default() } else { place_of(&change.folder) };
+            let event = session_event("session.dot", &change.id, &place, json!({ "dot": change.dot, "certainty": change.certainty }));
+            self.hub.publish_session(&change.id, event);
+        }
+        if !changes.is_empty() {
+            let _ = self.app.emit("sessions://dots", &changes);
+        }
+    }
+}
+
+fn start_composer(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) {
+    let composer = Arc::new(Composer {
+        app: app.clone(),
+        hub: hub.clone(),
+        states: states.clone(),
+        autopilot: autopilot.clone(),
+        dots: dots::Dots::default(),
+        metas: std::sync::Mutex::default(),
+    });
+    let (tx, rx) = std::sync::mpsc::channel::<Nudge>();
+    let _ = NUDGE.set(std::sync::Mutex::new(tx));
+    let _ = COMPOSER.set(composer.clone());
+    std::thread::spawn(move || {
+        while let Ok(first) = rx.recv() {
+            let mut all = vec![first];
+            all.extend(rx.try_iter());
+            if all.iter().any(|n| *n != Nudge::Compose) {
+                composer.probe();
+            }
+            composer.compose(all.contains(&Nudge::Changed));
+        }
+    });
 }
 
 fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {

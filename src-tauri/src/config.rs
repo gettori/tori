@@ -78,7 +78,7 @@ struct RawDiscovery {
 }
 
 /// How a project folder relates to git. Serialized kebab-case for the frontend.
-#[derive(Serialize, Clone, Copy, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectKind {
     Worktree,

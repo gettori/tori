@@ -25,7 +25,6 @@ import type { LiveTab } from "./events";
 import { sessions, type SessionMeta } from "./sessionStore";
 import { liveChats, liveChatIds, type LiveChat } from "./chatSessions";
 import {
-  socketState,
   statusFromDot,
   type SessionStatus,
   type LiveSessionStatus,
@@ -450,29 +449,29 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
 
 export { liveSessionDots, liveSessionStatuses };
 
-export type SocketReport = {
-  id: string;
-  state: "working" | "needs_you" | "idle";
-  source: "chat" | "pty";
-  folder: string;
-  tab?: string;
-};
-
-export function socketReports(): SocketReport[] {
-  const byId = new Map<string, SocketReport>();
-  // Forge attention stays out: the socket carries it as `session.pr`, and a
-  // failing check read as the agent waiting would reach a watcher twice.
-  for (const t of liveTabs()) {
-    if (t.kind !== "agent" || !t.sessionId) continue;
-    const dot = computeSessionDot({ ...sessionDotInputs(t.sessionId), forgeAttention: false });
-    const state = socketState(statusFromDot(dot));
-    if (state) byId.set(t.sessionId, { id: t.sessionId, state, source: "pty", folder: t.workspace, tab: t.id });
-  }
-  for (const c of liveChats()) {
-    const state = socketState(c.status);
-    if (state) byId.set(c.sessionId, { id: c.sessionId, state, source: "chat", folder: c.folderPath });
-  }
-  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+export function sessionFacts() {
+  const tabs = liveTabs()
+    .filter((t) => t.kind === "agent" && t.sessionId)
+    .map((t) => ({ id: t.id, session: t.sessionId!, live: t.state === "live", workspace: t.workspace, agent: t.agent }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const chats = liveChats()
+    .map((c) => ({
+      session: c.sessionId,
+      status: c.status,
+      folder: c.folderPath,
+      visible: c.visible,
+      spawner: c.spawner,
+      name: c.sessionName,
+    }))
+    .sort((a, b) => a.session.localeCompare(b.session));
+  const forge = forgeUnits().map(({ folderPath, kind, branch, isCurrent, attention }) => ({
+    folderPath,
+    kind,
+    branch,
+    isCurrent,
+    attention,
+  }));
+  return { tabs, chats, forge };
 }
 
 /** Whether the editor should poll `sessionId`'s accumulated diff.
@@ -539,16 +538,13 @@ createRoot(() => {
     }).catch(() => {});
   });
 
-  // The app socket answers `tori sessions` and the `sessions` topic from this
-  // copy. Sent only when a state moved, since PTY activity rebuilds the list on
-  // every quiet and active edge.
   let pushed = "";
   createEffect(() => {
-    const states = socketReports();
-    const key = JSON.stringify(states);
+    const facts = sessionFacts();
+    const key = JSON.stringify(facts);
     if (key === pushed) return;
     pushed = key;
-    invoke("rpc_session_states", { states }).catch(() => {});
+    invoke("rpc_session_facts", { facts }).catch(() => {});
   });
 });
 

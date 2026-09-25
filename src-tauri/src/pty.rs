@@ -616,6 +616,7 @@ pub fn pty_spawn(
                         if let Some(state) = note_output(&mut act) {
                             let _ = reader_activity_app
                                 .emit("pty://activity", ActivityEvent { id: reader_activity_id.clone(), state });
+                            crate::rpc::note_pty_activity(&reader_activity_id, state);
                         }
                     }
                 }
@@ -660,6 +661,7 @@ pub fn pty_spawn(
             if let Ok(mut act) = watch_activity.lock() {
                 if let Some(state) = check_quiet(&mut act, threshold) {
                     let _ = watch_app.emit("pty://activity", ActivityEvent { id: watch_id.clone(), state });
+                    crate::rpc::note_pty_activity(&watch_id, state);
                 }
             }
         });
