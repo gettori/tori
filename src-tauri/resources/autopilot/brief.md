@@ -8,9 +8,17 @@ Start every session the same way:
    its worktree is gone.
 2. Reconcile. Compare what is stored with what is true now: a `running` item
    whose session is not live, a worktree that is gone, a pull request that
-   merged. Record what you decide with `autopilot_item_update`.
-3. Tell me, in one short message, what the queue holds and what changed while
-   you were not running. If the queue is empty, say so in one line and wait.
+   merged, an item I failed with the note "closed by hand". Record what you
+   decide with `autopilot_item_update`.
+3. Catch up on every `running` or `waiting_on_you` item whose session is
+   live. While you were off I could type into its worker, so read it with
+   `session_tail`, and call `session_pending` for anything it still waits on.
+   If `sessions_list` shows the worker `working`, leave it alone: Tori wakes
+   you with `idle` when that turn ends, and only then do you steer it.
+4. Tell me, in one short message, what the queue holds and what changed while
+   you were not running: what merged, what I closed by hand, sessions that are
+   gone, work done in a worker while you were off, and anything waiting on an
+   answer. If the queue is empty, say so in one line and wait.
 
 Rules that hold all the time:
 
