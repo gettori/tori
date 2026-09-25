@@ -454,6 +454,44 @@ impl TauriBackend {
     }
 }
 
+/// The tree the sidebar draws, in the order it draws it: spaces in `space_order`
+/// with their projects and branch units as resolved, then topics by name with
+/// their members in `order`.
+fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics::Topic>) -> Value {
+    let spaces: Vec<Value> = spaces
+        .iter()
+        .map(|space| {
+            let projects: Vec<Value> = space
+                .projects
+                .iter()
+                .map(|p| {
+                    let units: Vec<Value> = p
+                        .branch_units
+                        .iter()
+                        .map(|u| {
+                            json!({
+                                "label": u.label,
+                                "folder": u.folder_path,
+                                "branch": u.branch,
+                                "kind": u.kind,
+                                "isCurrent": u.is_current,
+                                "issue": u.issue.as_ref().map(|i| &i.key),
+                            })
+                        })
+                        .collect();
+                    json!({ "name": p.name, "path": p.path, "units": units })
+                })
+                .collect();
+            json!({ "name": space.name, "path": space.path, "projects": projects })
+        })
+        .collect();
+    topics.sort_by_cached_key(|t| (t.name.to_lowercase(), t.name.clone()));
+    for topic in &mut topics {
+        topic.members.sort_by_key(|m| m.order);
+    }
+    json!({ "spaces": spaces, "topics": topics })
+}
+
 impl Backend for TauriBackend {
     fn watching_sessions(&self) {
         super::nudge_probe();
@@ -495,6 +533,13 @@ impl Backend for TauriBackend {
             }
         }
         Ok(Value::Array(rows))
+    }
+
+    fn projects_list(&self) -> Result<Value, RpcError> {
+        let config = crate::config::get_config_body(&self.app.state::<crate::config::ProjectIndex>())
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        let topics = crate::topics::list_topics(&crate::topics::Store::default_location());
+        Ok(projects_tree(&config.spaces, topics))
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {

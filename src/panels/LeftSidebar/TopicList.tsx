@@ -35,6 +35,12 @@ export type TopicSpace = SpaceTint & RepoSpace;
  *  after every step of a creation, and is applied as is, no refetch, so chips
  *  flip one by one. `config://changed` fires once at the end (and whenever
  *  the tree changes for any other reason), and that one refetches. */
+// The order `projects.list` serves topics in, so a client drawing from the
+// socket lists them the way this does.
+const lower = (t: Topic) => t.name.toLowerCase();
+const byName = (a: Topic, b: Topic) =>
+  lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+
 export default function TopicList(props: {
   spaces: TopicSpace[];
   query: string;
@@ -409,7 +415,7 @@ export default function TopicList(props: {
 
   const visible = createMemo(() => {
     const q = props.query.trim().toLowerCase();
-    const all = [...topics()].sort((a, b) => a.name.localeCompare(b.name));
+    const all = [...topics()].sort(byName);
     if (!q) return all;
     return all.filter(
       (f) => f.name.toLowerCase().includes(q) || f.members.some((m) => m.displayName.toLowerCase().includes(q)),

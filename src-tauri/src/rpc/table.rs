@@ -303,6 +303,15 @@ pub static METHODS: &[Method] = &[
         call: |b, p, v| b.pr_merge(p, params(v)?),
     },
     Method {
+        name: "projects.list",
+        description: "The tree the sidebar draws, in its order: spaces with their projects and branch units (each with its issue key), then topics by name with their members.",
+        params: no_params,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, _| b.projects_list(),
+    },
+    Method {
         name: "autopilot.state",
         description: "The autopilot's queue: each item with its stored state, whether its session is live and whether its worktree is gone.",
         params: no_params,

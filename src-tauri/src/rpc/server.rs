@@ -481,6 +481,7 @@ pub trait Backend: Send + Sync {
     fn watching_sessions(&self) {}
     fn kind(&self, principal: &Principal) -> CallerKind;
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
+    fn projects_list(&self) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
@@ -681,6 +682,9 @@ pub mod tests {
         }
         fn sessions_list(&self, p: ListParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": "s1", "limit": p.limit }]))
+        }
+        fn projects_list(&self) -> Result<Value, RpcError> {
+            Ok(json!({ "spaces": [], "topics": [] }))
         }
         fn session_tail(&self, p: TailParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": p.id }]))

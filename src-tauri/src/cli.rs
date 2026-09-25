@@ -8,13 +8,14 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 15] = [
-    "sessions", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
+const COMMANDS: [&str; 16] = [
+    "sessions", "projects", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
     "ask", "pr", "autopilot", "mcp",
 ];
 
 const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
+  tori projects [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
   tori session wait <id> [--timeout <secs>] [--json]
   tori session pending <id> [--json]
@@ -108,6 +109,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
     let rest = &args[1..];
     match args[0].as_str() {
         "sessions" => sessions(rest),
+        "projects" => projects(rest),
         "session" => match rest.first().map(String::as_str) {
             Some("tail") => session_tail(&rest[1..]),
             Some("wait") => session_wait(&rest[1..]),
@@ -209,6 +211,46 @@ fn sessions(args: &[String]) -> Result<(), Failure> {
     let rows = rows.as_array().cloned().unwrap_or_default();
     let table: Vec<[String; 7]> = rows.iter().map(session_cells).collect();
     write_table(&mut out, ["ID", "AGENT", "ACCOUNT", "STATE", "BRANCH", "FOLDER", "TITLE"], &table)
+}
+
+fn projects(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["json"])?;
+    let tree = connect()?.call("projects.list", json!({}))?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{tree}")?);
+    }
+    for line in project_lines(&tree) {
+        writeln!(out, "{line}")?;
+    }
+    Ok(())
+}
+
+fn project_lines(tree: &Value) -> Vec<String> {
+    let text = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    let list = |v: &Value, key: &str| v.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let join = |cells: Vec<String>| cells.into_iter().filter(|c| !c.is_empty()).collect::<Vec<_>>().join("  ");
+    let mut lines = Vec::new();
+    for space in list(tree, "spaces") {
+        lines.push(join(vec!["space".into(), text(&space, "name"), home_relative(&text(&space, "path"))]));
+        for project in list(&space, "projects") {
+            lines.push(format!("  {}", join(vec![text(&project, "name"), home_relative(&text(&project, "path"))])));
+            for unit in list(&project, "units") {
+                let current = if unit["isCurrent"] == true { "current".to_string() } else { String::new() };
+                let cells = vec![text(&unit, "label"), text(&unit, "kind"), current, text(&unit, "issue")];
+                lines.push(format!("    {}", join(cells)));
+            }
+        }
+    }
+    for topic in list(tree, "topics") {
+        lines.push(join(vec!["topic".into(), text(&topic, "name"), text(&topic, "branch")]));
+        for member in list(&topic, "members") {
+            let at = member.get("worktreePath").and_then(Value::as_str).unwrap_or("");
+            let cells = vec![text(&member, "displayName"), home_relative(at), text(&member["state"], "kind")];
+            lines.push(format!("  {}", join(cells)));
+        }
+    }
+    lines
 }
 
 fn write_table<const N: usize>(out: &mut impl Write, header: [&str; N], table: &[[String; N]]) -> Result<(), Failure> {
@@ -1002,6 +1044,30 @@ mod tests {
         let refused = crate::rpc::frame::RpcError::new(crate::rpc::frame::INVALID_PARAMS, "to 2 is before turn 3");
         let printed = Failure::Client(client::ClientError::Rpc(refused)).to_string();
         assert!(printed.contains("to 2 is before turn 3"), "{printed}");
+    }
+
+    #[test]
+    fn projects_print_the_tree_in_the_order_it_came() {
+        let tree = json!({
+            "spaces": [{ "name": "work", "path": "/w", "projects": [{ "name": "repo", "path": "/w/repo", "units": [
+                { "label": "main", "kind": "plain", "isCurrent": true, "issue": "ABC-1" },
+                { "label": "feat", "kind": "plain", "isCurrent": false, "issue": null },
+            ]}]}],
+            "topics": [{ "name": "auth", "branch": "auth", "members": [
+                { "displayName": "repo", "worktreePath": "/w/repo/.tori/worktrees/auth", "state": { "kind": "present" } },
+            ]}],
+        });
+        assert_eq!(
+            project_lines(&tree),
+            [
+                "space  work  /w",
+                "  repo  /w/repo",
+                "    main  plain  current  ABC-1",
+                "    feat  plain",
+                "topic  auth  auth",
+                "  repo  /w/repo/.tori/worktrees/auth  present",
+            ]
+        );
     }
 
     #[test]
