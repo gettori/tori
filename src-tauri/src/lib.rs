@@ -573,6 +573,7 @@ pub fn run() {
             rpc::autopilot_stop,
             rpc::autopilot_status,
             rpc::autopilot_locked,
+            rpc::autopilot_closed_by_hand,
             rpc::autopilot_state,
             rpc::autopilot_log,
             model::model_context_caps,

@@ -1154,7 +1154,7 @@ export default function ChatView(props: {
       status: asksFor(props.sessionId).length ? "waitingForAnswer" : chatStatus(state),
       background: outstandingBackground(state),
       visible: props.active,
-      worker: props.spawner !== undefined,
+      spawner: props.spawner,
     });
   });
 
@@ -2172,7 +2172,7 @@ export default function ChatView(props: {
         // cannot fork has no way to carry the conversation across, and offering
         // "rewind to here" there would promise the tree *and* the conversation
         // and deliver only the tree.
-        rewindTsFor={(turnId) => (tier().rewind === "fork" ? turnStamps()[turnId] ?? null : null)}
+        rewindTsFor={(turnId) => (tier().rewind === "fork" && !locked() ? turnStamps()[turnId] ?? null : null)}
         agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
         laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
         blockedIn={blockedIn}

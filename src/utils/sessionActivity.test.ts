@@ -46,6 +46,7 @@ const {
   socketReports,
   shouldPollAccumulatedDiff,
   branchOwner,
+  relayed,
   resetSessionActivityForTests,
 } = await import("./sessionActivity");
 const { trackFolders, resetSessionStoreForTests } = await import("./sessionStore");
@@ -346,6 +347,35 @@ describe("the needs-you notification", () => {
     await blocks("blocked-c", "session C");
     expect(bridge.notified.map((n) => n.title)).toContain("session C");
     dropLiveChat("blocked-c");
+  });
+});
+
+describe("a worker's needs-you", () => {
+  const worker = (spawner?: string) => ({
+    sessionId: "w",
+    sessionName: "worker",
+    agentId: "claude",
+    folderPath: FOLDER,
+    tabId: "chat:w",
+    visible: false,
+    status: "waitingForAnswer" as const,
+    ...(spawner ? { spawner } : {}),
+  });
+
+  it("stays with the autopilot while it runs", () => {
+    expect(relayed(worker("pilot"), new Set(), true)).toBe(true);
+  });
+
+  it("notifies once the autopilot that spawned it has stopped", () => {
+    expect(relayed(worker("pilot"), new Set(), false)).toBe(false);
+  });
+
+  it("stays with a spawning chat that is still open", () => {
+    expect(relayed(worker("chat-a"), new Set(["chat-a"]), false)).toBe(true);
+  });
+
+  it("is never relayed for a session nobody spawned", () => {
+    expect(relayed(worker(), new Set(["chat-a"]), true)).toBe(false);
   });
 });
 

@@ -16,6 +16,7 @@ import { on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
 import { allAsks, answerAsk, type SocketAsk } from "./socketAsks";
 import { activityOf, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
 import { findSession } from "./sessionStore";
+import { noteAutopilotOn } from "./sessionActivity";
 import { toriNote } from "./toriNote";
 import { saveSettings, settings } from "../panels/Settings/settingsStore";
 
@@ -42,6 +43,8 @@ export { runner };
 const [view, setView] = createSignal<AutopilotView>("workspace");
 const [popupOpen, setPopupOpen] = createSignal(false);
 export { view, setView, popupOpen, setPopupOpen };
+
+const pilotOn = (state: RunnerStatus["state"]) => state === "starting" || state === "idle" || state === "working";
 
 /** Whether a view can attach to the session: it exists once a turn has started,
  *  and attaching before that would spawn a second child on the same id. */
@@ -156,10 +159,14 @@ export function watchAutopilot() {
   on(TOGGLE_AUTOPILOT_POPUP, () => settings.autopilot.available && view() === "workspace" && setPopupOpen(!popupOpen()));
   void listen<RunnerStatus>("autopilot://status", (e) => {
     setRunner(e.payload);
+    noteAutopilotOn(pilotOn(e.payload.state));
     void refreshLocked();
   }).catch(() => {});
   void invoke<RunnerStatus>("autopilot_status")
-    .then(setRunner)
+    .then((s) => {
+      setRunner(s);
+      noteAutopilotOn(pilotOn(s.state));
+    })
     .catch(() => {});
   void listen<AutopilotEvent>("autopilot://changed", (e) => {
     applyChange(e.payload);

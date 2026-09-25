@@ -31,9 +31,9 @@ export type LiveChat = {
    *  mints its session id before any transcript exists, so selecting its tab
    *  usually resolves only as far as its branch. */
   visible: boolean;
-  /** Spawned by another session, which relays its questions, so it never
-   *  notifies on its own. */
-  worker?: boolean;
+  /** The session that spawned it, which relays its questions while it is
+   *  there to; see `relayed` in sessionActivity. */
+  spawner?: string;
 };
 
 const [liveChats, setLiveChats] = createSignal<LiveChat[]>([]);

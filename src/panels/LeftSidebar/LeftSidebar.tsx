@@ -2147,6 +2147,7 @@ export default function LeftSidebar(props: {
       // reclaim - `chat_close` is a no-op for a session that is not live, so
       // this is safe for every session, chat or not.
       await invoke("chat_close", { sessionId: s.id, reason: "killed" }).catch(() => {});
+      void invoke("autopilot_closed_by_hand", { session: s.id }).catch(() => {});
       // Any tab driving it closes too, rather than sitting on a transcript that
       // no longer exists.
       emitWith<SessionDeleted>(SESSION_DELETED, { sessionId: s.id });

@@ -23,7 +23,7 @@ import { createSignal, createMemo, createEffect, createRoot, on } from "solid-js
 import { invoke } from "@tauri-apps/api/core";
 import type { LiveTab } from "./events";
 import { sessions, type SessionMeta } from "./sessionStore";
-import { liveChats, liveChatIds } from "./chatSessions";
+import { liveChats, liveChatIds, type LiveChat } from "./chatSessions";
 import {
   socketState,
   statusFromDot,
@@ -100,6 +100,9 @@ export function noteAttention(sessionId: string | null, focused: boolean) {
   setSelectedSessionId(sessionId);
   setWindowFocused(focused);
 }
+
+const [autopilotOn, setAutopilotOn] = createSignal(false);
+export { setAutopilotOn as noteAutopilotOn };
 
 /** Every watched branch-unit and whether its pull request wants looking at.
  *  Rebuilt whenever the forge answers or the tree changes. */
@@ -514,7 +517,8 @@ createRoot(() => {
   createEffect(
     on(lastTransition, (event) => {
       if (!event) return;
-      if (liveChats().some((c) => c.sessionId === event.sessionId && c.worker)) return;
+      const chat = liveChats().find((c) => c.sessionId === event.sessionId);
+      if (chat && relayed(chat, liveChatIds(), autopilotOn())) return;
       if (shouldSuppressNotification(event, selectedSessionId() ?? undefined, windowFocused(), onScreenChats()))
         return;
       void notifyNeedsYou(event);
@@ -560,4 +564,12 @@ export function resetSessionActivityForTests() {
   setSelectedSessionId(null);
   setWindowFocused(true);
   setForgeUnits([]);
+}
+
+/** Whether a worker's question reaches you through its spawner instead of an OS
+ *  notification: while the chat that spawned it is open, or while the autopilot
+ *  runs. A worker the autopilot left behind when it stopped notifies like any session. */
+export function relayed(chat: LiveChat, live: ReadonlySet<string>, autopilotOn: boolean): boolean {
+  if (!chat.spawner) return false;
+  return autopilotOn || live.has(chat.spawner);
 }
