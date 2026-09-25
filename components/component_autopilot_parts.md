@@ -2,7 +2,7 @@
 summary: autopilot UI lives in src/components/Autopilot as props only parts, scenes included; the cockpit wires them to the session
 status: current
 updated: 2026-09-25
-source: "plan \"Autopilot design (#201): Tori token pass and Storybook components\" (personal/tori, branch `orchestrator`, issue gettori/tori#201); commits 30a046ea, 821fbf48, 9e964b95; `src/components/Autopilot/`; plan \"Autopilot session and the cockpit (#205)\", commits 4b309f03, 669596a1; restyle for gettori/tori#207, commits e7c57d49, cec896d9, df821076, 251e53fa"
+source: "plan \"Autopilot design (#201): Tori token pass and Storybook components\" (personal/tori, branch `orchestrator`, issue gettori/tori#201); commits 30a046ea, 821fbf48, 9e964b95; `src/components/Autopilot/`; plan \"Autopilot session and the cockpit (#205)\", commits 4b309f03, 669596a1; restyle for gettori/tori#207, commits e7c57d49, cec896d9, df821076, 251e53fa; plan \"Autopilot hard lock, release on stop, reconcile on start (#209)\" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd"
 ---
 
 # Autopilot parts
@@ -11,7 +11,7 @@ source: "plan \"Autopilot design (#201): Tori token pass and Storybook component
 
 ## Responsibility
 
-It draws. It owns no state, reads no store and calls no `invoke`: every component takes what it shows as props and reports clicks through callbacks. [[component_autopilot_cockpit]] wires them to the session and its state on disk; enforcing the lock outside the tab itself is #209.
+It draws. It owns no state, reads no store and calls no `invoke`: every component takes what it shows as props and reports clicks through callbacks. [[component_autopilot_cockpit]] wires them to the session and its state on disk; #209 wired the lock marks: `Tab.locked` through the tab registry's `TabDescriptor.locked`, `HistoryRow.locked` with history Delete hidden, and `LockedBar` in place of `ChatView`'s composer, where question and permission cards render read only (`onAnswer` absent) and rewind is hidden.
 
 - **`Wheel`**: the mark, one shape per state (strike off, turn working, count needs, "!" error), plus a still dot under reduced motion and a `quiet` tone for a row the autopilot started but no longer drives. Badges ring against `var(--wheel-ring, var(--canvas-card))`, a fallback rather than a declaration on `.wheel`, so a host on another surface can set it.
 - **`AutopilotSwitch`**: the title bar pill, Cockpit or Workspace, with no start or stop of its own. It keeps one width whichever view is showing: each label reserves the widest one's room through a hidden `::after` with `content: attr(data-widest)`, the active gap is the same in every state, and the 14px wheel is padded to the panel icon's 16px. The active Workspace segment wears the brand, Cockpit the violet. Clicking the active Workspace segment toggles the popup.
