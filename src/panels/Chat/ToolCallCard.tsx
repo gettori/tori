@@ -57,7 +57,7 @@ export default function ToolCallCard(props: {
   also?: ToolItem[];
   sessionId: string;
   cwd: string;
-  onAnswer: (card: ToolItem, answer: Answer) => void;
+  onAnswer?: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
   /** Undo one hunk. Resolves true when the file was actually rewritten, which is
    *  when the card's diff has to be re-read. */
@@ -387,7 +387,7 @@ export default function ToolCallCard(props: {
       <Show when={props.card.approval}>
         <PermissionPrompt
           card={props.card}
-          onAnswer={(answer) => props.onAnswer(props.card, answer)}
+          onAnswer={props.onAnswer ? (answer) => props.onAnswer?.(props.card, answer) : undefined}
           onSetMode={props.onSetMode}
         />
       </Show>

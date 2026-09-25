@@ -407,7 +407,8 @@ export function hookFailed(it: Pick<HookItem, "exitCode">): boolean {
   return it.exitCode !== null && it.exitCode !== 0;
 }
 
-export type QueuedInput = { id: string; text: string };
+// `held` marks a tab's first prompt, which the autopilot's lock lets through.
+export type QueuedInput = { id: string; text: string; held?: true };
 
 /** `model` is the resolved id `turnStarted` reported for this turn, or null
  *  for a turn that never named one (replayed history has no turn frames). The
@@ -1812,8 +1813,8 @@ export function replayFold(ev: ChatEvent, replaying: boolean): ReplayFold {
 
 /** Input typed before the sent turn was acknowledged. Queued, never dropped,
  *  and never sent from here: the flush driver decides. */
-export function enqueue(s: ChatState, text: string): QueuedInput {
-  const item = { id: nextId(s, "q"), text };
+export function enqueue(s: ChatState, text: string, held = false): QueuedInput {
+  const item: QueuedInput = held ? { id: nextId(s, "q"), text, held: true } : { id: nextId(s, "q"), text };
   s.queue.push(item);
   return item;
 }

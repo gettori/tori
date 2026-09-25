@@ -321,6 +321,31 @@ pub fn autopilot_status(rpc: tauri::State<RpcState>) -> runner::Status {
 }
 
 #[tauri::command]
+pub fn autopilot_locked(rpc: tauri::State<RpcState>) -> Vec<String> {
+    let mut sessions: Vec<String> = rpc.autopilot.sessions().into_iter().chain(rpc.states.spawned()).collect();
+    sessions.sort();
+    sessions.dedup();
+    sessions.retain(|id| is_locked(&rpc.states, &rpc.autopilot, &rpc.runner, id));
+    sessions
+}
+
+pub const LOCKED: &str = "locked while the autopilot drives it; stop the autopilot to type";
+
+pub fn is_locked(states: &SessionStates, autopilot: &AutopilotStore, runner: &Runner, session: &str) -> bool {
+    let spawner = states.spawner_of(session).map(|s| runner.resolve_spawner(&s));
+    runner::locks(&runner.status(), autopilot.state_for_session(session), spawner.as_deref())
+}
+
+// No socket means no autopilot, so nothing is locked.
+pub fn refuse_locked(app: &AppHandle, session: &str) -> Result<(), String> {
+    let Some(rpc) = app.try_state::<RpcState>() else { return Ok(()) };
+    match is_locked(&rpc.states, &rpc.autopilot, &rpc.runner, session) {
+        true => Err(LOCKED.to_string()),
+        false => Ok(()),
+    }
+}
+
+#[tauri::command]
 pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<String>, readings: Vec<quotas::Reading>) {
     if let Some(windows) = rpc.quotas.record(&agent, profile.as_deref(), readings) {
         let event = json!({

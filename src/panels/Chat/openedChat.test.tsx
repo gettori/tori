@@ -87,7 +87,7 @@ const TAB = "chat:restored-1";
 const SESSION = "s-restored";
 
 const spawns = () => invokes.filter((i) => i.cmd === "chat_spawn");
-const sends = () => invokes.filter((i) => i.cmd === "chat_send");
+const sends = () => invokes.filter((i) => i.cmd === "chat_send" || i.cmd === "chat_send_held");
 const historyCalls = () => invokes.filter((i) => i.cmd === "chat_history");
 
 /** A finished user turn, as the transcript replays one. */

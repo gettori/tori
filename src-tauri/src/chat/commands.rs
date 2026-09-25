@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::agents::{self, ChatConfig, ChatEffortExtra, ChatTransport};
 
@@ -465,6 +465,20 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
 #[tauri::command]
 pub async fn chat_send(
     state: State<'_, ChatState>,
+    app: AppHandle,
+    session_id: String,
+    blocks: Vec<ContentBlock>,
+) -> Result<(), String> {
+    crate::rpc::refuse_locked(&app, &session_id)?;
+    state.0.send(&session_id, blocks)
+}
+
+/// The message a tab held until its session could take one: a draft's first
+/// send, or the prompt `session.spawn` handed a worker. Not a person typing
+/// into a running session, so the autopilot's lock does not apply.
+#[tauri::command]
+pub async fn chat_send_held(
+    state: State<'_, ChatState>,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
@@ -479,14 +493,21 @@ pub async fn chat_send(
 #[tauri::command]
 pub async fn chat_steer(
     state: State<'_, ChatState>,
+    app: AppHandle,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
+    crate::rpc::refuse_locked(&app, &session_id)?;
     state.0.steer(&session_id, blocks)
 }
 
 #[tauri::command]
-pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
+pub async fn chat_interrupt(
+    state: State<'_, ChatState>,
+    app: AppHandle,
+    session_id: String,
+) -> Result<(), String> {
+    crate::rpc::refuse_locked(&app, &session_id)?;
     state.0.interrupt(&session_id)
 }
 

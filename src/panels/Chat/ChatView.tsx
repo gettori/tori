@@ -17,6 +17,8 @@ import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
+import { isLocked, items as autopilotItems, refreshLocked, setView, stopAutopilot } from "../../utils/autopilotStore";
+import LockedBar from "../../components/Autopilot/LockedBar";
 import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
@@ -909,6 +911,8 @@ export default function ChatView(props: {
         )
         .then((res) => {
           setOwnership(res.ownership);
+          // The spawner mark lands with the spawn, before any item names this session.
+          if (props.spawner) void refreshLocked();
           // The account of record is the backend's answer, not the tab's guess:
           // a resume passing `null` runs under the transcript's own account, and
           // a tab that kept its `null` would file this session's quota readings
@@ -1081,7 +1085,7 @@ export default function ChatView(props: {
       // The composer showed it while it waited; the turn now appearing above is
       // where it lives from here.
       setDraft(composerKey(), "");
-      onSend(held);
+      onSend(held, "chat_send_held");
     });
   });
 
@@ -1193,10 +1197,12 @@ export default function ChatView(props: {
   const tier = () => chatTier(findAdapter(props.agentId).chat?.transport);
 
 
-  async function sendBlocks(blocks: ContentBlock[]) {
+  // A held message is exempt from the autopilot's lock: it is the first prompt
+  // this session was opened with, not someone typing into a running one.
+  async function sendBlocks(blocks: ContentBlock[], command: "chat_send" | "chat_send_held" = "chat_send") {
     edit((s) => pushUserTurn(s, blocks));
     try {
-      await invoke("chat_send", { sessionId: props.sessionId, blocks });
+      await invoke(command, { sessionId: props.sessionId, blocks });
     } catch (e) {
       edit((s) => {
         clearAwaitingTurn(s);
@@ -1219,7 +1225,7 @@ export default function ChatView(props: {
           const t = takeForSend(s);
           if (t) taken.push(t);
         });
-        if (taken.length) void sendBlocks([{ type: "text", text: taken[0].text }]);
+        if (taken.length) void sendBlocks([{ type: "text", text: taken[0].text }], taken[0].held ? "chat_send_held" : "chat_send");
       },
     ),
   );
@@ -1289,7 +1295,11 @@ export default function ChatView(props: {
   // the chips stay put and visible: a queued message is sent later, and silently
   // emptying the composer now would leave the user unable to see what the next
   // turn is going to carry.
-  function onSend(text: string) {
+  // The autopilot drives this session: no composer, and its questions are the autopilot's to answer.
+  const locked = () => isLocked(props.sessionId);
+  const lockedItem = () => autopilotItems().find((i) => i.session === props.sessionId && !["done", "failed"].includes(i.state));
+
+  function onSend(text: string, command: "chat_send" | "chat_send_held" = "chat_send") {
     // A draft being edited in a scratch tab sends what the editor holds right
     // now, saved or not, and the tab and its file go with it.
     const scratch = linkedScratchFor(composerKey());
@@ -1322,7 +1332,7 @@ export default function ChatView(props: {
     // send that silently did nothing is the worst of the three outcomes.
     const held = stopped();
     if (held) {
-      if (text) edit((s) => enqueue(s, text));
+      if (text) edit((s) => enqueue(s, text, command === "chat_send_held"));
       if (!heldSaid()) {
         setHeldSaid(true);
         edit((s) => pushNotice(s, heldNotice(held), "error"));
@@ -1337,13 +1347,13 @@ export default function ChatView(props: {
       // Attachment-only is a valid thing to send but not a valid thing to
       // queue: the queue carries text, so an empty entry would flush as an
       // empty turn once the running one ends.
-      if (text) edit((s) => enqueue(s, text));
+      if (text) edit((s) => enqueue(s, text, command === "chat_send_held"));
       return;
     }
     const attached = takePending(composerKey());
     const blocks: ContentBlock[] = text ? [...attached, { type: "text", text }] : attached;
     if (!blocks.length) return;
-    void sendBlocks(blocks);
+    void sendBlocks(blocks, command);
   }
 
   function onAnswer(card: ToolItem, answer: Answer) {
@@ -2154,8 +2164,8 @@ export default function ChatView(props: {
           if (!resolved) return null;
           return models().find((m) => m.resolvedModel === resolved)?.label ?? resolved;
         }}
-        onAnswer={onAnswer}
-        onAnswerQuestion={onAnswerQuestion}
+        onAnswer={locked() ? undefined : onAnswer}
+        onAnswerQuestion={locked() ? undefined : onAnswerQuestion}
         onSetMode={onSelectMode}
         onRevertHunk={onRevertHunk}
         // Gated on the declaration, not on the checkpoint alone: a agent that
@@ -2197,97 +2207,110 @@ export default function ChatView(props: {
         active={props.active}
       />
 
-      <Composer
-        watching={watchedLane()}
-        running={running()}
-        steering={canSteer()}
-        steerCost={steerCostLabel(tier())}
-        queue={state.queue}
-        attachments={pendingFor(composerKey())}
-        draft={draftFor(composerKey())}
-        onDraftChange={(t) => setDraft(composerKey(), t)}
-        history={historyFor(composerKey())}
-        // This session's own, and the agent's last answer until it has one. A
-        // handshake takes a moment to land and a chat opened only to read never
-        // gets one at all, and `/` opening on an empty menu in either is worse
-        // than a list that may name a command since removed - which the agent
-        // refuses with a sentence. Replaced, never merged: once the session has
-        // spoken, it is the only authority on what it takes.
-        commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, resolvedProfile()))}
-        loadFiles={attachments.loadProjectFiles}
-        held={state.queueHeld}
-        disabled={refused() || state.ended}
-        onSend={onSend}
-        onAttachFile={attachments.onAttachFile}
-        onAttachPaths={attachments.onAttachPaths}
-        uploads={attachmentSources(tier(), state.capabilities).uploads}
-        attachLongPastes={settings.chatDefaults.attachLongPastes}
-        fileExists={(path) => invoke<boolean>("file_exists", { path })}
-        handle={(h) => (composer = h)}
-        linked={linkedName()}
-        onOpenInEditor={() => void openDraftInEditor(composerKey())}
-        onUnlink={() => void unlinkScratch(composerKey(), { closeTab: true })}
-        onAttachUploads={attachments.onAttachUploads}
-        onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
-        onInterrupt={onInterrupt}
-        onDropQueued={(id) => edit((s) => removeQueued(s, id))}
-        onDropAttachment={(id) => dropPending(composerKey(), id)}
-        onSendQueued={() => edit((s) => releaseQueue(s))}
-        onDiscardQueued={() => edit((s) => discardQueue(s))}
-        // One line for all three switches, above the input. In the bar it sat
-        // beside whichever pill was pending and pushed the rest along.
-        notice={pendingSwitchNotice(state)}
-        // Everything the next turn will run under: the mode, the model and its
-        // effort. All the switches land at the same next-turn boundary, so
-        // they sit together in the bar under the input.
-        controls={
-          props.cockpit ? undefined : <>
-            {/* Model, then its thinking level, then the mode. The order is the
-                dependency: the effort levels on offer are a property of the
-                selected model, so the control that decides them comes first,
-                and the mode - which no model constrains - sits at the end. */}
-            <ModelPicker
-              models={models()}
-              // One provider, which is the whole of the lock: the palette has
-              // no locked mode, it is simply handed a list of one.
-              providers={[
-                lockedProvider(findAdapter(props.agentId), models(), {
-                  version: agentVersion(props.agentId),
-                  profile: resolvedProfile(),
-                  account: profileLabel(props.agentId, resolvedProfile()),
-                }),
-              ]}
-              value={shownModel()?.value ?? null}
-              agentId={props.agentId}
-              profile={resolvedProfile()}
-              profileLabel={profileLabel(props.agentId, resolvedProfile())}
-              effort={shownEffort(state)}
-              modelPending={modelPending(state)}
-              effortPending={effortPending(state)}
-              disabled={refused() || state.ended}
-              onSelectModel={onSelectModel}
-              onSelectEffort={onSelectEffort}
-            />
-            <ModeSelector
-              mode={shownModeValue()}
-              modes={offered().modes}
-              pending={modePending(state)}
-              refusals={state.refusedModes}
-              disabled={refused() || state.ended}
-              onSelect={onSelectMode}
-            />
-            {/* Last, after the three Tori has controls of its own for: these
-                are the agent's, in the agent's own words, and their order is
-                the order it published them in. */}
-            <ConfigMirror
-              options={state.configOptions}
-              disabled={refused() || state.ended}
-              onSet={applyConfigOption}
-            />
-            <FollowToggle />
-          </>
+      <Show
+        when={!locked()}
+        fallback={
+          <LockedBar
+            now={lockedItem()?.note ?? "working"}
+            progress={0}
+            waiting={lockedItem()?.state === "waiting_on_you"}
+            onBackToAutopilot={() => setView("autopilot")}
+            onStop={() => void stopAutopilot()}
+          />
         }
-      />
+      >
+        <Composer
+          watching={watchedLane()}
+          running={running()}
+          steering={canSteer()}
+          steerCost={steerCostLabel(tier())}
+          queue={state.queue}
+          attachments={pendingFor(composerKey())}
+          draft={draftFor(composerKey())}
+          onDraftChange={(t) => setDraft(composerKey(), t)}
+          history={historyFor(composerKey())}
+          // This session's own, and the agent's last answer until it has one. A
+          // handshake takes a moment to land and a chat opened only to read never
+          // gets one at all, and `/` opening on an empty menu in either is worse
+          // than a list that may name a command since removed - which the agent
+          // refuses with a sentence. Replaced, never merged: once the session has
+          // spoken, it is the only authority on what it takes.
+          commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, resolvedProfile()))}
+          loadFiles={attachments.loadProjectFiles}
+          held={state.queueHeld}
+          disabled={refused() || state.ended}
+          onSend={onSend}
+          onAttachFile={attachments.onAttachFile}
+          onAttachPaths={attachments.onAttachPaths}
+          uploads={attachmentSources(tier(), state.capabilities).uploads}
+          attachLongPastes={settings.chatDefaults.attachLongPastes}
+          fileExists={(path) => invoke<boolean>("file_exists", { path })}
+          handle={(h) => (composer = h)}
+          linked={linkedName()}
+          onOpenInEditor={() => void openDraftInEditor(composerKey())}
+          onUnlink={() => void unlinkScratch(composerKey(), { closeTab: true })}
+          onAttachUploads={attachments.onAttachUploads}
+          onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
+          onInterrupt={onInterrupt}
+          onDropQueued={(id) => edit((s) => removeQueued(s, id))}
+          onDropAttachment={(id) => dropPending(composerKey(), id)}
+          onSendQueued={() => edit((s) => releaseQueue(s))}
+          onDiscardQueued={() => edit((s) => discardQueue(s))}
+          // One line for all three switches, above the input. In the bar it sat
+          // beside whichever pill was pending and pushed the rest along.
+          notice={pendingSwitchNotice(state)}
+          // Everything the next turn will run under: the mode, the model and its
+          // effort. All the switches land at the same next-turn boundary, so
+          // they sit together in the bar under the input.
+          controls={
+            props.cockpit ? undefined : <>
+              {/* Model, then its thinking level, then the mode. The order is the
+                  dependency: the effort levels on offer are a property of the
+                  selected model, so the control that decides them comes first,
+                  and the mode - which no model constrains - sits at the end. */}
+              <ModelPicker
+                models={models()}
+                // One provider, which is the whole of the lock: the palette has
+                // no locked mode, it is simply handed a list of one.
+                providers={[
+                  lockedProvider(findAdapter(props.agentId), models(), {
+                    version: agentVersion(props.agentId),
+                    profile: resolvedProfile(),
+                    account: profileLabel(props.agentId, resolvedProfile()),
+                  }),
+                ]}
+                value={shownModel()?.value ?? null}
+                agentId={props.agentId}
+                profile={resolvedProfile()}
+                profileLabel={profileLabel(props.agentId, resolvedProfile())}
+                effort={shownEffort(state)}
+                modelPending={modelPending(state)}
+                effortPending={effortPending(state)}
+                disabled={refused() || state.ended}
+                onSelectModel={onSelectModel}
+                onSelectEffort={onSelectEffort}
+              />
+              <ModeSelector
+                mode={shownModeValue()}
+                modes={offered().modes}
+                pending={modePending(state)}
+                refusals={state.refusedModes}
+                disabled={refused() || state.ended}
+                onSelect={onSelectMode}
+              />
+              {/* Last, after the three Tori has controls of its own for: these
+                  are the agent's, in the agent's own words, and their order is
+                  the order it published them in. */}
+              <ConfigMirror
+                options={state.configOptions}
+                disabled={refused() || state.ended}
+                onSet={applyConfigOption}
+              />
+              <FollowToggle />
+            </>
+          }
+        />
+      </Show>
 
       <Show when={confirmReq()}>
         {(req) => (

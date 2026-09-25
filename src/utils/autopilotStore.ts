@@ -105,6 +105,14 @@ const [holds, setHolds] = createSignal<Hold[]>([]);
 const [activity, setActivity] = createSignal<ActivityItem[]>([]);
 export { items, activity };
 
+const [locked, setLocked] = createSignal<ReadonlySet<string>>(new Set());
+export const isLocked = (session: string | null | undefined) => !!session && locked().has(session);
+
+export async function refreshLocked() {
+  const ids = await invoke<string[]>("autopilot_locked").catch(() => null);
+  if (ids) setLocked(new Set(ids));
+}
+
 const ACTIVITY_KEPT = 50;
 
 // Newest first; the log read at start is older than anything that arrived live meanwhile.
@@ -146,12 +154,19 @@ export function watchAutopilot() {
     setView(view() === "autopilot" ? "workspace" : "autopilot");
   });
   on(TOGGLE_AUTOPILOT_POPUP, () => settings.autopilot.available && view() === "workspace" && setPopupOpen(!popupOpen()));
-  void listen<RunnerStatus>("autopilot://status", (e) => setRunner(e.payload)).catch(() => {});
+  void listen<RunnerStatus>("autopilot://status", (e) => {
+    setRunner(e.payload);
+    void refreshLocked();
+  }).catch(() => {});
   void invoke<RunnerStatus>("autopilot_status")
     .then(setRunner)
     .catch(() => {});
-  void listen<AutopilotEvent>("autopilot://changed", (e) => applyChange(e.payload)).catch(() => {});
+  void listen<AutopilotEvent>("autopilot://changed", (e) => {
+    applyChange(e.payload);
+    void refreshLocked();
+  }).catch(() => {});
   void loadAutopilot();
+  void refreshLocked();
 }
 
 /** What waits on the user: every hold, and any other card shown in the autopilot's chat. */

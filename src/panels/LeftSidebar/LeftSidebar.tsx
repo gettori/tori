@@ -1,5 +1,6 @@
 import { createSignal, For, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { isLocked } from "../../utils/autopilotStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
@@ -2123,6 +2124,7 @@ export default function LeftSidebar(props: {
   }
 
   async function deleteSession(s: SessionMeta) {
+    if (isLocked(s.id)) return;
     // A session with no transcript is a different act wearing the same button:
     // its conversation lives wherever its agent keeps it, no protocol verb
     // removes one, and all that happens here is that Tori stops listing it.

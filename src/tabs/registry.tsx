@@ -37,6 +37,7 @@ export type TabDescriptor = {
   trailingEdge?: () => JSX.Element;
   activate: (t: UnifiedTab) => void;
   close: (t: UnifiedTab, e: Event) => void;
+  locked?: (t: UnifiedTab) => JSX.Element | undefined;
   /** A tab the next open of its kind replaces, drawn so it reads as one. */
   transient?: (t: UnifiedTab) => boolean;
   /** Double click, which every editor with a replaceable tab uses to keep it.
@@ -135,6 +136,7 @@ export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripP
       icon={d.icon(t)}
       trailing={d.dots?.(t)}
       onClose={(e) => d.close(t, e)}
+      locked={d.locked?.(t)}
     >
       {d.title(t)}
     </Tab>

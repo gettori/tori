@@ -22,6 +22,7 @@ use super::events::{now_ms, EndReason, TurnBy};
 use super::hub::{Channel, Hub};
 use super::states::SessionStates;
 use crate::agents::ChatTransport;
+use crate::autopilot::State as ItemState;
 use crate::chat::commands::{spawn_session, SpawnRequest};
 use crate::chat::host::ChatState;
 use crate::chat::model::{ChatEvent, ContentBlock};
@@ -88,6 +89,20 @@ fn after_end(reason: EndReason, deaths_before: u32) -> AfterEnd {
     }
 }
 
+/// Whether a person is kept out of `session` while the autopilot drives it: an
+/// in flight item names it, or the autopilot spawned it and no item names it
+/// yet. `spawner` is already resolved, so a retired autopilot id reads as the
+/// current one. A worker whose item closed is released.
+pub fn locks(pilot: &Status, item: Option<ItemState>, spawner: Option<&str>) -> bool {
+    if !matches!(pilot.state, RunnerState::Starting | RunnerState::Idle | RunnerState::Working) {
+        return false;
+    }
+    match item {
+        Some(state) => matches!(state, ItemState::Running | ItemState::WaitingOnYou),
+        None => spawner.is_some() && spawner == pilot.session.as_deref(),
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 struct RunnerFile {
     #[serde(default)]
@@ -126,6 +141,13 @@ impl RunnerFile {
         }
         self.previous = previous.clone();
         previous
+    }
+}
+
+fn resolve(file: &RunnerFile, spawner: &str) -> String {
+    match &file.current {
+        Some(current) if file.retired.iter().any(|r| r == spawner) => current.clone(),
+        _ => spawner.to_string(),
     }
 }
 
@@ -250,11 +272,7 @@ impl Runner {
     /// The autopilot a worker's recorded spawner stands for now: a retired
     /// autopilot id means the current one.
     pub fn resolve_spawner(&self, spawner: &str) -> String {
-        let file = RunnerFile::load(&self.file_path());
-        match file.current {
-            Some(current) if file.retired.iter().any(|r| r == spawner) => current,
-            _ => spawner.to_string(),
-        }
+        resolve(&RunnerFile::load(&self.file_path()), spawner)
     }
 
     // On a thread of its own: an ACP agent can take a minute to open, and a
@@ -425,6 +443,52 @@ mod tests {
             assert_eq!(after_end(EndReason::Closed, deaths), AfterEnd::Off, "a stop or app exit");
             assert_eq!(after_end(EndReason::Killed, deaths), AfterEnd::Off);
         }
+    }
+
+    fn pilot(state: RunnerState) -> Status {
+        Status { state, session: Some("pilot".into()), ..Status::off() }
+    }
+
+    #[test]
+    fn an_in_flight_item_locks_its_session_only_while_the_autopilot_is_on() {
+        for on in [RunnerState::Starting, RunnerState::Idle, RunnerState::Working] {
+            assert!(locks(&pilot(on), Some(ItemState::Running), None));
+            assert!(locks(&pilot(on), Some(ItemState::WaitingOnYou), Some("pilot")));
+        }
+        for off in [RunnerState::Off, RunnerState::Error] {
+            assert!(!locks(&pilot(off), Some(ItemState::Running), Some("pilot")));
+        }
+    }
+
+    #[test]
+    fn a_closed_item_releases_its_worker_even_with_the_autopilot_on() {
+        let on = pilot(RunnerState::Idle);
+        for closed in [ItemState::Done, ItemState::Failed, ItemState::Queued] {
+            assert!(!locks(&on, Some(closed), Some("pilot")), "{closed:?}");
+        }
+    }
+
+    #[test]
+    fn a_worker_no_item_names_is_locked_only_when_the_autopilot_spawned_it() {
+        let on = pilot(RunnerState::Working);
+        assert!(locks(&on, None, Some("pilot")), "spawned before its item names it");
+        assert!(!locks(&on, None, Some("a-foreground-chat")), "another spawner's worker");
+        assert!(!locks(&on, None, None), "an ordinary session");
+    }
+
+    #[test]
+    fn a_retired_spawner_locks_once_resolved_to_the_current_autopilot() {
+        let dir = std::env::temp_dir().join(format!("tori-runner-locks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("runner.json");
+        let mut file = RunnerFile::default();
+        file.start("old", "claude");
+        file.start("pilot", "claude");
+        std::fs::write(&path, serde_json::to_string(&file).unwrap()).unwrap();
+        let resolved = resolve(&RunnerFile::load(&path), "old");
+        assert!(locks(&pilot(RunnerState::Idle), None, Some(&resolved)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn approval() -> super::super::approvals::Approval {

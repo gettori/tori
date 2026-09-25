@@ -7,6 +7,8 @@ import Button from "../../components/Button/Button";
 import { type MenuItem } from "../../components/Menu/rows";
 import Popover from "../../components/Popover/Popover";
 import HistoryRow from "./HistoryRow";
+import { LockMark } from "../../components/Autopilot/SessionMarks";
+import { isLocked } from "../../utils/autopilotStore";
 import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 import { sessions, historical, checkHistorical, markAdopted, type SessionMeta } from "../../utils/sessionStore";
 import { sessionStatus, sessionCertainty } from "../../utils/sessionActivity";
@@ -161,8 +163,9 @@ export default function HistoryPanel(props: {
   // read rather than a list you scan.
   const rowMenu = (s: SessionMeta): MenuItem[] => [
     { label: "Rename…", onClick: () => act(s, "rename") },
-    { separator: true },
-    { label: "Delete", danger: true, onClick: () => act(s, "delete") },
+    ...(isLocked(s.id)
+      ? []
+      : [{ separator: true } as const, { label: "Delete", danger: true, onClick: () => act(s, "delete") }]),
   ];
 
   const row = (s: SessionMeta) => {
@@ -178,6 +181,7 @@ export default function HistoryPanel(props: {
         when={ago(s.last_active)}
         active={isActive(s)}
         items={rowMenu(s)}
+        locked={isLocked(s.id) ? <LockMark /> : undefined}
         onOpen={() => act(s, "open")}
         onMenuOpenChange={(open) => (open ? setMenuRow(s.id) : releaseMenu(s.id))}
       />

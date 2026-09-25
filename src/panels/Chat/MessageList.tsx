@@ -241,7 +241,9 @@ export default function MessageList(props: {
    *  named one (replayed history). The header renders the agent name alone
    *  then, rather than blaming an old turn on the current model. */
   modelLabelFor: (turnId: string) => string | null;
-  onAnswer: (card: ToolItem, answer: Answer) => void;
+  /** Answer a permission prompt. Absent where nothing can be sent, which
+   *  renders every prompt read only, the same as `onAnswerQuestion`. */
+  onAnswer?: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
   /** Send the answers to a question. Absent where nothing can be sent, which
