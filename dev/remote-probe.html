@@ -1,0 +1,119 @@
+<!doctype html>
+<!--
+  Drive Tori's remote front from a browser, the way a phone will.
+
+  1. In Tori: Settings > Remote, pick an address, turn Remote access on.
+  2. Mint a credential on the Mac:  node dev/rpc-probe.mjs --no-wait --mint <name>
+  3. Serve this folder on the same address, from the repo root:
+       python3 -m http.server 47822 --bind <address> --directory dev
+     and open http://<address>:47822/remote-probe.html on the phone. Not as a
+     copied file: Chrome on Android will not let a page opened from a file
+     reach a local network address, and the connect fails with 1006.
+  4. Paste the URL from the Status row and the credential, press Connect.
+     Stop the server when done.
+
+  It authenticates, lists sessions, subscribes to the sessions topic, and logs
+  every event and the close. Turning Remote access off should log the close at
+  once. Pasting the process token from ~/.config/tori/rpc.json instead of a
+  credential should be refused.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tori remote probe</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 1.5rem; max-width: 48rem; }
+      label { display: block; margin-top: 0.75rem; }
+      input { width: 100%; font: inherit; padding: 0.3rem; box-sizing: border-box; }
+      button { margin-top: 0.75rem; font: inherit; }
+      pre { background: #f4f4f4; padding: 0.75rem; white-space: pre-wrap; word-break: break-all; }
+      .fail { color: #b00020; }
+      .ok { color: #1b5e20; }
+    </style>
+  </head>
+  <body>
+    <h1>Tori remote probe</h1>
+    <label>URL <input id="url" placeholder="ws://192.168.1.20:47821" /></label>
+    <label>Credential <input id="credential" placeholder="from rpc-probe.mjs --mint" /></label>
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <h2>Sessions</h2>
+    <pre id="sessions">(not connected)</pre>
+    <h2>Log</h2>
+    <pre id="log"></pre>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let socket = null;
+      let nextId = 1;
+      const pending = new Map();
+
+      function log(text, kind = "") {
+        const line = document.createElement("div");
+        line.className = kind;
+        line.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+        $("log").prepend(line);
+      }
+
+      function call(method, params = {}) {
+        const id = nextId++;
+        socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+        return new Promise((resolve) => pending.set(id, resolve));
+      }
+
+      function showSessions(rows) {
+        $("sessions").textContent = rows.length
+          ? rows.map((r) => `${r.live ? "live" : "    "}  ${r.dot ?? ""}  ${r.agent}  ${r.title || r.cwd}`).join("\n")
+          : "(no sessions)";
+      }
+
+      async function refresh() {
+        const list = await call("sessions.list", { limit: 20 });
+        if (list.error) return log(`sessions.list: ${list.error.message}`, "fail");
+        showSessions(list.result);
+        log(`sessions.list: ${list.result.length} row(s)`, "ok");
+      }
+
+      $("connect").onclick = () => {
+        const url = $("url").value.trim();
+        const token = $("credential").value.trim();
+        localStorage.setItem("tori-remote-url", url);
+        socket = new WebSocket(url);
+        log(`connecting to ${url}`);
+        socket.onopen = async () => {
+          $("connect").disabled = true;
+          $("disconnect").disabled = false;
+          const auth = await call("auth", { token });
+          if (auth.error) return log(`auth refused: ${auth.error.message}`, "fail");
+          log("authenticated", "ok");
+          await refresh();
+          const sub = await call("subscribe", { topic: "sessions" });
+          log(sub.error ? `subscribe: ${sub.error.message}` : "subscribed to sessions", sub.error ? "fail" : "ok");
+        };
+        socket.onmessage = (message) => {
+          const frame = JSON.parse(message.data);
+          if (frame.id != null && pending.has(frame.id)) {
+            pending.get(frame.id)(frame);
+            pending.delete(frame.id);
+          } else if (frame.method === "event") {
+            log(`event ${frame.params.data.kind ?? frame.params.topic}`);
+            if (frame.params.topic === "sessions") void refresh();
+          } else if (frame.error) {
+            // An error with no id answers the frame that was refused, the auth.
+            pending.forEach((resolve) => resolve(frame));
+            pending.clear();
+          }
+        };
+        socket.onclose = (e) => {
+          log(`closed (code ${e.code})`, "fail");
+          $("connect").disabled = false;
+          $("disconnect").disabled = true;
+        };
+        socket.onerror = () => log("connection error", "fail");
+      };
+
+      $("disconnect").onclick = () => socket?.close();
+      $("url").value = localStorage.getItem("tori-remote-url") ?? "";
+    </script>
+  </body>
+</html>

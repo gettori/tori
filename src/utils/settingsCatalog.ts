@@ -44,6 +44,7 @@ export type SettingSection =
   | "chat"
   | "autopilot"
   | "panes"
+  | "remote"
   | "root"
   | "danger";
 
@@ -69,6 +70,7 @@ export type SettingTab =
   | "appearance"
   | "integrations"
   | "panes"
+  | "remote"
   | "advanced";
 
 /** Not "Workspace": the panel already uses that word for a folder, and most of
@@ -119,6 +121,7 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "projects", label: "Projects", group: "Languages", icon: "shield-check", sections: ["trust"] },
   { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
   { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "forge"] },
+  { id: "remote", label: "Remote", group: "Application", icon: "smartphone", sections: ["remote"] },
   // Last in the rail because it is the only tab whose contents are not
   // settings: the base folder every space sits in, and the two actions that
   // replace or forget it.
@@ -156,6 +159,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   chat: "Chat",
   autopilot: "Autopilot",
   panes: "Panes",
+  remote: "Remote access",
   root: "Base folder",
   danger: "Danger zone",
 };
@@ -586,6 +590,29 @@ export const SETTINGS: SettingEntry[] = [
     section: "autopilot",
     label: "Workers at once",
     hint: "How many workers the autopilot runs at a time. Kept one under Warn above, so the autopilot fits too; the rest wait at the dock.",
+  },
+
+  {
+    id: "remote-on",
+    section: "remote",
+    label: "Remote access",
+    hint: "Lets a paired device reach Tori over the network on the address below. While on, this Mac is kept awake so the connection holds, which costs battery on a laptop.",
+  },
+  {
+    id: "remote-address",
+    section: "remote",
+    label: "Listen on",
+    hint: "One address on this Mac: a LAN address, your Tailscale address, or this Mac only. Tori never listens on every address at once.",
+  },
+  {
+    id: "remote-port",
+    section: "remote",
+    label: "Port",
+  },
+  {
+    id: "remote-status",
+    section: "remote",
+    label: "Status",
   },
 
   {

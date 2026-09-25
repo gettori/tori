@@ -200,7 +200,11 @@ mod tests {
 
         assert_eq!(remote.apply(&Config { enabled: false, ..on }), Status::Off);
         for phone in &mut phones {
-            assert!(phone.read().is_err(), "a remote client sees its connection end");
+            match phone.read() {
+                Ok(Message::Close(Some(frame))) => assert_eq!(u16::from(frame.code), 1001, "going away, not abnormal"),
+                other => panic!("a remote client is told it is closing, got {other:?}"),
+            }
+            assert!(phone.read().is_err(), "then its connection ends");
         }
         let list = call(json!({"jsonrpc": "2.0", "id": 1, "method": "sessions.list", "params": {}}));
         assert_eq!(list["result"][0]["id"], json!("s1"), "the unix client still answers");
