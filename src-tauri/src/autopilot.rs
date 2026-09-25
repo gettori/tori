@@ -24,6 +24,7 @@ const PROJECTS: &str = "projects.json";
 const LOG: &str = "log.jsonl";
 const PR_STATES_TTL: Duration = Duration::from_secs(30);
 const CLOSED_NOTE: &str = "its pull request was closed without merging";
+const CLOSED_BY_HAND: &str = "closed by hand";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -285,6 +286,22 @@ fn pr_key_of_url(url: &str) -> Option<PrKey> {
     let repo_url = rest.strip_suffix("/pull").or_else(|| rest.strip_suffix("/-/merge_requests"))?;
     let (_host, repo) = repo_url.split_once("://").map_or(repo_url, |(_, path)| path).split_once('/')?;
     Some((repo.to_lowercase(), number.parse().ok()?))
+}
+
+// A person closing a worker ends its item, unless the work already left it: an
+// open pull request or a pending approval is what the merge or the answer closes.
+fn fail_closed_by_hand(items: &mut [Item], session: &str, held: &HashSet<String>, now: u64) -> Vec<Item> {
+    let mut changed = Vec::new();
+    for item in items.iter_mut().filter(|i| matches!(i.state, State::Running | State::WaitingOnYou)) {
+        if item.session.as_deref() != Some(session) || item.pr_url.is_some() || held.contains(&item.id) {
+            continue;
+        }
+        item.state = State::Failed;
+        item.note = Some(CLOSED_BY_HAND.to_string());
+        item.updated = now;
+        changed.push(item.clone());
+    }
+    changed
 }
 
 // What a closed PR means is the autopilot's call, so it only gets a note.
@@ -566,6 +583,11 @@ impl AutopilotStore {
         named().find(|i| !i.state.terminal()).or_else(|| named().next_back()).map(|i| i.state)
     }
 
+    /// A person closed `session`'s tab; `held` are the items with a pending approval.
+    pub fn closed_by_hand(&self, session: &str, held: &HashSet<String>) -> Result<Vec<Item>, UpdateError> {
+        self.write(|items| Ok(fail_closed_by_hand(items, session, held, now_ms())))
+    }
+
     /// Every session an item names.
     pub fn sessions(&self) -> Vec<String> {
         self.lock().items.iter().filter_map(|i| i.session.clone()).collect()
@@ -642,6 +664,24 @@ pub mod tests {
             title: None,
             contract: None,
         }
+    }
+
+    #[test]
+    fn a_hand_close_fails_only_work_that_has_not_left_the_worker() {
+        let on = |id: &str, state: State| Item { session: Some(format!("s-{id}")), ..item(id, state) };
+        let shipped = Item { pr_url: Some("https://github.com/o/r/pull/7".into()), ..on("shipped", State::Running) };
+        let mut items =
+            vec![on("working", State::Running), on("waiting", State::WaitingOnYou), on("held", State::WaitingOnYou), shipped, on("done", State::Done)];
+        let held: HashSet<String> = ["held".to_string()].into();
+        for id in ["working", "waiting", "held", "shipped", "done"] {
+            fail_closed_by_hand(&mut items, &format!("s-{id}"), &held, 9);
+        }
+        let state = |id: &str| items.iter().find(|i| i.id == id).map(|i| (i.state, i.note.clone())).unwrap();
+        assert_eq!(state("working"), (State::Failed, Some(CLOSED_BY_HAND.into())));
+        assert_eq!(state("waiting"), (State::Failed, Some(CLOSED_BY_HAND.into())));
+        assert_eq!(state("held").0, State::WaitingOnYou, "a pending approval closes it");
+        assert_eq!(state("shipped").0, State::Running, "its merge closes it");
+        assert_eq!(state("done").0, State::Done);
     }
 
     #[test]

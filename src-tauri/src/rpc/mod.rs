@@ -321,6 +321,12 @@ pub fn autopilot_status(rpc: tauri::State<RpcState>) -> runner::Status {
 }
 
 #[tauri::command]
+pub fn autopilot_closed_by_hand(rpc: tauri::State<RpcState>, session: String) -> Result<(), String> {
+    let held: HashSet<String> = rpc.asks.holds().into_iter().map(|h| h.item).collect();
+    rpc.autopilot.closed_by_hand(&session, &held).map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn autopilot_locked(rpc: tauri::State<RpcState>) -> Vec<String> {
     let mut sessions: Vec<String> = rpc.autopilot.sessions().into_iter().chain(rpc.states.spawned()).collect();
     sessions.sort();

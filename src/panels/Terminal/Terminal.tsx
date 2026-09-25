@@ -917,7 +917,7 @@ export default function Terminal(props: {
   // under it, so no agent keeps running in a folder that is about to vanish.
   const offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => {
     for (const t of open()) {
-      if (isUnderPath(t.cwd, path)) closeId(t.id, true);
+      if (isUnderPath(t.cwd, path)) closeId(t.id, "purge");
     }
   });
   onCleanup(offPurge);
@@ -926,7 +926,7 @@ export default function Terminal(props: {
   // it touched so the persisted store drops it rather than restoring it later.
   const offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
     for (const t of open()) {
-      if (t.workspace === workspace) closeId(t.id, true);
+      if (t.workspace === workspace) closeId(t.id, "purge");
     }
     touched.add(workspace);
     saveTabStore(open(), activeByWorkspace());
@@ -991,7 +991,7 @@ export default function Terminal(props: {
   function forkFrom(tab: OpenTerm) {
     // The refused tab spawned nothing, so it is an empty shell that would sit
     // in the bar forever. Closing it also clears its refusal.
-    closeId(tab.id);
+    closeId(tab.id, "replace");
     // On the refused tab's own account: a fork is the same work under a new
     // session id, and moving it to another login would be a different session.
     void spawnSession(tab.program, tab.workspace, tab.workspace.split("/").pop() || tab.program, false, tab.workspace, tab.profile);
@@ -1846,7 +1846,7 @@ export default function Terminal(props: {
   function rewindChat(tab: OpenTerm, promptTs: number) {
     if (!tab.sessionId) return;
     const origin = tab.sessionId;
-    closeId(tab.id);
+    closeId(tab.id, "replace");
     spawnChat(
       tab.workspace,
       tab.cwd,
@@ -2087,11 +2087,14 @@ export default function Terminal(props: {
     for (const t of inertTabs()) closeId(t.id);
   }
 
-  // `purge` is for a folder or workspace that is going away: a worker left
-  // running there would outlive its folder, lock or not.
-  function closeId(id: string, purge = false) {
+  // A purge is a folder or workspace going away: a worker left running there
+  // would outlive its folder, lock or not. A replace is a fork or rewind taking
+  // the tab's place, which abandons nothing.
+  function closeId(id: string, reason: "close" | "purge" | "replace" = "close") {
     const t = open().find((o) => o.id === id);
-    if (t && !purge && sessionLocked(t)) return;
+    if (t && reason !== "purge" && sessionLocked(t)) return;
+    if (reason !== "replace" && t?.kind === "chat" && t.sessionId)
+      void invoke("autopilot_closed_by_hand", { session: t.sessionId }).catch(() => {});
     // A chat tab hosts no PTY: `pty_kill` on its id would find nothing, and the
     // stream-json child would keep running (and keep its session id claimed).
     // Unmounting ChatView ends it; this only has to not kill the wrong thing.
