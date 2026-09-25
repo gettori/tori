@@ -32,9 +32,14 @@ const BRIEF: &str = "resources/autopilot/brief.md";
 // An ACP agent answers `session/new` before it can take a model or a turn.
 const STARTED_TIMEOUT: Duration = Duration::from_secs(60);
 const RETIRED_KEPT: usize = 20;
-// The brief is already in a resumed transcript; this restarts its opening steps.
-const RESUMED: &str = "Tori stopped you and has now resumed this session. Start the way the brief says: \
-read the state, reconcile it, and tell me in one short message what changed while you were not running.";
+// The brief in a resumed transcript is the one it started with, so the
+// opening steps are spelled out here too, or a brief edit never reaches it.
+const RESUMED: &str = "Tori stopped you and has now resumed this session. Start again: read the state and \
+reconcile it. Then, for every running or waiting_on_you item whose session is live, read its worker with \
+session_tail, since I could type into it while you were off, and call session_pending for anything it still \
+waits on. Leave a worker that sessions_list shows working until Tori wakes you with idle. Then tell me in one \
+short message what changed while you were not running: what merged, what I closed by hand, sessions that are \
+gone, work done in a worker while you were off, and anything waiting on an answer.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
