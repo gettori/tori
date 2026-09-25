@@ -4,11 +4,11 @@ import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import DecisionCard from "./DecisionCard";
 import Wheel from "./Wheel";
-import { ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
-import type { AutopilotError, AutopilotState, Decision, DecisionAction, InFlightRow, Ref, ThreadMessage } from "./autopilot";
+import { ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, TicketNumber, decisionHandlers } from "./ShellParts";
+import type { AutopilotError, AutopilotState, Decision, DecisionAction, InFlightRow, ThreadMessage, TicketHandlers } from "./autopilot";
 import styles from "./AutopilotPopup.module.css";
 
-export interface AutopilotPopupProps {
+export interface AutopilotPopupProps extends TicketHandlers {
   state: AutopilotState;
   /** One line under the title, e.g. "Working on 2, 2 decisions". */
   stateLine: string;
@@ -17,10 +17,11 @@ export interface AutopilotPopupProps {
   focused?: number;
   inFlight: InFlightRow[];
   messages: ThreadMessage[];
+  /** Draws the autopilot's replies, so its links work; plain text when absent. */
+  renderReply?: (text: string) => JSX.Element;
   /** Shown in the error state. */
   error?: AutopilotError;
   onOpenView?: () => void;
-  onOpenWorker?: (refNumber: Ref) => void;
   onDecision?: (action: DecisionAction, decision: Decision) => void;
   onStart?: () => void;
   onRestart?: () => void;
@@ -96,20 +97,30 @@ export default function AutopilotPopup(props: AutopilotPopupProps) {
             <SectionHead label="In flight" count={props.inFlight.length} />
             <For each={props.inFlight}>
               {(r) => (
-                <button type="button" class={styles.row} onClick={() => props.onOpenWorker?.(r.refNumber)}>
+                // A link cannot sit inside a button, so the number stands beside it.
+                <div class={styles.row}>
                   <StatusDot status={r.status} />
-                  <span class={styles.rowRef}>{ref(r.refNumber)}</span>
-                  <span class={styles.rowBranch}>{r.branch}</span>
-                  <span class={styles.rowDoing}>{r.doing}</span>
-                  <Icon icon={ArrowUpRight} class={styles.rowGo} />
-                </button>
+                  <span class={styles.rowRef}>
+                    <TicketNumber ticket={r.ticket} onOpenLink={props.onOpenLink} />
+                  </span>
+                  <button
+                    type="button"
+                    class={styles.rowOpen}
+                    disabled={!r.ticket.target}
+                    onClick={() => r.ticket.target && props.onNavigate?.(r.ticket.target)}
+                  >
+                    <span class={styles.rowBranch}>{r.ticket.place.join(" -> ")}</span>
+                    <span class={styles.rowDoing}>{r.doing}</span>
+                    <Icon icon={ArrowUpRight} class={styles.rowGo} />
+                  </button>
+                </div>
               )}
             </For>
           </div>
         </Show>
 
         <Show when={props.messages.length}>
-          <Thread messages={props.messages} dense />
+          <Thread messages={props.messages} dense reply={props.renderReply} />
         </Show>
       </div>
 

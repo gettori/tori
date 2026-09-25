@@ -75,6 +75,8 @@ pub struct Item {
     pub session: Option<String>,
     #[serde(default)]
     pub pr_url: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
     pub created: u64,
     pub updated: u64,
     #[serde(default)]
@@ -162,6 +164,7 @@ pub struct Patch {
     pub worktree: Option<String>,
     pub session: Option<String>,
     pub pr_url: Option<String>,
+    pub url: Option<String>,
     pub note: Option<String>,
     pub title: Option<String>,
     pub contract: Option<String>,
@@ -198,13 +201,46 @@ pub struct Row {
     pub session_live: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree_gone: Option<bool>,
+    pub reference: Reference,
 }
+
+/// How an item is named to a person: `#212 (personal -> tori -> y-test)`, the
+/// number opening the forge and the place opening Tori at `target`. `place` is
+/// empty for a folder outside every space, and `markdown` is the whole of it
+/// for the autopilot to paste.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Reference {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr: Option<Link>,
+    pub place: Vec<String>,
+    pub target: NavTarget,
+    pub markdown: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Link {
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NavTarget {
+    pub folder: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+}
+
+// A worktree git lists, with its branch; `None` for a detached head.
+pub type Listed = (PathBuf, Option<String>);
 
 #[derive(Debug, Default)]
 pub struct Observed {
     pub live: HashSet<String>,
     // Project -> the worktrees git lists for it; `None` where git could not be read.
-    pub worktrees: HashMap<String, Option<Vec<PathBuf>>>,
+    pub worktrees: HashMap<String, Option<Vec<Listed>>>,
     // Project -> the states its origin gave, by (`owner/name`, number); absent where the forge failed.
     pub prs: HashMap<String, HashMap<PrKey, PrState>>,
 }
@@ -226,6 +262,7 @@ fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: im
                         worktree: None,
                         session: None,
                         pr_url: None,
+                        url: None,
                         created: now,
                         updated: now,
                         note: None,
@@ -243,6 +280,7 @@ fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: im
         (&mut item.worktree, patch.worktree),
         (&mut item.session, patch.session),
         (&mut item.pr_url, patch.pr_url),
+        (&mut item.url, patch.url),
         (&mut item.note, patch.note),
         (&mut item.title, patch.title),
         (&mut item.contract, patch.contract),
@@ -364,7 +402,7 @@ fn canon(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-pub fn reconcile(items: &[Item], live: &HashSet<String>, worktrees: &HashMap<String, Option<Vec<PathBuf>>>) -> Vec<Row> {
+pub fn reconcile(items: &[Item], live: &HashSet<String>, worktrees: &HashMap<String, Option<Vec<Listed>>>, root: Option<&Path>) -> Vec<Row> {
     items
         .iter()
         .map(|item| Row {
@@ -372,16 +410,98 @@ pub fn reconcile(items: &[Item], live: &HashSet<String>, worktrees: &HashMap<Str
             worktree_gone: item.worktree.as_deref().and_then(|wt| {
                 let listed = worktrees.get(&item.project)?.as_ref()?;
                 let wt = canon(Path::new(wt));
-                Some(!listed.iter().any(|p| canon(p) == wt))
+                Some(!listed.iter().any(|(p, _)| canon(p) == wt))
             }),
+            reference: reference(item, worktrees, root),
             item: item.clone(),
         })
         .collect()
 }
 
+fn name_of(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+fn is_number(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+// `ENG-123`, as Linear and Jira spell a key.
+fn is_tracker_key(s: &str) -> bool {
+    s.split_once('-').is_some_and(|(team, n)| !team.is_empty() && team.bytes().all(|b| b.is_ascii_uppercase()) && is_number(n))
+}
+
+// An issue key may arrive as `12`, `#12`, `ENG-123` or the issue's url, whose
+// key sits before any slug: `/issues/12`, `/issue/ENG-123/fix-login`.
+fn label_of(source: &Source) -> String {
+    let key = match source {
+        Source::Pr { number, .. } => return format!("#{number}"),
+        Source::Issue { key, .. } => key.trim().trim_start_matches('#'),
+    };
+    let found = key.trim_end_matches('/').rsplit('/').find(|s| is_number(s) || is_tracker_key(s)).unwrap_or(key);
+    if is_number(found) {
+        format!("#{found}")
+    } else {
+        found.to_string()
+    }
+}
+
+// Tori lays folders out as <root>/<space>/<project>, so the names are the path's.
+fn place(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, root: Option<&Path>) -> Vec<String> {
+    let project = Path::new(&item.project);
+    let Some(space) = project.parent() else { return Vec::new() };
+    let under_root = space.parent().zip(root).is_some_and(|(at, root)| same_folder(&at.to_string_lossy(), &root.to_string_lossy()));
+    if !under_root {
+        return Vec::new();
+    }
+    let mut place = vec![name_of(space), name_of(project)];
+    if let Some(wt) = item.worktree.as_deref() {
+        let wt_path = canon(Path::new(wt));
+        let listed = worktrees.get(&item.project).and_then(|l| l.as_ref()).and_then(|l| l.iter().find(|(p, _)| canon(p) == wt_path));
+        place.push(listed.and_then(|(_, branch)| branch.clone()).unwrap_or_else(|| name_of(Path::new(wt))));
+    }
+    place
+}
+
+fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, root: Option<&Path>) -> Reference {
+    let label = label_of(&item.source);
+    let key_url = match &item.source {
+        Source::Issue { key, .. } if key.starts_with("https://") => Some(key.clone()),
+        _ => None,
+    };
+    let url = item.url.clone().or(key_url);
+    let pr = match &item.source {
+        Source::Issue { .. } => item.pr_url.as_ref().and_then(|u| Some(Link { label: format!("PR #{}", pr_key_of_url(u)?.1), url: u.clone() })),
+        Source::Pr { .. } => None,
+    };
+    let place = place(item, worktrees, root);
+    let target = NavTarget { folder: item.worktree.clone().unwrap_or_else(|| item.project.clone()), session: item.session.clone() };
+    let mut markdown = match &url {
+        Some(url) => format!("[{label}]({url})"),
+        None => label.clone(),
+    };
+    if !place.is_empty() {
+        let session = target.session.as_deref().map(|s| format!("&session={}", encode(s))).unwrap_or_default();
+        markdown += &format!(" ([{}](tori://open?folder={}{session}))", place.join(" -> "), encode(&target.folder));
+    }
+    if let Some(pr) = &pr {
+        markdown += &format!(", [{}]({})", pr.label, pr.url);
+    }
+    Reference { label, url, pr, place, target, markdown }
+}
+
 // `list_worktrees_body` answers an empty list for an unreadable repo, so
 // readability is asked first: "git failed" must not read as "every worktree is gone".
-pub fn list_worktrees(items: &[Item]) -> HashMap<String, Option<Vec<PathBuf>>> {
+pub fn list_worktrees(items: &[Item]) -> HashMap<String, Option<Vec<Listed>>> {
     let projects: HashSet<&str> = items.iter().filter(|i| i.worktree.is_some()).map(|i| i.project.as_str()).collect();
     projects
         .into_iter()
@@ -389,7 +509,7 @@ pub fn list_worktrees(items: &[Item]) -> HashMap<String, Option<Vec<PathBuf>>> {
             let listed = crate::worktree::repo_readable(project)
                 .then(|| crate::worktree::list_worktrees_body(project.to_string()).ok())
                 .flatten()
-                .map(|all| all.into_iter().map(|w| PathBuf::from(w.path)).collect());
+                .map(|all| all.into_iter().map(|w| (PathBuf::from(w.path), Some(w.branch).filter(|b| !b.is_empty()))).collect());
             (project.to_string(), listed)
         })
         .collect()
@@ -442,6 +562,15 @@ pub struct AutopilotStore {
     // released, so it may call into `Asks` without ever nesting the two locks.
     closed: Closed,
     pub pr_states: PrStates,
+    // The last full read's worktrees and root, so a change names its place
+    // without a git call per update.
+    seen: Mutex<Seen>,
+}
+
+#[derive(Default)]
+struct Seen {
+    worktrees: HashMap<String, Option<Vec<Listed>>>,
+    root: Option<PathBuf>,
 }
 
 fn load<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String> {
@@ -463,7 +592,15 @@ impl AutopilotStore {
             Projects::default()
         });
         let held = Held { items: queue.items, projects: projects.projects };
-        Self { dir, held: Mutex::new(held), unreadable, publish, closed: Box::new(|_| {}), pr_states: PrStates::default() }
+        Self {
+            dir,
+            held: Mutex::new(held),
+            unreadable,
+            publish,
+            closed: Box::new(|_| {}),
+            pr_states: PrStates::default(),
+            seen: Mutex::default(),
+        }
     }
 
     pub fn on_closed(self, closed: Closed) -> Self {
@@ -564,11 +701,17 @@ impl AutopilotStore {
     pub fn state(&self, observe: impl FnOnce(&[Item]) -> Observed) -> Snapshot {
         let snapshot = self.lock().items.clone();
         let seen = observe(&snapshot);
+        let root = crate::config::discovery_root();
+        {
+            let mut last = self.seen.lock().unwrap_or_else(|e| e.into_inner());
+            last.worktrees.extend(seen.worktrees.clone());
+            last.root = root.clone();
+        }
         if let Err(e) = self.write(|items| Ok(settle(items, &seen.prs, now_ms()))) {
             eprintln!("tori: merged pull requests not recorded: {e}");
         }
         let held = self.lock();
-        Snapshot { items: reconcile(&held.items, &seen.live, &seen.worktrees), projects: held.projects.clone() }
+        Snapshot { items: reconcile(&held.items, &seen.live, &seen.worktrees, root.as_deref()), projects: held.projects.clone() }
     }
 
     /// The open item `session` works on.
@@ -617,8 +760,21 @@ impl AutopilotStore {
         }
     }
 
+    // A worktree the last read did not list, say one made since, is asked of git.
     fn changed(&self, item: &Item, session_live: Option<bool>) {
-        let row = Row { item: item.clone(), session_live, worktree_gone: None };
+        let reference = {
+            let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
+            let listed = seen.worktrees.get(&item.project).and_then(|l| l.as_ref());
+            let known = item.worktree.as_deref().is_none_or(|wt| listed.is_some_and(|l| l.iter().any(|(p, _)| canon(p) == canon(Path::new(wt)))));
+            if !known {
+                seen.worktrees.extend(list_worktrees(std::slice::from_ref(item)));
+            }
+            if seen.root.is_none() {
+                seen.root = crate::config::discovery_root();
+            }
+            reference(item, &seen.worktrees, seen.root.as_deref())
+        };
+        let row = Row { item: item.clone(), session_live, worktree_gone: None, reference };
         (self.publish)(json!({ "kind": "autopilot.changed", "item": row, "ts": now_ms() }));
     }
 }
@@ -658,6 +814,7 @@ pub mod tests {
             worktree: None,
             session: None,
             pr_url: None,
+            url: None,
             created: 1,
             updated: 1,
             note: None,
@@ -701,10 +858,13 @@ pub mod tests {
         assert_eq!(made.title.as_deref(), Some("Fix the login redirect"));
         let old = r#"{"id": "i1", "kind": "ship", "source": {"type": "pr", "number": 7, "repo": "o/r"}, "project": "/p", "state": "queued", "created": 1, "updated": 1}"#;
         let old: Item = serde_json::from_str(old).unwrap();
-        assert_eq!((old.title, old.contract), (None, None), "an item written before these fields still loads");
+        assert_eq!((old.title, old.contract, old.url), (None, None, None), "an item written before these fields still loads");
         let log = std::fs::read_to_string(dir.join(LOG)).unwrap();
         assert_eq!(log.lines().count(), 1, "one line per write");
         assert_eq!(again.update(Target::Id("nope".into()), Patch::default()), Err(UpdateError::NoItem("nope".into())));
+        let url = Some("https://github.com/o/r/issues/12".to_string());
+        again.update(Target::Id(made.id.clone()), Patch { url: url.clone(), ..Patch::default() }).unwrap();
+        assert_eq!(quiet(&dir).state(|_| Observed::default()).items[0].item.url, url);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -840,24 +1000,65 @@ pub mod tests {
     #[test]
     fn a_dead_session_leaves_a_running_item_running() {
         let running = Item { session: Some("gone".into()), ..item("a", State::Running) };
-        let rows = reconcile(&[running], &HashSet::new(), &HashMap::new());
+        let rows = reconcile(&[running], &HashSet::new(), &HashMap::new(), None);
         assert_eq!(rows[0].item.state, State::Running);
         assert_eq!(rows[0].session_live, Some(false));
         assert_eq!(rows[0].worktree_gone, None, "no worktree, nothing to say");
-        let live = reconcile(&[Item { session: Some("s".into()), ..item("a", State::Running) }], &HashSet::from(["s".to_string()]), &HashMap::new());
+        let live = reconcile(&[Item { session: Some("s".into()), ..item("a", State::Running) }], &HashSet::from(["s".to_string()]), &HashMap::new(), None);
         assert_eq!(live[0].session_live, Some(true));
     }
 
     #[test]
     fn a_worktree_git_no_longer_lists_is_gone_and_an_unreadable_repo_says_nothing() {
         let with = |wt: &str| Item { worktree: Some(wt.into()), ..item("a", State::Running) };
-        let listed = HashMap::from([("/p".to_string(), Some(vec![PathBuf::from("/p/wt-1")]))]);
-        let rows = reconcile(&[with("/p/wt-1"), with("/p/wt-2")], &HashSet::new(), &listed);
+        let listed = HashMap::from([("/p".to_string(), Some(vec![(PathBuf::from("/p/wt-1"), None)]))]);
+        let rows = reconcile(&[with("/p/wt-1"), with("/p/wt-2")], &HashSet::new(), &listed, None);
         assert_eq!((rows[0].worktree_gone, rows[1].worktree_gone), (Some(false), Some(true)));
         assert_eq!(rows[1].item.state, State::Running, "a missing worktree is reported, never stored");
 
         let unreadable = HashMap::from([("/p".to_string(), None)]);
-        assert_eq!(reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable)[0].worktree_gone, None);
+        assert_eq!(reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable, None)[0].worktree_gone, None);
+    }
+
+    #[test]
+    fn a_reference_names_the_place_and_links_both_ways() {
+        let root = Path::new("/r");
+        let project = "/r/personal/tori";
+        let ship = |key: &str| Item {
+            source: Source::Issue { key: key.into(), project: project.into() },
+            project: project.into(),
+            url: Some("https://github.com/o/tori/issues/212".into()),
+            ..item("a", State::Running)
+        };
+        let listed = HashMap::from([(project.to_string(), Some(vec![(PathBuf::from("/r/personal/tori/wt"), Some("y-test".to_string()))]))]);
+        let worker = Item { worktree: Some("/r/personal/tori/wt".into()), session: Some("s 1".into()), ..ship("212") };
+        let r = reference(&worker, &listed, Some(root));
+        assert_eq!((r.label.as_str(), r.place.clone()), ("#212", vec!["personal".to_string(), "tori".into(), "y-test".into()]));
+        assert_eq!(
+            r.markdown,
+            "[#212](https://github.com/o/tori/issues/212) ([personal -> tori -> y-test](tori://open?folder=/r/personal/tori/wt&session=s%201))"
+        );
+
+        let proposed = reference(&ship("#212"), &HashMap::new(), Some(root));
+        assert_eq!((proposed.label.as_str(), proposed.place.len()), ("#212", 2), "no worktree yet, so project only");
+        assert_eq!(proposed.target, NavTarget { folder: project.into(), session: None });
+
+        let orphan = Item { project: "/elsewhere/tori".into(), ..ship("https://github.com/o/tori/issues/212") };
+        let r = reference(&Item { url: None, ..orphan }, &HashMap::new(), Some(root));
+        assert_eq!(r.place, Vec::<String>::new(), "a folder no space holds");
+        assert_eq!(r.markdown, "[#212](https://github.com/o/tori/issues/212)", "a url key is its own link");
+
+        let spaced = Item { project: "/r/Saga News/app".into(), worktree: Some("/r/Saga News/app/my wt".into()), ..ship("ENG-9") };
+        let r = reference(&spaced, &HashMap::new(), Some(root));
+        assert_eq!(r.place, vec!["Saga News".to_string(), "app".into(), "my wt".into()], "an unlisted worktree reads by its folder");
+        assert!(r.markdown.ends_with("(tori://open?folder=/r/Saga%20News/app/my%20wt))"), "{}", r.markdown);
+        assert!(r.markdown.starts_with("[ENG-9]("), "a key that is not a number reads as it is");
+        let linear = Item { url: None, ..ship("https://linear.app/x/issue/ENG-9/fix-login") };
+        assert_eq!(reference(&linear, &HashMap::new(), Some(root)).label, "ENG-9", "the key, not the slug after it");
+
+        let shipped = Item { pr_url: Some("https://github.com/o/tori/pull/230".into()), ..ship("212") };
+        let pr = reference(&shipped, &HashMap::new(), Some(root)).pr.unwrap();
+        assert_eq!((pr.label.as_str(), pr.url.as_str()), ("PR #230", "https://github.com/o/tori/pull/230"));
     }
 
     #[test]

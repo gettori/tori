@@ -55,4 +55,21 @@ describe("where a link in assistant prose goes", () => {
     // No workspace to resolve against is not the same as a path at the root.
     expect(linkTarget("temp.md", "")).toEqual({ kind: "ignore" });
   });
+
+  it("takes a Tori place to the navigator, cwd or not", () => {
+    expect(linkTarget("tori://open?folder=/r/Saga%20News/app/my%20wt&session=s-1", CWD)).toEqual({
+      kind: "navigate",
+      target: { folder: "/r/Saga News/app/my wt", session: "s-1" },
+    });
+    expect(linkTarget("tori://open?folder=/r/personal/tori", "")).toEqual({
+      kind: "navigate",
+      target: { folder: "/r/personal/tori", session: undefined },
+    });
+  });
+
+  it("ignores a Tori link it cannot place", () => {
+    expect(linkTarget("tori://open?folder=relative/path", CWD)).toEqual({ kind: "ignore" });
+    expect(linkTarget("tori://open?", CWD)).toEqual({ kind: "ignore" });
+    expect(linkTarget("tori://settings", CWD).kind).not.toBe("navigate");
+  });
 });

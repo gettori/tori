@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import DecisionCard from "./DecisionCard";
+import { ticket } from "./shellFixtures";
 
 const meta = {
   title: "Autopilot/DecisionCard",
@@ -11,7 +12,7 @@ const meta = {
   },
   args: {
     kind: "pr",
-    refNumber: 123,
+    ticket: ticket(123, "tori/123-login-redirect"),
     title: "Fix login redirect loop",
     summary: "Open a draft PR from tori/123-login-redirect into main. 4 files, +73 -11, tests pass.",
     age: "1m",
@@ -34,7 +35,7 @@ export const PullRequest: Story = {};
 export const Review: Story = {
   args: {
     kind: "review",
-    refNumber: 45,
+    ticket: ticket(45),
     refKind: "pr",
     title: "Add retry to sync",
     summary: "Post a review with 2 comments: a missing backoff cap and an unhandled 409.",
@@ -45,7 +46,7 @@ export const Review: Story = {
 export const Merge: Story = {
   args: {
     kind: "merge",
-    refNumber: 45,
+    ticket: ticket(45),
     refKind: "pr",
     title: "Add retry to sync",
     summary: "Squash and merge into main. All checks pass, 1 approval.",
@@ -56,7 +57,7 @@ export const Merge: Story = {
 export const QuestionFromWorker: Story = {
   args: {
     kind: "question",
-    refNumber: 131,
+    ticket: ticket(131, "tori/131-avatar-cache"),
     title: "Cache avatar fetch",
     worker: "tori/131-avatar-cache",
     summary: "Should the cache survive a sign out, or be cleared with the rest of the account data?",

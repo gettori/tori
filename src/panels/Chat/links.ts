@@ -5,14 +5,25 @@
 // the webview never follows one.
 
 import { isUnderPath } from "../../utils/pathScope";
+import type { NavTarget } from "../../utils/events";
 
 export type LinkTarget =
   | { kind: "external"; url: string }
+  | { kind: "navigate"; target: NavTarget }
   | { kind: "file"; path: string; line?: number }
   | { kind: "outside"; path: string }
   | { kind: "ignore" };
 
 const EXTERNAL = /^(?:https?|mailto|tel):/i;
+const TORI = "tori://open?";
+
+// A place in Tori, as the autopilot writes one: `tori://open?folder=..&session=..`.
+function navigateTo(raw: string): LinkTarget {
+  const query = new URLSearchParams(raw.slice(TORI.length));
+  const folder = query.get("folder") || undefined;
+  const session = query.get("session") || undefined;
+  return folder?.startsWith("/") || (!folder && session) ? { kind: "navigate", target: { folder, session } } : { kind: "ignore" };
+}
 
 /** Percent-encoding is `marked`'s doing, not the model's: a path with a space
  *  arrives as `%20` and would open a file that does not exist. */
@@ -50,6 +61,7 @@ export function linkTarget(href: string, cwd: string): LinkTarget {
   // reloads the page.
   if (!raw || raw.startsWith("#")) return { kind: "ignore" };
   if (EXTERNAL.test(raw)) return { kind: "external", url: raw };
+  if (raw.startsWith(TORI)) return navigateTo(raw);
   if (!cwd) return { kind: "ignore" };
 
   const path = decode(raw.startsWith("file://") ? raw.slice("file://".length) : raw);

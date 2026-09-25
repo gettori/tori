@@ -127,6 +127,27 @@
     font-size: var(--tori-text-sm);
   }
 
+  .ticketLink,
+  .placeLink {
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--fg-subtle);
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .ticketLink:hover,
+  .placeLink:hover {
+    text-decoration-color: currentColor;
+  }
+  .ticketLink:focus-visible,
+  .placeLink:focus-visible {
+    outline: var(--tori-border-thick) solid var(--brand-ring);
+  }
+
   .mine {
     align-self: flex-end;
     max-width: 80%;

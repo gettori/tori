@@ -45,7 +45,11 @@
   }
 
   .ref {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: var(--tori-font-mono);
     font-size: var(--tori-text-xs);
     color: var(--fg-muted);

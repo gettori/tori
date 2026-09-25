@@ -97,18 +97,28 @@
     gap: var(--tori-space-4);
     height: var(--tori-space-8);
     padding: 0 var(--tori-space-4);
-    border: none;
     border-radius: var(--tori-radius-md);
-    background: transparent;
     color: var(--fg-muted);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
   }
   .row:hover {
     background: var(--neutral-hover);
   }
-  .row:focus-visible {
+  .rowOpen {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--tori-space-4);
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .rowOpen:focus-visible {
     outline: var(--tori-border-thick) solid var(--brand-ring);
   }
   .rowRef {

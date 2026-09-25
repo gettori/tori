@@ -2,7 +2,8 @@ import { Show } from "solid-js";
 import { ArrowUpRight, Eye, GitMerge, GitPullRequest, MessageCircleQuestion, type LucideIcon } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
-import type { DecisionKind, Ref } from "./autopilot";
+import { TicketLink, TicketNumber } from "./ShellParts";
+import type { DecisionKind, TicketHandlers, TicketRef } from "./autopilot";
 import styles from "./DecisionCard.module.css";
 
 const KINDS: Record<DecisionKind, { label: string; icon: LucideIcon }> = {
@@ -12,12 +13,14 @@ const KINDS: Record<DecisionKind, { label: string; icon: LucideIcon }> = {
   question: { label: "Question from worker", icon: MessageCircleQuestion },
 };
 
-export interface DecisionCardProps {
+export interface DecisionCardProps extends TicketHandlers {
   kind: DecisionKind;
-  /** The ticket or PR number the decision is about. */
-  refNumber?: Ref;
+  /** The ticket or PR the decision is about. */
+  ticket?: TicketRef;
   /** A PR ref reads "PR #45", a ticket ref just "#123". */
   refKind?: "issue" | "pr";
+  /** The ticket's pull request, shown beside it. */
+  pr?: { label: string; url: string };
   title: string;
   /** One line for an outward action; the worker's question for a question. */
   summary: string;
@@ -41,17 +44,32 @@ export interface DecisionCardProps {
 export default function DecisionCard(props: DecisionCardProps) {
   const kind = () => KINDS[props.kind];
   const isQuestion = () => props.kind === "question";
-  const refText = () => `${props.refKind === "pr" ? "PR " : ""}#${props.refNumber}`;
+  const prefix = () => (props.refKind === "pr" ? "PR " : "");
 
   return (
-    <article class={styles.card} data-focused={props.focused ? "true" : "false"} aria-label={props.refNumber === undefined ? kind().label : `${kind().label} ${refText()}`}>
+    <article
+      class={styles.card}
+      data-focused={props.focused ? "true" : "false"}
+      aria-label={props.ticket ? `${kind().label} ${prefix()}${props.ticket.label}` : kind().label}
+    >
       <header class={styles.head}>
         <span class={styles.kind}>
           <Icon icon={kind().icon} class={styles.kindIcon} />
           {kind().label}
         </span>
-        <Show when={props.refNumber !== undefined}>
-          <span class={styles.ref}>{refText()}</span>
+        <Show when={props.ticket}>
+          {(ticket) => (
+            <span class={styles.ref} title={[ticket().label, ...ticket().place].join(" -> ")}>
+              <TicketLink ticket={ticket()} prefix={prefix()} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />
+            </span>
+          )}
+        </Show>
+        <Show when={props.pr}>
+          {(pr) => (
+            <span class={styles.ref}>
+              <TicketNumber ticket={{ label: pr().label, url: pr().url, place: [] }} onOpenLink={props.onOpenLink} />
+            </span>
+          )}
         </Show>
         <span class={styles.title}>{props.title}</span>
         <span class={styles.age}>{props.age}</span>

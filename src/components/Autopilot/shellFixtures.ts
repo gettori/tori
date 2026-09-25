@@ -4,8 +4,17 @@
 import type { AutopilotPopupProps } from "./AutopilotPopup";
 import type { AutopilotViewProps } from "./AutopilotView";
 import { heroFor } from "../../utils/autopilotRows";
-import type { ActivityItem, AutopilotState, CockpitHero, Decision, ThreadMessage, WorkerCard } from "./autopilot";
-import { ref } from "./ShellParts";
+import type { ActivityItem, AutopilotState, CockpitHero, Decision, ThreadMessage, TicketRef, WorkerCard } from "./autopilot";
+
+const ref = (n: number) => `#${n}`;
+
+/** A ticket in the personal space's tori project, worked on in `branch` when it has one. */
+export const ticket = (n: number, branch?: string): TicketRef => ({
+  label: ref(n),
+  url: `https://github.com/gettori/tori/issues/${n}`,
+  place: ["personal", "tori", ...(branch ? [branch] : [])],
+  target: { folder: `/Users/me/Projects/personal/tori${branch ? `/${branch}` : ""}` },
+});
 
 const me = (text: string): ThreadMessage => ({ from: "me", text });
 const ap = (text: string): ThreadMessage => ({ from: "autopilot", text });
@@ -34,14 +43,14 @@ const baseActivity = [
 const decisions: Decision[] = [
   {
     kind: "pr",
-    refNumber: 123,
+    ticket: ticket(123, LOGIN),
     title: "Fix login redirect loop",
     summary: `Open a draft PR from ${LOGIN} into main. 4 files, +73 -11, tests pass.`,
     age: "now",
   },
   {
     kind: "question",
-    refNumber: 131,
+    ticket: ticket(131, AVATAR),
     title: "Cache avatar fetch",
     worker: AVATAR,
     summary: "Should cached avatars expire after 1 hour, or live for the whole session?",
@@ -51,9 +60,8 @@ const decisions: Decision[] = [
 ];
 
 const login = (w: Partial<WorkerCard>): WorkerCard => ({
-  refNumber: 123,
+  ticket: ticket(123, LOGIN),
   title: "Fix login redirect loop",
-  branch: LOGIN,
   diff: "+73 -11",
   status: "working",
   log: [],
@@ -61,9 +69,8 @@ const login = (w: Partial<WorkerCard>): WorkerCard => ({
   ...w,
 });
 const avatar = (w: Partial<WorkerCard>): WorkerCard => ({
-  refNumber: 131,
+  ticket: ticket(131, AVATAR),
   title: "Cache avatar fetch",
-  branch: AVATAR,
   diff: "+12 -3",
   status: "running",
   log: [],
@@ -71,7 +78,7 @@ const avatar = (w: Partial<WorkerCard>): WorkerCard => ({
   ...w,
 });
 
-const queue = [{ refNumber: 140, title: "Theme flicker on launch", after: 123 }];
+const queue = [{ ticket: ticket(140), title: "Theme flicker on launch", after: ticket(123, LOGIN) }];
 
 const error = { title: "Autopilot session exited (signal 9)", detail: "Restarting, attempt 2 of 3. Both workers keep running and stay locked. Nothing was sent." };
 
@@ -196,8 +203,8 @@ export const POPUP: Record<AutopilotState, AutopilotPopupProps> = {
     stateLine: "Working on 2",
     decisions: [],
     inFlight: [
-      { refNumber: 123, branch: LOGIN, status: "working", doing: "Running pnpm test auth" },
-      { refNumber: 131, branch: AVATAR, status: "running", doing: "Reading src/avatar/fetch.ts" },
+      { ticket: ticket(123, LOGIN), status: "working", doing: "Running pnpm test auth" },
+      { ticket: ticket(131, AVATAR), status: "running", doing: "Reading src/avatar/fetch.ts" },
     ],
     messages: [...popupBase, ap("Both workers are running. I will ask before anything leaves this machine.")],
   },
@@ -207,8 +214,8 @@ export const POPUP: Record<AutopilotState, AutopilotPopupProps> = {
     decisions,
     focused: 0,
     inFlight: [
-      { refNumber: 123, branch: LOGIN, status: "idle", doing: "Waiting on your PR approval" },
-      { refNumber: 131, branch: AVATAR, status: "needs", doing: "Asked you about cache expiry" },
+      { ticket: ticket(123, LOGIN), status: "idle", doing: "Waiting on your PR approval" },
+      { ticket: ticket(131, AVATAR), status: "needs", doing: "Asked you about cache expiry" },
     ],
     messages: [...popupBase, ap(`${ref(123)} is ready for a PR. The ${ref(131)} worker has a question about cache expiry.`)],
   },
@@ -217,8 +224,8 @@ export const POPUP: Record<AutopilotState, AutopilotPopupProps> = {
     stateLine: "Session exited, restarting",
     decisions: [],
     inFlight: [
-      { refNumber: 123, branch: LOGIN, status: "working", doing: "Editing src/auth/session.ts" },
-      { refNumber: 131, branch: AVATAR, status: "running", doing: "Installing dependencies" },
+      { ticket: ticket(123, LOGIN), status: "working", doing: "Editing src/auth/session.ts" },
+      { ticket: ticket(131, AVATAR), status: "running", doing: "Installing dependencies" },
     ],
     messages: [...popupBase, sys("Autopilot session exited, 40s ago")],
     error: { title: error.title, detail: "Restarting, attempt 2 of 3. Your two workers keep running and nothing was sent." },

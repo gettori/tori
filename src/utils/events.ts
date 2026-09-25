@@ -95,6 +95,11 @@ export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 export const ZOOM_IN = "tori:zoom-in";
 export const TOGGLE_AUTOPILOT_VIEW = "tori:toggle-autopilot-view";
 export const TOGGLE_AUTOPILOT_POPUP = "tori:toggle-autopilot-popup";
+// Take the user somewhere in Tori: a branch-unit folder, a session's tab, or
+// both. The sidebar answers, since selection is its; the cockpit steps aside.
+export const NAVIGATE = "tori:navigate";
+/** Mirrors `NavTarget` in src-tauri/src/autopilot.rs; at least one is set. */
+export type NavTarget = { folder?: string; session?: string };
 export const ZOOM_OUT = "tori:zoom-out";
 export const ZOOM_RESET = "tori:zoom-reset";
 
