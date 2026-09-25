@@ -10,6 +10,7 @@ use serde::Serialize;
 use super::auth::Credential;
 use super::awake::Awake;
 use super::devices::Devices;
+use super::pairing::{Offer, Pairing};
 use super::server::{serve, Server};
 use super::transport::Transport;
 use super::ws::WsTransport;
@@ -31,12 +32,13 @@ struct Running {
 pub struct Remote {
     server: Arc<Server>,
     devices: Arc<Devices>,
+    pairing: Arc<Pairing>,
     state: Mutex<(Option<Running>, Status)>,
 }
 
 impl Remote {
-    pub fn new(server: Arc<Server>, devices: Arc<Devices>) -> Self {
-        Self { server, devices, state: Mutex::new((None, Status::Off)) }
+    pub fn new(server: Arc<Server>, devices: Arc<Devices>, pairing: Arc<Pairing>) -> Self {
+        Self { server, devices, pairing, state: Mutex::new((None, Status::Off)) }
     }
 
     pub fn apply(&self, config: &Config) -> Status {
@@ -47,8 +49,10 @@ impl Remote {
                 return state.1.clone();
             }
         }
+        // A live code names the old address, so it goes with the listener.
         if let Some(running) = state.0.take() {
             running.transport.shutdown();
+            self.pairing.cancel();
         }
         state.1 = match wanted {
             None => Status::Off,
@@ -58,7 +62,7 @@ impl Remote {
                 Ok(transport) => {
                     let transport = Arc::new(transport);
                     let url = format!("ws://{}", transport.addr());
-                    let credential = Arc::new(Credential::Remote(self.devices.clone()));
+                    let credential = Arc::new(Credential::Remote { devices: self.devices.clone(), pairing: self.pairing.clone() });
                     serve(transport.clone() as Arc<dyn Transport>, credential, self.server.clone());
                     state.0 = Some(Running { transport, _awake: Awake::hold("Tori remote front is listening") });
                     Status::Listening { url }
@@ -74,6 +78,19 @@ impl Remote {
 
     pub fn status(&self) -> Status {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).1.clone()
+    }
+
+    /// A pairing code for the address being listened on.
+    pub fn start_pairing(&self) -> Result<Offer, String> {
+        let Status::Listening { url } = self.status() else {
+            return Err("turn remote access on before pairing a device".into());
+        };
+        self.devices.writable()?;
+        self.pairing.start(&url, crate::owned_state::now_ms())
+    }
+
+    pub fn cancel_pairing(&self) {
+        self.pairing.cancel();
     }
 }
 
@@ -173,7 +190,10 @@ mod tests {
         let unix = Arc::new(UnixTransport::bind().unwrap());
         let local = Arc::new(Credential::Local { process: "tok".into(), children: Default::default() });
         serve(unix.clone(), local, server.clone());
-        let remote = Remote::new(server, devices);
+        let ended = Arc::new(Mutex::new(Vec::new()));
+        let log = ended.clone();
+        let remote = Remote::new(server, devices, Arc::new(Pairing::new(Box::new(move |e| log.lock().unwrap().push(e)))));
+        assert!(remote.start_pairing().is_err(), "no pairing while off");
 
         let bad = Config { enabled: true, address: Some("203.0.113.9".into()), port: 0 };
         assert!(matches!(remote.apply(&bad), Status::Failed { .. }), "an address not on this Mac binds nothing");
@@ -187,6 +207,8 @@ mod tests {
             client
         };
         let mut phones: Vec<_> = (0..2).map(ws).collect();
+        let offer = remote.start_pairing().unwrap();
+        assert_eq!(offer.url, url);
 
         let mut shell = UnixStream::connect(unix.sock_path()).unwrap();
         let mut lines = BufReader::new(shell.try_clone().unwrap());
@@ -199,6 +221,7 @@ mod tests {
         assert_eq!(call(json!({"jsonrpc": "2.0", "id": 0, "method": "auth", "params": {"token": "tok"}}))["result"], json!({}));
 
         assert_eq!(remote.apply(&Config { enabled: false, ..on }), Status::Off);
+        assert_eq!(*ended.lock().unwrap(), vec![crate::rpc::pairing::Ended::Cancelled], "turning off cancels the live code");
         for phone in &mut phones {
             match phone.read() {
                 Ok(Message::Close(Some(frame))) => assert_eq!(u16::from(frame.code), 1001, "going away, not abnormal"),

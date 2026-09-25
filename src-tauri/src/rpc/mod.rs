@@ -18,6 +18,7 @@ pub mod events;
 pub mod frame;
 pub mod hub;
 pub mod methods;
+pub mod pairing;
 pub mod quotas;
 pub mod remote;
 pub mod runner;
@@ -100,6 +101,13 @@ fn autopilot_publisher(hub: &Arc<Hub>, app: &AppHandle) -> Box<dyn Fn(Value) + S
     })
 }
 
+// The Settings pane is not a socket subscriber, so it hears about devices here.
+const DEVICES_EVENT: &str = "remote://devices";
+
+fn devices_changed(app: &AppHandle, ended: Option<pairing::Ended>) {
+    let _ = app.emit(DEVICES_EVENT, json!({ "ended": ended }));
+}
+
 pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let transport = Arc::new(UnixTransport::bind()?);
     let token = crate::chat::approval::random_token();
@@ -107,6 +115,10 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
     let devices = Arc::new(devices::Devices::open(devices_path()));
+    let pairing = {
+        let app = app.clone();
+        Arc::new(pairing::Pairing::new(Box::new(move |ended| devices_changed(&app, Some(ended)))))
+    };
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
@@ -142,7 +154,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     });
     let local = Arc::new(Credential::Local { process: token.clone(), children: children.clone() });
     server::serve(transport.clone() as Arc<dyn Transport>, local, server.clone());
-    let remote = Arc::new(Remote::new(server, devices.clone()));
+    let remote = Arc::new(Remote::new(server, devices.clone(), pairing));
     remote.apply(&crate::settings::remote());
 
     let sock = transport.sock_path().to_string_lossy().into_owned();
@@ -523,6 +535,44 @@ pub fn remote_status(rpc: tauri::State<RpcState>) -> remote::Status {
 #[tauri::command(async)]
 pub fn remote_interfaces() -> Vec<remote::Interface> {
     remote::interfaces()
+}
+
+#[derive(serde::Serialize)]
+pub struct PairingOffer {
+    #[serde(flatten)]
+    offer: pairing::Offer,
+    svg: String,
+}
+
+#[tauri::command(async)]
+pub fn pairing_start(rpc: tauri::State<RpcState>) -> Result<PairingOffer, String> {
+    let offer = rpc.remote.start_pairing()?;
+    let svg = qrcode::QrCode::new(offer.uri.as_bytes())
+        .map_err(|e| e.to_string())?
+        .render::<qrcode::render::svg::Color>()
+        .quiet_zone(true)
+        .build();
+    Ok(PairingOffer { offer, svg })
+}
+
+#[tauri::command]
+pub fn pairing_cancel(rpc: tauri::State<RpcState>) {
+    rpc.remote.cancel_pairing();
+}
+
+#[tauri::command]
+pub fn devices_list(rpc: tauri::State<RpcState>) -> Vec<Value> {
+    rpc.devices.list().into_iter().map(|d| json!({ "id": d.id, "name": d.name, "created_ms": d.created_ms })).collect()
+}
+
+// Revoked in the file first: a connection still being set up checks the file
+// after registering, so it cannot slip between the two.
+#[tauri::command(async)]
+pub fn device_revoke(app: AppHandle, rpc: tauri::State<RpcState>, id: String) -> Result<(), String> {
+    rpc.devices.revoke(&id)?;
+    rpc.hub.close_device(&id);
+    devices_changed(&app, None);
+    Ok(())
 }
 
 // The webview's own switch: not a socket caller, so it goes around the

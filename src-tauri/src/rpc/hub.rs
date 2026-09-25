@@ -55,6 +55,8 @@ struct Conn {
     /// sees a closed socket instead of silently missing events.
     close: Box<dyn Fn() + Send>,
     channels: HashSet<Channel>,
+    /// The paired device on the other end, so revoking it can drop the connection.
+    device: Option<String>,
 }
 
 #[derive(Default)]
@@ -80,8 +82,25 @@ impl Hub {
         let mut inner = self.lock();
         inner.next += 1;
         let id = inner.next;
-        inner.conns.insert(id, Conn { tx, close, channels: HashSet::new() });
+        inner.conns.insert(id, Conn { tx, close, channels: HashSet::new(), device: None });
         id
+    }
+
+    pub fn tag_device(&self, conn: ConnId, device: &str) {
+        if let Some(c) = self.lock().conns.get_mut(&conn) {
+            c.device = Some(device.to_string());
+        }
+    }
+
+    /// Drops every connection held by `device`.
+    pub fn close_device(&self, device: &str) {
+        let mut inner = self.lock();
+        let ids: Vec<ConnId> = inner.conns.iter().filter(|(_, c)| c.device.as_deref() == Some(device)).map(|(id, _)| *id).collect();
+        for id in ids {
+            if let Some(conn) = inner.conns.remove(&id) {
+                (conn.close)();
+            }
+        }
     }
 
     pub fn remove(&self, conn: ConnId) {

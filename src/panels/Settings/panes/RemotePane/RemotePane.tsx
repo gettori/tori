@@ -1,10 +1,12 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Group, Row, idsIn, rowLabelId, type PaneProps } from "../../components/paneKit";
 import styles from "../../Settings.module.css";
 import { loadSettings, settings, type Settings } from "../../settingsStore";
 import Switch from "../../../../components/Switch/Switch";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
+import Button from "../../../../components/Button/Button";
 import { pushToast } from "../../../../components/Toasts/Toasts";
 
 /** Mirrors `remote::Status` in src-tauri/src/rpc/remote.rs. */
@@ -12,6 +14,15 @@ type RemoteStatus = { state: "off" } | { state: "listening"; url: string } | { s
 
 /** Mirrors `remote::Interface` in src-tauri/src/rpc/remote.rs. */
 type Interface = { name: string; address: string; kind: "lan" | "tailscale" | "loopback" };
+
+/** Mirrors `PairingOffer` in src-tauri/src/rpc/mod.rs. */
+type Offer = { code: string; url: string; uri: string; expires_ms: number; svg: string };
+
+/** Mirrors `pairing::Ended` in src-tauri/src/rpc/pairing.rs, plus the expiry only the pane watches. */
+type Ended = "used" | "burned" | "cancelled" | "expired";
+
+/** What `devices_list` returns. */
+type Device = { id: string; name: string; created_ms: number };
 
 const [status, setStatus] = createSignal<RemoteStatus>({ state: "off" });
 
@@ -45,6 +56,22 @@ function describe(s: RemoteStatus): string {
   }
 }
 
+const ENDED: Record<Ended, string> = {
+  used: "Paired.",
+  burned: "Too many wrong codes; the code no longer works.",
+  cancelled: "Pairing cancelled.",
+  expired: "The code expired.",
+};
+
+function remaining(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function pairedOn(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
 function optionFor(i: Interface): SelectOption {
   const where = i.kind === "tailscale" ? "Tailscale" : i.kind === "loopback" ? "this Mac only" : i.name;
   return { value: i.address, label: `${i.address} (${where})` };
@@ -52,10 +79,50 @@ function optionFor(i: Interface): SelectOption {
 
 export default function RemotePane(props: PaneProps) {
   const [interfaces, setInterfaces] = createSignal<Interface[]>([]);
+  const [devices, setDevices] = createSignal<Device[]>([]);
+  const [offer, setOffer] = createSignal<Offer | null>(null);
+  const [ended, setEnded] = createSignal<Ended | null>(null);
+  const [now, setNow] = createSignal(Date.now());
+
+  const loadDevices = () => void invoke<Device[]>("devices_list").then(setDevices).catch(() => {});
+  const end = (why: Ended) => {
+    setOffer(null);
+    setEnded(why);
+  };
+
   onMount(() => {
     void invoke<Interface[]>("remote_interfaces").then(setInterfaces).catch(() => {});
     void invoke<RemoteStatus>("remote_status").then(setStatus).catch(() => {});
+    loadDevices();
+    const unlisten = listen<{ ended: Ended | null }>("remote://devices", (e) => {
+      loadDevices();
+      if (e.payload.ended && offer()) end(e.payload.ended);
+    });
+    const tick = setInterval(() => {
+      setNow(Date.now());
+      const live = offer();
+      if (live && Date.now() >= live.expires_ms) end("expired");
+    }, 1000);
+    onCleanup(() => {
+      clearInterval(tick);
+      void unlisten.then((f) => f());
+      // A code left live after the pane closes is one nobody is watching.
+      if (offer()) void invoke("pairing_cancel");
+    });
   });
+
+  const startPairing = () => {
+    setEnded(null);
+    invoke<Offer>("pairing_start")
+      .then((o) => {
+        setNow(Date.now());
+        setOffer(o);
+      })
+      .catch((e) => pushToast(`Pairing did not start: ${String(e)}`));
+  };
+
+  const revoke = (d: Device) =>
+    void invoke("device_revoke", { id: d.id }).catch((e) => pushToast(`${d.name} was not revoked: ${String(e)}`));
 
   const options = (): SelectOption[] => {
     const found = interfaces().map(optionFor);
@@ -104,6 +171,56 @@ export default function RemotePane(props: PaneProps) {
       <Row {...props} id="remote-status" label="Status">
         <span role="status">{describe(status())}</span>
       </Row>
+
+      <Row {...props} id="remote-pair" label="Pair a device">
+        <Show
+          when={offer()}
+          fallback={
+            <Button size="sm" disabled={status().state !== "listening"} onClick={startPairing}>
+              Pair a device
+            </Button>
+          }
+        >
+          <Button size="sm" onClick={() => void invoke("pairing_cancel")}>
+            Cancel
+          </Button>
+        </Show>
+      </Row>
+      <Show when={props.shown("remote-pair")}>
+        <Show when={offer()}>
+          {(o) => (
+            <div class={styles.pairing}>
+              {/* Rust renders the SVG from a URI it built, so nothing typed reaches it. */}
+              <div class={styles.pairQr} innerHTML={o().svg} role="img" aria-label="Pairing QR code" />
+              <div class={styles.pairText}>
+                <span class={styles.pairCode}>{o().code}</span>
+                <span>{o().url}</span>
+                <span>Expires in {remaining(o().expires_ms - now())}</span>
+              </div>
+            </div>
+          )}
+        </Show>
+        <Show when={ended()}>{(why) => <div class={styles.note} role="status">{ENDED[why()]}</div>}</Show>
+      </Show>
+
+      <Row {...props} id="remote-devices" label="Paired devices">
+        <span>{devices().length === 0 ? "None" : `${devices().length}`}</span>
+      </Row>
+      <Show when={props.shown("remote-devices")}>
+        <For each={devices()}>
+          {(d) => (
+            <div class={styles.row}>
+              <span class={styles.label}>{d.name}</span>
+              <div class={styles.control}>
+                <Button size="sm" variant="danger" aria-label={`Revoke ${d.name}`} onClick={() => revoke(d)}>
+                  Revoke
+                </Button>
+              </div>
+              <div class={styles.hint}>Paired {pairedOn(d.created_ms)}</div>
+            </div>
+          )}
+        </For>
+      </Show>
     </Group>
   );
 }

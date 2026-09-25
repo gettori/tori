@@ -314,6 +314,7 @@ mod tests {
     use crate::rpc::auth::Credential;
     use crate::rpc::devices::Devices;
     use crate::rpc::hub::{Channel, Hub};
+    use crate::rpc::pairing::Pairing;
     use crate::rpc::server::tests::StubBackend;
     use crate::rpc::server::{serve, Server};
     use serde_json::{json, Value};
@@ -324,6 +325,8 @@ mod tests {
     struct Front {
         transport: Arc<WsTransport>,
         hub: Arc<Hub>,
+        devices: Arc<Devices>,
+        pairing: Arc<Pairing>,
         credential: String,
         dir: std::path::PathBuf,
     }
@@ -342,8 +345,9 @@ mod tests {
         let transport = Arc::new(WsTransport::bind("127.0.0.1:0".parse().unwrap()).unwrap());
         let hub = Arc::new(Hub::default());
         let server = Arc::new(Server { hub: hub.clone(), backend: Box::<StubBackend>::default(), auth_timeout });
-        serve(transport.clone(), Arc::new(Credential::Remote(devices)), server);
-        Front { transport, hub, credential, dir }
+        let pairing = Arc::new(Pairing::new(Box::new(|_| {})));
+        serve(transport.clone(), Arc::new(Credential::Remote { devices: devices.clone(), pairing: pairing.clone() }), server);
+        Front { transport, hub, devices, pairing, credential, dir }
     }
 
     fn connect(front: &Front) -> tungstenite::Result<Client> {
@@ -448,6 +452,39 @@ mod tests {
         assert!(wait_for(|| front.transport.live().is_empty()), "every closed connection gave its slot back");
         let mut ninth = authed(&front);
         assert_eq!(call(&mut ninth, 1, "sessions.list", json!({}))["result"][0]["id"], json!("s1"));
+    }
+
+    #[test]
+    fn pairing_answers_then_closes_and_the_credential_authenticates_next_time() {
+        let front = front(Duration::from_secs(5));
+        let offer = front.pairing.start("ws://x", crate::owned_state::now_ms()).unwrap();
+        let mut pairer = connect(&front).unwrap();
+        let reply = call(&mut pairer, 0, "pair", json!({ "code": offer.code, "name": "probe" }));
+        assert_eq!(reply["result"]["name"], json!("probe"));
+        match pairer.read() {
+            Ok(Message::Close(Some(frame))) => assert_eq!(u16::from(frame.code), 1000),
+            other => panic!("the pairing connection is closed, got {other:?}"),
+        }
+
+        let mut device = connect(&front).unwrap();
+        assert_eq!(call(&mut device, 0, "auth", json!({ "token": reply["result"]["credential"] }))["result"], json!({}));
+        let mut again = connect(&front).unwrap();
+        assert!(call(&mut again, 0, "pair", json!({ "code": offer.code }))["error"].is_object(), "a used code is refused");
+    }
+
+    #[test]
+    fn revoking_a_device_drops_its_live_connection_and_refuses_it_after() {
+        let front = front(Duration::from_secs(5));
+        let mut client = authed(&front);
+        let id = front.devices.list()[0].id.clone();
+        assert_eq!(front.devices.revoke(&id), Ok(true));
+        front.hub.close_device(&id);
+        match client.read() {
+            Ok(Message::Close(_)) => {}
+            other => panic!("the revoked device is closed, got {other:?}"),
+        }
+        let mut back = connect(&front).unwrap();
+        assert!(call(&mut back, 0, "auth", json!({ "token": front.credential }))["error"].is_object());
     }
 
     #[test]

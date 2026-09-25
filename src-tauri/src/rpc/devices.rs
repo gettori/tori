@@ -41,9 +41,7 @@ impl Devices {
     /// Adds a device and returns it with its credential, the only time the
     /// credential is ever seen.
     pub fn mint(&self, name: &str) -> Result<(Device, String), String> {
-        if let Some(why) = &self.unreadable {
-            return Err(format!("{} could not be read ({why}); fix or remove it before adding a device", self.path.display()));
-        }
+        self.writable()?;
         let credential = random_hex::<32>()?;
         let device = Device {
             id: random_hex::<8>()?,
@@ -59,6 +57,38 @@ impl Devices {
             return Err(e);
         }
         Ok((device, credential))
+    }
+
+    /// Removes a device, so its credential stops working. `false` when no
+    /// device has that id.
+    pub fn revoke(&self, id: &str) -> Result<bool, String> {
+        self.writable()?;
+        let mut list = self.lock();
+        let Some(at) = list.iter().position(|d| d.id == id) else { return Ok(false) };
+        let removed = list.remove(at);
+        let text = serde_json::to_string_pretty(&*list).map_err(|e| e.to_string())?;
+        if let Err(e) = crate::owned_state::write_private(&self.path, &text) {
+            list.insert(at, removed);
+            return Err(e);
+        }
+        Ok(true)
+    }
+
+    pub fn list(&self) -> Vec<Device> {
+        self.lock().clone()
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.lock().iter().any(|d| d.id == id)
+    }
+
+    /// Refused while the file on disk could not be read, since writing over it
+    /// would drop every device it holds.
+    pub fn writable(&self) -> Result<(), String> {
+        match &self.unreadable {
+            Some(why) => Err(format!("{} could not be read ({why}); fix or remove it before changing devices", self.path.display())),
+            None => Ok(()),
+        }
     }
 
     /// The id of the device holding `credential`.
@@ -104,6 +134,22 @@ mod tests {
         assert_eq!(reloaded.find("not-a-credential"), None);
         assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
         assert!(!std::fs::read_to_string(&path).unwrap().contains(&credential));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_revoked_device_is_gone_after_a_reload() {
+        let path = temp_path("revoke");
+        let devices = Devices::open(path.clone());
+        let (kept, kept_secret) = devices.mint("tablet").unwrap();
+        let (gone, gone_secret) = devices.mint("phone").unwrap();
+        assert_eq!(devices.revoke(&gone.id), Ok(true));
+        assert_eq!(devices.revoke(&gone.id), Ok(false));
+
+        let reloaded = Devices::open(path.clone());
+        assert_eq!(reloaded.list(), vec![kept.clone()]);
+        assert_eq!(reloaded.find(&gone_secret), None);
+        assert_eq!(reloaded.find(&kept_secret), Some(kept.id));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 

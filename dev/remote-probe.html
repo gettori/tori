@@ -3,19 +3,23 @@
   Drive Tori's remote front from a browser, the way a phone will.
 
   1. In Tori: Settings > Remote, pick an address, turn Remote access on.
-  2. Mint a credential on the Mac:  node dev/rpc-probe.mjs --no-wait --mint <name>
-  3. Serve this folder on the same address, from the repo root:
+  2. Serve this folder on the same address, from the repo root:
        python3 -m http.server 47822 --bind <address> --directory dev
      and open http://<address>:47822/remote-probe.html on the phone. Not as a
      copied file: Chrome on Android will not let a page opened from a file
      reach a local network address, and the connect fails with 1006.
-  4. Paste the URL from the Status row and the credential, press Connect.
-     Stop the server when done.
+  3. In Tori press Pair a device. Scan the QR with the phone's camera app and
+     paste the tori://pair link it shows, or type the URL and the code. Name
+     the device and press Pair. The credential is kept in this page's storage.
+     (Or mint one on the Mac, node dev/rpc-probe.mjs --no-wait --mint <name>,
+     and paste it into Credential.)
+  4. Press Connect. Stop the server when done.
 
   It authenticates, lists sessions, subscribes to the sessions topic, and logs
-  every event and the close. Turning Remote access off should log the close at
-  once. Pasting the process token from ~/.config/tori/rpc.json instead of a
-  credential should be refused.
+  every event and the close. Turning Remote access off, or revoking this
+  device in Settings, should log the close at once. Pairing again with a used
+  or expired code should be refused, and so should pasting the process token
+  from ~/.config/tori/rpc.json instead of a credential.
 -->
 <html lang="en">
   <head>
@@ -34,6 +38,10 @@
   </head>
   <body>
     <h1>Tori remote probe</h1>
+    <label>Pairing link <input id="link" placeholder="tori://pair?url=ws://...&code=..." /></label>
+    <label>Code <input id="code" placeholder="K7QM-2XRD" /></label>
+    <label>Device name <input id="name" placeholder="Pixel 8" /></label>
+    <button id="pair">Pair</button>
     <label>URL <input id="url" placeholder="ws://192.168.1.20:47821" /></label>
     <label>Credential <input id="credential" placeholder="from rpc-probe.mjs --mint" /></label>
     <button id="connect">Connect</button>
@@ -112,8 +120,37 @@
         socket.onerror = () => log("connection error", "fail");
       };
 
+      $("link").oninput = () => {
+        const text = $("link").value.trim();
+        if (!text.startsWith("tori://pair?")) return;
+        const params = new URLSearchParams(text.slice("tori://pair?".length));
+        $("url").value = params.get("url") ?? "";
+        $("code").value = params.get("code") ?? "";
+      };
+
+      $("pair").onclick = () => {
+        const url = $("url").value.trim();
+        const pairing = new WebSocket(url);
+        log(`pairing with ${url}`);
+        pairing.onopen = () =>
+          pairing.send(
+            JSON.stringify({ jsonrpc: "2.0", id: 0, method: "pair", params: { code: $("code").value, name: $("name").value } }),
+          );
+        pairing.onmessage = (message) => {
+          const frame = JSON.parse(message.data);
+          if (frame.error) return log(`pair refused: ${frame.error.message}`, "fail");
+          localStorage.setItem("tori-remote-url", url);
+          localStorage.setItem("tori-remote-credential", frame.result.credential);
+          $("credential").value = frame.result.credential;
+          log(`paired as ${frame.result.name} (${frame.result.id})`, "ok");
+        };
+        pairing.onclose = (e) => log(`pairing connection closed (code ${e.code})`);
+        pairing.onerror = () => log("pairing connection error", "fail");
+      };
+
       $("disconnect").onclick = () => socket?.close();
       $("url").value = localStorage.getItem("tori-remote-url") ?? "";
+      $("credential").value = localStorage.getItem("tori-remote-credential") ?? "";
     </script>
   </body>
 </html>

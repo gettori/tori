@@ -614,6 +614,18 @@ export const SETTINGS: SettingEntry[] = [
     section: "remote",
     label: "Status",
   },
+  {
+    id: "remote-pair",
+    section: "remote",
+    label: "Pair a device",
+    hint: "Shows a QR and a code to type. The code works once, for five minutes, and five wrong tries end it.",
+  },
+  {
+    id: "remote-devices",
+    section: "remote",
+    label: "Paired devices",
+    hint: "Revoking a device drops its connection at once and it has to pair again.",
+  },
 
   {
     id: "base-folder",
