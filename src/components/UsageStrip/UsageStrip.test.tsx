@@ -1,7 +1,7 @@
 // What the titlebar says about each account's quota.
 //
 // The distinction under test is temporal, not visual: a reading past its reset
-// is a *wrong* number, so it renders as the word "reset" with no percentage,
+// is a *wrong* number, so it renders as the 0% a fresh window starts at,
 // while a merely old one keeps its number and goes dim. Drawing 98% on a quota
 // that has since emptied is the failure the three states exist to prevent.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -145,8 +145,8 @@ describe("the full row", () => {
     expect(row.getAttribute("aria-label")).toMatch(/^Claude usage/);
     expect(row.textContent).not.toContain("Claude");
     expect(barsIn(row).map((b) => b.dataset.kind)).toEqual(["five_hour", "seven_day"]);
-    expect(row.textContent).toContain("42.0%");
-    expect(row.textContent).toContain("11.0%");
+    expect(row.textContent).toContain("42%");
+    expect(row.textContent).toContain("11%");
   });
 
   // Absence is a property of the source, never a level of zero: a window no
@@ -216,9 +216,8 @@ describe("a second account on the same agent", () => {
 
     const lead = clusterFor("claude", "default")!;
     const second = clusterFor("claude", "work")!;
-    expect(lead.querySelectorAll(`.${styles.track}`)).toHaveLength(2);
+    expect(barsIn(lead)).toHaveLength(2);
     expect(barsIn(second).map((b) => b.dataset.kind)).toEqual(["five_hour", "seven_day"]);
-    expect(second.querySelectorAll(`.${styles.track}`)).toHaveLength(2);
     // And a rule between them, so the second name reads as another account.
     expect(document.querySelectorAll(`.${styles.divider}`)).toHaveLength(1);
   });
@@ -263,12 +262,12 @@ describe("how old the number is", () => {
     // The age reaches a keyboard user, not just a pointer resting on the bar.
     expect(row.getAttribute("aria-label")).toContain("last read 30 min ago");
     // Old, not wrong: the number it last had is still what it last had.
-    expect(bar.textContent).toContain("42.0%");
+    expect(bar.textContent).toContain("42%");
   });
 
   // The one case a dimmed number would be a lie. Both windows are gone, and the
-  // account still has a cluster: it has readings, they just say "reset".
-  it("says reset with no percentage once a window is past its reset", () => {
+  // account still has a cluster: it has readings, they just say 0%.
+  it("says 0% once a window is past its reset", () => {
     seedUsageStoreForTests(
       "claude",
       null,
@@ -282,7 +281,7 @@ describe("how old the number is", () => {
     expect(bars).toHaveLength(2);
     for (const bar of bars) {
       expect(bar.className).toContain(styles.expired);
-      expect(bar.textContent).toContain("reset");
+      expect(bar.textContent).toContain("0%");
     }
     expect(row.textContent).not.toContain("98%");
     expect(row.textContent).not.toContain("75%");

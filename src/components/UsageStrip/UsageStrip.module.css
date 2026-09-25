@@ -12,16 +12,19 @@
    the permission prompt and the question card; a strip bar makes the same claim
    the chat's reached banner does, so it wears the same role that does. */
 @layer components {
-  /* No surface of its own. The strip sits on the topbar the way the toolbar
-     does, and the dividers are what give it structure. */
+  /* One chip for every account. Each account inside is still its own button
+     with its own card. */
   .strip {
     flex: 0 1 auto;
     min-width: 0;
     align-self: center;
     display: flex;
     align-items: center;
-    gap: var(--tori-space-4);
+    gap: var(--tori-space-2);
     margin-right: var(--tori-space-4);
+    padding: var(--tori-space-1);
+    border-radius: var(--tori-radius-lg);
+    background: var(--neutral-subtle);
     font-family: var(--tori-font-mono);
     overflow: hidden;
   }
@@ -32,8 +35,8 @@
     display: flex;
     align-items: center;
     gap: var(--tori-space-4);
-    height: calc(26px * var(--ui-scale));
-    padding: 0 var(--tori-space-3);
+    height: var(--control-height-sm);
+    padding: 0 var(--tori-space-4);
     border: none;
     border-radius: var(--tori-radius-md);
     background: none;
@@ -74,7 +77,7 @@
   .bar {
     display: flex;
     align-items: center;
-    gap: var(--tori-space-3);
+    gap: var(--tori-space-2);
     white-space: nowrap;
   }
 
@@ -86,44 +89,21 @@
     color: var(--fg-muted);
   }
 
-  .track {
-    display: block;
-    width: calc(24px * var(--ui-scale));
-    height: calc(4px * var(--ui-scale));
-    margin-right: var(--tori-space-1);
-    border-radius: var(--tori-radius-pill);
-    background: var(--neutral-subtle);
-    overflow: hidden;
-  }
-
-  /* Three bands, one ladder. Green paints the bar alone: fine needs no second
-     signal. From the warm band up the figure takes the colour too, since that
-     is the number a glance is reading. */
-  .fill {
-    display: block;
-    height: 100%;
-    border-radius: var(--tori-radius-pill);
-    background: var(--success-fg);
-  }
-
   /* The one thing the strip exists to carry, so it is the one thing with weight
      on it. */
   .figure {
-    font-size: var(--tori-text-sm);
+    font-size: var(--tori-text-md);
     font-variant-numeric: tabular-nums;
     font-weight: 600;
+    letter-spacing: 0.06em;
     color: var(--fg-default);
   }
 
-  .warm .fill {
-    background: var(--attention-fg);
-  }
+  .warm .kind,
   .warm .figure {
     color: var(--attention-fg);
   }
-  .hot .fill {
-    background: var(--danger-fg);
-  }
+  .hot .kind,
   .hot .figure {
     color: var(--danger-fg);
   }
@@ -135,8 +115,8 @@
     opacity: 0.55;
   }
 
-  /* Wrong rather than old, so it loses its colour and its percentage both. The
-     word "reset" is the whole content of the bar. */
+  /* Wrong rather than old, so it loses its colour and reads as the 0% a fresh
+     window starts at. */
   .expired {
     color: var(--fg-muted);
   }
