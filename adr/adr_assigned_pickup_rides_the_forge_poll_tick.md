@@ -33,7 +33,7 @@ source: gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my 
 - Pickup needs the window alive and the project watched in the sidebar, like the status chips.
 - A project whose backlog was empty on its first tick proposes its first real assignment once even under `auto`, since "first" is derived from the items rather than stored.
 - A list at GitHub's search cap closes nothing ([[gotcha_an_assigned_list_at_the_search_cap_proves_nothing_missing]]).
-- The brief owns starting queued work, on start and whenever a worker's item closes, so an edit there also goes into `RESUMED` ([[gotcha_a_resumed_autopilot_keeps_the_brief_it_started_with]]).
+- The brief owns starting queued work, on start and whenever a worker's item closes, and a resumed or compacted autopilot is sent the brief again, so an edit there reaches it ([[component_autopilot_runner]]).
 
 ## Related
 
