@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::states::{Reported, SessionState, Source};
 use crate::config::{BranchUnit, ProjectKind};
+use crate::presence::Live;
 use crate::unit_home::Home;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,6 +179,7 @@ pub struct Meta {
     pub path: String,
     pub branch: String,
     pub cwd: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -279,6 +281,32 @@ impl Dots {
 
     pub fn dot(&self, id: &str) -> (Dot, Certainty) {
         self.inner().dots.get(id).map_or((Dot::None, Certainty::Inferred), |c| (c.dot, c.certainty))
+    }
+
+    /// Every session a tab or a chat hosts, agent tabs first. A tab's name and
+    /// every project are the caller's to fill in.
+    pub fn live(&self) -> Vec<Live> {
+        let inner = self.inner();
+        let dot = |id: &str| inner.dots.get(id).map_or(Dot::None, |c| c.dot);
+        let hosted = |id: &str, folder: &str| Live {
+            id: id.to_string(),
+            dot: dot(id),
+            name: String::new(),
+            project: String::new(),
+            folder: folder.to_string(),
+            chat: false,
+            visible: false,
+            spawner: None,
+        };
+        let tabs = inner.facts.tabs.iter().map(|t| hosted(&t.session, &t.workspace));
+        let chats = inner.facts.chats.iter().map(|c| Live {
+            name: c.name.clone(),
+            chat: true,
+            visible: c.visible,
+            spawner: c.spawner.clone(),
+            ..hosted(&c.session, &c.folder)
+        });
+        tabs.chain(chats).collect()
     }
 
     pub fn all(&self) -> Vec<Change> {

@@ -791,9 +791,7 @@ export default function LeftSidebar(props: {
 
   // Attention, the one input the store cannot see for itself: it is the sidebar
   // that knows what is selected, and this component that owns the window-focus
-  // listener. Everything downstream of it - what counts as attended, which
-  // needs-you edge is worth a notification, the tray and the dock badge - lives
-  // in `sessionActivity` now.
+  // listener.
   const [windowFocused, setWindowFocused] = createSignal(true);
   createEffect(() => noteAttention(props.selected?.sessionId ?? null, windowFocused()));
 

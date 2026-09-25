@@ -76,6 +76,16 @@ pub fn home_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home
     Some(Home { project: project.path.clone(), folder: folder.to_string(), branch: unit.branch.clone() })
 }
 
+/// The name of the project one of whose units lives at `folder`, or empty.
+pub fn project_name(spaces: &[Space], folder: &str) -> String {
+    spaces
+        .iter()
+        .flat_map(|s| &s.projects)
+        .find(|p| p.branch_units.iter().any(|u| u.folder_path == folder))
+        .map(|p| p.name.clone())
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -483,7 +483,9 @@ impl Backend for TauriBackend {
         };
         super::refresh_dots_if_stale();
         for row in &mut rows {
-            let (dot, certainty) = super::session_dot(row["id"].as_str().unwrap_or_default());
+            let id = row["id"].as_str().unwrap_or_default();
+            let (dot, certainty) = super::session_dot(id);
+            row["attended"] = json!(super::session_attended(id, dot));
             row["dot"] = json!(dot);
             row["certainty"] = json!(certainty);
             let cwd = row["cwd"].as_str().unwrap_or_default();
