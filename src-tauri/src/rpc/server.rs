@@ -107,7 +107,8 @@ pub struct SessionAnswerParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorktreeParams {
-    /// The new branch, created in a new worktree.
+    /// The new branch, created in a new worktree. Left out with `pr`, which names it `pr-<number>`.
+    #[serde(default)]
     pub branch: String,
     /// The project folder, the caller's own project when left out.
     pub project: Option<String>,
@@ -115,6 +116,9 @@ pub struct WorktreeParams {
     pub from: Option<String>,
     /// The issue the branch is for, remembered on the unit it makes.
     pub issue: Option<String>,
+    /// A pull request to review: its head is fetched from the forge's PR ref, forks included, onto a local
+    /// `pr-<number>` branch. A worktree already at another commit is refused, never reset.
+    pub pr: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -130,6 +134,16 @@ pub struct IssuesAssignedParams {
 #[serde(deny_unknown_fields)]
 pub struct IssueGetParams {
     /// The issue's key, the number on GitHub, or its URL.
+    pub key: String,
+    /// The project folder. Left out, a URL key names the local project whose origin is that repo, else the
+    /// caller's own project.
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrGetParams {
+    /// The pull request's number, or its URL.
     pub key: String,
     /// The project folder. Left out, a URL key names the local project whose origin is that repo, else the
     /// caller's own project.
@@ -305,6 +319,8 @@ pub struct ReviewSubmitParams {
     pub body: String,
     /// Line comments held with the review.
     pub comments: Option<Vec<DraftComment>>,
+    /// The head commit the comments were drawn against, pr.get's head_sha; refused once the pull request has moved on.
+    pub head_sha: String,
     /// The project folder, the caller's own project when left out.
     pub project: Option<String>,
     /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
@@ -318,6 +334,7 @@ impl ReviewSubmitParams {
             event: self.event,
             body: self.body.clone(),
             comments: self.comments.clone().unwrap_or_default(),
+            head_sha: self.head_sha.clone(),
         }
     }
 }
@@ -479,6 +496,7 @@ pub trait Backend: Send + Sync {
     fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError>;
     fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError>;
     fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError>;
+    fn pr_get(&self, principal: &Principal, params: PrGetParams) -> Result<Value, RpcError>;
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError>;
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
@@ -718,6 +736,9 @@ pub mod tests {
         }
         fn issue_link_branch(&self, _: &Principal, p: LinkBranchParams) -> Result<Value, RpcError> {
             Ok(json!({ "branch": p.branch }))
+        }
+        fn pr_get(&self, _: &Principal, p: PrGetParams) -> Result<Value, RpcError> {
+            Ok(json!({ "key": p.key }))
         }
         fn pr_create(&self, _: &Principal, p: PrCreateParams) -> Result<Value, RpcError> {
             Ok(json!({ "head": p.head }))

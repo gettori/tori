@@ -31,6 +31,7 @@ pub mod github;
 pub mod gitlab;
 pub mod http;
 pub mod model;
+pub mod pr_view;
 pub mod prs;
 pub mod refresh;
 pub mod remote;
@@ -220,6 +221,9 @@ pub trait Forge: Send + Sync {
 
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError>;
 
+    /// One pull request by its number, whatever its state.
+    fn pull_request(&self, repo: &RepoRef, number: u64) -> Result<PullRequest, ForgeError>;
+
     fn create_pull_request(
         &self,
         repo: &RepoRef,
@@ -285,6 +289,10 @@ pub trait Forge: Send + Sync {
     /// atomic on the server, and posting the comments separately would leave a
     /// half-submitted review behind whenever the verdict call failed, with no
     /// way for the caller to tell which comments had already landed.
+    ///
+    /// `head_sha`, when given, is the commit the comments were drawn against:
+    /// the review is anchored to it, or refused where the host cannot anchor to
+    /// a commit and its head has moved on.
     fn submit_review(
         &self,
         repo: &RepoRef,
@@ -292,6 +300,7 @@ pub trait Forge: Send + Sync {
         event: ReviewEvent,
         body: &str,
         comments: &[DraftComment],
+        head_sha: Option<&str>,
     ) -> Result<(), ForgeError>;
 
     /// Post one line comment on its own, outside any held review.
@@ -449,6 +458,9 @@ mod tests {
         fn list_pull_requests(&self, _repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
             Ok(Paged::complete(vec![]))
         }
+        fn pull_request(&self, _repo: &RepoRef, _number: u64) -> Result<PullRequest, ForgeError> {
+            Err(ForgeError::NotAuthenticated)
+        }
         fn create_pull_request(
             &self,
             _repo: &RepoRef,
@@ -506,6 +518,7 @@ mod tests {
             _event: ReviewEvent,
             _body: &str,
             _comments: &[DraftComment],
+            _head_sha: Option<&str>,
         ) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }

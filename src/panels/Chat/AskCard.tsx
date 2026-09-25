@@ -31,12 +31,15 @@ function ApprovalDraft(props: { approval: AskApproval }) {
             <strong>
               {VERDICT[review().event]} on pull request {review().number}
             </strong>
+            <span class={styles.askDraftMeta}>at {review().head_sha}</span>
             <pre class={styles.askDraftBody}>{review().body}</pre>
             <For each={review().comments}>
               {(c) => (
                 <div>
                   <span class={styles.askDraftMeta}>
-                    {c.path}:{c.line}
+                    {c.path}:{c.startLine == null ? "" : `${c.startLine}-`}
+                    {c.line}
+                    {c.side === "LEFT" ? " (base)" : ""}
                   </span>
                   <pre class={styles.askDraftBody}>{c.body}</pre>
                 </div>

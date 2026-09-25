@@ -63,13 +63,19 @@ describe("an approval card", () => {
           number: 42,
           event: "requestChanges",
           body: "Two things.",
-          comments: [{ path: "src/a.rs", line: 7, side: "RIGHT", startLine: null, startSide: null, body: "Name this." }],
+          comments: [
+            { path: "src/a.rs", line: 7, side: "RIGHT", startLine: null, startSide: null, body: "Name this." },
+            { path: "src/b.rs", line: 18, side: "LEFT", startLine: 12, startSide: "LEFT", body: "Why drop these?" },
+          ],
+          head_sha: "abc123",
         })}
       />
     ));
     expect(screen.getByText("Request changes on pull request 42")).toBeTruthy();
+    expect(screen.getByText("at abc123")).toBeTruthy();
     expect(screen.getByText("Two things.")).toBeTruthy();
     expect(screen.getByText("src/a.rs:7")).toBeTruthy();
+    expect(screen.getByText("src/b.rs:12-18 (base)")).toBeTruthy();
     expect(screen.getByText("Name this.")).toBeTruthy();
   });
 

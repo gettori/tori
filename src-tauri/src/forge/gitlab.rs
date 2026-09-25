@@ -517,6 +517,11 @@ impl Forge for GitLabForge {
         }
     }
 
+    fn pull_request(&self, repo: &RepoRef, number: u64) -> Result<PullRequest, ForgeError> {
+        self.require_token()?;
+        pr_from(&self.merge_request(repo, number)?)
+    }
+
     fn pull_request_states(&self, repo: &RepoRef, numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError> {
         self.require_token()?;
         if numbers.is_empty() {
@@ -689,6 +694,7 @@ impl Forge for GitLabForge {
         event: ReviewEvent,
         body: &str,
         comments: &[DraftComment],
+        head_sha: Option<&str>,
     ) -> Result<(), ForgeError> {
         self.require_token()?;
         if event == ReviewEvent::RequestChanges {
@@ -697,11 +703,22 @@ impl Forge for GitLabForge {
             });
         }
         let project = project(repo);
+        let mr = match (head_sha, comments.is_empty()) {
+            (None, true) => Value::Null,
+            _ => self.merge_request(repo, number)?,
+        };
+        // A discussion names no commit of its own, so a pinned review can only
+        // be refused once the head has moved, before anything is posted.
+        if let Some(sha) = head_sha {
+            let now = mr.get("diff_refs").and_then(|r| r.get("head_sha")).and_then(Value::as_str).unwrap_or_default();
+            if now != sha {
+                return Err(ForgeError::Invalid { message: format!("the merge request moved past {sha} to {now}, ask again") });
+            }
+        }
         if !comments.is_empty() {
             // Every line comment is anchored against the diff the server
             // currently has, which is what `diff_refs` names; without those
             // three shas GitLab rejects a positioned discussion.
-            let mr = self.merge_request(repo, number)?;
             let refs = mr.get("diff_refs").cloned().unwrap_or(Value::Null);
             // Only a range needs the patch. A single line is addressed by its
             // own number, while the ends of a range are named by a code built
@@ -1048,7 +1065,7 @@ mod tests {
             start_side: None,
             body: "here".into(),
         }];
-        f.submit_review(&repo(), 7, ReviewEvent::Approve, "looks good", &comments).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Approve, "looks good", &comments, None).unwrap();
 
         let sent = stub.requests();
         assert!(sent[1].url.ends_with("/merge_requests/7/discussions"), "got {}", sent[1].url);
@@ -1087,7 +1104,7 @@ mod tests {
             start_side: Some(DiffSide::Right),
             body: "both of these".into(),
         }];
-        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments, None).unwrap();
 
         let sent: Value = serde_json::from_str(&stub.bodies()[2]).unwrap();
         let range = &sent["position"]["line_range"];
@@ -1122,7 +1139,7 @@ mod tests {
             start_side: None,
             body: "this dropped the error".into(),
         }];
-        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments, None).unwrap();
 
         let sent: Value = serde_json::from_str(&stub.bodies()[1]).unwrap();
         assert_eq!(sent["position"]["old_line"], 41);
@@ -1165,11 +1182,25 @@ mod tests {
         // faking it as a comment would report a verdict nobody can act on.
         let (f, stub) = forge(vec![]);
         let err = f
-            .submit_review(&repo(), 7, ReviewEvent::RequestChanges, "fix it", &[])
+            .submit_review(&repo(), 7, ReviewEvent::RequestChanges, "fix it", &[], None)
             .unwrap_err();
         assert!(matches!(err, ForgeError::Invalid { .. }), "got {err:?}");
         assert_eq!(stub.request_count(), 0, "a refused verdict must not reach the wire");
         assert!(!f.capabilities().request_changes);
+    }
+
+    #[test]
+    fn a_pinned_review_is_refused_before_posting_once_the_head_moved() {
+        let (f, stub) = forge(vec![
+            StubTransport::json(200, r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"new"}}"#),
+            StubTransport::json(200, r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"new"}}"#),
+            StubTransport::json(200, r#"{"id":1}"#),
+        ]);
+        let err = f.submit_review(&repo(), 7, ReviewEvent::Comment, "body", &[], Some("old")).unwrap_err();
+        assert!(matches!(&err, ForgeError::Invalid { message } if message.contains("moved past old")), "got {err:?}");
+        assert_eq!(stub.request_count(), 1, "only the read went out");
+        f.submit_review(&repo(), 7, ReviewEvent::Comment, "body", &[], Some("new")).unwrap();
+        assert_eq!(stub.request_count(), 3);
     }
 
     #[test]

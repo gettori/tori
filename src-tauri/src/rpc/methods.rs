@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, PendingParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -168,11 +168,19 @@ fn record_spawn(states: &SessionStates, principal: &Principal, id: &str, backgro
 // `https://<host>/<owner>/<name>/issues/<n>`, GitLab's `/-/issues/<n>`, or
 // `<owner>/<name>#<n>`: the repo, lowercased, and the issue's key.
 fn issue_ref(key: &str) -> Option<(String, String)> {
+    web_ref(key, &["/issues/"])
+}
+
+fn pr_ref(key: &str) -> Option<(String, String)> {
+    web_ref(key, &["/pull/", "/merge_requests/"])
+}
+
+fn web_ref(key: &str, kinds: &[&str]) -> Option<(String, String)> {
     let key = key.trim().trim_end_matches('/');
     let (repo, number) = match key.split_once('#') {
         Some((repo, number)) => (repo, number),
         None => {
-            let (before, number) = key.rsplit_once("/issues/")?;
+            let (before, number) = kinds.iter().find_map(|kind| key.rsplit_once(kind))?;
             let before = before.strip_suffix("/-").unwrap_or(before);
             let path = before.split_once("://").map_or(before, |(_, path)| path);
             (path.split_once('/')?.1, number)
@@ -268,6 +276,33 @@ fn gated_by_approval(
         Err(_) => approvals.release(&id),
     }
     outcome
+}
+
+// A review that would not post as drawn is refused before its card shows, so
+// an approval is never spent on a draft the host turns away.
+fn postable(
+    approval: &Approval,
+    view_of: impl FnOnce(&str, u64) -> Result<crate::forge::pr_view::PrView, crate::forge::ForgeError>,
+) -> Result<(), RpcError> {
+    let Draft::ReviewSubmit { number, event, comments, head_sha, .. } = &approval.draft else { return Ok(()) };
+    let view = view_of(&approval.project, *number).map_err(forge_refused)?;
+    crate::forge::pr_view::check_review(&view, head_sha, *event, comments).map_err(|why| RpcError::new(INVALID_PARAMS, why))
+}
+
+// GitHub takes an older commit_id without complaint and anchors to it, so the
+// refusal of a moved head is Tori's own; commit_id then covers the window after.
+fn submit_pinned(
+    number: u64,
+    head_sha: &str,
+    read_head: impl FnOnce() -> Result<String, crate::forge::ForgeError>,
+    submit: impl FnOnce() -> Result<(), crate::forge::ForgeError>,
+) -> Result<Value, RpcError> {
+    let now = read_head().map_err(forge_refused)?;
+    if now != head_sha {
+        return Err(refused(format!("#{number} moved past {head_sha} to {now}, ask again")));
+    }
+    submit().map_err(forge_refused)?;
+    Ok(json!({}))
 }
 
 fn to_json<T: Serialize>(value: T) -> Result<Value, RpcError> {
@@ -511,10 +546,31 @@ impl Backend for TauriBackend {
 
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
         let project = self.project(principal, params.project)?;
+        if let Some(number) = params.pr {
+            let branch = format!("pr-{number}");
+            let named = params.branch.trim();
+            if params.issue.is_some() || params.from.is_some() || !(named.is_empty() || named == branch) {
+                return Err(RpcError::new(INVALID_PARAMS, format!("pr goes alone: its branch is {branch}, and it takes no from or issue")));
+            }
+            let pr = crate::forge::commands::pull_request(&project, number).map_err(forge_refused)?;
+            let sha = pr.head_sha;
+            let head_ref = crate::forge::commands::pr_head_ref(&project, number);
+            let askpass = self.app.state::<crate::askpass::AskpassState>().0.clone();
+            {
+                let lock = crate::exec::repo_lock(&project);
+                let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                crate::git::fetch_pr_head(&project, &head_ref, &sha, askpass.sock_path(), askpass.token()).map_err(refused)?;
+                // Best effort: a stale base only widens what the worker reads, and ask.create refuses any comment off the real diff.
+                let _ = crate::git::fetch_branch_quiet(&project, &pr.base_ref);
+            }
+            let create = crate::worktree::create_pr_worktree(self.app.clone(), project, number, sha.clone());
+            let path = tauri::async_runtime::block_on(create).map_err(refused)?;
+            return Ok(json!({ "path": path, "branch": branch, "head_sha": sha }));
+        }
         // Asked before the worktree exists, so a bad key leaves nothing behind.
         let issue = params.issue.map(|key| crate::issues::commands::get(&project, &key)).transpose().map_err(forge_refused)?;
         let branch = params.branch.trim().to_string();
-        let created = WorktreeParams { branch: branch.clone(), project: Some(project.clone()), from: params.from, issue: None };
+        let created = WorktreeParams { branch: branch.clone(), project: Some(project.clone()), from: params.from, issue: None, pr: None };
         let path = self.create_worktree(principal, created)?;
         if let Some(issue) = issue {
             self.remember_issue(&project, &branch, &issue, &path)?;
@@ -570,7 +626,7 @@ impl Backend for TauriBackend {
         }
         let folder = match params.new_worktree {
             Some(branch) => {
-                self.create_worktree(principal, WorktreeParams { branch, project: params.project.clone(), from: params.from, issue: None })?
+                self.create_worktree(principal, WorktreeParams { branch, project: params.project.clone(), from: params.from, issue: None, pr: None })?
             }
             None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
         };
@@ -648,6 +704,9 @@ impl Backend for TauriBackend {
             Some(draft) => Some(Approval { project: self.project(&principal, params.project)?, draft }),
             None => None,
         };
+        if let Some(approval) = &approval {
+            postable(approval, crate::forge::commands::pr_view)?;
+        }
         if let Some(item) = &params.item {
             if approval.is_none() {
                 return Err(RpcError::new(INVALID_PARAMS, "item goes with an approval: only an approval holds an item up"));
@@ -713,6 +772,21 @@ impl Backend for TauriBackend {
         Ok(issue)
     }
 
+    fn pr_get(&self, principal: &Principal, params: PrGetParams) -> Result<Value, RpcError> {
+        let (project, number) = match (params.project, pr_ref(&params.key)) {
+            (Some(project), named) => (project, named.map_or(params.key, |(_, n)| n)),
+            (None, Some((repo, n))) => {
+                let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
+                (project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?, n)
+            }
+            (None, None) => (self.project(principal, None)?, params.key),
+        };
+        let number = number.trim().trim_start_matches('#').parse::<u64>().map_err(|_| RpcError::new(INVALID_PARAMS, format!("{number} is not a pull request number or URL")))?;
+        let mut pr = to_json(crate::forge::commands::pr_view(&project, number).map_err(forge_refused)?)?;
+        pr["project"] = json!(project);
+        Ok(pr)
+    }
+
     fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError> {
         let project = self.project(principal, params.project)?;
         let branch = params.branch.trim();
@@ -747,9 +821,12 @@ impl Backend for TauriBackend {
         let draft = params.draft();
         let comments = params.comments.unwrap_or_default();
         self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
-            crate::forge::commands::submit_review(project, params.number, params.event, &params.body, &comments)
-                .map_err(forge_refused)?;
-            Ok(json!({}))
+            submit_pinned(
+                params.number,
+                &params.head_sha,
+                || crate::forge::commands::pull_request(project, params.number).map(|pr| pr.head_sha),
+                || crate::forge::commands::submit_review(project, params.number, params.event, &params.body, &comments, Some(&params.head_sha)),
+            )
         })
     }
 
@@ -956,6 +1033,72 @@ mod tests {
             url: "https://github.com/o/r/pull/12".into(),
             mergeable_state: crate::forge::model::MergeableState::Unknown,
         }
+    }
+
+    #[test]
+    fn a_review_on_a_moved_head_is_refused_and_keeps_its_approval() {
+        let approvals = Approvals::default();
+        let review = Approval {
+            project: "/p".into(),
+            draft: Draft::ReviewSubmit { number: 45, event: crate::forge::model::ReviewEvent::Comment, body: "B".into(), comments: vec![], head_sha: "abc".into() },
+        };
+        let id = approvals.grant("s1", review.clone());
+        let posts = std::cell::Cell::new(0);
+        let attempt = |head: &str| {
+            gated_by_approval(&approvals, Some("s1"), &review, Some(&id), || {
+                submit_pinned(45, "abc", || Ok(head.to_string()), || {
+                    posts.set(posts.get() + 1);
+                    Ok(())
+                })
+            })
+        };
+        let moved = attempt("def").unwrap_err();
+        assert!(moved.message.contains("moved past abc to def"), "{}", moved.message);
+        assert_eq!(posts.get(), 0, "nothing posts on a moved head");
+        assert!(attempt("abc").is_ok(), "the same approval posts once the head matches");
+        assert_eq!(posts.get(), 1);
+    }
+
+    #[test]
+    fn only_a_review_draft_that_would_post_reaches_its_card() {
+        use crate::forge::model::{Capabilities, DiffSide, DraftComment, FileStatus, Paged, PrFile, ReviewEvent};
+        let view = |_: &str, _: u64| {
+            let file = PrFile {
+                path: "src/a.rs".into(),
+                previous_path: None,
+                status: FileStatus::Modified,
+                additions: 1,
+                deletions: 0,
+                patch: Some("@@ -1,2 +1,3 @@\n a\n+b\n c\n".into()),
+            };
+            let caps = Capabilities {
+                pull_requests: true,
+                checks: true,
+                review_threads: true,
+                resolve_threads: true,
+                merge: true,
+                approve: true,
+                request_changes: true,
+                comment_review: true,
+                single_comment: true,
+            };
+            Ok(crate::forge::pr_view::view(sample_pr(), Paged::complete(vec![file]), "me", caps))
+        };
+        let review = |line| Approval {
+            project: "/p".into(),
+            draft: Draft::ReviewSubmit {
+                number: 12,
+                event: ReviewEvent::Approve,
+                body: "B".into(),
+                comments: vec![DraftComment { path: "src/a.rs".into(), line, side: DiffSide::Right, start_line: None, start_side: None, body: "c".into() }],
+                head_sha: "abc".into(),
+            },
+        };
+        assert!(postable(&review(2), view).is_ok());
+        let err = postable(&review(9), view).unwrap_err();
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(err.message.contains("comment 1: line 9"), "{}", err.message);
+        assert!(postable(&pr_draft(), |_: &str, _: u64| unreachable!("a pull request draft reads no review")).is_ok());
     }
 
     #[test]

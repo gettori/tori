@@ -35,7 +35,7 @@ const USAGE: &str = "usage:
   tori ask --wait <id> [--timeout <secs>]
   tori ask --answer <id> <text>...
   tori pr create --head <branch> --head-sha <sha> --base <branch> --title <text> [--body <text>] [--draft] [--project <path>] [--approval <id>] [--json]
-  tori pr review <number> --event approve|comment|request-changes [--body <text>] [--comments <json>] [--project <path>] [--approval <id>]
+  tori pr review <number> --event approve|comment|request-changes --head-sha <sha> [--body <text>] [--comments <json>] [--project <path>] [--approval <id>]
   tori pr merge <number> --method merge|squash|rebase --head-sha <sha> [--project <path>] [--approval <id>]
   tori autopilot state [--json]
   tori autopilot start|stop [--json]
@@ -661,7 +661,15 @@ fn pr_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
             };
             let comments = p.value("comments").map(json_flag("comments")).transpose()?;
             let body = p.value("body").unwrap_or("");
-            let params = json!({ "number": number()?, "event": event, "body": body, "comments": comments, "project": project, "approval_id": approval_id });
+            let params = json!({
+                "number": number()?,
+                "event": event,
+                "head_sha": needed("head-sha")?,
+                "body": body,
+                "comments": comments,
+                "project": project,
+                "approval_id": approval_id,
+            });
             ("review.submit", params)
         }
         "merge" => {
@@ -925,7 +933,7 @@ mod tests {
         assert_eq!(params["approval_id"], json!("appr-1"));
         assert!(pr_request(&args(&["create", "--head", "1-x"])).is_err(), "base and title are required");
 
-        let (method, params) = pr_request(&args(&["review", "12", "--event", "request-changes", "--body", "no"])).ok().unwrap();
+        let (method, params) = pr_request(&args(&["review", "12", "--event", "request-changes", "--head-sha", "abc", "--body", "no"])).ok().unwrap();
         assert_eq!((method, params["number"].clone(), params["event"].clone()), ("review.submit", json!(12), json!("requestChanges")));
         assert!(pr_request(&args(&["review", "12", "--event", "maybe"])).is_err());
 

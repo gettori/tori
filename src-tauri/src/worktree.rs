@@ -314,6 +314,46 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
     Ok(target_str)
 }
 
+/// A worktree on a pull request's head commit, on a local `pr-<number>` branch.
+/// The commit must already be fetched: a fork's head is on no origin branch, so
+/// it comes from the forge's PR ref, never from `origin/<head_ref>`. A worktree
+/// or branch already at another commit is refused rather than reset, since
+/// resetting would discard whatever was done in it.
+pub async fn create_pr_worktree(app: AppHandle, repo_path: String, number: u64, sha: String) -> Result<String, String> {
+    crate::exec::git_write("create_pr_worktree", repo_path.clone(), move || {
+        let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path))?;
+        let target = target.to_string_lossy().into_owned();
+        let _ = crate::sessions::adopt(&target);
+        let _ = app.emit("config://changed", ());
+        Ok(target)
+    })
+    .await
+}
+
+pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, container: &Path) -> Result<PathBuf, String> {
+    let branch = format!("pr-{number}");
+    if branch_exists(repo, &branch) {
+        let at = rev_parse(repo, &format!("refs/heads/{branch}"))?;
+        if at != sha {
+            return Err(format!("{branch} is at {at}, the pull request is at {sha}: remove its worktree and branch to review again"));
+        }
+    }
+    let path = create_worktree_in(repo, &branch, container, Some(sha))?;
+    let at = rev_parse(&path.to_string_lossy(), "HEAD")?;
+    if at != sha {
+        return Err(format!("the worktree at {} is at {at}, the pull request is at {sha}: remove it to review again", path.display()));
+    }
+    Ok(path)
+}
+
+fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
+    let out = Command::new("git").arg("-C").arg(repo).args(["rev-parse", "--verify", rev]).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 /// The creation core, parameterised on where the folder goes: `container` is
 /// the bare container itself, or `<repo>/.tori/worktrees` for a plain repo. A
 /// branch that already has a worktree yields that worktree's path, except the
@@ -838,6 +878,58 @@ mod tests {
         git(&feat, &["add", "."]);
         git(&feat, &["commit", "-qm", "feature work"]);
         assert!(branch_unpushed(&feat), "a local-only branch is unpushed");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_pr_worktree_sits_on_the_pr_ref_and_is_never_moved_under_its_reader() {
+        let tmp = unique_tmp();
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        // A fork's head: published only as the PR ref, on no branch.
+        git(&src, &["checkout", "-q", "-b", "fork"]);
+        std::fs::write(src.join("a.txt"), "theirs").unwrap();
+        git(&src, &["commit", "-qam", "fork work"]);
+        git(&src, &["update-ref", "refs/pull/7/head", "HEAD"]);
+        git(&src, &["checkout", "-q", "main"]);
+        git(&src, &["branch", "-qD", "fork"]);
+
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        Command::new("git")
+            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .output()
+            .unwrap();
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        let repo = cont.to_str().unwrap();
+        let fetch = || {
+            git(&cont, &["fetch", "-q", "--no-tags", "origin", "refs/pull/7/head"]);
+            rev_parse(repo, "FETCH_HEAD").unwrap()
+        };
+        let first = fetch();
+        assert!(!remote_branch_exists(repo, "fork"), "the head is on no origin branch");
+
+        let wt = create_pr_worktree_in(repo, 7, &first, &cont).unwrap();
+        assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first);
+        let again = create_pr_worktree_in(repo, 7, &first, &cont).unwrap();
+        assert_eq!(again.canonicalize().unwrap(), wt.canonicalize().unwrap(), "the same head reuses it");
+
+        std::fs::write(src.join("a.txt"), "pushed again").unwrap();
+        git(&src, &["checkout", "-q", "refs/pull/7/head"]);
+        git(&src, &["commit", "-qam", "more"]);
+        git(&src, &["update-ref", "refs/pull/7/head", "HEAD"]);
+        let moved = fetch();
+        let err = create_pr_worktree_in(repo, 7, &moved, &cont).unwrap_err();
+        assert!(err.contains("pr-7 is at"), "{err}");
+        assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first, "the worktree is left where it was");
 
         std::fs::remove_dir_all(&tmp).ok();
     }
