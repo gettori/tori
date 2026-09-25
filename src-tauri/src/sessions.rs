@@ -584,7 +584,7 @@ pub(crate) fn cwd_matches(cwd: &str, folder: &str) -> bool {
 /// folder claims them by prefix, so the repo would otherwise list them as its
 /// own. Teardown (`ids_under`) keeps the plain prefix rule on purpose: removing
 /// the repo must still find every session it physically contained.
-fn owned_by_listing(cwd: &str, folder: &str) -> bool {
+pub(crate) fn owned_by_listing(cwd: &str, folder: &str) -> bool {
     let f = norm(folder);
     cwd_matches(cwd, folder) && !norm(cwd).starts_with(&format!("{f}/.tori/worktrees/"))
 }
