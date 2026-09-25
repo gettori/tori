@@ -19,9 +19,12 @@ import {
   CircleDashed,
   ListX,
   MessageSquare,
+  Play,
+  SquareChevronRight,
   SquareTerminal,
   Terminal as TerminalIcon,
   Zap,
+  type LucideIcon,
 } from "lucide-solid";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
@@ -216,6 +219,17 @@ type PtyTab = OpenTerm & { kind: Exclude<TabKind, "chat"> };
 // Long enough that typing never writes localStorage, short enough that a pause
 // to think is already saved.
 const DRAFT_SAVE_MS = 500;
+
+// The glyphs the new tab menu and the Scripts section already use, so a tab
+// reads as the thing that opened it. Chat and agent only fall back to theirs
+// when the session mark is refused.
+const KIND_GLYPHS: Record<TabKind, LucideIcon> = {
+  shell: SquareTerminal,
+  command: SquareChevronRight,
+  task: Play,
+  chat: MessageSquare,
+  agent: SquareTerminal,
+};
 
 // A stable, unique id for a shell-hosted tab. Deliberately not the session uuid:
 // one shell can host successive agents, and the uuid is a soft attribute.
@@ -2589,10 +2603,10 @@ export default function Terminal(props: {
           certainty={tabCertainty(t)}
           background={chatBackground(t)}
         />
-      ) : undefined;
+      ) : (
+        <Icon icon={KIND_GLYPHS[t.kind]} />
+      );
       const m = tabMember(t.cwd);
-      // Still undefined outside a Topic, so a plain shell keeps the bare label
-      // the descriptor documents.
       if (!m) return mark;
       return (
         <>

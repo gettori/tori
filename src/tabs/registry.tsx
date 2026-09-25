@@ -8,7 +8,7 @@ import { endTabDrag, startTabDrag } from "./tabDrag";
 import type { UnifiedTab, UnifiedTabKind } from "./unifiedTabs";
 
 export type TabDescriptor = {
-  /** Leading glyph; undefined for a bare label (plain shells today). */
+  /** Leading glyph; undefined for a bare label. */
   icon: (t: UnifiedTab) => JSX.Element | undefined;
   title: (t: UnifiedTab) => JSX.Element | string;
   tooltip: (t: UnifiedTab) => string;
