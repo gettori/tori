@@ -560,8 +560,8 @@ export const SETTINGS: SettingEntry[] = [
   {
     id: "autopilot-on",
     section: "autopilot",
-    label: "Run the autopilot",
-    hint: "Starts a background session that reads the queue and works through it. Stays on across a relaunch until you turn it off.",
+    label: "Enable autopilot",
+    hint: "Puts the Cockpit and Workspace switch in the title bar. You start and stop the autopilot from the cockpit; off stops it and hides the cockpit.",
   },
   {
     id: "autopilot-model",

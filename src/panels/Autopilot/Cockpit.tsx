@@ -89,7 +89,6 @@ export function CockpitSwitch() {
         setView(v);
       }}
       onTogglePopup={() => setPopupOpen(!popupOpen())}
-      onToggleOn={() => void (autopilotNow() === "off" ? startAutopilot() : stopAutopilot())}
     />
   );
 }
@@ -122,6 +121,7 @@ export function CockpitView() {
         error={runner().error ?? undefined}
         chat={live() ? <CockpitChat status={runner()} reading={error()} /> : undefined}
         onStart={() => void startAutopilot()}
+        onStop={() => void stopAutopilot()}
         onRestart={() => void startAutopilot()}
       />
     </div>

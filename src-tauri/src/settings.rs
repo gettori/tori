@@ -712,12 +712,15 @@ pub struct Format {
     pub disabled: Vec<String>,
 }
 
-/// What the autopilot session runs as. `enabled` is written only by
-/// `autopilot.start` and `autopilot.stop`, so `set_settings` keeps the file's
-/// value over the frontend's copy.
+/// What the autopilot session runs as. `available` is the feature itself: off,
+/// the cockpit is gone and nothing starts. `enabled` is whether it was running,
+/// for a relaunch; it is written only by `autopilot.start` and `autopilot.stop`,
+/// so `set_settings` keeps the file's value over the frontend's copy.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Autopilot {
+    #[serde(default)]
+    pub available: bool,
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_autopilot_agent", deserialize_with = "autopilot_agent")]
@@ -735,6 +738,7 @@ pub struct Autopilot {
 impl Default for Autopilot {
     fn default() -> Self {
         Self {
+            available: false,
             enabled: false,
             agent: default_autopilot_agent(),
             profile: None,

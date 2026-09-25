@@ -310,9 +310,11 @@ export type Settings = {
   autopilot: AutopilotSettings;
 };
 
-/** `enabled` is written only by `autopilot.start` and `autopilot.stop`; a save
+/** `available` is the feature: off, there is no cockpit. `enabled` is whether it
+ *  was running, written only by `autopilot.start` and `autopilot.stop`; a save
  *  from here keeps whatever the file says. */
 export type AutopilotSettings = {
+  available: boolean;
   enabled: boolean;
   agent: string;
   profile: string | null;
@@ -399,7 +401,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
-  autopilot: { enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20 },
+  autopilot: { available: false, enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20 },
 };
 
 /**

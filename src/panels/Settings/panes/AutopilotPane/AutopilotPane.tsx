@@ -17,7 +17,7 @@ import {
 import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import { enabledChatAgents } from "../../../../utils/agentEnabled";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../../../utils/modelCatalog";
-import { runner, startAutopilot, stopAutopilot } from "../../../../utils/autopilotStore";
+import { setAutopilotAvailable } from "../../../../utils/autopilotStore";
 
 export default function AutopilotPane(props: PaneProps) {
   onMount(() => {
@@ -41,17 +41,13 @@ export default function AutopilotPane(props: PaneProps) {
   );
   const models = () => providers().find((p) => p.agentId === agentId() && p.profile === profile())?.models ?? [];
 
-  // The switch follows the runner rather than `settings.autopilot.enabled`: only
-  // start and stop write that flag, so the store's copy can be stale.
-  const on = () => runner().state !== "off";
-
   return (
     <Group {...props} title="Autopilot" ids={idsIn("autopilot")}>
-      <Row {...props} id="autopilot-on" label="Run the autopilot">
+      <Row {...props} id="autopilot-on" label="Enable autopilot">
         <Switch
-          checked={on()}
-          onChange={(next) => void (next ? startAutopilot() : stopAutopilot())}
-          aria-label="Run the autopilot"
+          checked={settings.autopilot.available}
+          onChange={setAutopilotAvailable}
+          aria-label="Enable autopilot"
         />
       </Row>
 
@@ -66,7 +62,7 @@ export default function AutopilotPane(props: PaneProps) {
           effort={settings.autopilot.effort}
           modelPending={false}
           effortPending={false}
-          disabled={false}
+          disabled={!settings.autopilot.available}
           onSelectModel={(agent, profile, model) =>
             setAutopilot({
               agent,

@@ -293,6 +293,47 @@
     color: var(--tori-scene-ink-muted);
   }
 
+  .sail,
+  .anchor {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    flex: none;
+    height: calc(36px * var(--ui-scale));
+    padding: 0 var(--tori-space-6);
+    border-radius: var(--tori-radius-pill);
+    font: inherit;
+    font-size: var(--tori-text-lg);
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter var(--tori-duration-fast) var(--tori-ease);
+  }
+  .sail {
+    border: none;
+    background: var(--status-progress);
+    color: var(--canvas-default);
+    box-shadow: 0 calc(4px * var(--ui-scale)) calc(14px * var(--ui-scale)) color-mix(in oklab, var(--status-progress) 40%, transparent);
+  }
+  .anchor {
+    border: var(--tori-border-thin) solid var(--tori-scene-glass-border);
+    background: var(--tori-scene-glass);
+    color: var(--tori-scene-ink);
+    backdrop-filter: blur(6px);
+  }
+  .sail:hover,
+  .anchor:hover {
+    filter: brightness(1.12);
+  }
+  .sail:focus-visible,
+  .anchor:focus-visible {
+    outline: var(--tori-border-thick) solid var(--brand-ring);
+    outline-offset: var(--tori-space-1);
+  }
+  .helmIcon {
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
+  }
+
   .column {
     display: flex;
     flex-direction: column;
