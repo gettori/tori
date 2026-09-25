@@ -2,7 +2,7 @@
 summary: the cockpit wires the autopilot parts: an always shown switch when enabled, a view with a time of day banner and a live ChatView, the popup
 status: current
 updated: 2026-09-25
-source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx
+source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx
 ---
 
 # Autopilot cockpit
@@ -35,11 +35,15 @@ It shows the [[component_autopilot_runner]] and the [[component_autopilot_store]
 - **`cockpit` on the ChatView** hides the status strip and the pickers, since the picks live in Settings; puts the wheel beside each reply (`replyMark` on `MessageList`); draws prompts in violet; and heads the ask cards with Captain's call. The rules are `.chat[data-cockpit]` in `Chat.module.css`.
 - **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first). A card reads the item's `title`, else "Ship in <project>"; worker log, diff and progress are empty until something records them.
 
+## Ticket refs
+
+Every ref is the row's `reference`, drawn by `TicketLink` in `ShellParts.tsx`: `#N` opens the forge page through the opener plugin, and the place opens it in Tori through `NAVIGATE` ([[concept_in_app_navigation]]). The crew card puts the number in its ring and the place on its branch line; queue, "after", activity and decision cards show both. A decision card shows the item's issue and, once there is one, its PR beside it, rather than the approval's PR number. Watch and the popup's in flight rows navigate to the worker; in a popup row the number stands beside the button, since a link cannot sit inside one. A live change keeps a row's `session_live` and `worktree_gone` from the last full read (`applyItem`), and a logged activity line takes the current row's reference by item id (`ticketOf`).
+
 ## The popup
 
-- A light `Thread` from `chat_history` (Tori notes skipped, last six messages), reread on open and on each status change, and a `Composer` that goes through `chat_steer` while working and `chat_send` otherwise.
+- A light `Thread` from `chat_history` (Tori notes skipped, last six messages), its replies drawn through `Markdown` so the refs the autopilot pastes are links, reread on open and on each status change, and a `Composer` that goes through `chat_steer` while working and `chat_send` otherwise.
 - **Decisions render here only.** The view's `ChatView` already draws the same asks as its own cards, so the view gets none. A decision is every hold (an ask with an `item`) plus any ask shown in the autopilot's session. Approve and Dismiss answer an approval `Approve` or `Reject` through `answerAsk`; a question, Edit and Reply open the view, where the card takes words.
-- Escape and an outside pointerdown close it; Cmd+L toggles it and Cmd+Shift+J the view (`autopilot-popup`, `autopilot-view` in `commands.ts`).
+- Escape, an outside pointerdown and any `NAVIGATE` close it; Cmd+L toggles it and Cmd+Shift+J the view (`autopilot-popup`, `autopilot-view` in `commands.ts`).
 
 ## Related
 
