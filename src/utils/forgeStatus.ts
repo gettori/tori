@@ -360,6 +360,8 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
   if (!repo) return;
   const pause = projectPause(repo, accountAuth, enabled());
   if (!mayPoll(clockFor(project.path, repo), trigger, now, pause)) return;
+  // A failure here says nothing about the status call, so it stays out of that backoff.
+  void invoke("autopilot_pickup", { projectPath: project.path }).catch(() => {});
   const branches = askOrder(project.units);
   if (branches.length === 0) return;
   // Stamped before the await, so two triggers landing together do not both get

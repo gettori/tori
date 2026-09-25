@@ -111,7 +111,7 @@ export function CockpitView() {
   onCleanup(() => clearInterval(tick));
   const crew = () => workerCards(items()).length;
   const limit = () => settings.chatDefaults.maxConcurrentChats;
-  const hero = () => heroFor(autopilotNow(), decisions().length, crew(), queuedItems(items()).length, limit());
+  const hero = () => heroFor(autopilotNow(), decisions().length, crew(), queuedItems(items()).filter((q) => !q.proposed).length, limit());
   const scene = () => (overLimit(crew(), limit()) ? "storm" : pickScene(new Date(now()).getHours()));
   return (
     <div class={styles.overlay}>

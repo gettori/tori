@@ -35,11 +35,16 @@ const RETIRED_KEPT: usize = 20;
 // The brief in a resumed transcript is the one it started with, so the
 // opening steps are spelled out here too, or a brief edit never reaches it.
 const RESUMED: &str = "Tori stopped you and has now resumed this session. Start again: read the state and \
-reconcile it. Then, for every running or waiting_on_you item whose session is live, read its worker with \
-session_tail, since I could type into it while you were off, and call session_pending for anything it still \
-waits on. Leave a worker that sessions_list shows working until Tori wakes you with idle. Then tell me in one \
-short message what changed while you were not running: what merged, what I closed by hand, sessions that are \
-gone, work done in a worker while you were off, and anything waiting on an answer.";
+reconcile it. An item Tori closed with gone_upstream set, whose session is still live, gets its worker \
+steered to stop and leave its work committed, never closed. Then, for every running or waiting_on_you item \
+whose session is live, read its worker with session_tail, since I could type into it while you were off, and \
+call session_pending for anything it still waits on. Leave a worker that sessions_list shows working until Tori \
+wakes you with idle. Then tell me in one short message what changed while you were not running: what merged, \
+what I closed by hand, sessions that are gone, work done in a worker while you were off, anything waiting on an \
+answer, and every proposed item waiting for my go. Then start queued items, oldest first, while fewer than \
+limits.max_workers workers are in flight, and start the next whenever a worker's item closes. Tori now picks up work assigned to me: a wake of \
+proposed (ask) waits for my go, proposed (auto) starts under limits.max_workers from autopilot_state, and \
+dropped (why) means steer that item's worker to stop.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

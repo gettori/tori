@@ -24,6 +24,14 @@ describe("item titles", () => {
     expect(workerCards([row({ title: null })])[0].title).toBe("Ship in tori");
     expect(queuedItems([row({ state: "queued", kind: "review" })])[0].title).toBe("Review in tori");
   });
+
+  it("lists proposed items after the queue, marked and after nothing", () => {
+    const rows = queuedItems([row({ id: "p", state: "proposed", created: 1 }), row({ id: "q", state: "queued", created: 2 })]);
+    expect(rows.map((r) => [r.ticket.label, r.proposed ?? false, r.after])).toEqual([
+      ["#12", false, undefined],
+      ["#12", true, undefined],
+    ]);
+  });
 });
 
 const n = (x: number) => `#${x}`;

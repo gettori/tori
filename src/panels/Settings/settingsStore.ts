@@ -322,6 +322,8 @@ export type AutopilotSettings = {
   effort: string | null;
   stallMinutes: number;
   compactAt: number | null;
+  /** Kept under the live chats cap in Rust; the brief reads the clamped value. */
+  maxWorkers: number;
 };
 
 /** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
@@ -402,7 +404,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
-  autopilot: { available: false, enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20, compactAt: null },
+  autopilot: { available: false, enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20, compactAt: null, maxWorkers: 2 },
 };
 
 /**

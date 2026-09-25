@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use super::runner::{RunnerState, Status};
 use super::states::SessionStates;
-use crate::autopilot::AutopilotStore;
+use crate::autopilot::{AutopilotStore, Item, State};
 
 // A turn that ends and another that starts at once is the agent carrying on.
 const IDLE_DEBOUNCE: Duration = Duration::from_secs(10);
@@ -38,6 +38,9 @@ pub enum What {
     Pr(String),
     Idle(String),
     Stalled,
+    // An item the assigned list made, `ask` or `auto`, and one it closed, with why.
+    Proposed(String),
+    Dropped(String),
 }
 
 impl What {
@@ -50,6 +53,8 @@ impl What {
             What::Pr(_) => "pr",
             What::Idle(_) => "idle",
             What::Stalled => "stalled",
+            What::Proposed(_) => "proposed",
+            What::Dropped(_) => "dropped",
         }
     }
 
@@ -59,7 +64,9 @@ impl What {
 
     fn text(&self) -> String {
         match self {
-            What::Ended(detail) | What::Pr(detail) | What::Idle(detail) => format!("{} ({detail})", self.kind()),
+            What::Ended(detail) | What::Pr(detail) | What::Idle(detail) | What::Proposed(detail) | What::Dropped(detail) => {
+                format!("{} ({detail})", self.kind())
+            }
             _ => self.kind().to_string(),
         }
     }
@@ -204,6 +211,10 @@ impl Core {
 
     pub fn pr(&mut self, target: Target, session: Option<String>, detail: String, now: Instant) {
         self.queue(target, session, What::Pr(detail), now);
+    }
+
+    pub fn item(&mut self, id: String, session: Option<String>, what: What, now: Instant) {
+        self.queue(Target::Item(id), session, what, now);
     }
 
     pub fn touch(&mut self, id: &str, now: Instant) {
@@ -363,6 +374,25 @@ impl Watcher {
         self.nudge();
     }
 
+    /// Items the assigned list just made or closed.
+    pub fn picked(&self, items: &[Item]) {
+        if items.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let mut core = self.core();
+        for item in items {
+            let what = match item.state {
+                State::Queued => What::Proposed("auto".into()),
+                State::Proposed => What::Proposed("ask".into()),
+                _ => What::Dropped(item.note.clone().unwrap_or_default()),
+            };
+            core.item(item.id.clone(), item.session.clone(), what, now);
+        }
+        drop(core);
+        self.nudge();
+    }
+
     pub fn touch(&self, id: &str) {
         self.core().touch(id, Instant::now());
     }
@@ -456,6 +486,20 @@ mod tests {
         core.observe("w", item("i1"), &event("session.question"), now);
         core.observe("w", item("i1"), &event("session.needs_you"), now);
         assert_eq!(lines(&mut core, now), "item i1: question, needs_you, session w");
+    }
+
+    #[test]
+    fn a_picked_up_item_wakes_uncapped_with_or_without_a_session() {
+        let (mut core, now) = (idle_core(), Instant::now());
+        core.item("i1".into(), None, What::Proposed("auto".into()), now);
+        core.item("i2".into(), Some("w".into()), What::Dropped("no longer assigned or open upstream".into()), now);
+        assert_eq!(
+            lines(&mut core, now),
+            "item i1: proposed (auto)\nitem i2: dropped (no longer assigned or open upstream), session w"
+        );
+        core.item("i3".into(), None, What::Proposed("ask".into()), now);
+        core.sent = None;
+        assert_eq!(lines(&mut core, now), "item i3: proposed (ask)", "not held by a repeat window");
     }
 
     #[test]
