@@ -17,6 +17,7 @@ import { allAsks, answerAsk, type SocketAsk } from "./socketAsks";
 import { activityOf, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
 import { findSession } from "./sessionStore";
 import { toriNote } from "./toriNote";
+import { saveSettings, settings } from "../panels/Settings/settingsStore";
 
 /** Mirrors `Status` in src-tauri/src/rpc/runner.rs. */
 export type RunnerStatus = {
@@ -134,40 +135,21 @@ async function loadAutopilot() {
   addActivity(logged.filter((e) => firstLive === null || e.ts < firstLive), true);
 }
 
-// Only a live turn on or off moves the view, so a launch with the autopilot
-// already running still opens on the workspace.
-let statusKnown = false;
-
-function followRunner(was: RunnerStatus["state"], now: RunnerStatus["state"]) {
-  if (!statusKnown) return;
-  if (was === "off" && now !== "off") {
-    setPopupOpen(false);
-    setView("autopilot");
-  } else if (was !== "off" && now === "off") {
-    setPopupOpen(false);
-    setView("workspace");
-  }
-}
-
 let started = false;
 
 export function watchAutopilot() {
   if (started) return;
   started = true;
   on(TOGGLE_AUTOPILOT_VIEW, () => {
-    if (runner().state === "off") return;
+    if (!settings.autopilot.available) return;
     setPopupOpen(false);
     setView(view() === "autopilot" ? "workspace" : "autopilot");
   });
-  on(TOGGLE_AUTOPILOT_POPUP, () => view() === "workspace" && setPopupOpen(!popupOpen()));
-  void listen<RunnerStatus>("autopilot://status", (e) => {
-    followRunner(runner().state, e.payload.state);
-    setRunner(e.payload);
-  }).catch(() => {});
+  on(TOGGLE_AUTOPILOT_POPUP, () => settings.autopilot.available && view() === "workspace" && setPopupOpen(!popupOpen()));
+  void listen<RunnerStatus>("autopilot://status", (e) => setRunner(e.payload)).catch(() => {});
   void invoke<RunnerStatus>("autopilot_status")
     .then(setRunner)
-    .catch(() => {})
-    .finally(() => (statusKnown = true));
+    .catch(() => {});
   void listen<AutopilotEvent>("autopilot://changed", (e) => applyChange(e.payload)).catch(() => {});
   void loadAutopilot();
 }
@@ -230,6 +212,15 @@ export function decide(action: DecisionAction, decision: Decision) {
 // late reply could overwrite a newer one.
 export async function startAutopilot() {
   await invoke("autopilot_start").catch((e) => pushToast(`The autopilot did not start: ${String(e)}`));
+}
+
+/** Turn the feature on or off. Off stops a running autopilot and leaves the cockpit. */
+export function setAutopilotAvailable(available: boolean) {
+  void saveSettings({ ...settings, autopilot: { ...settings.autopilot, available } });
+  if (available) return;
+  setPopupOpen(false);
+  setView("workspace");
+  if (runner().state !== "off") void stopAutopilot();
 }
 
 export async function stopAutopilot() {

@@ -1,10 +1,10 @@
 import { For, Show, type JSX } from "solid-js";
-import { Anchor, ArrowUpRight } from "lucide-solid";
+import { Anchor, ArrowUpRight, Sailboat } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
 import Horizon, { type SceneKey } from "./Horizon";
-import { CaptainsCall, ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
+import { CaptainsCall, ComposerShell, ErrorBanner, KeyHints, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
 import type {
   ActivityItem,
   AutopilotError,
@@ -38,6 +38,7 @@ export interface AutopilotViewProps {
   onOpenWorker?: (refNumber: Ref) => void;
   onDecision?: (action: DecisionAction, decision: Decision) => void;
   onStart?: () => void;
+  onStop?: () => void;
   onRestart?: () => void;
   onViewLog?: () => void;
   /** The live conversation, in place of the drawn thread and composer. */
@@ -146,16 +147,9 @@ export default function AutopilotView(props: AutopilotViewProps) {
       </aside>
 
       <section class={styles.center} aria-label="Conversation">
-        <Hero {...props.hero} state={props.state} scene={props.scene} />
+        <Hero {...props.hero} state={props.state} scene={props.scene} onStart={props.onStart} onStop={props.onStop} />
         <div class={styles.column} data-live={props.chat ? "true" : "false"}>
           <div class={styles.scroll}>
-            <Show when={off()}>
-              <OffNotice
-                body="Workers it started are normal sessions now. Start it again to hand it tickets and PRs. It asks before anything leaves this machine."
-                action="Start autopilot"
-                onStart={props.onStart}
-              />
-            </Show>
             <Show when={!props.chat} fallback={banners()}>
               <Thread messages={props.messages}>{banners()}</Thread>
             </Show>
@@ -165,7 +159,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
             fallback={
               <ComposerShell
                 disabled={off() || props.state === "error"}
-                placeholder={off() ? "Start the autopilot to message it" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
+                placeholder={off() ? "Set sail to message the autopilot" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
                 hints={
                   <KeyHints
                     hints={
@@ -208,7 +202,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
 }
 
 /** The time of day over the water: the banner, with the state on its first line. */
-function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey }) {
+function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey; onStart?: () => void; onStop?: () => void }) {
   return (
     <header class={styles.hero} data-state={props.state}>
       <Horizon scene={props.scene} />
@@ -224,6 +218,20 @@ function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey }) {
           <h1 class={styles.heroTitle}>{props.title}</h1>
           <p class={styles.heroBody}>{props.body}</p>
         </div>
+        <Show
+          when={props.state === "off"}
+          fallback={
+            <button type="button" class={styles.anchor} onClick={() => props.onStop?.()}>
+              <Icon icon={Anchor} class={styles.helmIcon} />
+              Drop anchor
+            </button>
+          }
+        >
+          <button type="button" class={styles.sail} onClick={() => props.onStart?.()}>
+            <Icon icon={Sailboat} class={styles.helmIcon} />
+            Set sail
+          </button>
+        </Show>
       </div>
     </header>
   );

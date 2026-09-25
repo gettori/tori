@@ -38,11 +38,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Playground: Story = {};
 
-/** Live: switch views, open the popup from the active Workspace segment, stop and start. */
+/** Live: switch views and open the popup from the active Workspace segment. */
 export const Interactive: Story = {
   render: () => {
     const [view, setView] = createSignal<AutopilotView>("workspace");
-    const [state, setState] = createSignal<AutopilotState>("needs");
+    const [state] = createSignal<AutopilotState>("needs");
     const [open, setOpen] = createSignal(false);
     return (
       <AutopilotSwitch
@@ -55,7 +55,6 @@ export const Interactive: Story = {
           setOpen(false);
         }}
         onTogglePopup={() => setOpen(!open())}
-        onToggleOn={() => setState(state() === "off" ? "idle" : "off")}
       />
     );
   },

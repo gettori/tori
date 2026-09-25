@@ -197,6 +197,10 @@ export function heroFor(state: AutopilotState, calls: number, crew: number, queu
         body: "The autopilot session dropped. Restart it when you are ready, the crew keeps working.",
       };
     case "off":
-      return { eyebrow: "Docked", title: "In harbor.", body: "Start the autopilot to set sail." };
+      return {
+        eyebrow: "Docked",
+        title: "In harbor.",
+        body: "Workers it started are normal sessions now. Set sail to hand the autopilot tickets and PRs.",
+      };
   }
 }

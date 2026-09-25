@@ -198,7 +198,8 @@ impl Runner {
     }
 
     pub fn autostart(self: &Arc<Self>) {
-        if crate::settings::autopilot().enabled {
+        let picks = crate::settings::autopilot();
+        if picks.available && picks.enabled {
             self.launch();
         }
     }
