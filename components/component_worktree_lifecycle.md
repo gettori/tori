@@ -1,8 +1,8 @@
 ---
 summary: worktree creation is a shared core taking a target dir, so a plain repo's Feature worktree lands under .tori/worktrees
 status: current
-updated: 2026-08-28
-source: Sidebar as Project Manager + Sidebar Context-Menu Redesign + Shared tab + Attach worktree + Add Branch/Worktree unify (personal/tori, branch code-mirror-6); commits 09ad986, dac1093, e704411, _shared-tab_, _attach-worktree_, _add-branch-worktree_; Features phase 0 (#152, branch feature-workspace); commit 4f9c5ab; Feature lifecycle, member management and repair (#159); commits ef3779b, ede61ff, 70756f3
+updated: 2026-09-25
+source: Sidebar as Project Manager + Sidebar Context-Menu Redesign + Shared tab + Attach worktree + Add Branch/Worktree unify (personal/tori, branch code-mirror-6); commits 09ad986, dac1093, e704411, _shared-tab_, _attach-worktree_, _add-branch-worktree_; Features phase 0 (#152, branch feature-workspace); commit 4f9c5ab; Feature lifecycle, member management and repair (#159); commits ef3779b, ede61ff, 70756f3; gettori/tori#208 commit b25293df (create_pr_worktree_in)
 ---
 
 # Worktree lifecycle
@@ -75,8 +75,13 @@ project root, so on a **worktree container** (whose root holds worktrees, not a
 checkout) there is no `node_modules` to clone and attempts start without one.
 "Usable immediately" holds for a plain repo.
 
+## A worktree on a pull request's head
+
+`create_pr_worktree_in` puts a local `pr-<N>` branch on a PR's head commit, which the caller has already fetched from the forge's PR ref (`refs/pull/N/head`, `refs/merge-requests/N/head`) because a fork's head is on no origin branch. A branch or worktree already at another commit is refused, never reset, so nothing done in it is lost. The path it returns for a reused worktree comes from `git worktree list`, so compare it canonicalized. `worktree.new` with `pr` drives it for the autopilot's review flow ([[adr_review_submit_pins_the_reviewed_head]]).
+
 ## Related
 
+- [[adr_review_submit_pins_the_reviewed_head]] - the review flow the PR worktree serves
 - [[component_feature_list]] - the two dialogs that call `removeMemberWorktree`, and the `keepLabel` `WorktreeRemoveDialog` grew for the first of them
 
 - [[gotcha_shared_symlinks_read_as_untracked_and_block_worktree_removal]]

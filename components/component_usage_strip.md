@@ -1,15 +1,15 @@
 ---
-summary: UsageStrip draws one cluster per account not per chat; UsageCard shows every window Tori read, even ones the chips hide
+summary: UsageStrip is one chip of per account clusters in whole percents, 0% past a reset; UsageCard shows every window Tori read
 status: current
-updated: 2026-09-06
-source: "Agent usage preview plan (personal/tori, branch `agent-usage`), phase 2, rebuilt to the design after phase 5 . PR #169"
+updated: 2026-09-25
+source: "Agent usage preview plan (personal/tori, branch `agent-usage`), phase 2, rebuilt to the design after phase 5 . PR #169; one chip and whole percents on branch orchestrator, commit b87489ea"
 ---
 
 # Usage strip and its card (the titlebar quota preview)
 
 **Location:** `src/components/UsageStrip/` (key files: `UsageStrip.tsx`, `UsageStrip.module.css`, `UsageCard.tsx`, `UsageCard.module.css`)
 
-The titlebar's quota preview: a row per account with a reading, sitting bare on the topbar between the toolbar and the update pill, and a card that opens under the pointer to explain it. The strip is scanned, the card is read. Neither writes a setting.
+The titlebar's quota preview: a row per account with a reading, together in one chip on the topbar between the cockpit switch and the update pill, and a card that opens under the pointer to explain it. The strip is scanned, the card is read. Neither writes a setting.
 
 ## Responsibilities
 
@@ -21,7 +21,7 @@ The titlebar's quota preview: a row per account with a reading, sitting bare on 
 
 ## What it draws
 
-**The strip.** Monospaced, no surface of its own. One glyph per agent on its leading account, and no agent name beside it: the mark is the name, and spelled out it was the widest thing on the strip saying the least. The leading login is drawn in full, a short label, a 24x4 track and the level at one decimal per window; every other login of that agent is its own name and one figure, the window it is nearest to (`tightestWindow`, `UsageStrip.tsx:59`). A thin rule divides two logins, a taller and stronger one divides two agents. Colour is the band ladder, and never `--blocking-*` (see the gotcha below).
+**The strip.** Monospaced, one chip (`--neutral-subtle`, `--tori-radius-lg`, no border) holding every account; each account inside is still its own button with its own hover and card. One glyph per agent on its leading account, and no agent name beside it: the mark is the name, and spelled out it was the widest thing on the strip saying the least. The leading login is drawn in full, a short label and the level as a whole percent per window, with no bar between them (the card keeps the bar and the decimal); a window past its reset reads `0%`, the level a fresh one starts at, while its accessible name still says reset. The label takes the warm or hot colour with its figure; every other login of that agent is its own name and one figure, the window it is nearest to (`tightestWindow`, `UsageStrip.tsx:59`). A thin rule divides two logins, a taller and stronger one divides two agents. Colour is the band ladder, and never `--blocking-*` (see the gotcha below).
 
 **The card.** Header of glyph, agent name and a freshness stamp that ticks every second while the card is open, with a refresh button where a read path exists. Then an account row: the logins as tabs when there are two or more, the email when there is one, then the plan and model count. Then a row per window with its full name, level, reset (a countdown inside a day, a weekday past one) and a full-width bar. Then a boxed sentence about where this is heading, which names the **other** login when that is the one in trouble, because that is the case a strip glance misses.
 

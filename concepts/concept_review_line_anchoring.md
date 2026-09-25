@@ -1,8 +1,8 @@
 ---
 summary: a review comment anchors by line and side, never GitHub's position, and the whole review submits in one atomic call
 status: current
-updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 10 and 11; commits 51f1f1a, 8e6f03b; `src/utils/pendingReview.ts:47`, `src/utils/reviewThreads.ts:44`"
+updated: 2026-09-25
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 10 and 11; commits 51f1f1a, 8e6f03b; `src/utils/pendingReview.ts:47`, `src/utils/reviewThreads.ts:44`; gettori/tori#208 commit b25293df, src-tauri/src/forge/pr_view.rs"
 ---
 
 # Review line anchoring (line and side, never position)
@@ -16,6 +16,7 @@ A review comment has to say which line of which file it is about, and a diff off
 - **A range is first-selected to last-selected.** `anchorFor` (`pendingReview.ts:47`) takes the last picked row as the anchor and the first as `start_line`, which is GitHub's own convention, and reads the selection in any order.
 - **A selection spanning both sides narrows to the anchor row alone.** The API cannot express a range across two numberings, so inventing one would send a comment about lines the server would resolve differently. The narrowing is shown through `anchorLabel` (`pendingReview.ts:74`) rather than applied silently.
 - **The review is held, then submitted once.** A review is atomic on the server: one call carries the verdict, the body and every comment. Posting comments as they are written and the verdict at the end leaves a half-submitted review behind whenever the last call fails, with nothing saying which comments landed. A failed submit hands the whole set back untouched.
+- **A socket review is pinned to a head.** The panel's review re-resolves against the diff the server has when it lands. A review the autopilot posts carries the head sha its worker read: `pr_view::check_review` applies these same line and side rules to the host's hunk ranges before the approval card shows, and the submit sends the sha as `commit_id` after re-checking the head itself, since GitHub accepts a stale one. See [[adr_review_submit_pins_the_reviewed_head]].
 - **Reading a thread needs the same two numbers.** `ReviewThread` carries `startLine` as well as `line` (added in Phase 12), because Tori itself writes ranges, so a reader that knew only `line` would narrow a range it had just written.
 - **Verdict gating is the server's, restated.** `submitBlock` (`pendingReview.ts:112`) disables approve and request-changes on a self-authored pull request with the reason on screen rather than hiding them, and treats an unknown viewer as blocked too: not-yet-known is not known-different. Request-changes additionally requires a summary, which is Tori's own rule, because a verdict that says change something without saying what is not actionable.
 
@@ -25,6 +26,8 @@ The target repo is private and single-owner, so **every pull request Tori opens 
 
 ## Related
 
+- [[adr_review_submit_pins_the_reviewed_head]] - the pinned review the autopilot posts
+- [[gotcha_github_takes_a_stale_commit_id_and_anchors_to_it]]
 - [[component_pull_requests_panel]] - the review bar and thread cards built on this
 - [[concept_pr_diff_two_sources]] - where the rows being anchored come from
 - [[concept_hunk_level_staging]] - the neighbouring case of line coordinates changing under a rewritten patch

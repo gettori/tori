@@ -1,8 +1,8 @@
 ---
 summary: spawns one long lived harness child per session and renders its own permission and question prompts, deciding nothing
 status: current
-updated: 2026-09-24
-source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; gettori/tori#205 commits eff34ef6, 4b309f03
+updated: 2026-09-25
+source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; gettori/tori#205 commits eff34ef6, 4b309f03; waiting registry from gettori/tori#207, commits 1b7e479d, 4cd91a8f
 ---
 
 # Chat host (Rust)
@@ -72,6 +72,13 @@ cross-process lock and drop the loser's claim by last-writer-wins. See
 [[lesson_a_cut_settles_only_what_was_measured]] and
 [[gotcha_a_truncating_write_under_a_lenient_reader_loses_data_silently]].
 
+## What a session waits on (2026-09-25)
+
+`wrap` passes every live event through `track_waiting`, which keeps a per session list of the native questions and permissions not yet answered, each with the event that raised it. An entry leaves on its call's `ToolCallCompleted`, on an answer from the tab or the socket (`answer_permission`, `answer_question` and `settle` all forget it), and on `TurnCompleted`, which keeps only a subagent's. `session.question` and `session.permission` carry the host's request id, so the socket can answer by it.
+
+- `waiting()` feeds `session.pending`; `settle(session, id, answers)` is `session.answer`'s way in, and an id not on the list errors "already answered or gone".
+- **A view that attaches after the question was asked gets no answerable card from history**: the transcript has the question but not the request id. `chat_waiting` returns the raising events, and `ChatView` replays them after its backfill, so the card it draws can be answered.
+
 ## A question is not a permission, and the exits are not symmetric (2026-08-22)
 
 `AskUserQuestion` arrives on the permission wire and leaves as its own thing: `ChatEvent::QuestionRequest` in, `ChatCommand::RespondQuestion` back, `respond_question` on `AgentTransport` carrying the same `Ok(false)` two-route contract `respond_permission` documents. The ACP arm refuses with an `Err` rather than a silent `Ok(true)`, because `elicitation/create` is the wire form that would arrive and it is behind a cargo feature that stays off. See [[concept_inline_agent_question]] and [[adr_askuserquestion_answer_channel]].
@@ -131,3 +138,4 @@ Not built: gettori/tori#203 plans a Tori level refusal for outward actions from 
 - [[concept_inline_agent_question]] - the question that rides the permission wire and leaves as its own event
 - [[concept_pretooluse_capture_hook]] · [[concept_transport_neutral_event_model]] · [[component_acp_transport]] · [[concept_harness_capability_tiers]]
 - [[adr_a_background_session_needs_a_tori_gate]] - the planned refusal for background sessions, which does not live in this module
+- [[gotcha_a_remounted_chat_view_on_a_shared_tab_id_is_detached_by_the_old_one]] - `chat_detach` is keyed by tab id

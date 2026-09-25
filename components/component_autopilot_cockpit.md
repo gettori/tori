@@ -1,42 +1,51 @@
 ---
-summary: the cockpit wires the autopilot parts: title bar switch, overlay view with a live ChatView, popup with decisions, Settings pane
+summary: the cockpit wires the autopilot parts: an always shown switch when enabled, a view with a time of day banner and a live ChatView, the popup
 status: current
-updated: 2026-09-24
-source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205; commits 4b309f03, 7dfdc1a9, 669596a1; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx
+updated: 2026-09-25
+source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx
 ---
 
 # Autopilot cockpit
 
-`src/panels/Autopilot/Cockpit.tsx` mounts the props only [[component_autopilot_parts]] on real data: `CockpitSwitch` in the title bar, `CockpitView` for the Autopilot view, `CockpitPopup` over Workspace. State lives in `src/utils/autopilotStore.ts`, the pure mapping to rows in `src/utils/autopilotRows.ts`.
+`src/panels/Autopilot/Cockpit.tsx` mounts the props only [[component_autopilot_parts]] on real data: `CockpitSwitch` in the title bar, `CockpitView` for the cockpit, `CockpitPopup` over Workspace. State lives in `src/utils/autopilotStore.ts`, the pure mapping to rows and banner words in `src/utils/autopilotRows.ts`.
 
 ## Responsibility
 
 It shows the [[component_autopilot_runner]] and the [[component_autopilot_store]] and routes clicks back. It owns no autopilot state of its own.
 
-- **Status** comes from `autopilot_status` once, then the `autopilot://status` event. Start and stop invoke `autopilot_start|stop` and do not apply the reply, since a late reply could overwrite a newer event; a failure shows a toast.
+- **Status** comes from `autopilot_status` once, then the `autopilot://status` event. Start and stop invoke `autopilot_start|stop` and do not apply the reply, since a late reply could overwrite a newer event; a failure shows a toast. A start or stop never moves the view.
 - **Items and holds** load once from the `autopilot_state` command and are patched from each `autopilot://changed` event. The webview is not a hub subscriber, so both store publishers send that Tauri event too ([[gotcha_the_webview_is_not_a_hub_subscriber]]).
 - **Activity** is the last 50 lines of `log.jsonl` (`autopilot_log`) plus live events, newest first. Log lines at or after the first live event's `ts` are dropped, so a startup race does not show a line twice.
 
+## The feature switch
+
+`settings.autopilot.available` is the feature, set by Settings > Autopilot > Enable autopilot. `enabled` beside it is only whether the autopilot was running, for a relaunch, and only start and stop write it. `setAutopilotAvailable(false)` saves, closes the popup, goes to Workspace and stops a running autopilot. While the feature is off there is no switch, Cmd+Shift+J and Cmd+L do nothing, and the model picker in the pane is disabled rather than hidden, so Settings search still finds it.
+
+## The title bar
+
+- `CockpitSwitch` sits in the title bar's flow on the right, in `.topbar-switch`, and is always shown while the feature is on. It has no start or stop of its own: the wheel on its Cockpit segment carries the state.
+- In the cockpit the sidebar toggle, the history arrows and the crumb are `visibility: hidden` through `.topbar[data-view="autopilot"]`. Hidden, not unmounted: the arrows' slot is a stage host the editor owns, and the crumb's `flex: 1` is what holds the switch right.
+- The popup is placed under the switch by measuring `.topbar-switch`, its right edge on the switch's, again on a resize.
+
 ## The view
 
-- **It overlays `.body` rather than replacing it.** Unmounting the workspace would close every chat tab. `.body` is `position: relative` for it.
-- **The conversation is a real `ChatView`**, keyed on `runner.session`, in `detach` mode: on unmount it calls `chat_detach` rather than `chat_close`, so leaving the view keeps the session. It mounts only once the runner is `idle` or `working` ([[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]]). After a second death it shows the dead session read only (`started=false`), which stands in for View log.
-- **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first). Items carry no title, so a card reads "Ship in <project>" or "Review in <project>"; a queued row's `after` is the item ahead of it. Worker log, diff and progress are empty until something records them.
+- **It overlays `.body` rather than replacing it.** Unmounting the workspace would close every chat tab.
+- **The banner** plays a `Horizon` scene: the hour's (`pickScene`, rechecked on a 30 s tick), or the storm when more workers are out than Settings > Chat > Warn above allows (`overLimit`, zero is no limit). `heroFor(state, calls, crew, queued, limit)` gives the eyebrow, headline and line; a needs you state keeps its words over the storm's, and an idle autopilot with workers out reads as cruising. Top right, **Set sail** starts it and **Drop anchor** stops it.
+- **The conversation is a real `ChatView`**, keyed on `runner.session`, in `detach` mode: on unmount it calls `chat_detach` rather than `chat_close`, so leaving the view keeps the session. It mounts only once the runner is `idle` or `working` ([[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]]), and whether it is shown is a memo, so a turn flipping idle and working does not remount it ([[gotcha_a_remounted_chat_view_on_a_shared_tab_id_is_detached_by_the_old_one]]). After a second death it shows the dead session read only (`started=false`).
+- **`cockpit` on the ChatView** hides the status strip and the pickers, since the picks live in Settings; puts the wheel beside each reply (`replyMark` on `MessageList`); draws prompts in violet; and heads the ask cards with Captain's call. The rules are `.chat[data-cockpit]` in `Chat.module.css`.
+- **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first). A card reads the item's `title`, else "Ship in <project>"; worker log, diff and progress are empty until something records them.
 
 ## The popup
 
-- A light `Thread` from `chat_history` (brief skipped, last six messages), reread on open and on each status change, and a `Composer` that goes through `chat_steer` while working and `chat_send` otherwise.
-- **Decisions render here only.** The view's `ChatView` already draws the same asks as its own cards, so the view gets none. A decision is every hold (an ask with an `item`) plus any ask shown in the autopilot's session. Approve and Dismiss answer an approval `Approve` or `Reject` through `answerAsk`, the call the chat's card makes; a question, Edit and Reply open the view, where the card takes words. Age is the hold's `asked_at`.
+- A light `Thread` from `chat_history` (Tori notes skipped, last six messages), reread on open and on each status change, and a `Composer` that goes through `chat_steer` while working and `chat_send` otherwise.
+- **Decisions render here only.** The view's `ChatView` already draws the same asks as its own cards, so the view gets none. A decision is every hold (an ask with an `item`) plus any ask shown in the autopilot's session. Approve and Dismiss answer an approval `Approve` or `Reject` through `answerAsk`; a question, Edit and Reply open the view, where the card takes words.
 - Escape and an outside pointerdown close it; Cmd+L toggles it and Cmd+Shift+J the view (`autopilot-popup`, `autopilot-view` in `commands.ts`).
-
-## Settings > Autopilot
-
-A tab after Chat, marked with the wheel (`WheelGlyph`). The switch reads `runner().state`, never `settings.autopilot.enabled`, and invokes start or stop. One `ModelPicker` row carries agent, account, model and effort, fed by `paletteProviders` as the chat draft is, probing the picked agent on mount. A model switch keeps the effort only when the new model offers that level. Picks apply at the next start.
 
 ## Related
 
 - [[component_autopilot_parts]]: what it draws with
 - [[component_autopilot_runner]]: the session behind it
 - [[component_autopilot_store]]: items, contracts and the log
-- [[component_chat_host]]: `chat_detach`
+- [[component_chat_host]]: `chat_detach` and `chat_waiting`
 - [[component_app_socket]]: the asks and holds decisions come from
+- [[concept_tori_notes]]: the brief, wakes and resumes in its chat
