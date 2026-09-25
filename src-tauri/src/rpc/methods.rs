@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InterruptParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InterruptParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -308,6 +308,15 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
     }
 }
 
+// A chat's text arrives as a Tori note naming it; a person's, as typed.
+fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
+    match principal {
+        Principal::Local | Principal::Device(_) => (TurnBy::Local, text),
+        Principal::Session(Caller::Chat(from)) => (TurnBy::Session(from.clone()), super::events::from_tori("steer", Some(from), &text)),
+        Principal::Session(Caller::Terminal(tab)) => (TurnBy::Tab(tab.clone()), text),
+    }
+}
+
 fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Result<(), RpcError> {
     match (caller, spawner) {
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
@@ -410,6 +419,7 @@ pub struct TauriBackend {
     pub asks: Arc<Asks>,
     pub autopilot: Arc<AutopilotStore>,
     pub runner: Arc<super::runner::Runner>,
+    pub devices: Arc<super::devices::Devices>,
 }
 
 impl TauriBackend {
@@ -429,7 +439,7 @@ impl TauriBackend {
 
     pub fn identity(&self, principal: &Principal) -> Identity {
         match principal {
-            Principal::Local => Identity::default(),
+            Principal::Local | Principal::Device(_) => Identity::default(),
             Principal::Session(Caller::Terminal(tab)) => {
                 self.app.state::<crate::pty::PtyState>().identity(tab).unwrap_or_default()
             }
@@ -664,8 +674,9 @@ impl Backend for TauriBackend {
 
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
         let caller = match principal {
-            Principal::Local => None,
-            Principal::Session(caller) => Some(caller),
+            Principal::Local => Value::Null,
+            Principal::Session(caller) => json!(caller),
+            Principal::Device(id) => json!({ "kind": "device", "id": id }),
         };
         Ok(json!({ "caller": caller, "identity": self.identity(principal) }))
     }
@@ -684,15 +695,7 @@ impl Backend for TauriBackend {
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
         // A session waiting on a prompt is still inside its turn.
         let mid_turn = matches!(self.states.snapshot().get(&params.id), Some(SessionState::Working | SessionState::NeedsYou));
-        let by = match principal {
-            Principal::Local => TurnBy::Local,
-            Principal::Session(Caller::Chat(id)) => TurnBy::Session(id.clone()),
-            Principal::Session(Caller::Terminal(tab)) => TurnBy::Tab(tab.clone()),
-        };
-        let text = match principal {
-            Principal::Session(Caller::Chat(from)) => super::events::from_tori("steer", Some(from), &params.text),
-            _ => params.text,
-        };
+        let (by, text) = steered(principal, params.text);
         host.deliver(&params.id, vec![ContentBlock::Text { text }], mid_turn, by).map_err(refused)?;
         Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
     }
@@ -1072,6 +1075,11 @@ impl Backend for TauriBackend {
         let status = self.runner.stop().map_err(refused)?;
         Ok(json!(status))
     }
+
+    fn device_mint(&self, params: MintParams) -> Result<Value, RpcError> {
+        let (device, credential) = self.devices.mint(&params.name).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
+    }
 }
 
 #[cfg(test)]
@@ -1161,6 +1169,14 @@ mod tests {
             assert!(refused.message.contains("stop the autopilot to type"), "{}", refused.message);
             assert!(may_steer(&person, false, pilot).is_ok(), "an unlocked session is anyone's");
         }
+    }
+
+    #[test]
+    fn a_device_steers_as_the_user_types() {
+        assert_eq!(steered(&Principal::Device("d1".into()), "go on".into()), (TurnBy::Local, "go on".into()));
+        let (by, text) = steered(&Principal::Session(Caller::Chat("s1".into())), "go on".into());
+        assert_eq!(by, TurnBy::Session("s1".into()));
+        assert_ne!(text, "go on", "a chat's steer is wrapped as a note");
     }
 
     #[test]

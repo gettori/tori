@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, HistoryParams, InterruptParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    HoldResolveParams, IssueGetParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
 
@@ -19,6 +19,7 @@ pub enum CallerKind {
     Terminal,
     Chat,
     Worker,
+    Device,
 }
 
 impl CallerKind {
@@ -27,6 +28,7 @@ impl CallerKind {
             Principal::Local => Self::Local,
             Principal::Session(Caller::Terminal(_)) => Self::Terminal,
             Principal::Session(Caller::Chat(_)) => Self::Chat,
+            Principal::Device(_) => Self::Device,
         }
     }
 
@@ -36,6 +38,7 @@ impl CallerKind {
             Self::Terminal => "terminal",
             Self::Chat => "chat",
             Self::Worker => "worker",
+            Self::Device => "device",
         }
     }
 }
@@ -44,6 +47,10 @@ const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerK
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
 // A person at a shell or an outside client; no agent session can start a spend.
 const NOT_SESSIONS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal];
+// A paired device reads and drives chats; it never spawns, writes or acts outward.
+const ANYONE_AND_DEVICES: &[CallerKind] =
+    &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker, CallerKind::Device];
+const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Device];
 
 /// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
 pub const WORKER_REFUSAL: &str = "a worker never spawns or steers; finish your turn and your spawner reads it";
@@ -75,7 +82,7 @@ pub static METHODS: &[Method] = &[
         name: "sessions.list",
         description: "List agent sessions, newest first, with whether each is live and its state.",
         params: schema::<ListParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, v| b.sessions_list(params(v)?),
@@ -84,7 +91,7 @@ pub static METHODS: &[Method] = &[
         name: "session.tail",
         description: "The last events of a session's conversation, tool outputs capped.",
         params: schema::<TailParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_tail(params(v)?),
@@ -93,7 +100,7 @@ pub static METHODS: &[Method] = &[
         name: "caller",
         description: "Who is calling: the session or terminal tab this connection belongs to, and its agent, account and folder.",
         params: no_params,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, p, _| {
@@ -108,7 +115,7 @@ pub static METHODS: &[Method] = &[
         name: "session.history",
         description: "A session's conversation a page at a time, newest first: whole turns up to limit, at most 500 events. Pass a reply's next as before for the page before it; next is null at the start.",
         params: schema::<HistoryParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_history(params(v)?),
@@ -117,7 +124,7 @@ pub static METHODS: &[Method] = &[
         name: "session.interrupt",
         description: "Stop a live chat session's current turn.",
         params: schema::<InterruptParams>,
-        callers: NOT_WORKERS,
+        callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, p, v| b.session_interrupt(p, params(v)?),
@@ -126,7 +133,7 @@ pub static METHODS: &[Method] = &[
         name: "session.steer",
         description: "Send a message to a live chat session, as a steer mid turn or as its next turn.",
         params: schema::<SteerParams>,
-        callers: NOT_WORKERS,
+        callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, p, v| b.session_steer(p, params(v)?),
@@ -144,7 +151,7 @@ pub static METHODS: &[Method] = &[
         name: "session.pending",
         description: "What a session is waiting on: questions it asked with ask.create, and its agent's own questions and permission prompts, each with its id.",
         params: schema::<PendingParams>,
-        callers: NOT_WORKERS,
+        callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_pending(params(v)?),
@@ -270,7 +277,7 @@ pub static METHODS: &[Method] = &[
         name: "ask.answer",
         description: "Answer a question another session asked, on the user's behalf; the card in that session goes away.",
         params: schema::<AskAnswerParams>,
-        callers: NOT_WORKERS,
+        callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, v| b.ask_answer(params(v)?),
@@ -324,7 +331,7 @@ pub static METHODS: &[Method] = &[
         name: "projects.list",
         description: "The tree the sidebar draws, in its order: spaces with their projects and branch units (each with its issue key), then topics by name with their members.",
         params: no_params,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, _| b.projects_list(),
@@ -382,6 +389,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("withdrawing a hold is the autopilot's call"),
         outward: false,
         call: |b, _, v| b.autopilot_hold_resolve(params(v)?),
+    },
+    Method {
+        name: "device.mint",
+        description: "Add a device allowed on the remote front and answer its credential, which is shown only this once.",
+        params: schema::<MintParams>,
+        callers: &[CallerKind::Local],
+        refusal: Some("adding a device is the user's call, from outside any Tori session"),
+        outward: false,
+        call: |b, _, v| b.device_mint(params(v)?),
     },
 ];
 
