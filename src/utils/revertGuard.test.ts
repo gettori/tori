@@ -3,7 +3,6 @@ import { revertGuard, revertBlockers, type RevertCandidate } from "./revertGuard
 import { applyEvent, chatStatus, initialChat } from "../panels/Chat/chatStore";
 import { dropLiveChat, setLiveChat } from "./chatSessions";
 import { liveCandidates } from "./folderActors";
-import { computeSessionDot } from "./sessionDot";
 import { statusFromDot } from "./sessionStatus";
 import guardSource from "./revertGuard.ts?raw";
 import type { ChatEvent } from "./chatTypes";
@@ -151,11 +150,11 @@ describe("the retired single-agent invariant", () => {
   });
 
   it("blocks the revert through the same composition the sidebar renders", () => {
-    // computeSessionDot -> statusFromDot -> RevertCandidate, i.e. the path the
-    // sidebar row takes, not a hand-written "executing".
-    const dot = computeSessionDot({ chatStatus: "executing", hasLiveTab: false, running: false });
+    // The dot Rust composes for a mid-turn chat -> statusFromDot ->
+    // RevertCandidate, i.e. the path the sidebar row takes, not a hand-written
+    // "executing".
     const verdict = revertGuard(
-      [candidate({ sessionId: "chat", status: statusFromDot(dot), hasLiveTab: false })],
+      [candidate({ sessionId: "chat", status: statusFromDot("working"), hasLiveTab: false })],
       { folderPath: REPO },
     );
     expect(verdict.allow).toBe(false);

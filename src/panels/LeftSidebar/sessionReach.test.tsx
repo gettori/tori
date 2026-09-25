@@ -82,11 +82,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_project_attempts") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
-    // Everything asked about is alive, so the probe is never the reason a dot
-    // fails to appear.
+    // Everything asked about is alive.
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
-    if (cmd === "session_tail_state") return Promise.resolve("blocked-candidate");
     return Promise.resolve(null);
   },
 }));
@@ -112,7 +110,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { sessions, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { liveSessionStatuses, sessionStatus, resetSessionActivityForTests } = await import(
+const { liveSessionStatuses, noteDots, sessionStatus, resetSessionActivityForTests } = await import(
   "../../utils/sessionActivity"
 );
 
@@ -199,30 +197,15 @@ describe("what the sidebar can see without being expanded", () => {
     );
   });
 
-  // The tail-state effect used to trigger on `liveTabs` alone, which was enough
-  // only because the store could not fill by itself: every fill came from a user
-  // action that also happened to move something else. Now the store fills on its
-  // own, and this is the case that catches it - no `sessions://changed`, which
-  // re-reads tails explicitly and would mask a missing dependency.
-  it("reads a live tab's transcript tail as soon as the store finds its session", async () => {
-    render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
-
-    // The read itself is the claim: it can only happen once the live tab has
-    // been joined against a session the store went and found on its own.
-    await waitFor(() =>
-      expect(
-        bridge.calls.some((c) => c.cmd === "session_tail_state" && c.args.id === "live-1"),
-      ).toBe(true),
-    );
-  });
-
-  // And the whole composition end to end, through the event the scanner
-  // actually raises, from a store that starts empty.
+  // Rust's dot end to end, through the event the scanner actually raises, from
+  // a store that starts empty: the re-list must not knock the status back out.
   it("reaches waiting-for-approval across a sessions://changed cycle", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
     await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
 
-    bridge.handlers["pty://activity"]({ payload: { id: "tab-1", state: "quiet" } });
+    noteDots([
+      { id: "live-1", dot: "needsYou", certainty: "exact", home: { project: "/root/work/repo", folder: MAIN, branch: "main" } },
+    ]);
     bridge.handlers["sessions://changed"]({ payload: null });
 
     await waitFor(() =>
@@ -232,17 +215,18 @@ describe("what the sidebar can see without being expanded", () => {
     );
   });
 
-  // Nothing else probes a session Tori is not hosting, so without the sweep an
-  // agent someone started in a terminal is invisible until something asks after
-  // it. Read `sessionStatus` rather than a row: the sidebar lists no sessions
-  // any more, and a detached session is deliberately absent from
+  // An agent someone started in a terminal reaches the webview only as Rust's
+  // hollow dot. Read `sessionStatus` rather than a row: the sidebar lists no
+  // sessions any more, and a detached session is deliberately absent from
   // `liveSessionStatuses` (which is tabs and chats, the things with a row to
   // roll up to). This per-session verdict is what the History button's badge
   // counts, and it is the only place the detached tier surfaces.
   it("reports an off-tab session as running without anyone clicking it", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
 
-    await waitFor(() => expect(probedIds()).toContain("detached-1"));
+    noteDots([
+      { id: "detached-1", dot: "hollow", certainty: "inferred", home: { project: "/root/work/repo", folder: MAIN, branch: "main" } },
+    ]);
     await waitFor(() => expect(sessionStatus("detached-1")).toBe("running"));
   });
 

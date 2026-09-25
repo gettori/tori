@@ -107,7 +107,7 @@ import {
 } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
 import { awaitingUser, blockedOnUser, isWorking, type SessionStatus } from "../../utils/sessionStatus";
-import type { StatusCertainty } from "../../utils/sessionDot";
+import type { StatusCertainty } from "../../utils/sessionStatus";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
 import { sessions } from "../../utils/sessionStore";
 import {

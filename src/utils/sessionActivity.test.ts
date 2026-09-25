@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// The store's job is composing three measurements into one status, so the test
-// drives the measurements and reads the status back. The golden fixture pins
-// the pure decision (`sessionDot.ts`); what is checkable only here is that each
-// input reaches it, and that a change to any one of them moves the answer.
+// Rust composes every dot (`rpc/dots.rs`, pinned by the golden fixtures there),
+// so the test hands the store Rust's answer through `noteDots` and checks what
+// each surface reads back from it.
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   running: [] as string[],
@@ -35,11 +34,8 @@ const {
   noteAttention,
   noteFolderOwners,
   noteForgeUnits,
-  notePtyActivity,
-  probeBatch,
-  refreshTailStates,
+  noteDots,
   sessionStatus,
-  sessionDot,
   sessionCertainty,
   liveSessionDots,
   liveSessionStatuses,
@@ -53,13 +49,19 @@ const { trackFolders, resetSessionStoreForTests } = await import("./sessionStore
 const { setLiveChat, dropLiveChat } = await import("./chatSessions");
 const { liveCounts, trayEntries } = await import("./presence");
 type SessionStatus = import("./sessionStatus").SessionStatus;
+type SessionDot = import("./sessionStatus").SessionDot;
+type SessionHome = import("./sessionStatus").SessionHome;
+
+// What Rust sends on `sessions://dots`.
+const rust = (id: string, dot: SessionDot, home: SessionHome | null = null, certainty: "exact" | "inferred" = "inferred") =>
+  noteDots([{ id, dot, certainty, home }]);
 
 // Effects inside the store's root are queued, and `notifyNeedsYou` awaits a
 // permission check on top of that, so a notification lands two ticks out.
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 
-const meta = (id: string, branch: string, agent = "claude") => ({
+const meta = (id: string, branch: string, agent = "claude", home?: SessionHome) => ({
   id,
   path: `${FOLDER}/.t/${id}.jsonl`,
   cwd: FOLDER,
@@ -69,6 +71,7 @@ const meta = (id: string, branch: string, agent = "claude") => ({
   created_at: 1,
   name: null,
   agent,
+  ...(home ? { home } : {}),
 });
 
 const tab = (id: string, sessionId: string) => ({
@@ -88,63 +91,26 @@ async function seedSessions(list: ReturnType<typeof meta>[]) {
   bridge.calls.length = 0;
 }
 
-describe("the status a PTY agent tab composes to", () => {
+describe("the status Rust composed", () => {
   beforeEach(() => {
     resetSessionActivityForTests();
     resetSessionStoreForTests();
     bridge.calls.length = 0;
-    bridge.running = [];
-    bridge.tail = null;
   });
 
-  // An inert tab is a restored strip entry with nothing behind it. Reading it
-  // as a live tab would turn a running session's dot solid ("we are driving
-  // this") and suppress the hollow one that means "running, nobody on it".
-  it("does not read an inert tab as a live one", async () => {
-    await seedSessions([meta("s1", "main")]);
-    noteLiveTabs([{ ...tab("t1", "s1"), state: "inert" as const }]);
-    bridge.running = ["s1"];
-    await probeBatch([{ id: "s1", agent: "claude" }]);
-
-    expect(sessionDot("s1")).toBe("hollow");
-  });
-
-  it("reads a live tab as one, which is what makes the same session solid", async () => {
-    await seedSessions([meta("s1", "main")]);
-    noteLiveTabs([tab("t1", "s1")]);
-    bridge.running = ["s1"];
-    await probeBatch([{ id: "s1", agent: "claude" }]);
-
-    expect(sessionDot("s1")).not.toBe("hollow");
-  });
-
-  it("moves with each of the three measurements in turn", async () => {
+  it("follows each dot Rust sends for a PTY agent tab", async () => {
     await seedSessions([meta("s1", "main")]);
     noteLiveTabs([tab("t1", "s1")]);
 
-    // Never probed: a live tab that is not confirmed running is "none", not
-    // idle - the probe is what says the process exists at all.
+    // Nothing composed yet reads as nothing running, not as idle.
     expect(sessionStatus("s1")).toBe("none");
-
-    // 1. the probe lands.
-    bridge.running = ["s1"];
-    await probeBatch([{ id: "s1", agent: "claude" }]);
+    rust("s1", "solid");
     expect(sessionStatus("s1")).toBe("idle");
-
-    // 2. the PTY starts producing output.
-    notePtyActivity("t1", "active");
+    rust("s1", "working");
     expect(sessionStatus("s1")).toBe("executing");
-
-    // 3. it goes quiet, and the transcript tail says it is blocked. Needs-you
-    //    takes both: either alone is a guess.
-    bridge.tail = "blocked-candidate";
-    notePtyActivity("t1", "quiet");
-    await refreshTailStates();
+    rust("s1", "needsYou");
     expect(sessionStatus("s1")).toBe("waitingForApproval");
-
-    // and back down: the probe going false outranks everything below it.
-    bridge.running = [];
-    await probeBatch([{ id: "s1", agent: "claude" }]);
+    rust("s1", "none");
     expect(sessionStatus("s1")).toBe("none");
   });
 
@@ -226,26 +192,27 @@ describe("the metadata a live status carries", () => {
 
   // The rollup badges key off this. A tab descriptor carries no branch, so on a
   // plain repo - where every branch unit shares one folderPath - a status
-  // without a recorded branch cannot be attributed to a row at all.
-  it("joins the recorded branch and agent from the session store", async () => {
+  // without the unit Rust placed it under cannot be attributed to a row at all.
+  it("joins the unit row and agent Rust and the session store know", async () => {
+    const home = { project: FOLDER, folder: FOLDER, branch: "feature-x" };
     await seedSessions([meta("s1", "feature-x", "claude")]);
     noteFolderOwners({ [FOLDER]: { spaceName: "work", projectName: "repo" } });
     noteLiveTabs([tab("t1", "s1")]);
+    rust("s1", "solid", home);
 
     const s = liveSessionStatuses()[0];
-    expect(s.recordedBranch).toBe("feature-x");
+    expect(s.home).toEqual(home);
     expect(s.agent).toBe("claude");
     expect(s.sessionName).toBe("title of s1");
     expect(s.spaceName).toBe("work");
     expect(s.projectName).toBe("repo");
   });
 
-  // A session with no transcript yet, or one that recorded no branch, has to
-  // read as "no branch" rather than as the empty-string branch.
-  it("leaves the branch absent rather than empty when none was recorded", async () => {
+  // A session no unit holds reads as having no row rather than borrowing one.
+  it("leaves the unit absent when no unit holds the session", async () => {
     await seedSessions([meta("s1", "")]);
     noteLiveTabs([tab("t1", "s1")]);
-    expect(liveSessionStatuses()[0].recordedBranch).toBeUndefined();
+    expect(liveSessionStatuses()[0].home).toBeNull();
   });
 });
 
@@ -262,9 +229,7 @@ describe("the editor's accumulated-diff gate", () => {
   it("polls for a mid-turn PTY session but not for a mid-turn chat", async () => {
     await seedSessions([meta("s1", "main")]);
     noteLiveTabs([tab("t1", "s1")]);
-    bridge.running = ["s1"];
-    await probeBatch([{ id: "s1", agent: "claude" }]);
-    notePtyActivity("t1", "active");
+    rust("s1", "working");
     expect(sessionStatus("s1")).toBe("executing");
     expect(shouldPollAccumulatedDiff("s1")).toBe(true);
 
@@ -314,6 +279,7 @@ describe("the needs-you notification", () => {
       visible: false,
       status,
     });
+    rust(sessionId, "needsYou", null, "exact");
     await flush();
   };
 
@@ -405,66 +371,8 @@ describe("a failing check on the branch a session owns", () => {
     bridge.notified = [];
   });
 
-  // The plan's two named cases, and both are chat-free on purpose: the chat tier
-  // reports its own status and would carry a needs-you here for reasons that
-  // have nothing to do with CI, so a chat-based test proves nothing about the
-  // path this feature actually has to travel
-  // (`gotchas#only-the-pty-tier-can-starve-so-a-chat-based-needs-you-test-proves-nothing`).
-  it("reaches a live PTY agent and a detached session alike", async () => {
-    await seedSessions([meta("pty", "main"), meta("loose", "main")]);
-    noteLiveTabs([tab("t1", "pty")]);
-    bridge.running = ["pty", "loose"];
-    await probeBatch([
-      { id: "pty", agent: "claude" },
-      { id: "loose", agent: "claude" },
-    ]);
-
-    // A quiet live agent is idle; a session with no tab at all caps at running.
-    expect(sessionStatus("pty")).toBe("idle");
-    expect(sessionStatus("loose")).toBe("running");
-
-    noteForgeUnits([unit("main", true)]);
-
-    expect(sessionStatus("pty")).toBe("waitingForApproval");
-    expect(sessionStatus("loose")).toBe("waitingForApproval");
-    // Inferred either way: the forge measured the branch, not the session, and
-    // claiming otherwise would restyle every row this touches.
-    expect(sessionCertainty("pty")).toBe("inferred");
-  });
-
-  it("leaves a session that is mid-turn alone", async () => {
-    await seedSessions([meta("busy", "main")]);
-    noteLiveTabs([tab("t1", "busy")]);
-    bridge.running = ["busy"];
-    await probeBatch([{ id: "busy", agent: "claude" }]);
-    notePtyActivity("t1", "active");
-    noteForgeUnits([unit("main", true)]);
-
-    // The agent may well be fixing it, and an edge spent now cannot re-arm when
-    // it stops - which is the moment the user actually needs telling.
-    expect(sessionStatus("busy")).toBe("executing");
-  });
-
-  it("lands on the branch that failed, not on its sibling in the same folder", async () => {
-    // A plain repo: both branch-units share one folder and are told apart only
-    // by the branch each session recorded. This is the case where a second
-    // attribution rule would put the warning on the wrong row.
-    await seedSessions([meta("on-main", "main"), meta("on-feat", "feat")]);
-    noteLiveTabs([tab("t1", "on-main"), tab("t2", "on-feat")]);
-    bridge.running = ["on-main", "on-feat"];
-    await probeBatch([
-      { id: "on-main", agent: "claude" },
-      { id: "on-feat", agent: "claude" },
-    ]);
-
-    noteForgeUnits([
-      { folderPath: FOLDER, projectPath: FOLDER, branch: "main", kind: "plain", isCurrent: true, attention: false },
-      { folderPath: FOLDER, projectPath: FOLDER, branch: "feat", kind: "plain", isCurrent: false, attention: true },
-    ]);
-
-    expect(sessionStatus("on-feat")).toBe("waitingForApproval");
-    expect(sessionStatus("on-main")).toBe("idle");
-  });
+  // Which session a red check raises is Rust's to decide (`rpc/dots.rs`); what
+  // is checkable here is that a raise Rust sends reaches every surface.
 
   // The verify that names the tier: a build wiring only the chat branch leaves
   // this at zero, because there is no chat anywhere in it.
@@ -472,12 +380,11 @@ describe("a failing check on the branch a session owns", () => {
     await seedSessions([meta("pty", "main")]);
     noteFolderOwners({ [FOLDER]: { spaceName: "work", projectName: "repo" } });
     noteLiveTabs([tab("t1", "pty")]);
-    bridge.running = ["pty"];
-    await probeBatch([{ id: "pty", agent: "claude" }]);
+    rust("pty", "solid");
 
     expect(liveCounts(liveSessionDots()).needsYou).toBe(0);
 
-    noteForgeUnits([unit("main", true)]);
+    rust("pty", "needsYou");
 
     const live = liveSessionDots();
     expect(liveCounts(live)).toEqual({ running: 1, needsYou: 1 });
@@ -541,6 +448,7 @@ describe("a failing check on the branch a session owns", () => {
       status: "budgetStopped",
     });
     noteForgeUnits([unit("main", true)]);
+    rust("c-budget", "needsYou", null, "exact");
 
     const mine = liveSessionStatuses().find((s) => s.sessionId === "c-budget");
     expect(mine?.status).toBe("budgetStopped");
@@ -553,35 +461,34 @@ describe("a failing check on the branch a session owns", () => {
   it("does not notify twice while the check stays failing", async () => {
     await seedSessions([meta("pty", "main")]);
     noteLiveTabs([tab("t1", "pty")]);
-    bridge.running = ["pty"];
-    await probeBatch([{ id: "pty", agent: "claude" }]);
+    rust("pty", "solid");
 
-    noteForgeUnits([unit("main", true)]);
+    rust("pty", "needsYou");
     await flush();
     expect(bridge.notified.length).toBe(1);
 
-    // The next poll tick reports the same failure. It is a fresh array and a
-    // fresh signal write, so the memos and the effect all re-run; only the
-    // rising-edge test in `stepPresence` stops it being a second interruption.
-    noteForgeUnits([unit("main", true)]);
+    // Rust sends the same dot again. It is a fresh signal write, so the memos
+    // and the effect all re-run; only the rising-edge test in `stepPresence`
+    // stops it being a second interruption.
+    rust("pty", "needsYou");
     await flush();
     expect(bridge.notified.length, "a steady failure interrupted twice").toBe(1);
 
     // And it re-arms on a genuine recovery-then-failure, rather than going quiet
     // for the rest of the session.
-    noteForgeUnits([unit("main", false)]);
+    rust("pty", "solid");
     await flush();
-    noteForgeUnits([unit("main", true)]);
+    rust("pty", "needsYou");
     await flush();
     expect(bridge.notified.length).toBe(2);
   });
 });
 
 describe("the session that speaks for a branch", () => {
-  // Who a review comment about a branch should reach. The attribution is
-  // `belongsToUnit`, the same rule the CI raise above uses, because a plain
-  // repo's sibling units share one folder and are told apart only by the branch
-  // a session recorded.
+  // Who a review comment about a branch should reach. The attribution is the
+  // unit row Rust stamps on each listed session, because a plain repo's sibling
+  // units share one folder and are told apart only by the branch a session
+  // recorded.
   const plain = (branch: string | null) => ({
     folderPath: FOLDER,
     projectPath: FOLDER,
@@ -590,6 +497,7 @@ describe("the session that speaks for a branch", () => {
     isCurrent: branch === "main",
     attention: false,
   });
+  const at = (branch: string) => ({ project: FOLDER, folder: FOLDER, branch });
 
   beforeEach(() => {
     resetSessionActivityForTests();
@@ -598,7 +506,7 @@ describe("the session that speaks for a branch", () => {
   });
 
   it("picks the branch's own session, never a sibling sharing the folder", async () => {
-    await seedSessions([meta("on-main", "main"), meta("on-feat", "feat")]);
+    await seedSessions([meta("on-main", "main", "claude", at("main")), meta("on-feat", "feat", "claude", at("feat"))]);
     noteForgeUnits([plain("main"), plain("feat")]);
 
     expect(branchOwner(FOLDER, "feat")?.session.id).toBe("on-feat");
@@ -607,9 +515,9 @@ describe("the session that speaks for a branch", () => {
 
   it("takes the most recent of several, not the first the scan happened to list", async () => {
     await seedSessions([
-      { ...meta("old", "feat"), last_active: 10 },
-      { ...meta("recent", "feat"), last_active: 90 },
-      { ...meta("middling", "feat"), last_active: 50 },
+      { ...meta("old", "feat", "claude", at("feat")), last_active: 10 },
+      { ...meta("recent", "feat", "claude", at("feat")), last_active: 90 },
+      { ...meta("middling", "feat", "claude", at("feat")), last_active: 50 },
     ]);
     noteForgeUnits([plain("feat")]);
     expect(branchOwner(FOLDER, "feat")?.session.id).toBe("recent");
@@ -622,7 +530,9 @@ describe("the session that speaks for a branch", () => {
     // set by that folder alone would find one unit and never the branch asked
     // about.
     const wt = `${FOLDER}/.worktrees/feat`;
-    bridge.listing = [{ ...meta("in-wt", "feat"), cwd: wt, path: `${wt}/.t/in-wt.jsonl` }];
+    bridge.listing = [
+      { ...meta("in-wt", "feat", "claude", { project: FOLDER, folder: wt, branch: "feat" }), cwd: wt, path: `${wt}/.t/in-wt.jsonl` },
+    ];
     await trackFolders([wt]);
     noteForgeUnits([
       { folderPath: FOLDER, projectPath: FOLDER, branch: "main", kind: "worktree", isCurrent: true, attention: false },
@@ -637,25 +547,8 @@ describe("the session that speaks for a branch", () => {
     expect(branchOwner(wt, "feat")?.session.id).toBe("in-wt");
   });
 
-  it("works out the fallback home from this project's units, not every project's", async () => {
-    // A session that recorded no branch (an older scan, or one started outside a
-    // repo) re-homes onto its project's current checkout. `fallbackHome` decides
-    // that from the sibling list, so handing it every watched unit lets another
-    // project's current row claim the fallback and strand the session here.
-    await seedSessions([meta("branchless", "")]);
-    noteForgeUnits([
-      // Listed first and current, so a sibling set that is not filtered by
-      // folder picks *this* as the home for the units below it.
-      { folderPath: "/other", projectPath: "/other", branch: "feat", kind: "plain", isCurrent: true, attention: false },
-      plain("main"),
-      plain("feat"),
-    ]);
-
-    expect(branchOwner(FOLDER, "main")?.session.id).toBe("branchless");
-  });
-
   it("answers nothing rather than something close, for a branch nobody has worked", async () => {
-    await seedSessions([meta("on-main", "main")]);
+    await seedSessions([meta("on-main", "main", "claude", at("main"))]);
     noteForgeUnits([plain("main")]);
     expect(branchOwner(FOLDER, "feat")).toBeNull();
     expect(branchOwner(FOLDER, "")).toBeNull();

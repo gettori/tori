@@ -20,6 +20,7 @@
 // Historical section is about to render.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import type { SessionHome } from "./sessionStatus";
 
 // Mirrors src-tauri/src/sessions.rs's `SessionMeta`. Compared field by field by
 // `the_typescript_mirror_lists_every_serialized_field` on the Rust side, which
@@ -43,6 +44,8 @@ export type SessionMeta = {
   // to tell it apart from. null everywhere on a machine that never added one,
   // which is what makes those rows render exactly as they did before.
   profile_label?: string | null;
+  // The unit row Rust placed the session under; absent when no unit holds it.
+  home?: SessionHome;
 };
 
 /** One folder's listing, exactly as `list_sessions` returned it. */

@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 
 // A plain repo is the case where a folder attributes nothing: `main` and `feat`
-// are two rows over one working directory, told apart only by the branch each
-// session recorded. The rollup badge is keyed off the live status list now
-// rather than off the rows' own session arrays, so this is the check that the
-// list carries enough to land the badge on the right one.
+// are two rows over one working directory, told apart only by the unit row Rust
+// placed each session under. The rollup badge is keyed off the live status
+// list, so this is the check that the list carries enough to land the badge on
+// the right one.
 const REPO = "/root/work/repo";
 
 const plain = (branch: string, isCurrent: boolean) => ({
@@ -27,7 +27,7 @@ const config = {
         {
           name: "repo",
           path: REPO,
-          // `main` is checked out; the live session recorded `feat`.
+          // `main` is checked out; the live session sits under `feat`.
           branchUnits: [plain("main", true), plain("feat", false)],
         },
       ],
@@ -45,6 +45,7 @@ const session = (id: string, branch: string) => ({
   created_at: 1_700_000_000,
   name: null,
   agent: "claude",
+  home: { project: REPO, folder: REPO, branch },
 });
 
 const liveTabs = [
@@ -72,7 +73,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "git_origin") return Promise.resolve(null);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
-    if (cmd === "session_tail_state") return Promise.resolve("done");
     return Promise.resolve(null);
   },
 }));
@@ -99,7 +99,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { noteDots, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 
 /** The branch row for `label`, which is the element carrying that text. */
 const branchRow = async (label: string) => (await screen.findByText(label)).parentElement!;
@@ -118,19 +118,17 @@ describe("a rollup badge on a plain repo's sibling branch rows", () => {
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/repo"]));
   });
 
-  it("lands on the branch the session recorded, not on its checked-out sibling", async () => {
+  it("lands on the branch Rust placed the session under, not on its checked-out sibling", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
 
     const feat = await branchRow("feat");
     const main = await branchRow("main");
 
-    // Nothing probes a session hosted in a tab until something asks: the folder
-    // sweep skips them by design, so drive the scanner event that does.
     await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
-    bridge.handlers["sessions://changed"]({ payload: null });
+    noteDots([{ id: "on-feat", dot: "solid", certainty: "inferred", home: session("on-feat", "feat").home }]);
 
-    // "Idle" is a probed, quiet, non-blocked session: enough to badge with,
-    // and reached without depending on the needs-you floor.
+    // "Idle" is enough to badge with, and reached without depending on the
+    // needs-you floor.
     await waitFor(() => expect(feat.querySelector('[title="Idle"]')).toBeTruthy());
     expect(main.querySelector('[title="Idle"]')).toBeNull();
   });

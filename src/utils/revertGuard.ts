@@ -3,10 +3,9 @@
 // A tree revert rewrites every file in the repo, so any agent mid-turn in that
 // folder can have its work silently clobbered, or can clobber the revert a
 // second later. The guard is deliberately conservative and lives here rather
-// than in Rust: "Executing" is known only in the frontend - inferred from PTY
-// activity plus the transcript tail for an agent tab, and stated outright by
-// the transport's event stream for a chat (both via `sessionDot`) - and the
-// backend cannot see either.
+// than in Rust: a chat's "Executing" is read raw from its own event stream on
+// the tick its turn starts, which the dot Rust composes would reach a tick late.
+// An agent tab's comes from that dot.
 //
 // Two tiers, because Tori's certainty differs between them:
 //   - a session *known* to be mid-turn blocks hard, with no override. That is

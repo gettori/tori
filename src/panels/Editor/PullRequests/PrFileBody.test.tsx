@@ -186,7 +186,7 @@ const { noteForgeAccounts, noteForgeEnabled, resetForgeStatusForTests, resolveFo
   "../../../utils/forgeStatus"
 );
 const { resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
-const { noteForgeUnits, probeBatch, resetSessionActivityForTests } = await import(
+const { noteForgeUnits, noteDots, resetSessionActivityForTests } = await import(
   "../../../utils/sessionActivity"
 );
 const { trackFolders, resetSessionStoreForTests } = await import("../../../utils/sessionStore");
@@ -665,6 +665,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
     created_at: 1,
     name: null,
     agent: "claude",
+    home: { project: ROOT, folder: ROOT, branch },
     ...over,
   });
 
@@ -726,8 +727,8 @@ describe("handing a review thread to the agent that owns the branch", () => {
 
   it("sends to the session on the pull request's branch, not the one in front of you", async () => {
     // A plain project: both units share one folder and are told apart only by
-    // the branch each session recorded, which is the exact case a second
-    // attribution rule gets wrong. `belongsToUnit` is the one Phase 7 uses.
+    // the unit row Rust stamped on each session, which is the exact case a
+    // second attribution rule gets wrong.
     bridge.sessions = [session("on-main", "main"), session("on-wave", "wave-3")];
     await trackFolders([ROOT]);
     noteForgeUnits([unit("main"), unit("wave-3")]);
@@ -789,9 +790,8 @@ describe("handing a review thread to the agent that owns the branch", () => {
 
   it("names the session and how it is doing before anything is sent", async () => {
     bridge.sessions = [session("on-wave", "wave-3")];
-    bridge.running = ["on-wave"];
     await trackFolders([ROOT]);
-    await probeBatch([{ id: "on-wave", agent: "claude" }]);
+    noteDots([{ id: "on-wave", dot: "hollow", certainty: "inferred", home: null }]);
     noteForgeUnits([unit("wave-3")]);
 
     await openWithThread();

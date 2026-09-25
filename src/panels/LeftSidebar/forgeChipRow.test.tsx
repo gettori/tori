@@ -154,7 +154,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "forge_unit_statuses") return Promise.resolve(REPORT);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
-    if (cmd === "session_tail_state") return Promise.resolve("done");
     return Promise.resolve(null);
   },
 }));
@@ -181,7 +180,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { noteDots, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 
 // Up to the branch node: the louder chips draw on the row's second line, which
@@ -351,10 +350,10 @@ describe("the forge chip on a branch row", () => {
 
 // The wiring between the chip and the needs-you pipeline.
 //
-// `sessionActivity.test.ts` pins the join itself, given the units. What it
-// cannot see is whether anything ever hands them over: a store fed nothing
-// composes perfectly and reports nothing, and every one of its own tests still
-// passes (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
+// Rust's dot tests pin the raise itself, given the units. What they cannot see
+// is whether the sidebar ever hands the units over: Rust fed nothing composes
+// perfectly and reports nothing, and every one of its own tests still passes
+// (`lesson_a_registered_command_with_no_caller_is_not_shipped`).
 describe("a failing check reaching the session that owns the branch", () => {
   const BROKEN = `${GH}/broken`;
   const session = {
@@ -367,6 +366,7 @@ describe("a failing check reaching the session that owns the branch", () => {
     created_at: 1,
     name: null,
     agent: "claude",
+    home: { project: GH, folder: BROKEN, branch: "broken" },
   };
   const liveTabs = [
     { id: "t1", workspace: BROKEN, kind: "agent" as const, sessionId: "s-broken", agent: "claude" as const, state: "live" as const },
@@ -392,11 +392,12 @@ describe("a failing check reaching the session that owns the branch", () => {
     const broken = await row("broken");
     await waitFor(() => expect(broken.querySelector('[data-pr-checks="bad"]')).toBeTruthy());
 
-    // A tab hosting a session is not probed by the folder sweep, so drive the
-    // scanner event that does. Until the probe lands the dot is "none", which
-    // the raise deliberately leaves alone.
-    await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
-    bridge.handlers["sessions://changed"]({ payload: null });
+    await waitFor(() => {
+      const facts = [...bridge.calls].reverse().find((c) => c.cmd === "rpc_session_facts");
+      const forge = (facts?.args.facts as { forge: { folderPath: string; attention: boolean }[] })?.forge;
+      expect(forge?.find((u) => u.folderPath === BROKEN)?.attention).toBe(true);
+    });
+    noteDots([{ id: session.id, dot: "needsYou", certainty: "inferred", home: session.home }]);
 
     // The existing rollup badge, unchanged: the CI failure arrives as a
     // needs-you dot and rides the surface that was already there.
