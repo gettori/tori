@@ -12,9 +12,9 @@ import type {
 } from "../components/Autopilot/autopilot";
 import type { ChatEvent } from "./chatTypes";
 import { pushToast } from "../components/Toasts/Toasts";
-import { on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
+import { NAVIGATE, on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
 import { allAsks, answerAsk, type SocketAsk } from "./socketAsks";
-import { activityOf, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
+import { activityOf, applyItem, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
 import { findSession } from "./sessionStore";
 import { noteAutopilotOn } from "./sessionActivity";
 import { toriNote } from "./toriNote";
@@ -129,7 +129,7 @@ let firstLive: number | null = null;
 function applyChange(e: AutopilotEvent) {
   firstLive ??= e.ts;
   const item = e.item;
-  if (item) setItems((prev) => (prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? item : i)) : [...prev, item]));
+  if (item) setItems((prev) => applyItem(prev, item));
   const hold = e.hold;
   if (hold) setHolds((prev) => [...prev.filter((h) => h.ask !== hold.ask), ...(e.cleared ? [] : [hold])]);
   addActivity([e]);
@@ -157,6 +157,11 @@ export function watchAutopilot() {
     setView(view() === "autopilot" ? "workspace" : "autopilot");
   });
   on(TOGGLE_AUTOPILOT_POPUP, () => settings.autopilot.available && view() === "workspace" && setPopupOpen(!popupOpen()));
+  // Wherever it is going is in the workspace.
+  on(NAVIGATE, () => {
+    setPopupOpen(false);
+    setView("workspace");
+  });
   void listen<RunnerStatus>("autopilot://status", (e) => {
     setRunner(e.payload);
     noteAutopilotOn(pilotOn(e.payload.state));

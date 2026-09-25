@@ -2,7 +2,7 @@ import { Index, Match, Switch, createMemo } from "solid-js";
 import { Marked, type Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
-import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
+import { emitWith, NAVIGATE, OPEN_IN_EDITOR, TOAST, type NavTarget, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { linkTarget } from "./links";
 import CodeBlock from "./CodeBlock";
 import styles from "./Chat.module.css";
@@ -92,6 +92,8 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
       // Through the opener plugin rather than `window.open`, which the webview
       // is free to answer by navigating.
       void invoke("plugin:opener|open_url", { url: target.url }).catch(() => {});
+    } else if (target.kind === "navigate") {
+      emitWith<NavTarget>(NAVIGATE, target.target);
     } else if (target.kind === "file") {
       emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: target.path, line: target.line });
     } else if (target.kind === "outside") {

@@ -4,7 +4,19 @@ import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
 import Horizon, { type SceneKey } from "./Horizon";
-import { CaptainsCall, ComposerShell, ErrorBanner, KeyHints, SectionHead, StatusDot, Thread, decisionHandlers, ref } from "./ShellParts";
+import {
+  CaptainsCall,
+  ComposerShell,
+  ErrorBanner,
+  KeyHints,
+  SectionHead,
+  StatusDot,
+  Thread,
+  TicketLink,
+  TicketNumber,
+  TicketPlace,
+  decisionHandlers,
+} from "./ShellParts";
 import type {
   ActivityItem,
   AutopilotError,
@@ -13,13 +25,13 @@ import type {
   Decision,
   DecisionAction,
   QueuedItem,
-  Ref,
   ThreadMessage,
+  TicketHandlers,
   WorkerCard,
 } from "./autopilot";
 import styles from "./AutopilotView.module.css";
 
-export interface AutopilotViewProps {
+export interface AutopilotViewProps extends TicketHandlers {
   state: AutopilotState;
   workers: WorkerCard[];
   /** Shown in place of the cards when nothing is in flight. */
@@ -34,8 +46,6 @@ export interface AutopilotViewProps {
   shield: string;
   /** Shown in the error state. */
   error?: AutopilotError;
-  onWatch?: (refNumber: Ref) => void;
-  onOpenWorker?: (refNumber: Ref) => void;
   onDecision?: (action: DecisionAction, decision: Decision) => void;
   onStart?: () => void;
   onStop?: () => void;
@@ -89,11 +99,14 @@ export default function AutopilotView(props: AutopilotViewProps) {
                     data-status={w.status}
                     style={w.status === "working" && w.progress != null ? { "--p": `${w.progress * 100}%` } : undefined}
                   >
-                    {ref(w.refNumber)}
+                    <TicketNumber ticket={w.ticket} onOpenLink={props.onOpenLink} />
                   </span>
                   <div class={styles.cardName}>
                     <span class={styles.cardTitle}>{w.title}</span>
-                    <span class={styles.cardBranch}>{w.diff ? `${w.branch} \u00b7 ${w.diff}` : w.branch}</span>
+                    <span class={styles.cardBranch}>
+                      <TicketPlace ticket={w.ticket} onNavigate={props.onNavigate} />
+                      {w.diff ? ` \u00b7 ${w.diff}` : ""}
+                    </span>
                   </div>
                 </div>
                 <Show when={w.contract}>
@@ -118,7 +131,8 @@ export default function AutopilotView(props: AutopilotViewProps) {
                     size="xs"
                     variant="ghost"
                     iconRight={<Icon icon={ArrowUpRight} class={styles.watchIcon} />}
-                    onClick={() => props.onWatch?.(w.refNumber)}
+                    disabled={!w.ticket.target}
+                    onClick={() => w.ticket.target && props.onNavigate?.(w.ticket.target)}
                   >
                     Watch
                   </Button>
@@ -135,10 +149,16 @@ export default function AutopilotView(props: AutopilotViewProps) {
           <For each={props.queue}>
             {(q) => (
               <div class={styles.queued}>
-                <span class={styles.cardRef}>{ref(q.refNumber)}</span>
+                <span class={styles.cardRef}>
+                  <TicketLink ticket={q.ticket} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />
+                </span>
                 <span class={styles.queuedTitle}>{q.title}</span>
-                <Show when={q.after !== undefined}>
-                  <span class={styles.queuedAfter}>after {ref(q.after!)}</span>
+                <Show when={q.after}>
+                  {(after) => (
+                    <span class={styles.queuedAfter}>
+                      after <TicketLink ticket={after()} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />
+                    </span>
+                  )}
                 </Show>
               </div>
             )}
@@ -184,7 +204,16 @@ export default function AutopilotView(props: AutopilotViewProps) {
             {(a) => (
               <div class={styles.activityRow} data-needs-you={a.needsYou ? "true" : "false"}>
                 <span class={styles.activityTime}>{a.time}</span>
-                <span class={styles.activityText}>{a.text}</span>
+                <span class={styles.activityText}>
+                  <Show when={a.ticket}>
+                    {(ticket) => (
+                      <>
+                        <TicketLink ticket={ticket()} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />{" "}
+                      </>
+                    )}
+                  </Show>
+                  {a.text}
+                </span>
               </div>
             )}
           </For>

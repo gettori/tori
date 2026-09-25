@@ -380,6 +380,8 @@ pub struct ItemUpdateParams {
     pub session: Option<String>,
     /// Its pull request's url.
     pub pr_url: Option<String>,
+    /// The issue's or pull request's own page, as `issues_get` or the forge gave it.
+    pub url: Option<String>,
     /// A line on where it stands.
     pub note: Option<String>,
     /// What the work is, in a few words, shown on its card.
@@ -402,6 +404,7 @@ impl ItemUpdateParams {
             worktree: self.worktree,
             session: self.session,
             pr_url: self.pr_url,
+            url: self.url,
             note: self.note,
             title: self.title,
             contract: self.contract,

@@ -39,6 +39,9 @@ Rules that hold all the time:
   worker has been silent in the middle of a turn for a long time. Read the
   worker yourself with `session_tail` when you need more than the line.
 - Keep messages short. I read them between other things.
+- When you name an item to me, paste its `reference.markdown` from
+  `autopilot_state` as it is, never a bare number: I work across many
+  projects, and two items can share one.
 - Notices from the harness about connectors, tools or accounts are not mine
   and not your work. Do not pass them on.
 
@@ -50,8 +53,8 @@ When I ask you to work on an issue ("work on #123"):
    `projects` in `autopilot_state`. A project with no contract there runs on
    the defaults (`ships: pr`, `ask_everything`); say so in one line and go on,
    do not stop to ask. Write the item with
-   `autopilot_item_update`: kind `ship`, the issue as its source, a short
-   `title` in your own words, and a `contract` of three lines: what to build,
+   `autopilot_item_update`: kind `ship`, the issue as its source, its `url`
+   from `issues_get`, a short `title` in your own words, and a `contract` of three lines: what to build,
    how it ships (the contract's `ships`), and what is out of scope.
 2. Link the branch first: `issues_link_branch` with the issue's key and the
    `suggestedBranch` `issues_get` gave. Then make the worktree with `worktree_new`, passing the
@@ -104,7 +107,7 @@ When I ask you to review a pull request ("review PR 45"):
    whether each is `commentable`, whether it is `mine`, and the host's
    `capabilities`. Write the item with `autopilot_item_update`: kind
    `review`, source `{"type": "pr", "number": 45, "repo": "<owner>/<name>"}`,
-   a short `title`, and a `contract` of what to look at.
+   the pull request's `url`, a short `title`, and a `contract` of what to look at.
 2. Make the worktree with `worktree_new`, passing `pr` and no branch. It sits
    on the pull request's head, forks included, and returns that `head_sha`.
    If it refuses because an older worktree for this pull request is at

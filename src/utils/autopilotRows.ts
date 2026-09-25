@@ -6,12 +6,16 @@ import type {
   DecisionKind,
   InFlightRow,
   QueuedItem,
-  Ref,
+  TicketRef,
   WorkerCard,
   WorkerStatus,
 } from "../components/Autopilot/autopilot";
 import type { AskApproval, SocketAsk } from "./socketAsks";
 import { ago } from "./relativeTime";
+import type { NavTarget } from "./events";
+
+/** Mirrors `Reference` in src-tauri/src/autopilot.rs. */
+export type Reference = TicketRef & { pr?: { label: string; url: string }; target: NavTarget; markdown: string };
 
 /** Mirrors `Row` in src-tauri/src/autopilot.rs: an item with what was observed about it. */
 export type ItemRow = {
@@ -22,12 +26,17 @@ export type ItemRow = {
   state: "proposed" | "queued" | "running" | "waiting_on_you" | "taken_over" | "done" | "failed";
   worktree?: string | null;
   session?: string | null;
+  pr_url?: string | null;
+  url?: string | null;
   created: number;
   updated: number;
   note?: string | null;
   title?: string | null;
   contract?: string | null;
   session_live?: boolean;
+  worktree_gone?: boolean;
+  /** Derived per read; absent on an item read back from `log.jsonl`. */
+  reference?: Reference;
 };
 
 /** Mirrors `Hold` in src-tauri/src/rpc/asks.rs, as much of it as the rows read. */
@@ -55,9 +64,18 @@ const STATE_WORDS: Record<ItemRow["state"], string> = {
 
 const lastSegment = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
-export function itemRef(item: ItemRow): Ref {
-  if (item.source.type === "pr") return item.source.number;
-  return /^\d+$/.test(item.source.key) ? Number(item.source.key) : item.source.key;
+// An item from the log was written before any reference was derived, so it
+// reads by its number alone.
+export function ticketOf(item: ItemRow): TicketRef {
+  if (item.reference) return item.reference;
+  const key = item.source.type === "pr" ? String(item.source.number) : item.source.key.replace(/^#/, "");
+  return { label: /^\d+$/.test(key) ? `#${key}` : key, place: [] };
+}
+
+// A change names only what it knows: `session_live` and `worktree_gone` come
+// from a full read, so a row keeps the last ones until the next.
+export function applyItem(prev: ItemRow[], item: ItemRow): ItemRow[] {
+  return prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? { ...i, ...item } : i)) : [...prev, item];
 }
 
 const itemTitle = (item: ItemRow) =>
@@ -75,18 +93,16 @@ const doing = (item: ItemRow) => item.note || (item.state === "waiting_on_you" ?
 
 export const inFlightRows = (items: ItemRow[]): InFlightRow[] =>
   inFlight(items).map((i) => ({
-    refNumber: itemRef(i),
-    branch: i.worktree ? lastSegment(i.worktree) : "",
+    ticket: ticketOf(i),
     status: workerStatus(i),
     doing: doing(i),
   }));
 
 export const workerCards = (items: ItemRow[]): WorkerCard[] =>
   inFlight(items).map((i) => ({
-    refNumber: itemRef(i),
+    ticket: ticketOf(i),
     title: itemTitle(i),
     contract: i.contract ?? undefined,
-    branch: i.worktree ? lastSegment(i.worktree) : "",
     diff: "",
     status: workerStatus(i),
     log: [],
@@ -99,7 +115,7 @@ export function queuedItems(items: ItemRow[]): QueuedItem[] {
   const ahead = flying[flying.length - 1];
   return queued.map((i, n) => {
     const before = n > 0 ? queued[n - 1] : ahead;
-    return { refNumber: itemRef(i), title: itemTitle(i), after: before && itemRef(before) };
+    return { ticket: ticketOf(i), title: itemTitle(i), after: before && ticketOf(before) };
   });
 }
 
@@ -110,15 +126,17 @@ export function activityOf(e: AutopilotEvent, items: ItemRow[]): ActivityItem | 
   const time = clock(e.ts);
   if (e.item) {
     const note = e.item.note ? `: ${e.item.note}` : "";
+    const current = items.find((i) => i.id === e.item!.id);
     return {
       time,
-      text: `#${itemRef(e.item)} ${STATE_WORDS[e.item.state]}${note}`,
+      ticket: ticketOf(current ?? e.item),
+      text: `${STATE_WORDS[e.item.state]}${note}`,
       needsYou: e.item.state === "waiting_on_you",
     };
   }
   if (e.hold && !e.cleared) {
     const item = items.find((i) => i.id === e.hold!.item);
-    return { time, text: `${item ? `#${itemRef(item)} ` : ""}asks: ${e.hold.question}`, needsYou: true };
+    return { time, ticket: item && ticketOf(item), text: `asks: ${e.hold.question}`, needsYou: true };
   }
   if (e.project !== undefined && e.contract !== undefined) {
     return { time, text: `Contract for ${lastSegment(e.project)} changed` };
@@ -132,13 +150,16 @@ export function decisionOf(ask: SocketAsk, items: ItemRow[], holds: Hold[], aske
   const approval = ask.approval ?? null;
   const item = items.find((i) => i.id === ask.item);
   const number = approval && "number" in approval ? approval.number : undefined;
-  const refNumber = number ?? (item && itemRef(item));
+  // The item's own ticket over the approval's PR number, so one ticket reads
+  // one way across the cockpit; its PR shows beside it.
+  const ticket = item ? ticketOf(item) : number !== undefined ? { label: `#${number}`, place: [] } : undefined;
   const asked = holds.find((h) => h.ask === ask.id)?.asked_at;
   return {
     id: ask.id,
     kind: approval ? KIND_OF[approval.action] : "question",
-    refNumber,
-    refKind: number !== undefined || item?.source.type === "pr" ? "pr" : "issue",
+    ticket,
+    refKind: item ? (item.source.type === "pr" ? "pr" : "issue") : number !== undefined ? "pr" : undefined,
+    pr: item?.reference?.pr,
     title: approval?.action === "pr.create" ? approval.title : lastSegment(approval?.project ?? item?.project ?? ""),
     summary: ask.question,
     age: asked ? ago(Math.floor(asked / 1000)) : "",

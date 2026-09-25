@@ -3,27 +3,73 @@ import { ArrowUp, Bell, TriangleAlert } from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import { WheelGlyph } from "./Wheel";
-import type { Decision, DecisionAction, Ref, ThreadMessage, WorkerStatus } from "./autopilot";
+import type { Decision, DecisionAction, ThreadMessage, TicketHandlers, TicketRef, WorkerStatus } from "./autopilot";
 import styles from "./ShellParts.module.css";
 
 // Pieces the popup and the Autopilot view both draw.
 
-export const ref = (n: Ref) => `#${n}`;
+/** A ticket's number, a link to its page on the forge when there is one. */
+export function TicketNumber(props: { ticket: TicketRef; prefix?: string } & TicketHandlers) {
+  const text = () => `${props.prefix ?? ""}${props.ticket.label}`;
+  return (
+    <Show when={props.ticket.url} fallback={<span>{text()}</span>}>
+      {(url) => (
+        <a
+          class={styles.ticketLink}
+          href={url()}
+          onClick={(e) => {
+            e.preventDefault();
+            props.onOpenLink?.(url());
+          }}
+        >
+          {text()}
+        </a>
+      )}
+    </Show>
+  );
+}
+
+/** Where a ticket is worked on, `personal -> tori -> y-test`, opening it in Tori. */
+export function TicketPlace(props: { ticket: TicketRef } & TicketHandlers) {
+  const text = () => props.ticket.place.join(" -> ");
+  return (
+    <Show when={props.ticket.target} fallback={<span>{text()}</span>}>
+      {(target) => (
+        <button type="button" class={styles.placeLink} onClick={() => props.onNavigate?.(target())}>
+          {text()}
+        </button>
+      )}
+    </Show>
+  );
+}
+
+/** `#212 (personal -> tori -> y-test)`. */
+export function TicketLink(props: { ticket: TicketRef; prefix?: string } & TicketHandlers) {
+  return (
+    <span>
+      <TicketNumber {...props} />
+      <Show when={props.ticket.place.length}>
+        {" ("}
+        <TicketPlace {...props} />
+        {")"}
+      </Show>
+    </span>
+  );
+}
 
 /** A decision card's buttons, routed to one handler with the decision attached. */
 export function decisionHandlers(
   d: Decision,
-  on: {
-    onDecision?: (action: DecisionAction, decision: Decision) => void;
-    onOpenWorker?: (refNumber: Ref) => void;
-  },
+  on: { onDecision?: (action: DecisionAction, decision: Decision) => void } & TicketHandlers,
 ) {
   return {
     onApprove: () => on.onDecision?.("approve", d),
     onEdit: () => on.onDecision?.("edit", d),
     onReply: () => on.onDecision?.("reply", d),
     onDismiss: () => on.onDecision?.("dismiss", d),
-    onOpenWorker: () => d.refNumber !== undefined && on.onOpenWorker?.(d.refNumber),
+    onOpenWorker: () => d.ticket?.target && on.onNavigate?.(d.ticket.target),
+    onOpenLink: on.onOpenLink,
+    onNavigate: on.onNavigate,
   };
 }
 
@@ -79,8 +125,14 @@ export function KeyHints(props: { hints: [string[], string][] }) {
   );
 }
 
-/** The autopilot conversation. `dense` is the popup's smaller type. */
-export function Thread(props: { messages: ThreadMessage[]; dense?: boolean; children?: JSX.Element }) {
+/** The autopilot conversation. `dense` is the popup's smaller type; `reply`
+ *  draws what the autopilot says, plain text when absent. */
+export function Thread(props: {
+  messages: ThreadMessage[];
+  dense?: boolean;
+  reply?: (text: string) => JSX.Element;
+  children?: JSX.Element;
+}) {
   return (
     <div class={styles.thread} data-dense={props.dense ? "true" : "false"}>
       <For each={props.messages}>
@@ -93,7 +145,7 @@ export function Thread(props: { messages: ThreadMessage[]; dense?: boolean; chil
                   <Show when={!props.dense}>
                     <ReplyMark />
                   </Show>
-                  <span>{m.text}</span>
+                  <span>{props.reply ? props.reply(m.text) : m.text}</span>
                 </div>
               }>
                 <div class={styles.mine}>{m.text}</div>

@@ -1,4 +1,5 @@
 import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
 import AutopilotView from "../../components/Autopilot/AutopilotView";
@@ -6,8 +7,10 @@ import { pickScene } from "../../components/Autopilot/Horizon";
 import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
+import Markdown from "../Chat/Markdown";
 import { heroFor, inFlightRows, overLimit, queuedItems, workerCards } from "../../utils/autopilotRows";
 import { settings } from "../Settings/settingsStore";
+import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import {
   activity,
   attachable,
@@ -44,6 +47,11 @@ const STATE_LINE: Record<AutopilotState, string> = {
 };
 
 const noFork = () => "";
+
+// Through the opener plugin rather than `window.open`, which the webview is free
+// to answer by navigating.
+const openLink = (url: string) => void invoke("plugin:opener|open_url", { url }).catch(() => {});
+const navigate = (target: NavTarget) => emitWith<NavTarget>(NAVIGATE, target);
 
 // After a crash the dead session is shown to read, and a send there starts a fresh one.
 function CockpitChat(props: { status: RunnerStatus; reading: boolean }) {
@@ -120,6 +128,8 @@ export function CockpitView() {
         shield="Nothing leaves this machine until you approve it."
         error={runner().error ?? undefined}
         chat={live() ? <CockpitChat status={runner()} reading={error()} /> : undefined}
+        onOpenLink={openLink}
+        onNavigate={navigate}
         onStart={() => void startAutopilot()}
         onStop={() => void stopAutopilot()}
         onRestart={() => void startAutopilot()}
@@ -160,8 +170,11 @@ export function CockpitPopup() {
         decisions={decisionCards()}
         inFlight={inFlightRows(items())}
         messages={thread()}
+        renderReply={(text) => <Markdown text={text} cwd={runner().cwd ?? ""} />}
         error={runner().error ?? undefined}
         onDecision={decide}
+        onOpenLink={openLink}
+        onNavigate={navigate}
         composer={
           <Composer
             dense

@@ -31,6 +31,8 @@ import {
   emit,
   emitWith,
   FOCUS_SEARCH,
+  NAVIGATE,
+  type NavTarget,
   TOGGLE_SIDEBAR_MODE,
   NEW_TOPIC,
   SESSIONS_REFRESH,
@@ -1062,6 +1064,46 @@ export default function LeftSidebar(props: {
     selectBranchByFolder(d.folderPath);
   }
 
+  // The unit a folder names, and for a worktree project's own folder, which no
+  // unit sits in, its checked out unit.
+  function locate(folder: string, branch?: string | null) {
+    for (const g of config()?.spaces ?? []) {
+      for (const p of g.projects) {
+        const u = unitAt(p, folder, branch);
+        if (u) return { g, p, u };
+      }
+    }
+    for (const g of config()?.spaces ?? []) {
+      const p = g.projects.find((p) => samePath(p.path, folder));
+      const u = p?.branchUnits.find((u) => u.kind !== "plain" || u.isCurrent);
+      if (p && u) return { g, p, u };
+    }
+    return undefined;
+  }
+
+  // A link or a notification: the space shown, the project open, then the
+  // session's tab or the unit. Never a checkout, which would change the tree
+  // under whatever else is open in that repo behind a click that said "show me".
+  async function navigateTo(t: NavTarget) {
+    if (t.session && !findSession(t.session) && t.folder) await fetchSessions(t.folder);
+    const hit = t.session ? findSession(t.session) : undefined;
+    const at = hit ? locate(hit.folder, hit.session.branch) : t.folder ? locate(t.folder) : undefined;
+    if (!at) {
+      if (t.session && (await selectSessionById(t.session))) return;
+      pushToast("That worktree is no longer in Tori.", "info");
+      return;
+    }
+    if (at.u.kind === "plain" && at.u.branch && currentBranch(at.p) !== at.u.branch) {
+      pushToast(`${at.p.name} has another branch checked out, so Tori left it as it is.`, "info");
+      return;
+    }
+    setMode("spaces");
+    setActiveSpaceName(at.g.name);
+    setExpanded(new Set([...expanded(), pkey(at.g, at.p)]));
+    if (hit) void selectSession(at.g, at.p, at.u, hit.session);
+    else void selectUnit(at.g, at.p, at.u);
+  }
+
   // A History row was acted on. The dropdown has no access to the selection
   // chain (and so to `ensureBranch`'s plain-repo checkout guard), the rename
   // prompt or the delete confirm, so it names the session and the sidebar does
@@ -1086,6 +1128,7 @@ export default function LeftSidebar(props: {
   // the selection, so dropping one leaves the editor's Session panel blank with
   // nothing left to click to fix it.
   onCleanup(onWith<SessionAction>(SESSION_ACTION, (d) => void runSessionAction(d)));
+  onCleanup(onWith<NavTarget>(NAVIGATE, (t) => void navigateTo(t)));
   onCleanup(
     onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)),
   );
