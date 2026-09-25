@@ -473,6 +473,19 @@ impl Backend for TauriBackend {
         for row in rows.iter_mut().filter(|row| row["id"].as_str().is_some_and(|id| background.contains(id))) {
             row["background"] = json!(true);
         }
+        let spaces = match rows.is_empty() {
+            true => Vec::new(),
+            false => crate::config::get_config_body(&self.app.state::<crate::config::ProjectIndex>())
+                .map(|c| c.spaces)
+                .unwrap_or_default(),
+        };
+        for row in &mut rows {
+            let cwd = row["cwd"].as_str().unwrap_or_default();
+            let branch = row["branch"].as_str().filter(|b| !b.is_empty());
+            if let Some(home) = crate::unit_home::home_of(&spaces, cwd, branch) {
+                row["home"] = json!(home);
+            }
+        }
         Ok(Value::Array(rows))
     }
 

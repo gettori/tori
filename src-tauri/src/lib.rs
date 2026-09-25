@@ -55,6 +55,7 @@ mod themes;
 mod topics;
 mod trace;
 mod trust;
+mod unit_home;
 mod update;
 mod usage_probe;
 mod usage_token;
