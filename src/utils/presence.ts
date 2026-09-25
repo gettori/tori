@@ -6,7 +6,9 @@
 // it blocked" flag, so notification re-arm, the tray, and the badge's
 // unattended count can't drift from three independent implementations.
 import { createSignal } from "solid-js";
-import { isPermissionGranted, requestPermission, sendNotification, onAction } from "@tauri-apps/plugin-notification";
+import { invoke } from "@tauri-apps/api/core";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import type { NavTarget } from "./events";
 
 export type LiveSessionDot = {
   sessionId: string;
@@ -165,10 +167,6 @@ export function markSessionAttended(sessionId: string) {
 // mid-session grant via System Settings takes effect without a restart).
 let permissionRequested = false;
 
-/// Fire an OS notification for a needs-you transition (the caller has
-/// already applied `shouldSuppressNotification`). The session id rides in
-/// `extra` so a click can be routed back to focusing that tab - see
-/// `onNeedsYouNotificationClick`.
 async function notificationsAllowed(): Promise<boolean> {
   let granted = await isPermissionGranted().catch(() => false);
   if (!granted && !permissionRequested) {
@@ -179,8 +177,8 @@ async function notificationsAllowed(): Promise<boolean> {
 }
 
 /// A quota window crossing into approaching or reached, for an account rather
-/// than a session. No `extra.sessionId`: the news is about a login, and three
-/// chats may be on it, so there is no one tab a click could honestly focus.
+/// than a session. No target: the news is about a login, and three chats may
+/// be on it, so there is no one tab a click could honestly focus.
 export async function notifyQuota(title: string, body: string) {
   if (!(await notificationsAllowed())) return;
   try {
@@ -190,36 +188,15 @@ export async function notifyQuota(title: string, body: string) {
   }
 }
 
+/// Fire an OS notification for a needs-you transition (the caller has
+/// already applied `shouldSuppressNotification`). Rust sends it, since only it
+/// hears the click, which comes back as `nav://open` with this target.
 export async function notifyNeedsYou(event: NeedsYouEvent) {
   if (!(await notificationsAllowed())) return;
-  try {
-    sendNotification({
-      title: event.sessionName,
-      body: event.projectName ? `${event.projectName} needs you` : "Needs you",
-      extra: { sessionId: event.sessionId },
-    });
-  } catch {
-    // Best-effort, matching this codebase's convention of silently swallowing
-    // a failed non-critical invoke.
-  }
-}
-
-let notificationClickListenerStarted = false;
-let notificationClickHandler: ((sessionId: string) => void) | null = null;
-
-/// Wires a click handler for needs-you notifications. The plugin listener is
-/// installed once per app run, but the handler behind it is replaced on every
-/// call, so a re-registration (a remount, or a second test rendering the
-/// sidebar) reaches the live component rather than a disposed one.
-/// `onAction` is the notification plugin's general interaction callback (both
-/// a registered action button and a plain body click are expected to reach
-/// it); this reads back the `extra.sessionId` set in `notifyNeedsYou`.
-export function onNeedsYouNotificationClick(handler: (sessionId: string) => void) {
-  notificationClickHandler = handler;
-  if (notificationClickListenerStarted) return;
-  notificationClickListenerStarted = true;
-  void onAction((notification) => {
-    const sessionId = (notification as { extra?: Record<string, unknown> }).extra?.sessionId;
-    if (typeof sessionId === "string") notificationClickHandler?.(sessionId);
-  });
+  const target: NavTarget = { folder: event.folderPath, session: event.sessionId };
+  await invoke("notify_needs_you", {
+    title: event.sessionName,
+    body: event.projectName ? `${event.projectName} needs you` : "Needs you",
+    target,
+  }).catch(() => {});
 }

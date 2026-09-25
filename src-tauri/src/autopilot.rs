@@ -226,9 +226,11 @@ pub struct Link {
     pub url: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// Where Tori takes the user: a folder, a session, or both; mirrors `NavTarget` in the frontend's events.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NavTarget {
-    pub folder: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
 }
@@ -484,18 +486,19 @@ pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, 
         Source::Pr { .. } => None,
     };
     let place = place(item, worktrees, root);
-    let target = NavTarget { folder: item.worktree.clone().unwrap_or_else(|| item.project.clone()), session: item.session.clone() };
+    let folder = item.worktree.clone().unwrap_or_else(|| item.project.clone());
     let mut markdown = match &url {
         Some(url) => format!("[{label}]({url})"),
         None => label.clone(),
     };
     if !place.is_empty() {
-        let session = target.session.as_deref().map(|s| format!("&session={}", encode(s))).unwrap_or_default();
-        markdown += &format!(" ([{}](tori://open?folder={}{session}))", place.join(" -> "), encode(&target.folder));
+        let session = item.session.as_deref().map(|s| format!("&session={}", encode(s))).unwrap_or_default();
+        markdown += &format!(" ([{}](tori://open?folder={}{session}))", place.join(" -> "), encode(&folder));
     }
     if let Some(pr) = &pr {
         markdown += &format!(", [{}]({})", pr.label, pr.url);
     }
+    let target = NavTarget { folder: Some(folder), session: item.session.clone() };
     Reference { label, url, pr, place, target, markdown }
 }
 
@@ -1041,7 +1044,7 @@ pub mod tests {
 
         let proposed = reference(&ship("#212"), &HashMap::new(), Some(root));
         assert_eq!((proposed.label.as_str(), proposed.place.len()), ("#212", 2), "no worktree yet, so project only");
-        assert_eq!(proposed.target, NavTarget { folder: project.into(), session: None });
+        assert_eq!(proposed.target, NavTarget { folder: Some(project.into()), session: None });
 
         let orphan = Item { project: "/elsewhere/tori".into(), ..ship("https://github.com/o/tori/issues/212") };
         let r = reference(&Item { url: None, ..orphan }, &HashMap::new(), Some(root));

@@ -15,13 +15,13 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/plugin-notification", () => ({
   isPermissionGranted: () => Promise.resolve(true),
   requestPermission: () => Promise.resolve("granted"),
-  sendNotification: (n: { title: string }) => bridge.notified.push(n),
-  onAction: () => Promise.resolve(() => {}),
+  sendNotification: () => {},
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
+    if (cmd === "notify_needs_you") bridge.notified.push(args as { title: string });
     if (cmd === "list_sessions") return Promise.resolve(bridge.listing);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
     if (cmd === "session_tail_state") return Promise.resolve(bridge.tail);

@@ -69,7 +69,6 @@ import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { projectUnitKind } from "../../utils/topicMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
-import { onNeedsYouNotificationClick } from "../../utils/presence";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
 import {
   rollupStatuses,
@@ -2817,6 +2816,7 @@ export default function LeftSidebar(props: {
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenActivity: UnlistenFn | undefined;
   let unlistenTrayFocus: UnlistenFn | undefined;
+  let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenTopics: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
@@ -2855,7 +2855,7 @@ export default function LeftSidebar(props: {
     unlistenTrayFocus = await listen<string>("tray://focus-session", (e) =>
       void selectSessionById(e.payload),
     );
-    onNeedsYouNotificationClick((sessionId) => void selectSessionById(sessionId));
+    unlistenNavOpen = await listen<NavTarget>("nav://open", (e) => void navigateTo(e.payload));
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
     // transcript write, if any, may already have been debounced away).
@@ -2919,6 +2919,7 @@ export default function LeftSidebar(props: {
     unlistenSessions?.();
     unlistenActivity?.();
     unlistenTrayFocus?.();
+    unlistenNavOpen?.();
     unlistenFetchDone?.();
     unlistenFetchError?.();
     offFocus?.();
