@@ -733,6 +733,8 @@ pub struct Autopilot {
     pub effort: Option<String>,
     #[serde(default = "default_stall_minutes")]
     pub stall_minutes: u32,
+    #[serde(default)]
+    pub compact_at: Option<u32>,
 }
 
 impl Default for Autopilot {
@@ -745,6 +747,7 @@ impl Default for Autopilot {
             model: None,
             effort: None,
             stall_minutes: default_stall_minutes(),
+            compact_at: None,
         }
     }
 }

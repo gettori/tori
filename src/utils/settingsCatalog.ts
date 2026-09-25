@@ -575,6 +575,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Worker stalled after",
     hint: "Minutes a worker can sit silent in the middle of a turn before the autopilot hears it stalled. Waiting on your answer does not count.",
   },
+  {
+    id: "autopilot-compact",
+    section: "autopilot",
+    label: "Compact at context",
+    hint: "Percent of the model's context window past which Tori sends /compact between the autopilot's turns. Empty leaves it to the agent, and an agent with no /compact is left alone.",
+  },
 
   {
     id: "base-folder",
