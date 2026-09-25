@@ -564,6 +564,7 @@ pub fn run() {
             hooks::hooks_status_prune,
             presence::update_tray,
             presence::set_badge_count,
+            presence::notify_needs_you,
             rpc::rpc_session_states,
             rpc::rpc_quota,
             rpc::rpc_reply,

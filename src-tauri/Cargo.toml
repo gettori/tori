@@ -62,6 +62,10 @@ async-io = "2"
 schemars = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# The notification plugin's desktop send never reports a click, so a needs-you
+# notification goes out here, waiting for one. Already in the lock file through
+# the plugin's notify-rust.
+mac-notification-sys = "0.6"
 # `keychain` is the login keychain (the one a desktop app shares with every
 # other credential the user has); `protected` is the data-protection keychain,
 # which needs an app-group entitlement Tori does not have.

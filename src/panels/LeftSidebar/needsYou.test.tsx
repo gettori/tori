@@ -65,6 +65,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
+    if (cmd === "notify_needs_you") bridge.notifications.push(args);
     if (cmd === "get_config") return Promise.resolve(config);
     if (cmd === "list_sessions") {
       return Promise.resolve(args.folder === MAIN ? [ptySession] : []);
@@ -95,8 +96,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   // Granted, so the notification path actually runs rather than bailing early.
   isPermissionGranted: () => Promise.resolve(true),
   requestPermission: () => Promise.resolve("granted"),
-  sendNotification: (n: unknown) => bridge.notifications.push(n),
-  onAction: () => Promise.resolve(() => {}),
+  sendNotification: () => {},
 }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 

@@ -72,7 +72,6 @@ const liveTabs = [
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   handlers: {} as Record<string, (e: { payload: unknown }) => void>,
-  notificationClick: null as ((n: unknown) => void) | null,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -108,10 +107,6 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   isPermissionGranted: () => Promise.resolve(false),
   requestPermission: () => Promise.resolve("denied"),
   sendNotification: () => {},
-  onAction: (fn: (n: unknown) => void) => {
-    bridge.notificationClick = fn;
-    return Promise.resolve(() => {});
-  },
 }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 
@@ -154,7 +149,7 @@ describe("what the sidebar can see without being expanded", () => {
     bridge.handlers["tray://focus-session"]({ payload: "detached-1" });
     await waitFor(() => expect(pickedIds()).toContain("detached-1"));
 
-    bridge.notificationClick!({ extra: { sessionId: "live-1" } });
+    bridge.handlers["nav://open"]({ payload: { session: "live-1" } });
     await waitFor(() => expect(pickedIds()).toContain("live-1"));
 
     expect(listedFolders()).not.toContain(SOLO); // the active space only

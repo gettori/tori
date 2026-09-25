@@ -3,8 +3,9 @@
 // rising-edge/attended state); this module is just the OS-native surface -
 // rebuild the tray's tooltip/menu, or set the dock badge count, on request.
 //
-// The OS notification itself (task 2 of this phase) is entirely frontend-side
-// (@tauri-apps/plugin-notification), needing no Rust command here.
+// A needs-you notification is sent from here rather than the notification
+// plugin, whose desktop send never reports a click: a click has to land on the
+// session that needed you.
 
 use std::sync::Mutex;
 
@@ -71,6 +72,37 @@ pub fn update_tray(
 /// reaches here.
 pub fn handle_tray_menu_event(app: &AppHandle, id: &str) {
     let _ = app.emit("tray://focus-session", id.to_string());
+}
+
+/// Shows a needs-you notification whose click brings the window forward and
+/// emits `nav://open` with `target`. Elsewhere than macOS it is the plugin's,
+/// with no click.
+#[tauri::command]
+pub fn notify_needs_you(app: AppHandle, title: String, body: String, target: crate::autopilot::NavTarget) {
+    #[cfg(target_os = "macos")]
+    std::thread::spawn(move || {
+        // An unbundled dev binary has no identifier of its own, so it borrows
+        // Terminal's, as the plugin does; the first call wins for both.
+        let bundle = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
+        let _ = mac_notification_sys::set_application(&bundle);
+        // Blocks this thread until the notification is clicked or dismissed.
+        let answer = mac_notification_sys::Notification::new().title(&title).message(&body).wait_for_click(true).send();
+        if !matches!(answer, Ok(mac_notification_sys::NotificationResponse::Click)) {
+            return;
+        }
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        let _ = app.emit("nav://open", target);
+    });
+    #[cfg(not(target_os = "macos"))]
+    {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = target;
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
 }
 
 /// Sets (or clears, with `count <= 0`) the dock badge. Desktop-only; a no-op
