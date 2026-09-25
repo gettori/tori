@@ -1,8 +1,8 @@
 ---
 summary: rpc/watcher.rs wakes the autopilot from worker events, one line per item, one turn once idle, capped, no tokens
 status: current
-updated: 2026-09-24
-source: plan "Watcher: wake the autopilot only for something actionable (#206)" on branch orchestrator, issue gettori/tori#206; src-tauri/src/rpc/watcher.rs, src-tauri/src/rpc/mod.rs (start_watcher, publish_session, publish_pr), src-tauri/src/chat/host.rs (is_progress), src-tauri/src/chat/commands.rs (mark_spawned_worker)
+updated: 2026-09-25
+source: plan "Watcher: wake the autopilot only for something actionable (#206)" on branch orchestrator, issue gettori/tori#206; src-tauri/src/rpc/watcher.rs, src-tauri/src/rpc/mod.rs (start_watcher, publish_session, publish_pr), src-tauri/src/chat/host.rs (is_progress), src-tauri/src/chat/commands.rs (mark_spawned_worker); gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'
 ---
 
 # Autopilot watcher
@@ -14,10 +14,10 @@ source: plan "Watcher: wake the autopilot only for something actionable (#206)" 
 It owns deciding which worker events are worth a paid turn, and when that turn goes out. It does not own the autopilot's state ([[component_autopilot_runner]]), the queue ([[component_autopilot_store]]) or what the autopilot does with a wake (the brief).
 
 - **Who is watched.** A session whose spawner mark (`SessionStates::spawner_of`) is the runner's current session, plus the session of any open item (`AutopilotStore::item_for_session`). `chat_spawn` sets the mark before the child starts, since `session.spawn` only learns the id after the spawn, so a worker asking at once is still heard. A session the core already tracks stays watched after its mark goes ([[gotcha_a_workers_spawner_mark_is_gone_before_its_session_ended]]).
-- **What wakes.** `question`, `permission`, `needs_you`, `ended (reason)`, `pr (#n state; checks; review)`, `idle (outcome)` when a worker's turn ends and no turn starts within 10 s, and `stalled` when a worker is in a turn with no progress for `settings.autopilot.stall_minutes` (default 20). Turn starts, checkpoints and state moves never wake.
+- **What wakes.** `question`, `permission`, `needs_you`, `ended (reason)`, `pr (#n state; checks; review)`, `idle (outcome)` when a worker's turn ends and no turn starts within 10 s, and `stalled` when a worker is in a turn with no progress for `settings.autopilot.stall_minutes` (default 20). `proposed (ask|auto)` and `dropped (<why>)` for items assigned pickup made or closed, fed by `Watcher::picked` from the `autopilot_pickup` command. Turn starts, checkpoints and state moves never wake.
 - **Stall clock.** Progress is `is_progress` in `ChatHost`'s `Lifecycle` (text, thinking, tool calls, file edits, subagents, turn edges), stamped through `rpc::watcher_touch`. A question or permission pauses it until the next progress, so waiting on the user is not a stall. It fires once per silence.
 - **One line per target.** Keyed by item, or by session for a worker no item names yet; a later event of the same kind replaces the earlier one in the line. Format: `item <id>: <whats>, session <sid>` or `session <sid>: <whats>`.
-- **Caps.** `pr` and `idle` go out at most once per target per 5 minutes. A repeat inside the window is held, latest state wins, and goes out when the window ends. Questions, permissions, ends and stalls are never capped.
+- **Caps.** `pr` and `idle` go out at most once per target per 5 minutes. A repeat inside the window is held, latest state wins, and goes out when the window ends. Questions, permissions, ends, stalls, proposals and drops are never capped.
 - **PR events** match items by PR key (`Source::Pr`, or `pr_url` parsed) or by the worktree the branch is checked out in, not only by the event's live `ids`, so a PR change after the worker ended still wakes its item.
 
 ## Delivery
@@ -40,3 +40,4 @@ It runs on its own thread, never inside a publish callback. The thread sleeps un
 - [[concept_socket_event_vocabulary]]: the events it reads, and `by: "watcher"`
 - [[adr_a_workers_questions_bubble_up_to_its_spawner]]: why the autopilot no longer waits on workers
 - [[concept_tori_notes]]: how a wake is marked and drawn
+- [[adr_assigned_pickup_rides_the_forge_poll_tick]]: the pickup the item wakes come from
