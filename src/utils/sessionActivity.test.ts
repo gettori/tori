@@ -8,19 +8,11 @@ const bridge = vi.hoisted(() => ({
   running: [] as string[],
   tail: null as string | null,
   listing: [] as unknown[],
-  notified: [] as { title: string }[],
-}));
-
-vi.mock("@tauri-apps/plugin-notification", () => ({
-  isPermissionGranted: () => Promise.resolve(true),
-  requestPermission: () => Promise.resolve("granted"),
-  sendNotification: () => {},
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "notify_needs_you") bridge.notified.push(args as { title: string });
     if (cmd === "list_sessions") return Promise.resolve(bridge.listing);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
     if (cmd === "session_tail_state") return Promise.resolve(bridge.tail);
@@ -31,34 +23,25 @@ vi.mock("@tauri-apps/api/core", () => ({
 const FOLDER = "/work/repo";
 const {
   noteLiveTabs,
-  noteAttention,
   noteFolderOwners,
   noteForgeUnits,
   noteDots,
   sessionStatus,
   sessionCertainty,
-  liveSessionDots,
   liveSessionStatuses,
   sessionFacts,
   shouldPollAccumulatedDiff,
   branchOwner,
-  relayed,
   resetSessionActivityForTests,
 } = await import("./sessionActivity");
 const { trackFolders, resetSessionStoreForTests } = await import("./sessionStore");
 const { setLiveChat, dropLiveChat } = await import("./chatSessions");
-const { liveCounts, trayEntries } = await import("./presence");
-type SessionStatus = import("./sessionStatus").SessionStatus;
 type SessionDot = import("./sessionStatus").SessionDot;
 type SessionHome = import("./sessionStatus").SessionHome;
 
 // What Rust sends on `sessions://dots`.
 const rust = (id: string, dot: SessionDot, home: SessionHome | null = null, certainty: "exact" | "inferred" = "inferred") =>
   noteDots([{ id, dot, certainty, home }]);
-
-// Effects inside the store's root are queued, and `notifyNeedsYou` awaits a
-// permission check on top of that, so a notification lands two ticks out.
-const flush = () => new Promise((r) => setTimeout(r, 0));
 
 
 const meta = (id: string, branch: string, agent = "claude", home?: SessionHome) => ({
@@ -160,9 +143,6 @@ describe("the two tiers in one list", () => {
       tabId: "chat:1",
       sessionName: "the chat",
     });
-    // The dot list is what the tray and the dock badge count, and it must not
-    // gain a second copy of the chat now that the status list has one.
-    expect(liveSessionDots().filter((s) => s.sessionId === "c1")).toHaveLength(1);
   });
 
   // A chat hosted in a tab whose session also has a transcript would be in both
@@ -254,97 +234,6 @@ describe("the editor's accumulated-diff gate", () => {
   });
 });
 
-// The store owns the OS notification now, and the one thing it cannot work out
-// for itself is whether you are already looking at the session that blocked.
-// That arrives through `noteAttention`, so the suppression rule is only as good
-// as that push - which is precisely what moving it out of the sidebar put at
-// risk.
-describe("the needs-you notification", () => {
-  beforeEach(() => {
-    resetSessionActivityForTests();
-    resetSessionStoreForTests();
-    bridge.calls.length = 0;
-    bridge.notified = [];
-  });
-
-  // Distinct ids per case: the presence tracker fires on a *rising* edge, so
-  // reusing one id would make the second case depend on the first's teardown.
-  const blocks = async (sessionId: string, name: string, status: SessionStatus = "waitingForApproval") => {
-    setLiveChat({
-      sessionId,
-      sessionName: name,
-      agentId: "claude",
-      folderPath: FOLDER,
-      tabId: `chat:${sessionId}`,
-      visible: false,
-      status,
-    });
-    rust(sessionId, "needsYou", null, "exact");
-    await flush();
-  };
-
-  it("fires when the blocked session is not the one you are looking at", async () => {
-    noteAttention("something-else", true);
-    await blocks("blocked-a", "session A");
-    expect(bridge.notified.map((n) => n.title)).toContain("session A");
-    dropLiveChat("blocked-a");
-  });
-
-  it("stays quiet when you are focused on the session that blocked", async () => {
-    noteAttention("blocked-b", true);
-    await blocks("blocked-b", "session B");
-    expect(bridge.notified.map((n) => n.title)).not.toContain("session B");
-    dropLiveChat("blocked-b");
-  });
-
-  // The bug this pins: a question the agent asked reported as "executing", so
-  // the dot never rose and nobody working in another space was told about it.
-  it("fires for a question, not only for a permission prompt", async () => {
-    noteAttention("something-else", true);
-    await blocks("asked-e", "session E", "waitingForAnswer");
-    expect(bridge.notified.map((n) => n.title)).toContain("session E");
-    dropLiveChat("asked-e");
-  });
-
-  // Focus is half the signal: the same selection with the window in the
-  // background is not "you are looking at it".
-  it("fires for the selected session when the window is unfocused", async () => {
-    noteAttention("blocked-c", false);
-    await blocks("blocked-c", "session C");
-    expect(bridge.notified.map((n) => n.title)).toContain("session C");
-    dropLiveChat("blocked-c");
-  });
-});
-
-describe("a worker's needs-you", () => {
-  const worker = (spawner?: string) => ({
-    sessionId: "w",
-    sessionName: "worker",
-    agentId: "claude",
-    folderPath: FOLDER,
-    tabId: "chat:w",
-    visible: false,
-    status: "waitingForAnswer" as const,
-    ...(spawner ? { spawner } : {}),
-  });
-
-  it("stays with the autopilot while it runs", () => {
-    expect(relayed(worker("pilot"), new Set(), true)).toBe(true);
-  });
-
-  it("notifies once the autopilot that spawned it has stopped", () => {
-    expect(relayed(worker("pilot"), new Set(), false)).toBe(false);
-  });
-
-  it("stays with a spawning chat that is still open", () => {
-    expect(relayed(worker("chat-a"), new Set(["chat-a"]), false)).toBe(true);
-  });
-
-  it("is never relayed for a session nobody spawned", () => {
-    expect(relayed(worker(), new Set(["chat-a"]), true)).toBe(false);
-  });
-});
-
 // The forge's half of the needs-you pipeline.
 //
 // A failing check is a fact about a *branch*; needs-you is a fact about a
@@ -368,29 +257,6 @@ describe("a failing check on the branch a session owns", () => {
     bridge.calls.length = 0;
     bridge.running = [];
     bridge.tail = null;
-    bridge.notified = [];
-  });
-
-  // Which session a red check raises is Rust's to decide (`rpc/dots.rs`); what
-  // is checkable here is that a raise Rust sends reaches every surface.
-
-  // The verify that names the tier: a build wiring only the chat branch leaves
-  // this at zero, because there is no chat anywhere in it.
-  it("puts a PTY-tier failure in the tray and its counts", async () => {
-    await seedSessions([meta("pty", "main")]);
-    noteFolderOwners({ [FOLDER]: { spaceName: "work", projectName: "repo" } });
-    noteLiveTabs([tab("t1", "pty")]);
-    rust("pty", "solid");
-
-    expect(liveCounts(liveSessionDots()).needsYou).toBe(0);
-
-    rust("pty", "needsYou");
-
-    const live = liveSessionDots();
-    expect(liveCounts(live)).toEqual({ running: 1, needsYou: 1 });
-    // The tray marks a needs-you row and sorts it first; a count with no row to
-    // click is the failure the merged list was built to end.
-    expect(trayEntries(live)).toEqual([{ id: "pty", label: "⚠ title of pty (repo)" }]);
   });
 
   it("hands Rust the raw facts, with no dot composed", async () => {
@@ -417,20 +283,6 @@ describe("a failing check on the branch a session owns", () => {
     dropLiveChat("c-idle");
   });
 
-  it("reaches no tray, badge or notification when nothing is running on it", async () => {
-    // The sidebar chip is still red - that is the whole surface for a branch
-    // nobody has open. Interrupting for it would mean a notification with no
-    // session to take you to.
-    await seedSessions([meta("cold", "main")]);
-    noteForgeUnits([unit("main", true)]);
-    await flush();
-
-    expect(liveSessionDots()).toEqual([]);
-    expect(liveCounts(liveSessionDots())).toEqual({ running: 0, needsYou: 0 });
-    expect(trayEntries(liveSessionDots())).toEqual([]);
-    expect(bridge.notified).toEqual([]);
-  });
-
   // The raise runs the chat tier's status through the dot vocabulary, and that
   // trip is lossy on purpose: `budgetStopped` and `waitingForApproval` share one
   // dot. Only one of them comes back, so a chat stopped at a spend ceiling would
@@ -452,35 +304,7 @@ describe("a failing check on the branch a session owns", () => {
 
     const mine = liveSessionStatuses().find((s) => s.sessionId === "c-budget");
     expect(mine?.status).toBe("budgetStopped");
-    // And the dot is unchanged, which is the half the two do share: both mean
-    // the session is going nowhere until a person acts.
-    expect(liveSessionDots().find((d) => d.sessionId === "c-budget")?.dot).toBe("needsYou");
     dropLiveChat("c-budget");
-  });
-
-  it("does not notify twice while the check stays failing", async () => {
-    await seedSessions([meta("pty", "main")]);
-    noteLiveTabs([tab("t1", "pty")]);
-    rust("pty", "solid");
-
-    rust("pty", "needsYou");
-    await flush();
-    expect(bridge.notified.length).toBe(1);
-
-    // Rust sends the same dot again. It is a fresh signal write, so the memos
-    // and the effect all re-run; only the rising-edge test in `stepPresence`
-    // stops it being a second interruption.
-    rust("pty", "needsYou");
-    await flush();
-    expect(bridge.notified.length, "a steady failure interrupted twice").toBe(1);
-
-    // And it re-arms on a genuine recovery-then-failure, rather than going quiet
-    // for the rest of the session.
-    rust("pty", "solid");
-    await flush();
-    rust("pty", "needsYou");
-    await flush();
-    expect(bridge.notified.length).toBe(2);
   });
 });
 

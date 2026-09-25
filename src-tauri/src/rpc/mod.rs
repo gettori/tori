@@ -200,6 +200,19 @@ pub fn session_dot(id: &str) -> (dots::Dot, dots::Certainty) {
     COMPOSER.get().map_or((dots::Dot::None, dots::Certainty::Inferred), |c| c.dots.dot(id))
 }
 
+pub fn session_attended(id: &str, dot: dots::Dot) -> bool {
+    COMPOSER.get().is_none_or(|c| !c.presence().unattended(id, dot))
+}
+
+// What the user is looking at: the selected row and whether the window has
+// focus, which only the webview knows.
+#[tauri::command(async)]
+pub fn rpc_attention(session: Option<String>, focused: bool) {
+    let Some(composer) = COMPOSER.get() else { return };
+    composer.presence().attend(session, focused);
+    nudge(Nudge::Present);
+}
+
 // So a socket caller never waits on the webview to notice a session exited.
 // Queued rather than run inline, which would put a pgrep on the caller's call.
 pub fn refresh_dots_if_stale() {
@@ -215,6 +228,7 @@ enum Nudge {
     Compose,
     Probe,
     Changed,
+    Present,
 }
 
 static COMPOSER: OnceLock<Arc<Composer>> = OnceLock::new();
@@ -235,9 +249,14 @@ struct Composer {
     // Index rows per session, and every id already looked up, so a session with
     // no transcript yet does not re-walk the index on every composition.
     metas: std::sync::Mutex<(HashMap<String, dots::Meta>, HashSet<String>)>,
+    presence: std::sync::Mutex<crate::presence::Presence>,
 }
 
 impl Composer {
+    fn presence(&self) -> std::sync::MutexGuard<'_, crate::presence::Presence> {
+        self.presence.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn probe(&self) {
         let want = self.dots.to_probe();
         let refs = want.iter().map(|(id, agent)| crate::sessions::SessionRef { id: id.clone(), agent: agent.clone() }).collect();
@@ -254,7 +273,10 @@ impl Composer {
             let rows = all
                 .into_iter()
                 .filter(|m| wanted.contains(&m.id))
-                .map(|m| (m.id.clone(), dots::Meta { agent: m.agent, path: m.path, branch: m.branch, cwd: m.cwd }))
+                .map(|m| {
+                    let name = m.name.filter(|n| !n.is_empty()).unwrap_or(m.title);
+                    (m.id.clone(), dots::Meta { agent: m.agent, path: m.path, branch: m.branch, cwd: m.cwd, name })
+                })
                 .collect();
             *metas = (rows, wanted.into_iter().collect());
         }
@@ -295,6 +317,45 @@ impl Composer {
             let _ = self.app.emit("sessions://dots", &changes);
         }
     }
+
+    // After every composition, so an edge is only ever a dot that changed.
+    fn present(&self) {
+        let mut live = self.dots.live();
+        let spaces = crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>());
+        let metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
+        for l in &mut live {
+            if l.name.is_empty() {
+                l.name = metas.0.get(&l.id).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| l.id.clone());
+            }
+            l.project = crate::unit_home::project_name(&spaces, &l.folder);
+        }
+        drop(metas);
+        let chats: HashSet<String> = live.iter().filter(|l| l.chat).map(|l| l.id.clone()).collect();
+        let pilot = RUNNER.get().is_some_and(|r| {
+            matches!(r.status().state, runner::RunnerState::Starting | runner::RunnerState::Idle | runner::RunnerState::Working)
+        });
+        // Released before the OS calls: building the tray's menu waits on the
+        // main thread, which may itself be waiting on this lock.
+        let (notify, (tray, badge)) = {
+            let mut presence = self.presence();
+            let rose = presence.step(&live);
+            let notify: Vec<&crate::presence::Live> = live
+                .iter()
+                .filter(|l| rose.contains(&l.id))
+                .filter(|l| !crate::presence::relayed(l.spawner.as_deref(), &chats, pilot) && !presence.suppressed(l))
+                .collect();
+            (notify, presence.surface(&live))
+        };
+        for l in notify {
+            crate::presence::notify_needs_you(self.app.clone(), l);
+        }
+        if let Some((tooltip, entries)) = tray {
+            let _ = crate::presence::set_tray(&self.app, &tooltip, &entries);
+        }
+        if let Some(count) = badge {
+            let _ = crate::presence::set_badge_count(&self.app, count);
+        }
+    }
 }
 
 fn start_composer(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) {
@@ -305,6 +366,7 @@ fn start_composer(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, 
         autopilot: autopilot.clone(),
         dots: dots::Dots::default(),
         metas: std::sync::Mutex::default(),
+        presence: std::sync::Mutex::default(),
     });
     let (tx, rx) = std::sync::mpsc::channel::<Nudge>();
     let _ = NUDGE.set(std::sync::Mutex::new(tx));
@@ -313,10 +375,13 @@ fn start_composer(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, 
         while let Ok(first) = rx.recv() {
             let mut all = vec![first];
             all.extend(rx.try_iter());
-            if all.iter().any(|n| *n != Nudge::Compose) {
+            if all.iter().any(|n| matches!(n, Nudge::Probe | Nudge::Changed)) {
                 composer.probe();
             }
-            composer.compose(all.contains(&Nudge::Changed));
+            if all.iter().any(|n| *n != Nudge::Present) {
+                composer.compose(all.contains(&Nudge::Changed));
+            }
+            composer.present();
         }
     });
 }

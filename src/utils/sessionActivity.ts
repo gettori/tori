@@ -1,17 +1,15 @@
-// What every live session is doing right now, and the OS surfaces that follow
-// from it: the tray, the dock badge, and the needs-you notification.
+// What every live session is doing right now.
 //
 // This was ~200 lines of LeftSidebar's closure. It never belonged there: the
-// tray and the dock badge are app-wide, the composition reads nothing the tree
-// owns, and Phase 5's History panel needs the same answer without mounting a
-// sidebar. `chatSessions.ts` is the model - a module-level store the surfaces
+// composition reads nothing the tree owns, and Phase 5's History panel needs
+// the same answer without mounting a sidebar. `chatSessions.ts` is the model - a module-level store the surfaces
 // read, rather than state a panel lends out.
 //
 // **Rust composes every dot** (`rpc/dots.rs`, pinned by the golden fixtures
 // there) from the facts this module reports and what Rust measures itself, and
 // hands the result back on `sessions://dots`. A chat's own status is still read
 // here, raw, because the revert guard has to see a turn start on the same tick.
-import { createSignal, createMemo, createEffect, createRoot, on } from "solid-js";
+import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LiveTab } from "./events";
@@ -25,21 +23,9 @@ import {
   type LiveSessionStatus,
   type StatusCertainty,
 } from "./sessionStatus";
-import {
-  notePresence,
-  markSessionAttended,
-  liveCounts,
-  trayEntries,
-  unattendedNeedsYouCount,
-  shouldSuppressNotification,
-  notifyNeedsYou,
-  lastTransition,
-  attended,
-  type LiveSessionDot,
-} from "./presence";
 
-/** Which space and project owns a branch-unit folder. Display metadata for the
- *  tray and the notification, which the store cannot work out for itself. */
+/** Which space and project owns a branch-unit folder. Display metadata for a
+ *  live status, which the store cannot work out for itself. */
 export type FolderOwner = { spaceName: string; projectName: string };
 
 /** One branch-unit as the CI attribution needs it: enough for Rust to place a
@@ -66,8 +52,6 @@ export type ForgeUnit = {
 
 const [liveTabs, setLiveTabs] = createSignal<readonly LiveTab[]>([]);
 const [folderOwners, setFolderOwners] = createSignal<Record<string, FolderOwner>>({});
-const [selectedSessionId, setSelectedSessionId] = createSignal<string | null>(null);
-const [windowFocused, setWindowFocused] = createSignal(true);
 const [forgeUnits, setForgeUnits] = createSignal<readonly ForgeUnit[]>([]);
 
 /** The tab set, from whoever owns it (App, through the sidebar). */
@@ -81,15 +65,11 @@ export function noteFolderOwners(owners: Record<string, FolderOwner>) {
 }
 
 /** The sidebar's current selection, and whether the window has focus. Together
- *  they are "you are looking at this", which decides both what counts as
- *  attended and which needs-you edges are worth a notification. */
+ *  they are "you are looking at this", which Rust reads to decide what counts
+ *  as attended and which needs-you edges are worth a notification. */
 export function noteAttention(sessionId: string | null, focused: boolean) {
-  setSelectedSessionId(sessionId);
-  setWindowFocused(focused);
+  invoke("rpc_attention", { session: sessionId, focused }).catch(() => {});
 }
-
-const [autopilotOn, setAutopilotOn] = createSignal(false);
-export { setAutopilotOn as noteAutopilotOn };
 
 /** Every watched branch-unit and whether its pull request wants looking at.
  *  Rebuilt whenever the forge answers or the tree changes. */
@@ -244,37 +224,6 @@ export function sessionStatus(id: string): SessionStatus {
 
 const homeOf = (id: string, meta: SessionMeta | undefined) => rustDots()[id]?.home ?? meta?.home ?? null;
 
-// Every live session's composed dot plus display metadata, recomputed whenever
-// any input changes. Shared by the presence tracker, the tray and the dock
-// badge, so the three cannot drift by rebuilding it independently.
-const liveSessionDots = createMemo<LiveSessionDot[]>(() => {
-  const all = Object.values(sessions()).flat();
-  const live: LiveSessionDot[] = [];
-  for (const t of liveTabs()) {
-    if (t.kind !== "agent" || !t.sessionId) continue;
-    const meta = all.find((s) => s.id === t.sessionId);
-    live.push({
-      sessionId: t.sessionId,
-      dot: sessionDot(t.sessionId),
-      sessionName: meta?.name || meta?.title || t.sessionId,
-      projectName: folderOwners()[t.workspace]?.projectName ?? "",
-      folderPath: t.workspace,
-      tabId: t.id,
-    });
-  }
-  for (const c of liveChats()) {
-    live.push({
-      sessionId: c.sessionId,
-      dot: sessionDot(c.sessionId),
-      sessionName: c.sessionName,
-      projectName: folderOwners()[c.folderPath]?.projectName ?? "",
-      folderPath: c.folderPath,
-      tabId: c.tabId,
-    });
-  }
-  return live;
-});
-
 // The same set in the status vocabulary, covering every space rather than the
 // active one. This is what the rollup badges, the revert guard and the editor's
 // diff gate all read, so both tiers belong in it: a chat that is waiting is
@@ -319,7 +268,7 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
   return live;
 });
 
-export { liveSessionDots, liveSessionStatuses };
+export { liveSessionStatuses };
 
 export function sessionFacts() {
   const tabs = liveTabs()
@@ -359,16 +308,7 @@ export function shouldPollAccumulatedDiff(sessionId: string | null | undefined):
   return liveSessionStatuses().some((s) => s.sessionId === sessionId && s.status === "executing");
 }
 
-// Chats whose tab is the one on screen. A chat that blocks in the pane you are
-// watching needs no notification, and the selection cannot tell us that: a
-// chat's session id is minted before its transcript exists, so clicking its tab
-// resolves only as far as its branch.
-const onScreenChats = () => new Set(liveChats().filter((c) => c.visible).map((c) => c.sessionId));
-
-// --- the surfaces -----------------------------------------------------------
-//
-// One app-lifetime root, because these outlive any component that reads them:
-// the tray and the dock badge must keep tracking whether or not the sidebar is
+// One app-lifetime root: Rust needs the facts whether or not the sidebar is
 // mounted, and there is nothing to dispose short of the app closing.
 createRoot(() => {
   // Listening before the fetch, so no change can land in between and be lost.
@@ -377,45 +317,6 @@ createRoot(() => {
     .then(() => invoke<RustDot[]>("session_dots"))
     .then(noteDots)
     .catch(() => {});
-
-  // Feed the presence tracker on every change, so the OS notification, tray and
-  // badge share one source of truth instead of re-deriving it independently.
-  createEffect(() => notePresence(liveSessionDots()));
-
-  // A session reads as attended once it is both the current selection and the
-  // window has focus - the same "you're looking at it" signal focusOrResume
-  // already uses to bring a tab to the front.
-  createEffect(() => {
-    const id = selectedSessionId();
-    if (id && windowFocused()) markSessionAttended(id);
-  });
-
-  // OS notification on the needs-you rising edge, suppressed if you are already
-  // looking at that exact session when it blocks.
-  createEffect(
-    on(lastTransition, (event) => {
-      if (!event) return;
-      const chat = liveChats().find((c) => c.sessionId === event.sessionId);
-      if (chat && relayed(chat, liveChatIds(), autopilotOn())) return;
-      if (shouldSuppressNotification(event, selectedSessionId() ?? undefined, windowFocused(), onScreenChats()))
-        return;
-      void notifyNeedsYou(event);
-    }),
-  );
-
-  // Tray + dock badge, from the same live list. Both are cheap and infrequent
-  // (agent state transitions, not PTY bytes), so a plain rebuild-on-change is
-  // simpler than an incremental update.
-  createEffect(() => {
-    const live = liveSessionDots();
-    const { running, needsYou } = liveCounts(live);
-    invoke("update_tray", { running, needsYou, entries: trayEntries(live) }).catch(() => {});
-  });
-  createEffect(() => {
-    invoke("set_badge_count", {
-      count: unattendedNeedsYouCount(liveSessionDots(), attended()),
-    }).catch(() => {});
-  });
 
   let pushed = "";
   createEffect(() => {
@@ -435,15 +336,5 @@ export function resetSessionActivityForTests() {
   setRustDots({});
   setLiveTabs([]);
   setFolderOwners({});
-  setSelectedSessionId(null);
-  setWindowFocused(true);
   setForgeUnits([]);
-}
-
-/** Whether a worker's question reaches you through its spawner instead of an OS
- *  notification: while the chat that spawned it is open, or while the autopilot
- *  runs. A worker the autopilot left behind when it stopped notifies like any session. */
-export function relayed(chat: LiveChat, live: ReadonlySet<string>, autopilotOn: boolean): boolean {
-  if (!chat.spawner) return false;
-  return autopilotOn || live.has(chat.spawner);
 }

@@ -89,11 +89,6 @@ export function statusFromDot(dot: string): SessionStatus {
   }
 }
 
-// The exact inverse of `statusFromDot`, for the chat tier, which knows its
-// status directly and has to hand it *back* to the dot-shaped presence
-// pipeline (OS notification, tray, dock badge). Those consumers were written
-// against dots, and a second presence pipeline keyed on statuses would be two
-// implementations of "is anything waiting on me" that could disagree.
 /** Is a person being asked something they can answer here and now? Stated once
  *  so the tab marker, the jump-to-next hotkey and the stop command cannot end
  *  up with three different ideas of which prompts count. */
@@ -125,24 +120,6 @@ export function socketState(status: SessionStatus): "working" | "needs_you" | "i
 export function backgroundLabel(counts: { agents: number; tasks: number }): string {
   const part = (n: number, word: string) => (n ? `${n} ${word}${n === 1 ? "" : "s"}` : null);
   return `Waiting: ${[part(counts.agents, "agent"), part(counts.tasks, "task")].filter(Boolean).join(", ")}`;
-}
-
-export function dotFromStatus(status: SessionStatus): SessionDot {
-  switch (status) {
-    case "executing":
-    case "waitingOnBackground":
-      return "working";
-    case "waitingForApproval":
-    case "waitingForAnswer":
-    case "budgetStopped":
-      return "needsYou";
-    case "idle":
-      return "solid";
-    case "running":
-      return "hollow";
-    default:
-      return "none";
-  }
 }
 
 export type LiveSessionStatus = {
