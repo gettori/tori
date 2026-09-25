@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::approvals::Draft;
-use super::auth::{authenticate, Credential, Principal};
+use super::auth::{authenticate, pair, Credential, Principal, PAIR_METHOD};
 use crate::autopilot::{AutopilotStore, Autonomy, ContractPatch, Kind, Observed, Patch, Pickup, Ships, Source, State, Target, UpdateError};
 use crate::forge::model::{DraftComment, ReviewEvent};
 use crate::forge::MergeMethod;
@@ -638,6 +638,18 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
     // thread forever.
     let _ = stream.set_read_timeout(Some(server.auth_timeout));
     let authed = match read_request(&mut reader) {
+        // Pairing ends the connection either way: the device comes back with
+        // `auth`, so every connection that is served starts with a credential.
+        Ok(Some(first)) if first.method == PAIR_METHOD => {
+            let id = first.id.clone().unwrap_or(Value::Null);
+            let reply = match pair(&first, credential) {
+                Ok(paired) => Response::ok(id, json!(paired)),
+                Err(e) => Response::err(id, e.rpc()),
+            };
+            let _ = write_line(&mut stream, &to_line(&reply));
+            stream.close();
+            return;
+        }
         Ok(Some(first)) => match authenticate(&first, credential) {
             Ok(principal) => {
                 let reply = Response::ok(first.id.clone().unwrap_or(Value::Null), json!({}));
@@ -665,6 +677,17 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
     let (tx, rx) = sync_channel::<String>(QUEUE_CAP);
     let Ok(closer) = stream.try_clone_box() else { return };
     let conn = server.hub.register(tx.clone(), Box::new(move || closer.close()));
+    // Tagged before the check, so a revoke either sees this connection or
+    // removed the device before the check reads it.
+    if let Principal::Device(id) = &principal {
+        server.hub.tag_device(conn, id);
+    }
+    if !credential.holds(&principal) {
+        server.hub.remove(conn);
+        drop(tx);
+        stream.close();
+        return;
+    }
     let writer = thread::spawn(move || {
         for line in rx {
             if write_line(&mut stream, &line).is_err() {
@@ -1225,5 +1248,70 @@ pub mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(r.hub.subscriptions(), 0);
+    }
+
+    // Revokes the device while the auth reply is on its way, the one moment
+    // before the connection is registered where a revoke has nothing to close.
+    struct RevokeOnReply {
+        inner: UnixStream,
+        revoke: Arc<dyn Fn() + Send + Sync>,
+    }
+
+    impl std::io::Read for RevokeOnReply {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.inner.read(buf)
+        }
+    }
+
+    impl Write for RevokeOnReply {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            (self.revoke)();
+            self.inner.write(buf)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.inner.flush()
+        }
+    }
+
+    impl Stream for RevokeOnReply {
+        fn try_clone_box(&self) -> std::io::Result<Box<dyn Stream>> {
+            Ok(Box::new(RevokeOnReply { inner: self.inner.try_clone()?, revoke: self.revoke.clone() }))
+        }
+        fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+            self.inner.set_read_timeout(timeout)
+        }
+        fn close(&self) {
+            Stream::close(&self.inner);
+        }
+    }
+
+    #[test]
+    fn a_device_revoked_while_its_auth_is_answered_is_not_served() {
+        use crate::rpc::devices::Devices;
+        use crate::rpc::pairing::Pairing;
+        use std::io::Read;
+
+        let dir = std::env::temp_dir().join(format!("tori-server-revoke-{}-{}", std::process::id(), crate::chat::approval::random_token()));
+        let devices = Arc::new(Devices::open(dir.join("devices.json")));
+        let (device, secret) = devices.mint("phone").unwrap();
+        let credential = Credential::Remote { devices: devices.clone(), pairing: Arc::new(Pairing::new(Box::new(|_| {}))) };
+        let server = Server { hub: Default::default(), backend: Box::<StubBackend>::default(), auth_timeout: Duration::from_secs(5) };
+
+        let (mut client, served) = UnixStream::pair().unwrap();
+        let revoke = {
+            let devices = devices.clone();
+            Arc::new(move || {
+                let _ = devices.revoke(&device.id);
+            })
+        };
+        client.write_all(format!("{}\n", json!({"jsonrpc": "2.0", "id": 0, "method": "auth", "params": {"token": secret}})).as_bytes()).unwrap();
+        let handled = thread::spawn(move || handle(&server, &credential, Box::new(RevokeOnReply { inner: served, revoke })));
+
+        client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let mut got = String::new();
+        client.read_to_string(&mut got).expect("the connection is closed, not left open");
+        assert!(got.contains("\"result\":{}"), "auth itself passed: {got}");
+        handled.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

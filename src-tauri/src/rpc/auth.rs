@@ -8,8 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use super::devices::Devices;
 use super::frame::{Request, RpcError, UNAUTHORIZED};
+use super::pairing::{PairError, Pairing};
 
 pub const AUTH_METHOD: &str = "auth";
+pub const PAIR_METHOD: &str = "pair";
+const DEFAULT_DEVICE_NAME: &str = "Device";
+const MAX_NAME_CHARS: usize = 64;
 
 /// What a front accepts, one variant per kind of front.
 pub enum Credential {
@@ -19,7 +23,18 @@ pub enum Credential {
         children: Arc<Children>,
     },
     // Never the process token: a device reaches this over the network.
-    Remote(Arc<Devices>),
+    Remote { devices: Arc<Devices>, pairing: Arc<Pairing> },
+}
+
+impl Credential {
+    /// Whether `principal` still holds what it authenticated with, for a
+    /// connection that may have been revoked while it was being set up.
+    pub fn holds(&self, principal: &Principal) -> bool {
+        match (self, principal) {
+            (Credential::Remote { devices, .. }, Principal::Device(id)) => devices.contains(id),
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -75,7 +90,9 @@ pub enum Principal {
 pub enum AuthError {
     NotAnAuthFrame,
     MissingToken,
+    MissingCode,
     WrongToken,
+    Pair(PairError),
 }
 
 impl AuthError {
@@ -83,7 +100,9 @@ impl AuthError {
         let message = match self {
             AuthError::NotAnAuthFrame => "the first frame must be an auth request",
             AuthError::MissingToken => "auth needs a token",
+            AuthError::MissingCode => "pair needs a code",
             AuthError::WrongToken => "wrong token",
+            AuthError::Pair(e) => return RpcError::new(UNAUTHORIZED, e.message()),
         };
         RpcError::new(UNAUTHORIZED, message)
     }
@@ -109,11 +128,44 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
             }
             children.get(&token).map(Principal::Session).ok_or(AuthError::WrongToken)
         }
-        Credential::Remote(devices) => devices.find(&token).map(Principal::Device).ok_or(AuthError::WrongToken),
+        Credential::Remote { devices, .. } => devices.find(&token).map(Principal::Device).ok_or(AuthError::WrongToken),
     }
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+#[derive(Deserialize)]
+struct PairParams {
+    code: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct Paired {
+    pub id: String,
+    pub name: String,
+    pub credential: String,
+}
+
+/// A first frame that trades the live pairing code for a device credential.
+/// Only a network front pairs; the unix socket has no devices.
+pub fn pair(first: &Request, credential: &Credential) -> Result<Paired, AuthError> {
+    let Credential::Remote { devices, pairing } = credential else {
+        return Err(AuthError::NotAnAuthFrame);
+    };
+    let p = serde_json::from_value::<PairParams>(first.params.clone()).map_err(|_| AuthError::MissingCode)?;
+    let code = p.code.ok_or(AuthError::MissingCode)?;
+    let name = device_name(p.name.as_deref().unwrap_or_default());
+    pairing
+        .redeem(&code, crate::owned_state::now_ms(), || devices.mint(&name))
+        .map(|(device, credential)| Paired { id: device.id, name: device.name, credential })
+        .map_err(AuthError::Pair)
+}
+
+fn device_name(sent: &str) -> String {
+    let name: String = sent.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(MAX_NAME_CHARS).collect();
+    if name.is_empty() { DEFAULT_DEVICE_NAME.to_string() } else { name }
+}
+
+pub(super) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -136,7 +188,7 @@ mod tests {
     fn children(credential: &Credential) -> &Children {
         match credential {
             Credential::Local { children, .. } => children,
-            Credential::Remote(_) => unreachable!(),
+            Credential::Remote { .. } => unreachable!(),
         }
     }
 
@@ -185,13 +237,35 @@ mod tests {
         let (device, secret) = devices.mint("phone").unwrap();
         let local = cred();
         let child = children(&local).mint(Caller::Chat("s1".into()));
-        let remote = Credential::Remote(devices);
+        let remote = Credential::Remote { devices, pairing: Arc::new(Pairing::new(Box::new(|_| {}))) };
 
         assert_eq!(auth(&secret, &remote), Ok(Principal::Device(device.id)));
         assert_eq!(auth("secret", &remote), Err(AuthError::WrongToken), "the process token is refused on a network front");
         assert_eq!(auth(&child, &remote), Err(AuthError::WrongToken), "and so is a child's");
         assert_eq!(auth(&secret, &local), Err(AuthError::WrongToken), "a device credential is refused on the unix socket");
         assert_eq!(auth("never-minted", &remote), Err(AuthError::WrongToken));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_paired_credential_authenticates_and_pair_is_refused_on_the_unix_socket() {
+        let path = std::env::temp_dir()
+            .join(format!("tori-auth-pair-{}-{}", std::process::id(), crate::chat::approval::random_token()))
+            .join("devices.json");
+        let pairing = Arc::new(Pairing::new(Box::new(|_| {})));
+        let remote = Credential::Remote { devices: Arc::new(Devices::open(path.clone())), pairing: pairing.clone() };
+        let code = pairing.start("ws://x", crate::owned_state::now_ms()).unwrap().code;
+
+        assert_eq!(pair(&req("pair", json!({ "code": code })), &cred()), Err(AuthError::NotAnAuthFrame));
+        let paired = pair(&req("pair", json!({ "code": code, "name": "  Pixel\n 8  " })), &remote).unwrap();
+        assert_eq!(paired.name, "Pixel 8");
+        assert_eq!(auth(&paired.credential, &remote), Ok(Principal::Device(paired.id.clone())));
+        assert!(remote.holds(&Principal::Device(paired.id)));
+        assert_eq!(
+            pair(&req("pair", json!({ "code": code })), &remote),
+            Err(AuthError::Pair(PairError::NoCode)),
+            "a used code is refused"
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

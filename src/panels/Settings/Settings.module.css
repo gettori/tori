@@ -391,6 +391,36 @@
     margin-top: var(--tori-space-4);
   }
 
+  .pairing {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-6);
+    padding: var(--tori-space-5) var(--tori-space-1);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+  }
+  .pairQr {
+    flex: none;
+    width: calc(160px * var(--ui-scale));
+  }
+  .pairQr svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .pairText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-2);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+  .pairCode {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-lg);
+    letter-spacing: 0.1em;
+    color: var(--fg-default);
+  }
+
   /* A note between groups, outside the row grid. */
   .note {
     max-width: calc(520px * var(--ui-scale));
