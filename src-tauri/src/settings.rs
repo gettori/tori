@@ -712,6 +712,30 @@ pub struct Format {
     pub disabled: Vec<String>,
 }
 
+/// The WebSocket front a phone connects to. Written only by `remote_set`, so
+/// `set_settings` keeps the file's value over the frontend's copy, the same as
+/// `autopilot.enabled`: a stale save must not switch a network listener on.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Remote {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default = "default_remote_port")]
+    pub port: u16,
+}
+
+impl Default for Remote {
+    fn default() -> Self {
+        Self { enabled: false, address: None, port: default_remote_port() }
+    }
+}
+
+fn default_remote_port() -> u16 {
+    47821
+}
+
 /// What the autopilot session runs as. `available` is the feature itself: off,
 /// the cockpit is gone and nothing starts. `enabled` is whether it was running,
 /// for a relaunch; it is written only by `autopilot.start` and `autopilot.stop`,
@@ -830,6 +854,8 @@ pub struct Settings {
     pub format: Format,
     #[serde(default)]
     pub autopilot: Autopilot,
+    #[serde(default)]
+    pub remote: Remote,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -972,9 +998,7 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     let mut settings = settings;
     // Rust writes the picks (`edit_forge_picks`) and the autopilot's switch, and
     // the frontend's copy of either can be older than the file.
-    let on_disk = load_from(&settings_path());
-    settings.forge.picks = on_disk.forge.picks;
-    settings.autopilot.enabled = on_disk.autopilot.enabled;
+    keep_rust_owned(&mut settings, load_from(&settings_path()));
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
     Ok(settings)
@@ -992,6 +1016,27 @@ pub fn forget_default_profile(adapter_id: &str, profile_id: &str) {
     let store = crate::exec::named_lock("settings");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     forget_default_profile_in(&settings_path(), adapter_id, profile_id);
+}
+
+fn keep_rust_owned(settings: &mut Settings, on_disk: Settings) {
+    settings.forge.picks = on_disk.forge.picks;
+    settings.autopilot.enabled = on_disk.autopilot.enabled;
+    settings.remote = on_disk.remote;
+}
+
+/// Load-modify-save on the remote front, under the same lock and for the same
+/// reason as `forget_default_profile`.
+pub fn set_remote(remote: Remote) -> Result<(), String> {
+    let store = crate::exec::named_lock("settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let path = settings_path();
+    let mut settings = load_from(&path);
+    settings.remote = remote;
+    save_to(&path, &settings)
+}
+
+pub fn remote() -> Remote {
+    load_from(&settings_path()).remote
 }
 
 /// Load-modify-save on the autopilot's switch, under the same lock and for the
@@ -1939,6 +1984,28 @@ mod tests {
         assert_eq!(s.appearance, Appearance::default());
         assert_eq!(s.checkpoints, Checkpoints::default());
         std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn the_remote_block_round_trips_and_a_file_without_it_is_off() {
+        let p = tmp_file();
+        std::fs::write(&p, "{}").unwrap();
+        assert_eq!(load_from(&p).remote, Remote::default());
+        assert!(!Remote::default().enabled);
+
+        let mut s = Settings::default();
+        s.remote = Remote { enabled: true, address: Some("100.64.1.2".into()), port: 9000 };
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).remote, s.remote);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn a_frontend_save_keeps_the_remote_block_on_disk() {
+        let mut stale = Settings::default();
+        stale.remote.enabled = true;
+        keep_rust_owned(&mut stale, Settings::default());
+        assert!(!stale.remote.enabled);
     }
 
     #[test]
