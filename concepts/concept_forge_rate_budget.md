@@ -1,8 +1,8 @@
 ---
 summary: GitHub's 5000 requests an hour means Tori batches one GraphQL call per project per tick, never one per branch unit
 status: current
-updated: 2026-09-24
-source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 5; commit 8aedaed; `src/utils/forgePoll.ts`, `src/utils/forgeStatus.ts`, `src-tauri/src/forge/status.rs:63`; gettori/tori#202 commit f8a61936, `src-tauri/src/issues/gate.rs`"
+updated: 2026-09-25
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 5; commit 8aedaed; `src/utils/forgePoll.ts`, `src/utils/forgeStatus.ts`, `src-tauri/src/forge/status.rs:63`; gettori/tori#202 commit f8a61936, `src-tauri/src/issues/gate.rs`; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'"
 ---
 
 # The forge rate budget (why a tick asks about a project)
@@ -17,7 +17,8 @@ GitHub allows 5,000 requests an hour per account. Tori watches N branch-units ac
 - **Two scopes of backoff.** A primary rate limit is an *account* fact and pauses every project; a secondary limit or a repo-level failure is a *project* fact. Collapsing them would either over-pause the app or keep hammering the endpoint that refused.
 - **Caches and single-flight sit in Rust** (`status.rs:198` `SingleFlight`, `status.rs:78` `StatusCache`, `prs.rs:37` `PrCache`), so two triggers landing together (a focus event and an interval) make one request, and a panic inside a flight does not strand the callers waiting on it.
 - **Landing a pull request invalidates the whole repo.** `landing()` (`commands.rs`) drops both caches for that repo, and only on success. A merge changes every branch's answer, not just its own.
-- **Issue calls carry their own gate, in Rust.** The backoff above lives in the webview, and a socket caller (the autopilot, the CLI) never passes through it. So every issue call goes through a per-account gate that closes on a `RateLimited` answer until the host's own deadline and refuses locally until then; an offline failure says nothing about the budget and leaves it alone. The assigned list is fetched on demand, not on the tick, behind a `FRESH_FOR` cache and a `SingleFlight`. See [[component_issue_source]].
+- **Issue calls carry their own gate, in Rust.** The backoff above lives in the webview, and a socket caller (the autopilot, the CLI) never passes through it. So every issue call goes through a per-account gate that closes on a `RateLimited` answer until the host's own deadline and refuses locally until then; an offline failure says nothing about the budget and leaves it alone. The assigned list sits behind a `FRESH_FOR` cache and a `SingleFlight`. See [[component_issue_source]].
+- **Assigned pickup rides the tick.** `pollProject` invokes `autopilot_pickup` once `mayPoll` passes, so the autopilot's intake shares this interval, focus trigger, pause, backoff and the `forge.enabled` kill switch, and adds no clock of its own. Its failure is caught apart, so it never feeds the status backoff. See [[adr_assigned_pickup_rides_the_forge_poll_tick]].
 
 ## Why it's this way
 

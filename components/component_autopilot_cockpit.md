@@ -2,7 +2,7 @@
 summary: the cockpit wires the autopilot parts: an always shown switch when enabled, a view with a time of day banner and a live ChatView, the popup
 status: current
 updated: 2026-09-25
-source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx
+source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'
 ---
 
 # Autopilot cockpit
@@ -33,7 +33,7 @@ It shows the [[component_autopilot_runner]] and the [[component_autopilot_store]
 - **The banner** plays a `Horizon` scene: the hour's (`pickScene`, rechecked on a 30 s tick), or the storm when more workers are out than Settings > Chat > Warn above allows (`overLimit`, zero is no limit). `heroFor(state, calls, crew, queued, limit)` gives the eyebrow, headline and line; a needs you state keeps its words over the storm's, and an idle autopilot with workers out reads as cruising. Top right, **Set sail** starts it and **Drop anchor** stops it.
 - **The conversation is a real `ChatView`**, keyed on `runner.session`, in `detach` mode: on unmount it calls `chat_detach` rather than `chat_close`, so leaving the view keeps the session. It mounts only once the runner is `idle` or `working` ([[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]]), and whether it is shown is a memo, so a turn flipping idle and working does not remount it ([[gotcha_a_remounted_chat_view_on_a_shared_tab_id_is_detached_by_the_old_one]]). After a second death it shows the dead session read only (`started=false`).
 - **`cockpit` on the ChatView** hides the status strip and the pickers, since the picks live in Settings; puts the wheel beside each reply (`replyMark` on `MessageList`); draws prompts in violet; and heads the ask cards with Captain's call. The rules are `.chat[data-cockpit]` in `Chat.module.css`.
-- **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first). A card reads the item's `title`, else "Ship in <project>"; worker log, diff and progress are empty until something records them.
+- **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first, then `proposed` items marked "proposed" with no "after", since they wait for a go typed in the chat). The banner's queued count leaves proposed rows out. A card reads the item's `title`, else "Ship in <project>"; worker log, diff and progress are empty until something records them.
 
 ## Ticket refs
 
@@ -53,3 +53,4 @@ Every ref is the row's `reference`, drawn by `TicketLink` in `ShellParts.tsx`: `
 - [[component_chat_host]]: `chat_detach` and `chat_waiting`
 - [[component_app_socket]]: the asks and holds decisions come from
 - [[concept_tori_notes]]: the brief, wakes and resumes in its chat
+- [[adr_assigned_pickup_rides_the_forge_poll_tick]]: where proposed rows come from
