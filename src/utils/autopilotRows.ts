@@ -113,10 +113,12 @@ export function queuedItems(items: ItemRow[]): QueuedItem[] {
   const queued = items.filter((i) => i.state === "queued").sort((a, b) => a.created - b.created);
   const flying = inFlight(items);
   const ahead = flying[flying.length - 1];
-  return queued.map((i, n) => {
+  const lined = queued.map((i, n) => {
     const before = n > 0 ? queued[n - 1] : ahead;
     return { ticket: ticketOf(i), title: itemTitle(i), after: before && ticketOf(before) };
   });
+  const proposed = items.filter((i) => i.state === "proposed").sort((a, b) => a.created - b.created);
+  return [...lined, ...proposed.map((i) => ({ ticket: ticketOf(i), title: itemTitle(i), proposed: true }))];
 }
 
 const clock = (ms: number) =>

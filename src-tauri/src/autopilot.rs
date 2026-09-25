@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::forge::model::PrState;
+use crate::issues::{IssueKind, IssueRef};
 use crate::owned_state::{now_ms, write_atomically};
 use crate::rpc::events::same_folder;
 
@@ -25,6 +26,8 @@ const LOG: &str = "log.jsonl";
 const PR_STATES_TTL: Duration = Duration::from_secs(30);
 const CLOSED_NOTE: &str = "its pull request was closed without merging";
 const CLOSED_BY_HAND: &str = "closed by hand";
+const GONE_UPSTREAM: &str = "no longer assigned or open upstream";
+const REVIEW_CLEARED: &str = "review request cleared (reviewed or withdrawn)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -85,6 +88,12 @@ pub struct Item {
     pub title: Option<String>,
     #[serde(default)]
     pub contract: Option<String>,
+    // Only this account's list may close it: another login's `@me` is someone else.
+    #[serde(default)]
+    pub picked_by: Option<String>,
+    // A reassign brings back only an item that left the list, never one declined.
+    #[serde(default)]
+    pub gone_upstream: bool,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -270,6 +279,8 @@ fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: im
                         note: None,
                         title: None,
                         contract: None,
+                        picked_by: None,
+                        gone_upstream: false,
                     });
                     items.len() - 1
                 }
@@ -356,6 +367,92 @@ fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, no
         }
         item.updated = now;
         changed.push(item.clone());
+    }
+    changed
+}
+
+// An issue compares by label, since a hand-made item may key it by its url.
+fn same_work(item: &Item, row: &IssueRef, repo: &str) -> bool {
+    match (&item.source, row.kind) {
+        (Source::Issue { .. }, IssueKind::Issue) => label_of(&item.source) == label_of(&Source::Issue { key: row.key.clone(), project: String::new() }),
+        (Source::Pr { .. }, IssueKind::ReviewRequest) => row.key.parse().ok().is_some_and(|n: u64| pr_key(item) == Some((repo.to_lowercase(), n))),
+        _ => false,
+    }
+}
+
+fn kind_of(item: &Item) -> IssueKind {
+    match item.source {
+        Source::Issue { .. } => IssueKind::Issue,
+        Source::Pr { .. } => IssueKind::ReviewRequest,
+    }
+}
+
+/// One tick of `account`'s assigned list for `project` (in `repo`, `owner/name`),
+/// against the items: new rows become items, and items it picked that left a
+/// list shorter than `cap` close as gone upstream. A project's first tick only
+/// proposes, whatever its contract, so a backlog never starts on its own.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pickup(
+    items: &mut Vec<Item>,
+    project: &str,
+    repo: &str,
+    account: &str,
+    rows: &[IssueRef],
+    cap: usize,
+    pickup: Pickup,
+    now: u64,
+    mut mint: impl FnMut() -> String,
+) -> Vec<Item> {
+    let here = |i: &Item| same_folder(&i.project, project);
+    let first = !items.iter().any(|i| here(i) && i.picked_by.is_some());
+    let start = if first || pickup == Pickup::Ask { State::Proposed } else { State::Queued };
+    let complete = |kind: IssueKind| rows.iter().filter(|r| r.kind == kind).count() < cap;
+    let mut changed = Vec::new();
+    for item in items.iter_mut().filter(|i| here(i) && !i.state.terminal() && i.picked_by.as_deref() == Some(account)) {
+        if !complete(kind_of(item)) || rows.iter().any(|r| same_work(item, r, repo)) {
+            continue;
+        }
+        item.state = State::Done;
+        item.gone_upstream = true;
+        item.note = Some(match kind_of(item) {
+            IssueKind::Issue => GONE_UPSTREAM,
+            IssueKind::ReviewRequest => REVIEW_CLEARED,
+        }.to_string());
+        item.updated = now;
+        changed.push(item.clone());
+    }
+    for row in rows {
+        let known: Vec<&Item> = items.iter().filter(|i| here(i) && same_work(i, row, repo)).collect();
+        if !known.is_empty() && !known.iter().all(|i| i.state.terminal() && i.gone_upstream) {
+            continue;
+        }
+        let (kind, source) = match row.kind {
+            IssueKind::Issue => (Kind::Ship, Source::Issue { key: row.key.clone(), project: project.to_string() }),
+            IssueKind::ReviewRequest => match row.key.parse() {
+                Ok(number) => (Kind::Review, Source::Pr { number, repo: repo.to_string() }),
+                Err(_) => continue,
+            },
+        };
+        let item = Item {
+            id: mint(),
+            kind,
+            source,
+            project: project.to_string(),
+            state: start,
+            worktree: None,
+            session: None,
+            pr_url: None,
+            url: Some(row.url.clone()),
+            created: now,
+            updated: now,
+            note: None,
+            title: Some(row.title.clone()),
+            contract: None,
+            picked_by: Some(account.to_string()),
+            gone_upstream: false,
+        };
+        items.push(item.clone());
+        changed.push(item);
     }
     changed
 }
@@ -674,6 +771,14 @@ impl AutopilotStore {
         Ok(contract)
     }
 
+    /// Applies one tick of the assigned list; see [`plan_pickup`]. Answers the
+    /// items it made or closed.
+    pub fn pickup(&self, project: &str, repo: &str, account: &str, rows: &[IssueRef], cap: usize) -> Result<Vec<Item>, UpdateError> {
+        let pickup = self.contract(project).unwrap_or_default().pickup;
+        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        self.write(|items| Ok(plan_pickup(items, project, repo, account, rows, cap, pickup, now_ms(), mint)))
+    }
+
     pub fn contract(&self, project: &str) -> Option<Contract> {
         self.lock().projects.iter().find(|(known, _)| same_folder(known, project)).map(|(_, c)| c.clone())
     }
@@ -823,6 +928,8 @@ pub mod tests {
             note: None,
             title: None,
             contract: None,
+            picked_by: None,
+            gone_upstream: false,
         }
     }
 
@@ -1062,6 +1169,79 @@ pub mod tests {
         let shipped = Item { pr_url: Some("https://github.com/o/tori/pull/230".into()), ..ship("212") };
         let pr = reference(&shipped, &HashMap::new(), Some(root)).pr.unwrap();
         assert_eq!((pr.label.as_str(), pr.url.as_str()), ("PR #230", "https://github.com/o/tori/pull/230"));
+    }
+
+    fn row(key: &str, kind: IssueKind) -> IssueRef {
+        IssueRef { key: key.into(), display: format!("#{key}"), title: format!("t{key}"), url: format!("https://github.com/o/r/issues/{key}"), kind }
+    }
+
+    fn tick(items: &mut Vec<Item>, account: &str, rows: &[IssueRef], cap: usize, pickup: Pickup) -> Vec<Item> {
+        let n = std::cell::Cell::new(items.len());
+        plan_pickup(items, "/p", "o/r", account, rows, cap, pickup, 9, || {
+            n.set(n.get() + 1);
+            format!("p{}", n.get())
+        })
+    }
+
+    #[test]
+    fn an_assigned_row_becomes_an_item_once_and_a_first_tick_only_proposes() {
+        let mut items = Vec::new();
+        let made = tick(&mut items, "me", &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest)], 50, Pickup::Auto);
+        assert_eq!(made.iter().map(|i| (i.kind, i.state)).collect::<Vec<_>>(), vec![(Kind::Ship, State::Proposed), (Kind::Review, State::Proposed)]);
+        assert_eq!(made[1].source, Source::Pr { number: 2, repo: "o/r".into() });
+        assert_eq!((made[0].title.as_deref(), made[0].picked_by.as_deref()), (Some("t1"), Some("me")));
+        let later = tick(&mut items, "me", &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest), row("3", IssueKind::Issue)], 50, Pickup::Auto);
+        assert_eq!(later.iter().map(|i| (i.source.clone(), i.state)).collect::<Vec<_>>(), vec![(Source::Issue { key: "3".into(), project: "/p".into() }, State::Queued)]);
+        assert_eq!(tick(&mut Vec::from([items[0].clone()]), "me", &[row("4", IssueKind::Issue)], 50, Pickup::Ask).last().unwrap().state, State::Proposed);
+    }
+
+    #[test]
+    fn a_declined_item_stays_declined_until_it_leaves_the_list_and_comes_back() {
+        let mut items = Vec::new();
+        tick(&mut items, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask);
+        items[0].state = State::Failed;
+        assert!(tick(&mut items, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask).is_empty(), "declined, still assigned");
+        let dropped = Item { state: State::Done, gone_upstream: true, ..items[0].clone() };
+        let mut back = vec![dropped];
+        assert_eq!(tick(&mut back, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask).len(), 1, "reassigned after it left");
+    }
+
+    #[test]
+    fn an_item_started_from_the_issue_url_is_the_same_issue() {
+        let by_hand = Item { source: Source::Issue { key: "https://github.com/o/r/issues/7".into(), project: "/p".into() }, ..item("h", State::Running) };
+        let mut items = vec![by_hand];
+        assert!(tick(&mut items, "me", &[row("7", IssueKind::Issue), row("#8", IssueKind::Issue)], 50, Pickup::Auto).len() == 1);
+        assert!(tick(&mut items, "me", &[row("#7", IssueKind::Issue), row("8", IssueKind::Issue)], 50, Pickup::Auto).is_empty());
+    }
+
+    #[test]
+    fn only_a_complete_list_from_the_picking_account_closes_what_it_picked() {
+        let mut items = vec![Item { source: Source::Issue { key: "9".into(), project: "/p".into() }, ..item("h", State::Running) }];
+        tick(&mut items, "me", &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest)], 50, Pickup::Ask);
+        assert!(tick(&mut items, "other", &[], 50, Pickup::Ask).is_empty(), "another account's list closes nothing");
+        let cut = tick(&mut items, "me", &[row("5", IssueKind::Issue)], 1, Pickup::Ask);
+        let closed = |changed: &[Item]| -> Vec<(String, Option<String>)> {
+            changed.iter().filter(|i| i.state.terminal() && i.gone_upstream).map(|i| (i.id.clone(), i.note.clone())).collect()
+        };
+        assert_eq!(closed(&cut), vec![("p3".to_string(), Some(REVIEW_CLEARED.to_string()))], "issues hit the cap, so only the review search is whole");
+        let rest = tick(&mut items, "me", &[], 50, Pickup::Ask);
+        assert_eq!(closed(&rest), vec![("p2".to_string(), Some(GONE_UPSTREAM.to_string())), ("p4".to_string(), Some(GONE_UPSTREAM.to_string()))]);
+        assert_eq!(items.iter().find(|i| i.id == "h").unwrap().state, State::Running, "an item made by hand is never closed");
+    }
+
+    #[test]
+    fn a_pickup_publishes_each_item_it_made_or_closed_and_reads_back() {
+        let dir = temp_dir("pickup");
+        let (tx, rx) = channel();
+        let tx = Mutex::new(tx);
+        let store = AutopilotStore::open(dir.clone(), Box::new(move |event| tx.lock().unwrap().send(event).unwrap()));
+        store.pickup("/p", "o/r", "me", &[row("1", IssueKind::Issue)], 50).unwrap();
+        store.pickup("/p", "o/r", "me", &[], 50).unwrap();
+        let events: Vec<Value> = rx.try_iter().collect();
+        assert_eq!(events.iter().map(|e| e["item"]["state"].clone()).collect::<Vec<_>>(), vec![json!("proposed"), json!("done")]);
+        let back = quiet(&dir).lock().items[0].clone();
+        assert_eq!((back.picked_by.as_deref(), back.gone_upstream), (Some("me"), true));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

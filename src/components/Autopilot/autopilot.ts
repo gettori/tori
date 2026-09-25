@@ -69,7 +69,8 @@ export type WorkerCard = {
   progress?: number;
 };
 
-export type QueuedItem = { ticket: TicketRef; title: string; after?: TicketRef };
+/** `proposed` waits for your go in the chat, so it runs after nothing. */
+export type QueuedItem = { ticket: TicketRef; title: string; after?: TicketRef; proposed?: boolean };
 
 /** `text` follows the ticket when there is one. */
 export type ActivityItem = { time: string; ticket?: TicketRef; text: string; needsYou?: boolean };

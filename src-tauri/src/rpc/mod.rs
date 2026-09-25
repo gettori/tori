@@ -310,6 +310,27 @@ pub fn autopilot_state(app: AppHandle, rpc: tauri::State<RpcState>) -> Result<Va
     backend.autopilot_state().map_err(|e| e.message)
 }
 
+// Called from the webview's forge poll tick, so it rides that cadence and its
+// pause and backoff rather than a clock of its own.
+#[tauri::command(async)]
+pub fn autopilot_pickup(rpc: tauri::State<RpcState>, project_path: String) -> Result<(), String> {
+    if !crate::settings::autopilot().available {
+        return Ok(());
+    }
+    let Some(list) = crate::issues::commands::assigned_if_offered(&project_path).map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    let cap = crate::issues::github::ASSIGNED_CAP as usize;
+    let picked = rpc
+        .autopilot
+        .pickup(&project_path, &list.repo, &list.account, &list.rows, cap)
+        .map_err(|e| e.to_string())?;
+    if let Some(watcher) = WATCHER.get() {
+        watcher.picked(&picked);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn autopilot_log(rpc: tauri::State<RpcState>, limit: usize) -> Vec<Value> {
     rpc.autopilot.recent_log(limit)

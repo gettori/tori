@@ -581,6 +581,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Compact at context",
     hint: "Percent of the model's context window past which Tori sends /compact between the autopilot's turns. Empty leaves it to the agent, and an agent with no /compact is left alone.",
   },
+  {
+    id: "autopilot-workers",
+    section: "autopilot",
+    label: "Workers at once",
+    hint: "How many workers the autopilot runs at a time. Kept one under Warn above, so the autopilot fits too; the rest wait at the dock.",
+  },
 
   {
     id: "base-folder",

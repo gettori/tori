@@ -34,23 +34,44 @@ fn issue_client(project_path: &str) -> Result<Client, ForgeError> {
     Ok(c)
 }
 
-/// Whether this project's account is worth offering issues for, without a
-/// request: a signed-in account on a host with an issue source, whose token is
-/// not known to lack `repo`.
-pub fn offered(project_path: &str) -> bool {
-    let Ok(c) = issue_client(project_path) else {
-        return false;
-    };
+fn offers(c: &Client) -> bool {
     let file = accounts::load();
     accounts::find(&file, &c.account_id)
         .is_some_and(|(_, account)| offers_issues(account.provider, account.scopes.as_deref()))
 }
 
-pub fn assigned(project_path: &str, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
-    let c = issue_client(project_path)?;
+/// Whether this project's account is worth offering issues for, without a
+/// request: a signed-in account on a host with an issue source, whose token is
+/// not known to lack `repo`.
+pub fn offered(project_path: &str) -> bool {
+    issue_client(project_path).is_ok_and(|c| offers(&c))
+}
+
+fn fetch_assigned(c: &Client, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
     gate()
-        .assigned(&c.account_id, &c.repo, refresh, || attempt(&c, |f| source_of(f)?.list_assigned(&c.repo)))
+        .assigned(&c.account_id, &c.repo, refresh, || attempt(c, |f| source_of(f)?.list_assigned(&c.repo)))
         .map_err(named_access)
+}
+
+pub fn assigned(project_path: &str, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
+    fetch_assigned(&issue_client(project_path)?, refresh)
+}
+
+pub struct Assigned {
+    pub account: String,
+    // `owner/name`
+    pub repo: String,
+    pub rows: Vec<IssueRef>,
+}
+
+// `None` where `offered` says no; one client resolve, since the poll tick calls it per project.
+pub fn assigned_if_offered(project_path: &str) -> Result<Option<Assigned>, ForgeError> {
+    let Ok(c) = issue_client(project_path) else { return Ok(None) };
+    if !offers(&c) {
+        return Ok(None);
+    }
+    let rows = fetch_assigned(&c, false)?;
+    Ok(Some(Assigned { repo: format!("{}/{}", c.repo.owner, c.repo.repo), account: c.account_id, rows }))
 }
 
 pub fn get(project_path: &str, key: &str) -> Result<Issue, ForgeError> {

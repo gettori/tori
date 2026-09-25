@@ -153,6 +153,9 @@ export default function AutopilotView(props: AutopilotViewProps) {
                   <TicketLink ticket={q.ticket} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />
                 </span>
                 <span class={styles.queuedTitle}>{q.title}</span>
+                <Show when={q.proposed}>
+                  <span class={styles.queuedAfter}>proposed</span>
+                </Show>
                 <Show when={q.after}>
                   {(after) => (
                     <span class={styles.queuedAfter}>

@@ -12,7 +12,7 @@ use crate::forge::model::RepoRef;
 use crate::forge::ForgeError;
 use serde_json::{json, Value};
 
-const ASSIGNED_CAP: u32 = 50;
+pub const ASSIGNED_CAP: u32 = 50;
 
 const ASSIGNED: &str = "query($issues: String!, $reviews: String!, $first: Int!) {
   issues: search(query: $issues, type: ISSUE, first: $first) {

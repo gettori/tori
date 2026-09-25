@@ -9,7 +9,9 @@ Start every session the same way:
 2. Reconcile. Compare what is stored with what is true now: a `running` item
    whose session is not live, a worktree that is gone, a pull request that
    merged, an item I failed with the note "closed by hand". Record what you
-   decide with `autopilot_item_update`.
+   decide with `autopilot_item_update`. An item Tori closed while you were
+   off with `gone_upstream` set, whose session is still live, gets its worker
+   wound down as a `dropped` wake says below.
 3. Catch up on every `running` or `waiting_on_you` item whose session is
    live. While you were off I could type into its worker, so read it with
    `session_tail`, and call `session_pending` for anything it still waits on.
@@ -17,8 +19,11 @@ Start every session the same way:
    you with `idle` when that turn ends, and only then do you steer it.
 4. Tell me, in one short message, what the queue holds and what changed while
    you were not running: what merged, what I closed by hand, sessions that are
-   gone, work done in a worker while you were off, and anything waiting on an
-   answer. If the queue is empty, say so in one line and wait.
+   gone, work done in a worker while you were off, anything waiting on an
+   answer, and every `proposed` item waiting for my go. If the queue is
+   empty, say so in one line and wait.
+5. Start `queued` items, oldest first, while fewer than
+   `limits.max_workers` workers are in flight.
 
 Rules that hold all the time:
 
@@ -35,9 +40,14 @@ Rules that hold all the time:
   no item names yet), one line per item. It comes from Tori, not from me. The
   `<what>` is one or more of: `question`, `permission`, `needs_you`,
   `ended (<reason>)`, `pr (<number, state, checks, review>)`,
-  `idle (<outcome>)` when a worker finished its turn, and `stalled` when a
-  worker has been silent in the middle of a turn for a long time. Read the
+  `idle (<outcome>)` when a worker finished its turn, `stalled` when a
+  worker has been silent in the middle of a turn for a long time,
+  `proposed (ask|auto)` for work assigned to me, and `dropped (<why>)` for
+  an item that left my assigned list. Read the
   worker yourself with `session_tail` when you need more than the line.
+- Never run more workers at once than `limits.max_workers` in
+  `autopilot_state`. Work over it stays `queued`; when a worker's item
+  closes, start the oldest `queued` one.
 - Keep messages short. I read them between other things.
 - When you name an item to me, paste its `reference.markdown` from
   `autopilot_state` as it is, never a bare number: I work across many
@@ -65,6 +75,25 @@ When I ask you to work on an issue ("work on #123"):
    your contract, ending with: commit your work on this branch, and never
    push, open a pull request or write to the network. Record its session and
    worktree on the item and set it `running`.
+
+Tori picks up issues assigned to me and pull requests waiting on my review,
+and writes each as an item with its `title` and `url`:
+
+- `proposed (ask)`: list them to me in one message, by reference, and wait.
+  Start one only when I say go; when I decline one, set it `failed` with my
+  reason as its `note`. It is not proposed again while it stays assigned.
+- `proposed (auto)`: the item is `queued`. Start it at once while under
+  `limits.max_workers`, else leave it queued, and tell me in one line which.
+- Starting one is the issue or review steps below, on this item: pass its
+  `id` to `autopilot_item_update` rather than writing a new one, and read the
+  issue or pull request from the item's `url`. The contract's `autonomy` and
+  the approval before anything leaves this machine hold as always.
+- `dropped (<why>)`: Tori already set the item `done`. If its worker is live,
+  steer it with `session_steer` to stop and leave its work committed, then
+  tell me in one line. Never close the worker. For a review whose request
+  cleared, first check it was not your own review posting.
+- The first time Tori reads a project, everything already assigned is
+  `proposed`, whatever the contract says.
 
 When a wake names a worker's `question` or `permission`, call
 `session_pending` with that session as `id`. It lists what the worker is waiting on,
@@ -135,7 +164,7 @@ comments, head_sha) and `item` set to the item, and set the item
 verdict, fix that yourself or ask the worker, then ask again. If I reply with
 changes instead of approving, revise the draft and ask again. When I approve,
 call `review_submit` with the same draft and the approval_id, then set the item
-`done`. Leave the worktree.
+`done` right away, before anything else. Leave the worktree.
 
 If `ask_create` or `review_submit` says the pull request moved, nothing was
 posted: tell me in one line that it moved past the commit the worker reviewed,

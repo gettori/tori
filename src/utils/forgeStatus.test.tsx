@@ -27,6 +27,8 @@ let repoOf: Record<string, RepoAccount> = {};
 /** Queued answers to `forge_unit_statuses`, one per call. A value is resolved,
  *  an Error is rejected; running out falls back to an empty report. */
 let answers: (StatusReport | Error)[] = [];
+/** The projects each `autopilot_pickup` was asked for, in order. */
+const pickups: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
@@ -42,6 +44,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       return viewerAnswer
         ? Promise.resolve(viewerAnswer)
         : Promise.reject(new Error("not signed in"));
+    }
+    if (cmd === "autopilot_pickup") {
+      pickups.push(args?.projectPath as string);
+      return Promise.resolve(null);
     }
     if (cmd === "forge_unit_statuses") {
       asks.push(args as unknown as Ask);
@@ -282,6 +288,22 @@ describe("the poll schedule", () => {
       expect(forgePause("/a")).not.toBeNull();
       expect(asks.length, `${why} kept polling`).toBe(0);
     }
+  });
+
+  it("asks for the assigned pickup once per project a tick polls, and never while disabled", async () => {
+    // Pickup rides this tick rather than a clock of its own, so it is paused
+    // exactly when the status poll is, the kill switch included.
+    pickups.length = 0;
+    signedInWith([project("/a", ["main"]), { path: "/b", units: [{ branch: null, visible: true }] }]);
+    await pollNow("interval", NOW);
+    expect(pickups).toEqual(["/a", "/b"]);
+    resetForgeStatusForTests();
+    pickups.length = 0;
+    noteAuth(SIGNED_IN);
+    noteForgeEnabled(false);
+    noteWatchedProjects([project("/a", ["main"])]);
+    await pollNow("interval", NOW);
+    expect(pickups).toEqual([]);
   });
 
   it("spends the tick on the units that are on screen", async () => {

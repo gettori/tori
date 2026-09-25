@@ -95,6 +95,26 @@ export default function AutopilotPane(props: PaneProps) {
         />
       </Row>
 
+      <Row
+        {...props}
+        id="autopilot-workers"
+        label="Workers at once"
+        hint={
+          settings.forge.enabled
+            ? undefined
+            : "Forge status is off, so issues and reviews assigned to you are not picked up."
+        }
+      >
+        <Stepper
+          value={settings.autopilot.maxWorkers}
+          min={1}
+          max={16}
+          step={1}
+          onChange={(maxWorkers) => setAutopilot({ maxWorkers })}
+          aria-label="Workers at once"
+        />
+      </Row>
+
       <Row {...props} id="autopilot-compact" label="Compact at context">
         <input
           type="number"

@@ -864,6 +864,7 @@ impl Backend for TauriBackend {
             Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items), prs }
         })?;
         state["runner"] = json!(self.runner.status());
+        state["limits"] = json!({ "max_workers": crate::settings::autopilot_worker_cap() });
         Ok(state)
     }
 

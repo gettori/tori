@@ -735,6 +735,8 @@ pub struct Autopilot {
     pub stall_minutes: u32,
     #[serde(default)]
     pub compact_at: Option<u32>,
+    #[serde(default = "default_max_workers")]
+    pub max_workers: u32,
 }
 
 impl Default for Autopilot {
@@ -748,7 +750,21 @@ impl Default for Autopilot {
             effort: None,
             stall_minutes: default_stall_minutes(),
             compact_at: None,
+            max_workers: default_max_workers(),
         }
+    }
+}
+
+fn default_max_workers() -> u32 {
+    2
+}
+
+/// The autopilot's workers, kept one under the live chats cap so the autopilot
+/// itself fits under it too. A zero cap is no cap.
+pub fn worker_cap(max_workers: u32, max_chats: u32) -> u32 {
+    match max_chats {
+        0 => max_workers.max(1),
+        cap => max_workers.clamp(1, cap.saturating_sub(1).max(1)),
     }
 }
 
@@ -994,6 +1010,11 @@ pub fn set_autopilot_enabled(enabled: bool) -> Result<(), String> {
 
 pub fn autopilot() -> Autopilot {
     load_from(&settings_path()).autopilot
+}
+
+pub fn autopilot_worker_cap() -> u32 {
+    let settings = load_from(&settings_path());
+    worker_cap(settings.autopilot.max_workers, settings.chat_defaults.max_concurrent_chats)
 }
 
 /// Load-modify-save on the forge picks, under the same lock and for the same
@@ -1998,5 +2019,14 @@ mod tests {
         assert!(!written.contains("importPath"), "importPath must be dropped on save: {written}");
         assert!(load_from(&p).appearance.legacy_import_path.is_none());
         std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn the_worker_cap_leaves_room_for_the_autopilot_under_the_chats_cap() {
+        assert_eq!(worker_cap(9, 4), 3);
+        assert_eq!(worker_cap(2, 4), 2);
+        assert_eq!(worker_cap(5, 1), 1, "never below one");
+        assert_eq!(worker_cap(9, 0), 9, "zero chats cap is no cap");
+        assert_eq!(worker_cap(0, 0), 1);
     }
 }
