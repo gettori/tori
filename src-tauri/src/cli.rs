@@ -8,8 +8,8 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 16] = [
-    "sessions", "projects", "session", "events", "whoami", "steer", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
+const COMMANDS: [&str; 17] = [
+    "sessions", "projects", "session", "events", "whoami", "steer", "interrupt", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
     "ask", "pr", "autopilot", "mcp",
 ];
 
@@ -24,6 +24,7 @@ const USAGE: &str = "usage:
   tori events [--topic <topic>]...
   tori whoami [--json]
   tori steer <id> <text>...
+  tori interrupt <id>
   tori worktree new <branch> [--project <path>] [--from <ref>]
   tori checkpoints <id> [--json]
   tori checkpoint diff <id> <n> [<m>]
@@ -120,6 +121,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "events" => events(rest),
         "whoami" => whoami(rest),
         "steer" => steer(rest),
+        "interrupt" => interrupt(rest),
         "worktree" => match rest.first().map(String::as_str) {
             Some("new") => worktree_new(&rest[1..]),
             _ => Err(usage("worktree needs a subcommand: new")),
@@ -476,6 +478,19 @@ fn steer(args: &[String]) -> Result<(), Failure> {
     let delivered = connect()?.call("session.steer", json!({ "id": id, "text": words.join(" ") }))?;
     let how = delivered["delivered"].as_str().unwrap_or("sent");
     Ok(writeln!(io::stdout().lock(), "{how}: {id}")?)
+}
+
+fn interrupt_params(args: &[String]) -> Result<Value, Failure> {
+    match args {
+        [id] => Ok(json!({ "id": id })),
+        _ => Err(usage("interrupt takes one session id")),
+    }
+}
+
+fn interrupt(args: &[String]) -> Result<(), Failure> {
+    let params = interrupt_params(args)?;
+    connect()?.call("session.interrupt", params.clone())?;
+    Ok(writeln!(io::stdout().lock(), "interrupted: {}", params["id"].as_str().unwrap_or_default())?)
 }
 
 fn worktree_new(args: &[String]) -> Result<(), Failure> {
@@ -1068,6 +1083,13 @@ mod tests {
                 "  repo  /w/repo/.tori/worktrees/auth  present",
             ]
         );
+    }
+
+    #[test]
+    fn interrupt_takes_exactly_one_session_id() {
+        assert!(matches!(interrupt_params(&args(&["s1"])), Ok(v) if v == json!({ "id": "s1" })));
+        assert!(matches!(interrupt_params(&args(&[])), Err(Failure::Usage(_))));
+        assert!(matches!(interrupt_params(&args(&["s1", "s2"])), Err(Failure::Usage(_))));
     }
 
     #[test]

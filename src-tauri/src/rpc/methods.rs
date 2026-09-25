@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InterruptParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -24,7 +24,7 @@ use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
 use crate::autopilot::{AutopilotStore, Contract, Observed};
 use crate::issues::Issue;
-use crate::chat::commands::{history_source, read_history};
+use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
 use crate::chat::host::{ChatState, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock};
 use crate::chat::ownership::Registry;
@@ -106,7 +106,12 @@ fn list(
 fn tail(mut events: Vec<ChatEvent>, limit: usize) -> Vec<ChatEvent> {
     let keep = events.len().saturating_sub(limit);
     let mut tail = events.split_off(keep);
-    for event in &mut tail {
+    cap_outputs(&mut tail);
+    tail
+}
+
+fn cap_outputs(events: &mut [ChatEvent]) {
+    for event in events {
         if let ChatEvent::ToolCallCompleted { output: Some(output), output_truncated, .. } = event {
             if let Some(cut) = cap_output(output) {
                 *output = cut;
@@ -114,7 +119,87 @@ fn tail(mut events: Vec<ChatEvent>, limit: usize) -> Vec<ChatEvent> {
             }
         }
     }
-    tail
+}
+
+type Read = Arc<(Vec<ChatEvent>, Vec<(u64, usize)>)>;
+
+// A client pages one session back a page at a time, so its last read is kept
+// until the file under it changes rather than mapped again for every page.
+static LAST_READ: std::sync::Mutex<Option<(String, Option<(std::time::SystemTime, u64)>, Read)>> = std::sync::Mutex::new(None);
+
+fn read_cached(id: &str, from: &HistorySource, agent: &str) -> Read {
+    let path = match from {
+        HistorySource::Transcript(path) => Some(Path::new(path)),
+        HistorySource::Log(path) => Some(path.as_path()),
+        HistorySource::Missing => None,
+    };
+    let stamp = path.and_then(|p| std::fs::metadata(p).ok()).and_then(|m| Some((m.modified().ok()?, m.len())));
+    let mut last = LAST_READ.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, _, read)) = last.as_ref().filter(|(at, was, _)| at == id && stamp.is_some() && *was == stamp) {
+        return read.clone();
+    }
+    let read: Read = Arc::new(read_with_prompts(id, from, agent));
+    *last = Some((id.to_string(), stamp, read.clone()));
+    read
+}
+
+const DEFAULT_HISTORY_TURNS: usize = 10;
+const PAGE_EVENTS: usize = 500;
+
+/// One page of `total` events, as the range it covers and the cursor for the
+/// page before it. `prompts` holds each prompt's timestamp and first event.
+///
+/// Whole turns while they fit, since a page that splits a turn can split a tool
+/// call from its result. A turn bigger than a page is walked by event instead.
+fn history_page(prompts: &[(u64, usize)], total: usize, before: Option<&Before>, limit: usize) -> (std::ops::Range<usize>, Option<Before>) {
+    // Each turn as (its prompt's ts, first event); what precedes the first
+    // prompt is a turn with no prompt. An empty one is dropped. A ts no later
+    // than the one before is bumped past it, or a cursor could name two turns.
+    let mut spans: Vec<(Option<u64>, usize)> = vec![(None, 0)];
+    let mut latest = None;
+    for &(ts, at) in prompts {
+        if spans.last().is_some_and(|s| s.1 == at) {
+            spans.pop();
+        }
+        let ts = latest.map_or(ts, |l: u64| ts.max(l + 1));
+        latest = Some(ts);
+        spans.push((Some(ts), at));
+    }
+    let end_of = |i: usize| spans.get(i + 1).map_or(total, |s| s.1);
+    let before_span = |i: usize| spans[i].0.filter(|_| spans[i].1 > 0).map(Before::Turn);
+    let span_of = |ts: Option<u64>| match ts {
+        None => Some(0),
+        Some(t) => spans.iter().position(|s| s.0.is_some_and(|ts| ts >= t)),
+    };
+    let walk = |i: usize, end: usize| {
+        let start = spans[i].1.max(end.saturating_sub(PAGE_EVENTS));
+        let next = match start > spans[i].1 {
+            true => Some(Before::Event { ts: spans[i].0, event: start - spans[i].1 }),
+            false => before_span(i),
+        };
+        (start..end, next)
+    };
+
+    let end = match before {
+        Some(Before::Event { ts, event }) => {
+            let Some(i) = span_of(*ts) else { return (0..0, None) };
+            return walk(i, (spans[i].1 + event).min(end_of(i)));
+        }
+        Some(Before::Turn(ts)) => span_of(Some(*ts)).map_or(total, |i| spans[i].1),
+        None => total,
+    };
+    let Some(last) = spans.iter().rposition(|s| s.1 < end) else { return (0..0, None) };
+    let mut first = None;
+    for i in (0..=last).rev().take(limit.max(1)) {
+        if end - spans[i].1 > PAGE_EVENTS {
+            break;
+        }
+        first = Some(i);
+    }
+    match first {
+        Some(i) => (spans[i].1..end, before_span(i)),
+        None => walk(last, end),
+    }
 }
 
 /// The main agent's text from the latest turn that has any, whole.
@@ -540,6 +625,31 @@ impl Backend for TauriBackend {
             .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         let topics = crate::topics::list_topics(&crate::topics::Store::default_location());
         Ok(projects_tree(&config.spaces, topics))
+    }
+
+    fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError> {
+        let agent = match params.agent {
+            Some(agent) => agent,
+            None => self.agent_of(&params.id).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
+        };
+        let read = read_cached(&params.id, &history_source(&params.id, &agent), &agent);
+        let (events, prompts) = &*read;
+        let limit = params.limit.unwrap_or(DEFAULT_HISTORY_TURNS);
+        let (range, next) = history_page(prompts, events.len(), params.before.as_ref(), limit);
+        let mut page = events[range].to_vec();
+        cap_outputs(&mut page);
+        Ok(json!({ "events": page, "next": next }))
+    }
+
+    fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError> {
+        let host = &self.app.state::<ChatState>().0;
+        if !host.is_live(&params.id) {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no live chat session {}", params.id)));
+        }
+        let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, &params.id);
+        may_steer(principal, locked, self.runner.status().session.as_deref())?;
+        host.interrupt(&params.id).map_err(refused)?;
+        Ok(json!({ "interrupted": params.id }))
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
@@ -969,6 +1079,44 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    fn page_back(prompts: &[(u64, usize)], total: usize, limit: usize) -> Vec<std::ops::Range<usize>> {
+        let (mut pages, mut before) = (Vec::new(), None);
+        loop {
+            let (range, next) = history_page(prompts, total, before.as_ref(), limit);
+            pages.push(range);
+            if next.is_none() {
+                return pages;
+            }
+            assert!(pages.len() < 100, "no progress: {pages:?}");
+            before = next;
+        }
+    }
+
+    fn covered_once(pages: &[std::ops::Range<usize>], total: usize) {
+        let mut seen: Vec<usize> = pages.iter().rev().flat_map(|r| r.clone()).collect();
+        assert_eq!(seen.len(), total, "{pages:?}");
+        seen.dedup();
+        assert_eq!(seen, (0..total).collect::<Vec<_>>(), "{pages:?}");
+    }
+
+    #[test]
+    fn paging_back_returns_every_event_once_and_never_splits_a_turn() {
+        let prompts = [(100, 3), (200, 43), (300, 48), (400, 108)];
+        let pages = page_back(&prompts, 120, 2);
+        covered_once(&pages, 120);
+        assert_eq!(pages, [48..120, 3..48, 0..3]);
+        let untimed = prompts.map(|(_, at)| (0, at));
+        covered_once(&page_back(&untimed, 120, 2), 120);
+    }
+
+    #[test]
+    fn a_turn_bigger_than_a_page_is_walked_by_event() {
+        let prompts = [(100, 0), (200, 10), (300, 1210)];
+        let pages = page_back(&prompts, 1215, 5);
+        covered_once(&pages, 1215);
+        assert_eq!(history_page(&prompts, 1215, Some(&Before::Turn(300)), 5).1, Some(Before::Event { ts: Some(200), event: 700 }));
+    }
 
     fn claim(agent: &str, profile: &str) -> crate::chat::ownership::Claim {
         crate::chat::ownership::Claim {

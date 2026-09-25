@@ -40,7 +40,18 @@ pub fn events_from_turns(
     turns: &[TranscriptTurn],
     subagents: &[SubagentTranscript],
 ) -> Vec<ChatEvent> {
+    events_and_prompts(session_id, turns, subagents).0
+}
+
+/// [`events_from_turns`], plus each prompt's timestamp and the index of the
+/// first event its turn produced, oldest first.
+pub fn events_and_prompts(
+    session_id: &str,
+    turns: &[TranscriptTurn],
+    subagents: &[SubagentTranscript],
+) -> (Vec<ChatEvent>, Vec<(u64, usize)>) {
     let mut events = Vec::new();
+    let mut prompts = Vec::new();
     // Calls awaiting their result, oldest first. Claude records an id on both
     // halves so the match is exact; a transcript recording none falls back to
     // order - a result pairs with the oldest call still open, which is the
@@ -62,6 +73,9 @@ pub fn events_from_turns(
         // consumed here and attached to the compaction instead.
         if turns.get(at.wrapping_sub(1)).is_some_and(is_compaction) && turn.role == "user" && at > 0 {
             continue;
+        }
+        if turn.role == "user" {
+            prompts.push((turn.ts, events.len()));
         }
 
         // The invocation and its output are two records, so they are two turns
@@ -145,7 +159,7 @@ pub fn events_from_turns(
         }
     }
 
-    events
+    (events, prompts)
 }
 
 /// The four block kinds a lane and the main conversation both produce, mapped in
