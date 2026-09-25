@@ -32,19 +32,12 @@ const BRIEF: &str = "resources/autopilot/brief.md";
 // An ACP agent answers `session/new` before it can take a model or a turn.
 const STARTED_TIMEOUT: Duration = Duration::from_secs(60);
 const RETIRED_KEPT: usize = 20;
-// The brief in a resumed transcript is the one it started with, so the
-// opening steps are spelled out here too, or a brief edit never reaches it.
-const RESUMED: &str = "Tori stopped you and has now resumed this session. Start again: read the state and \
-reconcile it. An item Tori closed with gone_upstream set, whose session is still live, gets its worker \
-steered to stop and leave its work committed, never closed. Then, for every running or waiting_on_you item \
-whose session is live, read its worker with session_tail, since I could type into it while you were off, and \
-call session_pending for anything it still waits on. Leave a worker that sessions_list shows working until Tori \
-wakes you with idle. Then tell me in one short message what changed while you were not running: what merged, \
-what I closed by hand, sessions that are gone, work done in a worker while you were off, anything waiting on an \
-answer, and every proposed item waiting for my go. Then start queued items, oldest first, while fewer than \
-limits.max_workers workers are in flight, and start the next whenever a worker's item closes. Tori now picks up work assigned to me: a wake of \
-proposed (ask) waits for my go, proposed (auto) starts under limits.max_workers from autopilot_state, and \
-dropped (why) means steer that item's worker to stop.";
+// A resumed transcript holds the brief it started with, and a compaction
+// summarizes the brief away, so both are sent the brief as it is now.
+const RESUMED: &str = "Tori stopped you and has now resumed this session. This brief replaces the one earlier in \
+this chat. Start again from its first step.";
+const COMPACTED: &str = "Tori compacted this chat. Here is your brief again; it holds over anything the summary \
+says. Nothing changed for me, so do not run its opening steps or tell me anything: end this turn without a message.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -169,6 +162,8 @@ struct Gauge {
     window: Option<u64>,
     can_compact: bool,
     compacting: bool,
+    rebrief: bool,
+    rebriefed: bool,
 }
 
 impl Gauge {
@@ -312,7 +307,7 @@ impl Runner {
         match event["kind"].as_str() {
             Some("session.turn_started") => self.set_turn(id, RunnerState::Working),
             Some("session.turn_ended") => {
-                if !self.compact(id) {
+                if !self.rebrief(id) && !self.compact(id) {
                     self.set_turn(id, RunnerState::Idle);
                 }
             }
@@ -329,23 +324,46 @@ impl Runner {
     fn compact(self: &Arc<Self>, id: &str) -> bool {
         {
             let mut gauge = self.gauge();
-            if !gauge.due(crate::settings::autopilot().compact_at) {
+            // A compaction that left the context over the mark would otherwise
+            // compact and rebrief forever.
+            if std::mem::take(&mut gauge.rebriefed) || !gauge.due(crate::settings::autopilot().compact_at) {
                 return false;
             }
             gauge.compacting = true;
+            gauge.rebrief = true;
         }
+        self.deliver_off_thread(id, "/compact".into(), |gauge| {
+            gauge.compacting = false;
+            gauge.rebrief = false;
+        });
+        true
+    }
+
+    // Before idle, so the watcher's batch lands after the brief.
+    fn rebrief(self: &Arc<Self>, id: &str) -> bool {
+        if !std::mem::take(&mut self.gauge().rebrief) {
+            return false;
+        }
+        let Ok(brief) = self.brief() else {
+            return false;
+        };
+        self.gauge().rebriefed = true;
+        self.deliver_off_thread(id, super::events::from_tori("compacted", None, &format!("{COMPACTED}\n\n{brief}")), |_| {});
+        true
+    }
+
+    fn deliver_off_thread(self: &Arc<Self>, id: &str, text: String, on_error: fn(&mut Gauge)) {
         let runner = self.clone();
         let id = id.to_string();
         std::thread::spawn(move || {
-            let text = vec![ContentBlock::Text { text: "/compact".into() }];
+            let text = vec![ContentBlock::Text { text }];
             if runner.app.state::<ChatState>().0.deliver(&id, text, false, TurnBy::Local).is_err() {
-                runner.gauge().compacting = false;
+                on_error(&mut runner.gauge());
                 if runner.is_current(&id) {
                     runner.set_turn(&id, RunnerState::Idle);
                 }
             }
         });
-        true
     }
 
     fn set_turn(&self, id: &str, state: RunnerState) {
@@ -499,7 +517,7 @@ impl Runner {
             }
         }
         let text = if resume {
-            super::events::from_tori("resume", None, RESUMED)
+            super::events::from_tori("resume", None, &format!("{RESUMED}\n\n{brief}"))
         } else {
             super::events::from_tori("brief", None, &brief)
         };
