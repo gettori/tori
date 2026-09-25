@@ -40,7 +40,7 @@ The frontend half of the chat surface: a tab kind beside `shell`, `agent` and `c
 - **The mode is never set from a click.** `permissionMode` only ever comes from the child's own re-declaration; a pick lands in `pendingMode` and is cleared when a turn confirms it. A CLI that ignores the switch leaves the control honestly pending rather than lying.
 - **A replayed user turn does not set `awaitingTurn`.** Replayed history is finished; marking it in flight leaves a reopened tab reading as busy with nothing running.
 - **Tori's own hook rows are folded by default**, never dropped from state, so the toggle works mid-session. See [[lesson_identify_your_own_hook_rather_than_inferring_it]].
-- **Chat status is exact, and marked as such.** It feeds `sessionDot` as a third tier ahead of the PTY-activity and pgrep tiers; only the exact side is marked, leaving inferred rendering byte-identical (see [[concept_evidence_tiered_attribution]] and [[concept_needs_you_floor]]).
+- **Chat status is exact, and marked as such.** It reaches Rust as a reported fact (`rpc_session_facts`) and is the first tier the dot composition reads, ahead of the PTY-activity and pgrep tiers; only the exact side is marked, leaving inferred rendering byte-identical (see [[concept_evidence_tiered_attribution]] and [[concept_needs_you_floor]]).
 - **Code blocks are not syntax-highlighted.** Chat matches [[component_markdown_preview]]'s treatment exactly; real highlighting needs a new dependency and is an open scope decision.
 
 ## The differentiator surfaces (2026-07-29)
