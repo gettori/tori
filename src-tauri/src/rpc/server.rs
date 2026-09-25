@@ -53,6 +53,37 @@ pub struct TailParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct HistoryParams {
+    /// The session id.
+    pub id: String,
+    /// The session's agent, looked up from the live claims, then the index, when left out.
+    pub agent: Option<String>,
+    /// The `next` of the page after this one; left out for the latest page.
+    pub before: Option<Before>,
+    /// At most this many turns (default 10). A page never holds more than 500 events.
+    pub limit: Option<usize>,
+}
+
+/// Where a page ends. A prompt timestamp ends it before that prompt's turn. An
+/// event inside a turn is for a turn too big for one page: `ts` names the turn
+/// by its prompt (absent for what came before the first prompt), `event` counts
+/// from the turn's start.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Before {
+    Turn(u64),
+    Event { ts: Option<u64>, event: usize },
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InterruptParams {
+    /// The live chat session whose turn to stop.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SteerParams {
     /// The live chat session to send to.
     pub id: String,
@@ -483,6 +514,8 @@ pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn projects_list(&self) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
+    fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError>;
+    fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
@@ -688,6 +721,12 @@ pub mod tests {
         }
         fn session_tail(&self, p: TailParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": p.id }]))
+        }
+        fn session_history(&self, p: HistoryParams) -> Result<Value, RpcError> {
+            Ok(json!({ "events": [], "next": p.before }))
+        }
+        fn session_interrupt(&self, _: &Principal, p: InterruptParams) -> Result<Value, RpcError> {
+            Ok(json!({ "interrupted": p.id }))
         }
         fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
             Ok(match principal {

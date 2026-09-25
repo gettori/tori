@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
+    params, AskAnswerParams, HistoryParams, InterruptParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
     HoldResolveParams, IssueGetParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -103,6 +103,24 @@ pub static METHODS: &[Method] = &[
             }
             Ok(me)
         },
+    },
+    Method {
+        name: "session.history",
+        description: "A session's conversation a page at a time, newest first: whole turns up to limit, at most 500 events. Pass a reply's next as before for the page before it; next is null at the start.",
+        params: schema::<HistoryParams>,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.session_history(params(v)?),
+    },
+    Method {
+        name: "session.interrupt",
+        description: "Stop a live chat session's current turn.",
+        params: schema::<InterruptParams>,
+        callers: NOT_WORKERS,
+        refusal: None,
+        outward: false,
+        call: |b, p, v| b.session_interrupt(p, params(v)?),
     },
     Method {
         name: "session.steer",

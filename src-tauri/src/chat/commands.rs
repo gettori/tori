@@ -1068,6 +1068,19 @@ pub(crate) fn read_history(
     super::history::events_from_turns(session_id, shown, &subagents)
 }
 
+/// A session's whole conversation, uncut, with each prompt's timestamp and the
+/// index of its first event. A mirror log records no prompts, so it has none.
+pub(crate) fn read_with_prompts(session_id: &str, from: &HistorySource, agent_id: &str) -> (Vec<ChatEvent>, Vec<(u64, usize)>) {
+    let path = match from {
+        HistorySource::Transcript(path) => path,
+        HistorySource::Log(path) => return (history_from_log(session_id, path), Vec::new()),
+        HistorySource::Missing => return (Vec::new(), Vec::new()),
+    };
+    let turns = crate::sessions::transcript_turns(path, agent_id);
+    let subagents = crate::sessions::subagent_transcripts(path, agent_id);
+    super::history::events_and_prompts(session_id, &turns, &subagents)
+}
+
 /// Does this agent write a transcript Tori can find on disk?
 ///
 /// **Asked of the adapter, not of `transcript_path`.** Both answers are `None`
