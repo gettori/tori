@@ -1,8 +1,8 @@
 ---
 summary: a chat session is exact, a PTY tab is a guess, a detached session caps at running, so only the PTY tier can starve
 status: current
-updated: 2026-07-31
-source: Session navigation moves to a History dropdown; pi and opencode are removed (branch `navigation`, phases 3-6); `src/utils/sessionActivity.ts`; `src/utils/sessionStatus.ts:computeSessionDot`; commits 61eb767, a713a26
+updated: 2026-09-26
+source: Session navigation moves to a History dropdown; pi and opencode are removed (branch `navigation`, phases 3-6); `src/utils/sessionActivity.ts`; `src/utils/sessionStatus.ts:computeSessionDot`; commits 61eb767, a713a26; moved into Rust by gettori/tori#212, commit a6de3348, `src-tauri/src/rpc/dots.rs` (`tier_dot`, `compose`)
 ---
 
 # Session certainty tiers
@@ -11,9 +11,11 @@ Tori knows what a session is doing three different ways, and they are not equall
 
 ## How it works
 
-`computeSessionDot` reads the tiers in order of certainty and returns on the first one that answers. It checks `chatStatus` on its very first line, so a chat session never reaches the code that consults `tailState`. Only the PTY tier performs the join, and only the PTY tier can therefore *starve*: if the session store is empty, `refreshTailStates` has nothing to join against, `tailState` stays unset, `blocked-candidate` never appears, and the needs-you pipeline silently stops firing.
+Rust's `tier_dot` (`src-tauri/src/rpc/dots.rs`) reads the tiers in order of certainty and returns on the first one that answers. It checks the chat's reported status on its very first line, so a chat session never reaches the code that reads the transcript tail. Only the PTY tier performs the join, and only the PTY tier can therefore *starve*: the tail is read through the session's index row, so a session the index has no row for never reads as `blocked-candidate`, and the needs-you pipeline silently stops firing for it.
 
 That asymmetry is the single most important consequence: **any end-to-end check of the needs-you pipeline must use a PTY agent tab.** A chat-based test of the same pipeline passes against a build where the PTY tier is completely broken, because the chat tier answers before the broken code runs.
+
+The composed `certainty` is `exact` only for a chat, and every `sessions.list` row and `session.dot` event carries it.
 
 The detached tier is deliberately absent from `liveSessionStatuses`, which is built from live tabs and chats only - the things with a row to roll up *to*. A detached session therefore never reaches a sidebar rollup badge. Its status lives in `sessionStatus(id)`, which is what the History button's badge counts, and that badge is the only surface in the app where the detached tier is visible.
 

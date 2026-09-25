@@ -37,7 +37,7 @@ A session row shows whether its agent is actually running (a probe-confirmed dot
 
 - `src-tauri/src/sessions.rs` — `session_pattern`/`session_running` (liveness), `TouchOp`/`TouchedFile`/`extract_touched_files`/`touched_files_cached`/`session_touched_files` (touched files), `parse_transcript_turns`/`session_transcript` (transcript), `scan_counts`/`RawCounts`/`session_detail` (stat pass incl. compaction count), `parse_rfc3339_secs` (shared RFC3339-Z parser, no chrono dependency), `watch_dirs`/`sessions_watch_start` (now covers both `~/.claude/projects` and `~/.pi/agent/sessions`).
 - `src/components/Toolbar/Toolbar.tsx` — the session stat row; refreshes on a single `sessions://changed` subscription (`onMount`/`onCleanup`), no fixed-interval poll, with a latest-request-wins guard on every `session_detail` load.
-- `src/panels/LeftSidebar/LeftSidebar.tsx` — `probes`/`probeSession`/`probeActive`/`sessionDot`, `loadTouchedCount` (row touched-count, with a `touchedCountFor` request guard), `openTranscript` + the session context menu.
+- `src/panels/LeftSidebar/LeftSidebar.tsx` — `probeSession`/`probeActive` (their results reach Rust's dot composition through `sessions_running`), `loadTouchedCount` (row touched-count, with a `touchedCountFor` request guard), `openTranscript` + the session context menu.
 - `src/panels/Terminal/Terminal.tsx` — `backfillFreshSessions`, `spawnedAt`.
 - `src/panels/Editor/SessionPanel.tsx`, `src/panels/Editor/TranscriptViewer.tsx`, `src/panels/Editor/Editor.tsx` — the `Tab` union, `tabId`, `openTranscript`, the Session right-panel `<Match>`.
 - `src-tauri/src/sessions.rs` — `latest_written` / `session_editing_now` (the live indicator's attribution source).

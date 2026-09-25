@@ -1,8 +1,8 @@
 ---
 summary: every socket event shares one envelope; each kind is published where Rust already sees it, pushed from the webview only where it owns the state
 status: current
-updated: 2026-09-24
-source: gettori/tori#199 on branch orchestrator; commits 25551855, 3a04d580, 52615c71; src-tauri/src/rpc/{events,states,quotas,mod}.rs; src-tauri/src/chat/host.rs (Lifecycle); src-tauri/src/forge/status.rs (Published); src/utils/sessionActivity.ts (socketReports); gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8
+updated: 2026-09-26
+source: gettori/tori#199 on branch orchestrator; commits 25551855, 3a04d580, 52615c71; src-tauri/src/rpc/{events,states,quotas,mod}.rs; src-tauri/src/chat/host.rs (Lifecycle); src-tauri/src/forge/status.rs (Published); src/utils/sessionActivity.ts (socketReports); gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#212 commit a6de3348, src-tauri/src/rpc/dots.rs
 ---
 
 # Socket event vocabulary
@@ -17,6 +17,7 @@ What the app socket ([[component_app_socket]]) says happened, for the watcher, t
 | `session.ended` | `reason`: `closed`, `killed`, `died` (chat only) | chat: `Lifecycle::ended`; PTY: `replace` once the tab's PTY is gone | both |
 | `session.state` | `state` | `replace`, every move | both |
 | `session.needs_you` | | `replace`, rising edge into `needs_you` | both |
+| `session.dot` | `dot`, `certainty` | the Composer, straight to the hub, whenever a display dot changes | both |
 | `session.turn_started` | `turn_id`, `by` | `Lifecycle::observe` in `ChatHost::wrap` | chat |
 | `session.turn_ended` | `turn_id`, `outcome` | same | chat |
 | `session.question` | `tool_use_id` or `ask_id`, `questions` | `observe` on `QuestionRequest`; `ask.create` after its card shows | chat |
@@ -37,7 +38,7 @@ What the app socket ([[component_app_socket]]) says happened, for the watcher, t
 - **Nothing before `SessionStarted`.** An ACP load or a replaying rewire hands the conversation back through the live sink first ([[gotcha_an_acp_load_hands_history_back_through_the_live_sink]]).
 - **Absence from the webview's list is not an end.** A reload restores tabs per workspace on first visit, so `replace` keeps an absent session until its chat child or PTY tab is really gone ([[lesson_absence_from_a_whole_list_push_is_not_an_end]]).
 - **A branch's first sighting only seeds.** Otherwise launch sends one `session.pr` per branch. The last-published map is apart from the forge TTL cache, so an expiry or `invalidate_repo` never reads as a change. A branch checked out nowhere sends empty `ids`, since the project folder's sessions are on another branch.
-- **`needs_you` means the agent is blocked.** The sidebar dot also lights for forge attention; `socketReports` leaves that out because `session.pr` already carries it.
+- **`needs_you` means the agent is blocked.** Rust composes two values per session: the agent state, which drives `session.state` and `session.needs_you` and never includes forge attention because `session.pr` already carries it, and the display dot, which does include it and goes out as `session.dot`. `session.dot` skips the runner and the watcher for the same reason.
 - **Events carry no id.** A client on both `sessions` and `session:<id>` sees each twice, and should subscribe to one.
 
 ## Related

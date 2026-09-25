@@ -1,46 +1,39 @@
 ---
-summary: OS notification, tray and dock badge read one shared rising edge tracker so they cannot disagree on needs you
+summary: Rust's Presence owns the needs-you rising edge and attended, and drives the OS notification, tray and dock badge itself
 status: current
-updated: 2026-09-25
-source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", phase notification-click
+updated: 2026-09-26
+source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; plan "Autopilot hard lock, release on stop, reconcile on start (#209)", commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 phase notification-click; moved into Rust by gettori/tori#212, commit 21533ec4; `src-tauri/src/presence.rs`, `src-tauri/src/rpc/mod.rs` (Composer::present)
 ---
 
 # Presence (OS notification, tray, dock badge)
 
-**Location:** `src-tauri/src/presence.rs`, `src/utils/presence.ts`, `src/panels/LeftSidebar/LeftSidebar.tsx` (wiring)
+`src-tauri/src/presence.rs` takes each session's display dot outside the window: an OS notification when a session first blocks, a menu-bar tray with counts and one entry per session, and a dock badge counting blocked sessions nobody has looked at. All three read one rising-edge tracker, so they cannot drift on what "just blocked" or "still needs you" means.
 
-Presence takes [[concept_needs_you_floor]]'s per-session dot state outside the window: an OS notification when a session first blocks, a menu-bar tray with running/needs-you counts and per-session focus-on-click entries, and a dock badge counting unattended-blocked sessions. All three read from one shared rising-edge tracker so they can't independently drift on what "just blocked" or "still needs you" means.
+## Responsibility
 
-## Responsibilities
+- **`Presence`**, held by the socket's Composer ([[component_app_socket]]):
+  - `step` folds one tick of dots in and returns the sessions that just crossed into needs-you. It fires on the rising edge, never again while a session stays blocked, and again after a genuine re-block. A fresh block is always unattended.
+  - `attend` records the selection and window focus. A selected row in a focused window counts as attended.
+  - `unattended` is what the badge counts and what `sessions.list` reports as `attended: false`.
+  - `surface` says what the tray and badge should change to, and nothing when they already show it.
+  - `attended` and the last dots are pruned to the live list.
+- **When it runs.** `Composer::present` runs after every composition, so an edge is only ever a dot that changed. `rpc_attention` (async) records attention and queues a `present` on its own. The live list is the reported tab and chat facts, which are held while a tab or chat is alive, so a window reload fires no second notification.
+- **The OS calls run outside the lock.** Building the tray's menu waits on the main thread, so the tray, badge and notification are applied after the presence lock is released ([[gotcha_a_sync_tauri_command_runs_on_the_main_thread_so_it_must_not_wait_on_a_lock_held_across_a_tray_call]]).
+- **Notification.** It is suppressed while the window is focused and the session is the selected row, or is a chat whose tab is on screen. A chat mints its session id before any transcript exists, so selecting its tab usually resolves only as far as its branch, which is why the chat fact carries `visible`. It is also skipped for a worker whose spawner can relay the question: the spawning chat is live, or the autopilot is on (`relayed`, which reads the runner's state directly). The title is the chat fact's name, else the index's name or title, else the id, so a fresh chat with no transcript notifies with its name. The body names the project (`unit_home::project_name`).
+- **The click.** `notify_needs_you` sends through `mac_notification_sys` rather than the plugin, whose desktop send never reports a click ([[gotcha_the_notification_plugins_desktop_send_never_reports_a_click]]). A click brings the window forward and emits `nav://open` ([[concept_in_app_navigation]]).
+- **Tray.** The tooltip counts running and needs-you, and the menu lists every session with a dot, needs-you first with a stable sort. A menu click emits `tray://focus-session`. `build_tray` in `lib.rs`'s `.setup()` fails soft like [[component_askpass]]: log and carry on, no tray rather than no app.
+- **The webview.** `src/utils/presence.ts` keeps only `notifyQuota`: a quota notification names an account, so there is no one place a click could land. The sidebar reports attention through `noteAttention`.
 
-- **`presence.ts`'s state machine** (`stepPresence`/`markAttended`): pure, fully unit-tested (9 tests, no DOM/Solid), the same "extract the decision into pure functions" pattern [[concept_needs_you_floor]]'s `note_output`/`check_quiet` used. Fires exactly once on a session's quiet+blocked-candidate **rising edge** — never on a re-render while it stays needs-you — and tracks a per-session **attended** flag: cleared by a rising edge (a fresh block is always unattended), set when that session's tab is focused while unattended. `liveCounts`/`unattendedNeedsYouCount`/`shouldSuppressNotification` are derived, also pure.
-- **OS notification**: fires on the tracked rising edge, suppressed when the app is focused and that session's tab is already the active one (you're already looking at it). A new needs-you transition re-arms a previously attended session's notification. `notifyNeedsYou` hands it to Rust's `notify_needs_you` with a `{folder, session}` target, since the plugin's own send never reports a click ([[gotcha_the_notification_plugins_desktop_send_never_reports_a_click]]). A click brings the window forward and emits `nav://open`, which the sidebar answers like any other link ([[concept_in_app_navigation]]). Quota notifications still go through the plugin: they name an account, so there is no one place a click could land.
-- **Tray** (`presence.rs`'s `update_tray`/`TrayEntry`, built via `build_tray` in `lib.rs`'s `.setup()`): running/needs-you counts with per-session menu entries; a menu click emits `tray://focus-session` for the frontend to focus that tab. `build_tray`'s failure is handled the same non-fatal way as the askpass bridge ([[component_askpass]]) — log + continue, no tray rather than no app — rather than a bare `?` that would have crashed the whole app on a platform tray quirk or missing icon.
-- **Dock badge** (`presence.rs`'s `set_badge_count`, `Window::set_badge_count(Option<i64>)`): count of sessions in an unattended-needs-you state, decremented as each is attended, re-armed by a new transition.
-- **New dependencies grounded in current docs before use** (per this repo's `/gg` convention of checking third-party API surfaces rather than guessing): `tauri-plugin-notification`, `tauri`'s built-in `tray-icon` feature, and the built-in `Window::set_badge_count` — confirmed against `v2.tauri.app`/`docs.rs` before writing any code against them.
+## Interface
 
-## Key files & entry points
-
-- `src-tauri/src/presence.rs:16` — `TrayState`/`TrayEntry`.
-- `src-tauri/src/presence.rs:30` — `update_tray`.
-- `src-tauri/src/presence.rs:81` — `notify_needs_you`.
-- `src-tauri/src/presence.rs` — `set_badge_count`.
-- `src/utils/presence.ts` — the state machine, `notifyNeedsYou`.
-- `src/panels/LeftSidebar/LeftSidebar.tsx` — `liveSessionDots` (the shared per-session dot+metadata memo all three surfaces read), `notePresence` wiring.
-
-## Connections
-
-- Consumes [[concept_needs_you_floor]]'s composed dot state (`sessionDot`) via `LeftSidebar.tsx`'s `liveSessionDots` memo.
-- Governed by [[component_askpass]]'s non-fatal-startup precedent — `build_tray`'s failure handling mirrors it directly.
-
-Chat sessions contribute to the same tray count, badge and notifications alongside the existing PTY contributors, with PTY behaviour unchanged. A chat blocked on an approval **in the tab you are looking at** deliberately raises no OS notification, which is why `LiveChat` carries `visible`: the sidebar selection cannot answer that question, since a chat mints its session id before any transcript exists and selecting its tab usually resolves only as far as its branch.
-
-A worker (a chat another session spawned, `LiveChat.spawner`) raises no OS notification while its spawner can relay the question: the spawning chat is still live, or the autopilot is on (`relayed` in `src/utils/sessionActivity.ts`). A worker the autopilot left behind when it stopped notifies like any session. The autopilot's on state is fed in through `noteAutopilotOn` ([[gotcha_importing_autopilotstore_into_sessionactivity_breaks_its_suite]]).
+- `rpc_attention(session, focused)`: the webview's selection and focus.
+- `sessions.list` rows carry `attended`.
+- `tray://focus-session`, `nav://open`: the events the webview answers.
 
 ## Related
 
-- [[component_chat_panel]] - the chat-side contributor.
-- [[concept_needs_you_floor]] — the signal presence reacts to.
-- [[component_autopilot_runner]]: the autopilot whose workers stay quiet while it runs.
-- [[gotcha_a_dev_builds_notifications_are_terminals]]: why a notification can show in dev and not in a bundle.
-- Settled in #218: a plain body click never reached the plugin's `onAction` on desktop. The listener is gone, and a click now reaches Rust instead.
+- [[adr_rust_composes_the_dot_from_reported_facts]]: why one detector, in Rust
+- [[concept_needs_you_floor]]: the signal presence reacts to
+- [[component_chat_panel]]: the chat-side facts
+- [[component_autopilot_runner]]: the autopilot whose workers stay quiet while it runs
+- [[gotcha_a_dev_builds_notifications_are_terminals]]: why a notification can show in dev and not in a bundle

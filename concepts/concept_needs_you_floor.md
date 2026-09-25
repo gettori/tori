@@ -1,7 +1,7 @@
 ---
 summary: the sidebar dot joins PTY quiet against the transcript tail, gated per agent by a measured needs_you capability flag
 status: current
-updated: 2026-08-14
+updated: 2026-09-26
 source: "Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 2; Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/pty.rs`, `src-tauri/src/sessions.rs` (`session_tail_state`), `src-tauri/src/hooks.rs`, `src/panels/LeftSidebar/LeftSidebar.tsx` (`sessionDot`)"
 ---
 
@@ -17,7 +17,7 @@ A live session's sidebar dot has four states — none/hollow/working/needs-you �
 
 **Phase 3 promoted claude off the guess entirely.** When `agents::find(agent).hooks` is true, `session_tail_state` checks [[component_claude_hooks_status]]'s `hooks::status_for(id)` *first*: if claude's own injected hook fired and wrote a recognized status (`Notification` → `blocked-candidate`, `UserPromptSubmit`/`PreToolUse` → `working`, `Stop` → `done`), that's returned directly, and the transcript-tail guess below it never runs. Only when no hook file exists yet (a session just launched, or the claude process wasn't Tori-launched) does it fall through to the tail join. pi and opencode have no hook mechanism (`hooks = false`) and always use the tail join.
 
-`LeftSidebar.tsx`'s `sessionDot(id)` composes them, keyed differently on purpose: PTY activity is keyed by *tab* id (one hosted shell can outlive/precede its session attribution), tail state by *session* id. `activity === "quiet" && tailState === "blocked-candidate"` → needs-you; `activity === "active"` → working; otherwise solid/hollow/none based on whether a live tab and a running probe exist. Detached sessions (no live tab) cap at the hollow dot — working/needs-you both require a real PTY to observe.
+Rust's `compose` (`src-tauri/src/rpc/dots.rs`, since gettori/tori#212) composes them, keyed differently on purpose: PTY activity is keyed by *tab* id (one hosted shell can outlive/precede its session attribution), tail state by *session* id. quiet and `blocked-candidate` -> needs-you; active -> working; otherwise solid/hollow/none based on whether a live tab and a running probe exist. Detached sessions (no live tab) cap at the hollow dot — working/needs-you both require a real PTY to observe.
 
 ## Why it's this way
 
@@ -69,18 +69,22 @@ supersedes this join entirely, so the capped dot costs them nothing.
 
 ## A fourth input, outside the tiers (2026-08-03)
 
-`computeSessionDot` gained `forgeAttention` (`src/utils/sessionDot.ts:96`), which
-is true when a required check on this branch's pull request has failed. It is not
+The composition takes `forge_attention` (`src-tauri/src/rpc/dots.rs`, `compose`),
+which is true when a required check on this branch's pull request has failed. The
+webview still polls the forge and reports this per branch unit. It is not
 a fourth tier: the tiers grade Tori's certainty about a *session*, and this is a
 fact about the *branch*, which is why it sits beside them rather than among them.
 
 It only ever **raises a session that is sitting still** (`solid` or `hollow`
 become `needsYou`), never one already working, because a red check is not a
-reason to interrupt a turn in progress. Attribution is `belongsToUnit`, the same
-rule the rest of the app uses, not a second one invented here, so a detached
-session with no tab and no chat can still be the one that owns the failure.
+reason to interrupt a turn in progress. It raises the display dot only, never the
+agent state, so a red check fires no `session.needs_you`: the autopilot already
+hears it as `session.pr` ([[adr_rust_composes_the_dot_from_reported_facts]]).
+Attribution is `unit_home::belongs_to_unit`, the same rule the rest of the app
+uses, not a second one invented here, so a detached session with no tab and no
+chat can still be the one that owns the failure.
 
-Its golden fixture is separate (`sessionDotCi.golden.json`). The pre-existing
+Its golden fixture is separate (`src-tauri/src/rpc/fixtures/sessionDotCi.golden.json`). The pre-existing
 `sessionDot.golden.json` holds the inferred tiers byte-for-byte and must not
 absorb new cases, for the reason in
 [[gotcha_only_the_pty_tier_can_starve_so_a_chat_based_needs_you_test_proves_nothing]].
