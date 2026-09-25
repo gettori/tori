@@ -123,7 +123,6 @@ html {
    centre at every zoom step. So the titlebar is a fixed-size ornament, the way
    the traffic lights themselves are. Its contents still scale. */
 .topbar {
-  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -131,13 +130,19 @@ html {
   background: transparent;
 }
 
-/* On the window's centre, not the space between rail and gear, so it does
-   not shift as the sidebar resizes. */
-.topbar-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+/* The cockpit covers the workspace, so its sidebar toggle, history arrows and
+   crumb have nothing to act on there. Hidden rather than unmounted: the arrows'
+   slot is a stage host the editor owns, and the crumb holds the switch right. */
+.topbar[data-view="autopilot"] .topbar-rail > *,
+.topbar[data-view="autopilot"] > .topbar-rail + * {
+  visibility: hidden;
+}
+
+.topbar-switch {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-right: calc(12px * var(--ui-scale));
 }
 
 .topbar-rail {

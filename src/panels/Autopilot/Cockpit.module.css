@@ -10,8 +10,7 @@
   .popupAnchor {
     position: absolute;
     top: var(--tori-space-3);
-    left: 50%;
+    right: var(--anchor-right, var(--tori-space-3));
     z-index: 800;
-    transform: translateX(-50%);
   }
 }

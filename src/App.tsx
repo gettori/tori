@@ -1095,7 +1095,7 @@ function App() {
 
   return (
     <div class="app">
-      <header class="topbar" onMouseDown={windowDragStart}>
+      <header class="topbar" data-view={view()} onMouseDown={windowDragStart}>
         <div
           class="topbar-rail"
           ref={railEl}
@@ -1104,7 +1104,7 @@ function App() {
           <WindowControls showSidebar={showSidebar()} />
         </div>
         <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
-        <div class="topbar-center">
+        <div class="topbar-switch">
           <CockpitSwitch />
         </div>
         <DevBadge />
