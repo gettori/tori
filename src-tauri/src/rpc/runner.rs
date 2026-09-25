@@ -25,7 +25,7 @@ use crate::agents::ChatTransport;
 use crate::autopilot::State as ItemState;
 use crate::chat::commands::{spawn_session, SpawnRequest};
 use crate::chat::host::ChatState;
-use crate::chat::model::{ChatEvent, ContentBlock};
+use crate::chat::model::{ChatEvent, ContentBlock, Extra, SlashCommand};
 use crate::owned_state::write_atomically;
 
 const BRIEF: &str = "resources/autopilot/brief.md";
@@ -156,6 +156,69 @@ fn resolve(file: &RunnerFile, spawner: &str) -> String {
     }
 }
 
+// The runner's session's context, read off the events its sink sees.
+#[derive(Debug, Default)]
+struct Gauge {
+    model: Option<String>,
+    used: Option<u64>,
+    window: Option<u64>,
+    can_compact: bool,
+    compacting: bool,
+}
+
+impl Gauge {
+    fn see(&mut self, event: &ChatEvent) {
+        match event {
+            ChatEvent::SessionStarted { model, slash_commands, .. } => {
+                self.model = Some(model.clone());
+                self.learn(slash_commands);
+            }
+            ChatEvent::SessionReady { slash_commands, .. } => self.learn(slash_commands),
+            ChatEvent::SlashCommands { commands, .. } => self.learn(commands),
+            ChatEvent::Usage { usage, extra, .. } => {
+                self.used = Some(usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens);
+                self.compacting = false;
+                if let Some(size) = extra.get("contextWindow").and_then(Value::as_u64).filter(|s| *s > 0) {
+                    self.window = Some(size);
+                }
+            }
+            ChatEvent::TurnCompleted { extra, .. } => {
+                if let Some(window) = reported_window(extra, self.model.as_deref()) {
+                    self.window = Some(window);
+                }
+            }
+            ChatEvent::Compacted { post_tokens, .. } => self.used = *post_tokens,
+            _ => {}
+        }
+    }
+
+    // An empty list is a catalogue that did not come, not one without `compact`.
+    fn learn(&mut self, commands: &[SlashCommand]) {
+        if !commands.is_empty() {
+            self.can_compact = commands.iter().any(|c| c.name.trim_start_matches('/') == "compact");
+        }
+    }
+
+    fn due(&self, at: Option<u32>) -> bool {
+        let (Some(at), Some(used), Some(window)) = (at, self.used, self.window) else {
+            return false;
+        };
+        self.can_compact && !self.compacting && used * 100 >= u64::from(at) * window
+    }
+}
+
+// Claude's `modelUsage` names every model a turn billed, side work included, so
+// the session's own model is looked up first; the largest window stands in when
+// its id is spelled differently there.
+fn reported_window(extra: &Extra, model: Option<&str>) -> Option<u64> {
+    let usage = extra.get("modelUsage")?.as_object()?;
+    let window = |v: &Value| v["contextWindow"].as_u64().filter(|w| *w > 0);
+    let named = model.and_then(|m| {
+        usage.iter().find(|(id, v)| id.as_str() == m || v["canonicalModel"].as_str() == Some(m)).and_then(|(_, v)| window(v))
+    });
+    named.or_else(|| usage.values().filter_map(window).max())
+}
+
 struct Inner {
     status: Status,
     deaths: u32,
@@ -169,15 +232,20 @@ pub struct Runner {
     bridge: Arc<Bridge>,
     dir: PathBuf,
     inner: Mutex<Inner>,
+    gauge: Arc<Mutex<Gauge>>,
 }
 
 impl Runner {
     pub fn new(app: AppHandle, hub: Arc<Hub>, states: Arc<SessionStates>, asks: Arc<Asks>, bridge: Arc<Bridge>, dir: PathBuf) -> Self {
-        Self { app, hub, states, asks, bridge, dir, inner: Mutex::new(Inner { status: Status::off(), deaths: 0 }) }
+        Self { app, hub, states, asks, bridge, dir, inner: Mutex::new(Inner { status: Status::off(), deaths: 0 }), gauge: Arc::default() }
     }
 
     fn inner(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn gauge(&self) -> MutexGuard<'_, Gauge> {
+        self.gauge.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn session_dir(&self) -> PathBuf {
@@ -238,13 +306,41 @@ impl Runner {
         }
         match event["kind"].as_str() {
             Some("session.turn_started") => self.set_turn(id, RunnerState::Working),
-            Some("session.turn_ended") => self.set_turn(id, RunnerState::Idle),
+            Some("session.turn_ended") => {
+                if !self.compact(id) {
+                    self.set_turn(id, RunnerState::Idle);
+                }
+            }
             Some("session.ended") => {
                 let reason = serde_json::from_value(event["reason"].clone()).unwrap_or(EndReason::Closed);
                 self.ended(id, reason);
             }
             _ => {}
         }
+    }
+
+    // Decided before the runner reads idle, so the watcher's batch waits behind
+    // the compaction instead of racing it. Sent off the publishing thread.
+    fn compact(self: &Arc<Self>, id: &str) -> bool {
+        {
+            let mut gauge = self.gauge();
+            if !gauge.due(crate::settings::autopilot().compact_at) {
+                return false;
+            }
+            gauge.compacting = true;
+        }
+        let runner = self.clone();
+        let id = id.to_string();
+        std::thread::spawn(move || {
+            let text = vec![ContentBlock::Text { text: "/compact".into() }];
+            if runner.app.state::<ChatState>().0.deliver(&id, text, false, TurnBy::Local).is_err() {
+                runner.gauge().compacting = false;
+                if runner.is_current(&id) {
+                    runner.set_turn(&id, RunnerState::Idle);
+                }
+            }
+        });
+        true
     }
 
     fn set_turn(&self, id: &str, state: RunnerState) {
@@ -353,6 +449,8 @@ impl Runner {
 
         let (started_tx, started_rx) = mpsc::channel();
         let started_tx = Mutex::new(Some(started_tx));
+        *self.gauge() = Gauge::default();
+        let gauge = self.gauge.clone();
         let host = &self.app.state::<ChatState>().0;
         let spawned = spawn_session(
             host,
@@ -374,6 +472,7 @@ impl Runner {
                 spawner: None,
             },
             Box::new(move |event| {
+                gauge.lock().unwrap_or_else(|e| e.into_inner()).see(&event);
                 if matches!(event, ChatEvent::SessionStarted { .. }) {
                     if let Some(tx) = started_tx.lock().ok().and_then(|mut tx| tx.take()) {
                         let _ = tx.send(());

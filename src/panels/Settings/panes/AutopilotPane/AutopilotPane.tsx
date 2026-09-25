@@ -1,5 +1,6 @@
 import { createMemo, onMount } from "solid-js";
-import { Group, Row, Stepper, idsIn, setAutopilot, type PaneProps } from "../../components/paneKit";
+import { Group, Row, Stepper, idsIn, optionalNumber, setAutopilot, type PaneProps } from "../../components/paneKit";
+import styles from "../../Settings.module.css";
 import { settings } from "../../settingsStore";
 import Switch from "../../../../components/Switch/Switch";
 import ModelPicker from "../../../Chat/ModelPicker";
@@ -18,6 +19,9 @@ import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import { enabledChatAgents } from "../../../../utils/agentEnabled";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../../../utils/modelCatalog";
 import { setAutopilotAvailable } from "../../../../utils/autopilotStore";
+
+// Whole, because Rust keeps it as a u32 and a fraction would fail the save.
+const percent = (n: number | null) => (n === null ? null : Math.min(95, Math.round(n)));
 
 export default function AutopilotPane(props: PaneProps) {
   onMount(() => {
@@ -88,6 +92,19 @@ export default function AutopilotPane(props: PaneProps) {
           step={5}
           onChange={(stallMinutes) => setAutopilot({ stallMinutes })}
           aria-label="Worker stalled after"
+        />
+      </Row>
+
+      <Row {...props} id="autopilot-compact" label="Compact at context">
+        <input
+          type="number"
+          min="10"
+          max="95"
+          placeholder="agent decides"
+          aria-label="Compact at context"
+          class={`${styles.input} ${styles.numField}`}
+          value={settings.autopilot.compactAt ?? ""}
+          onChange={(e) => setAutopilot({ compactAt: percent(optionalNumber(e.currentTarget.value, 10)) })}
         />
       </Row>
     </Group>
