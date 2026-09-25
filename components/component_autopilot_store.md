@@ -2,7 +2,7 @@
 summary: the autopilot queue and project contracts on disk; reads derive liveness and worktrees, only a merged PR is written back
 status: current
 updated: 2026-09-25
-source: gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5
+source: gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd
 ---
 
 # Autopilot store
@@ -36,6 +36,8 @@ A file that exists but doesn't parse (say, written by a newer Tori) loads as emp
 
 - `AutopilotStore::open(dir, publish).on_closed(hook)`, built in `rpc::start` and held by `RpcState` and `TauriBackend`.
 - `update(Target, Patch)`: `Target::Id`, or `Target::Key {kind, source, project}`, which matches an open item and creates one when there is none. A retry after a crash finds the item it already made, and a closed item's source opens a fresh one.
+- `closed_by_hand(session, held)`: a person closed the tab, so a `running|waiting_on_you` item naming the session goes `failed` with note "closed by hand", unless it has a `pr_url` or a pending hold (`held` is the items `Asks::holds` names), which its merge or its answer closes. Called by the `autopilot_closed_by_hand` command from the tab's real close paths, never from a view unmount, and not when a fork or rewind replaces the tab.
+- `state_for_session(session)` (an open item over a closed one) and `sessions()`, for the lock in [[component_autopilot_runner]].
 - `set_project(project, ContractPatch)`, `state(observe) -> Snapshot {items, projects}`, `session_ended(id)`, `has(id)`.
 - `recent_log(limit)`: the last lines of `log.jsonl`, read backwards from the end in 8 KiB chunks since the log only grows; a fragment or a line that does not parse is skipped. The webview reads it through the `autopilot_log` command, and the whole state through `autopilot_state`.
 - The `publish` closure `rpc::start` hands in also emits the Tauri event `autopilot://changed`, and so does the holds one, because the webview is not a hub subscriber ([[gotcha_the_webview_is_not_a_hub_subscriber]]).

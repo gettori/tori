@@ -1,8 +1,8 @@
 ---
 summary: OS notification, tray and dock badge read one shared rising edge tracker so they cannot disagree on needs you
 status: current
-updated: 2026-07-28
-source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`
+updated: 2026-09-25
+source: Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; `src-tauri/src/presence.rs`, `src/utils/presence.ts`; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd
 ---
 
 # Presence (OS notification, tray, dock badge)
@@ -34,8 +34,11 @@ Presence takes [[concept_needs_you_floor]]'s per-session dot state outside the w
 
 Chat sessions contribute to the same tray count, badge and notifications alongside the existing PTY contributors, with PTY behaviour unchanged. A chat blocked on an approval **in the tab you are looking at** deliberately raises no OS notification, which is why `LiveChat` carries `visible`: the sidebar selection cannot answer that question, since a chat mints its session id before any transcript exists and selecting its tab usually resolves only as far as its branch.
 
+A worker (a chat another session spawned, `LiveChat.spawner`) raises no OS notification while its spawner can relay the question: the spawning chat is still live, or the autopilot is on (`relayed` in `src/utils/sessionActivity.ts`). A worker the autopilot left behind when it stopped notifies like any session. The autopilot's on state is fed in through `noteAutopilotOn` ([[gotcha_importing_autopilotstore_into_sessionactivity_breaks_its_suite]]).
+
 ## Related
 
 - [[component_chat_panel]] - the chat-side contributor.
 - [[concept_needs_you_floor]] — the signal presence reacts to.
+- [[component_autopilot_runner]]: the autopilot whose workers stay quiet while it runs.
 - A residual uncertainty (flagged, not hidden): whether a plain notification-body click (no registered action button) reaches the notification plugin's `onAction` callback wasn't fully confirmed from docs alone; implemented on the reasonable assumption it does, not yet confirmed by an actual click in the running app.
