@@ -10,10 +10,11 @@ use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
-use tungstenite::protocol::{Role, WebSocketConfig, WebSocketContext};
+use tungstenite::protocol::frame::coding::CloseCode;
+use tungstenite::protocol::{CloseFrame, Role, WebSocketConfig, WebSocketContext};
 use tungstenite::{Error as WsError, Message};
 
 use super::frame::MAX_FRAME;
@@ -31,7 +32,7 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 // the picked address has left the machine and would leave the port held.
 const ACCEPT_POLL: Duration = Duration::from_millis(100);
 
-type Live = Arc<Mutex<HashMap<u64, TcpStream>>>;
+type Live = Arc<Mutex<HashMap<u64, Weak<Shared>>>>;
 
 pub struct WsTransport {
     listener: Mutex<Option<TcpListener>>,
@@ -53,7 +54,7 @@ impl WsTransport {
         self.addr
     }
 
-    fn live(&self) -> MutexGuard<'_, HashMap<u64, TcpStream>> {
+    fn live(&self) -> MutexGuard<'_, HashMap<u64, Weak<Shared>>> {
         self.live.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -86,8 +87,9 @@ impl Transport for WsTransport {
             tcp.set_nonblocking(false)?;
             tcp.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
             let id = self.next.fetch_add(1, Ordering::Relaxed);
-            live.insert(id, tcp.try_clone()?);
-            return Ok(Some(Box::new(WsStream::new(tcp, id, self.live.clone())?)));
+            let stream = WsStream::new(tcp, id, self.live.clone())?;
+            live.insert(id, Arc::downgrade(&stream.0));
+            return Ok(Some(Box::new(stream)));
         }
     }
 
@@ -95,10 +97,14 @@ impl Transport for WsTransport {
     /// mid handshake included, so switching the front off drops everyone.
     fn shutdown(&self) {
         self.listener.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let live = self.live();
-        self.stopping.store(true, Ordering::SeqCst);
-        for tcp in live.values() {
-            let _ = tcp.shutdown(Shutdown::Both);
+        let streams: Vec<Arc<Shared>> = {
+            let live = self.live();
+            self.stopping.store(true, Ordering::SeqCst);
+            live.values().filter_map(Weak::upgrade).collect()
+        };
+        // Outside the lock: the last handle going runs `Shared::drop`, which takes it.
+        for shared in streams {
+            WsStream(shared).close_with(CloseCode::Away);
         }
     }
 }
@@ -108,6 +114,9 @@ struct Shared {
     // Until the upgrade, a write would put a frame on a connection that is
     // still plain HTTP.
     upgraded: AtomicBool,
+    // A close frame went out, the reply to the client's or our own; a second
+    // one would break the closing handshake.
+    closing: AtomicBool,
     reader: Mutex<Reader>,
     writer: Mutex<Writer>,
     id: u64,
@@ -200,7 +209,22 @@ impl WsStream {
         let out = |tcp: &Arc<Mutex<TcpStream>>| Out { tcp: tcp.clone(), held: Vec::new() };
         let reader = Reader { ctx: None, tcp: tcp.try_clone()?, out: out(&socket), rest_of_line: Vec::new() };
         let writer = Writer { ctx: WebSocketContext::new(Role::Server, Some(config())), out: out(&socket), line: Vec::new() };
-        Ok(Self(Arc::new(Shared { tcp, upgraded: AtomicBool::new(false), reader: Mutex::new(reader), writer: Mutex::new(writer), id, live })))
+        Ok(Self(Arc::new(Shared { tcp, upgraded: AtomicBool::new(false), closing: AtomicBool::new(false), reader: Mutex::new(reader), writer: Mutex::new(writer), id, live })))
+    }
+
+    // A browser reports a connection that ends with no close frame as abnormal
+    // (1006). The frame is skipped while a write holds the writer, since
+    // waiting on a stalled client is what closing it is for.
+    fn close_with(&self, code: CloseCode) {
+        if self.0.upgraded.load(Ordering::SeqCst) && !self.0.closing.swap(true, Ordering::SeqCst) {
+            if let Ok(mut writer) = self.0.writer.try_lock() {
+                let Writer { ctx, out, .. } = &mut *writer;
+                if ctx.write(out, Message::Close(Some(CloseFrame { code, reason: "".into() }))).is_ok() {
+                    let _ = ctx.flush(out);
+                }
+            }
+        }
+        let _ = self.0.tcp.shutdown(Shutdown::Both);
     }
 
     fn handshake(reader: &mut Reader) -> io::Result<()> {
@@ -229,7 +253,17 @@ impl Read for WsStream {
                     rest_of_line.extend(text.as_str().as_bytes().iter().map(|&b| if b == b'\n' || b == b'\r' { b' ' } else { b }));
                     rest_of_line.push(b'\n');
                 }
-                Ok(Message::Close(_)) | Err(WsError::ConnectionClosed | WsError::AlreadyClosed) => return Ok(0),
+                Ok(Message::Close(_)) => {
+                    // tungstenite queued the reply and there is no next read to
+                    // send it. Its flush buffers the frame, then answers
+                    // `ConnectionClosed` before flushing the stream, so `out` is
+                    // flushed here or the reply never leaves.
+                    self.0.closing.store(true, Ordering::SeqCst);
+                    let _ = ctx.flush(&mut Io { tcp, out });
+                    let _ = out.flush();
+                    return Ok(0);
+                }
+                Err(WsError::ConnectionClosed | WsError::AlreadyClosed) => return Ok(0),
                 Ok(_) => {}
                 Err(e) => return Err(io_error(e)),
             }
@@ -270,7 +304,7 @@ impl Stream for WsStream {
         self.0.tcp.set_read_timeout(timeout)
     }
     fn close(&self) {
-        let _ = self.0.tcp.shutdown(Shutdown::Both);
+        self.close_with(CloseCode::Normal);
     }
 }
 
