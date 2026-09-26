@@ -131,6 +131,41 @@ pub fn classify(name: &str, ip: Ipv4Addr) -> Option<Kind> {
     }
 }
 
+const TAILSCALE_APP: &str = "/Applications/Tailscale.app";
+const TAILSCALE_DOWNLOAD: &str = "https://tailscale.com/download/mac";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "lowercase")]
+pub enum Tailscale {
+    Missing,
+    Stopped,
+    Connected { address: String },
+}
+
+// Connected is checked first: a CLI-only install has no app in /Applications.
+pub fn tailscale() -> Tailscale {
+    if let Some(i) = interfaces().into_iter().find(|i| i.kind == Kind::Tailscale) {
+        return Tailscale::Connected { address: i.address };
+    }
+    if std::path::Path::new(TAILSCALE_APP).exists() {
+        Tailscale::Stopped
+    } else {
+        Tailscale::Missing
+    }
+}
+
+/// Opens the Tailscale app, or its download page when it is not installed.
+/// The destination is fixed here so the webview cannot open anything else.
+pub fn open_tailscale() -> Result<(), String> {
+    let mut open = std::process::Command::new("open");
+    if std::path::Path::new(TAILSCALE_APP).exists() {
+        open.arg(TAILSCALE_APP);
+    } else {
+        open.arg(TAILSCALE_DOWNLOAD);
+    }
+    open.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 pub fn interfaces() -> Vec<Interface> {
     let mut found = Vec::new();
     let mut head: *mut libc::ifaddrs = std::ptr::null_mut();
