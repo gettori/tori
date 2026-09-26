@@ -574,6 +574,8 @@ pub fn run() {
             rpc::remote_set,
             rpc::remote_status,
             rpc::remote_interfaces,
+            rpc::remote_tailscale,
+            rpc::tailscale_open,
             rpc::pairing_start,
             rpc::pairing_cancel,
             rpc::devices_list,

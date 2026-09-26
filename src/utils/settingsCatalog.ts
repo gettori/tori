@@ -599,6 +599,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Lets a paired device reach Tori over the network on the address below. While on, this Mac is kept awake so the connection holds, which costs battery on a laptop.",
   },
   {
+    id: "remote-tailscale",
+    section: "remote",
+    label: "Tailscale",
+    hint: "Lets your phone reach this Mac from anywhere, not only the same Wi-Fi. Install it on both and sign in with the same account, then listen on the Tailscale address.",
+  },
+  {
     id: "remote-address",
     section: "remote",
     label: "Listen on",

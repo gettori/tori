@@ -15,6 +15,9 @@ type RemoteStatus = { state: "off" } | { state: "listening"; url: string } | { s
 /** Mirrors `remote::Interface` in src-tauri/src/rpc/remote.rs. */
 type Interface = { name: string; address: string; kind: "lan" | "tailscale" | "loopback" };
 
+/** Mirrors `remote::Tailscale` in src-tauri/src/rpc/remote.rs. */
+type Tailscale = { state: "missing" } | { state: "stopped" } | { state: "connected"; address: string };
+
 /** Mirrors `PairingOffer` in src-tauri/src/rpc/mod.rs. */
 type Offer = { code: string; url: string; uri: string; expires_ms: number; svg: string };
 
@@ -63,6 +66,17 @@ const ENDED: Record<Ended, string> = {
   expired: "The code expired.",
 };
 
+function describeTailscale(t: Tailscale): string {
+  switch (t.state) {
+    case "missing":
+      return "Not installed";
+    case "stopped":
+      return "Not connected";
+    case "connected":
+      return `Connected as ${t.address}`;
+  }
+}
+
 function remaining(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -80,6 +94,7 @@ function optionFor(i: Interface): SelectOption {
 export default function RemotePane(props: PaneProps) {
   const [interfaces, setInterfaces] = createSignal<Interface[]>([]);
   const [devices, setDevices] = createSignal<Device[]>([]);
+  const [tailscale, setTailscale] = createSignal<Tailscale | null>(null);
   const [offer, setOffer] = createSignal<Offer | null>(null);
   const [ended, setEnded] = createSignal<Ended | null>(null);
   const [now, setNow] = createSignal(Date.now());
@@ -90,8 +105,16 @@ export default function RemotePane(props: PaneProps) {
     setEnded(why);
   };
 
-  onMount(() => {
+  // Also on focus: the user leaves to install or sign in to Tailscale and
+  // comes back, and its address joins the picker only then.
+  const loadNetwork = () => {
     void invoke<Interface[]>("remote_interfaces").then(setInterfaces).catch(() => {});
+    void invoke<Tailscale>("remote_tailscale").then(setTailscale).catch(() => {});
+  };
+
+  onMount(() => {
+    loadNetwork();
+    window.addEventListener("focus", loadNetwork);
     void invoke<RemoteStatus>("remote_status").then(setStatus).catch(() => {});
     loadDevices();
     const unlisten = listen<{ ended: Ended | null }>("remote://devices", (e) => {
@@ -105,6 +128,7 @@ export default function RemotePane(props: PaneProps) {
     }, 1000);
     onCleanup(() => {
       clearInterval(tick);
+      window.removeEventListener("focus", loadNetwork);
       void unlisten.then((f) => f());
       // A code left live after the pane closes is one nobody is watching.
       if (offer()) void invoke("pairing_cancel");
@@ -140,6 +164,24 @@ export default function RemotePane(props: PaneProps) {
           onChange={(enabled) => setRemote({ enabled })}
           aria-label="Remote access"
         />
+      </Row>
+
+      <Row {...props} id="remote-tailscale" label="Tailscale">
+        <Show when={tailscale()}>
+          {(t) => (
+            <>
+              <span role="status">{describeTailscale(t())}</span>
+              <Show when={t().state !== "connected"}>
+                <Button
+                  size="sm"
+                  onClick={() => void invoke("tailscale_open").catch((e) => pushToast(`Tailscale did not open: ${String(e)}`))}
+                >
+                  {t().state === "missing" ? "Get Tailscale" : "Open Tailscale"}
+                </Button>
+              </Show>
+            </>
+          )}
+        </Show>
       </Row>
 
       <Row {...props} id="remote-address" label="Listen on">

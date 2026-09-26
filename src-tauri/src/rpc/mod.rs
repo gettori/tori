@@ -537,6 +537,16 @@ pub fn remote_interfaces() -> Vec<remote::Interface> {
     remote::interfaces()
 }
 
+#[tauri::command(async)]
+pub fn remote_tailscale() -> remote::Tailscale {
+    remote::tailscale()
+}
+
+#[tauri::command(async)]
+pub fn tailscale_open() -> Result<(), String> {
+    remote::open_tailscale()
+}
+
 #[derive(serde::Serialize)]
 pub struct PairingOffer {
     #[serde(flatten)]
