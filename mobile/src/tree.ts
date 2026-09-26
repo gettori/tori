@@ -14,6 +14,12 @@ export type SessionRow = {
   home?: Home;
 };
 
+export type UnitGit = { added: number; deleted: number; ahead: number | null; behind: number | null };
+
+export type Phase = "working" | "needs" | "idle" | "ended";
+
+export const PHASE_LABEL: Record<Phase, string> = { working: "Working", needs: "Needs you", idle: "Idle", ended: "Ended" };
+
 export type Unit = {
   label: string;
   folder: string;
@@ -38,6 +44,17 @@ export function inUnit(home: Home | undefined, unit: Unit): boolean {
 
 export function rollupOf(rows: SessionRow[]): Rollup {
   return rollupStatuses(rows.map((row) => ({ status: statusFromDot(row.dot ?? "none") })));
+}
+
+export function phaseOf(row: SessionRow): Phase {
+  if (!row.live) return "ended";
+  const rollup = rollupOf([row]);
+  if (rollup.waitingForApproval + rollup.waitingForAnswer > 0) return "needs";
+  return rollup.executing > 0 ? "working" : "idle";
+}
+
+export function newest(rows: SessionRow[]): SessionRow | undefined {
+  return rows.reduce<SessionRow | undefined>((best, row) => (!best || row.last_active > best.last_active ? row : best), undefined);
 }
 
 export function sessionLabel(row: SessionRow): string {

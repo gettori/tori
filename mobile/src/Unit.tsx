@@ -1,20 +1,67 @@
-import { For, Show, createResource, onCleanup } from "solid-js";
+import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { Dynamic } from "solid-js/web";
+import { Plus } from "lucide-solid";
+import Icon from "../../src/components/Icon/Icon";
+import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
+import { agentMark } from "../../src/components/Icon/agentMarks";
+import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
-import type { RemoteClient } from "./remote";
-import { inUnit, sessionLabel, type SessionRow, type Unit } from "./tree";
-import styles from "./mobile.module.css";
+import type { Crew } from "./Autopilot";
+import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
+import { Offline } from "./Root";
+import { GitCounts, PushTop, watchGit } from "./Screens";
+import { PHASE_LABEL, inUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
+import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
+const FALLBACK_AGENT = "claude";
 
-function SessionButton(props: { row: SessionRow; onOpen: (row: SessionRow) => void }) {
+export function AgentMark(props: { agent: string | undefined; size: number }) {
+  return (
+    <Show when={agentMark(props.agent)} fallback={<span>{(props.agent ?? "?").slice(0, 1).toUpperCase()}</span>}>
+      {(mark) => <Dynamic component={mark()} size={`${props.size}px`} />}
+    </Show>
+  );
+}
+
+function NowCard(props: { row: SessionRow; crewed: boolean; spinning: boolean; onOpen: () => void }) {
+  const phase = () => phaseOf(props.row);
   return (
     <li>
-      <button class={styles.row} onClick={() => props.onOpen(props.row)}>
-        <span class={styles.dot} data-dot={props.row.dot ?? ""} />
-        <span class={styles.rowText}>
-          <span class={styles.rowTitle}>{sessionLabel(props.row)}</span>
-          <span class={styles.rowMeta}>{props.row.agent}</span>
+      <button class={styles.card} data-phase={phase()} onClick={() => props.onOpen()}>
+        <span class={styles.cardHead}>
+          <span class={styles.agentTile}>
+            <AgentMark agent={props.row.agent} size={15} />
+          </span>
+          <span class={styles.cardTitle}>{sessionLabel(props.row)}</span>
         </span>
+        <span class={styles.stateRow}>
+          <span class={styles.stateDot} data-phase={phase()} />
+          <span class={styles.stateLabel} data-phase={phase()}>
+            {PHASE_LABEL[phase()]}
+          </span>
+          <span class={styles.time}>{ago(props.row.last_active)}</span>
+          <Show when={props.crewed}>
+            <span class={styles.apChip} data-spin={props.spinning}>
+              <WheelGlyph size={12} />
+              Autopilot
+            </span>
+          </Show>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function HistoryItem(props: { row: SessionRow; onOpen: () => void }) {
+  return (
+    <li>
+      <button class={`${styles.item} ${styles.historyItem}`} onClick={() => props.onOpen()}>
+        <span class={styles.historyMark}>
+          <AgentMark agent={props.row.agent} size={14} />
+        </span>
+        <span class={styles.historyTitle}>{sessionLabel(props.row)}</span>
+        <span class={styles.time}>{ago(props.row.last_active)}</span>
       </button>
     </li>
   );
@@ -23,7 +70,10 @@ function SessionButton(props: { row: SessionRow; onOpen: (row: SessionRow) => vo
 export default function UnitScreen(props: {
   client: RemoteClient;
   unit: Unit;
+  back: string;
   live: () => SessionRow[];
+  crew: () => Crew;
+  autopilotOn: boolean;
   onOpen: (row: SessionRow) => void;
   onBack: () => void;
 }) {
@@ -41,36 +91,96 @@ export default function UnitScreen(props: {
       if ((data as { kind?: string } | null)?.kind === "session.ended") void refetch();
     }),
   );
+  const git = watchGit(props.client, () => [props.unit.folder]);
   const buckets = () => bucketByLastActive(earlier() ?? [], Date.now() / 1000);
+  const [spawning, setSpawning] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+
+  const spawn = (agent: string) =>
+    props.client.request<{ id: string; agent: string }>("session.spawn", { folder: props.unit.folder, agent });
+
+  // The desktop's remembered agent is not on the socket, so the last one used
+  // here stands in; a refusal means it has no chat surface.
+  const startNew = async () => {
+    const remembered = newest([...here(), ...(earlier() ?? [])])?.agent ?? FALLBACK_AGENT;
+    setSpawning(true);
+    setError(null);
+    try {
+      const started = await spawn(remembered).catch((e: unknown) => {
+        if (e instanceof RpcError && e.code === REFUSED_CODE && remembered !== FALLBACK_AGENT) return spawn(FALLBACK_AGENT);
+        throw e;
+      });
+      props.onOpen({
+        id: started.id,
+        agent: started.agent,
+        cwd: props.unit.folder,
+        live: true,
+        last_active: Math.floor(Date.now() / 1000),
+        home: { project: "", folder: props.unit.folder, branch: props.unit.branch },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSpawning(false);
+    }
+  };
 
   return (
-    <div class={styles.screen}>
-      <header class={styles.bar}>
-        <button class={styles.back} onClick={() => props.onBack()}>
-          Back
-        </button>
-        <span class={styles.title}>{props.unit.label}</span>
-      </header>
-      <div class={styles.list}>
+    <div class={styles.glow}>
+      <PushTop
+        back={props.back}
+        onBack={props.onBack}
+        end={
+          <button class={styles.newPill} disabled={spawning()} onClick={() => void startNew()}>
+            <Icon icon={Plus} size={14} strokeWidth={2.6} />
+            New
+          </button>
+        }
+      />
+      <Offline client={props.client} />
+      <Show when={error()}>
+        <p class={styles.banner}>{error()}</p>
+      </Show>
+      <div class={styles.scroll}>
+        <div class={styles.unitHead}>
+          <span class={styles.headTitle}>{props.unit.label}</span>
+          <GitCounts
+            git={git()?.[props.unit.folder]}
+            lead={
+              <Show when={props.unit.branch && props.unit.branch !== props.unit.label}>
+                <span>{props.unit.branch}</span>
+              </Show>
+            }
+          />
+        </div>
         <Show when={here().length > 0}>
-          <h2 class={styles.section}>Live</h2>
-          <ul class={styles.plain}>
-            <For each={here()}>{(row) => <SessionButton row={row} onOpen={props.onOpen} />}</For>
+          <h2 class={styles.label}>Now</h2>
+          <ul class={styles.cards}>
+            <For each={here()}>
+              {(row) => (
+                <NowCard
+                  row={row}
+                  crewed={props.crew().sessions.has(row.id)}
+                  spinning={props.autopilotOn}
+                  onOpen={() => props.onOpen(row)}
+                />
+              )}
+            </For>
           </ul>
         </Show>
         <For
           each={buckets()}
           fallback={
             <Show when={here().length === 0}>
-              <p class={styles.hint}>{earlier.loading ? "Loading" : "No sessions here yet"}</p>
+              <p class={styles.empty}>{earlier.loading ? "Loading" : "No sessions here yet"}</p>
             </Show>
           }
         >
           {(bucket) => (
             <>
-              <h2 class={styles.section}>{bucket.label}</h2>
-              <ul class={styles.plain}>
-                <For each={bucket.sessions}>{(row) => <SessionButton row={row} onOpen={props.onOpen} />}</For>
+              <h2 class={styles.label}>{bucket.label}</h2>
+              <ul class={styles.group}>
+                <For each={bucket.sessions}>{(row) => <HistoryItem row={row} onOpen={() => props.onOpen(row)} />}</For>
               </ul>
             </>
           )}

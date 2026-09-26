@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import Chat from "./Chat";
 import type { RemoteClient } from "./remote";
 import styles from "./mobile.module.css";
@@ -11,26 +11,38 @@ export type Runner = {
   error: { title: string; detail: string } | null;
 };
 
+type Item = { session: string | null; worktree: string | null; session_live: boolean };
+
+export type Crew = { sessions: Set<string>; worktrees: Set<string> };
+
 export function watchRunner(client: RemoteClient) {
   const [runner, setRunner] = createSignal<Runner | null>(null);
   const [decisions, setDecisions] = createSignal(0);
+  const [items, setItems] = createSignal<Item[]>([]);
   const load = () =>
     client
-      .request<{ runner: Runner; holds: { answer: string | null }[] }>("autopilot.state")
+      .request<{ runner: Runner; holds: { answer: string | null }[]; items: Item[] }>("autopilot.state")
       .then((state) => {
         setRunner(state.runner);
         setDecisions(state.holds.filter((hold) => hold.answer === null).length);
+        setItems(state.items.filter((item) => item.session_live));
       })
       .catch(() => {});
+  const crew = createMemo((): Crew => {
+    const sessions = new Set(items().flatMap((item) => (item.session ? [item.session] : [])));
+    const own = runner()?.session;
+    if (own) sessions.add(own);
+    return { sessions, worktrees: new Set(items().flatMap((item) => (item.worktree ? [item.worktree] : []))) };
+  });
   createEffect(on(client.generation, (n) => n > 0 && void load()));
   onCleanup(
     client.subscribe("autopilot", (data) => {
-      const ev = data as { kind?: string; runner?: Runner; hold?: unknown } | null;
+      const ev = data as { kind?: string; runner?: Runner; hold?: unknown; item?: unknown } | null;
       if (ev?.kind === "autopilot.status" && ev.runner) setRunner(ev.runner);
-      if (ev?.kind === "autopilot.changed" && ev.hold !== undefined) void load();
+      if (ev?.kind === "autopilot.changed" && (ev.hold !== undefined || ev.item !== undefined)) void load();
     }),
   );
-  return { runner, decisions };
+  return { runner, decisions, crew };
 }
 
 export function AutopilotSwitch(props: { client: RemoteClient; runner: () => Runner | null }) {
@@ -79,15 +91,16 @@ export function AutopilotChat(props: { client: RemoteClient; runner: () => Runne
       {(session) => (
         <Chat
           client={props.client}
-          session={{
+          session={() => ({
             id: session,
             title: "Autopilot",
             agent: props.runner()?.agent ?? undefined,
             cwd: props.runner()?.cwd ?? undefined,
             live: true,
             last_active: 0,
-          }}
+          })}
           onBack={props.onBack}
+          levers={false}
           headerEnd={<AutopilotSwitch client={props.client} runner={props.runner} />}
         />
       )}
