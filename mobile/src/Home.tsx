@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Folder, Settings } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
 import StatusBubble from "../../src/panels/LeftSidebar/StatusBubble";
+import { AutopilotRow, type Runner } from "./Autopilot";
 import type { RemoteClient } from "./remote";
 import { inUnit, rollupOf, sessionLabel, type Project, type SessionRow, type Space, type Unit } from "./tree";
 import styles from "./mobile.module.css";
@@ -63,7 +64,9 @@ function ProjectGroup(props: { project: Project; live: () => SessionRow[]; onUni
 export default function Home(props: {
   client: RemoteClient;
   live: () => SessionRow[];
+  runner: () => Runner | null;
   notice: string | null;
+  onAutopilot: () => void;
   onUnit: (unit: Unit) => void;
   onSession: (row: SessionRow) => void;
   onSettings: () => void;
@@ -93,6 +96,7 @@ export default function Home(props: {
         <p class={styles.error}>{props.notice}</p>
       </Show>
       <div class={styles.list}>
+        <AutopilotRow client={props.client} runner={props.runner} onOpen={props.onAutopilot} />
         <Show when={tree()} fallback={<p class={styles.hint}>Loading</p>}>
           {(t) => (
             <For each={t().spaces}>

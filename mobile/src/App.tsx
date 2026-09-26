@@ -1,6 +1,7 @@
 import { Match, Show, Switch, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { AutopilotChat, watchRunner } from "./Autopilot";
 import Chat from "./Chat";
 import Home from "./Home";
 import SettingsScreen from "./Settings";
@@ -12,7 +13,7 @@ import styles from "./mobile.module.css";
 const PHONE_NAME = "Phone";
 const LIVE_LIMIT = 200;
 
-type View = { screen: "unit"; unit: Unit } | { screen: "chat"; row: SessionRow } | { screen: "settings" };
+type View = { screen: "unit"; unit: Unit } | { screen: "chat"; row: SessionRow } | { screen: "autopilot" } | { screen: "settings" };
 
 function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; link: { url: string; code: string } | null }) {
   const [url, setUrl] = createSignal("");
@@ -114,6 +115,7 @@ function liveRows(client: RemoteClient) {
 
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
   const live = liveRows(props.client);
+  const runner = watchRunner(props.client);
   const [stack, setStack] = createSignal<View[]>([]);
   const top = () => stack()[stack().length - 1];
   // Each screen is a history entry, so Android's back gesture pops it instead of
@@ -133,7 +135,9 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
         <Home
           client={props.client}
           live={live}
+          runner={runner}
           notice={props.notice}
+          onAutopilot={() => go({ screen: "autopilot" })}
           onUnit={(unit) => go({ screen: "unit", unit })}
           onSession={(row) => go({ screen: "chat", row })}
           onSettings={() => go({ screen: "settings" })}
@@ -147,6 +151,9 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
         {(unit) => (
           <UnitScreen client={props.client} unit={unit} live={live} onOpen={(row) => go({ screen: "chat", row })} onBack={back} />
         )}
+      </Match>
+      <Match when={top()?.screen === "autopilot"}>
+        <AutopilotChat client={props.client} runner={runner} onBack={back} />
       </Match>
       <Match when={top()?.screen === "settings"}>
         <SettingsScreen client={props.client} onDisconnect={props.onDisconnect} onBack={back} />
