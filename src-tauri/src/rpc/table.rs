@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, UnitsGitParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
+    params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
     HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -379,6 +379,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, _| b.projects_list(),
+    },
+    Method {
+        name: "project.icon",
+        description: "The image a project's row shows, base64 with its mime type and a version that changes with the file; shrunk to 128px when large; null when the row draws a glyph.",
+        params: schema::<ProjectIconParams>,
+        callers: ANYONE_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.project_icon(params(v)?),
     },
     Method {
         name: "autopilot.state",

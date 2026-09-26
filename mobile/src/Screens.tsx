@@ -4,6 +4,7 @@ import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
 import { ago } from "../../src/utils/relativeTime";
 import type { Crew } from "./Autopilot";
+import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, Offline, StateMark } from "./Root";
 import { SessionList, unitSessions } from "./Unit";
@@ -148,7 +149,7 @@ export function ProjectScreen(props: {
       <Offline client={props.client} />
       <div class={styles.scroll}>
         <div class={styles.projectHead}>
-          <span class={`${styles.tile} ${styles.bigTile}`}>{props.project.name.slice(0, 1)}</span>
+          <ProjectMark client={props.client} project={props.project} big />
           <span class={styles.text}>
             <span class={styles.headTitle}>{props.project.name}</span>
             <span class={styles.headMeta}>{meta()}</span>
