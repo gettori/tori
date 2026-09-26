@@ -19,8 +19,8 @@ use std::sync::{Arc, Mutex};
 
 use super::approval::{self, CaptureServer};
 use super::model::{
-    cap_output, ChatCommand, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision,
-    PermissionMode, PermissionScope, QuestionAnswer,
+    cap_output, ChatCommand, ChatConfigValue, ChatEvent, ChatModeInfo, ChatModelInfo, ChatQuestion, ContentBlock,
+    PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::mirror::Mirror;
 use super::ownership::Registry;
@@ -299,6 +299,18 @@ fn answer_to(question: &ChatQuestion, answer: &str) -> QuestionAnswer {
 struct Identity {
     ready: Option<ChatEvent>,
     started: Option<ChatEvent>,
+    confirmed_model: Option<String>,
+    confirmed_mode: Option<PermissionMode>,
+}
+
+/// What a live session runs on and could switch to. An empty catalogue means
+/// the handshake carried none, and the adapter's table stands in.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Levers {
+    pub model: Option<String>,
+    pub mode: Option<PermissionMode>,
+    pub models: Vec<ChatModelInfo>,
+    pub modes: Vec<ChatModeInfo>,
 }
 
 impl Identity {
@@ -321,10 +333,33 @@ impl Identity {
     fn keep(&mut self, event: &ChatEvent) -> bool {
         match event {
             ChatEvent::SessionReady { .. } => self.ready = Some(event.clone()),
-            ChatEvent::SessionStarted { .. } => self.started = Some(event.clone()),
+            ChatEvent::SessionStarted { model, permission_mode, .. } => {
+                (self.confirmed_model, self.confirmed_mode) = (Some(model.clone()), Some(permission_mode.clone()));
+                self.started = Some(event.clone());
+            }
+            ChatEvent::TurnStarted { model, permission_mode, .. } => {
+                (self.confirmed_model, self.confirmed_mode) = (Some(model.clone()), Some(permission_mode.clone()));
+            }
             _ => return false,
         }
         true
+    }
+
+    fn levers(&self) -> Levers {
+        let catalogues = |event: &Option<ChatEvent>| match event {
+            Some(ChatEvent::SessionReady { models, modes, .. } | ChatEvent::SessionStarted { models, modes, .. }) => {
+                (models.clone(), modes.clone())
+            }
+            _ => Default::default(),
+        };
+        let (ready_models, ready_modes) = catalogues(&self.ready);
+        let (models, modes) = catalogues(&self.started);
+        Levers {
+            model: self.confirmed_model.clone(),
+            mode: self.confirmed_mode.clone(),
+            models: if models.is_empty() { ready_models } else { models },
+            modes: if modes.is_empty() { ready_modes } else { modes },
+        }
     }
 }
 
@@ -410,7 +445,7 @@ impl OutputCache {
 }
 
 fn is_identity(event: &ChatEvent) -> bool {
-    matches!(event, ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. })
+    matches!(event, ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. } | ChatEvent::TurnStarted { .. })
 }
 
 /// The approval and snapshot machinery for one session.
@@ -846,8 +881,8 @@ impl ChatHost {
         let id = session_id.to_string();
         Box::new(move |mut event| {
             let fatal = ends_session(&event);
-            // Two frames per session, so the lock is taken twice in its life
-            // rather than once per event.
+            // Two frames per session and one per turn, so the lock is taken
+            // that often rather than once per event.
             if is_identity(&event) {
                 lock(&identity).entry(id.clone()).or_default().keep(&event);
             }
@@ -991,6 +1026,11 @@ impl ChatHost {
 
     pub fn interrupt(&self, session_id: &str) -> Result<(), String> {
         self.dispatch(&ChatCommand::Interrupt { session_id: session_id.to_string() })
+    }
+
+    /// `None` for a session not live here.
+    pub fn levers(&self, session_id: &str) -> Option<Levers> {
+        lock(&self.identity).get(session_id).map(Identity::levers)
     }
 
     pub fn set_mode(&self, session_id: &str, mode: PermissionMode) -> Result<(), String> {
@@ -1612,6 +1652,47 @@ mod tests {
             "and the session it opened: {replayed:?}"
         );
         assert_eq!(replayed.len(), 2, "the identity, not the conversation: {replayed:?}");
+    }
+
+    #[test]
+    fn a_live_sessions_levers_are_its_catalogue_and_the_last_turns_choice() {
+        let host = ChatHost::at(temp_store());
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn_plain("s1", "tab-a", Collector::default().emit(), spec("s1"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+        let opus = ChatModelInfo { value: "opus".into(), resolved_model: "claude-opus".into(), ..Default::default() };
+        let plan = ChatModeInfo { id: "plan".into(), label: "Plan".into(), hint: String::new() };
+        crate::chat::transport::emit(
+            &sink,
+            ChatEvent::SessionReady {
+                session_id: "s1".into(),
+                slash_commands: Vec::new(),
+                models: vec![opus.clone()],
+                modes: vec![plan.clone()],
+                account: None,
+                capabilities: None,
+            },
+        );
+        crate::chat::transport::emit(&sink, started("s1"));
+        crate::chat::transport::emit(
+            &sink,
+            ChatEvent::TurnStarted {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                agent_initiated: false,
+                model: "claude-opus".into(),
+                permission_mode: PermissionMode::new("plan"),
+                extra: Default::default(),
+            },
+        );
+        let levers = host.levers("s1").expect("a live session has levers");
+        assert_eq!((levers.models, levers.modes), (vec![opus], vec![plan]), "an empty SessionStarted keeps the handshake's");
+        assert_eq!((levers.model.as_deref(), levers.mode), (Some("claude-opus"), Some(PermissionMode::new("plan"))));
+        assert_eq!(host.levers("gone"), None);
     }
 
     /// **The other half of the reload story.** A transport that is about to

@@ -28,6 +28,8 @@ use super::table::{self, CallerKind};
 use super::transport::{Stream, Transport};
 
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DEFAULT_LOG_LIMIT: usize = 50;
+pub const UNITS_GIT_MAX: usize = 64;
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -96,6 +98,47 @@ pub struct SteerParams {
     pub id: String,
     /// The message, delivered as a steer mid turn or as the next turn otherwise.
     pub text: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InfoParams {
+    /// The live chat session.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModelParams {
+    /// The live chat session to switch.
+    pub id: String,
+    /// A `value` from `session.info`'s models.
+    pub model: String,
+    /// An effort level the model lists.
+    pub effort: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModeParams {
+    /// The live chat session to switch.
+    pub id: String,
+    /// An `id` from `session.info`'s modes.
+    pub mode: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnitsGitParams {
+    /// The worktree folders to count, at most 64.
+    pub folders: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LogParams {
+    /// At most this many entries, the last ones (default 50).
+    pub limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -528,6 +571,10 @@ pub trait Backend: Send + Sync {
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError>;
     fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError>;
+    fn session_info(&self, params: InfoParams) -> Result<Value, RpcError>;
+    fn session_model(&self, principal: &Principal, params: ModelParams) -> Result<Value, RpcError>;
+    fn session_mode(&self, principal: &Principal, params: ModeParams) -> Result<Value, RpcError>;
+    fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError>;
@@ -546,6 +593,7 @@ pub trait Backend: Send + Sync {
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
     fn autopilot_state(&self) -> Result<Value, RpcError>;
+    fn autopilot_log(&self, params: LogParams) -> Result<Value, RpcError>;
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError>;
     fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError>;
@@ -811,6 +859,18 @@ pub mod tests {
         fn session_answer(&self, _: &Principal, p: SessionAnswerParams) -> Result<Value, RpcError> {
             Ok(json!({ "answered": p.id }))
         }
+        fn session_info(&self, p: InfoParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
+        }
+        fn session_model(&self, _: &Principal, p: ModelParams) -> Result<Value, RpcError> {
+            Ok(json!({ "model": p.model }))
+        }
+        fn session_mode(&self, _: &Principal, p: ModeParams) -> Result<Value, RpcError> {
+            Ok(json!({ "mode": p.mode }))
+        }
+        fn units_git(&self, p: UnitsGitParams) -> Result<Value, RpcError> {
+            Ok(json!({ "folders": p.folders }))
+        }
         fn worktree_new(&self, _: &Principal, p: WorktreeParams) -> Result<Value, RpcError> {
             Ok(json!({ "branch": p.branch }))
         }
@@ -873,6 +933,10 @@ pub mod tests {
                 }
                 None => Ok(json!({ "items": [], "projects": {} })),
             }
+        }
+        fn autopilot_log(&self, p: LogParams) -> Result<Value, RpcError> {
+            let log = self.autopilot.as_ref().map(|store| store.recent_log(p.limit.unwrap_or(DEFAULT_LOG_LIMIT)));
+            Ok(json!(log.unwrap_or_default()))
         }
         fn autopilot_item_update(&self, _: &Principal, p: ItemUpdateParams) -> Result<Value, RpcError> {
             match &self.autopilot {
@@ -1165,18 +1229,26 @@ pub mod tests {
                 "session.steer",
                 "session.pending",
                 "session.answer",
+                "session.info",
+                "session.model",
+                "session.mode",
+                "units.git",
+                "session.spawn",
                 "ask.answer",
                 "projects.list",
                 "autopilot.state",
+                "autopilot.log",
                 "autopilot.start",
                 "autopilot.stop",
             ]
         );
         let server = stub_server();
         let device = Principal::Device("d1".into());
-        let err = server.dispatch(0, &device, &request("session.spawn", json!({}))).unwrap_err();
-        assert_eq!(err.code, REFUSED);
-        assert!(err.message.contains("device"), "{}", err.message);
+        assert!(server.dispatch(0, &device, &request("session.spawn", json!({"folder": "/p", "agent": "claude"}))).is_ok());
+        let worker = Principal::Session(Caller::Chat(WORKER.into()));
+        for method in ["session.info", "session.model", "session.mode", "units.git", "autopilot.log"] {
+            assert_eq!(server.dispatch(0, &worker, &request(method, json!({}))).unwrap_err().code, REFUSED, "{method}");
+        }
         assert_eq!(server.dispatch(0, &device, &request("caller", Value::Null)).unwrap()["kind"], json!("device"));
         for method in ["autopilot.start", "autopilot.stop"] {
             assert!(server.dispatch(0, &device, &request(method, Value::Null)).is_ok(), "{method}");
@@ -1184,6 +1256,20 @@ pub mod tests {
                 assert_eq!(server.dispatch(0, &session, &request(method, Value::Null)).unwrap_err().code, REFUSED, "{method}");
             }
         }
+    }
+
+    #[test]
+    fn a_device_reads_the_autopilot_log_the_desktop_reads() {
+        let dir = crate::autopilot::tests::temp_dir("dispatch-log");
+        let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store), asks: None }), ..stub_server() };
+        let item = json!({"kind": "ship", "source": {"type": "pr", "number": 7, "repo": "o/r"}, "project": "/p"});
+        assert!(server.dispatch(0, &Principal::Local, &request("autopilot.item.update", item)).is_ok());
+        let logged = server.dispatch(0, &Principal::Device("d1".into()), &request("autopilot.log", json!({}))).unwrap();
+        let desktop = AutopilotStore::open(dir.clone(), Box::new(|_| {})).recent_log(DEFAULT_LOG_LIMIT);
+        assert!(!desktop.is_empty());
+        assert_eq!(logged, json!(desktop));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
