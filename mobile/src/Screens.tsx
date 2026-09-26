@@ -90,13 +90,15 @@ function UnitItem(props: { unit: Unit; name?: string; meta: string; live: Sessio
   );
 }
 
-export function PushTop(props: { back: string; onBack: () => void; end?: JSX.Element }) {
+export function PushTop(props: { back: string; space?: boolean; onBack: () => void; end?: JSX.Element }) {
   return (
     <header class={styles.pushTop}>
       <button class={styles.circle} aria-label="Back" onClick={() => props.onBack()}>
         <Icon icon={ChevronLeft} size={20} strokeWidth={2} />
       </button>
-      <span class={styles.backLabel}>{props.back}</span>
+      <span class={styles.backLabel} data-space={props.space || undefined}>
+        {props.back}
+      </span>
       {props.end}
     </header>
   );
@@ -143,7 +145,7 @@ export function ProjectScreen(props: {
   };
   return (
     <div class={styles.glow}>
-      <PushTop back={props.space} onBack={props.onBack} />
+      <PushTop back={props.space} space onBack={props.onBack} />
       <Offline client={props.client} />
       <div class={styles.scroll}>
         <div class={styles.projectHead}>

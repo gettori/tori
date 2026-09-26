@@ -188,7 +188,7 @@ export default function UnitScreen(props: {
         onBack={props.onBack}
         end={
           <button class={styles.newPill} disabled={spawning()} onClick={() => void startNew()}>
-            <Icon icon={Plus} size={14} strokeWidth={2.6} />
+            <Icon icon={Plus} size={13} strokeWidth={2.6} />
             New
           </button>
         }
