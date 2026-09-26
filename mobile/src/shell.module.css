@@ -52,9 +52,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.025em;
+  text-transform: capitalize;
 }
 
 .rootLabel {
@@ -306,6 +307,10 @@ li + li > .item {
   scrollbar-width: none;
 }
 
+.spaces::-webkit-scrollbar {
+  display: none;
+}
+
 .barItem {
   position: relative;
   display: flex;
@@ -335,6 +340,7 @@ li + li > .item {
 
 .spaceName {
   max-width: 96px;
+  text-transform: capitalize;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

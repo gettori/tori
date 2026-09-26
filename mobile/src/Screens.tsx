@@ -6,7 +6,8 @@ import { ago } from "../../src/utils/relativeTime";
 import type { Crew } from "./Autopilot";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, Offline, StateMark } from "./Root";
-import { inUnit, newest, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
+import { SessionList, unitSessions } from "./Unit";
+import { atUnit, inUnit, newest, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
 import styles from "./shell.module.css";
 
 const KIND: Record<Unit["kind"], string> = { worktree: "worktree", incomplete: "worktree", plain: "branch", "plain-dir": "folder" };
@@ -74,7 +75,7 @@ function UnitIcon(props: { unit: Unit; active: boolean }) {
 }
 
 function UnitItem(props: { unit: Unit; name?: string; meta: string; live: SessionRow[]; onOpen: () => void }) {
-  const rows = () => props.live.filter((row) => inUnit(row.home, props.unit));
+  const rows = () => props.live.filter((row) => atUnit(row, props.unit));
   return (
     <li>
       <button class={styles.item} onClick={() => props.onOpen()}>
@@ -182,10 +183,16 @@ export function TopicScreen(props: {
   topic: Topic;
   tree: Tree | undefined;
   live: () => SessionRow[];
+  crew: () => Crew;
+  autopilotOn: boolean;
   onUnit: (unit: Unit) => void;
+  onOpen: (row: SessionRow) => void;
   onBack: () => void;
 }) {
-  const members = () => [...props.topic.members].sort((a, b) => a.order - b.order);
+  const members = () =>
+    [...props.topic.members].sort((a, b) => a.order - b.order).map((member) => ({ member, unit: memberUnit(props.tree, props.topic, member) }));
+  const { here, earlier } = unitSessions(props.client, () => members().map((m) => m.unit), props.live);
+  const where = (row: SessionRow) => members().find((m) => atUnit(row, m.unit))?.member.displayName;
   return (
     <div class={styles.glow}>
       <PushTop back="Topics" onBack={props.onBack} />
@@ -195,14 +202,12 @@ export function TopicScreen(props: {
         <h2 class={styles.label}>Members {DOT} {members().length}</h2>
         <ul class={styles.group}>
           <For each={members()} fallback={<li class={styles.empty}>No members</li>}>
-            {(member) => {
-              const unit = memberUnit(props.tree, props.topic, member);
-              return (
-                <UnitItem unit={unit} name={member.displayName} meta={unit.branch ?? props.topic.branch} live={props.live()} onOpen={() => props.onUnit(unit)} />
-              );
-            }}
+            {({ member, unit }) => (
+              <UnitItem unit={unit} name={member.displayName} meta={unit.branch ?? props.topic.branch} live={props.live()} onOpen={() => props.onUnit(unit)} />
+            )}
           </For>
         </ul>
+        <SessionList here={here()} earlier={earlier()} crew={props.crew} autopilotOn={props.autopilotOn} where={where} onOpen={props.onOpen} />
       </div>
     </div>
   );

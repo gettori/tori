@@ -8,9 +8,9 @@ import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
 import type { Crew } from "./Autopilot";
 import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
-import { Offline } from "./Root";
+import { DOT, Offline } from "./Root";
 import { GitCounts, PushTop, watchGit } from "./Screens";
-import { PHASE_LABEL, inUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
+import { PHASE_LABEL, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
 import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
@@ -24,7 +24,7 @@ export function AgentMark(props: { agent: string | undefined; size: number }) {
   );
 }
 
-function NowCard(props: { row: SessionRow; crewed: boolean; spinning: boolean; onOpen: () => void }) {
+function NowCard(props: { row: SessionRow; where?: string; crewed: boolean; spinning: boolean; onOpen: () => void }) {
   const phase = () => phaseOf(props.row);
   return (
     <li>
@@ -40,7 +40,7 @@ function NowCard(props: { row: SessionRow; crewed: boolean; spinning: boolean; o
           <span class={styles.stateLabel} data-phase={phase()}>
             {PHASE_LABEL[phase()]}
           </span>
-          <span class={styles.time}>{ago(props.row.last_active)}</span>
+          <span class={styles.time}>{props.where ? `${props.where} ${DOT} ` : ""}{ago(props.row.last_active)}</span>
           <Show when={props.crewed}>
             <span class={styles.apChip} data-spin={props.spinning}>
               <WheelGlyph size={12} />
@@ -53,7 +53,7 @@ function NowCard(props: { row: SessionRow; crewed: boolean; spinning: boolean; o
   );
 }
 
-function HistoryItem(props: { row: SessionRow; onOpen: () => void }) {
+function HistoryItem(props: { row: SessionRow; where?: string; onOpen: () => void }) {
   return (
     <li>
       <button class={`${styles.item} ${styles.historyItem}`} onClick={() => props.onOpen()}>
@@ -61,9 +61,79 @@ function HistoryItem(props: { row: SessionRow; onOpen: () => void }) {
           <AgentMark agent={props.row.agent} size={14} />
         </span>
         <span class={styles.historyTitle}>{sessionLabel(props.row)}</span>
-        <span class={styles.time}>{ago(props.row.last_active)}</span>
+        <span class={styles.time}>{props.where ? `${props.where} ${DOT} ` : ""}{ago(props.row.last_active)}</span>
       </button>
     </li>
+  );
+}
+
+/** The live sessions in `units` and the ended ones the Mac lists for their folders. */
+export function unitSessions(client: RemoteClient, units: () => Unit[], live: () => SessionRow[]) {
+  const owned = (row: SessionRow) => units().some((unit) => atUnit(row, unit));
+  const here = () => live().filter(owned);
+  const [earlier, { refetch }] = createResource<SessionRow[], number>(
+    () => client.generation() || undefined,
+    (_, info) =>
+      Promise.all(units().map((unit) => client.request<SessionRow[]>("sessions.list", { cwd: unit.folder, limit: EARLIER_LIMIT })))
+        .then((lists) => {
+          const rows = new Map(lists.flat().filter((row) => !row.live && owned(row)).map((row) => [row.id, row]));
+          return [...rows.values()].sort((a, b) => b.last_active - a.last_active);
+        })
+        .catch(() => info.value ?? []),
+  );
+  onCleanup(
+    client.subscribe("sessions", (data) => {
+      if ((data as { kind?: string } | null)?.kind === "session.ended") void refetch();
+    }),
+  );
+  return { here, earlier };
+}
+
+export function SessionList(props: {
+  here: SessionRow[];
+  earlier: SessionRow[] | undefined;
+  crew: () => Crew;
+  autopilotOn: boolean;
+  where?: (row: SessionRow) => string | undefined;
+  onOpen: (row: SessionRow) => void;
+}) {
+  const buckets = () => bucketByLastActive(props.earlier ?? [], Date.now() / 1000);
+  return (
+    <>
+      <Show when={props.here.length > 0}>
+        <h2 class={styles.label}>Now</h2>
+        <ul class={styles.cards}>
+          <For each={props.here}>
+            {(row) => (
+              <NowCard
+                row={row}
+                where={props.where?.(row)}
+                crewed={props.crew().sessions.has(row.id)}
+                spinning={props.autopilotOn}
+                onOpen={() => props.onOpen(row)}
+              />
+            )}
+          </For>
+        </ul>
+      </Show>
+      <For
+        each={buckets()}
+        fallback={
+          <Show when={props.here.length === 0}>
+            <p class={styles.empty}>{props.earlier === undefined ? "Loading" : "No sessions here yet"}</p>
+          </Show>
+        }
+      >
+        {(bucket) => (
+          <>
+            <h2 class={styles.label}>{bucket.label}</h2>
+            <ul class={styles.group}>
+              <For each={bucket.sessions}>{(row) => <HistoryItem row={row} where={props.where?.(row)} onOpen={() => props.onOpen(row)} />}</For>
+            </ul>
+          </>
+        )}
+      </For>
+    </>
   );
 }
 
@@ -77,22 +147,8 @@ export default function UnitScreen(props: {
   onOpen: (row: SessionRow) => void;
   onBack: () => void;
 }) {
-  const here = () => props.live().filter((row) => inUnit(row.home, props.unit));
-  const [earlier, { refetch }] = createResource<SessionRow[], number>(
-    () => props.client.generation() || undefined,
-    (_, info) =>
-      props.client
-        .request<SessionRow[]>("sessions.list", { cwd: props.unit.folder, limit: EARLIER_LIMIT })
-        .then((rows) => rows.filter((row) => !row.live && inUnit(row.home, props.unit)))
-        .catch(() => info.value ?? []),
-  );
-  onCleanup(
-    props.client.subscribe("sessions", (data) => {
-      if ((data as { kind?: string } | null)?.kind === "session.ended") void refetch();
-    }),
-  );
+  const { here, earlier } = unitSessions(props.client, () => [props.unit], props.live);
   const git = watchGit(props.client, () => [props.unit.folder]);
-  const buckets = () => bucketByLastActive(earlier() ?? [], Date.now() / 1000);
   const [spawning, setSpawning] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -153,38 +209,7 @@ export default function UnitScreen(props: {
             }
           />
         </div>
-        <Show when={here().length > 0}>
-          <h2 class={styles.label}>Now</h2>
-          <ul class={styles.cards}>
-            <For each={here()}>
-              {(row) => (
-                <NowCard
-                  row={row}
-                  crewed={props.crew().sessions.has(row.id)}
-                  spinning={props.autopilotOn}
-                  onOpen={() => props.onOpen(row)}
-                />
-              )}
-            </For>
-          </ul>
-        </Show>
-        <For
-          each={buckets()}
-          fallback={
-            <Show when={here().length === 0}>
-              <p class={styles.empty}>{earlier.loading ? "Loading" : "No sessions here yet"}</p>
-            </Show>
-          }
-        >
-          {(bucket) => (
-            <>
-              <h2 class={styles.label}>{bucket.label}</h2>
-              <ul class={styles.group}>
-                <For each={bucket.sessions}>{(row) => <HistoryItem row={row} onOpen={() => props.onOpen(row)} />}</For>
-              </ul>
-            </>
-          )}
-        </For>
+        <SessionList here={here()} earlier={earlier()} crew={props.crew} autopilotOn={props.autopilotOn} onOpen={props.onOpen} />
       </div>
     </div>
   );

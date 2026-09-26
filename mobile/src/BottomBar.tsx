@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, createEffect } from "solid-js";
 import { Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { resolveIcon } from "../../src/components/Icon/iconRegistry";
@@ -33,7 +33,13 @@ export default function BottomBar(props: {
               const current = () => props.tab === "projects" && space.name === props.space?.name;
               const glyph = () => resolveIcon(space.icon);
               return (
-                <button class={styles.barItem} aria-current={current()} aria-label={space.name} onClick={() => props.onSpace(space)}>
+                <button
+                  ref={(el) => createEffect(() => current() && el.scrollIntoView({ inline: "nearest", block: "nearest" }))}
+                  class={styles.barItem}
+                  aria-current={current()}
+                  aria-label={space.name}
+                  onClick={() => props.onSpace(space)}
+                >
                   <Show when={glyph()} fallback={<span class={styles.initial}>{spaceInitials(space.name)}</span>}>
                     {(g) => <Icon icon={g()} size={19} strokeWidth={1.9} />}
                   </Show>
@@ -51,6 +57,9 @@ export default function BottomBar(props: {
         <span class={styles.divider} />
         <button class={styles.barItem} aria-current={props.tab === "topics"} aria-label="Topics" onClick={() => props.onTopics()}>
           <Icon icon={Tag} size={19} strokeWidth={1.9} />
+          <Show when={props.tab === "topics"}>
+            <span class={styles.spaceName}>Topics</span>
+          </Show>
         </button>
         <span class={styles.spacer} />
         <Show when={props.showWheel}>

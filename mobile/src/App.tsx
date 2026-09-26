@@ -214,7 +214,17 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
         </Match>
         <Match when={top()?.screen === "topic" && (top() as { topic: Topic }).topic} keyed>
           {(topic) => (
-            <TopicScreen client={props.client} topic={topic} tree={tree()} live={live} onUnit={(unit) => openUnit(unit, topic.name)} onBack={back} />
+            <TopicScreen
+              client={props.client}
+              topic={topic}
+              tree={tree()}
+              live={live}
+              crew={crew}
+              autopilotOn={(runner()?.state ?? "off") !== "off"}
+              onUnit={(unit) => openUnit(unit, topic.name)}
+              onOpen={openSession}
+              onBack={back}
+            />
           )}
         </Match>
         <Match when={top()?.screen === "unit" && (top() as { unit: Unit; back: string })} keyed>

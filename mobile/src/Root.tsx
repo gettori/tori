@@ -158,8 +158,10 @@ export default function Root(props: {
     <div class={styles.glow}>
       <header class={styles.top}>
         <span class={styles.titles}>
-          <span class={styles.bigTitle}>{props.space?.name ?? "Tori"}</span>
-          <span class={styles.rootLabel}>{DOT} {props.tab === "projects" ? "Spaces" : "Topics"}</span>
+          <Show when={props.tab === "projects"} fallback={<span class={styles.bigTitle}>Topics</span>}>
+            <span class={styles.bigTitle}>{props.space?.name ?? "Tori"}</span>
+            <span class={styles.rootLabel}>{DOT} Spaces</span>
+          </Show>
         </span>
         <button
           class={styles.circle}

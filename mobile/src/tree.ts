@@ -42,6 +42,16 @@ export function inUnit(home: Home | undefined, unit: Unit): boolean {
   return home?.folder === unit.folder && home.branch === unit.branch;
 }
 
+const under = (path: string | undefined, folder: string) => !!path && (path === folder || path.startsWith(`${folder}/`));
+
+// A Topic member's worktree is not a unit in the tree, so the Mac homes its
+// sessions nowhere, or under the repo it sits inside; the deeper folder wins.
+export function atUnit(row: SessionRow, unit: Unit): boolean {
+  if (inUnit(row.home, unit)) return true;
+  const home = row.home?.folder;
+  return under(row.cwd, unit.folder) && (!home || home.length < unit.folder.length);
+}
+
 export function rollupOf(rows: SessionRow[]): Rollup {
   return rollupStatuses(rows.map((row) => ({ status: statusFromDot(row.dot ?? "none") })));
 }
