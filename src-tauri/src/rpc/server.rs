@@ -129,6 +129,13 @@ pub struct ModeParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct ProjectIconParams {
+    /// A project's `path` from `projects.list`.
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UnitsGitParams {
     /// The worktree folders to count, at most 64.
     pub folders: Vec<String>,
@@ -563,6 +570,7 @@ pub trait Backend: Send + Sync {
     fn kind(&self, principal: &Principal) -> CallerKind;
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn projects_list(&self) -> Result<Value, RpcError>;
+    fn project_icon(&self, params: ProjectIconParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError>;
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError>;
@@ -830,6 +838,9 @@ pub mod tests {
         }
         fn projects_list(&self) -> Result<Value, RpcError> {
             Ok(json!({ "spaces": [], "topics": [] }))
+        }
+        fn project_icon(&self, p: ProjectIconParams) -> Result<Value, RpcError> {
+            Ok(json!({ "path": p.path }))
         }
         fn session_tail(&self, p: TailParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": p.id }]))
@@ -1236,6 +1247,7 @@ pub mod tests {
                 "session.spawn",
                 "ask.answer",
                 "projects.list",
+                "project.icon",
                 "autopilot.state",
                 "autopilot.log",
                 "autopilot.start",

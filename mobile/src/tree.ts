@@ -28,7 +28,7 @@ export type Unit = {
   isCurrent: boolean;
 };
 
-export type Project = { name: string; path: string; units: Unit[] };
+export type Project = { name: string; path: string; icon?: string | null; image?: string | null; units: Unit[] };
 
 export type Space = { name: string; path: string; icon: string | null; color: string | null; projects: Project[] };
 

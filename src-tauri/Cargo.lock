@@ -4871,6 +4871,7 @@ dependencies = [
  "apple-native-keyring-store",
  "async-io",
  "async-process",
+ "base64 0.22.1",
  "dirs 5.0.1",
  "futures",
  "globset",

@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, UnitsGitParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -619,7 +619,14 @@ fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics:
                             })
                         })
                         .collect();
-                    json!({ "name": p.name, "path": p.path, "units": units })
+                    let image = crate::icons::shown_image(p.icon.as_deref(), p.icon_file.as_deref(), p.favicon.as_deref());
+                    json!({
+                        "name": p.name,
+                        "path": p.path,
+                        "icon": p.icon,
+                        "image": image.and_then(crate::icons::image_version),
+                        "units": units,
+                    })
                 })
                 .collect();
             json!({ "name": space.name, "path": space.path, "icon": space.icon, "color": space.color, "projects": projects })
@@ -685,6 +692,17 @@ impl Backend for TauriBackend {
             .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         let topics = crate::topics::list_topics(&crate::topics::Store::default_location());
         Ok(projects_tree(&config.spaces, topics))
+    }
+
+    fn project_icon(&self, params: ProjectIconParams) -> Result<Value, RpcError> {
+        let spaces = crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>());
+        let image = spaces
+            .iter()
+            .flat_map(|s| &s.projects)
+            .find(|p| p.path == params.path)
+            .and_then(|p| crate::icons::shown_image(p.icon.as_deref(), p.icon_file.as_deref(), p.favicon.as_deref()))
+            .and_then(crate::icons::device_image);
+        to_json(image)
     }
 
     fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError> {

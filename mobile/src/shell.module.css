@@ -162,6 +162,11 @@ li + li > .item {
   font-style: italic;
 }
 
+.tileImage {
+  border-radius: 6px;
+  object-fit: contain;
+}
+
 .tagTile {
   width: 36px;
   height: 36px;

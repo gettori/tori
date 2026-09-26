@@ -697,6 +697,67 @@ pub fn cached_project_icon(project: &Path, folders: &[PathBuf]) -> Option<String
 }
 
 // ---------------------------------------------------------------------------
+// Sending an icon to a device
+// ---------------------------------------------------------------------------
+
+// A frame to the phone carries the image base64 inline, so a larger one is
+// sent shrunk: a manifest's 512px icon is far more than a 40px tile needs.
+const DEVICE_IMAGE_MAX: u64 = 96 * 1024;
+const DEVICE_IMAGE_PX: &str = "128";
+
+/// The image a project row shows, in the sidebar's order: an upload, then a
+/// picked glyph (which is no image), then the favicon.
+pub fn shown_image<'a>(icon: Option<&str>, icon_file: Option<&'a str>, favicon: Option<&'a str>) -> Option<&'a str> {
+    icon_file.or(if icon.is_none() { favicon } else { None })
+}
+
+/// Changes whenever the file does, so a device keeps its copy until then.
+pub fn image_version(path: &str) -> Option<String> {
+    image_mime(path)?;
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_millis();
+    Some(format!("{:016x}", fnv1a(format!("{path}\0{modified}\0{}", meta.len()).as_bytes())))
+}
+
+fn image_mime(path: &str) -> Option<&'static str> {
+    match Path::new(path).extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "svg" => Some("image/svg+xml"),
+        "png" => Some("image/png"),
+        "ico" => Some("image/x-icon"),
+        "webp" => Some("image/webp"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        _ => None,
+    }
+}
+
+fn shrunk(path: &str) -> Option<Vec<u8>> {
+    let out = std::env::temp_dir().join(format!("tori-icon-{}-{:016x}.png", std::process::id(), fnv1a(path.as_bytes())));
+    let done = Command::new("sips")
+        .args(["-s", "format", "png", "-Z", DEVICE_IMAGE_PX, path, "--out"])
+        .arg(&out)
+        .output()
+        .is_ok_and(|o| o.status.success());
+    let bytes = if done { std::fs::read(&out).ok() } else { None };
+    let _ = std::fs::remove_file(&out);
+    bytes.filter(|b| b.len() as u64 <= DEVICE_IMAGE_MAX)
+}
+
+#[derive(serde::Serialize)]
+pub struct DeviceImage {
+    pub version: String,
+    pub mime: &'static str,
+    pub data: String,
+}
+
+pub fn device_image(path: &str) -> Option<DeviceImage> {
+    use base64::Engine;
+    let version = image_version(path)?;
+    let bytes = std::fs::read(path).ok()?;
+    let (bytes, mime) = if bytes.len() as u64 <= DEVICE_IMAGE_MAX { (bytes, image_mime(path)?) } else { (shrunk(path)?, "image/png") };
+    Some(DeviceImage { version, mime, data: base64::engine::general_purpose::STANDARD.encode(bytes) })
+}
+
+// ---------------------------------------------------------------------------
 // The upload store (unchanged in shape: a user's own pick is never detected)
 // ---------------------------------------------------------------------------
 

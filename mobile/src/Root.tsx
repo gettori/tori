@@ -2,6 +2,7 @@ import { For, Match, Show, Switch, createSignal } from "solid-js";
 import { ChevronRight, Search, Settings, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { fallbackColor, rgbTriple } from "../../src/utils/spaceTint";
+import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
 import { inUnit, matches, projectRows, rollupOf, sessionLabel, type Project, type SessionRow, type Space, type Topic, type Tree, type Unit } from "./tree";
 import styles from "./shell.module.css";
@@ -42,7 +43,7 @@ export function Offline(props: { client: RemoteClient }) {
   );
 }
 
-function ProjectItem(props: { project: Project; live: SessionRow[]; onOpen: () => void }) {
+function ProjectItem(props: { client: RemoteClient; project: Project; live: SessionRow[]; onOpen: () => void }) {
   const rows = () => projectRows(props.project, props.live);
   const meta = () => {
     const units = plural(props.project.units.length, "worktree");
@@ -51,7 +52,7 @@ function ProjectItem(props: { project: Project; live: SessionRow[]; onOpen: () =
   return (
     <li>
       <button class={styles.item} onClick={() => props.onOpen()}>
-        <span class={styles.tile}>{props.project.name.slice(0, 1)}</span>
+        <ProjectMark client={props.client} project={props.project} />
         <span class={styles.text}>
           <span class={styles.name}>{props.project.name}</span>
           <span class={styles.meta}>{meta()}</span>
@@ -79,6 +80,7 @@ function SessionItem(props: { row: SessionRow; meta: string; onOpen: () => void 
 }
 
 function Results(props: {
+  client: RemoteClient;
   tree: Tree;
   live: SessionRow[];
   query: string;
@@ -99,7 +101,7 @@ function Results(props: {
       <Show when={found().length > 0}>
         <h2 class={styles.label}>Projects</h2>
         <ul class={styles.group}>
-          <For each={found()}>{(project) => <ProjectItem project={project} live={props.live} onOpen={() => props.onProject(project)} />}</For>
+          <For each={found()}>{(project) => <ProjectItem client={props.client} project={project} live={props.live} onOpen={() => props.onProject(project)} />}</For>
         </ul>
       </Show>
       <Show when={units().length > 0}>
@@ -199,14 +201,14 @@ export default function Root(props: {
             <Switch>
               <Match when={searching() && query().trim()}>
                 {(q) => (
-                  <Results tree={tree()} live={props.live()} query={q()} onProject={props.onProject} onUnit={props.onUnit} onSession={props.onSession} />
+                  <Results client={props.client} tree={tree()} live={props.live()} query={q()} onProject={props.onProject} onUnit={props.onUnit} onSession={props.onSession} />
                 )}
               </Match>
               <Match when={props.tab === "projects"}>
                 <h2 class={styles.label}>Projects {DOT} {props.space?.projects.length ?? 0}</h2>
                 <ul class={styles.group}>
                   <For each={props.space?.projects ?? []} fallback={<li class={styles.empty}>No projects in this space</li>}>
-                    {(project) => <ProjectItem project={project} live={props.live()} onOpen={() => props.onProject(project)} />}
+                    {(project) => <ProjectItem client={props.client} project={project} live={props.live()} onOpen={() => props.onProject(project)} />}
                   </For>
                 </ul>
                 <Show when={homeless().length > 0}>
