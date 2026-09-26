@@ -1,0 +1,43 @@
+@layer components {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    width: calc(300px * var(--ui-scale));
+    padding: var(--tori-space-5);
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+
+  .device {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+  }
+  .dot {
+    flex: none;
+    width: calc(7px * var(--ui-scale));
+    height: calc(7px * var(--ui-scale));
+    border-radius: 50%;
+    background: var(--fg-subtle);
+  }
+  .on {
+    background: var(--status-idle);
+  }
+  .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .state {
+    color: var(--fg-muted);
+    font-size: var(--tori-text-sm);
+  }
+
+  .remote {
+    padding-top: var(--tori-space-3);
+    border-top: 1px solid var(--border-default);
+  }
+}

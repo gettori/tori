@@ -47,6 +47,7 @@ import FirstRun from './panels/FirstRun/FirstRun';
 import { ensureFirstRunLoaded, firstRunOpen } from './utils/firstRun';
 import UpdatePill from './components/UpdatePill/UpdatePill';
 import UsageStrip from './components/UsageStrip/UsageStrip';
+import PhoneIndicator from './components/PhoneIndicator/PhoneIndicator';
 import DevBadge from './components/DevBadge/DevBadge';
 import Button from './components/Button/Button';
 import Icon from './components/Icon/Icon';
@@ -1110,6 +1111,7 @@ function App() {
           </div>
         </Show>
         <DevBadge />
+        <PhoneIndicator />
         <UsageStrip />
         <UpdatePill suppressed={firstRunOpen()} />
         <Button

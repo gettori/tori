@@ -112,6 +112,10 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let transport = Arc::new(UnixTransport::bind()?);
     let token = crate::chat::approval::random_token();
     let hub = Arc::new(Hub::default());
+    {
+        let app = app.clone();
+        hub.watch_devices(Box::new(move || devices_changed(&app, None)));
+    }
     let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
     let devices = Arc::new(devices::Devices::open(devices_path()));
@@ -583,7 +587,12 @@ pub fn pairing_cancel(rpc: tauri::State<RpcState>) {
 
 #[tauri::command]
 pub fn devices_list(rpc: tauri::State<RpcState>) -> Vec<Value> {
-    rpc.devices.list().into_iter().map(|d| json!({ "id": d.id, "name": d.name, "created_ms": d.created_ms })).collect()
+    let connected = rpc.hub.connected_devices();
+    rpc.devices
+        .list()
+        .into_iter()
+        .map(|d| json!({ "id": d.id, "name": d.name, "created_ms": d.created_ms, "connected": connected.contains(&d.id) }))
+        .collect()
 }
 
 // Revoked in the file first: a connection still being set up checks the file
