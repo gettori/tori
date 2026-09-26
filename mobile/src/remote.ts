@@ -13,6 +13,7 @@ type Frame = {
 };
 
 const KEY = "tori-remote";
+const INSTALL_KEY = "tori-install";
 
 // The front answers an unknown credential with this; anything else before the
 // close (the auth timeout on a slow link included) is a network failure.
@@ -23,6 +24,8 @@ const REVOKED = "wrong token";
 // what declares it dead.
 const REPLY_MS = 10_000;
 const PROBE_MS = 20_000;
+// An attempt made as the network changes can sit unopened with no close event.
+const CONNECT_MS = 10_000;
 
 export const REFUSED_CODE = -32002;
 
@@ -46,6 +49,15 @@ export function loadSaved(): Saved | null {
 
 export function forget() {
   localStorage.removeItem(KEY);
+}
+
+// Outlives a disconnect, so pairing this phone again replaces its old entry on the Mac.
+function installId(): string {
+  const kept = localStorage.getItem(INSTALL_KEY);
+  if (kept) return kept;
+  const made = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  localStorage.setItem(INSTALL_KEY, made);
+  return made;
 }
 
 export function parsePairLink(text: string): { url: string; code: string } | null {
@@ -72,7 +84,7 @@ export function pair(url: string, code: string, name: string): Promise<Saved> {
       reject(e instanceof Error ? e : new Error(String(e)));
       return;
     }
-    socket.onopen = () => socket.send(JSON.stringify({ jsonrpc: "2.0", id: 0, method: "pair", params: { code, name } }));
+    socket.onopen = () => socket.send(JSON.stringify({ jsonrpc: "2.0", id: 0, method: "pair", params: { code, name, install: installId() } }));
     socket.onmessage = (message) => {
       const frame = JSON.parse(String(message.data)) as Frame;
       done(() => {
@@ -136,9 +148,12 @@ export class RemoteClient {
   }
 
   wake() {
-    if (this.stopped || this.status() === "connecting") return;
+    if (this.stopped) return;
     if (this.status() === "open") return void this.request("caller").catch(() => {});
     if (this.retry) clearTimeout(this.retry);
+    const stale = this.socket;
+    this.socket = null;
+    stale?.close();
     this.retryMs = 1000;
     this.connect();
   }
@@ -170,7 +185,9 @@ export class RemoteClient {
       return;
     }
     this.socket = socket;
+    const unopened = setTimeout(() => socket.readyState === WebSocket.CONNECTING && this.drop(socket), CONNECT_MS);
     socket.onopen = () => {
+      clearTimeout(unopened);
       this.send(socket, "auth", { token: this.saved.credential }).then(
         () => {
           this.retryMs = 1000;
@@ -192,6 +209,7 @@ export class RemoteClient {
     };
     socket.onmessage = (message) => this.receive(JSON.parse(String(message.data)) as Frame);
     socket.onclose = () => {
+      clearTimeout(unopened);
       if (this.socket === socket) this.lost();
     };
   }
