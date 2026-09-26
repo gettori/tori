@@ -760,7 +760,12 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
     if background {
         return vec![format!("mcp__{MCP_SERVER}__*")];
     }
-    table::METHODS.iter().filter(|m| !m.outward).map(|m| format!("mcp__{MCP_SERVER}__{}", m.name.replace('.', "_"))).collect()
+    let agents = [table::CallerKind::Terminal, table::CallerKind::Chat, table::CallerKind::Worker];
+    table::METHODS
+        .iter()
+        .filter(|m| !m.outward && m.callers.iter().any(|k| agents.contains(k)))
+        .map(|m| format!("mcp__{MCP_SERVER}__{}", m.name.replace('.', "_")))
+        .collect()
 }
 
 // Called by `chat_spawn` for a background worker, fresh or resumed. A resumed

@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InterruptParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, UnitsGitParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -26,7 +26,7 @@ use crate::autopilot::{AutopilotStore, Contract, Observed};
 use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
 use crate::chat::host::{ChatState, Waiting};
-use crate::chat::model::{cap_output, ChatEvent, ContentBlock};
+use crate::chat::model::{cap_output, ChatEvent, ContentBlock, PermissionMode};
 use crate::chat::ownership::Registry;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 
@@ -365,6 +365,22 @@ fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity) -> Picks
     Picks { agent, account, model }
 }
 
+// A phone opens a plain chat in a folder it names: an attachment would read any
+// file on the Mac, and a new worktree or a background run is the desktop's call.
+fn device_may_spawn(params: &SpawnParams, is_chat: impl Fn(&str) -> bool) -> Result<(), RpcError> {
+    let attaches = params.attach.as_ref().is_some_and(|files| !files.is_empty());
+    if attaches || params.new_worktree.is_some() || params.background.unwrap_or(false) {
+        return Err(refused("a device spawns a plain chat: attach, new_worktree and background are the desktop's".into()));
+    }
+    if params.folder.is_none() {
+        return Err(RpcError::new(INVALID_PARAMS, "a device passes the folder to start in"));
+    }
+    match params.agent.as_deref() {
+        Some(agent) if is_chat(agent) => Ok(()),
+        _ => Err(refused("a device passes an agent that runs as a chat".into())),
+    }
+}
+
 fn refused(message: String) -> RpcError {
     RpcError::new(REFUSED, message)
 }
@@ -560,6 +576,16 @@ impl TauriBackend {
         gated_by_approval(&self.asks.approvals, self.background_session(principal), &wanted, approval_id, || call(&wanted.project))
     }
 
+    fn live_chat(&self, principal: &Principal, id: &str) -> Result<&crate::chat::host::ChatHost, RpcError> {
+        let host = &self.app.state::<ChatState>().inner().0;
+        if !host.is_live(id) {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no live chat session {id}")));
+        }
+        let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, id);
+        may_steer(principal, locked, self.runner.status().session.as_deref())?;
+        Ok(host)
+    }
+
     fn agent_of(&self, id: &str) -> Option<String> {
         if let Some(live) = self.live().remove(id).filter(|l| !l.agent.is_empty()) {
             return Some(live.agent);
@@ -569,8 +595,8 @@ impl TauriBackend {
 }
 
 /// The tree the sidebar draws, in the order it draws it: spaces in `space_order`
-/// with their projects and branch units as resolved, then topics by name with
-/// their members in `order`.
+/// with their icon, colour, projects and branch units as resolved, then topics by
+/// name with their members in `order`.
 fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics::Topic>) -> Value {
     let spaces: Vec<Value> = spaces
         .iter()
@@ -596,7 +622,7 @@ fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics:
                     json!({ "name": p.name, "path": p.path, "units": units })
                 })
                 .collect();
-            json!({ "name": space.name, "path": space.path, "projects": projects })
+            json!({ "name": space.name, "path": space.path, "icon": space.icon, "color": space.color, "projects": projects })
         })
         .collect();
     topics.sort_by_cached_key(|t| (t.name.to_lowercase(), t.name.clone()));
@@ -634,7 +660,12 @@ impl Backend for TauriBackend {
             false => crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()),
         };
         super::refresh_dots_if_stale();
+        let host = &self.app.state::<ChatState>().0;
         for row in &mut rows {
+            if let Some(levers) = row["id"].as_str().and_then(|id| host.levers(id)) {
+                row["model"] = json!(levers.model);
+                row["permission_mode"] = json!(levers.mode);
+            }
             let id = row["id"].as_str().unwrap_or_default();
             let (dot, certainty) = super::session_dot(id);
             row["attended"] = json!(super::session_attended(id, dot));
@@ -753,6 +784,39 @@ impl Backend for TauriBackend {
         Ok(json!({ "answered": params.id }))
     }
 
+    fn session_info(&self, params: InfoParams) -> Result<Value, RpcError> {
+        let host = &self.app.state::<ChatState>().0;
+        let levers = host.levers(&params.id).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no live chat session {}", params.id)))?;
+        let modes = match levers.modes.is_empty() {
+            false => json!(levers.modes),
+            true => {
+                let chat = self.agent_of(&params.id).and_then(|agent| crate::agents::find(&agent)).and_then(|a| a.chat.as_ref());
+                let rows: Vec<Value> = chat
+                    .map(|c| &c.modes)
+                    .into_iter()
+                    .flatten()
+                    .map(|m| json!({ "id": m.id, "label": m.label, "hint": m.hint, "requires": m.requires, "permissive": m.permissive }))
+                    .collect();
+                json!(rows)
+            }
+        };
+        Ok(json!({ "model": levers.model, "permission_mode": levers.mode, "models": levers.models, "modes": modes }))
+    }
+
+    fn session_model(&self, principal: &Principal, params: ModelParams) -> Result<Value, RpcError> {
+        self.live_chat(principal, &params.id)?.set_model(&params.id, &params.model, params.effort).map_err(refused)?;
+        Ok(json!({ "model": params.model }))
+    }
+
+    fn session_mode(&self, principal: &Principal, params: ModeParams) -> Result<Value, RpcError> {
+        self.live_chat(principal, &params.id)?.set_mode(&params.id, PermissionMode::new(params.mode.clone())).map_err(refused)?;
+        Ok(json!({ "mode": params.mode }))
+    }
+
+    fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError> {
+        to_json(crate::git::units_git(params.folders))
+    }
+
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
         let project = self.project(principal, params.project)?;
         if let Some(number) = params.pr {
@@ -828,6 +892,9 @@ impl Backend for TauriBackend {
     }
 
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError> {
+        if let Principal::Device(_) = principal {
+            device_may_spawn(&params, |agent| crate::agents::find(agent).is_some_and(|a| a.chat.is_some()))?;
+        }
         let me = self.identity(principal);
         let attach = params.attach.unwrap_or_default();
         if let Some(missing) = attach.iter().find(|path| !Path::new(path).is_file()) {
@@ -1064,6 +1131,10 @@ impl Backend for TauriBackend {
         state["runner"] = json!(self.runner.status());
         state["limits"] = json!({ "max_workers": crate::settings::autopilot_worker_cap() });
         Ok(state)
+    }
+
+    fn autopilot_log(&self, params: LogParams) -> Result<Value, RpcError> {
+        Ok(json!(self.autopilot.recent_log(params.limit.unwrap_or(DEFAULT_LOG_LIMIT))))
     }
 
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError> {
@@ -1442,6 +1513,20 @@ mod tests {
         assert_eq!(ids(&list(indexed, &live(&[("x", "/elsewhere"), ("y", "/p/sub")]), &HashMap::new(), &under, 99)), ["y", "a", "b"]);
     }
 
+    #[test]
+    fn a_space_carries_its_icon_and_colour_and_a_plain_one_nulls() {
+        let space = |name: &str, icon: Option<&str>, color: Option<&str>| crate::config::Space {
+            name: name.into(),
+            path: format!("/{name}"),
+            projects: vec![],
+            icon: icon.map(Into::into),
+            color: color.map(Into::into),
+        };
+        let tree = projects_tree(&[space("work", Some("Briefcase"), Some("teal")), space("plain", None, None)], vec![]);
+        assert_eq!((&tree["spaces"][0]["icon"], &tree["spaces"][0]["color"]), (&json!("Briefcase"), &json!("teal")));
+        assert_eq!((&tree["spaces"][1]["icon"], &tree["spaces"][1]["color"]), (&Value::Null, &Value::Null));
+    }
+
     fn fixture(name: &str) -> String {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../dev/fixtures/sessions")
@@ -1555,6 +1640,25 @@ mod tests {
             let err = answers_for(&caller, spawner, "w1").unwrap_err();
             assert_eq!(err.code, REFUSED, "{}", err.message);
         }
+    }
+
+    #[test]
+    fn a_device_spawns_only_a_plain_chat_in_a_folder_it_names() {
+        let is_chat = |agent: &str| agent == "claude";
+        let plain = || SpawnParams { folder: Some("/p".into()), agent: Some("claude".into()), prompt: Some("hi".into()), ..Default::default() };
+        assert!(device_may_spawn(&plain(), is_chat).is_ok());
+        let refusals = [
+            SpawnParams { attach: Some(vec!["/etc/hosts".into()]), ..plain() },
+            SpawnParams { new_worktree: Some("b".into()), ..plain() },
+            SpawnParams { background: Some(true), ..plain() },
+            SpawnParams { agent: Some("pty-only".into()), ..plain() },
+            SpawnParams { agent: None, ..plain() },
+        ];
+        for params in refusals {
+            assert_eq!(device_may_spawn(&params, is_chat).unwrap_err().code, REFUSED, "{params:?}");
+        }
+        assert_eq!(device_may_spawn(&SpawnParams { folder: None, ..plain() }, is_chat).unwrap_err().code, INVALID_PARAMS);
+        assert!(device_may_spawn(&SpawnParams { attach: Some(vec![]), ..plain() }, is_chat).is_ok());
     }
 
     #[test]

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, HistoryParams, InterruptParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
+    params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, UnitsGitParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
     HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -47,10 +47,12 @@ const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerK
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
 // A person at a shell, an outside client or a paired phone; no agent session can start a spend.
 const NOT_SESSIONS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Device];
-// A paired device reads and drives chats; it never spawns, writes or acts outward.
+// A paired device reads and drives chats; it spawns only a plain chat and never writes or acts outward.
 const ANYONE_AND_DEVICES: &[CallerKind] =
     &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker, CallerKind::Device];
 const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Device];
+// What a phone's screens read and switch, kept off every agent's tool list.
+const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
 
 /// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
 pub const WORKER_REFUSAL: &str = "a worker never spawns or steers; finish your turn and your spawner reads it";
@@ -166,6 +168,48 @@ pub static METHODS: &[Method] = &[
         call: |b, p, v| b.session_answer(p, params(v)?),
     },
     Method {
+        name: "session.info",
+        description: "A live chat session's model and permission mode as of its last turn, and the models and modes it can switch to.",
+        params: schema::<InfoParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.session_info(params(v)?),
+    },
+    Method {
+        name: "session.model",
+        description: "Switch a live chat session's model, taking effect from its next turn.",
+        params: schema::<ModelParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, p, v| b.session_model(p, params(v)?),
+    },
+    Method {
+        name: "session.mode",
+        description: "Switch a live chat session's permission mode, taking effect from its next turn.",
+        params: schema::<ModeParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, p, v| b.session_mode(p, params(v)?),
+    },
+    Method {
+        name: "units.git",
+        description: "For each worktree folder: lines added and deleted since HEAD, and commits ahead and behind the branch it syncs with (null when it has none). A folder that is not a repo is left out.",
+        params: schema::<UnitsGitParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| {
+            let p: UnitsGitParams = params(v)?;
+            if p.folders.len() > UNITS_GIT_MAX {
+                return Err(RpcError::new(INVALID_PARAMS, format!("at most {UNITS_GIT_MAX} folders, not {}", p.folders.len())));
+            }
+            b.units_git(p)
+        },
+    },
+    Method {
         name: "worktree.new",
         description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue. With pr, the worktree is on that pull request's head commit, forks included, on branch pr-<number>, and head_sha is returned.",
         params: schema::<WorktreeParams>,
@@ -236,9 +280,9 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.spawn",
-        description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files.",
+        description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files. A paired device passes a folder and a chat agent, and nothing else that reaches beyond them.",
         params: schema::<SpawnParams>,
-        callers: NOT_WORKERS,
+        callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, p, v| b.session_spawn(p, params(v)?),
@@ -344,6 +388,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, _| b.autopilot_state(),
+    },
+    Method {
+        name: "autopilot.log",
+        description: "The autopilot's latest log entries, oldest first.",
+        params: schema::<LogParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.autopilot_log(params(v)?),
     },
     Method {
         name: "autopilot.start",

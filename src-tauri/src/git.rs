@@ -2602,6 +2602,44 @@ pub fn git_branch_sync_many(units: Vec<SyncUnit>) -> Result<std::collections::Ha
         .collect())
 }
 
+/// A worktree card's counts: lines changed since HEAD, staged or not, and
+/// commits against the branch it syncs with, `None` when it has none.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct UnitGit {
+    added: u32,
+    deleted: u32,
+    ahead: Option<u32>,
+    behind: Option<u32>,
+}
+
+fn unit_git(folder: &str) -> Option<UnitGit> {
+    // A read the phone polls must not take the index lock a concurrent commit needs.
+    let stat = parse_numstat(&git_capture(folder, &["--no-optional-locks", "diff", "--numstat", "HEAD"]).ok()?);
+    let sync = git_capture(folder, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .ok()
+        .filter(|name| !name.is_empty())
+        .and_then(|name| sync_ref(folder, &name))
+        .map(|tracked| upstream_sync(folder, &tracked, "HEAD"));
+    Some(UnitGit {
+        added: stat.insertions,
+        deleted: stat.deletions,
+        ahead: sync.as_ref().map(|s| s.ahead),
+        behind: sync.map(|s| s.behind),
+    })
+}
+
+/// `unit_git` for every folder, spread like `git_branch_sync_many`. A folder
+/// that is not a repo, or has no commit yet, is left out.
+pub fn units_git(folders: Vec<String>) -> std::collections::HashMap<String, UnitGit> {
+    let chunk = folders.len().div_ceil(SYNC_THREADS).max(1);
+    let handles: Vec<_> = folders
+        .chunks(chunk)
+        .map(<[String]>::to_vec)
+        .map(|group| thread::spawn(move || group.into_iter().filter_map(|f| unit_git(&f).map(|g| (f, g))).collect::<Vec<_>>()))
+        .collect();
+    handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+}
+
 fn sync_entry(unit: &SyncUnit) -> Option<(String, BranchSync)> {
     let want = (!unit.branch.is_empty()).then_some(unit.branch.as_str());
     let (resolved, sync) = branch_sync_at(&unit.path, want);
@@ -3435,6 +3473,27 @@ diff --git a/f b/f
         assert_eq!(pull_target(&local.to_string_lossy()), None);
         std::fs::remove_dir_all(&local).ok();
         std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn a_unit_counts_its_dirty_lines_and_unpushed_commits() {
+        let (local, remote) = repo_with_remote();
+        let p = local.to_string_lossy().into_owned();
+        let never_pushed = units_git(vec![p.clone()]).remove(&p).unwrap();
+        assert_eq!((never_pushed.ahead, never_pushed.behind), (None, None));
+
+        git(&local, &["push", "-u", "origin", "main"]);
+        std::fs::write(local.join("f.txt"), "v2").unwrap();
+        git(&local, &["commit", "-aqm", "more"]);
+        std::fs::write(local.join("f.txt"), "v3\nand more\n").unwrap();
+        let not_a_repo = empty_tmp().to_string_lossy().into_owned();
+        let mut got = units_git(vec![p.clone(), not_a_repo.clone()]);
+        assert!(!got.contains_key(&not_a_repo));
+        assert_eq!(got.remove(&p), Some(UnitGit { added: 2, deleted: 1, ahead: Some(1), behind: Some(0) }));
+
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+        std::fs::remove_dir_all(&not_a_repo).ok();
     }
 
     #[test]
