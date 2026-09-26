@@ -1,6 +1,5 @@
 import { createSignal } from "solid-js";
 
-/** A paired Tori, kept on the phone. */
 export type Saved = { url: string; credential: string; id: string; name: string };
 
 export type Status = "connecting" | "open" | "offline" | "revoked";
@@ -38,7 +37,6 @@ export function forget() {
   localStorage.removeItem(KEY);
 }
 
-/** Reads the url and code out of a `tori://pair?url=&code=` link. */
 export function parsePairLink(text: string): { url: string; code: string } | null {
   const prefix = "tori://pair?";
   if (!text.startsWith(prefix)) return null;
@@ -48,7 +46,6 @@ export function parsePairLink(text: string): { url: string; code: string } | nul
   return url && code ? { url, code } : null;
 }
 
-/** Trades a pairing code for a credential. The front closes the connection after the reply. */
 export function pair(url: string, code: string, name: string): Promise<Saved> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -79,13 +76,8 @@ export function pair(url: string, code: string, name: string): Promise<Saved> {
   });
 }
 
-/**
- * One authenticated connection to the remote front, kept open: it reconnects
- * with backoff and resubscribes, and gives up only on a refused credential.
- */
 export class RemoteClient {
   readonly status: () => Status;
-  /** Bumped on every successful auth, so a view reloads what it missed while offline. */
   readonly generation: () => number;
   private setStatus: (s: Status) => void;
   private setGeneration: (n: number) => void;
@@ -111,12 +103,11 @@ export class RemoteClient {
     this.connect();
   }
 
-  request<T = unknown>(method: string, params: unknown = {}): Promise<T> {
+  request<T = unknown>(method: string, params: unknown = {}, replyMs = REPLY_MS): Promise<T> {
     if (this.status() !== "open" || !this.socket) return Promise.reject(new Error("not connected to Tori"));
-    return this.send(this.socket, method, params) as Promise<T>;
+    return this.send(this.socket, method, params, replyMs) as Promise<T>;
   }
 
-  /** Subscribes now if connected, and again after every reconnect. */
   subscribe(topic: string, handler: (data: unknown) => void): () => void {
     let handlers = this.topics.get(topic);
     if (!handlers) {
@@ -133,7 +124,6 @@ export class RemoteClient {
     };
   }
 
-  /** Reconnects now instead of waiting out the backoff, for an app coming back to the foreground. */
   wake() {
     if (this.stopped || this.status() === "connecting") return;
     if (this.status() === "open") return void this.request("caller").catch(() => {});
@@ -149,10 +139,10 @@ export class RemoteClient {
     if (socket) this.drop(socket);
   }
 
-  private send(socket: WebSocket, method: string, params: unknown): Promise<unknown> {
+  private send(socket: WebSocket, method: string, params: unknown, replyMs = REPLY_MS): Promise<unknown> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.drop(socket), REPLY_MS);
+      const timer = setTimeout(() => this.drop(socket), replyMs);
       this.pending.set(id, { resolve, reject, timer });
       socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
@@ -209,7 +199,6 @@ export class RemoteClient {
     else waiting.resolve(frame.result);
   }
 
-  /** Gives up on a socket now rather than waiting for a close event that may never come. */
   private drop(socket: WebSocket) {
     socket.close();
     if (this.socket === socket) this.lost();
