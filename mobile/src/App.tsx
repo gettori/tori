@@ -2,7 +2,7 @@ import { Match, Show, Switch, createEffect, createResource, createSignal, on, on
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
-import { AutopilotChat, watchRunner } from "./Autopilot";
+import AutopilotScreen, { AutopilotChat, watchRunner } from "./Autopilot";
 import BottomBar from "./BottomBar";
 import Chat from "./Chat";
 import { setSpaceName, showWheel, spaceName } from "./prefs";
@@ -23,6 +23,7 @@ type View =
   | { screen: "unit"; unit: Unit; back: string }
   | { screen: "chat"; row: SessionRow }
   | { screen: "autopilot" }
+  | { screen: "autopilotChat" }
   | { screen: "settings" };
 
 function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; link: { url: string; code: string } | null }) {
@@ -142,7 +143,8 @@ function watchTree(client: RemoteClient) {
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
   const live = liveRows(props.client);
   const tree = watchTree(props.client);
-  const { runner, decisions, crew } = watchRunner(props.client);
+  const autopilot = watchRunner(props.client);
+  const { runner, decisions, crew } = autopilot;
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
   const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
@@ -249,6 +251,16 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           }}
         </Match>
         <Match when={top()?.screen === "autopilot"}>
+          <AutopilotScreen
+            client={props.client}
+            watch={autopilot}
+            live={live}
+            onBack={back}
+            onChat={() => go({ screen: "autopilotChat" })}
+            onSession={(id) => go({ screen: "chat", row: live().find((row) => row.id === id) ?? { id, live: true, last_active: 0 } })}
+          />
+        </Match>
+        <Match when={top()?.screen === "autopilotChat"}>
           <AutopilotChat client={props.client} runner={runner} onBack={back} />
         </Match>
       </Switch>
