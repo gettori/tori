@@ -2089,9 +2089,11 @@ pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
 /// Split out so the two-root case is a unit test rather than something only a
 /// second signed-in account can exercise.
 fn find_transcript(roots: &[Root<'_>], session_id: &str) -> Option<Transcript> {
+    // The suffix is required: claude keeps a directory named after the session
+    // beside its transcript once a subagent runs, and it can list first.
     let matches = |name: &str| {
-        let stem = name.strip_suffix(".jsonl").unwrap_or(name);
-        stem == session_id || stem.ends_with(&format!("_{session_id}"))
+        name.strip_suffix(".jsonl")
+            .is_some_and(|stem| stem == session_id || stem.ends_with(&format!("_{session_id}")))
     };
     for root in roots {
         // Per root, never `?`: a profile whose home has not been written to yet
@@ -2833,6 +2835,23 @@ mod tests {
         let found = find_transcript(&roots, "sess-1").expect("the second root holds it");
         assert_eq!(found.path, want.to_string_lossy());
         assert_eq!(found.profile, "work", "the root that held it is the account it belongs to");
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// Claude keeps an `<id>/` directory of subagent sidecars beside
+    /// `<id>.jsonl`. Taken for the transcript, it read as a session with no
+    /// history, whichever of the two the directory listing gave first.
+    #[test]
+    fn the_subagents_directory_is_not_the_transcript() {
+        let m = tmp_machine("sidedir");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        let roots = roots_for(&a, &[crate::accounts::default_profile()]);
+        std::fs::create_dir_all(m.join("default/projects/-repo/sess-3/subagents")).unwrap();
+
+        assert!(find_transcript(&roots, "sess-3").is_none(), "a directory alone is no transcript");
+        let want = write_transcript(&m.join("default/projects"), "/repo", "sess-3");
+        assert_eq!(find_transcript(&roots, "sess-3").expect("the file beside it").path, want.to_string_lossy());
 
         std::fs::remove_dir_all(&m).ok();
     }
