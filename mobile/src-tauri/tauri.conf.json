@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tori",
+  "version": "0.1.0",
+  "identifier": "com.gettori.tori.mobile",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1430",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "label": "main", "title": "Tori", "width": 400, "height": 820 }],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["../../src-tauri/icons/32x32.png", "../../src-tauri/icons/128x128.png", "../../src-tauri/icons/icon.png"]
+  }
+}

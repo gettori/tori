@@ -1,0 +1,11 @@
+{
+  "name": "tori-mobile",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "../node_modules/.bin/vite",
+    "build": "../node_modules/.bin/vite build",
+    "typecheck": "../node_modules/.bin/tsc -p tsconfig.json",
+    "tauri": "../node_modules/.bin/tauri"
+  }
+}

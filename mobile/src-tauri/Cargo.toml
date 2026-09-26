@@ -1,0 +1,15 @@
+[package]
+name = "tori-mobile"
+version = "0.1.0"
+description = "Tori on a phone: the chats of a paired Tori, over its remote front"
+edition = "2021"
+
+[lib]
+name = "tori_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
