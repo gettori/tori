@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import MessageList from "../../src/panels/Chat/MessageList";
 import { applyEvent, initialChat, isRunning, settleBackfill, turnModel, type ChatState } from "../../src/panels/Chat/chatStore";
@@ -23,7 +23,7 @@ function parsed(raw: unknown[]): ChatEvent[] {
   return raw.map(parseChatEvent).filter((ev): ev is ChatEvent => ev !== null);
 }
 
-export default function Chat(props: { client: RemoteClient; session: SessionRow; onBack: () => void }) {
+export default function Chat(props: { client: RemoteClient; session: SessionRow; onBack: () => void; headerEnd?: JSX.Element }) {
   const id = props.session.id;
   const [view, setView] = createStore<{ chat: ChatState; error: string | null }>({ chat: initialChat(id), error: null });
   const [next, setNext] = createSignal<unknown>(null);
@@ -144,6 +144,7 @@ export default function Chat(props: { client: RemoteClient; session: SessionRow;
           Back
         </button>
         <span class={styles.title}>{sessionLabel(props.session)}</span>
+        {props.headerEnd}
       </header>
       {view.error && <div class={styles.error}>{view.error}</div>}
       <div class={styles.transcript}>
