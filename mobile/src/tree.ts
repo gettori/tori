@@ -38,6 +38,35 @@ export type Topic = { id: string; name: string; branch: string; members: TopicMe
 
 export type Tree = { spaces: Space[]; topics: Topic[] };
 
+type Kind = "worktree" | "plain" | "plain-dir";
+
+const KINDS: Record<Kind, [string, string]> = {
+  worktree: ["worktree", "worktrees"],
+  plain: ["branch", "branches"],
+  "plain-dir": ["folder", "folders"],
+};
+
+const kindOf = (unit: Unit): Kind => (unit.kind === "incomplete" ? "worktree" : unit.kind);
+
+export const kindName = (unit: Unit) => KINDS[kindOf(unit)][0];
+
+function kindCounts(units: Unit[]): Map<Kind, number> {
+  const counts = new Map<Kind, number>();
+  for (const unit of units) counts.set(kindOf(unit), (counts.get(kindOf(unit)) ?? 0) + 1);
+  return counts;
+}
+
+/** "2 worktrees . 1 branch": each kind of unit a project has, counted. */
+export function unitCounts(units: Unit[], dot: string): string {
+  return [...kindCounts(units)].map(([kind, n]) => `${n} ${KINDS[kind][n === 1 ? 0 : 1]}`).join(` ${dot} `);
+}
+
+/** The heading over a project's units: their kind, or both when mixed. */
+export function unitsHeading(units: Unit[]): string {
+  const text = [...kindCounts(units).keys()].map((kind) => KINDS[kind][1]).join(" and ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export function inUnit(home: Home | undefined, unit: Unit): boolean {
   return home?.folder === unit.folder && home.branch === unit.branch;
 }

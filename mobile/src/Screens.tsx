@@ -8,10 +8,9 @@ import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, Offline, StateMark } from "./Root";
 import { SessionList, unitSessions } from "./Unit";
-import { atUnit, inUnit, newest, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
+import { atUnit, inUnit, kindName, newest, unitCounts, unitsHeading, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
 import styles from "./shell.module.css";
 
-const KIND: Record<Unit["kind"], string> = { worktree: "worktree", incomplete: "worktree", plain: "branch", "plain-dir": "folder" };
 
 // Git runs once per folder on the Mac; a project with many worktrees on a slow
 // link can take longer than the default reply window.
@@ -20,7 +19,6 @@ const GIT_FOLDERS_MAX = 64;
 const MINUS = "\u2212";
 const UP = "\u2191";
 
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 export function watchGit(client: RemoteClient, folders: () => string[]) {
   const [git] = createResource<Record<string, UnitGit>, string[]>(
@@ -108,7 +106,7 @@ function WorktreeCard(props: { unit: Unit; live: SessionRow[]; git: UnitGit | un
   const rows = () => props.live.filter((row) => inUnit(row.home, props.unit));
   const meta = () => {
     const last = newest(rows());
-    return last ? `${rows().length} live ${DOT} ${ago(last.last_active)}` : KIND[props.unit.kind];
+    return last ? `${rows().length} live ${DOT} ${ago(last.last_active)}` : kindName(props.unit);
   };
   return (
     <li>
@@ -140,7 +138,7 @@ export function ProjectScreen(props: {
   const git = watchGit(props.client, () => props.project.units.map((unit) => unit.folder));
   const sessions = () => props.live().filter((row) => props.project.units.some((unit) => inUnit(row.home, unit))).length;
   const meta = () => {
-    const units = plural(props.project.units.length, "worktree");
+    const units = unitCounts(props.project.units, DOT);
     return sessions() > 0 ? `${units} ${DOT} ${sessions()} live` : units;
   };
   return (
@@ -155,7 +153,7 @@ export function ProjectScreen(props: {
             <span class={styles.headMeta}>{meta()}</span>
           </span>
         </div>
-        <h2 class={styles.label}>Worktrees</h2>
+        <h2 class={styles.label}>{unitsHeading(props.project.units)}</h2>
         <ul class={styles.cards}>
           <For each={props.project.units}>
             {(unit) => (
