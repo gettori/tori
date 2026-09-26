@@ -883,6 +883,7 @@ impl ChatHost {
             }
             track_waiting(&waiting, &id, &event);
             lifecycle.observe(&id, &event);
+            crate::rpc::publish_chat(&id, &event);
             emit(event);
             if fatal {
                 let tab = lock(&sessions).remove(&id).map(|e| e.tab_id);
