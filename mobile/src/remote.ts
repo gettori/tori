@@ -19,6 +19,12 @@ const KEY = "tori-remote";
 // close (the auth timeout on a slow link included) is a network failure.
 const REVOKED = "wrong token";
 
+// A dropped network can leave the socket half open with no close event (seen
+// when Wi-Fi goes off under Tailscale), so an unanswered request or probe is
+// what declares it dead.
+const REPLY_MS = 10_000;
+const PROBE_MS = 20_000;
+
 export function loadSaved(): Saved | null {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Saved | null;
@@ -85,10 +91,11 @@ export class RemoteClient {
   private setGeneration: (n: number) => void;
   private socket: WebSocket | null = null;
   private nextId = 1;
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private topics = new Map<string, Set<(data: unknown) => void>>();
   private retryMs = 1000;
   private retry: ReturnType<typeof setTimeout> | null = null;
+  private probe: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
 
   constructor(
@@ -128,7 +135,8 @@ export class RemoteClient {
 
   /** Reconnects now instead of waiting out the backoff, for an app coming back to the foreground. */
   wake() {
-    if (this.stopped || this.status() === "open" || this.status() === "connecting") return;
+    if (this.stopped || this.status() === "connecting") return;
+    if (this.status() === "open") return void this.request("caller").catch(() => {});
     if (this.retry) clearTimeout(this.retry);
     this.retryMs = 1000;
     this.connect();
@@ -137,13 +145,15 @@ export class RemoteClient {
   close() {
     this.stopped = true;
     if (this.retry) clearTimeout(this.retry);
-    this.socket?.close();
+    const socket = this.socket;
+    if (socket) this.drop(socket);
   }
 
   private send(socket: WebSocket, method: string, params: unknown): Promise<unknown> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => this.drop(socket), REPLY_MS);
+      this.pending.set(id, { resolve, reject, timer });
       socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
   }
@@ -164,6 +174,7 @@ export class RemoteClient {
         () => {
           this.retryMs = 1000;
           this.setStatus("open");
+          this.probe = setInterval(() => void this.send(socket, "caller", null).catch(() => {}), PROBE_MS);
           for (const topic of this.topics.keys()) void this.send(socket, "subscribe", { topic }).catch(() => {});
           this.setGeneration(this.generation() + 1);
         },
@@ -192,14 +203,26 @@ export class RemoteClient {
     }
     const waiting = typeof frame.id === "number" ? this.pending.get(frame.id) : undefined;
     if (!waiting || typeof frame.id !== "number") return;
+    clearTimeout(waiting.timer);
     this.pending.delete(frame.id);
     if (frame.error) waiting.reject(new Error(frame.error.message));
     else waiting.resolve(frame.result);
   }
 
+  /** Gives up on a socket now rather than waiting for a close event that may never come. */
+  private drop(socket: WebSocket) {
+    socket.close();
+    if (this.socket === socket) this.lost();
+  }
+
   private lost() {
     this.socket = null;
-    for (const waiting of this.pending.values()) waiting.reject(new Error("the connection to Tori closed"));
+    if (this.probe) clearInterval(this.probe);
+    this.probe = null;
+    for (const waiting of this.pending.values()) {
+      clearTimeout(waiting.timer);
+      waiting.reject(new Error("the connection to Tori closed"));
+    }
     this.pending.clear();
     if (this.stopped) return;
     this.setStatus("offline");
