@@ -133,7 +133,7 @@ impl Answer {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SessionAnswerParams {
-    /// The session you spawned that is waiting.
+    /// The session that is waiting: one you spawned, or any for a paired device.
     pub session: String,
     /// The id `session.pending` gave the question or permission prompt.
     pub id: String,
@@ -537,7 +537,7 @@ pub trait Backend: Send + Sync {
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
-    fn ask_answer(&self, params: AskAnswerParams) -> Result<Value, RpcError>;
+    fn ask_answer(&self, principal: &Principal, params: AskAnswerParams) -> Result<Value, RpcError>;
     fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError>;
     fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError>;
     fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError>;
@@ -583,8 +583,8 @@ impl Server {
                 let channel = channel(&req.params)?;
                 let sessions = matches!(channel, Channel::Sessions | Channel::Session(_));
                 let kind = self.backend.kind(principal);
-                if matches!(channel, Channel::Accounts | Channel::Autopilot) && kind == CallerKind::Device {
-                    return Err(RpcError::new(REFUSED, "a device subscribes to sessions, session:<id> and chat:<id> only"));
+                if channel == Channel::Accounts && kind == CallerKind::Device {
+                    return Err(RpcError::new(REFUSED, "a device subscribes to sessions, session:<id>, chat:<id> and autopilot only"));
                 }
                 // The stream is for a person watching a chat; an agent reads a session with session.tail.
                 if matches!(channel, Channel::Chat(_)) && !matches!(kind, CallerKind::Device | CallerKind::Local) {
@@ -838,7 +838,7 @@ pub mod tests {
         fn ask_wait(&self, p: AskWaitParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
-        fn ask_answer(&self, p: AskAnswerParams) -> Result<Value, RpcError> {
+        fn ask_answer(&self, _: &Principal, p: AskAnswerParams) -> Result<Value, RpcError> {
             match p.id.as_str() {
                 "gone" => Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", p.id))),
                 _ => Ok(json!({})),
@@ -1119,6 +1119,7 @@ pub mod tests {
             assert!(err.message.contains("only the session that spawned"), "{}", err.message);
         }
         assert!(server.dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &answer()).is_ok());
+        assert!(server.dispatch(0, &Principal::Device("d1".into()), &answer()).is_ok());
         let each = request("session.answer", json!({"session": "w1", "id": "toolu_1", "answer": ["a", "b"]}));
         assert!(server.dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &each).is_ok());
     }
@@ -1151,7 +1152,7 @@ pub mod tests {
     }
 
     #[test]
-    fn a_device_reads_and_drives_chats_and_nothing_else() {
+    fn a_device_reads_and_drives_chats_and_the_autopilot_switch() {
         let open: Vec<&str> = table::METHODS.iter().filter(|m| m.callers.contains(&CallerKind::Device)).map(|m| m.name).collect();
         assert_eq!(
             open,
@@ -1163,8 +1164,12 @@ pub mod tests {
                 "session.interrupt",
                 "session.steer",
                 "session.pending",
+                "session.answer",
                 "ask.answer",
                 "projects.list",
+                "autopilot.state",
+                "autopilot.start",
+                "autopilot.stop",
             ]
         );
         let server = stub_server();
@@ -1173,19 +1178,24 @@ pub mod tests {
         assert_eq!(err.code, REFUSED);
         assert!(err.message.contains("device"), "{}", err.message);
         assert_eq!(server.dispatch(0, &device, &request("caller", Value::Null)).unwrap()["kind"], json!("device"));
+        for method in ["autopilot.start", "autopilot.stop"] {
+            assert!(server.dispatch(0, &device, &request(method, Value::Null)).is_ok(), "{method}");
+            for session in [Principal::Session(Caller::Chat("s1".into())), Principal::Session(Caller::Chat(WORKER.into()))] {
+                assert_eq!(server.dispatch(0, &session, &request(method, Value::Null)).unwrap_err().code, REFUSED, "{method}");
+            }
+        }
     }
 
     #[test]
-    fn a_device_subscribes_to_sessions_and_chats_only() {
+    fn a_device_subscribes_to_everything_but_accounts() {
         let server = stub_server();
         let device = Principal::Device("d1".into());
         let subscribe = |topic: &str| server.dispatch(0, &device, &request("subscribe", json!({ "topic": topic })));
         assert!(subscribe("sessions").is_ok());
         assert!(subscribe("session:s1").is_ok());
         assert!(subscribe("chat:s1").is_ok());
-        for topic in ["autopilot", "accounts"] {
-            assert_eq!(subscribe(topic).unwrap_err().code, REFUSED, "{topic}");
-        }
+        assert!(subscribe("autopilot").is_ok());
+        assert_eq!(subscribe("accounts").unwrap_err().code, REFUSED);
         assert!(server.dispatch(0, &Principal::Local, &request("subscribe", json!({"topic": "autopilot"}))).is_ok());
     }
 

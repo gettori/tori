@@ -108,6 +108,8 @@ pub enum Waited {
 #[derive(Debug, PartialEq)]
 pub enum By {
     User,
+    // A paired phone: a person, like the card, though it arrives over the socket.
+    Device,
     Socket,
 }
 
@@ -473,5 +475,16 @@ mod tests {
         let ask = approval_ask(&asks);
         assert_eq!(asks.answer(&ask.id, APPROVE.into(), By::Socket), Err(NotAnswered::UsersOnly));
         assert_eq!(asks.pending(), vec![ask], "the ask stays open");
+    }
+
+    #[test]
+    fn a_paired_device_approves_like_the_user() {
+        let asks = Asks::default();
+        let ask = approval_ask(&asks);
+        assert_eq!(asks.answer(&ask.id, APPROVE.into(), By::Device), Ok(()));
+        let Waited::Answered { answer, approval_id: Some(_) } = asks.wait(&ask.id, Duration::ZERO) else {
+            panic!("a device's approve grants an approval");
+        };
+        assert_eq!(answer, APPROVE);
     }
 }

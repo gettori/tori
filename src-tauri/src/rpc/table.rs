@@ -45,8 +45,8 @@ impl CallerKind {
 
 const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker];
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
-// A person at a shell or an outside client; no agent session can start a spend.
-const NOT_SESSIONS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal];
+// A person at a shell, an outside client or a paired phone; no agent session can start a spend.
+const NOT_SESSIONS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Device];
 // A paired device reads and drives chats; it never spawns, writes or acts outward.
 const ANYONE_AND_DEVICES: &[CallerKind] =
     &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker, CallerKind::Device];
@@ -158,10 +158,10 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.answer",
-        description: "Answer a question or permission prompt a session you spawned is waiting on, by the id session.pending gave it. An id nothing waits on any more is an error.",
+        description: "Answer a question or permission prompt a session you spawned is waiting on, by the id session.pending gave it. A paired device answers for any session. An id nothing waits on any more is an error.",
         params: schema::<SessionAnswerParams>,
-        callers: &[CallerKind::Chat],
-        refusal: Some("only the session that spawned a worker answers for it"),
+        callers: &[CallerKind::Chat, CallerKind::Device],
+        refusal: Some("only the session that spawned a worker, or a paired device, answers for it"),
         outward: true,
         call: |b, p, v| b.session_answer(p, params(v)?),
     },
@@ -280,7 +280,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
-        call: |b, _, v| b.ask_answer(params(v)?),
+        call: |b, p, v| b.ask_answer(p, params(v)?),
     },
     Method {
         name: "ask.wait",
@@ -340,7 +340,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.state",
         description: "The autopilot's queue: each item with its stored state, whether its session is live and whether its worktree is gone.",
         params: no_params,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         call: |b, _, _| b.autopilot_state(),
@@ -349,7 +349,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.start",
         description: "Turn the autopilot on: start its session with the brief, and start it again when Tori launches. Answers the runner's status.",
         params: no_params,
-        callers: NOT_SESSIONS,
+        callers: NOT_SESSIONS_AND_DEVICES,
         refusal: Some("turning the autopilot on is the user's call"),
         outward: false,
         call: |b, _, _| b.autopilot_start(),
@@ -358,7 +358,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.stop",
         description: "Turn the autopilot off: close its session. The queue on disk and every worker session stay as they are.",
         params: no_params,
-        callers: NOT_SESSIONS,
+        callers: NOT_SESSIONS_AND_DEVICES,
         refusal: Some("turning the autopilot off is the user's call"),
         outward: false,
         call: |b, _, _| b.autopilot_stop(),

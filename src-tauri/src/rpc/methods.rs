@@ -291,10 +291,27 @@ fn project_for_repo(repo: &str, dirs: &[std::path::PathBuf], origin: impl Fn(&st
     }
 }
 
+// Only a device is a person on the socket; any other caller could be an agent
+// approving its own post.
+fn answered_by(principal: &Principal) -> By {
+    match principal {
+        Principal::Device(_) => By::Device,
+        _ => By::Socket,
+    }
+}
+
+// An ask lists wherever its card shows, so a worker's approval lists under its root too.
 fn pending_rows(session: &str, asks: Vec<Ask>, native: Vec<Waiting>) -> Vec<Value> {
-    let asks = asks.into_iter().filter(|ask| ask.session == session);
-    let mut rows: Vec<Value> =
-        asks.map(|ask| json!({ "kind": "ask", "id": ask.id, "text": ask.question, "options": ask.options })).collect();
+    let asks = asks.into_iter().filter(|ask| ask.session == session || ask.shown_in.iter().any(|s| s == session));
+    let mut rows: Vec<Value> = asks
+        .map(|ask| {
+            let mut row = json!({ "kind": "ask", "id": ask.id, "session": ask.session, "text": ask.question, "options": ask.options });
+            if let Some(approval) = ask.approval {
+                row["approval"] = json!(approval);
+            }
+            row
+        })
+        .collect();
     rows.extend(native.into_iter().filter_map(|waiting| serde_json::to_value(waiting).ok()));
     rows
 }
@@ -320,7 +337,9 @@ fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
 fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Result<(), RpcError> {
     match (caller, spawner) {
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
-        _ => Err(refused(format!("only the session that spawned {session} answers for it"))),
+        // A paired device is a person at the prompt, for any session.
+        (Principal::Device(_), _) => Ok(()),
+        _ => Err(refused(format!("only the session that spawned {session}, or a paired device, answers for it"))),
     }
 }
 
@@ -929,8 +948,8 @@ impl Backend for TauriBackend {
         self.wait_for_answer(&params.id, params.timeout)
     }
 
-    fn ask_answer(&self, params: AskAnswerParams) -> Result<Value, RpcError> {
-        match self.asks.answer(&params.id, params.answer, By::Socket) {
+    fn ask_answer(&self, principal: &Principal, params: AskAnswerParams) -> Result<Value, RpcError> {
+        match self.asks.answer(&params.id, params.answer, answered_by(principal)) {
             Ok(()) => {}
             Err(NotAnswered::Unknown) => {
                 return Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", params.id)))
@@ -1496,18 +1515,42 @@ mod tests {
                 detail: Some("ls".into()),
             },
         ];
-        let rows = pending_rows("w1", vec![ask("ask-1", "w1"), ask("ask-2", "other")], native);
+        let mut mirrored = ask("ask-3", "worker");
+        mirrored.shown_in = vec!["worker".into(), "w1".into()];
+        mirrored.approval = Some(crate::rpc::approvals::Approval {
+            project: "/p".into(),
+            draft: crate::rpc::approvals::Draft::PrMerge {
+                number: 7,
+                method: crate::forge::MergeMethod::Squash,
+                head_sha: "abc".into(),
+            },
+        });
+        let rows = pending_rows("w1", vec![ask("ask-1", "w1"), ask("ask-2", "other"), mirrored], native);
         let kinds: Vec<(&str, &str)> = rows.iter().map(|r| (r["kind"].as_str().unwrap(), r["id"].as_str().unwrap())).collect();
-        assert_eq!(kinds, [("ask", "ask-1"), ("question", "toolu_q"), ("permission", "toolu_p")]);
+        assert_eq!(kinds, [("ask", "ask-1"), ("ask", "ask-3"), ("question", "toolu_q"), ("permission", "toolu_p")]);
         assert_eq!(rows[0]["text"], "ship it?");
-        assert_eq!(rows[2]["tool"], "Bash");
-        assert!(rows[1].get("request_id").is_none(), "the host's request id stays inside: {}", rows[1]);
+        assert!(rows[0].get("approval").is_none());
+        assert_eq!(rows[1]["session"], "worker", "a worker's approval lists under the root it shows in");
+        assert_eq!(rows[1]["approval"]["head_sha"], "abc", "with the whole draft: {}", rows[1]);
+        assert_eq!(rows[3]["tool"], "Bash");
+        assert!(rows[2].get("request_id").is_none(), "the host's request id stays inside: {}", rows[2]);
+    }
+
+    #[test]
+    fn only_a_device_answers_an_ask_as_a_person() {
+        assert_eq!(answered_by(&Principal::Device("d1".into())), By::Device);
+        for other in [Principal::Local, Principal::Session(Caller::Chat("s1".into())), Principal::Session(Caller::Terminal("t1".into()))] {
+            assert_eq!(answered_by(&other), By::Socket, "{other:?}");
+        }
     }
 
     #[test]
     fn only_the_spawner_answers_for_a_worker() {
         let chat = |id: &str| Principal::Session(Caller::Chat(id.into()));
         assert!(answers_for(&chat("pilot"), Some("pilot".into()), "w1").is_ok());
+        let device = Principal::Device("d1".into());
+        assert!(answers_for(&device, Some("pilot".into()), "w1").is_ok());
+        assert!(answers_for(&device, None, "s1").is_ok(), "a device answers a session nobody spawned");
         for (caller, spawner) in [(chat("other"), Some("pilot".into())), (chat("pilot"), None), (Principal::Local, Some("pilot".into()))] {
             let err = answers_for(&caller, spawner, "w1").unwrap_err();
             assert_eq!(err.code, REFUSED, "{}", err.message);
