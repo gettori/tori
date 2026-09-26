@@ -187,3 +187,67 @@
   padding: 8px 16px;
   color: var(--attention-fg);
 }
+
+.rowEnd {
+  margin-left: auto;
+  flex: none;
+}
+
+.plain,
+.sublist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unit {
+  padding-left: 40px;
+}
+
+.section {
+  margin: 0;
+  padding: 16px 16px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 16px;
+  margin: 0;
+  padding: 20px 16px;
+}
+
+.facts dt {
+  color: var(--fg-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+}
+
+.actions .hint {
+  padding: 12px 0 0;
+}
+
+.danger {
+  min-height: 48px;
+  color: var(--danger-fg);
+  background: none;
+  border: 1px solid var(--danger-fg);
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+}
+

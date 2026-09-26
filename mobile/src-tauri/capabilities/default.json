@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The phone app talks to Tori over a WebSocket, not IPC, so it needs only the core",
+  "description": "The phone app talks to Tori over a WebSocket, not IPC; it only reads the tori://pair link it was opened with",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "deep-link:default"]
 }

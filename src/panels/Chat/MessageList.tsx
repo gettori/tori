@@ -274,6 +274,9 @@ export default function MessageList(props: {
    *  what a blocked row does. */
   blockedIn?: (item: ChatItem) => string | null;
   onOpenLane?: (agentId: string) => void;
+  /** Fetch the page before the first item, for a caller that holds only the
+   *  latest pages. Asked for once every held item is already shown. */
+  onFetchEarlier?: () => void;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -519,9 +522,15 @@ export default function MessageList(props: {
       }}
       onScroll={() => setStuck(atBottom())}
     >
-      <Show when={hasEarlier(props.items, limit())}>
+      <Show when={hasEarlier(props.items, limit()) || props.onFetchEarlier}>
         <div class={styles.loadEarlier}>
-          <Button size="sm" onClick={() => setLimit(limit() + WINDOW_STEP)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (!hasEarlier(props.items, limit())) props.onFetchEarlier?.();
+              setLimit(limit() + WINDOW_STEP);
+            }}
+          >
             Load earlier
           </Button>
         </div>
