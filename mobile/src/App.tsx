@@ -64,9 +64,10 @@ function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null }
 }
 
 function Sessions(props: { client: RemoteClient; onOpen: (row: SessionRow) => void }) {
-  const [rows, { refetch }] = createResource(
+  const [rows, { refetch }] = createResource<SessionRow[], number>(
     () => props.client.generation() || undefined,
-    () => props.client.request<SessionRow[]>("sessions.list", { live: true, limit: 50 }),
+    // A failed load keeps the last rows: the reconnect that follows refetches.
+    (_, info) => props.client.request<SessionRow[]>("sessions.list", { live: true, limit: 50 }).catch(() => info.value ?? []),
   );
   const moved = (data: unknown) => {
     const kind = (data as { kind?: string } | null)?.kind;
