@@ -1,7 +1,7 @@
 .screen {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: 100%;
   background: var(--canvas-default);
   color: var(--fg-default);
   padding-top: env(safe-area-inset-top);
@@ -128,7 +128,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 100dvh;
+  height: 100%;
+  overflow-y: auto;
   padding: calc(env(safe-area-inset-top) + 24px) 20px 24px;
   background: var(--canvas-default);
   color: var(--fg-default);

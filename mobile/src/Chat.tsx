@@ -153,6 +153,7 @@ export default function Chat(props: { client: RemoteClient; session: SessionRow;
           sessionId={id}
           cwd={props.session.cwd ?? ""}
           modelLabelFor={(turnId) => turnModel(view.chat, turnId)}
+          agentTurn={(turnId) => view.chat.turns[turnId]?.agentInitiated === true}
           onSetMode={() => {}}
           onRevertHunk={async () => false}
           onFetchEarlier={next() ? () => void earlier() : undefined}

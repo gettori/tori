@@ -2,9 +2,14 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#15171c" />
     <title>Tori</title>
+    <style>
+      /* The window is what shrinks for the keyboard; a document that could scroll
+         would scroll the header away to reach the focused box instead. */
+      html, body, #root { height: 100%; overflow: hidden; background: var(--canvas-default); }
+    </style>
   </head>
 
   <body>
