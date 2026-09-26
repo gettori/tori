@@ -391,12 +391,14 @@ li + li > .item {
   box-shadow: 0 0 22px color-mix(in srgb, var(--status-progress) 35%, transparent);
 }
 
-.wheel[data-on="true"] svg {
+.wheel[data-on="true"] svg,
+.apChip[data-spin="true"] svg {
   animation: spin 4.5s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wheel[data-on="true"] svg {
+  .wheel[data-on="true"] svg,
+  .apChip[data-spin="true"] svg {
     animation: none;
   }
 }
@@ -690,4 +692,458 @@ li + li > .item {
   margin: 0;
   font-size: 14px;
   color: var(--attention-fg);
+}
+
+.projectHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 20px 22px;
+}
+
+.bigTile {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  font-size: 22px;
+}
+
+.headTitle {
+  overflow-wrap: anywhere;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+}
+
+.headMeta {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.unitHead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 20px 22px;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 16px 26px;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 15px 16px;
+  color: inherit;
+  background: var(--m-surface);
+  border: 1px solid var(--m-line);
+  border-radius: 20px;
+  font: inherit;
+  text-align: left;
+}
+
+.card[data-crew="true"],
+.card[data-phase="working"] {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--status-progress) 10%, transparent), var(--m-surface) 70%);
+  border-color: color-mix(in srgb, var(--status-progress) 28%, transparent);
+}
+
+.card[data-crew="true"] .cardHead > svg {
+  color: var(--status-progress);
+}
+
+.card[data-phase="needs"] {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--status-needs-you) 9%, transparent), var(--m-surface) 70%);
+  border-color: color-mix(in srgb, var(--status-needs-you) 28%, transparent);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cardHead > .name {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 30px;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.diff {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  font-family: var(--tori-font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.unitHead .diff {
+  margin-left: 0;
+  font-size: 12.5px;
+}
+
+.added {
+  color: var(--diff-added);
+}
+
+.deleted {
+  color: var(--diff-deleted);
+}
+
+.ahead {
+  color: var(--brand-default);
+}
+
+.newPill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  margin-left: auto;
+  padding: 0 16px;
+  border: none;
+  border-radius: 22px;
+  color: var(--brand-on);
+  background: var(--brand-default);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.newPill:disabled {
+  opacity: 0.6;
+}
+
+.agentTile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  align-self: flex-start;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--brand-default);
+  background: color-mix(in srgb, var(--brand-default) 14%, transparent);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.stateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 42px;
+  font-size: 13px;
+}
+
+.stateDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--fg-subtle);
+}
+
+.stateDot[data-phase="working"] {
+  background: var(--status-progress);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-progress) 20%, transparent);
+}
+
+.stateDot[data-phase="needs"] {
+  background: var(--status-needs-you);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-needs-you) 20%, transparent);
+}
+
+.stateDot[data-phase="idle"] {
+  background: var(--status-idle);
+}
+
+.stateLabel {
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+
+.stateLabel[data-phase="working"] {
+  color: var(--progress-on-subtle);
+}
+
+.stateLabel[data-phase="needs"] {
+  color: var(--needs-you-on-subtle);
+}
+
+.time {
+  flex: none;
+  font-family: var(--tori-font-mono);
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+
+.apChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 9px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--progress-on-subtle);
+  background: color-mix(in srgb, var(--status-progress) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-progress) 35%, transparent);
+}
+
+.apChip svg {
+  color: var(--status-progress);
+}
+
+.historyItem {
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 16px;
+}
+
+.historyMark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  color: var(--fg-subtle);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.historyTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--fg-muted);
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--canvas-default);
+}
+
+.chatTop {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(var(--canvas-default) 70%, transparent);
+}
+
+.chatTitles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chatTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stateLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.stateLine .stateDot {
+  width: 6px;
+  height: 6px;
+  box-shadow: none;
+}
+
+.menuAnchor {
+  position: relative;
+  flex: none;
+}
+
+.more {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
+  border-radius: 22px;
+}
+
+.menuDim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.menu {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--canvas-card);
+  border: 1px solid var(--m-line);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 35%);
+}
+
+.menu button {
+  min-height: 48px;
+  padding: 0 16px;
+  color: var(--fg-default);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.menu button + button {
+  border-top: 1px solid var(--m-separator);
+}
+
+.menu button:disabled {
+  color: var(--fg-subtle);
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 8px 12px 12px;
+  padding: 14px 10px 10px 16px;
+  border-radius: 26px;
+  background: var(--canvas-card);
+  border: 1px solid var(--m-line);
+  box-shadow: 0 -10px 30px rgb(0 0 0 / 20%);
+}
+
+.composerInput {
+  field-sizing: content;
+  min-height: 22px;
+  max-height: 30dvh;
+  padding: 0;
+  color: var(--fg-default);
+  background: none;
+  border: none;
+  outline: none;
+  resize: none;
+  font: inherit;
+  font-size: 16px;
+}
+
+.composerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: 18px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  background: var(--m-chip);
+  border: 1px solid transparent;
+}
+
+.chip > svg,
+.chip > span {
+  flex: none;
+  color: var(--brand-default);
+}
+
+.chip[data-permissive="true"] {
+  color: var(--brand-default);
+  background: none;
+  border-color: color-mix(in srgb, var(--brand-default) 45%, transparent);
+}
+
+.chip select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  font-size: 16px;
+}
+
+.send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 20px;
+  color: var(--brand-on);
+  background: var(--brand-default);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--brand-default) 35%, transparent);
+}
+
+.send:disabled {
+  opacity: 0.5;
+  box-shadow: none;
 }

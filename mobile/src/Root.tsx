@@ -83,7 +83,7 @@ function Results(props: {
   live: SessionRow[];
   query: string;
   onProject: (project: Project) => void;
-  onUnit: (unit: Unit) => void;
+  onUnit: (unit: Unit, back: string) => void;
   onSession: (row: SessionRow) => void;
 }) {
   const projects = () => props.tree.spaces.flatMap((space) => space.projects);
@@ -108,7 +108,7 @@ function Results(props: {
           <For each={units()}>
             {({ project, unit }) => (
               <li>
-                <button class={styles.item} onClick={() => props.onUnit(unit)}>
+                <button class={styles.item} onClick={() => props.onUnit(unit, project.name)}>
                   <span class={styles.text}>
                     <span class={styles.name}>{unit.label}</span>
                     <span class={styles.meta}>{project.name}</span>
@@ -145,7 +145,7 @@ export default function Root(props: {
   notice: string | null;
   onProject: (project: Project) => void;
   onTopic: (topic: Topic) => void;
-  onUnit: (unit: Unit) => void;
+  onUnit: (unit: Unit, back: string) => void;
   onSession: (row: SessionRow) => void;
   onSettings: () => void;
 }) {

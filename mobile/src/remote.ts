@@ -24,6 +24,17 @@ const REVOKED = "wrong token";
 const REPLY_MS = 10_000;
 const PROBE_MS = 20_000;
 
+export const REFUSED_CODE = -32002;
+
+export class RpcError extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+  ) {
+    super(message);
+  }
+}
+
 export function loadSaved(): Saved | null {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Saved | null;
@@ -195,7 +206,7 @@ export class RemoteClient {
     if (!waiting || typeof frame.id !== "number") return;
     clearTimeout(waiting.timer);
     this.pending.delete(frame.id);
-    if (frame.error) waiting.reject(new Error(frame.error.message));
+    if (frame.error) waiting.reject(new RpcError(frame.error.message, frame.error.code));
     else waiting.resolve(frame.result);
   }
 

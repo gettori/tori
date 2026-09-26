@@ -11,7 +11,7 @@ import { ProjectScreen, TopicScreen } from "./Screens";
 import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
-import type { Project, SessionRow, Topic, Tree, Unit } from "./tree";
+import { inUnit, type Project, type SessionRow, type Topic, type Tree, type Unit } from "./tree";
 import shell from "./shell.module.css";
 
 const PHONE_NAME = "Phone";
@@ -20,7 +20,7 @@ const LIVE_LIMIT = 200;
 type View =
   | { screen: "project"; project: Project }
   | { screen: "topic"; topic: Topic }
-  | { screen: "unit"; unit: Unit }
+  | { screen: "unit"; unit: Unit; back: string }
   | { screen: "chat"; row: SessionRow }
   | { screen: "autopilot" }
   | { screen: "settings" };
@@ -142,7 +142,7 @@ function watchTree(client: RemoteClient) {
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
   const live = liveRows(props.client);
   const tree = watchTree(props.client);
-  const { runner, decisions } = watchRunner(props.client);
+  const { runner, decisions, crew } = watchRunner(props.client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
   const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
@@ -166,8 +166,17 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
     return views[views.length - 1];
   };
   const barred = () => !top() || ["project", "topic", "unit"].includes(top()!.screen);
-  const openUnit = (unit: Unit) => go({ screen: "unit", unit });
+  const openUnit = (unit: Unit, back: string) => go({ screen: "unit", unit, back });
   const openSession = (row: SessionRow) => go({ screen: "chat", row });
+  const units = () => tree()?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name })))) ?? [];
+  // From a chat reached through its worktree, the worktree is one step back.
+  const openHome = (row: SessionRow) => {
+    const found = units().find(({ unit }) => inUnit(row.home, unit));
+    if (!found) return;
+    const below = stack()[stack().length - 2];
+    if (below?.screen === "unit" && inUnit(row.home, below.unit)) back();
+    else openUnit(found.unit, found.project);
+  };
 
   return (
     <div class={shell.shell} style={{ "--space-rgb": hue() }}>
@@ -190,17 +199,54 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
       >
         <Match when={top()?.screen === "project" && (top() as { project: Project }).project} keyed>
           {(project) => (
-            <ProjectScreen client={props.client} project={project} space={space()?.name ?? ""} live={live} onUnit={openUnit} onBack={back} />
+            <ProjectScreen
+              client={props.client}
+              project={project}
+              space={space()?.name ?? ""}
+              live={live}
+              crew={crew}
+              onUnit={(unit) => openUnit(unit, project.name)}
+              onBack={back}
+            />
           )}
         </Match>
         <Match when={top()?.screen === "topic" && (top() as { topic: Topic }).topic} keyed>
-          {(topic) => <TopicScreen client={props.client} topic={topic} tree={tree()} live={live} onUnit={openUnit} onBack={back} />}
+          {(topic) => (
+            <TopicScreen client={props.client} topic={topic} tree={tree()} live={live} onUnit={(unit) => openUnit(unit, topic.name)} onBack={back} />
+          )}
         </Match>
-        <Match when={top()?.screen === "unit" && (top() as { unit: Unit }).unit} keyed>
-          {(unit) => <UnitScreen client={props.client} unit={unit} live={live} onOpen={openSession} onBack={back} />}
+        <Match when={top()?.screen === "unit" && (top() as { unit: Unit; back: string })} keyed>
+          {(view) => (
+            <UnitScreen
+              client={props.client}
+              unit={view.unit}
+              back={view.back}
+              live={live}
+              crew={crew}
+              autopilotOn={(runner()?.state ?? "off") !== "off"}
+              onOpen={openSession}
+              onBack={back}
+            />
+          )}
         </Match>
         <Match when={top()?.screen === "chat" && (top() as { row: SessionRow }).row} keyed>
-          {(row) => <Chat client={props.client} session={row} onBack={back} />}
+          {(row) => {
+            // Gone from the live list after being in it means the session ended.
+            let seen = false;
+            const current = () => {
+              const found = live().find((r) => r.id === row.id);
+              if (found) seen = true;
+              return found ?? (seen ? { ...row, live: false } : row);
+            };
+            return (
+              <Chat
+                client={props.client}
+                session={current}
+                onBack={back}
+                onUnit={units().some(({ unit }) => inUnit(row.home, unit)) ? () => openHome(current()) : undefined}
+              />
+            );
+          }}
         </Match>
         <Match when={top()?.screen === "autopilot"}>
           <AutopilotChat client={props.client} runner={runner} onBack={back} />

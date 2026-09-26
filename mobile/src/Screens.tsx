@@ -1,13 +1,64 @@
-import { For, Match, Switch } from "solid-js";
+import { For, Match, Show, Switch, createResource, type JSX } from "solid-js";
 import { ChevronLeft, Folder } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
+import { ago } from "../../src/utils/relativeTime";
+import type { Crew } from "./Autopilot";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, Offline, StateMark } from "./Root";
-import { inUnit, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit } from "./tree";
+import { inUnit, newest, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
 import styles from "./shell.module.css";
 
 const KIND: Record<Unit["kind"], string> = { worktree: "worktree", incomplete: "worktree", plain: "branch", "plain-dir": "folder" };
+
+// Git runs once per folder on the Mac; a project with many worktrees on a slow
+// link can take longer than the default reply window.
+const GIT_REPLY_MS = 30_000;
+const GIT_FOLDERS_MAX = 64;
+const MINUS = "\u2212";
+const UP = "\u2191";
+
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+export function watchGit(client: RemoteClient, folders: () => string[]) {
+  const [git] = createResource<Record<string, UnitGit>, string[]>(
+    () => (client.generation() ? folders() : undefined),
+    (list, info) =>
+      client
+        .request<Record<string, UnitGit>>("units.git", { folders: list.slice(0, GIT_FOLDERS_MAX) }, GIT_REPLY_MS)
+        .catch(() => info.value ?? {}),
+  );
+  return git;
+}
+
+export function GitCounts(props: { git: UnitGit | undefined; lead?: JSX.Element }) {
+  return (
+    <span class={styles.diff}>
+      {props.lead}
+      <Show when={props.git}>
+        {(git) => (
+          <>
+            <Show when={git().added > 0}>
+              <span class={styles.added}>+{git().added}</span>
+            </Show>
+            <Show when={git().deleted > 0}>
+              <span class={styles.deleted}>
+                {MINUS}
+                {git().deleted}
+              </span>
+            </Show>
+            <Show when={(git().ahead ?? 0) > 0}>
+              <span class={styles.ahead}>
+                {UP}
+                {git().ahead}
+              </span>
+            </Show>
+          </>
+        )}
+      </Show>
+    </span>
+  );
+}
 
 function UnitIcon(props: { unit: Unit; active: boolean }) {
   return (
@@ -39,14 +90,39 @@ function UnitItem(props: { unit: Unit; name?: string; meta: string; live: Sessio
   );
 }
 
-function PushTop(props: { back: string; onBack: () => void }) {
+export function PushTop(props: { back: string; onBack: () => void; end?: JSX.Element }) {
   return (
     <header class={styles.pushTop}>
       <button class={styles.circle} aria-label="Back" onClick={() => props.onBack()}>
         <Icon icon={ChevronLeft} size={20} strokeWidth={2} />
       </button>
       <span class={styles.backLabel}>{props.back}</span>
+      {props.end}
     </header>
+  );
+}
+
+function WorktreeCard(props: { unit: Unit; live: SessionRow[]; git: UnitGit | undefined; crewed: boolean; onOpen: () => void }) {
+  const rows = () => props.live.filter((row) => inUnit(row.home, props.unit));
+  const meta = () => {
+    const last = newest(rows());
+    return last ? `${rows().length} live ${DOT} ${ago(last.last_active)}` : KIND[props.unit.kind];
+  };
+  return (
+    <li>
+      <button class={styles.card} data-crew={props.crewed} onClick={() => props.onOpen()}>
+        <span class={styles.cardHead}>
+          <UnitIcon unit={props.unit} active={props.crewed || rollupOf(rows()).executing > 0} />
+          <span class={styles.name}>{props.unit.label}</span>
+          <StateMark rows={rows()} />
+          <Chevron />
+        </span>
+        <span class={styles.cardMeta}>
+          <span>{meta()}</span>
+          <GitCounts git={props.git} />
+        </span>
+      </button>
+    </li>
   );
 }
 
@@ -55,24 +131,37 @@ export function ProjectScreen(props: {
   project: Project;
   space: string;
   live: () => SessionRow[];
+  crew: () => Crew;
   onUnit: (unit: Unit) => void;
   onBack: () => void;
 }) {
-  const sessions = (unit: Unit) => props.live().filter((row) => inUnit(row.home, unit)).length;
+  const git = watchGit(props.client, () => props.project.units.map((unit) => unit.folder));
+  const sessions = () => props.live().filter((row) => props.project.units.some((unit) => inUnit(row.home, unit))).length;
+  const meta = () => {
+    const units = plural(props.project.units.length, "worktree");
+    return sessions() > 0 ? `${units} ${DOT} ${sessions()} live` : units;
+  };
   return (
     <div class={styles.glow}>
       <PushTop back={props.space} onBack={props.onBack} />
       <Offline client={props.client} />
       <div class={styles.scroll}>
-        <h1 class={styles.screenTitle}>{props.project.name}</h1>
+        <div class={styles.projectHead}>
+          <span class={`${styles.tile} ${styles.bigTile}`}>{props.project.name.slice(0, 1)}</span>
+          <span class={styles.text}>
+            <span class={styles.headTitle}>{props.project.name}</span>
+            <span class={styles.headMeta}>{meta()}</span>
+          </span>
+        </div>
         <h2 class={styles.label}>Worktrees</h2>
-        <ul class={styles.group}>
+        <ul class={styles.cards}>
           <For each={props.project.units}>
             {(unit) => (
-              <UnitItem
+              <WorktreeCard
                 unit={unit}
-                meta={sessions(unit) > 0 ? `${sessions(unit)} live` : KIND[unit.kind]}
                 live={props.live()}
+                git={git()?.[unit.folder]}
+                crewed={props.crew().worktrees.has(unit.folder)}
                 onOpen={() => props.onUnit(unit)}
               />
             )}
