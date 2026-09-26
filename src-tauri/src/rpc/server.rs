@@ -4,7 +4,7 @@
 //! socket's write half after auth.
 
 use std::io::BufReader;
-use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::{sync_channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -23,7 +23,7 @@ use super::frame::{
     read_request, to_line, write_line, ReadError, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
 };
-use super::hub::{Channel, ConnId, Hub, QUEUE_CAP};
+use super::hub::{Channel, ChatOutbox, ConnId, Hub, QUEUE_CAP, WAKE};
 use super::table::{self, CallerKind};
 use super::transport::{Stream, Transport};
 
@@ -582,8 +582,13 @@ impl Server {
             "subscribe" => {
                 let channel = channel(&req.params)?;
                 let sessions = matches!(channel, Channel::Sessions | Channel::Session(_));
-                if !sessions && self.backend.kind(principal) == CallerKind::Device {
-                    return Err(RpcError::new(REFUSED, "a device subscribes to sessions and session:<id> only"));
+                let kind = self.backend.kind(principal);
+                if matches!(channel, Channel::Accounts | Channel::Autopilot) && kind == CallerKind::Device {
+                    return Err(RpcError::new(REFUSED, "a device subscribes to sessions, session:<id> and chat:<id> only"));
+                }
+                // The stream is for a person watching a chat; an agent reads a session with session.tail.
+                if matches!(channel, Channel::Chat(_)) && !matches!(kind, CallerKind::Device | CallerKind::Local) {
+                    return Err(RpcError::new(REFUSED, "chat:<id> is open to a device or a local client only"));
                 }
                 if sessions {
                     self.backend.watching_sessions();
@@ -628,6 +633,30 @@ pub fn serve(transport: Arc<dyn Transport>, credential: Arc<Credential>, server:
             Err(_) => continue,
         }
     });
+}
+
+// Replies and other topics first; the chat queue only when the main one is empty.
+fn drain(rx: &Receiver<String>, chat: &ChatOutbox, mut write: impl FnMut(&str) -> bool) {
+    loop {
+        let line = match rx.try_recv() {
+            Ok(line) => line,
+            Err(TryRecvError::Disconnected) => return,
+            Err(TryRecvError::Empty) => match chat.pop() {
+                Some(line) => line,
+                None => match rx.recv() {
+                    Ok(line) => line,
+                    Err(_) => return,
+                },
+            },
+        };
+        if line == WAKE {
+            chat.clear_wake();
+            continue;
+        }
+        if !write(&line) {
+            return;
+        }
+    }
 }
 
 fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>) {
@@ -688,12 +717,12 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
         stream.close();
         return;
     }
+    let Some(chat) = server.hub.chat_outbox(conn) else {
+        stream.close();
+        return;
+    };
     let writer = thread::spawn(move || {
-        for line in rx {
-            if write_line(&mut stream, &line).is_err() {
-                break;
-            }
-        }
+        drain(&rx, &chat, |line| write_line(&mut stream, line).is_ok());
         stream.close();
     });
 
@@ -1147,16 +1176,52 @@ pub mod tests {
     }
 
     #[test]
-    fn a_device_subscribes_to_sessions_only() {
+    fn a_device_subscribes_to_sessions_and_chats_only() {
         let server = stub_server();
         let device = Principal::Device("d1".into());
         let subscribe = |topic: &str| server.dispatch(0, &device, &request("subscribe", json!({ "topic": topic })));
         assert!(subscribe("sessions").is_ok());
         assert!(subscribe("session:s1").is_ok());
+        assert!(subscribe("chat:s1").is_ok());
         for topic in ["autopilot", "accounts"] {
             assert_eq!(subscribe(topic).unwrap_err().code, REFUSED, "{topic}");
         }
         assert!(server.dispatch(0, &Principal::Local, &request("subscribe", json!({"topic": "autopilot"}))).is_ok());
+    }
+
+    #[test]
+    fn only_a_device_or_a_local_client_reads_a_chat_stream() {
+        let server = stub_server();
+        let chat = || request("subscribe", json!({ "topic": "chat:s1" }));
+        assert!(server.dispatch(0, &Principal::Local, &chat()).is_ok());
+        for caller in [
+            Principal::Session(Caller::Chat("s2".into())),
+            Principal::Session(Caller::Chat(WORKER.into())),
+            Principal::Session(Caller::Terminal("t1".into())),
+        ] {
+            assert_eq!(server.dispatch(0, &caller, &chat()).unwrap_err().code, REFUSED, "{caller:?}");
+        }
+    }
+
+    #[test]
+    fn the_writer_sends_replies_before_a_queued_chat_stream() {
+        let hub = Hub::default();
+        let (tx, rx) = sync_channel(QUEUE_CAP);
+        let conn = hub.register(tx.clone(), Box::new(|| {}));
+        hub.subscribe(conn, Channel::Chat("s1".into()));
+        let chat = hub.chat_outbox(conn).unwrap();
+        hub.publish(&Channel::Chat("s1".into()), json!({ "n": 1 }));
+        hub.publish(&Channel::Chat("s1".into()), json!({ "n": 2 }));
+        tx.send("reply".into()).unwrap();
+
+        let mut written = Vec::new();
+        drain(&rx, &chat, |line| {
+            written.push(line.to_string());
+            written.len() < 3
+        });
+        assert_eq!(written[0], "reply", "the reply overtakes the stream queued before it");
+        let chat_lines: Vec<Value> = written[1..].iter().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(chat_lines.iter().map(|l| l["params"]["data"]["n"].clone()).collect::<Vec<_>>(), [json!(1), json!(2)]);
     }
 
     #[test]
@@ -1248,6 +1313,18 @@ pub mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(r.hub.subscriptions(), 0);
+    }
+
+    #[test]
+    fn a_chat_stream_reaches_its_subscriber_and_a_reply_still_follows() {
+        let r = start(AUTH_TIMEOUT);
+        let mut c = authed(&r);
+        assert_eq!(c.call(1, "subscribe", json!({"topic": "chat:s1"}))["result"], json!({}));
+        r.hub.publish(&Channel::Chat("s1".into()), json!({"type": "textDelta", "text": "hi"}));
+        let event = c.recv().unwrap();
+        assert_eq!(event["params"]["topic"], json!("chat:s1"));
+        assert_eq!(event["params"]["data"]["text"], json!("hi"));
+        assert_eq!(c.call(2, "sessions.list", json!({"limit": 1}))["result"], json!([{"id": "s1", "limit": 1}]));
     }
 
     // Revokes the device while the auth reply is on its way, the one moment

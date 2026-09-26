@@ -1,12 +1,15 @@
 //! Subscriptions. `publish` runs on whatever thread noticed the event, which
 //! for a chat session is the agent's stdout reader, so it must never block on a
 //! client: each connection has a bounded outbound queue, and a client that lets
-//! its queue fill is dropped rather than waited for.
+//! its queue fill is dropped rather than waited for. A chat stream is the
+//! exception: it has its own queue, and falling behind on it costs a resync,
+//! not the connection.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
@@ -14,6 +17,13 @@ use super::frame::{to_line, Notification};
 
 /// Lines a connection may have queued before it counts as not reading.
 pub const QUEUE_CAP: usize = 256;
+
+/// Chat lines a connection may have queued before its chat queue is cleared.
+pub const CHAT_CAP: usize = 256;
+
+/// The empty line a publisher sends through the main queue to wake a writer
+/// blocked on it when only the chat queue has lines. Never written.
+pub const WAKE: &str = "";
 
 /// What the wire calls a topic. Named apart from it because "Topic" already
 /// means a feature workspace in this codebase.
@@ -23,6 +33,7 @@ pub enum Channel {
     Session(String),
     Accounts,
     Autopilot,
+    Chat(String),
 }
 
 impl Channel {
@@ -31,7 +42,10 @@ impl Channel {
             "sessions" => Some(Channel::Sessions),
             "accounts" => Some(Channel::Accounts),
             "autopilot" => Some(Channel::Autopilot),
-            _ => topic.strip_prefix("session:").filter(|id| !id.is_empty()).map(|id| Channel::Session(id.to_string())),
+            _ => {
+                let id = |prefix| topic.strip_prefix(prefix).filter(|id| !id.is_empty()).map(str::to_string);
+                id("session:").map(Channel::Session).or_else(|| id("chat:").map(Channel::Chat))
+            }
         }
     }
 }
@@ -43,6 +57,7 @@ impl fmt::Display for Channel {
             Channel::Session(id) => write!(f, "session:{id}"),
             Channel::Accounts => f.write_str("accounts"),
             Channel::Autopilot => f.write_str("autopilot"),
+            Channel::Chat(id) => write!(f, "chat:{id}"),
         }
     }
 }
@@ -57,6 +72,59 @@ struct Conn {
     channels: HashSet<Channel>,
     /// The paired device on the other end, so revoking it can drop the connection.
     device: Option<String>,
+    chat: Arc<ChatOutbox>,
+}
+
+/// A connection's chat lines, drained by its writer only when the main queue
+/// is empty, so replies and other topics never wait behind a stream.
+#[derive(Default)]
+pub struct ChatOutbox {
+    lines: Mutex<VecDeque<(String, String)>>,
+    woken: AtomicBool,
+}
+
+impl ChatOutbox {
+    pub fn pop(&self) -> Option<String> {
+        self.lock().pop_front().map(|(_, line)| line)
+    }
+
+    pub fn clear_wake(&self) {
+        self.woken.store(false, Ordering::SeqCst);
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, VecDeque<(String, String)>> {
+        self.lines.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // Past the cap the queued stream is useless to the client, so every
+    // session in it gets one resync in place of its lines, this one included.
+    fn push(&self, id: &str, line: String) {
+        let mut lines = self.lock();
+        if lines.len() < CHAT_CAP {
+            lines.push_back((id.to_string(), line));
+            return;
+        }
+        let mut ids: Vec<String> = lines.drain(..).map(|(id, _)| id).collect();
+        ids.push(id.to_string());
+        ids.sort();
+        ids.dedup();
+        lines.extend(ids.into_iter().map(|id| {
+            let line = event_line(&Channel::Chat(id.clone()), json!({ "kind": "chat.resync", "id": id }));
+            (id, line)
+        }));
+    }
+
+    fn wake(&self, tx: &SyncSender<String>) {
+        if !self.woken.swap(true, Ordering::SeqCst) && tx.try_send(WAKE.to_string()).is_err() {
+            // A full main queue has a line coming anyway, and the writer
+            // checks this queue between lines.
+            self.woken.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+fn event_line(channel: &Channel, data: Value) -> String {
+    to_line(&Notification::new("event", json!({ "topic": channel.to_string(), "data": data })))
 }
 
 #[derive(Default)]
@@ -82,8 +150,19 @@ impl Hub {
         let mut inner = self.lock();
         inner.next += 1;
         let id = inner.next;
-        inner.conns.insert(id, Conn { tx, close, channels: HashSet::new(), device: None });
+        inner.conns.insert(id, Conn { tx, close, channels: HashSet::new(), device: None, chat: Arc::default() });
         id
+    }
+
+    /// The queue a connection's writer drains after its main one.
+    pub fn chat_outbox(&self, conn: ConnId) -> Option<Arc<ChatOutbox>> {
+        self.lock().conns.get(&conn).map(|c| c.chat.clone())
+    }
+
+    /// Whether anyone reads `chat:<id>`, so the stream is not serialised for nobody.
+    pub fn watches_chat(&self, id: &str) -> bool {
+        let channel = Channel::Chat(id.to_string());
+        self.lock().conns.values().any(|c| c.channels.contains(&channel))
     }
 
     pub fn tag_device(&self, conn: ConnId, device: &str) {
@@ -119,8 +198,15 @@ impl Hub {
     }
 
     pub fn publish(&self, channel: &Channel, data: Value) {
-        let line = to_line(&Notification::new("event", json!({ "topic": channel.to_string(), "data": data })));
+        let line = event_line(channel, data);
         let mut inner = self.lock();
+        if let Channel::Chat(session) = channel {
+            for conn in inner.conns.values().filter(|c| c.channels.contains(channel)) {
+                conn.chat.push(session, line.clone());
+                conn.chat.wake(&conn.tx);
+            }
+            return;
+        }
         let mut dropped = Vec::new();
         for (id, conn) in inner.conns.iter().filter(|(_, c)| c.channels.contains(channel)) {
             match conn.tx.try_send(line.clone()) {
@@ -156,10 +242,11 @@ mod tests {
 
     #[test]
     fn channels_round_trip_through_their_wire_names() {
-        for topic in ["sessions", "session:abc", "accounts", "autopilot"] {
+        for topic in ["sessions", "session:abc", "accounts", "autopilot", "chat:abc"] {
             assert_eq!(Channel::parse(topic).unwrap().to_string(), topic);
         }
         assert_eq!(Channel::parse("session:"), None);
+        assert_eq!(Channel::parse("chat:"), None);
         assert_eq!(Channel::parse("topics"), None);
     }
 
@@ -226,6 +313,51 @@ mod tests {
         assert!(closed.load(Ordering::SeqCst), "the stalled client is closed");
         assert_eq!(hub.subscriptions(), 0);
         assert!(!hub.subscribe(id, Channel::Sessions), "and gone from the hub");
+    }
+
+    #[test]
+    fn a_stalled_chat_reader_gets_a_resync_and_keeps_its_connection() {
+        let hub = Hub::default();
+        let (tx, rx) = sync_channel(QUEUE_CAP);
+        let closed = Arc::new(AtomicBool::new(false));
+        let flag = closed.clone();
+        let id = hub.register(tx, Box::new(move || flag.store(true, Ordering::SeqCst)));
+        hub.subscribe(id, Channel::Sessions);
+        hub.subscribe(id, Channel::Chat("s1".into()));
+        let chat = hub.chat_outbox(id).unwrap();
+
+        for n in 0..CHAT_CAP + 10 {
+            hub.publish(&Channel::Chat("s1".into()), json!({ "n": n }));
+        }
+        hub.publish(&Channel::Sessions, json!({ "kind": "session.dot" }));
+        assert!(!closed.load(Ordering::SeqCst), "a chat flood does not cost the connection");
+
+        let main: Vec<String> = rx.try_iter().collect();
+        assert_eq!(main[0], WAKE, "one wake, however many chat lines");
+        assert_eq!(main.len(), 2);
+        let sessions: Value = serde_json::from_str(&main[1]).unwrap();
+        assert_eq!(sessions["params"]["data"]["kind"], "session.dot");
+
+        chat.clear_wake();
+        let queued: Vec<Value> = std::iter::from_fn(|| chat.pop()).map(|l| serde_json::from_str(&l).unwrap()).collect();
+        let resyncs: Vec<&Value> = queued.iter().filter(|l| l["params"]["data"]["kind"] == "chat.resync").collect();
+        assert_eq!(resyncs.len(), 1);
+        assert_eq!(resyncs[0]["params"]["topic"], "chat:s1");
+        assert!(queued.len() < CHAT_CAP, "the backlog is gone");
+
+        hub.publish(&Channel::Chat("s1".into()), json!({ "n": "after" }));
+        assert_eq!(rx.try_recv().unwrap(), WAKE, "the next line wakes the writer again");
+    }
+
+    #[test]
+    fn a_chat_event_is_not_serialised_for_nobody() {
+        let hub = Hub::default();
+        let (tx, _rx) = sync_channel(QUEUE_CAP);
+        let id = hub.register(tx, Box::new(|| {}));
+        assert!(!hub.watches_chat("s1"));
+        hub.subscribe(id, Channel::Chat("s1".into()));
+        assert!(hub.watches_chat("s1"));
+        assert!(!hub.watches_chat("s2"));
     }
 
     #[test]

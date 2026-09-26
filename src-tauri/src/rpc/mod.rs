@@ -492,6 +492,17 @@ pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts
     hub.publish_session(session_id, event);
 }
 
+// Serialised only while someone reads `chat:<id>`: this runs on every delta.
+pub fn publish_chat(session_id: &str, event: &crate::chat::model::ChatEvent) {
+    let Some((hub, _)) = EVENTS.get() else { return };
+    if !hub.watches_chat(session_id) {
+        return;
+    }
+    if let Ok(data) = serde_json::to_value(event) {
+        hub.publish(&Channel::Chat(session_id.to_string()), data);
+    }
+}
+
 // `ids` are the live sessions in `folder`, possibly none: a review can land
 // after the worker that opened the PR has ended. A branch checked out nowhere
 // has none, since the sessions in its project's folder are on another branch.
