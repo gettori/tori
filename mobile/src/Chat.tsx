@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createResource, createSignal, on, onCleanup, type JSX } from "solid-js";
+import { For, Show, createEffect, createResource, createSignal, on, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { ArrowUp, ChevronLeft, Ellipsis } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
@@ -174,7 +174,6 @@ export default function Chat(props: {
   onBack: () => void;
   onUnit?: () => void;
   levers?: boolean;
-  headerEnd?: JSX.Element;
 }) {
   const id = props.session().id;
   const [view, setView] = createStore<{ chat: ChatState; error: string | null }>({ chat: initialChat(id), error: null });
@@ -321,7 +320,6 @@ export default function Chat(props: {
             </Show>
           </span>
         </span>
-        {props.headerEnd}
         <ChatMenu
           running={isRunning(view.chat)}
           onStop={() => void send("session.interrupt")}

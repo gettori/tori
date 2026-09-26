@@ -227,3 +227,31 @@ export function heroFor(state: AutopilotState, calls: number, crew: number, queu
       };
   }
 }
+
+export function decisionsFor(
+  asks: SocketAsk[],
+  session: string | null,
+): SocketAsk[] {
+  return asks.filter(
+    (a) =>
+      a.item !== undefined ||
+      (session !== null && (a.shown_in ?? [a.session]).includes(session)),
+  );
+}
+
+export function autopilotState(
+  status: { state: "off" | "starting" | "idle" | "working" | "error" },
+  decisions: number,
+): AutopilotState {
+  switch (status.state) {
+    case "off":
+      return "off";
+    case "error":
+      return "error";
+    case "starting":
+    case "working":
+      return decisions > 0 ? "needs" : "working";
+    case "idle":
+      return decisions > 0 ? "needs" : "idle";
+  }
+}

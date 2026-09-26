@@ -4,7 +4,6 @@ import { createSignal } from "solid-js";
 import type {
   ActivityItem,
   AutopilotError,
-  AutopilotState,
   AutopilotView,
   Decision,
   DecisionAction,
@@ -13,8 +12,8 @@ import type {
 import type { ChatEvent } from "./chatTypes";
 import { pushToast } from "../components/Toasts/Toasts";
 import { NAVIGATE, on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
-import { allAsks, answerAsk, type SocketAsk } from "./socketAsks";
-import { activityOf, applyItem, decisionOf, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
+import { allAsks, answerAsk } from "./socketAsks";
+import { activityOf, applyItem, autopilotState, decisionOf, decisionsFor, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
 import { findSession } from "./sessionStore";
 import { toriNote } from "./toriNote";
 import { saveSettings, settings } from "../panels/Settings/settingsStore";
@@ -172,35 +171,6 @@ export function watchAutopilot() {
   }).catch(() => {});
   void loadAutopilot();
   void refreshLocked();
-}
-
-/** What waits on the user: every hold, and any other card shown in the autopilot's chat. */
-export function decisionsFor(
-  asks: SocketAsk[],
-  session: string | null,
-): SocketAsk[] {
-  return asks.filter(
-    (a) =>
-      a.item !== undefined ||
-      (session !== null && (a.shown_in ?? [a.session]).includes(session)),
-  );
-}
-
-export function autopilotState(
-  status: RunnerStatus,
-  decisions: number,
-): AutopilotState {
-  switch (status.state) {
-    case "off":
-      return "off";
-    case "error":
-      return "error";
-    case "starting":
-    case "working":
-      return decisions > 0 ? "needs" : "working";
-    case "idle":
-      return decisions > 0 ? "needs" : "idle";
-  }
 }
 
 export const decisions = () => decisionsFor(allAsks(), runner().session);
