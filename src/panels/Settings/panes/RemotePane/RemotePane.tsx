@@ -3,14 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Group, Row, idsIn, rowLabelId, type PaneProps } from "../../components/paneKit";
 import styles from "../../Settings.module.css";
-import { loadSettings, settings, type Settings } from "../../settingsStore";
+import { settings } from "../../settingsStore";
+import { remoteStatus as status, setRemote, setRemoteStatus as setStatus, type Device, type RemoteStatus } from "../../../../utils/remoteAccess";
 import Switch from "../../../../components/Switch/Switch";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import Button from "../../../../components/Button/Button";
 import { pushToast } from "../../../../components/Toasts/Toasts";
-
-/** Mirrors `remote::Status` in src-tauri/src/rpc/remote.rs. */
-type RemoteStatus = { state: "off" } | { state: "listening"; url: string } | { state: "failed"; error: string };
 
 /** Mirrors `remote::Interface` in src-tauri/src/rpc/remote.rs. */
 type Interface = { name: string; address: string; kind: "lan" | "tailscale" | "loopback" };
@@ -23,30 +21,6 @@ type Offer = { code: string; url: string; uri: string; expires_ms: number; svg: 
 
 /** Mirrors `pairing::Ended` in src-tauri/src/rpc/pairing.rs, plus the expiry only the pane watches. */
 type Ended = "used" | "burned" | "cancelled" | "expired";
-
-/** What `devices_list` returns. */
-type Device = { id: string; name: string; created_ms: number };
-
-const [status, setStatus] = createSignal<RemoteStatus>({ state: "off" });
-
-let saving: Promise<void> = Promise.resolve();
-
-// Not through `set_settings`: Rust owns this block. Chained, and each change
-// reloads the store before the next builds on it, so two quick changes never
-// send the first one's stale value back. A change to what is already stored is
-// dropped: the switch fires `onChange` when a reload moves its `checked`, and
-// sending that on would reload again, forever.
-function setRemote(patch: Partial<Settings["remote"]>) {
-  saving = saving
-    .then(async () => {
-      const next = { ...settings.remote, ...patch };
-      const now = settings.remote;
-      if (next.enabled === now.enabled && next.address === now.address && next.port === now.port) return;
-      setStatus(await invoke<RemoteStatus>("remote_set", { remote: next }));
-      await loadSettings();
-    })
-    .catch((e) => pushToast(`Remote access did not change: ${String(e)}`));
-}
 
 function describe(s: RemoteStatus): string {
   switch (s.state) {

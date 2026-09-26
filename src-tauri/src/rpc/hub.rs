@@ -130,6 +130,7 @@ fn event_line(channel: &Channel, data: Value) -> String {
 #[derive(Default)]
 pub struct Hub {
     inner: Mutex<Inner>,
+    on_devices: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 
 #[derive(Default)]
@@ -138,12 +139,40 @@ struct Inner {
     conns: HashMap<ConnId, Conn>,
 }
 
+fn devices_of(inner: &Inner) -> HashSet<String> {
+    inner.conns.values().filter_map(|c| c.device.clone()).collect()
+}
+
 impl Hub {
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         match self.inner.lock() {
             Ok(g) => g,
             Err(e) => e.into_inner(),
         }
+    }
+
+    /// Called, outside the lock, whenever a device gains its first connection or loses its last.
+    pub fn watch_devices(&self, watcher: Box<dyn Fn() + Send>) {
+        *self.on_devices.lock().unwrap_or_else(|e| e.into_inner()) = Some(watcher);
+    }
+
+    pub fn connected_devices(&self) -> HashSet<String> {
+        devices_of(&self.lock())
+    }
+
+    fn with_devices<T>(&self, change: impl FnOnce(&mut Inner) -> T) -> T {
+        let (out, moved) = {
+            let mut inner = self.lock();
+            let before = devices_of(&inner);
+            let out = change(&mut inner);
+            (out, devices_of(&inner) != before)
+        };
+        if moved {
+            if let Some(watcher) = &*self.on_devices.lock().unwrap_or_else(|e| e.into_inner()) {
+                watcher();
+            }
+        }
+        out
     }
 
     pub fn register(&self, tx: SyncSender<String>, close: Box<dyn Fn() + Send>) -> ConnId {
@@ -166,24 +195,23 @@ impl Hub {
     }
 
     pub fn tag_device(&self, conn: ConnId, device: &str) {
-        if let Some(c) = self.lock().conns.get_mut(&conn) {
-            c.device = Some(device.to_string());
-        }
+        self.with_devices(|inner| {
+            if let Some(c) = inner.conns.get_mut(&conn) {
+                c.device = Some(device.to_string());
+            }
+        });
     }
 
     /// Drops every connection held by `device`.
     pub fn close_device(&self, device: &str) {
-        let mut inner = self.lock();
-        let ids: Vec<ConnId> = inner.conns.iter().filter(|(_, c)| c.device.as_deref() == Some(device)).map(|(id, _)| *id).collect();
-        for id in ids {
-            if let Some(conn) = inner.conns.remove(&id) {
-                (conn.close)();
-            }
-        }
+        self.with_devices(|inner| {
+            let ids: Vec<ConnId> = inner.conns.iter().filter(|(_, c)| c.device.as_deref() == Some(device)).map(|(id, _)| *id).collect();
+            close_all(inner, ids);
+        });
     }
 
     pub fn remove(&self, conn: ConnId) {
-        self.lock().conns.remove(&conn);
+        self.with_devices(|inner| inner.conns.remove(&conn));
     }
 
     /// `false` when the connection is already gone.
@@ -214,10 +242,9 @@ impl Hub {
                 Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => dropped.push(*id),
             }
         }
-        for id in dropped {
-            if let Some(conn) = inner.conns.remove(&id) {
-                (conn.close)();
-            }
+        drop(inner);
+        if !dropped.is_empty() {
+            self.with_devices(|inner| close_all(inner, dropped));
         }
     }
 
@@ -229,6 +256,14 @@ impl Hub {
     #[cfg(test)]
     pub fn subscriptions(&self) -> usize {
         self.lock().conns.values().map(|c| c.channels.len()).sum()
+    }
+}
+
+fn close_all(inner: &mut Inner, ids: Vec<ConnId>) {
+    for id in ids {
+        if let Some(conn) = inner.conns.remove(&id) {
+            (conn.close)();
+        }
     }
 }
 
@@ -369,5 +404,24 @@ mod tests {
         hub.subscribe(id, Channel::Session("s1".into()));
         hub.remove(id);
         assert_eq!(hub.subscriptions(), 0);
+    }
+
+    #[test]
+    fn a_device_goes_connected_on_tag_and_disconnected_on_remove_with_one_notice_each() {
+        let hub = Hub::default();
+        let notices = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = notices.clone();
+        hub.watch_devices(Box::new(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+        }));
+        let (tx, _rx) = sync_channel(QUEUE_CAP);
+        let conn = hub.register(tx, Box::new(|| {}));
+        assert_eq!(notices.load(Ordering::SeqCst), 0, "an untagged connection is nobody's device");
+        hub.tag_device(conn, "phone");
+        assert!(hub.connected_devices().contains("phone"));
+        assert_eq!(notices.load(Ordering::SeqCst), 1);
+        hub.remove(conn);
+        assert!(hub.connected_devices().is_empty());
+        assert_eq!(notices.load(Ordering::SeqCst), 2);
     }
 }

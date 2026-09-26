@@ -160,6 +160,7 @@ html {
    24px square (centered, not stretched by the bar's align-items: stretch) so it
    matches the toolbar's action buttons instead of spanning the full bar height.
    The .topbar prefix lifts specificity above the Button's .iconOnly padding. */
+.topbar .topbar-phone,
 .topbar .topbar-gear {
   flex: 0 0 auto;
   align-self: center;
@@ -171,9 +172,13 @@ html {
   margin-right: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
 }
+.topbar .topbar-phone[data-lit="true"] {
+  color: var(--status-idle);
+}
 .topbar .topbar-gear:hover {
   color: var(--fg-default);
 }
+.topbar .topbar-phone svg,
 .topbar .topbar-gear svg {
   width: calc(17px * var(--ui-scale));
   height: calc(17px * var(--ui-scale));
