@@ -4,7 +4,7 @@ import Icon from "../../src/components/Icon/Icon";
 import { fallbackColor, rgbTriple } from "../../src/utils/spaceTint";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
-import { inUnit, matches, projectRows, rollupOf, sessionLabel, type Project, type SessionRow, type Space, type Topic, type Tree, type Unit } from "./tree";
+import { inUnit, matches, unitCounts, projectRows, rollupOf, sessionLabel, type Project, type SessionRow, type Space, type Topic, type Tree, type Unit } from "./tree";
 import styles from "./shell.module.css";
 
 export type RootTab = "projects" | "topics";
@@ -46,7 +46,7 @@ export function Offline(props: { client: RemoteClient }) {
 function ProjectItem(props: { client: RemoteClient; project: Project; live: SessionRow[]; onOpen: () => void }) {
   const rows = () => projectRows(props.project, props.live);
   const meta = () => {
-    const units = plural(props.project.units.length, "worktree");
+    const units = unitCounts(props.project.units, DOT);
     return rows().length > 0 ? `${units} ${DOT} ${plural(rows().length, "session")}` : units;
   };
   return (
