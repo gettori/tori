@@ -36,20 +36,6 @@
   font: inherit;
 }
 
-.status {
-  font-size: 12px;
-  color: var(--fg-muted);
-}
-
-.status[data-status="open"] {
-  color: var(--success-fg);
-}
-
-.status[data-status="offline"],
-.status[data-status="revoked"] {
-  color: var(--attention-fg);
-}
-
 .transcript {
   flex: 1;
   min-height: 0;
@@ -124,63 +110,10 @@
   border-color: transparent;
 }
 
-.pair {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  height: 100%;
-  overflow-y: auto;
-  padding: calc(env(safe-area-inset-top) + 24px) 20px 24px;
-  background: var(--canvas-default);
-  color: var(--fg-default);
-}
-
-.heading {
-  margin: 0;
-  font-size: 22px;
-}
-
 .hint {
   margin: 0;
   padding: 16px;
   color: var(--fg-muted);
-}
-
-.pair .hint {
-  padding: 0;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--fg-muted);
-}
-
-.field input {
-  min-height: 44px;
-  padding: 0 12px;
-  color: var(--fg-default);
-  background: var(--canvas-input);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 16px;
-}
-
-.primary {
-  min-height: 48px;
-  color: var(--fg-on-emphasis);
-  background: var(--accent-fg);
-  border: none;
-  border-radius: 8px;
-  font: inherit;
-  font-weight: 600;
-}
-
-.primary:disabled {
-  opacity: 0.5;
 }
 
 .error {
@@ -189,20 +122,10 @@
   color: var(--attention-fg);
 }
 
-.rowEnd {
-  margin-left: auto;
-  flex: none;
-}
-
-.plain,
-.sublist {
+.plain {
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.unit {
-  padding-left: 40px;
 }
 
 .section {
@@ -214,44 +137,6 @@
   text-transform: uppercase;
   color: var(--fg-muted);
 }
-
-.facts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px 16px;
-  margin: 0;
-  padding: 20px 16px;
-}
-
-.facts dt {
-  color: var(--fg-muted);
-}
-
-.facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  padding: 0 16px;
-}
-
-.actions .hint {
-  padding: 12px 0 0;
-}
-
-.danger {
-  min-height: 48px;
-  color: var(--danger-fg);
-  background: none;
-  border: 1px solid var(--danger-fg);
-  border-radius: 8px;
-  font: inherit;
-  font-weight: 600;
-}
-
 
 .pending {
   display: flex;
@@ -367,17 +252,6 @@
   padding: 8px 12px;
   border-top: 1px solid var(--border-default);
   background: var(--canvas-head);
-}
-
-.autopilot {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--border-default);
-}
-
-.autopilot .row {
-  flex: 1;
-  border-bottom: none;
 }
 
 .switch {

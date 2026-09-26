@@ -1,19 +1,29 @@
-import { Match, Show, Switch, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
+import { Match, Show, Switch, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
 import { AutopilotChat, watchRunner } from "./Autopilot";
+import BottomBar from "./BottomBar";
 import Chat from "./Chat";
-import Home from "./Home";
-import SettingsScreen from "./Settings";
+import { setSpaceName, showWheel, spaceName } from "./prefs";
+import Root, { type RootTab } from "./Root";
+import { ProjectScreen, TopicScreen } from "./Screens";
+import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
-import type { SessionRow, Unit } from "./tree";
-import styles from "./mobile.module.css";
+import type { Project, SessionRow, Topic, Tree, Unit } from "./tree";
+import shell from "./shell.module.css";
 
 const PHONE_NAME = "Phone";
 const LIVE_LIMIT = 200;
 
-type View = { screen: "unit"; unit: Unit } | { screen: "chat"; row: SessionRow } | { screen: "autopilot" } | { screen: "settings" };
+type View =
+  | { screen: "project"; project: Project }
+  | { screen: "topic"; topic: Topic }
+  | { screen: "unit"; unit: Unit }
+  | { screen: "chat"; row: SessionRow }
+  | { screen: "autopilot" }
+  | { screen: "settings" };
 
 function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; link: { url: string; code: string } | null }) {
   const [url, setUrl] = createSignal("");
@@ -55,41 +65,48 @@ function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; 
 
   return (
     <form
-      class={styles.pair}
+      class={shell.pair}
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <h1 class={styles.heading}>Pair with Tori</h1>
+      <h1 class={shell.pairTitle}>Pair with Tori</h1>
       <Show when={props.notice}>
-        <p class={styles.error}>{props.notice}</p>
+        <p class={shell.notice}>{props.notice}</p>
       </Show>
-      <p class={styles.hint}>
-        On the Mac, open Settings, Remote, Pair a device, and scan the code with the camera. Or paste its link, or type the address and code.
-      </p>
-      <label class={styles.field}>
-        Link
-        <input placeholder="tori://pair?..." onInput={(e) => fromLink(e.currentTarget.value)} />
-      </label>
-      <label class={styles.field}>
-        Address
-        <input value={url()} placeholder="ws://192.168.1.10:7878" onInput={(e) => setUrl(e.currentTarget.value)} />
-      </label>
-      <label class={styles.field}>
-        Code
-        <input value={code()} placeholder="XXXX-XXXX" autocapitalize="characters" onInput={(e) => setCode(e.currentTarget.value)} />
-      </label>
-      <label class={styles.field}>
-        This phone's name
-        <input value={name()} onInput={(e) => setName(e.currentTarget.value)} />
-      </label>
+      <div class={shell.pairCard}>
+        <strong>Scan the code on the Mac</strong>
+        <span>In Tori on the Mac, open Settings, Remote, Pair a device, and scan the code with this phone's camera. The phone pairs in one step.</span>
+      </div>
+      <Show when={busy()}>
+        <p class={shell.notice}>Pairing</p>
+      </Show>
       <Show when={error()}>
-        <p class={styles.error}>{error()}</p>
+        <p class={shell.notice}>{error()}</p>
       </Show>
-      <button class={styles.primary} type="submit" disabled={busy() || !url() || !code()}>
-        {busy() ? "Pairing" : "Pair"}
-      </button>
+      <details class={shell.typed} open={!!error()}>
+        <summary>Type the address and code instead</summary>
+        <label class={shell.field}>
+          Link
+          <input placeholder="tori://pair?..." onInput={(e) => fromLink(e.currentTarget.value)} />
+        </label>
+        <label class={shell.field}>
+          Address
+          <input value={url()} placeholder="ws://192.168.1.10:7878" onInput={(e) => setUrl(e.currentTarget.value)} />
+        </label>
+        <label class={shell.field}>
+          Code
+          <input value={code()} placeholder="XXXX-XXXX" autocapitalize="characters" onInput={(e) => setCode(e.currentTarget.value)} />
+        </label>
+        <label class={shell.field}>
+          This phone's name
+          <input value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        </label>
+        <button class={shell.pairButton} type="submit" disabled={busy() || !url() || !code()}>
+          {busy() ? "Pairing" : "Pair"}
+        </button>
+      </details>
     </form>
   );
 }
@@ -113,52 +130,107 @@ function liveRows(client: RemoteClient) {
   return rows;
 }
 
+function watchTree(client: RemoteClient) {
+  const [tree] = createResource<Tree, number>(
+    () => client.generation() || undefined,
+    // A failed load keeps the last tree: the reconnect that follows refetches.
+    (_, info) => client.request<Tree>("projects.list").catch(() => info.value ?? { spaces: [], topics: [] }),
+  );
+  return tree;
+}
+
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
   const live = liveRows(props.client);
-  const runner = watchRunner(props.client);
+  const tree = watchTree(props.client);
+  const { runner, decisions } = watchRunner(props.client);
+  const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
-  const top = () => stack()[stack().length - 1];
-  // Each screen is a history entry, so Android's back gesture pops it instead of
-  // closing the app.
+  const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
+  const hue = () => (space() ? rgbTriple(spaceHue(space()!.name, space()!.color)) : undefined);
+
+  // Each screen is a history entry carrying its depth, so Android's back gesture
+  // pops it instead of closing the app, and a reset can pop several at once.
   const go = (view: View) => {
-    history.pushState(null, "");
+    history.pushState({ depth: stack().length + 1 }, "");
     setStack([...stack(), view]);
   };
   const back = () => history.back();
-  const popped = () => setStack(stack().slice(0, -1));
+  const toRoot = () => stack().length > 0 && history.go(-stack().length);
+  const popped = (e: PopStateEvent) => setStack(stack().slice(0, (e.state as { depth?: number } | null)?.depth ?? 0));
   window.addEventListener("popstate", popped);
   onCleanup(() => window.removeEventListener("popstate", popped));
 
+  const sheet = () => stack()[stack().length - 1]?.screen === "settings";
+  const top = () => {
+    const views = stack().filter((v) => v.screen !== "settings");
+    return views[views.length - 1];
+  };
+  const barred = () => !top() || ["project", "topic", "unit"].includes(top()!.screen);
+  const openUnit = (unit: Unit) => go({ screen: "unit", unit });
+  const openSession = (row: SessionRow) => go({ screen: "chat", row });
+
   return (
-    <Switch
-      fallback={
-        <Home
-          client={props.client}
+    <div class={shell.shell} style={{ "--space-rgb": hue() }}>
+      <Switch
+        fallback={
+          <Root
+            client={props.client}
+            tree={tree()}
+            space={space()}
+            tab={tab()}
+            live={live}
+            notice={props.notice}
+            onProject={(project) => go({ screen: "project", project })}
+            onTopic={(topic) => go({ screen: "topic", topic })}
+            onUnit={openUnit}
+            onSession={openSession}
+            onSettings={() => go({ screen: "settings" })}
+          />
+        }
+      >
+        <Match when={top()?.screen === "project" && (top() as { project: Project }).project} keyed>
+          {(project) => (
+            <ProjectScreen client={props.client} project={project} space={space()?.name ?? ""} live={live} onUnit={openUnit} onBack={back} />
+          )}
+        </Match>
+        <Match when={top()?.screen === "topic" && (top() as { topic: Topic }).topic} keyed>
+          {(topic) => <TopicScreen client={props.client} topic={topic} tree={tree()} live={live} onUnit={openUnit} onBack={back} />}
+        </Match>
+        <Match when={top()?.screen === "unit" && (top() as { unit: Unit }).unit} keyed>
+          {(unit) => <UnitScreen client={props.client} unit={unit} live={live} onOpen={openSession} onBack={back} />}
+        </Match>
+        <Match when={top()?.screen === "chat" && (top() as { row: SessionRow }).row} keyed>
+          {(row) => <Chat client={props.client} session={row} onBack={back} />}
+        </Match>
+        <Match when={top()?.screen === "autopilot"}>
+          <AutopilotChat client={props.client} runner={runner} onBack={back} />
+        </Match>
+      </Switch>
+      <Show when={barred()}>
+        <BottomBar
+          spaces={tree()?.spaces ?? []}
+          space={space()}
+          tab={tab()}
           live={live}
+          showWheel={showWheel()}
           runner={runner}
-          notice={props.notice}
-          onAutopilot={() => go({ screen: "autopilot" })}
-          onUnit={(unit) => go({ screen: "unit", unit })}
-          onSession={(row) => go({ screen: "chat", row })}
-          onSettings={() => go({ screen: "settings" })}
+          decisions={decisions}
+          onSpace={(picked) => {
+            setSpaceName(picked.name);
+            setTab("projects");
+            toRoot();
+          }}
+          onTopics={() => {
+            setTab("topics");
+            toRoot();
+          }}
+          onWheel={() => go({ screen: "autopilot" })}
         />
-      }
-    >
-      <Match when={top()?.screen === "chat" && (top() as { row: SessionRow }).row} keyed>
-        {(row) => <Chat client={props.client} session={row} onBack={back} />}
-      </Match>
-      <Match when={top()?.screen === "unit" && (top() as { unit: Unit }).unit} keyed>
-        {(unit) => (
-          <UnitScreen client={props.client} unit={unit} live={live} onOpen={(row) => go({ screen: "chat", row })} onBack={back} />
-        )}
-      </Match>
-      <Match when={top()?.screen === "autopilot"}>
-        <AutopilotChat client={props.client} runner={runner} onBack={back} />
-      </Match>
-      <Match when={top()?.screen === "settings"}>
-        <SettingsScreen client={props.client} onDisconnect={props.onDisconnect} onBack={back} />
-      </Match>
-    </Switch>
+      </Show>
+      <Show when={sheet()}>
+        <SettingsSheet client={props.client} onDone={back} onDisconnect={props.onDisconnect} />
+      </Show>
+    </div>
   );
 }
 

@@ -13,25 +13,27 @@ export type Runner = {
 
 export function watchRunner(client: RemoteClient) {
   const [runner, setRunner] = createSignal<Runner | null>(null);
-  createEffect(
-    on(client.generation, (n) => {
-      if (n === 0) return;
-      client
-        .request<{ runner: Runner }>("autopilot.state")
-        .then((state) => setRunner(state.runner))
-        .catch(() => {});
-    }),
-  );
+  const [decisions, setDecisions] = createSignal(0);
+  const load = () =>
+    client
+      .request<{ runner: Runner; holds: { answer: string | null }[] }>("autopilot.state")
+      .then((state) => {
+        setRunner(state.runner);
+        setDecisions(state.holds.filter((hold) => hold.answer === null).length);
+      })
+      .catch(() => {});
+  createEffect(on(client.generation, (n) => n > 0 && void load()));
   onCleanup(
     client.subscribe("autopilot", (data) => {
-      const ev = data as { kind?: string; runner?: Runner } | null;
+      const ev = data as { kind?: string; runner?: Runner; hold?: unknown } | null;
       if (ev?.kind === "autopilot.status" && ev.runner) setRunner(ev.runner);
+      if (ev?.kind === "autopilot.changed" && ev.hold !== undefined) void load();
     }),
   );
-  return runner;
+  return { runner, decisions };
 }
 
-export function AutopilotRow(props: { client: RemoteClient; runner: () => Runner | null; onOpen: () => void }) {
+export function AutopilotSwitch(props: { client: RemoteClient; runner: () => Runner | null }) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const running = () => (props.runner()?.state ?? "off") !== "off";
@@ -44,25 +46,15 @@ export function AutopilotRow(props: { client: RemoteClient; runner: () => Runner
       .finally(() => setBusy(false));
   };
   return (
-    <section>
-      <div class={styles.autopilot}>
-        <button class={styles.row} disabled={!props.runner()?.session} onClick={() => props.onOpen()}>
-          <span class={styles.rowText}>
-            <span class={styles.rowTitle}>Autopilot</span>
-            <span class={styles.rowMeta}>{props.runner()?.error?.title ?? props.runner()?.state ?? "unknown"}</span>
-          </span>
-        </button>
-        <button
-          class={styles.switch}
-          role="switch"
-          aria-checked={running()}
-          aria-label="Autopilot"
-          disabled={busy() || !props.runner()}
-          onClick={flip}
-        />
-      </div>
-      <Show when={error()}>{(e) => <p class={styles.error}>{e()}</p>}</Show>
-    </section>
+    <button
+      class={styles.switch}
+      role="switch"
+      aria-checked={running()}
+      aria-label="Autopilot"
+      title={error() ?? undefined}
+      disabled={busy() || !props.runner()}
+      onClick={flip}
+    />
   );
 }
 
@@ -78,6 +70,7 @@ export function AutopilotChat(props: { client: RemoteClient; runner: () => Runne
               Back
             </button>
             <span class={styles.title}>Autopilot</span>
+            <AutopilotSwitch client={props.client} runner={props.runner} />
           </header>
           <p class={styles.hint}>The autopilot is {props.runner()?.state ?? "off"}. Turn it on to see its chat.</p>
         </div>
@@ -95,6 +88,7 @@ export function AutopilotChat(props: { client: RemoteClient; runner: () => Runne
             last_active: 0,
           }}
           onBack={props.onBack}
+          headerEnd={<AutopilotSwitch client={props.client} runner={props.runner} />}
         />
       )}
     </Show>
