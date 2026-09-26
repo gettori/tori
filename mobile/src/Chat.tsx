@@ -9,6 +9,9 @@ import styles from "./mobile.module.css";
 export type SessionRow = { id: string; agent?: string; title?: string; cwd?: string; live?: boolean; dot?: string };
 
 const HISTORY_TURNS = 5;
+// A page can hold 500 events, slow over mobile data; the default timeout would
+// drop the socket and reload it forever.
+const HISTORY_REPLY_MS = 30_000;
 
 export default function Chat(props: { client: RemoteClient; session: SessionRow; onBack: () => void }) {
   const id = props.session.id;
@@ -33,7 +36,7 @@ export default function Chat(props: { client: RemoteClient; session: SessionRow;
     const mine = ++loads;
     parked = [];
     try {
-      const page = await props.client.request<{ events: unknown[] }>("session.history", { id, limit: HISTORY_TURNS });
+      const page = await props.client.request<{ events: unknown[] }>("session.history", { id, limit: HISTORY_TURNS }, HISTORY_REPLY_MS);
       if (mine !== loads) return;
       // Folded into a plain object and swapped in whole: one render per load.
       const chat = initialChat(id);
