@@ -1,8 +1,9 @@
-import { createEffect, createSignal, on, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import MessageList from "../../src/panels/Chat/MessageList";
 import { applyEvent, initialChat, isRunning, settleBackfill, turnModel, type ChatState } from "../../src/panels/Chat/chatStore";
 import { parseChatEvent, type ChatEvent } from "../../src/utils/chatTypes";
+import Pending, { type PendingRow } from "./Pending";
 import type { RemoteClient } from "./remote";
 import { sessionLabel, type SessionRow } from "./tree";
 import styles from "./mobile.module.css";
@@ -14,6 +15,10 @@ const HISTORY_REPLY_MS = 30_000;
 
 type Page = { events: unknown[]; next: unknown };
 
+// A prompt raised or settled moves one of these; none says which, so any of them
+// refetches the whole pending list.
+const PENDING_KINDS = new Set(["session.question", "session.permission", "session.needs_you", "session.state", "session.turn_ended"]);
+
 function parsed(raw: unknown[]): ChatEvent[] {
   return raw.map(parseChatEvent).filter((ev): ev is ChatEvent => ev !== null);
 }
@@ -23,6 +28,9 @@ export default function Chat(props: { client: RemoteClient; session: SessionRow;
   const [view, setView] = createStore<{ chat: ChatState; error: string | null }>({ chat: initialChat(id), error: null });
   const [next, setNext] = createSignal<unknown>(null);
   const [paging, setPaging] = createSignal(false);
+  const [pending, setPending] = createSignal<PendingRow[]>([]);
+  const [draft, setDraft] = createSignal("");
+  const [sending, setSending] = createSignal(false);
   // An earlier page lands before the history but after nothing live, so the
   // two are kept apart and the chat is refolded from both.
   let history: ChatEvent[] = [];
@@ -92,8 +100,42 @@ export default function Chat(props: { client: RemoteClient; session: SessionRow;
     }
   }
 
+  const refetchPending = () =>
+    props.client
+      .request<PendingRow[]>("session.pending", { id })
+      .then(setPending)
+      .catch(() => {});
+
+  const send = async (method: "session.steer" | "session.interrupt") => {
+    setSending(true);
+    try {
+      await props.client.request(method, method === "session.steer" ? { id, text: draft().trim() } : { id });
+      if (method === "session.steer") setDraft("");
+    } catch (e) {
+      setView("error", String(e instanceof Error ? e.message : e));
+    } finally {
+      setSending(false);
+    }
+  };
+
   onCleanup(props.client.subscribe(`chat:${id}`, onLive));
-  createEffect(on(props.client.generation, (n) => n > 0 && void load()));
+  onCleanup(
+    props.client.subscribe(`session:${id}`, (data) => {
+      if (PENDING_KINDS.has((data as { kind?: string } | null)?.kind ?? "")) void refetchPending();
+    }),
+  );
+  onCleanup(
+    props.client.subscribe("autopilot", (data) => {
+      if (data && typeof data === "object" && "hold" in data) void refetchPending();
+    }),
+  );
+  createEffect(
+    on(props.client.generation, (n) => {
+      if (n === 0) return;
+      void load();
+      void refetchPending();
+    }),
+  );
 
   return (
     <div class={styles.screen}>
@@ -116,6 +158,32 @@ export default function Chat(props: { client: RemoteClient; session: SessionRow;
           onFetchEarlier={next() ? () => void earlier() : undefined}
         />
       </div>
+      <Pending client={props.client} session={id} rows={pending()} onSettled={() => void refetchPending()} />
+      <Show when={props.session.live}>
+        <form
+          class={styles.composer}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (draft().trim()) void send("session.steer");
+          }}
+        >
+          <textarea
+            class={styles.input}
+            rows={1}
+            placeholder={isRunning(view.chat) ? "Steer the running turn" : "Message"}
+            value={draft()}
+            onInput={(e) => setDraft(e.currentTarget.value)}
+          />
+          <Show when={isRunning(view.chat)}>
+            <button type="button" class={styles.secondary} disabled={sending()} onClick={() => void send("session.interrupt")}>
+              Stop
+            </button>
+          </Show>
+          <button type="submit" class={styles.primarySmall} disabled={sending() || !draft().trim()}>
+            Send
+          </button>
+        </form>
+      </Show>
     </div>
   );
 }
