@@ -339,8 +339,13 @@ export default function App() {
   onCleanup(() => unlisten?.());
 
   const wake = () => document.visibilityState === "visible" && client()?.wake();
+  const online = () => client()?.wake();
   document.addEventListener("visibilitychange", wake);
-  onCleanup(() => document.removeEventListener("visibilitychange", wake));
+  window.addEventListener("online", online);
+  onCleanup(() => {
+    document.removeEventListener("visibilitychange", wake);
+    window.removeEventListener("online", online);
+  });
 
   const disconnect = () => {
     forget();

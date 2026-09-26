@@ -14,6 +14,10 @@ pub struct Device {
     pub name: String,
     pub created_ms: u64,
     hash: String,
+    // The phone's own id for itself, kept across pairings, so pairing it again
+    // replaces its entry instead of adding a second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    install: Option<String>,
 }
 
 pub struct Devices {
@@ -41,6 +45,12 @@ impl Devices {
     /// Adds a device and returns it with its credential, the only time the
     /// credential is ever seen.
     pub fn mint(&self, name: &str) -> Result<(Device, String), String> {
+        self.mint_install(name, None).map(|(device, credential, _)| (device, credential))
+    }
+
+    /// `mint`, also dropping every device paired before from the same
+    /// `install`; their ids come back so their connections can be closed.
+    pub fn mint_install(&self, name: &str, install: Option<&str>) -> Result<(Device, String, Vec<String>), String> {
         self.writable()?;
         let credential = random_hex::<32>()?;
         let device = Device {
@@ -48,15 +58,19 @@ impl Devices {
             name: name.to_string(),
             created_ms: crate::owned_state::now_ms(),
             hash: hash(&credential),
+            install: install.map(str::to_string),
         };
         let mut list = self.lock();
+        let before = list.clone();
+        let replaced: Vec<String> = list.iter().filter(|d| install.is_some() && d.install.as_deref() == install).map(|d| d.id.clone()).collect();
+        list.retain(|d| !replaced.contains(&d.id));
         list.push(device.clone());
         let text = serde_json::to_string_pretty(&*list).map_err(|e| e.to_string())?;
         if let Err(e) = crate::owned_state::write_private(&self.path, &text) {
-            list.pop();
+            *list = before;
             return Err(e);
         }
-        Ok((device, credential))
+        Ok((device, credential, replaced))
     }
 
     /// Removes a device, so its credential stops working. `false` when no

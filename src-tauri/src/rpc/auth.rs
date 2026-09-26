@@ -14,6 +14,7 @@ pub const AUTH_METHOD: &str = "auth";
 pub const PAIR_METHOD: &str = "pair";
 const DEFAULT_DEVICE_NAME: &str = "Device";
 const MAX_NAME_CHARS: usize = 64;
+const MAX_INSTALL_CHARS: usize = 64;
 
 /// What a front accepts, one variant per kind of front.
 pub enum Credential {
@@ -136,6 +137,7 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
 struct PairParams {
     code: Option<String>,
     name: Option<String>,
+    install: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -143,6 +145,8 @@ pub struct Paired {
     pub id: String,
     pub name: String,
     pub credential: String,
+    #[serde(skip)]
+    pub replaced: Vec<String>,
 }
 
 /// A first frame that trades the live pairing code for a device credential.
@@ -154,9 +158,10 @@ pub fn pair(first: &Request, credential: &Credential) -> Result<Paired, AuthErro
     let p = serde_json::from_value::<PairParams>(first.params.clone()).map_err(|_| AuthError::MissingCode)?;
     let code = p.code.ok_or(AuthError::MissingCode)?;
     let name = device_name(p.name.as_deref().unwrap_or_default());
+    let install = p.install.filter(|i| !i.is_empty() && i.len() <= MAX_INSTALL_CHARS && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
     pairing
-        .redeem(&code, crate::owned_state::now_ms(), || devices.mint(&name))
-        .map(|(device, credential)| Paired { id: device.id, name: device.name, credential })
+        .redeem(&code, crate::owned_state::now_ms(), || devices.mint_install(&name, install.as_deref()))
+        .map(|(device, credential, replaced)| Paired { id: device.id, name: device.name, credential, replaced })
         .map_err(AuthError::Pair)
 }
 

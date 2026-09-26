@@ -728,7 +728,12 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
         Ok(Some(first)) if first.method == PAIR_METHOD => {
             let id = first.id.clone().unwrap_or(Value::Null);
             let reply = match pair(&first, credential) {
-                Ok(paired) => Response::ok(id, json!(paired)),
+                Ok(paired) => {
+                    for old in &paired.replaced {
+                        server.hub.close_device(old);
+                    }
+                    Response::ok(id, json!(paired))
+                }
                 Err(e) => Response::err(id, e.rpc()),
             };
             let _ = write_line(&mut stream, &to_line(&reply));
