@@ -22,4 +22,6 @@ export const Layout: Story = { render: () => <IntroAt slide={1} /> };
 export const Topics: Story = { render: () => <IntroAt slide={2} /> };
 export const Terminal: Story = { render: () => <IntroAt slide={3} /> };
 export const Review: Story = { render: () => <IntroAt slide={4} /> };
-export const Machine: Story = { render: () => <IntroAt slide={5} /> };
+export const Autopilot: Story = { render: () => <IntroAt slide={5} /> };
+export const Phone: Story = { render: () => <IntroAt slide={6} /> };
+export const Machine: Story = { render: () => <IntroAt slide={7} /> };
