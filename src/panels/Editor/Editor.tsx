@@ -176,6 +176,9 @@ import {
   GIT_MERGE_BRANCH,
   GIT_REBASE_BRANCH,
   GIT_ABORT,
+  GIT_CONTINUE,
+  GIT_SKIP,
+  GIT_AUTOSQUASH,
   GIT_BRANCH_CREATE,
   GIT_BRANCH_RENAME,
   GIT_BRANCH_DELETE,
@@ -235,12 +238,17 @@ import {
   merge,
   rebase,
   abortIntegrate,
+  continueIntegrate,
+  skipCommit,
+  rebaseAutosquash,
+  reportIntegrate,
   undoLastCommit,
   createBranch,
   renameBranch,
   deleteBranch,
   stashStaged,
   branchNames,
+  type IntegrateOutcome,
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
@@ -2358,20 +2366,20 @@ export default function Editor(props: {
     return picked ? ({ root: r, branch: picked } as const) : null;
   }
 
-  /** Report an integrate that stopped on a conflict. A conflict is not a
-   *  failure, so it opens the Changes tab rather than raising an error: the
-   *  unmerged files are there, and that is where they get resolved. */
-  function reportIntegrate(outcome: { conflicted: boolean; message: string } | null, verb: string) {
-    if (!outcome) return;
-    if (!outcome.conflicted) {
-      emitWith<ToastEvent>(TOAST, { message: `${verb} done.`, kind: "info" });
-      return;
-    }
-    emitWith<ToastEvent>(TOAST, {
-      message: `${verb} stopped on a conflict. Resolve the files in Changes.`,
-      kind: "error",
+  /** A step that rewrites the worktree, behind the same guard as Discard: an
+   *  agent mid-turn here would have its files replaced under it. */
+  async function rewriteHere(
+    verb: string,
+    run: (root: string) => Promise<IntegrateOutcome | null>,
+    quietDone = false,
+  ) {
+    const r = gitRoot();
+    if (!r) return;
+    const allowed = await mayRewrite(verb, r, {
+      confirm: askConfirm,
+      refuse: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
     });
-    emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "changes" });
+    if (allowed) reportIntegrate(await run(r), verb, quietDone);
   }
 
   async function undoLastCommitHere() {
@@ -2565,6 +2573,9 @@ export default function Editor(props: {
         const r = gitRoot();
         if (r) void abortIntegrate(r);
       }),
+      onEvent(GIT_CONTINUE, () => void rewriteHere("Continue", continueIntegrate, true)),
+      onEvent(GIT_SKIP, () => void rewriteHere("Skip", skipCommit, true)),
+      onEvent(GIT_AUTOSQUASH, () => void rewriteHere("Autosquash", rebaseAutosquash)),
       onEvent(GIT_BRANCH_CREATE, () => void createBranchHere()),
       onEvent(GIT_BRANCH_RENAME, () => void renameBranchHere()),
       onEvent(GIT_BRANCH_DELETE, () => void deleteBranchHere()),

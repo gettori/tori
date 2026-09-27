@@ -3102,6 +3102,261 @@ pub async fn git_rebase(project_path: String, onto: String) -> Result<IntegrateO
     .await
 }
 
+/// Run a subcommand that may reach for an editor, with the editor answered
+/// for it: `true` keeps the message git proposes (a squash's joined messages, a
+/// resolved commit's own), and `sequence` replaces a rebase's todo when given.
+/// Without this a GUI git with no TTY dies on `vi`, or waits on one forever.
+fn integrate_edited(repo: &str, args: &[&str], sequence: Option<&str>) -> Result<IntegrateOutcome, String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo).args(args).env("GIT_EDITOR", "true");
+    cmd.env("GIT_SEQUENCE_EDITOR", sequence.unwrap_or("true"));
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(IntegrateOutcome { conflicted: false, message: String::new() });
+    }
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if has_unmerged(repo) {
+        Ok(IntegrateOutcome { conflicted: true, message: err })
+    } else {
+        Err(err)
+    }
+}
+
+/// Carry on with the merge, rebase, cherry-pick or revert that stopped, once
+/// its conflicts are resolved. Read from the repo like `git_abort`, for the same
+/// reason. Answers `conflicted` when a rebase stops again on a later commit.
+#[tauri::command]
+pub async fn git_continue(project_path: String) -> Result<IntegrateOutcome, String> {
+    crate::exec::git_write("git_continue", project_path.clone(), move || {
+        if has_unmerged(&project_path) {
+            return Err("Resolve the conflicted files first.".into());
+        }
+        let op = crate::conflict::git_conflict_op(project_path.clone())?;
+        let args: &[&str] = match op {
+            crate::conflict::ConflictOp::Merge => &["merge", "--continue"],
+            crate::conflict::ConflictOp::Rebase => &["rebase", "--continue"],
+            crate::conflict::ConflictOp::CherryPick => &["cherry-pick", "--continue"],
+            crate::conflict::ConflictOp::Revert => &["revert", "--continue"],
+            crate::conflict::ConflictOp::None => return Err("Nothing to continue".into()),
+        };
+        integrate_edited(&project_path, args, None)
+    })
+    .await
+}
+
+/// Leave out the commit a rebase or cherry-pick stopped on and go on to the
+/// next. A merge has no next commit, so it has nothing to skip.
+#[tauri::command]
+pub async fn git_skip(project_path: String) -> Result<IntegrateOutcome, String> {
+    crate::exec::git_write("git_skip", project_path.clone(), move || {
+        let op = crate::conflict::git_conflict_op(project_path.clone())?;
+        let args: &[&str] = match op {
+            crate::conflict::ConflictOp::Rebase => &["rebase", "--skip"],
+            crate::conflict::ConflictOp::CherryPick => &["cherry-pick", "--skip"],
+            _ => return Err("Only a rebase or a cherry-pick can skip a commit".into()),
+        };
+        integrate_edited(&project_path, args, None)
+    })
+    .await
+}
+
+/// One commit an interactive rebase would replay.
+#[derive(Serialize, Debug)]
+pub struct RebaseCommit {
+    sha: String,
+    short: String,
+    subject: String,
+    /// The whole message, so a reword starts from what is there.
+    message: String,
+    /// On the upstream already, so rewriting it will need a force push.
+    pushed: bool,
+}
+
+/// What an interactive rebase of this branch would work on: its own commits,
+/// oldest first, since the point it left `base`.
+#[derive(Serialize, Debug)]
+pub struct RebasePlan {
+    base: String,
+    base_sha: String,
+    commits: Vec<RebaseCommit>,
+    /// A rebase without `--rebase-merges` flattens merges away, so a branch
+    /// with any is refused rather than quietly rewritten into another shape.
+    merges: bool,
+}
+
+/// The ref this branch's own commits are counted from: the base branch on the
+/// remote, or the upstream when the branch is the base. Held at the merge base,
+/// so rewriting commits never also moves the branch onto a newer base.
+fn rebase_base(repo: &str) -> Result<(String, String), String> {
+    let branch = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .map_err(|_| "Not on a branch.".to_string())?;
+    let base = git_default_base_branch(repo.to_string()).ok().flatten();
+    let against = match base {
+        Some(b) if b != branch && resolves(repo, &format!("refs/remotes/origin/{b}")) => format!("origin/{b}"),
+        _ => sync_ref(repo, &branch).ok_or("No base branch or upstream to rebase against.")?,
+    };
+    let sha = git_capture(repo, &["merge-base", "HEAD", &format!("refs/remotes/{against}")])
+        .map_err(|_| format!("This branch shares no history with {against}."))?;
+    Ok((against, sha))
+}
+
+fn rebase_plan_body(repo: &str) -> Result<RebasePlan, String> {
+    let (base, base_sha) = rebase_base(repo)?;
+    let range = format!("{base_sha}..HEAD");
+    let merges = git_capture(repo, &["rev-list", "--merges", "--count", &range])
+        .is_ok_and(|n| n != "0");
+    let pushed: std::collections::HashSet<String> = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .ok()
+        .and_then(|b| sync_ref(repo, &b))
+        .and_then(|up| git_capture(repo, &["rev-list", &format!("{base_sha}..refs/remotes/{up}")]).ok())
+        .map(|list| list.lines().map(str::to_string).collect())
+        .unwrap_or_default();
+    let log = git_capture(repo, &["log", "--reverse", "--no-merges", "--format=%H%x1f%h%x1f%s%x1f%B%x1e", &range, "--"])?;
+    let commits = log
+        .split('\x1e')
+        .filter_map(|rec| {
+            let mut f = rec.trim_start_matches('\n').splitn(4, '\x1f');
+            let sha = f.next()?.to_string();
+            if sha.is_empty() {
+                return None;
+            }
+            Some(RebaseCommit {
+                pushed: pushed.contains(&sha),
+                short: f.next()?.to_string(),
+                subject: f.next()?.to_string(),
+                message: f.next()?.trim_end().to_string(),
+                sha,
+            })
+        })
+        .collect();
+    Ok(RebasePlan { base, base_sha, commits, merges })
+}
+
+#[tauri::command(async)]
+pub fn git_rebase_plan(project_path: String) -> Result<RebasePlan, String> {
+    rebase_plan_body(&project_path)
+}
+
+/// One row of the todo the user arranged.
+#[derive(Deserialize, Debug)]
+pub struct RebaseStep {
+    sha: String,
+    action: RebaseAction,
+    /// The new message, for `reword`.
+    message: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RebaseAction {
+    Pick,
+    Reword,
+    Squash,
+    Fixup,
+    Drop,
+}
+
+/// Single-quoted for the `sh -c` git runs editors and `exec` lines through.
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// The todo git will run, and the reword messages it reads. A reword is a pick
+/// plus an `exec` that amends the message in, placed after any squash or fixup
+/// folded into that commit, so the message you wrote is the one that lands
+/// rather than being joined with theirs.
+fn rebase_todo(steps: &[RebaseStep], dir: &Path) -> Result<String, String> {
+    let mut lines = Vec::new();
+    let mut pending: Option<String> = None;
+    let mut kept = false;
+    for (i, step) in steps.iter().enumerate() {
+        match step.action {
+            RebaseAction::Drop => lines.push(format!("drop {}", step.sha)),
+            RebaseAction::Squash | RebaseAction::Fixup => {
+                if !kept {
+                    return Err("The first commit kept cannot be squashed: there is nothing before it to squash into.".into());
+                }
+                let verb = if step.action == RebaseAction::Squash { "squash" } else { "fixup" };
+                lines.push(format!("{verb} {}", step.sha));
+            }
+            RebaseAction::Pick | RebaseAction::Reword => {
+                lines.extend(pending.take());
+                kept = true;
+                lines.push(format!("pick {}", step.sha));
+                if step.action == RebaseAction::Reword {
+                    let message = step.message.as_deref().map(str::trim).unwrap_or_default();
+                    if message.is_empty() {
+                        return Err("A reworded commit needs a message.".into());
+                    }
+                    let file = dir.join(format!("message-{i}"));
+                    std::fs::write(&file, format!("{message}\n")).map_err(|e| e.to_string())?;
+                    pending = Some(format!(
+                        "exec git commit --amend --quiet --allow-empty --no-verify --cleanup=whitespace -F {}",
+                        sh_quote(&file.to_string_lossy())
+                    ));
+                }
+            }
+        }
+    }
+    if !kept {
+        return Err("Every commit is dropped. Reset the branch instead if that is what you want.".into());
+    }
+    lines.extend(pending);
+    Ok(lines.join("\n") + "\n")
+}
+
+/// Replay this branch's own commits in the order and with the actions given.
+/// The steps must name exactly the commits the plan lists now, so a commit made
+/// after the dialog opened is never dropped by being left off the list.
+#[tauri::command]
+pub async fn git_rebase_interactive(project_path: String, steps: Vec<RebaseStep>) -> Result<IntegrateOutcome, String> {
+    crate::exec::git_write("git_rebase_interactive", project_path.clone(), move || {
+        rebase_interactive_body(Path::new(&project_path), &steps)
+    })
+    .await
+}
+
+fn rebase_interactive_body(dir: &Path, steps: &[RebaseStep]) -> Result<IntegrateOutcome, String> {
+    let repo = &*dir.to_string_lossy();
+    let plan = rebase_plan_body(repo)?;
+    if plan.merges {
+        return Err("This branch has merge commits, which an interactive rebase would flatten.".into());
+    }
+    let mut now: Vec<&str> = plan.commits.iter().map(|c| c.sha.as_str()).collect();
+    let mut asked: Vec<&str> = steps.iter().map(|s| s.sha.as_str()).collect();
+    now.sort_unstable();
+    asked.sort_unstable();
+    if now != asked {
+        return Err("The branch changed since the list was read. Open it again.".into());
+    }
+    let work = git_capture(repo, &["rev-parse", "--git-path", "tori-rebase"])?;
+    let work = if Path::new(&work).is_absolute() { PathBuf::from(work) } else { dir.join(work) };
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let todo_file = work.join("todo");
+    std::fs::write(&todo_file, rebase_todo(steps, &work)?).map_err(|e| e.to_string())?;
+    let editor = format!("cp {}", sh_quote(&todo_file.to_string_lossy()));
+    integrate_edited(repo, &["rebase", "-i", &plan.base_sha], Some(&editor))
+}
+
+/// Fold `fixup!`, `squash!` and `amend!` commits into the commits they name,
+/// without moving the branch off its base.
+#[tauri::command]
+pub async fn git_rebase_autosquash(project_path: String) -> Result<IntegrateOutcome, String> {
+    crate::exec::git_write("git_rebase_autosquash", project_path.clone(), move || {
+        let plan = rebase_plan_body(&project_path)?;
+        let folds = |s: &str| ["fixup! ", "squash! ", "amend! "].iter().any(|p| s.starts_with(p));
+        if !plan.commits.iter().any(|c| folds(&c.subject)) {
+            return Err("No fixup! or squash! commits to fold in.".into());
+        }
+        if plan.merges {
+            return Err("This branch has merge commits, which an interactive rebase would flatten.".into());
+        }
+        integrate_edited(&project_path, &["rebase", "-i", "--autosquash", &plan.base_sha], None)
+    })
+    .await
+}
+
 /// Abandon whatever merge, rebase, cherry-pick or revert is in progress.
 ///
 /// The op is read from the repo rather than passed in: the caller's idea of

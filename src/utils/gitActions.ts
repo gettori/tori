@@ -17,7 +17,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, TOAST, type FsChanged, type ToastEvent } from "./events";
+import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
 import { rootOf } from "./topics";
 import { adoptSync } from "./branchSync";
 import { mentionPath } from "./pathScope";
@@ -470,6 +470,51 @@ async function integrate(
     toastError(e);
     return null;
   }
+}
+
+/** Say how an integrate went. A conflict opens Changes, where the files and
+ *  the Continue that finishes the job are. `quietDone` is for Continue and
+ *  Skip, whose success is the banner going away. */
+export function reportIntegrate(outcome: IntegrateOutcome | null, verb: string, quietDone = false): void {
+  if (!outcome) return;
+  if (!outcome.conflicted) {
+    if (!quietDone) emitWith<ToastEvent>(TOAST, { message: `${verb} done.`, kind: "info" });
+    return;
+  }
+  emitWith<ToastEvent>(TOAST, {
+    message: `${verb} stopped on a conflict. Resolve the files in Changes, then Continue.`,
+    kind: "error",
+  });
+  emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "changes" });
+}
+
+/** Finish the merge, rebase, cherry-pick or revert that stopped. */
+export function continueIntegrate(root: string): Promise<IntegrateOutcome | null> {
+  return integrate(root, "git_continue", { projectPath: root });
+}
+
+/** Leave out the commit a rebase or cherry-pick stopped on. */
+export function skipCommit(root: string): Promise<IntegrateOutcome | null> {
+  return integrate(root, "git_skip", { projectPath: root });
+}
+
+/** Mirrors `RebaseCommit` and `RebasePlan` in git.rs. */
+export type RebaseCommit = { sha: string; short: string; subject: string; message: string; pushed: boolean };
+export type RebasePlan = { base: string; base_sha: string; commits: RebaseCommit[]; merges: boolean };
+export type RebaseAction = "pick" | "reword" | "squash" | "fixup" | "drop";
+export type RebaseStep = { sha: string; action: RebaseAction; message?: string };
+
+export function rebasePlan(root: string): Promise<RebasePlan> {
+  return invoke<RebasePlan>("git_rebase_plan", { projectPath: root });
+}
+
+export function rebaseInteractive(root: string, steps: RebaseStep[]): Promise<IntegrateOutcome | null> {
+  return integrate(root, "git_rebase_interactive", { projectPath: root, steps });
+}
+
+/** Fold `fixup!` and `squash!` commits into the ones they name. */
+export function rebaseAutosquash(root: string): Promise<IntegrateOutcome | null> {
+  return integrate(root, "git_rebase_autosquash", { projectPath: root });
 }
 
 export function abortIntegrate(root: string): Promise<boolean> {

@@ -31,6 +31,18 @@ import {
   fetchIn,
   pull as pullIn,
   resetToUpstream,
+  rebase as rebaseOnto,
+  rebasePlan,
+  rebaseInteractive,
+  rebaseAutosquash,
+  continueIntegrate,
+  skipCommit,
+  abortIntegrate,
+  reportIntegrate,
+  branchNames,
+  type IntegrateOutcome,
+  type RebasePlan,
+  type RebaseStep,
   commit as commitStaged,
   headMessage,
   push as pushToOrigin,
@@ -57,7 +69,10 @@ import type { ProjectIconSource } from "../../components/Icon/ProjectIcon";
 import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Dropdown from "../../components/Menu/Dropdown";
-import { MenuRow, MenuSeparator } from "../../components/Menu/rows";
+import { MenuRow, MenuSeparator, MenuSub } from "../../components/Menu/rows";
+import RebaseDialog from "../../components/Dialogs/RebaseDialog";
+import PickerModal from "../../components/Dialogs/PickerModal";
+import { OP_WORD, type ConflictOp } from "../../utils/conflict";
 import {
   changesLayout,
   HISTORY_TABS,
@@ -271,6 +286,28 @@ export default function ReviewPanel(props: {
   // The branch, the PR paths and the stash list are all one-repo surfaces, and
   // the repo they are about is the one on screen.
   const branch = () => gitStateFor(viewedRoot()).branch;
+
+  // The merge or rebase this member is in the middle of. Git keeps no event
+  // for it, so it is re-read whenever the member's files or HEAD move, which
+  // every step of one does.
+  const [op, setOp] = createSignal<ConflictOp>("none");
+  createEffect(
+    on(
+      () => {
+        const root = viewedRoot();
+        const st = gitStateFor(root);
+        return [root, st.files, st.head] as const;
+      },
+      async ([root]) => {
+        const now = root
+          ? await invoke<ConflictOp>("git_conflict_op", { projectPath: root }).catch(() => "none" as const)
+          : "none";
+        if (root === viewedRoot()) setOp(now);
+      },
+    ),
+  );
+  const [rebaseReq, setRebaseReq] = createSignal<{ root: string; plan: RebasePlan } | null>(null);
+  const [ontoPick, setOntoPick] = createSignal<{ root: string; items: string[] } | null>(null);
   const aheadBehind = () => gitStateFor(viewedRoot()).aheadBehind;
 
   // Which member the commit box, its draft request and the timeline are about.
@@ -631,6 +668,50 @@ export default function ReviewPanel(props: {
     } finally {
       setApplying(false);
     }
+  }
+
+  /** A history rewrite (rebase, and the steps that finish one), behind the
+   *  same guard and busy flag as Discard. */
+  function rewrite(
+    verb: string,
+    root: string | null,
+    run: (root: string) => Promise<IntegrateOutcome | null>,
+    quietDone = false,
+  ) {
+    if (!root) return;
+    void busy(() => guarded(verb, root, async () => reportIntegrate(await run(root), verb, quietDone)));
+  }
+
+  async function openRebase(root: string | null) {
+    if (!root) return;
+    try {
+      const plan = await rebasePlan(root);
+      if (plan.merges) toastError("This branch has merge commits, which an interactive rebase would flatten.");
+      else if (!plan.commits.length) toastError(`No commits of its own since ${plan.base}.`);
+      else setRebaseReq({ root, plan });
+    } catch (e) {
+      toastError(e);
+    }
+  }
+
+  function runRebase(steps: RebaseStep[]) {
+    const req = rebaseReq();
+    if (!req) return;
+    void busy(() =>
+      guarded("Rebase", req.root, async () => {
+        const outcome = await rebaseInteractive(req.root, steps);
+        if (outcome) setRebaseReq(null);
+        reportIntegrate(outcome, "Rebase");
+      }),
+    );
+  }
+
+  async function pickOnto(root: string | null) {
+    if (!root) return;
+    const current = gitStateFor(root).branch;
+    const items = (await branchNames(root)).filter((n) => n !== current);
+    if (items.length) setOntoPick({ root, items });
+    else toastError("No other branches in this repo.");
   }
 
   /** Throw away every unstaged change to a whole file.
@@ -1129,9 +1210,27 @@ export default function ReviewPanel(props: {
       <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!)}>
         {superseded(menuRoot()) ? "Reset to Upstream" : "Pull"}
       </MenuRow>
+      <Show when={!superseded(menuRoot())}>
+        <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, true)}>Pull (Rebase)</MenuRow>
+      </Show>
       <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
         Push
       </MenuRow>
+      <MenuSub label="Rebase" disabled={applying() || op() !== "none"}>
+        <Show when={baseBranch() && baseBranch() !== branch()}>
+          <MenuRow
+            onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}
+          >
+            Onto origin/{baseBranch()}
+          </MenuRow>
+        </Show>
+        <MenuRow onClick={() => void pickOnto(menuRoot())}>Onto Branch...</MenuRow>
+        <MenuSeparator />
+        <MenuRow onClick={() => void openRebase(menuRoot())}>Interactive...</MenuRow>
+        <MenuRow onClick={() => rewrite("Autosquash", menuRoot(), rebaseAutosquash)}>
+          Autosquash Fixups
+        </MenuRow>
+      </MenuSub>
       <MenuSeparator />
       <MenuRow
         disabled={applying() || conflictedFiles(menuRoot()).length > 0}
@@ -1314,6 +1413,54 @@ export default function ReviewPanel(props: {
           )}
         </Show>
       </div>
+
+      {/* A merge or rebase this member stopped in the middle of, and the three
+          ways out of it. Continue waits for the conflicts to be resolved. */}
+      <Show when={op() !== "none"}>
+        <div class={styles.opBar}>
+          <span class={styles.opName}>
+            {OP_WORD[op()]} in progress
+            <Show when={conflictedFiles(viewedRoot()).length}>
+              {(n) => ` (${plural(n(), "conflict")})`}
+            </Show>
+          </span>
+          <span class={styles.spacer} />
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={applying() || conflictedFiles(viewedRoot()).length > 0}
+            tooltipWhenDisabled
+            tooltip={
+              conflictedFiles(viewedRoot()).length
+                ? "Resolve the conflicted files first"
+                : `Carry on with the ${OP_WORD[op()].toLowerCase()}`
+            }
+            onClick={() => rewrite("Continue", viewedRoot(), continueIntegrate, true)}
+          >
+            Continue
+          </Button>
+          <Show when={op() === "rebase" || op() === "cherrypick"}>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={applying()}
+              tooltip="Leave out the commit it stopped on"
+              onClick={() => rewrite("Skip", viewedRoot(), skipCommit, true)}
+            >
+              Skip
+            </Button>
+          </Show>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={applying()}
+            tooltip={`Go back to before the ${OP_WORD[op()].toLowerCase()}`}
+            onClick={() => viewedRoot() && void abortIntegrate(viewedRoot()!)}
+          >
+            Abort
+          </Button>
+        </div>
+      </Show>
 
       {/* The composer, as one card: the message, then what the commit would
           hold and the buttons that make it, so the numbers sit beside the
@@ -1726,6 +1873,30 @@ export default function ReviewPanel(props: {
           </section>
         </Show>
       </div>
+      <Show when={rebaseReq()}>
+        {(req) => (
+          <RebaseDialog
+            plan={req().plan}
+            busy={applying()}
+            onRun={runRebase}
+            onCancel={() => setRebaseReq(null)}
+          />
+        )}
+      </Show>
+      <Show when={ontoPick()}>
+        {(pick) => (
+          <PickerModal
+            title="Rebase onto which branch?"
+            items={pick().items}
+            onSubmit={(branch) => {
+              const root = pick().root;
+              setOntoPick(null);
+              if (branch) rewrite("Rebase", root, (r) => rebaseOnto(r, branch));
+            }}
+            onCancel={() => setOntoPick(null)}
+          />
+        )}
+      </Show>
       <Show when={confirmReq()}>
         <ConfirmDialog
           title={confirmReq()!.title}

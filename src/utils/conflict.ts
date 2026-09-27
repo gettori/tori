@@ -104,6 +104,17 @@ export type SideLabels = { ours: string; theirs: string; yours: "ours" | "theirs
  * they keep the merge orientation. So does `none`, which is where a conflicted
  * `git stash apply` lands.
  */
+/** What the operation is called in a header. `none` is where a conflicted
+ *  `git stash apply` or `git checkout -m` lands: git records no state for
+ *  either, but the tree is just as unmerged. */
+export const OP_WORD: Record<ConflictOp, string> = {
+  merge: "Merge",
+  rebase: "Rebase",
+  cherrypick: "Cherry-pick",
+  revert: "Revert",
+  none: "Unresolved",
+};
+
 export function sideLabels(op: ConflictOp): SideLabels {
   if (op === "rebase") {
     return { ours: "Upstream", theirs: "Yours (being replayed)", yours: "theirs" };
