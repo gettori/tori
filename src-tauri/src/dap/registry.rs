@@ -373,7 +373,7 @@ const BUILTINS: &[(&str, &str)] = &[
 ];
 
 fn user_dap_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/dap")
+    crate::owned_state::config_dir().join("dap")
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id

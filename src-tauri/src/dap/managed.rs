@@ -15,7 +15,7 @@ use super::registry::{DapAdapter, Install};
 
 /// Where Tori's own debuggers live, one directory per adapter id.
 pub fn debuggers_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/debuggers")
+    crate::owned_state::config_dir().join("debuggers")
 }
 
 /// Install (or replace) Tori's copy of `adapter`.

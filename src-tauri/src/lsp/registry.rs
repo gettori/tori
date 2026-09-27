@@ -627,7 +627,7 @@ const BUILTINS: &[(&str, &str)] = &[
 ];
 
 fn user_lsp_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/lsp")
+    crate::owned_state::config_dir().join("lsp")
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id

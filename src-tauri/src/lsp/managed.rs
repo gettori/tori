@@ -34,7 +34,7 @@ static INSTALLING: Mutex<()> = Mutex::new(());
 
 /// Where Tori's own copies live, one directory per server id.
 pub fn servers_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/servers")
+    crate::owned_state::config_dir().join("servers")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

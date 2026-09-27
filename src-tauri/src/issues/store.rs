@@ -46,7 +46,7 @@ fn norm(path: &str) -> String {
 }
 
 fn store_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/unit_issues.json")
+    crate::owned_state::config_dir().join("unit_issues.json")
 }
 
 impl IssueStore {

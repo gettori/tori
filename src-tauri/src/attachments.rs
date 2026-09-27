@@ -12,7 +12,7 @@ const NAME_HEADER: &str = "x-tori-attachment-name";
 /// Beside the other things Tori keeps for itself, never under a workspace:
 /// a worktree can be deleted while the transcript naming the file lives on.
 pub fn dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/attachments")
+    crate::owned_state::config_dir().join("attachments")
 }
 
 #[tauri::command]

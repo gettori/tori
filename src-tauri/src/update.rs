@@ -91,7 +91,7 @@ struct Throttle {
 }
 
 fn throttle_path() -> std::path::PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/update-check.json")
+    crate::owned_state::config_dir().join("update-check.json")
 }
 
 fn now_secs() -> u64 {

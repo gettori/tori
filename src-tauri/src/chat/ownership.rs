@@ -254,7 +254,7 @@ pub fn classify_persisted(
 // ---------------------------------------------------------------------------
 
 fn claims_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/chat-claims.json")
+    crate::owned_state::config_dir().join("chat-claims.json")
 }
 
 /// Parse the on-disk claims file. A malformed or absent file yields an empty

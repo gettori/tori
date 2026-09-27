@@ -737,9 +737,7 @@ struct AdoptedState {
 }
 
 fn adopted_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/adopted.json")
+    crate::owned_state::config_dir().join("adopted.json")
 }
 
 fn load_adopted() -> AdoptedState {
@@ -885,9 +883,7 @@ struct Overlay {
 }
 
 fn overlay_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/sessions.json")
+    crate::owned_state::config_dir().join("sessions.json")
 }
 
 fn load_overlay() -> HashMap<String, Overlay> {
@@ -3972,9 +3968,9 @@ mod tests {
 "#;
         let p = tmp_file("claude_stale_block_done.jsonl", body);
         let id = "sess-stale-block-done";
-        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/tori/hooks-status")).unwrap();
+        std::fs::create_dir_all(crate::owned_state::config_dir().join("hooks-status")).unwrap();
         std::fs::write(
-            dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json")),
+            crate::owned_state::config_dir().join(format!("hooks-status/{id}.json")),
             r#"{"event":"Notification","at":1}"#,
         )
         .unwrap();
@@ -3984,7 +3980,7 @@ mod tests {
             TailState::Done
         );
 
-        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json"))).ok();
+        std::fs::remove_file(crate::owned_state::config_dir().join(format!("hooks-status/{id}.json"))).ok();
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -3999,9 +3995,9 @@ mod tests {
 "#;
         let p = tmp_file("claude_live_block_pending.jsonl", body);
         let id = "sess-live-block-pending";
-        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/tori/hooks-status")).unwrap();
+        std::fs::create_dir_all(crate::owned_state::config_dir().join("hooks-status")).unwrap();
         std::fs::write(
-            dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json")),
+            crate::owned_state::config_dir().join(format!("hooks-status/{id}.json")),
             r#"{"event":"Notification","at":1}"#,
         )
         .unwrap();
@@ -4011,7 +4007,7 @@ mod tests {
             TailState::BlockedCandidate
         );
 
-        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json"))).ok();
+        std::fs::remove_file(crate::owned_state::config_dir().join(format!("hooks-status/{id}.json"))).ok();
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 

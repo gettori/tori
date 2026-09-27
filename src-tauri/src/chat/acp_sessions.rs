@@ -72,7 +72,7 @@ fn dir() -> PathBuf {
             return path.clone();
         }
     }
-    dirs::home_dir().unwrap_or_default().join(".config/tori/acp-sessions")
+    crate::owned_state::config_dir().join("acp-sessions")
 }
 
 /// Where one session's locator lives.

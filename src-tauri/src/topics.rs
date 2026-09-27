@@ -80,7 +80,7 @@ pub struct Store {
 
 impl Store {
     pub fn default_location() -> Self {
-        Self::at(dirs::home_dir().unwrap_or_default().join(".config/tori/topics.json"))
+        Self::at(crate::owned_state::config_dir().join("topics.json"))
     }
 
     pub fn at(path: impl Into<PathBuf>) -> Self {

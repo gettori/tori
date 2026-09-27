@@ -39,7 +39,7 @@ pub struct RetiredRuleStore {
 }
 
 fn store_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/chat-rules")
+    crate::owned_state::config_dir().join("chat-rules")
 }
 
 /// Remove the retired rule store, reporting what went.

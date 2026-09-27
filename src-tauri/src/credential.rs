@@ -144,7 +144,7 @@ pub fn unpublish() {
 }
 
 fn bridge_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/askpass.json")
+    crate::owned_state::config_dir().join("askpass.json")
 }
 
 pub(crate) fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Result<()> {
@@ -215,7 +215,7 @@ pub fn sync_global_config(file: &AccountsFile) -> Result<(), String> {
     let hosts: Vec<&str> =
         file.hosts.keys().map(String::as_str).filter(|host| accounts::git_everywhere(file, host)).collect();
     let home = dirs::home_dir().unwrap_or_default();
-    sync_config(&hosts, &helper_config(), &home.join(".config/tori/gitconfig"), &global_config_path(&home))
+    sync_config(&hosts, &helper_config(), &crate::owned_state::config_dir().join("gitconfig"), &global_config_path(&home))
 }
 
 fn global_config_path(home: &Path) -> PathBuf {

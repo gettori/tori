@@ -228,7 +228,7 @@ pub fn resolve_lines(repo: &str, file: &str, plan: &[Step]) -> Vec<i32> {
 /// would make every snapshot a full re-hash.
 fn live_index_path(repo: &str) -> PathBuf {
     let slug: String = repo.chars().map(|c| if c == '/' || c == '\\' { '_' } else { c }).collect();
-    dirs::home_dir().unwrap_or_default().join(".config/tori/agent-lines-index").join(slug)
+    crate::owned_state::config_dir().join("agent-lines-index").join(slug)
 }
 
 /// Which agent turn wrote each line of `file`, for the chat sessions the caller
@@ -460,10 +460,10 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
         std::fs::remove_file(live_index_path(&dir.to_string_lossy())).ok();
         let touched =
-            dirs::home_dir().unwrap_or_default().join(".config/tori/checkpoint-touched").join(session);
+            crate::owned_state::config_dir().join("checkpoint-touched").join(session);
         std::fs::remove_dir_all(touched).ok();
         std::fs::remove_file(
-            dirs::home_dir().unwrap_or_default().join(".config/tori/checkpoint-index").join(session),
+            crate::owned_state::config_dir().join("checkpoint-index").join(session),
         )
         .ok();
     }

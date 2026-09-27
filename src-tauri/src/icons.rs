@@ -765,7 +765,7 @@ pub fn device_image(path: &str) -> Option<DeviceImage> {
 /// travels with the config rather than pointing at a file the user may move or
 /// delete out from under it.
 pub fn icons_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/icons")
+    crate::owned_state::config_dir().join("icons")
 }
 
 /// FNV-1a (64-bit). Used only to name a stored file; nothing depends on it

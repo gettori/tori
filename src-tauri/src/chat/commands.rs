@@ -1132,9 +1132,7 @@ pub struct OpenTurn {
 }
 
 fn open_turn_path(session_id: &str) -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/chat-open-turn")
+    crate::owned_state::config_dir().join("chat-open-turn")
         .join(format!("{session_id}.json"))
 }
 
