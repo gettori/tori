@@ -1540,6 +1540,21 @@ export default function LeftSidebar(props: {
     }
   }
 
+  // No confirm: prune only drops git's records of folders that are already gone.
+  async function pruneWorktrees(p: Project) {
+    try {
+      const n = await invoke<number>("prune_worktree_records", { repoPath: p.path });
+      setError(
+        n === 0
+          ? `${p.name} has no stale worktrees.`
+          : `Pruned ${n} stale worktree${n === 1 ? "" : "s"} from ${p.name}.`,
+        "info",
+      );
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // --- worktree lifecycle ---
 
   // Open the removal confirmation for a worktree, then fetch its dirty/unpushed
@@ -2300,6 +2315,7 @@ export default function LeftSidebar(props: {
             // Beside Add worktree on purpose: the menu that makes worktrees is
             // where you say what they are made with.
             { label: "Shared in worktrees", onClick: () => openSharedFiles(p) },
+            { label: "Prune worktrees", onClick: () => void pruneWorktrees(p) },
           ],
           remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
         };
@@ -2332,6 +2348,7 @@ export default function LeftSidebar(props: {
           rows: [
             { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
             { label: "Shared in worktrees", onClick: () => openSharedFiles(p) },
+            { label: "Prune worktrees", onClick: () => void pruneWorktrees(p) },
           ],
           remove: {
             label: "Remove empty container",

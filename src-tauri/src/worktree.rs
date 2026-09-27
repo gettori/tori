@@ -680,6 +680,29 @@ pub fn remove_worktree(
     Ok(())
 }
 
+/// `git worktree prune` on demand, for admin entries left by a folder deleted
+/// outside Tori. Returns how many it dropped, read off `-v`'s stderr lines.
+#[tauri::command(async)]
+pub fn prune_worktree_records(app: AppHandle, repo_path: String) -> Result<usize, String> {
+    let lock = crate::exec::repo_lock(&repo_path);
+    let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&repo_path)
+        .args(["worktree", "prune", "-v"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success() {
+        return Err(stderr.trim().to_string());
+    }
+    let pruned = stderr.lines().filter(|l| l.starts_with("Removing ")).count();
+    if pruned > 0 {
+        let _ = app.emit("config://changed", ());
+    }
+    Ok(pruned)
+}
+
 /// Remove a worktree AND delete its branch (`git branch -D`). The folder is removed
 /// first; if the branch delete then fails, the folder is already gone, so we emit
 /// and surface an explicit partial-outcome message rather than swallow it. `force`
