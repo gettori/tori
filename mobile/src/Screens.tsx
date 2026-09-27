@@ -1,24 +1,29 @@
-import { For, Match, Show, Switch, createResource, type JSX } from "solid-js";
+import { For, Match, Show, Switch, createResource, onCleanup, type JSX } from "solid-js";
 import { ChevronLeft, Folder, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
+import SyncMarks from "../../src/components/SyncMarks/SyncMarks";
+import PrLine from "../../src/panels/LeftSidebar/PrLine";
+import { syncMarks } from "../../src/utils/branchSync";
+import type { UnitStatus } from "../../src/utils/forgeTypes";
+import type { BranchSync } from "../../src/utils/gitActions";
 import { ago } from "../../src/utils/relativeTime";
 import type { Crew } from "./Autopilot";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, Offline, StateMark } from "./Root";
 import { SessionList, unitSessions } from "./Unit";
-import { atUnit, inUnit, kindName, newest, unitCounts, unitsHeading, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
+import { agentHolds, atUnit, inUnit, kindName, newest, unitCounts, unitsHeading, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
 import styles from "./shell.module.css";
-
 
 // Git runs once per folder on the Mac; a project with many worktrees on a slow
 // link can take longer than the default reply window.
 const GIT_REPLY_MS = 30_000;
 const GIT_FOLDERS_MAX = 64;
 const MINUS = "\u2212";
-const UP = "\u2191";
-
+// The desktop polls the forge every two minutes; the phone asks no more often.
+const SYNC_EVERY_MS = 30_000;
+const PR_EVERY_MS = 120_000;
 
 export function watchGit(client: RemoteClient, folders: () => string[]) {
   const [git] = createResource<Record<string, UnitGit>, string[]>(
@@ -29,6 +34,42 @@ export function watchGit(client: RemoteClient, folders: () => string[]) {
         .catch(() => info.value ?? {}),
   );
   return git;
+}
+
+const syncKey = (unit: Unit) => `${unit.folder}\u0000${unit.branch ?? ""}`;
+
+function every(ms: number, refetch: () => void) {
+  const timer = setInterval(refetch, ms);
+  onCleanup(() => clearInterval(timer));
+}
+
+export function watchSync(client: RemoteClient, units: () => Unit[]) {
+  const [sync, { refetch }] = createResource<Record<string, BranchSync>, Unit[]>(
+    () => (client.generation() ? units() : undefined),
+    (list, info) =>
+      client
+        .request<Record<string, BranchSync>>(
+          "units.sync",
+          { units: list.filter((u) => u.branch).slice(0, GIT_FOLDERS_MAX).map((u) => ({ path: u.folder, branch: u.branch })) },
+          GIT_REPLY_MS,
+        )
+        .catch(() => info.value ?? {}),
+  );
+  every(SYNC_EVERY_MS, () => void refetch());
+  return (unit: Unit) => sync()?.[syncKey(unit)];
+}
+
+export function watchPr(client: RemoteClient, project: () => Project) {
+  const [report, { refetch }] = createResource<UnitStatus[], Project>(
+    () => (client.generation() ? project() : undefined),
+    (p, info) =>
+      client
+        .request<{ statuses: UnitStatus[] }>("units.pr", { project: p.path, branches: p.units.flatMap((u) => (u.branch ? [u.branch] : [])) }, GIT_REPLY_MS)
+        .then((r) => r.statuses)
+        .catch(() => info.value ?? []),
+  );
+  every(PR_EVERY_MS, () => void refetch());
+  return (unit: Unit) => report()?.find((s) => s.headRef === unit.branch && s.pullRequest);
 }
 
 export function GitCounts(props: { git: UnitGit | undefined; lead?: JSX.Element }) {
@@ -45,12 +86,6 @@ export function GitCounts(props: { git: UnitGit | undefined; lead?: JSX.Element 
               <span class={styles.deleted}>
                 {MINUS}
                 {git().deleted}
-              </span>
-            </Show>
-            <Show when={(git().ahead ?? 0) > 0}>
-              <span class={styles.ahead}>
-                {UP}
-                {git().ahead}
               </span>
             </Show>
           </>
@@ -107,6 +142,8 @@ function WorktreeCard(props: {
   unit: Unit;
   live: SessionRow[];
   git: UnitGit | undefined;
+  sync: BranchSync | undefined;
+  pr: UnitStatus | undefined;
   topics: Topic[];
   crewed: boolean;
   onOpen: () => void;
@@ -131,11 +168,14 @@ function WorktreeCard(props: {
               </span>
             )}
           </For>
+          <SyncMarks marks={agentHolds(rows()) ? [] : syncMarks(props.sync)} class={styles.sync} />
           <StateMark rows={rows()} />
           <Chevron />
         </span>
         <span class={styles.cardMeta}>
-          <span>{meta()}</span>
+          <Show when={props.pr} fallback={<span>{meta()}</span>}>
+            {(pr) => <PrLine status={pr()} />}
+          </Show>
           <GitCounts git={props.git} />
         </span>
       </button>
@@ -154,6 +194,8 @@ export function ProjectScreen(props: {
   onBack: () => void;
 }) {
   const git = watchGit(props.client, () => props.project.units.map((unit) => unit.folder));
+  const sync = watchSync(props.client, () => props.project.units);
+  const pr = watchPr(props.client, () => props.project);
   const sessions = () => props.live().filter((row) => props.project.units.some((unit) => inUnit(row.home, unit))).length;
   const meta = () => {
     const units = unitCounts(props.project.units, DOT);
@@ -179,6 +221,8 @@ export function ProjectScreen(props: {
                 unit={unit}
                 live={props.live()}
                 git={git()?.[unit.folder]}
+                sync={sync(unit)}
+                pr={pr(unit)}
                 topics={props.topics.filter((topic) => topic.members.some((m) => m.worktreePath === unit.folder))}
                 crewed={props.crew().worktrees.has(unit.folder)}
                 onOpen={() => props.onUnit(unit)}

@@ -4,13 +4,15 @@ import { Plus } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
 import { agentMark } from "../../src/components/Icon/agentMarks";
+import SyncMarks from "../../src/components/SyncMarks/SyncMarks";
+import { syncMarks } from "../../src/utils/branchSync";
 import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
 import type { Crew } from "./Autopilot";
 import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
 import { DOT, Offline, PhaseMark } from "./Root";
-import { GitCounts, PushTop, watchGit } from "./Screens";
-import { PHASE_LABEL, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
+import { GitCounts, PushTop, watchGit, watchSync } from "./Screens";
+import { PHASE_LABEL, agentHolds, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
 import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
@@ -149,6 +151,7 @@ export default function UnitScreen(props: {
 }) {
   const { here, earlier } = unitSessions(props.client, () => [props.unit], props.live);
   const git = watchGit(props.client, () => [props.unit.folder]);
+  const sync = watchSync(props.client, () => [props.unit]);
   const [spawning, setSpawning] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -208,6 +211,7 @@ export default function UnitScreen(props: {
               </Show>
             }
           />
+          <SyncMarks marks={agentHolds(here()) ? [] : syncMarks(sync(props.unit))} />
         </div>
         <SessionList here={here()} earlier={earlier()} crew={props.crew} autopilotOn={props.autopilotOn} onOpen={props.onOpen} />
       </div>

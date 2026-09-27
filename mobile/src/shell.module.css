@@ -871,9 +871,6 @@ li + li > .item {
   color: var(--diff-deleted);
 }
 
-.ahead {
-  color: var(--brand-default);
-}
 
 .newPill {
   display: flex;
@@ -1664,4 +1661,8 @@ li + li > .item {
   white-space: nowrap;
   font-size: 12px;
   color: var(--brand-default);
+}
+
+.sync {
+  flex: none;
 }

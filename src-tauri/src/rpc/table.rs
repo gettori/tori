@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
+    params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
     HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -208,6 +208,30 @@ pub static METHODS: &[Method] = &[
             }
             b.units_git(p)
         },
+    },
+    Method {
+        name: "units.sync",
+        description: "For each unit, its branch's standing as the sidebar draws it: dirty, the upstream's ahead and behind (or none yet), the base's ahead and the files that would conflict, and HEAD's commit time. Keyed `path\\u0000branch`; a folder that is not a repo is left out.",
+        params: schema::<UnitsSyncParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| {
+            let p: UnitsSyncParams = params(v)?;
+            if p.units.len() > UNITS_GIT_MAX {
+                return Err(RpcError::new(INVALID_PARAMS, format!("at most {UNITS_GIT_MAX} units, not {}", p.units.len())));
+            }
+            b.units_sync(p)
+        },
+    },
+    Method {
+        name: "units.pr",
+        description: "The forge's word on a project's branches, from the sidebar's poll: each branch's pull request, checks and review decision. Refused when the project's forge has no account.",
+        params: schema::<UnitsPrParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.units_pr(params(v)?),
     },
     Method {
         name: "worktree.new",
