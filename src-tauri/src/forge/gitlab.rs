@@ -906,6 +906,13 @@ impl Forge for GitLabForge {
         self.send(self.rest("PUT", &path, Some(serde_json::json!({}))))?;
         Ok(())
     }
+
+    fn reopen(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError> {
+        self.require_token()?;
+        let path = format!("/projects/{}/merge_requests/{number}", project(repo));
+        self.send(self.rest("PUT", &path, Some(serde_json::json!({ "state_event": "reopen" }))))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1320,6 +1327,16 @@ mod tests {
         let sent = stub.requests();
         assert!(sent[0].url.ends_with("/merge_requests/7/merge"));
         assert!(sent[2].url.ends_with("/merge_requests/7/rebase"), "got {}", sent[2].url);
+    }
+
+    #[test]
+    fn reopening_sends_the_reopen_state_event() {
+        let (f, stub) = forge(vec![StubTransport::json(200, "{}")]);
+        f.reopen(&repo(), 7).unwrap();
+        let sent = stub.requests();
+        assert_eq!(sent[0].method, "PUT");
+        assert!(sent[0].url.ends_with(&format!("/projects/{PROJECT}/merge_requests/7")), "got {}", sent[0].url);
+        assert_eq!(serde_json::from_str::<Value>(sent[0].body.as_deref().unwrap()).unwrap()["state_event"], "reopen");
     }
 
     #[test]
