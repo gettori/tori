@@ -1,8 +1,8 @@
 ---
 summary: the PR list, diff, threads and merge bar read checks from the shared poll store rather than fetching their own copy
 status: current
-updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 4, 6, 8 to 13; commits 85728ec, db4be3b, cdd19dc, ce1c941, 51f1f1a, 8e6f03b, d0d9a3e, 945c1bd"
+updated: 2026-09-27
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 4, 6, 8 to 13; commits 85728ec, db4be3b, cdd19dc, ce1c941, 51f1f1a, 8e6f03b, d0d9a3e, 945c1bd; plan "Show merged and closed PR status on worktree rows" (personal/tori, branch `misc-20260927`), commits 6cfe26b5, 2d139c7e, 4d8a5c5d"
 ---
 
 # Pull Requests panel
@@ -19,6 +19,7 @@ The in-app surface for a project's pull requests: the list, one PR's files and t
 - Holds a pending review and submits it in one call ([[concept_review_line_anchoring]]).
 - Hands a thread to the agent that wrote the branch, through the one send path ([[concept_safe_send]]).
 - Lands the pull request, and asks the sidebar to delete the branch ([[concept_mergeability_is_asked]]).
+- Loads a merged or closed pull request like an open one. The branch's relation to it goes through `forgeChip`, so a reused branch name shows no PR here exactly when the sidebar row shows none ([[concept_a_finished_pull_request_is_kept_by_relation]]).
 - Does **not** own polling, the rate budget, or the credential. It reads `forgeStatus.ts` and invokes commands.
 - Does **not** own branch deletion. It emits `REMOVE_BRANCH_UNIT` and the sidebar's dialogs (with their dirty, unpushed and running-agent guards) decide what happens.
 
@@ -46,6 +47,7 @@ The in-app surface for a project's pull requests: the list, one PR's files and t
 ## Related
 
 - [[concept_forge_rate_budget]] - why the panel reads checks instead of fetching them
+- [[concept_a_finished_pull_request_is_kept_by_relation]] - when a finished PR belongs to the branch
 - [[lesson_sanitize_text_you_did_not_author]] - the security finding this panel produced
 - [[gotcha_diffrows_reads_props_selection_once_per_row]]
 - [[gotcha_array_prototype_at_is_outside_this_repos_ts_lib]]
