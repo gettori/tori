@@ -181,7 +181,7 @@ const branchSync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
   dirty: false,
   head_committed_at: 1_700_000_000,
-  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
+  upstream: { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false },
   base: null,
   ...over,
 });
@@ -199,7 +199,7 @@ describe("what a Topic row says about its members' branches", () => {
     const { container } = mount(
       topic([member("/w/api", 0), member("/w/web", 1)]),
       () => {},
-      withSync({ "/w/web": CONFLICTED, "/w/api": branchSync({ upstream: { ahead: 1, behind: 0, has_upstream: true, rewritten: false, superseded: false } }) }),
+      withSync({ "/w/web": CONFLICTED, "/w/api": branchSync({ upstream: { ahead: 1, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false } }) }),
     );
 
     const pill = container.querySelector("[data-topic-sync]")!;

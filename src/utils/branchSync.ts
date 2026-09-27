@@ -172,9 +172,9 @@ export type SyncMark = {
  */
 export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   if (!sync || sync.detached) return [];
-  const { ahead, behind, has_upstream, rewritten, superseded } = sync.upstream;
+  const { ahead, behind, has_upstream, gone, rewritten, superseded } = sync.upstream;
   const fighting = sync.base?.conflicts ?? [];
-  const unpublished = !has_upstream ? (sync.base?.ahead ?? 0) : 0;
+  const unpublished = !has_upstream && !gone ? (sync.base?.ahead ?? 0) : 0;
   const marks: SyncMark[] = [];
 
   // First, so the one red glyph in a column keeps the same place in the run and
@@ -205,6 +205,8 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
       tone: "muted",
       title: `${plural(unpublished, "commit")} to publish`,
     });
+  } else if (gone) {
+    marks.push({ kind: "push", count: null, tone: "muted", title: GONE });
   } else if (!has_upstream) {
     // The same fact without a number to put on it: nothing is pushed, so
     // everything is pending. One glyph fewer to learn than a state of its own.
@@ -287,6 +289,8 @@ export function rollupSync(states: readonly MemberSync[]): Rollup {
   };
 }
 
+const GONE = "The remote branch was deleted";
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
@@ -300,7 +304,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  */
 export function syncState(sync: BranchSync | null | undefined): SyncState {
   if (!sync || sync.detached) return NOTHING;
-  const { ahead, behind, has_upstream, rewritten, superseded } = sync.upstream;
+  const { ahead, behind, has_upstream, gone, rewritten, superseded } = sync.upstream;
   const base = sync.base;
 
   // A null `conflicts` is "not asked" (git below 2.38, or no shared history),
@@ -366,6 +370,10 @@ export function syncState(sync: BranchSync | null | undefined): SyncState {
       label: `${UP}${ahead}`,
       detail: `${plural(ahead, "commit")} to push.`,
     };
+  }
+
+  if (gone) {
+    return { ...NOTHING, level: "unpushed", tone: "muted", label: "deleted", detail: `${GONE}.` };
   }
 
   // Only without an upstream, and only on a branch: "never pushed" is a state

@@ -2403,6 +2403,7 @@ pub struct AheadBehind {
     /// decides that for itself; this is only what the button may promise, and
     /// it is a separate question from having something to count against.
     sets_upstream: bool,
+    gone: bool,
 }
 
 #[tauri::command(async)]
@@ -2421,10 +2422,11 @@ pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
     // the same way: a worktree's branch carries no tracking config, and calling
     // it unpushed while it sits on `origin/<name>` is alarming and false.
     let Some(tracked) = branch.as_deref().and_then(|name| sync_ref(&project_path, name)) else {
-        return Ok(AheadBehind { ahead: 0, behind: 0, has_upstream: false, sets_upstream });
+        let gone = branch.as_deref().is_some_and(|name| upstream_gone(&project_path, name));
+        return Ok(AheadBehind { ahead: 0, behind: 0, has_upstream: false, sets_upstream, gone });
     };
     let sync = upstream_sync(&project_path, &tracked, "HEAD");
-    Ok(AheadBehind { ahead: sync.ahead, behind: sync.behind, has_upstream: true, sets_upstream })
+    Ok(AheadBehind { ahead: sync.ahead, behind: sync.behind, has_upstream: true, sets_upstream, gone: false })
 }
 
 /// The PR base branch: `origin/HEAD` when set, else a probe for `origin/main`
@@ -2458,12 +2460,15 @@ pub fn git_default_base_branch(project_path: String) -> Result<Option<String>, S
 /// rewrote (rebase, amend) needs a force push, a commit somebody else pushed
 /// needs a pull. `superseded` is the third: the upstream was force-pushed over
 /// commits this side only ever took from it, so it needs a reset to the
-/// upstream, and a pull would merge the replaced history back in.
+/// upstream, and a pull would merge the replaced history back in. `gone` is a
+/// branch that tracked a remote branch somebody has since deleted, so a prune
+/// took the ref; it only holds without an upstream.
 #[derive(Serialize, Default, Debug, PartialEq)]
 pub struct UpstreamSync {
     ahead: u32,
     behind: u32,
     has_upstream: bool,
+    gone: bool,
     rewritten: bool,
     superseded: bool,
 }
@@ -2550,9 +2555,10 @@ fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
             .ok()
             .and_then(|t| t.parse().ok())
             .unwrap_or(0),
-        upstream: match &tracked {
-            Some(remote) => upstream_sync(repo, remote, &tip),
-            None => UpstreamSync::default(),
+        upstream: match (&tracked, branch.as_deref()) {
+            (Some(remote), _) => upstream_sync(repo, remote, &tip),
+            (None, Some(name)) => UpstreamSync { gone: upstream_gone(repo, name), ..UpstreamSync::default() },
+            (None, None) => UpstreamSync::default(),
         },
         base: base_sync(repo, &tip, branch.as_deref(), tracked.as_deref()),
         ..sync
@@ -2689,6 +2695,15 @@ fn sync_ref(repo: &str, branch: &str) -> Option<String> {
         .map(|_| same_name)
 }
 
+/// Whether `branch` carries tracking config for a remote branch that no longer
+/// exists, the state `fetch --prune` leaves behind once somebody deletes it.
+/// Only meaningful where [`sync_ref`] found nothing. A worktree branch has no
+/// tracking config until its first push, so one pushed without it reads as
+/// never pushed rather than as gone.
+fn upstream_gone(repo: &str, branch: &str) -> bool {
+    git_capture(repo, &["config", "--get", &format!("branch.{branch}.merge")]).is_ok_and(|merge| !merge.is_empty())
+}
+
 fn upstream_sync(repo: &str, tracked: &str, tip: &str) -> UpstreamSync {
     let range = format!("{tip}...refs/remotes/{tracked}");
     let counts = git_capture(repo, &["rev-list", "--left-right", "--count", &range, "--"]).unwrap_or_default();
@@ -2704,6 +2719,7 @@ fn upstream_sync(repo: &str, tracked: &str, tip: &str) -> UpstreamSync {
         ahead,
         behind,
         has_upstream: true,
+        gone: false,
         rewritten,
         superseded: diverged && !rewritten && only_old_upstream(repo, tracked, tip),
     }
@@ -3919,7 +3935,7 @@ diff --git a/f b/f
         assert!(sync.head_committed_at > 0, "HEAD has a commit time");
         assert_eq!(
             sync.upstream,
-            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false }
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false }
         );
         // The base is named even with nothing to report, so a caller can tell
         // "level with main" from "there is no main".
@@ -4027,6 +4043,23 @@ diff --git a/f b/f
         assert!(!sync.upstream.superseded, "mine.txt was never on the upstream");
         assert!(git_reset_to_upstream_body(&local).is_err(), "a reset would lose mine.txt");
         scrub(&[&local, &remote, &other]);
+    }
+
+    #[test]
+    fn branch_sync_calls_a_pruned_upstream_gone_and_a_never_pushed_branch_not() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "work.txt", "work");
+        assert!(!sync_of(&local).upstream.gone, "never pushed is not gone");
+
+        git(&local, &["push", "-q", "-u", "origin", "feat"]);
+        git(&local, &["push", "-q", "origin", "--delete", "feat"]);
+        git(&local, &["fetch", "-q", "--prune", "origin"]);
+
+        let sync = sync_of(&local);
+        assert!(!sync.upstream.has_upstream);
+        assert!(sync.upstream.gone);
+        assert!(git_ahead_behind(local.to_string_lossy().into_owned()).unwrap().gone);
+        scrub(&[&local, &remote]);
     }
 
     #[test]
@@ -4310,7 +4343,7 @@ diff --git a/f b/f
         assert!(!main.detached);
         assert_eq!(
             main.upstream,
-            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false }
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false }
         );
         assert_eq!(main.base, None, "main is the base");
         assert!(main.head_committed_at > 0);
@@ -4334,7 +4367,7 @@ diff --git a/f b/f
         let level = sync_of(&local);
         assert_eq!(
             level.upstream,
-            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false },
             "on origin/main, so there is nothing to say"
         );
 
