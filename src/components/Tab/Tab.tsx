@@ -85,6 +85,10 @@ export interface TabProps
   /** Keep the tooltip reachable while the tab is `disabled`. Off by default,
    *  and opted into per site with a reason - see `Tooltip`. */
   tooltipWhenDisabled?: boolean;
+  /** Muted bold text that takes a flat fill when selected, with no brand bar.
+   *  For a strip that heads a section inside a pane rather than the pane
+   *  itself, where the bar would claim more than the strip does. */
+  quiet?: boolean;
 }
 
 /** The shared tab pill: transparent at rest, a quiet fill when active or
@@ -141,6 +145,7 @@ export default function Tab(props: TabProps) {
     "tooltip",
     "tooltipPlacement",
     "tooltipWhenDisabled",
+    "quiet",
   ]);
 
   // Composed rather than assigned: this handler is written after `{...rest}`,
@@ -184,6 +189,7 @@ export default function Tab(props: TabProps) {
       class={local.class}
       classList={{ [styles.pill]: true }}
       data-locked={local.locked ? "" : undefined}
+      data-quiet={local.quiet ? "" : undefined}
       onAuxClick={onAuxClick}
     >
       <Show

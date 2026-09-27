@@ -14,8 +14,10 @@ import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
 import MemberChipRow from "../../../components/MemberChipRow/MemberChipRow";
+import OverflowTabBar from "../../../components/OverflowTabBar";
 import PanelSection from "../../../components/PanelSection/PanelSection";
 import Resizer from "../../../components/Resizer/Resizer";
+import Tab from "../../../components/Tab/Tab";
 import Dropdown from "../../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
@@ -123,7 +125,10 @@ export default function FilesPanel(props: {
   // drag's business no more.
   const viewsFill = () => viewsOpen() && !sectionOpen("folders");
 
-  const shownTabs = () => FILES_TABS.filter((t) => sectionShown(t.id));
+  /** Picking a tab out of the `+N` menu reorders the strip. The order keeps
+   *  the tabs the ... menu hid, so they come back where they were. */
+  const [tabOrder, setTabOrder] = createSignal(FILES_TABS);
+  const shownTabs = () => tabOrder().filter((t) => sectionShown(t.id));
   /** The picked tab, or the first left once the ... menu has hidden it. */
   const tab = (): FilesTab | undefined =>
     shownTabs().some((t) => t.id === filesTab()) ? filesTab() : shownTabs()[0]?.id;
@@ -289,33 +294,31 @@ export default function FilesPanel(props: {
                 />
               </div>
             </Show>
-            <div class={styles.tabStrip}>
-              <div class={styles.tabs} role="tablist" aria-label="Views">
-                <For each={shownTabs()}>
-                  {(t) => (
-                    <button
-                      type="button"
-                      role="tab"
-                      id={`files-tab-${t.id}`}
-                      class={styles.tab}
-                      aria-selected={tab() === t.id}
-                      aria-controls={`files-panel-${t.id}`}
-                      onClick={() => showTab(t.id)}
-                    >
-                      {t.label}
-                    </button>
-                  )}
-                </For>
-              </div>
-              <span class={styles.spacer} />
-              <IconButton
-                size="sm"
-                icon={<Icon icon={viewsOpen() ? ChevronDown : ChevronUp} />}
-                aria-expanded={viewsOpen()}
-                tooltip={viewsOpen() ? "Collapse" : "Expand"}
-                onClick={() => filesLayout.setOpen("views", !viewsOpen())}
-              />
-            </div>
+            <OverflowTabBar
+              class={styles.tabStrip}
+              items={shownTabs()}
+              activeId={tab() ?? null}
+              idOf={(t) => t.id}
+              onActivate={(id) => showTab(id as FilesTab)}
+              onReorder={(next) =>
+                setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])
+              }
+              renderTab={(t) => (
+                <Tab quiet value={t.id} id={`files-tab-${t.id}`}>
+                  {t.label}
+                </Tab>
+              )}
+              renderMenuItem={(t) => <span class="tab-name">{t.label}</span>}
+              trailing={
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={viewsOpen() ? ChevronDown : ChevronUp} />}
+                  aria-expanded={viewsOpen()}
+                  tooltip={viewsOpen() ? "Collapse" : "Expand"}
+                  onClick={() => filesLayout.setOpen("views", !viewsOpen())}
+                />
+              }
+            />
             {/* Only the showing tab is mounted: TODOs greps the tree, and a
                 hidden tab is no reason to keep that running. */}
             <Show when={viewsOpen() && tab()}>
