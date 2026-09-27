@@ -114,6 +114,33 @@
   font-style: italic;
 }
 
+/* The quiet tab: muted bold text, a flat fill only while it is the one
+   showing, so the strip reads as one control rather than three buttons. */
+.pill[data-quiet] {
+  border-radius: var(--tori-radius-sm);
+}
+
+.pill[data-quiet]:hover:not(:has([data-selected])) {
+  background: transparent;
+}
+
+.pill[data-quiet]:has([data-selected]) {
+  background: var(--neutral-subtle);
+}
+
+.pill[data-quiet] .tab {
+  gap: calc(5px * var(--ui-scale));
+  height: auto;
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+.pill[data-quiet]:hover .tab,
+.pill[data-quiet]:has([data-selected]) .tab {
+  color: var(--fg-default);
+}
+
 /* Trailing close: a small quiet glyph that brightens on hover. A sibling of the
    tab button rather than a child, so it is its own hit area and clicking it
    never selects the tab. Pointer-only, and hidden from assistive tech; see the
