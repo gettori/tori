@@ -8,6 +8,142 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.927.0-alpha
+
+Three things arrive together. Tori has an app socket and a `tori` CLI, so a
+shell, an agent or a script can drive the app it is running inside. The
+autopilot takes an issue to a pull request you approve, with its workers on
+screen in a new Cockpit. And Tori runs on a phone: this release carries an
+Android APK beside the macOS DMG.
+
+### The autopilot
+
+- Enable it in Settings and the titlebar carries a Cockpit switch. The
+  autopilot itself starts and stops from the cockpit.
+- Tell it to work on an issue and it reads the issue, titles the item, links the
+  branch, makes the worktree, spawns a worker on the project's picks, and brings
+  you a pull request to approve. Asking it to review a pull request runs the
+  same way, to one approved review.
+- It posts nothing outward on its own. Opening a pull request, submitting a
+  review and merging each need an approval you granted for that exact draft, and
+  the card shows what would be posted: the title, the branches and the body, or
+  the verdict with its line comments, or the merge method and head.
+- Every project has a contract: whether work ships as a pull request, how far
+  the autopilot goes before it asks, whether it picks work up unasked, and the
+  agent, account and model its workers run on.
+- It picks up what is assigned to you. Each forge tick reads your assigned
+  issues and review requests, and a project's first tick only proposes, so an
+  old backlog never starts itself.
+- The queue is on disk, so killing Tori and relaunching gives back the same
+  items, and an approval nobody answered comes back pending. An item closes
+  itself when its pull request merges.
+- Workers are locked while it drives them: nothing to type into, nothing to
+  close. Stop the autopilot and they go back to being ordinary sessions that
+  notify you themselves.
+- It wakes from Rust on a worker's question, permission, end, idle, stall or
+  pull request change, so waiting costs no tokens. It compacts at a context
+  percent you set, and a resume reconciles rather than replaying the brief.
+- Every ref it shows reads as the number and the place it lives, so the number
+  opens the issue on the forge and the place opens that worktree with the
+  worker's tab.
+
+### The Cockpit
+
+- The cockpit opens on a banner saying where the ship stands, the crew as cards
+  ringed in the colour of their state, and the activity as a ship's log.
+- The banner plays one of six scenes picked from the local hour, dawn to night,
+  and turns to a storm when more workers are out than your limit allows.
+- The autopilot's own chat is embedded live. Leaving the view detaches from the
+  session instead of closing it.
+
+### The phone
+
+- A Tauri Android app, attached to this release as `Tori_<version>.apk`. Pair
+  it by scanning the QR in Settings > Remote, or by typing the code.
+- It opens on the project tree, each unit's rollup kept live, drawing the
+  desktop's own status marks, sync marks and pull request line. Worktree cards
+  carry the changed lines and the commits ahead, and one the autopilot is
+  working in turns violet.
+- A chat streams live: steer it, answer its questions and permission prompts,
+  approve a hold, stop a turn, page back through its history. A New pill spawns
+  a chat in that folder on the agent last used there.
+- The wheel opens the autopilot's own screen: the scene by the hour, your calls,
+  the queue and the crew.
+- Light and dark on Tori's own tokens, the sailboat on the pair screen and the
+  launcher, and a layout that stays put around the keyboard.
+
+### Remote access
+
+- Settings > Remote serves the socket's protocol over a WebSocket on an address
+  you pick. Off by default, and it says whether Tailscale is installed and
+  connected.
+- A device pairs with a one time code that lives five minutes, works once, and
+  burns after five wrong tries. Paired devices are listed with Revoke, and a
+  phone icon lights in the titlebar while one is connected. Pairing a phone
+  again replaces its old entry rather than adding a second.
+- A credential is one variant per front, so the network front never takes the
+  process token. A device reads, steers, interrupts, answers and approves a hold
+  as you. It cannot spawn.
+
+### The tori CLI
+
+- `tori` runs from any shell Tori opened: `sessions`, `session tail`, `events`,
+  `steer`, `spawn`, `open`, `budget`, `worktree new`, `checkpoints` and
+  `checkpoint diff`, which can now span a run of turns rather than one.
+- `tori ask` puts a question card in the chat that called it, with the needs-you
+  dot and a notification, and waits for the answer. If the wait runs out it
+  prints an id, and `tori ask --wait <id>` collects the answer later.
+- Every PTY tab and chat gets a token of its own, so the socket knows which
+  session is calling and fills in its project, folder, agent and account. A
+  caller holding only the process token is an outside caller with no defaults.
+
+### Tori's own MCP server
+
+- `tori mcp` serves the socket's method table over MCP stdio, so an agent sees
+  Tori's own tools and a tool list is trimmed to what that caller may call.
+- Every claude session Tori launches gets it with `mcp__tori__*` pre-allowed and
+  nothing else, so Tori's tools run without a permission card. An ACP adapter
+  gets it when it opts in, which is on for codex and opencode.
+- A session spawned by another is a worker. It may ask, and its question reaches
+  its spawner, who can answer on your behalf. Spawning and steering stay
+  refused to it.
+
+### Sessions
+
+- A session's dot is composed in Rust now, from PTY activity, the transcript
+  tail and its own liveness probe, with the webview reporting only what it alone
+  knows. The sidebar, the tray, the dock badge, History and the tab marks all
+  read what Rust sends, so a window reload keeps them and fires no second
+  notification.
+- The sidebar's tree is served as `projects.list`, and every session says which
+  unit row it belongs to.
+- `session.history` pages a conversation by whole turns, and a turn too big for
+  one page pages by event inside it.
+
+### Elsewhere
+
+- Every terminal tab carries a leading glyph for its kind.
+- The titlebar's usage is one chip of whole percentages, each account still
+  opening its own card on hover.
+- Holding Cmd underlines what a Cmd-click would jump to.
+- What Tori writes into a chat reads as Tori's rather than as yours, drawn
+  larger with the plain Tori mark.
+- Clicking a needs-you notification lands on the chat that needs you.
+- The Ghostty and VS Code buttons are gone from the topbar.
+
+### Fixes
+
+- A question asked while you were elsewhere is still answerable when the view
+  attaches.
+- The cockpit's chat no longer remounts on every autopilot turn.
+- A session whose transcript sits beside a subagent directory no longer reads as
+  empty.
+- A project's branches and its worktrees are counted apart.
+- The phone reconnects when its socket goes half open, and a page of history
+  gets 30 seconds rather than 10.
+- A dev build keeps its forge token in a file, so a hot reload stops asking for
+  your login password.
+
 ## 26.922.0-alpha
 
 Tori speaks to language servers and debuggers for languages it had never heard
