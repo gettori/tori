@@ -82,6 +82,17 @@ export default function PrLine(props: {
     const at = openedAt();
     return at === null ? null : compactAge(at);
   };
+  // A finished pull request's news is when it finished, not when it opened.
+  const endedAt = () => {
+    const p = pr();
+    if (!p || p.state === "open") return null;
+    const at = Date.parse((p.state === "merged" ? p.mergedAt : p.closedAt) ?? "");
+    return Number.isNaN(at) ? null : at / 1000;
+  };
+  const ended = () => {
+    const at = endedAt();
+    return at === null ? null : `${pr()!.state} ${compactAge(at)}`;
+  };
   const state = (): PrChipState => {
     const p = pr();
     if (!p) return "none";
@@ -108,6 +119,7 @@ export default function PrLine(props: {
     const b = badges();
     return [
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
+      endedAt() !== null ? `${pr()!.state === "merged" ? "Merged" : "Closed"} ${compactAgo(endedAt()!)}` : "",
       b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
@@ -121,7 +133,7 @@ export default function PrLine(props: {
         {`#${p().number}`}
       </span>
 
-      <Show when={age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
+      <Show when={ended() ?? age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
 
       <Show when={badges().review}>
         {(r) => (

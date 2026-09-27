@@ -32,6 +32,7 @@ import { apiCanServe, connectHost } from "./createPr";
 import type { PauseReason } from "./forgePoll";
 import type { KnownHosts } from "./prUrl";
 import type { CheckRollup, ReviewDecision, UnitStatus } from "./forgeTypes";
+import type { PrRelation } from "./prRelation";
 
 export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "readyForPr" | "pr";
 
@@ -100,6 +101,9 @@ export function forgeChip(input: {
    *  would be indistinguishable from the bug it looks like. */
   offBase?: number;
   hasUpstream?: boolean;
+  /** `prRelation`'s answer for a finished pull request. `unrelated` is a new
+   *  branch that reuses an old one's name, and the old pull request is not its. */
+  relation?: PrRelation | null;
 }): ForgeChip {
   // A `plain-dir` folder is not a branch and never will be, so this outranks
   // every other question, including whether the origin has been probed.
@@ -115,7 +119,8 @@ export function forgeChip(input: {
   if (input.paused !== null) return NOTHING;
   if (input.status === null) return { ...NOTHING, kind: "unknown" };
 
-  const pr = input.status.pullRequest;
+  const found = input.status.pullRequest;
+  const pr = found && found.state !== "open" && input.relation?.kind === "unrelated" ? null : found;
   if (pr === null) {
     // Work of its own and a remote that already has it: the only branch for
     // which "no pull request" is a thing to do rather than a thing to know.

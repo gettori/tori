@@ -7,7 +7,7 @@ import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { REPAIR_LABEL, type Topic, type Member, type RepairAction } from "../../utils/topics";
 import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
-import { markTitle, rollupSync, syncMarks, syncState } from "../../utils/branchSync";
+import { markTitle, rollupSync, syncMarks, syncState, type FinishedPr } from "../../utils/branchSync";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import type { BranchSync } from "../../utils/gitActions";
 import { createDragReorder } from "../../utils/dragReorder";
@@ -42,6 +42,7 @@ export default function TopicItem(props: {
    *  stays at the one call site that already knows both. Absent draws no state
    *  at all, which is what a story or a Topic nothing has answered for wants. */
   memberSync?: (member: Member) => BranchSync | null;
+  memberFinished?: (member: Member) => FinishedPr | null;
   /** The members' repo paths in the order a drag or a Move landed on. */
   onReorder?: (repoPaths: string[]) => void;
   /** Controlled disclosure. A list that replaces the record on every rename or
@@ -60,11 +61,12 @@ export default function TopicItem(props: {
   const overflow = () => Math.max(0, members().length - CHIP_CAP);
 
   const syncOf = (m: Member) => props.memberSync?.(m) ?? null;
-  const stateOf = (m: Member) => syncState(syncOf(m));
+  const finishedOf = (m: Member) => props.memberFinished?.(m) ?? null;
+  const stateOf = (m: Member) => syncState(syncOf(m), finishedOf(m));
   // Over every member, not the six that fit: a Topic speaks for all of them,
   // and the conflict hiding behind `+3` is the one worth knowing about.
   const rollup = createMemo(() =>
-    rollupSync(members().map((m) => ({ label: m.label, sync: syncOf(m.member) }))),
+    rollupSync(members().map((m) => ({ label: m.label, sync: syncOf(m.member), finished: finishedOf(m.member) }))),
   );
 
   const drag = createDragReorder({
@@ -201,7 +203,10 @@ export default function TopicItem(props: {
                     unlike the collapsed chip, which is on its own. */}
                 <MemberChip icon={m.icon} chipStyle={m.style} size="md" decorative />
                 <span class={styles.memberName}>{m.label}</span>
-                <SyncMarks marks={syncMarks(syncOf(m.member))} label={markTitle(syncMarks(syncOf(m.member)))} />
+                <SyncMarks
+                  marks={syncMarks(syncOf(m.member), finishedOf(m.member))}
+                  label={markTitle(syncMarks(syncOf(m.member), finishedOf(m.member)))}
+                />
                 <span class={styles.memberState} data-member-state>
                   {m.state.label}
                 </span>

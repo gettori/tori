@@ -63,6 +63,7 @@ import { createPrFlow } from "../../utils/prCreateFlow";
 import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
 import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo, unitStatus } from "../../utils/forgeStatus";
 import { projectPathFor } from "../../utils/sessionActivity";
+import { prRelation } from "../../utils/prRelation";
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/topics";
 import MemberChip from "../../components/MemberChip/MemberChip";
@@ -452,10 +453,21 @@ export default function ReviewPanel(props: {
 
   /** Merged, and the remote branch deleted after it: a push would only put a
    *  dead branch back on the remote. */
-  const mergedAndGone = (root: string | null) => {
-    const { aheadBehind, branch } = gitStateFor(root);
-    if (!root || !aheadBehind?.gone || !branch) return false;
-    return unitStatus(projectPathFor(root) ?? root, branch)?.pullRequest?.state === "merged";
+  const mergedAndGone = (root: string | null) => !!gitStateFor(root).aheadBehind?.gone && !!mergedPr(root);
+
+  // Null for a branch that only reuses a merged pull request's name.
+  const mergedPr = (root: string | null) => {
+    const { branch, sync } = gitStateFor(root);
+    if (!root || !branch) return null;
+    const pr = unitStatus(projectPathFor(root) ?? root, branch)?.pullRequest;
+    if (pr?.state !== "merged") return null;
+    const relation = prRelation(root, branch, pr, sync);
+    return relation?.kind === "unrelated" ? null : { pr, relation };
+  };
+
+  const nothingToPropose = () => {
+    const kind = mergedPr(viewedRoot())?.relation?.kind;
+    return kind === "at" || kind === "behind";
   };
 
   /** The upstream was force-pushed over commits this member only took from it,
@@ -1388,7 +1400,7 @@ export default function ReviewPanel(props: {
             </Show>
           )}
         </Show>
-        <Show when={origin() && baseBranch()}>
+        <Show when={origin() && baseBranch() && !nothingToPropose()}>
           <IconButton
             size="sm"
             icon={<Icon icon={GitPullRequestArrow} />}

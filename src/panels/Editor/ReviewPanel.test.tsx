@@ -39,6 +39,7 @@ const quietFetches: { minAgeSecs: number; only: string | null }[] = [];
 let aheadBehind: { ahead: number; behind: number; has_upstream: boolean; gone?: boolean } | null = null;
 // The state of the branch's pull request as the poll last reported it.
 let polledPrState: "open" | "closed" | "merged" | null = null;
+const [polledRelation, setPolledRelation] = createSignal<PrRelation | null>(null);
 // The header only renders once the store knows a branch, so the tests that are
 // about the header say so by naming one.
 let branches: { name: string; current: boolean }[] = [];
@@ -71,6 +72,8 @@ let authState: { kind: string; login?: string } = { kind: "signedOut" };
 // empty array after a click is the assertion that nothing was sent.
 let createPrArgs: unknown[] = [];
 let createPrFails: unknown = null;
+
+vi.mock("../../utils/prRelation", () => ({ prRelation: () => polledRelation() }));
 
 vi.mock("../../utils/forgeStatus", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/forgeStatus")>()),
@@ -244,6 +247,7 @@ import { saveSettings, DEFAULT_SETTINGS } from "../Settings/settingsStore";
 import { BLOCKED_REASON } from "../../utils/safeSend";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 import { noteForgeAccounts, resetForgeStatusForTests } from "../../utils/forgeStatus";
+import type { PrRelation } from "../../utils/prRelation";
 import type { ForgeAccount } from "../../utils/forgeTypes";
 import { setCommitBoxShown } from "../../utils/changesSections";
 
@@ -312,6 +316,7 @@ beforeEach(async () => {
   backstopRoots = [];
   aheadBehind = null;
   polledPrState = null;
+  setPolledRelation(null);
   branches = [];
   headMsg = "";
   commitArgs = [];
@@ -1048,6 +1053,16 @@ describe("Open PR", () => {
     await mountPanel();
     return await screen.findByRole("button", { name: "Open PR" });
   }
+
+  it("keeps Open PR for commits made after a merge, and drops it once there are none", async () => {
+    originUrl = "git@github.com:skarif2/tori.git";
+    polledPrState = "merged";
+    setPolledRelation({ kind: "ahead", count: 1 });
+    expect(await mountWithPrHeader()).toBeTruthy();
+
+    setPolledRelation({ kind: "at" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open PR" })).toBeNull());
+  });
 
   it("opens the in-app form on a signed-in github.com remote", async () => {
     originUrl = "git@github.com:skarif2/tori.git";

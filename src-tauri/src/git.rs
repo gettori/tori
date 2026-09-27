@@ -2704,6 +2704,73 @@ fn upstream_gone(repo: &str, branch: &str) -> bool {
     git_capture(repo, &["config", "--get", &format!("branch.{branch}.merge")]).is_ok_and(|merge| !merge.is_empty())
 }
 
+/// Where a branch stands against a finished pull request's last head.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum PrRelation {
+    /// The tip is the pull request's last head.
+    At,
+    /// Commits made here after the pull request's head.
+    Ahead { count: u32 },
+    /// Somebody pushed onto the pull request after this branch last pulled.
+    Behind,
+    /// A new branch reusing the old one's name.
+    Unrelated,
+    /// No reflog to date the branch by, or the head is not in this repo.
+    Unknown,
+}
+
+/// Whether a merged or closed pull request's head `sha` still belongs to
+/// `branch`. Ancestry alone cannot say: after a merge-commit merge the old
+/// head is in `main`, so a new branch cut from it reads as ahead of a pull
+/// request it never had. A branch whose oldest reflog entry is later than
+/// `ended_at` (unix seconds) was made after the pull request finished.
+#[tauri::command(async)]
+pub fn git_pr_relation(project_path: String, branch: String, sha: String, ended_at: i64) -> PrRelation {
+    pr_relation(&project_path, &branch, &sha, ended_at)
+}
+
+fn pr_relation(repo: &str, branch: &str, sha: &str, ended_at: i64) -> PrRelation {
+    let head = format!("refs/heads/{branch}");
+    let Ok(tip) = git_capture(repo, &["rev-parse", "--verify", "--quiet", &head]) else {
+        return PrRelation::Unknown;
+    };
+    let Some(first_entry) = oldest_reflog_entry(repo, &head) else {
+        return PrRelation::Unknown;
+    };
+    if first_entry > ended_at {
+        return PrRelation::Unrelated;
+    }
+    if sha.is_empty() || git_capture(repo, &["cat-file", "-e", &format!("{sha}^{{commit}}")]).is_err() {
+        return PrRelation::Unknown;
+    }
+    if tip == sha {
+        return PrRelation::At;
+    }
+    let is_ancestor = |older: &str, newer: &str| {
+        git_capture(repo, &["merge-base", "--is-ancestor", older, newer]).is_ok()
+    };
+    if is_ancestor(sha, &tip) {
+        let count = git_capture(repo, &["rev-list", "--count", &format!("{sha}..{tip}")])
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
+        return PrRelation::Ahead { count };
+    }
+    if is_ancestor(&tip, sha) {
+        return PrRelation::Behind;
+    }
+    PrRelation::Unrelated
+}
+
+/// Unix time of a ref's oldest surviving reflog entry, read off the
+/// `@{<time>}` selector `--date=unix` prints.
+fn oldest_reflog_entry(repo: &str, refname: &str) -> Option<i64> {
+    let log = git_capture(repo, &["log", "-g", "--date=unix", "--format=%gd", refname, "--"]).ok()?;
+    let last = log.lines().last()?;
+    last.rsplit_once("@{")?.1.strip_suffix('}')?.parse().ok()
+}
+
 fn upstream_sync(repo: &str, tracked: &str, tip: &str) -> UpstreamSync {
     let range = format!("{tip}...refs/remotes/{tracked}");
     let counts = git_capture(repo, &["rev-list", "--left-right", "--count", &range, "--"]).unwrap_or_default();
@@ -4043,6 +4110,52 @@ diff --git a/f b/f
         assert!(!sync.upstream.superseded, "mine.txt was never on the upstream");
         assert!(git_reset_to_upstream_body(&local).is_err(), "a reset would lose mine.txt");
         scrub(&[&local, &remote, &other]);
+    }
+
+    fn head_of(dir: &Path) -> String {
+        git_capture(&dir.to_string_lossy(), &["rev-parse", "HEAD"]).unwrap()
+    }
+
+    fn relation(dir: &Path, sha: &str, ended_at: i64) -> PrRelation {
+        pr_relation(&dir.to_string_lossy(), "feat", sha, ended_at)
+    }
+
+    #[test]
+    fn pr_relation_places_the_tip_against_a_finished_prs_head() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "a");
+        let pr_head = head_of(&local);
+        let later = now_secs() as i64 + 3600;
+
+        assert_eq!(relation(&local, &pr_head, later), PrRelation::At);
+
+        commit_file(&local, "b.txt", "b");
+        commit_file(&local, "c.txt", "c");
+        assert_eq!(relation(&local, &pr_head, later), PrRelation::Ahead { count: 2 });
+        let ahead_tip = head_of(&local);
+
+        git(&local, &["reset", "-q", "--hard", &pr_head]);
+        assert_eq!(relation(&local, &ahead_tip, later), PrRelation::Behind);
+
+        assert_eq!(relation(&local, "0123456789abcdef0123456789abcdef01234567", later), PrRelation::Unknown);
+        assert_eq!(relation(&local, &pr_head, 1), PrRelation::Unrelated, "the branch is newer than the PR's end");
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn pr_relation_calls_a_branch_recut_from_a_merge_commit_unrelated() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "a");
+        let pr_head = head_of(&local);
+        git(&local, &["checkout", "-q", "main"]);
+        git(&local, &["merge", "-q", "--no-ff", "-m", "merge feat", "feat"]);
+        git(&local, &["branch", "-qD", "feat"]);
+        let ended_at = now_secs() as i64 - 1;
+        git(&local, &["checkout", "-qb", "feat"]);
+
+        // Ancestry alone would call this ahead of the old PR: its head is in main.
+        assert_eq!(relation(&local, &pr_head, ended_at), PrRelation::Unrelated);
+        scrub(&[&local, &remote]);
     }
 
     #[test]

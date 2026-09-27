@@ -1408,10 +1408,13 @@ mod tests {
             is_draft: false,
             author: "a".into(),
             created_at: "2026-09-25T00:00:00Z".into(),
+            merged_at: None,
+            closed_at: None,
             comments: 0,
             head_ref: "1-x".into(),
             base_ref: "main".into(),
             head_sha: "abc".into(),
+            head_repo_is_origin: true,
             url: "https://github.com/o/r/pull/12".into(),
             mergeable_state: crate::forge::model::MergeableState::Unknown,
         }

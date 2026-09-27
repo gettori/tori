@@ -50,12 +50,19 @@ export type PullRequest = {
   /// epoch seconds, so the one consumer converts at the point of use and the
   /// field keeps the wire's shape.
   createdAt: string;
+  /// When it merged, and when it closed (a merge closes it too). Null while
+  /// open, and a reopen clears both.
+  mergedAt: string | null;
+  closedAt: string | null;
   /// Conversation comments: GitHub's `comments` count, GitLab's
   /// `user_notes_count`. Review-thread replies are not in it on either host.
   comments: number;
   headRef: string;
   baseRef: string;
   headSha: string;
+  /// False for a fork's pull request, whose head branch a push to origin
+  /// cannot restore.
+  headRepoIsOrigin: boolean;
   url: string;
   mergeableState: MergeableState;
 };
@@ -450,12 +457,15 @@ export const FORGE_KEYS = {
     "author",
     "baseRef",
     "body",
+    "closedAt",
     "comments",
     "createdAt",
     "headRef",
+    "headRepoIsOrigin",
     "headSha",
     "isDraft",
     "mergeableState",
+    "mergedAt",
     "number",
     "state",
     "title",

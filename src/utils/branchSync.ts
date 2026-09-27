@@ -12,6 +12,7 @@
 import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
+import type { PrRelation } from "./prRelation";
 
 // Escaped rather than literal so the source stays ASCII, as the Changes panel's
 // own pills are.
@@ -170,7 +171,11 @@ export type SyncMark = {
  * of amber, and a colour every row wears is a colour that has stopped saying
  * anything.
  */
-export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
+/** The branch's pull request once it has merged or closed, with `prRelation`'s
+ *  answer for it. */
+export type FinishedPr = { state: "merged" | "closed"; relation: PrRelation | null };
+
+export function syncMarks(sync: BranchSync | null | undefined, finished?: FinishedPr | null): SyncMark[] {
   if (!sync || sync.detached) return [];
   const { ahead, behind, has_upstream, gone, rewritten, superseded } = sync.upstream;
   const fighting = sync.base?.conflicts ?? [];
@@ -193,7 +198,15 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   // up arrow would invite the push that throws away somebody's update.
   const diverged = ahead > 0 && behind > 0 && !superseded;
   const tone: SyncTone = diverged ? "warn" : "muted";
-  if (ahead > 0 && !superseded) {
+  if (finished?.state === "merged") {
+    // Its work is in the base now, so there is nothing to push, and a push
+    // would only put a finished branch back. Commits made after the merge are
+    // the exception, and a new pull request is where they go.
+    const after = finished.relation?.kind === "ahead" ? finished.relation.count : 0;
+    if (after > 0) {
+      marks.push({ kind: "push", count: after, tone: "warn", title: `${plural(after, "commit")} after merge` });
+    }
+  } else if (ahead > 0 && !superseded) {
     marks.push({ kind: "push", count: ahead, tone, title: `${plural(ahead, "commit")} to push` });
   } else if (unpublished > 0) {
     // Before the first push there is no remote branch to count against. The
@@ -248,7 +261,7 @@ const SEVERITY: Record<SyncLevel, number> = {
 
 /** One member, as a roll-up reads it: what to call it, and the facts its own
  *  row is drawn from. */
-export type MemberSync = { label: string; sync: BranchSync | null | undefined };
+export type MemberSync = { label: string; sync: BranchSync | null | undefined; finished?: FinishedPr | null };
 
 /** A Topic's answer: the loudest member's verdict, its glyphs, and which member
  *  it was. `label` is empty when no member had anything to say. */
@@ -267,7 +280,7 @@ export function rollupSync(states: readonly MemberSync[]): Rollup {
   let loudest: { member: MemberSync; state: SyncState } | null = null;
   let others = 0;
   for (const member of states) {
-    const state = syncState(member.sync);
+    const state = syncState(member.sync, member.finished);
     if (state.level === "none") continue;
     if (!loudest || SEVERITY[state.level] < SEVERITY[loudest.state.level]) {
       loudest = { member, state };
@@ -284,7 +297,7 @@ export function rollupSync(states: readonly MemberSync[]): Rollup {
   const more = others > 0 ? ` And ${others} other${others === 1 ? "" : "s"} like it.` : "";
   return {
     state: { ...loudest.state, detail: `${loudest.member.label}: ${loudest.state.detail}${more}` },
-    marks: syncMarks(loudest.member.sync),
+    marks: syncMarks(loudest.member.sync, loudest.member.finished),
     label: loudest.member.label,
   };
 }
@@ -302,7 +315,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * not been answered for yet must look like a row with nothing to report, never
  * like a clean one that has been.
  */
-export function syncState(sync: BranchSync | null | undefined): SyncState {
+export function syncState(sync: BranchSync | null | undefined, finished?: FinishedPr | null): SyncState {
   if (!sync || sync.detached) return NOTHING;
   const { ahead, behind, has_upstream, gone, rewritten, superseded } = sync.upstream;
   const base = sync.base;
@@ -360,6 +373,14 @@ export function syncState(sync: BranchSync | null | undefined): SyncState {
       label: `${base.name} +${base.behind}`,
       detail: `${base.name} is ${plural(base.behind, "commit")} ahead of this branch.`,
     };
+  }
+
+  // The same rule `syncMarks` draws: a merged branch owes a push only for what
+  // came after the merge.
+  if (finished?.state === "merged") {
+    const after = finished.relation?.kind === "ahead" ? finished.relation.count : 0;
+    if (after === 0) return NOTHING;
+    return { ...NOTHING, level: "ahead", tone: "muted", label: `${UP}${after}`, detail: `${plural(after, "commit")} after merge.` };
   }
 
   if (ahead > 0) {
