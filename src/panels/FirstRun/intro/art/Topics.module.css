@@ -1,0 +1,99 @@
+@layer components {
+  .stage {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--tori-space-6);
+  }
+  .window {
+    flex: 1;
+    min-width: 0;
+  }
+  .app {
+    display: flex;
+    background-color: var(--canvas-default);
+  }
+  .crumbBar {
+    display: flex;
+    align-items: center;
+    gap: calc(10px * var(--ui-scale));
+  }
+  /* A wrapper, because the sidebar's own .tree is unlayered and would win
+     over a width set on it here. */
+  .sidebar {
+    flex: 0 0 calc(224px * var(--ui-scale));
+    display: flex;
+  }
+  .card {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    margin: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
+    background: var(--canvas-card);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-xl);
+    box-shadow: var(--shell-card-shadow);
+    overflow: clip;
+  }
+  .editor {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: var(--tori-border-thin) solid var(--border-default);
+  }
+  .right {
+    width: calc(252px * var(--ui-scale));
+  }
+  .code {
+    padding-block: calc(4px * var(--ui-scale));
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-lg);
+    line-height: calc(20px * var(--ui-scale));
+    color: var(--fg-default);
+    white-space: pre;
+    overflow: hidden;
+  }
+  .line {
+    display: flex;
+  }
+  .caretLine {
+    background: var(--neutral-subtle);
+  }
+  .lineNo {
+    flex: none;
+    width: calc(40px * var(--ui-scale));
+    padding-right: calc(12px * var(--ui-scale));
+    text-align: right;
+    color: var(--fg-subtle);
+  }
+  .caretLine .lineNo {
+    background: var(--neutral-hover);
+  }
+  .spaceCard {
+    flex: none;
+    width: calc(236px * var(--ui-scale));
+    zoom: 0.74;
+    padding: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    background: var(--canvas-default);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--tori-text-xl);
+    animation: topics-card-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) 360ms both;
+  }
+  @keyframes topics-card-rise {
+    from {
+      opacity: 0;
+      transform: translateY(calc(8px * var(--ui-scale)));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spaceCard {
+      animation: none;
+    }
+  }
+}

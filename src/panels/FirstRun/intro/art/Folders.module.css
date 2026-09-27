@@ -1,0 +1,228 @@
+@layer components {
+  .stage {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--tori-space-4);
+  }
+
+  .disk {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+  .diskHead {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--tori-space-3);
+    height: calc(30px * var(--ui-scale));
+    background: var(--canvas-card);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+    color: var(--fg-subtle);
+  }
+  .diskHead > svg {
+    width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
+  }
+  .lights {
+    position: absolute;
+    left: var(--tori-space-5);
+    display: flex;
+    gap: calc(6px * var(--ui-scale));
+  }
+  .lights > span {
+    width: calc(9px * var(--ui-scale));
+    height: calc(9px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--border-strong);
+  }
+  .title {
+    font-weight: 600;
+    color: var(--fg-muted);
+  }
+  .pathBar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: calc(5px * var(--ui-scale));
+    height: calc(28px * var(--ui-scale));
+    padding: 0 var(--tori-space-5);
+    border-top: var(--tori-border-thin) solid var(--border-default);
+    background: var(--canvas-card);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(5px * var(--ui-scale));
+  }
+  .crumb .glyph svg {
+    width: calc(13px * var(--ui-scale));
+    height: calc(13px * var(--ui-scale));
+  }
+  .pathBar .chevron {
+    margin: 0;
+  }
+  .columns {
+    flex: 1;
+    display: flex;
+  }
+  .column {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: calc(2px * var(--ui-scale));
+    min-width: calc(100px * var(--ui-scale));
+    padding: var(--tori-space-3);
+  }
+  .column + .column {
+    border-left: var(--tori-border-thin) solid var(--border-default);
+  }
+  .level {
+    display: flex;
+    align-items: center;
+    gap: calc(6px * var(--ui-scale));
+    padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+    font-size: var(--tori-text-xs);
+    font-weight: 600;
+    color: var(--fg-default);
+    white-space: nowrap;
+  }
+  .badge {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--brand-default);
+    color: var(--brand-on);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    font-weight: 700;
+    line-height: 1;
+  }
+  /* Drawn inside the miniature, so it is sized up to land at the same size. */
+  .inTree {
+    align-self: center;
+    width: calc(20px * var(--ui-scale));
+    height: calc(20px * var(--ui-scale));
+    font-size: var(--tori-text-md);
+  }
+  .entry {
+    display: flex;
+    align-items: center;
+    gap: calc(7px * var(--ui-scale));
+    height: calc(26px * var(--ui-scale));
+    padding: 0 calc(6px * var(--ui-scale));
+    border-radius: var(--tori-radius-md);
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .glyph {
+    flex: none;
+    display: inline-flex;
+    color: var(--fg-subtle);
+  }
+  .glyph svg {
+    width: calc(15px * var(--ui-scale));
+    height: calc(15px * var(--ui-scale));
+  }
+  .name {
+    flex: 1;
+  }
+  .chevron {
+    flex: none;
+    display: inline-flex;
+    margin-left: calc(4px * var(--ui-scale));
+    color: var(--fg-watermark);
+  }
+  .chevron svg {
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
+  }
+  .on {
+    background: var(--neutral-subtle);
+    color: var(--fg-default);
+  }
+  .on .glyph,
+  .on .chevron {
+    color: var(--fg-muted);
+  }
+  .dim,
+  .dim .glyph {
+    color: var(--fg-watermark);
+  }
+
+  .reads {
+    flex: none;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(26px * var(--ui-scale));
+    height: calc(26px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    border: var(--tori-border-thin) solid var(--border-default);
+    background: var(--canvas-card);
+    color: var(--brand-default);
+  }
+  .reads svg {
+    width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
+  }
+
+  .window {
+    flex: none;
+    width: calc(240px * var(--ui-scale));
+  }
+  .root {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(8px * var(--ui-scale));
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-lg);
+    color: var(--fg-muted);
+  }
+  .tree {
+    background: var(--canvas-default);
+  }
+  .scroll {
+    overflow: hidden;
+  }
+
+  .rise {
+    --i: 0;
+    animation: folders-rise 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: calc(140ms + var(--i) * 45ms);
+  }
+  @keyframes folders-rise {
+    from {
+      opacity: 0;
+      transform: translateY(calc(6px * var(--ui-scale)));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rise {
+      animation: none;
+    }
+  }
+}

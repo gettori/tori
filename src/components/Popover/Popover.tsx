@@ -34,6 +34,8 @@ const ANCHOR_GUTTER = 12;
  * On close, the element focused at mount is restored from `onCleanup`, not
  * `onCloseAutoFocus`: the close pipeline that hook belongs to only runs on an
  * open-to-closed transition Kobalte gets to see, and unmounting is not one.
+ * Only while focus is still the surface's, though: if it already moved on to
+ * something else, pulling it back would undo where the user went.
  *
  * **The anchor's own press is excluded from dismissal.** Kobalte excludes only
  * its `Trigger`, and in anchor mode there is none, so without this a press on
@@ -66,10 +68,14 @@ export default function Popover(props: {
   children: JSX.Element;
 }) {
   const dialogSurface = useDialogSurface();
+  let content: HTMLDivElement | undefined;
 
   onMount(() => {
     const returnTo = document.activeElement as HTMLElement | null;
-    onCleanup(() => returnTo?.focus?.());
+    onCleanup(() => {
+      const at = document.activeElement;
+      if (!at || at === document.body || content?.contains(at)) returnTo?.focus?.();
+    });
   });
 
   return (
@@ -87,7 +93,10 @@ export default function Popover(props: {
         <Primitive.Content
           class={[styles.surface, props.class].filter(Boolean).join(" ")}
           aria-label={props["aria-label"]}
-          ref={props.ref}
+          ref={(el) => {
+            content = el;
+            props.ref?.(el);
+          }}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             props.initialFocus?.()?.focus();

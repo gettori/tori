@@ -1,0 +1,66 @@
+@layer components {
+  /* Inside the zoom every size is a fixed length: engines disagree on
+     whether a percentage is zoomed. */
+  .window {
+    --h: 470;
+    height: calc(var(--h) * 1px * var(--ui-scale));
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    background: var(--canvas-default);
+    animation: mini-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) 140ms both;
+  }
+  .mini {
+    --z: 1;
+    display: flex;
+    flex-direction: column;
+    height: calc(var(--h) * 1px / var(--z) * var(--ui-scale));
+  }
+  .titleBar {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(38px * var(--ui-scale));
+    background: var(--canvas-card);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+  }
+  .lights {
+    position: absolute;
+    left: var(--tori-space-6);
+    display: flex;
+    gap: calc(8px * var(--ui-scale));
+  }
+  .lights > span {
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--border-strong);
+  }
+  .body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .body > * {
+    flex: 1;
+    min-width: 0;
+  }
+  @keyframes mini-rise {
+    from {
+      opacity: 0;
+      transform: translateY(calc(8px * var(--ui-scale)));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .window {
+      animation: none;
+    }
+  }
+}

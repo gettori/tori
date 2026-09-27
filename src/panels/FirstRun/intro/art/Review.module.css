@@ -1,0 +1,59 @@
+@layer components {
+  .stage {
+    position: relative;
+  }
+  .body {
+    display: flex;
+    min-width: 0;
+    background: var(--canvas-card);
+  }
+  .center {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: var(--tori-border-thin) solid var(--border-default);
+  }
+  .right {
+    width: calc(360px * var(--ui-scale));
+  }
+  .commentBox {
+    flex: 0 0 calc(470px * var(--ui-scale));
+  }
+  .session {
+    position: absolute;
+    left: calc(28px * var(--ui-scale));
+    bottom: calc(-16px * var(--ui-scale));
+    width: calc(450px * var(--ui-scale));
+    display: flex;
+    flex-direction: column;
+    background: var(--canvas-card);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: clip;
+    animation: review-rise 420ms cubic-bezier(0.2, 0.8, 0.2, 1) 560ms both;
+  }
+  .sessionStrip {
+    flex: none;
+  }
+  .transcript {
+    position: relative;
+    height: calc(158px * var(--ui-scale));
+  }
+  @keyframes review-rise {
+    from {
+      opacity: 0;
+      transform: translateY(calc(10px * var(--ui-scale)));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .session {
+      animation: none;
+    }
+  }
+}

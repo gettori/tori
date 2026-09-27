@@ -2,16 +2,14 @@ import { For, Show, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import Button from "../../../components/Button/Button";
 import FirstRunShell from "../FirstRunShell";
-import {
-  AutopilotIllustration,
-  LayoutIllustration,
-  MachineIllustration,
-  PhoneIllustration,
-  ReviewIllustration,
-  SessionsIllustration,
-  TerminalIllustration,
-  TopicsIllustration,
-} from "./Illustrations";
+import AgentsArt from "./art/Agents";
+import AutopilotArt from "./art/Autopilot";
+import FoldersArt from "./art/Folders";
+import MobileArt from "./art/Mobile";
+import ReviewArt from "./art/Review";
+import SessionsArt from "./art/Sessions";
+import TerminalArt from "./art/Terminal";
+import TopicsArt from "./art/Topics";
 import styles from "./Intro.module.css";
 
 export type Slide = { title: string; body: string; art: Component };
@@ -20,42 +18,42 @@ export const SLIDES: Slide[] = [
   {
     title: "Every agent session, one window",
     body: "Sessions from every repo sit in one tree, each marked working, needs you, or done, and a parent rolls up its children. You see where to go next without cycling terminal tabs.",
-    art: SessionsIllustration,
+    art: SessionsArt,
   },
   {
     title: "Organised the way your disk already is",
     body: "Base folder, then spaces, then projects, then branches and worktrees. Nothing to import: Tori reads the folders you already have.",
-    art: LayoutIllustration,
+    art: FoldersArt,
   },
   {
     title: "One branch across several repos",
     body: "A Topic is a name and the branch you type, with a worktree for it in each repo you pick. Files, search and changes cover all of them, and a tag on each worktree row takes you back to the Topic.",
-    art: TopicsIllustration,
+    art: TopicsArt,
   },
   {
     title: "A real terminal for every session",
     body: "Each session gets its own terminal or chat tab. Clicking a row focuses it, or resumes it where the agent stopped. Every prompt is checkpointed, so a single turn can be diffed or reverted.",
-    art: TerminalIllustration,
+    art: TerminalArt,
   },
   {
     title: "Review what the agent wrote",
     body: "An editor with LSP, and a Changes panel that stages, commits, pushes and opens the PR. Comment on a hunk and it goes straight back into the session.",
-    art: ReviewIllustration,
-  },
-  {
-    title: "Hand a queue to Autopilot",
-    body: "Give it a list of tasks and it starts a worker for each, watches them, and only stops for you when something needs a decision. Off by default: turn it on in Settings > Autopilot.",
-    art: AutopilotIllustration,
-  },
-  {
-    title: "Your sessions on your phone",
-    body: "Pair the Tori mobile app with a one-time code, on your own network or over Tailscale. Read along, send or steer a turn, and answer whatever is waiting on you. Off by default: turn it on in Settings > Remote access.",
-    art: PhoneIllustration,
+    art: ReviewArt,
   },
   {
     title: "Your agents, your hosts, your machine",
     body: "Tori drives the agent CLIs you already have installed. Sign in to GitHub or GitLab to push as your own account. Tori sends no telemetry.",
-    art: MachineIllustration,
+    art: AgentsArt,
+  },
+  {
+    title: "Hand a queue to Autopilot",
+    body: "Give it a list of tasks and it starts a worker for each, watches them, and only stops for you when something needs a decision. Off by default: turn it on in Settings > Autopilot.",
+    art: AutopilotArt,
+  },
+  {
+    title: "Your sessions on your phone",
+    body: "Pair the Tori mobile app with a one-time code, on your own network or over Tailscale. Read along, send or steer a turn, and answer whatever is waiting on you. Off by default: turn it on in Settings > Remote access.",
+    art: MobileArt,
   },
 ];
 
