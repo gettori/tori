@@ -101,6 +101,7 @@ export function BranchRow(props: {
   iconLabel?: string;
   selected?: boolean;
   nested?: boolean;
+  look?: "done" | "closed" | null;
   /** A mark between the glyph and the name, e.g. the autopilot's wheel on a
    *  worktree it started. */
   lead?: JSX.Element;
@@ -126,7 +127,7 @@ export function BranchRow(props: {
   return (
     <div class={`node ${styles.branchNode}`} classList={{ [styles.attemptNode]: props.nested }}>
       <ContextMenu
-        class={`${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""}`}
+        class={`${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""} ${props.look ? styles[props.look] : ""}`}
         data-two-line={props.meta != null ? "true" : undefined}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}

@@ -131,9 +131,9 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   // card's title, the Other label, the hint, the subagent badge. It is a step
   // off `canvas.card` rather than an alias of it, so a pair measured only
   // against the canvases would go unmeasured the moment the tier lifted.
-  "fg.default": text([...CANVASES, "neutral.hover", "brand.wash", "blocking.surface"]),
-  "fg.muted": text([...CANVASES, "neutral.hover", "blocking.surface"]),
-  "fg.subtle": muted([...CANVASES, "blocking.surface"]),
+  "fg.default": text([...CANVASES, "neutral.hover", "brand.wash", "blocking.surface", "done.selected"]),
+  "fg.muted": text([...CANVASES, "neutral.hover", "blocking.surface", "done.wash", "done.selected"]),
+  "fg.subtle": muted([...CANVASES, "blocking.surface", "done.wash"]),
   // Not parked here after failing: it is designed to sit under every floor.
   "fg.watermark": exempt(
     "watermark text stands in for absent content (placeholders, ghost hints); it is meant to " +
@@ -225,6 +225,12 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "brand.bar": graphic(["canvas.default", "canvas.card", "canvas.head"]),
   "brand.ring": graphic(["canvas.default", "canvas.card", "canvas.input"]),
   "brand.on": text(["brand.default"]),
+
+  // A done row's label and its pull request line sit on the wash at rest and
+  // on the stronger wash when selected. The bar edges the selected wash.
+  "done.wash": surface(),
+  "done.selected": surface(),
+  "done.bar": graphic(["canvas.default", "done.selected"]),
 
   // The blocking tier sits ON the chat pane, which is `canvas.card`, and carries
   // its own text. The border is measured against both sides it separates: the

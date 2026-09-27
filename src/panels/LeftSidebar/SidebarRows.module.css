@@ -134,6 +134,12 @@
   border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   background: transparent;
 }
+/* A branch whose pull request merged with nothing made since rests on a faint
+   teal wash. Declared before the hover rule at equal specificity, so the
+   pointer still lights it the way it lights every other row. */
+.row.branch.done::before {
+  background: linear-gradient(to right, var(--done-wash), transparent);
+}
 .row.branch:hover,
 .row.branch[data-expanded] {
   background: transparent;
@@ -218,6 +224,15 @@
     linear-gradient(to right, var(--brand-subtle), transparent);
 }
 
+/* A done branch selected keeps its teal: the bar and a stronger wash take the
+   brand's place, so it still reads as done while it is the one on screen. */
+.row.branch.done.sel::before {
+  background:
+    linear-gradient(var(--done-bar), var(--done-bar)) left center /
+      var(--tori-border-thick) 100% no-repeat,
+    linear-gradient(to right, var(--done-selected), transparent);
+}
+
 .row.project .label {
   color: var(--fg-default);
   font-weight: 600;
@@ -232,6 +247,11 @@
 
 .row.branch .label {
   color: var(--fg-muted);
+}
+
+.row.branch.done:not(.sel) .label,
+.row.branch.closed:not(.sel) .label {
+  color: var(--fg-subtle);
 }
 
 /* The one indent level left, expressed from --branch-label-x so a nested node

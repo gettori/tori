@@ -292,6 +292,11 @@
     --brand-ring: rgba(201, 150, 83, 0.6);
     --brand-on: #4a3719;
 
+    /* done */
+    --done-wash: #1a2528;
+    --done-selected: #1e3334;
+    --done-bar: #4ec9b0;
+
     /* blocking */
     --blocking-surface: #222327;
     --blocking-border: #d9a468;
@@ -475,6 +480,11 @@
     --brand-bar: #7e5e2f;
     --brand-ring: rgba(138, 103, 51, 0.77);
     --brand-on: #ffffff;
+
+    /* done */
+    --done-wash: #f1f7f6;
+    --done-selected: #e8f1f0;
+    --done-bar: #14756a;
 
     /* blocking */
     --blocking-surface: #ece9e6;

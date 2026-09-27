@@ -157,6 +157,19 @@ export type SyncMark = {
   title: string;
 };
 
+/** The branch's pull request once it has merged or closed, with `prRelation`'s
+ *  answer for it. */
+export type FinishedPr = { state: "merged" | "closed"; relation: PrRelation | null };
+
+/** How a row wears its finished pull request: `done` for a merge with nothing
+ *  made since, `closed` for one closed unmerged, and null for anything else,
+ *  including a merge with commits after it, which still has work to go. */
+export function finishedLook(finished: FinishedPr | null | undefined): "done" | "closed" | null {
+  if (!finished) return null;
+  if (finished.state === "closed") return "closed";
+  return finished.relation?.kind === "ahead" ? null : "done";
+}
+
 /**
  * Every fact worth a glyph, in drawing order, for a surface with no room for
  * words.
@@ -171,10 +184,6 @@ export type SyncMark = {
  * of amber, and a colour every row wears is a colour that has stopped saying
  * anything.
  */
-/** The branch's pull request once it has merged or closed, with `prRelation`'s
- *  answer for it. */
-export type FinishedPr = { state: "merged" | "closed"; relation: PrRelation | null };
-
 export function syncMarks(sync: BranchSync | null | undefined, finished?: FinishedPr | null): SyncMark[] {
   if (!sync || sync.detached) return [];
   const { ahead, behind, has_upstream, gone, rewritten, superseded } = sync.upstream;
