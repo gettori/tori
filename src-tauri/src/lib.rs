@@ -599,6 +599,7 @@ pub fn run() {
             worktree::worktree_status,
             worktree::branch_status,
             worktree::remove_worktree,
+            worktree::prune_worktree_records,
             worktree::remove_worktree_and_branch,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_start,
