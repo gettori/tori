@@ -563,6 +563,136 @@
     color: var(--fg-default);
   }
 
+  .crew {
+    flex: 1 1 calc(300px * var(--ui-scale));
+    max-width: calc(380px * var(--ui-scale));
+  }
+  .crewName {
+    color: var(--fg-default);
+    font-weight: 600;
+  }
+  .ref {
+    font-family: var(--tori-font-mono);
+    color: var(--fg-muted);
+  }
+  .worker {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+    font-size: var(--tori-text-sm);
+  }
+  /* The cockpit's porthole from AutopilotView.module.css (`.ring`), shrunk
+     to a row mark and without the ref it carries inside. */
+  .porthole {
+    --p: 100%;
+    --ring: var(--status-progress);
+    flex: none;
+    width: calc(22px * var(--ui-scale));
+    height: calc(22px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background:
+      radial-gradient(closest-side, var(--canvas-default) calc(100% - 3px * var(--ui-scale)), transparent calc(100% - 3px * var(--ui-scale) + 0.5px)),
+      conic-gradient(var(--ring) 0 var(--p), var(--progress-border) var(--p) 100%);
+  }
+  .porthole[data-state="needs"] {
+    --ring: var(--status-needs-you);
+  }
+  .workerName {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
+    white-space: nowrap;
+  }
+  .workerBranch {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+  }
+  .worker .needsYou {
+    font-size: var(--tori-text-xs);
+  }
+  .decision {
+    flex: 1 1 calc(220px * var(--ui-scale));
+    max-width: calc(300px * var(--ui-scale));
+    border-color: var(--needs-you-border);
+  }
+  .decisionBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-5);
+    line-height: 1.5;
+  }
+
+  .phone {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    width: calc(230px * var(--ui-scale));
+    height: calc(380px * var(--ui-scale));
+    background: var(--canvas-default);
+    border: calc(6px * var(--ui-scale)) solid var(--border-strong);
+    border-radius: calc(32px * var(--ui-scale));
+    overflow: hidden;
+    font-size: var(--tori-text-xs);
+    color: var(--fg-default);
+  }
+  .phoneTop {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    padding: calc(22px * var(--ui-scale)) var(--tori-space-5) var(--tori-space-4);
+    background: var(--canvas-head);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+    white-space: nowrap;
+  }
+  .phoneBody {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-5);
+    line-height: 1.45;
+  }
+  .bubble {
+    max-width: 85%;
+    padding: var(--tori-space-3) var(--tori-space-4);
+    border-radius: var(--tori-radius-lg);
+    background: var(--neutral-hover);
+  }
+  .bubbleMe {
+    align-self: flex-end;
+    background: var(--brand-subtle);
+  }
+  .phoneCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-4);
+    border: var(--tori-border-thin) solid var(--needs-you-border);
+    border-radius: var(--tori-radius-lg);
+    background: var(--canvas-head);
+  }
+  .phoneActions {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+  }
+  .phoneComposer {
+    margin: 0 var(--tori-space-4) var(--tori-space-5);
+    padding: var(--tori-space-3) var(--tori-space-5);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-pill);
+    color: var(--fg-subtle);
+  }
+  .remote {
+    flex: 1 1 calc(240px * var(--ui-scale));
+    max-width: calc(320px * var(--ui-scale));
+  }
+
   .index {
     display: flex;
     flex-direction: column;
