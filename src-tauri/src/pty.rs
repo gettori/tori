@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -29,6 +30,12 @@ const INIT_QUIET_MS: u64 = 250;
 // process holding it is only refused once it has held it this long.
 const INIT_SETTLE_MS: u64 = 5000;
 const INIT_POLL_MS: u64 = 25;
+
+// How often a task tab's foreground is read once its command is typed, and how
+// many agreeing reads it takes to flip. More than one, because a prompt hook
+// that runs `git` borrows the terminal for a moment and is not the task.
+const BUSY_POLL: Duration = Duration::from_millis(250);
+const BUSY_AGREE: u8 = 2;
 
 // Fallback quiet threshold for a session with no adapter-supplied one (a
 // plain shell/command tab). Agent tabs pass their adapter's own
@@ -145,6 +152,9 @@ pub struct Session {
     agent: Option<String>,
     profile: Option<String>,
     cwd: String,
+    /// A task tab whose command still holds the terminal. Always false for
+    /// every other kind.
+    busy: Arc<AtomicBool>,
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -172,6 +182,14 @@ struct ActivityEvent {
 struct InitRefused {
     id: String,
     foreground: String,
+}
+
+/// What `pty://busy` carries: a task tab, and whether its command still holds
+/// the terminal or the shell has its prompt back.
+#[derive(Clone, Serialize)]
+struct BusyEvent {
+    id: String,
+    busy: bool,
 }
 
 /// What `pty://exit` carries. A `None` code is an *unproven* exit, not a zero:
@@ -273,6 +291,28 @@ fn coalesce(rx: Receiver<Vec<u8>>, mut emit: impl FnMut(Vec<u8>), window: Durati
     }
 }
 
+/// A task tab's running state as its foreground reads arrive.
+struct BusyWatch {
+    busy: bool,
+    streak: u8,
+}
+
+/// Returns the new state once `BUSY_AGREE` reads in a row disagree with the
+/// current one, and `None` otherwise.
+fn note_foreground(w: &mut BusyWatch, foreign: bool) -> Option<bool> {
+    if foreign == w.busy {
+        w.streak = 0;
+        return None;
+    }
+    w.streak += 1;
+    if w.streak < BUSY_AGREE {
+        return None;
+    }
+    w.streak = 0;
+    w.busy = foreign;
+    Some(foreign)
+}
+
 // Write the seeded `init` command to the shell exactly once. A refusal sets the
 // same flag, so nothing can type it after the seeder has said no.
 fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &str) {
@@ -343,6 +383,18 @@ impl Seeder {
                 }
                 Some(pgrp) if settled => return self.refuse(pgrp),
                 Some(_) => {}
+            }
+        }
+    }
+
+    // Starts busy, since it is only called once the command line is typed.
+    fn watch_busy(&self, live: impl Fn() -> bool, busy: &AtomicBool, mut emit: impl FnMut(bool)) {
+        let mut watch = BusyWatch { busy: true, streak: 0 };
+        while live() {
+            thread::sleep(BUSY_POLL);
+            if let Some(now) = note_foreground(&mut watch, self.foreign_foreground().is_some()) {
+                busy.store(now, Ordering::Relaxed);
+                emit(now);
             }
         }
     }
@@ -543,6 +595,8 @@ pub fn pty_spawn(
 
     // An rc that attaches tmux or execs another program takes the terminal from
     // the shell, and a line typed then lands in whatever took it.
+    let track_busy = kind == "task";
+    let busy = Arc::new(AtomicBool::new(track_busy));
     let last_output = init.as_ref().map(|_| Arc::new(Mutex::new(None::<Instant>)));
     if let (Some(init), Some(last_output)) = (init.clone(), last_output.clone()) {
         let seeder = Seeder {
@@ -555,10 +609,18 @@ pub fn pty_spawn(
         };
         let seed_app = app.clone();
         let seed_id = id.clone();
+        let seed_busy = busy.clone();
         thread::spawn(move || {
             let live = || seed_app.state::<PtyState>().0.lock().map(|g| g.contains_key(&seed_id)).unwrap_or(false);
-            if let Seeded::Refused(foreground) = seeder.run(live, &SEED_TIMINGS) {
-                let _ = seed_app.emit("pty://init-refused", InitRefused { id: seed_id.clone(), foreground });
+            match seeder.run(&live, &SEED_TIMINGS) {
+                Seeded::Refused(foreground) => {
+                    seed_busy.store(false, Ordering::Relaxed);
+                    let _ = seed_app.emit("pty://init-refused", InitRefused { id: seed_id.clone(), foreground });
+                }
+                Seeded::Typed if track_busy => seeder.watch_busy(&live, &seed_busy, |busy| {
+                    let _ = seed_app.emit("pty://busy", BusyEvent { id: seed_id.clone(), busy });
+                }),
+                _ => {}
             }
         });
     }
@@ -679,6 +741,7 @@ pub fn pty_spawn(
             agent: agent_id,
             profile,
             cwd,
+            busy,
         },
     );
     Ok(PtySpawnResult { ownership: None })
@@ -752,6 +815,17 @@ pub fn pty_live_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
     state.live_ids()
 }
 
+/// Task tabs whose command still holds the terminal, by **frontend tab id**,
+/// sorted. `pty://busy` carries every change after this.
+#[tauri::command]
+pub fn pty_busy_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
+    let guard = state.0.lock().map_err(|e| e.to_string())?;
+    let mut ids: Vec<String> =
+        guard.iter().filter(|(_, s)| s.busy.load(Ordering::Relaxed)).map(|(id, _)| id.clone()).collect();
+    ids.sort();
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -804,6 +878,7 @@ mod tests {
             agent: agent.map(str::to_string),
             profile: profile.map(str::to_string),
             cwd: String::new(),
+            busy: Arc::new(AtomicBool::new(false)),
         }
     }
 

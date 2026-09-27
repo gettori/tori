@@ -8,8 +8,14 @@ import ContextMenu from "../../../components/Menu/ContextMenu";
 import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
 import FileIcon from "../../../seti/FileIcon";
 import { debounce } from "../../../utils/debounce";
-import { emitWith, OPEN_IN_EDITOR, type FsChanged, type OpenInEditor } from "../../../utils/events";
-import { isTaskSource, loadTasks, type Task } from "../../../utils/tasks";
+import {
+  emitWith,
+  OPEN_IN_EDITOR,
+  OPEN_TERMINAL,
+  type FsChanged,
+  type OpenInEditor,
+} from "../../../utils/events";
+import { isTaskSource, loadTasks, taskTab, type Task } from "../../../utils/tasks";
 import { runTask } from "../../../utils/runTask";
 import { loadTaskRuns } from "../../../utils/taskRecents";
 import tree from "../FileTree/FileTree.module.css";
@@ -19,6 +25,17 @@ type DirEntry = { name: string };
 type Group = { file: string; tasks: Task[] };
 
 const FS_CHANGE_DEBOUNCE_MS = 400;
+
+/** The latest run of `task` still holding its terminal, read off the tab ids
+ *  `taskTab` mints, or 0 when none is. */
+function runningRun(busy: ReadonlySet<string>, root: string, task: Task): number {
+  const prefix = `task:${root}:${task.id}#`;
+  let latest = 0;
+  for (const id of busy) {
+    if (id.startsWith(prefix)) latest = Math.max(latest, Number(id.slice(prefix.length)) || 0);
+  }
+  return latest;
+}
 
 /** Tasks by the file that defines them, in the order `loadTasks` found them:
  *  the root package.json, then workspace packages, then Make and just. */
@@ -39,6 +56,7 @@ export default function ScriptsSection(props: { root: string | null }) {
   const [tasks, setTasks] = createSignal<Task[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   const [shut, setShut] = createSignal<ReadonlySet<string>>(new Set());
+  const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
   // Bumped per read so a slow fs-refresh cannot overwrite a newer one.
   let scanGen = 0;
 
@@ -71,24 +89,47 @@ export default function ScriptsSection(props: { root: string | null }) {
   const debouncedScan = debounce(() => void scan(), FS_CHANGE_DEBOUNCE_MS);
   createEffect(on(() => props.root, () => void scan()));
 
-  let unlistenFs: UnlistenFn | undefined;
+  const mark = (id: string, on: boolean) =>
+    setBusy((prev) => {
+      if (prev.has(id) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const unlisten: UnlistenFn[] = [];
   let gone = false;
   onMount(async () => {
-    const off = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root && e.payload.root !== props.root) return;
-      if (e.payload.paths.some(isTaskSource)) debouncedScan();
-    });
-    if (gone) off();
-    else unlistenFs = off;
+    const offs = await Promise.all([
+      listen<FsChanged>("fs://changed", (e) => {
+        if (e.payload.root && e.payload.root !== props.root) return;
+        if (e.payload.paths.some(isTaskSource)) debouncedScan();
+      }),
+      listen<{ id: string; busy: boolean }>("pty://busy", (e) => mark(e.payload.id, e.payload.busy)),
+      listen<{ id: string }>("pty://exit", (e) => mark(e.payload.id, false)),
+    ]);
+    if (gone) return offs.forEach((off) => off());
+    unlisten.push(...offs);
+    const ids = await invoke<string[]>("pty_busy_ids").catch(() => [] as string[]);
+    if (!gone) setBusy(new Set(ids));
   });
   onCleanup(() => {
     gone = true;
     debouncedScan.cancel();
-    unlistenFs?.();
+    unlisten.forEach((off) => off());
   });
 
   function run(task: Task) {
     if (props.root) runTask(loadTaskRuns(), props.root, task);
+  }
+
+  const running = (task: Task) => (props.root ? runningRun(busy(), props.root, task) : 0);
+
+  function runOrShow(task: Task) {
+    const n = running(task);
+    if (n && props.root) emitWith(OPEN_TERMINAL, taskTab(props.root, task, n));
+    else run(task);
   }
 
   function open(file: string, line?: number) {
@@ -127,14 +168,23 @@ export default function ScriptsSection(props: { root: string | null }) {
                     {(t) => (
                       <ContextMenu
                         items={[
-                          { label: "Run", onClick: () => run(t) },
+                          ...(running(t)
+                            ? [
+                                { label: "Show terminal", onClick: () => runOrShow(t) },
+                                { label: "Run again", onClick: () => run(t) },
+                              ]
+                            : [{ label: "Run", onClick: () => run(t) }]),
                           { label: `Open in ${g.file}`, onClick: () => open(g.file, t.line) },
                         ]}
                         class={tree.treeRow}
                         style={{ "padding-left": "20px" }}
-                        onClick={() => run(t)}
+                        onClick={() => runOrShow(t)}
                       >
-                        <span class={styles.play}>
+                        <span
+                          class={styles.play}
+                          classList={{ [styles.running]: !!running(t) }}
+                          title={running(t) ? "Running" : undefined}
+                        >
                           <Icon icon={Play} />
                         </span>
                         <span class={tree.treeName}>{t.name}</span>
