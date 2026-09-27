@@ -9,6 +9,7 @@ import Switch from "../Switch/Switch";
 import { pushToast } from "../Toasts/Toasts";
 import { settings } from "../../panels/Settings/settingsStore";
 import { setRemote, type Device } from "../../utils/remoteAccess";
+import { emitWith, OPEN_SETTINGS, type OpenSettings } from "../../utils/events";
 import styles from "./PhoneIndicator.module.css";
 
 export default function PhoneIndicator() {
@@ -24,11 +25,17 @@ export default function PhoneIndicator() {
   });
 
   const connected = () => devices().filter((d) => d.connected).length;
+  const tooltip = () =>
+    connected() > 0
+      ? `${connected()} connected`
+      : devices().length
+        ? "No phone connected"
+        : "Remote access is on. No phone paired yet";
   const revoke = (d: Device) =>
     void invoke("device_revoke", { id: d.id }).catch((e) => pushToast(`${d.name} was not revoked: ${String(e)}`));
 
   return (
-    <Show when={devices().length > 0}>
+    <Show when={devices().length > 0 || settings.remote.enabled}>
       <Button
         ref={anchor}
         class="topbar-phone"
@@ -36,13 +43,27 @@ export default function PhoneIndicator() {
         variant="ghost"
         aria-label="Phones"
         aria-expanded={open()}
-        tooltip={connected() > 0 ? `${connected()} connected` : "No phone connected"}
+        tooltip={tooltip()}
         onClick={() => setOpen(!open())}
         icon={<Icon icon={Smartphone} />}
       />
       <Show when={open()}>
         <Popover anchorEl={anchor} placement="bottom-end" onClose={() => setOpen(false)} aria-label="Phones">
           <div class={styles.card}>
+            <Show when={!devices().length}>
+              <div class={styles.empty}>
+                <span>No phone paired yet.</span>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setOpen(false);
+                    emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "remote" });
+                  }}
+                >
+                  Pair a phone
+                </Button>
+              </div>
+            </Show>
             <For each={devices()}>
               {(d) => (
                 <div class={styles.device}>
