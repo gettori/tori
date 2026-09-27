@@ -33,6 +33,12 @@
     display: flex;
     gap: calc(8px * var(--ui-scale));
   }
+  .end {
+    position: absolute;
+    right: var(--tori-space-5);
+    display: flex;
+    align-items: center;
+  }
   .lights > span {
     width: calc(12px * var(--ui-scale));
     height: calc(12px * var(--ui-scale));

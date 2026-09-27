@@ -229,7 +229,7 @@ const LEGEND: { label: string; rollup: Partial<Rollup> }[] = [
 export default function SessionsArt() {
   return (
     <div class={styles.frame}>
-      <MiniWindow height={470} zoom={0.8} bar={<AutopilotSwitch view="workspace" state="idle" />}>
+      <MiniWindow height={470} zoom={0.8} end={<AutopilotSwitch view="workspace" state="idle" />}>
         <div class={styles.app}>
           <aside class={styles.sidebar}>
             <Sidebar />
