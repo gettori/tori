@@ -1,6 +1,9 @@
 import { Match, Show, Switch, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { ChevronRight, Keyboard, Link, QrCode } from "lucide-solid";
 import { listen } from "@tauri-apps/api/event";
+import logo from "../../src-tauri/icons/128x128@2x.png";
+import Icon from "../../src/components/Icon/Icon";
 import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
 import AutopilotScreen, { AutopilotChat, watchRunner } from "./Autopilot";
 import BottomBar from "./BottomBar";
@@ -72,13 +75,22 @@ function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; 
         void submit();
       }}
     >
-      <h1 class={shell.pairTitle}>Pair with Tori</h1>
+      <header class={shell.pairHead}>
+        <img class={shell.pairLogo} src={logo} alt="" />
+        <h1 class={shell.pairTitle}>Pair with Tori</h1>
+        <p class={shell.pairLead}>Connect this phone to Tori on your Mac.</p>
+      </header>
       <Show when={props.notice}>
         <p class={shell.notice}>{props.notice}</p>
       </Show>
       <div class={shell.pairCard}>
-        <strong>Scan the code on the Mac</strong>
-        <span>In Tori on the Mac, open Settings, Remote, Pair a device, and scan the code with this phone's camera. The phone pairs in one step.</span>
+        <span class={shell.pairCardIcon}>
+          <Icon icon={QrCode} size={20} strokeWidth={1.9} />
+        </span>
+        <span class={shell.pairCardText}>
+          <strong>Scan the code on the Mac</strong>
+          <span>In Tori on the Mac, open Settings, Remote, Pair a device, and scan the code with this phone's camera.</span>
+        </span>
       </div>
       <Show when={busy()}>
         <p class={shell.notice}>Pairing</p>
@@ -87,26 +99,39 @@ function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; 
         <p class={shell.notice}>{error()}</p>
       </Show>
       <details class={shell.typed} open={!!error()}>
-        <summary>Type the address and code instead</summary>
-        <label class={shell.field}>
-          Link
-          <input placeholder="tori://pair?..." onInput={(e) => fromLink(e.currentTarget.value)} />
-        </label>
-        <label class={shell.field}>
-          Address
-          <input value={url()} placeholder="ws://192.168.1.10:7878" onInput={(e) => setUrl(e.currentTarget.value)} />
-        </label>
-        <label class={shell.field}>
-          Code
-          <input value={code()} placeholder="XXXX-XXXX" autocapitalize="characters" onInput={(e) => setCode(e.currentTarget.value)} />
-        </label>
-        <label class={shell.field}>
-          This phone's name
-          <input value={name()} onInput={(e) => setName(e.currentTarget.value)} />
-        </label>
-        <button class={shell.pairButton} type="submit" disabled={busy() || !url() || !code()}>
-          {busy() ? "Pairing" : "Pair"}
-        </button>
+        <summary>
+          <Icon icon={Keyboard} size={17} strokeWidth={1.9} />
+          <span>Type the address and code</span>
+          <Icon icon={ChevronRight} size={16} strokeWidth={2} class={shell.typedChevron} />
+        </summary>
+        <div class={shell.typedBody}>
+          <label class={shell.field}>
+            Link
+            <input class={shell.mono} placeholder="tori://pair?..." onInput={(e) => fromLink(e.currentTarget.value)} />
+          </label>
+          <label class={shell.field}>
+            Address
+            <input class={shell.mono} value={url()} placeholder="ws://192.168.1.10:7878" onInput={(e) => setUrl(e.currentTarget.value)} />
+          </label>
+          <label class={shell.field}>
+            Code
+            <input
+              class={shell.mono}
+              value={code()}
+              placeholder="XXXX-XXXX"
+              autocapitalize="characters"
+              onInput={(e) => setCode(e.currentTarget.value)}
+            />
+          </label>
+          <label class={shell.field}>
+            This phone's name
+            <input value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+          </label>
+          <button class={shell.pairButton} type="submit" disabled={busy() || !url() || !code()}>
+            <Icon icon={Link} size={15} strokeWidth={2.4} />
+            {busy() ? "Pairing" : "Pair"}
+          </button>
+        </div>
       </details>
     </form>
   );
