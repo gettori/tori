@@ -12,8 +12,8 @@
 
   .panel {
     display: flex;
-    width: min(calc(960px * var(--ui-scale)), 100%);
-    height: min(calc(640px * var(--ui-scale)), 100%);
+    width: min(calc(1120px * var(--ui-scale)), 100%);
+    height: min(calc(760px * var(--ui-scale)), 100%);
     background-color: var(--canvas-default);
     color: var(--fg-default);
     border: var(--tori-border-thin) solid var(--border-default);

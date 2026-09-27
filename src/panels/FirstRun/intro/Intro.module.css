@@ -563,134 +563,142 @@
     color: var(--fg-default);
   }
 
-  .crew {
-    flex: 1 1 calc(300px * var(--ui-scale));
-    max-width: calc(380px * var(--ui-scale));
+  /* A window in miniature: the cockpit drawn at its own size, then zoomed
+     down, so it is the real component rather than a copy that drifts. Sizes
+     inside are fixed lengths, since engines disagree on zooming a percentage. */
+  .window {
+    height: calc(470px * var(--ui-scale));
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: intro-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) 140ms both;
+  }
+  .miniCockpit {
+    zoom: 0.7;
+    display: flex;
+    flex-direction: column;
+    height: calc(470px / 0.7 * var(--ui-scale));
+  }
+  .titleBar {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(38px * var(--ui-scale));
+    background: var(--canvas-card);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+  }
+  .lights {
+    position: absolute;
+    left: var(--tori-space-6);
+    display: flex;
+    gap: calc(8px * var(--ui-scale));
+  }
+  .lights > span {
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--border-strong);
+  }
+  .cockpitBody {
+    flex: 1;
+    min-height: 0;
+  }
+  .cockpitBody > :first-child {
+    grid-template-columns: calc(330px * var(--ui-scale)) minmax(0, 1fr);
+  }
+  .cockpitBody [aria-label="Activity"] {
+    display: none;
+  }
+
+  .phones {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--tori-space-7);
+  }
+  .pairCard {
+    flex: 0 1 calc(250px * var(--ui-scale));
   }
   .crewName {
     color: var(--fg-default);
     font-weight: 600;
   }
-  .ref {
-    font-family: var(--tori-font-mono);
-    color: var(--fg-muted);
-  }
-  .worker {
+  .pairBody {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: var(--tori-space-5);
-    font-size: var(--tori-text-sm);
-  }
-  /* The cockpit's porthole from AutopilotView.module.css (`.ring`), shrunk
-     to a row mark and without the ref it carries inside. */
-  .porthole {
-    --p: 100%;
-    --ring: var(--status-progress);
-    flex: none;
-    width: calc(22px * var(--ui-scale));
-    height: calc(22px * var(--ui-scale));
-    border-radius: var(--tori-radius-pill);
-    background:
-      radial-gradient(closest-side, var(--canvas-default) calc(100% - 3px * var(--ui-scale)), transparent calc(100% - 3px * var(--ui-scale) + 0.5px)),
-      conic-gradient(var(--ring) 0 var(--p), var(--progress-border) var(--p) 100%);
-  }
-  .porthole[data-state="needs"] {
-    --ring: var(--status-needs-you);
-  }
-  .workerName {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--tori-space-1);
-    white-space: nowrap;
-  }
-  .workerBranch {
-    font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
-    color: var(--fg-subtle);
-  }
-  .worker .needsYou {
-    font-size: var(--tori-text-xs);
-  }
-  .decision {
-    flex: 1 1 calc(220px * var(--ui-scale));
-    max-width: calc(300px * var(--ui-scale));
-    border-color: var(--needs-you-border);
-  }
-  .decisionBody {
-    display: flex;
-    flex-direction: column;
     gap: var(--tori-space-3);
-    padding: var(--tori-space-5);
-    line-height: 1.5;
-  }
-
-  .phone {
-    flex: none;
-    display: flex;
-    flex-direction: column;
-    width: calc(230px * var(--ui-scale));
-    height: calc(380px * var(--ui-scale));
-    background: var(--canvas-default);
-    border: calc(6px * var(--ui-scale)) solid var(--border-strong);
-    border-radius: calc(32px * var(--ui-scale));
-    overflow: hidden;
+    padding: var(--tori-space-6);
     font-size: var(--tori-text-xs);
+  }
+  .qr {
+    width: calc(150px * var(--ui-scale));
+    height: calc(150px * var(--ui-scale));
+    margin-bottom: var(--tori-space-3);
+    padding: var(--tori-space-2);
+    border-radius: var(--tori-radius-md);
+    background: var(--fg-default);
+    color: var(--canvas-default);
+  }
+  .pairCode {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xl);
+    font-weight: 600;
+    letter-spacing: 0.08em;
     color: var(--fg-default);
   }
-  .phoneTop {
-    display: flex;
-    align-items: center;
-    gap: var(--tori-space-3);
-    padding: calc(22px * var(--ui-scale)) var(--tori-space-5) var(--tori-space-4);
-    background: var(--canvas-head);
-    border-bottom: var(--tori-border-thin) solid var(--border-default);
-    white-space: nowrap;
+  .connected {
+    color: var(--status-idle);
   }
-  .phoneBody {
+  /* A phone in miniature, the same trick as `.window`: the app's screens at
+     their own size, zoomed down to fit. */
+  .phone {
+    flex: none;
+    width: calc(216px * var(--ui-scale));
+    height: calc(460px * var(--ui-scale));
+    padding: calc(5px * var(--ui-scale));
+    border-radius: calc(36px * var(--ui-scale));
+    background: var(--border-strong);
+    box-shadow: var(--shadow-lg);
+  }
+  .phoneScreen {
+    zoom: 0.54;
+    display: flex;
+    flex-direction: column;
+    width: calc(206px / 0.54 * var(--ui-scale));
+    height: calc(450px / 0.54 * var(--ui-scale));
+    border-radius: calc(58px * var(--ui-scale));
+    overflow: hidden;
+    background: var(--canvas-default);
+  }
+  .phoneScreen > :last-child {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: var(--tori-space-4);
-    padding: var(--tori-space-5);
-    line-height: 1.45;
+    min-height: 0;
+    height: auto;
   }
-  .bubble {
-    max-width: 85%;
-    padding: var(--tori-space-3) var(--tori-space-4);
-    border-radius: var(--tori-radius-lg);
-    background: var(--neutral-hover);
-  }
-  .bubbleMe {
-    align-self: flex-end;
-    background: var(--brand-subtle);
-  }
-  .phoneCard {
-    display: flex;
-    flex-direction: column;
-    gap: var(--tori-space-3);
-    padding: var(--tori-space-4);
-    border: var(--tori-border-thin) solid var(--needs-you-border);
-    border-radius: var(--tori-radius-lg);
-    background: var(--canvas-head);
-  }
-  .phoneActions {
+  .statusBar {
+    position: relative;
+    flex: none;
     display: flex;
     align-items: center;
-    gap: var(--tori-space-3);
+    height: calc(50px * var(--ui-scale));
+    padding: 0 calc(34px * var(--ui-scale));
+    font-size: calc(16px * var(--ui-scale));
+    font-weight: 600;
+    color: var(--fg-default);
   }
-  .phoneComposer {
-    margin: 0 var(--tori-space-4) var(--tori-space-5);
-    padding: var(--tori-space-3) var(--tori-space-5);
-    border: var(--tori-border-thin) solid var(--border-default);
+  .island {
+    position: absolute;
+    left: 50%;
+    top: calc(12px * var(--ui-scale));
+    width: calc(110px * var(--ui-scale));
+    height: calc(32px * var(--ui-scale));
+    transform: translateX(-50%);
     border-radius: var(--tori-radius-pill);
-    color: var(--fg-subtle);
-  }
-  .remote {
-    flex: 1 1 calc(240px * var(--ui-scale));
-    max-width: calc(320px * var(--ui-scale));
+    background: var(--border-strong);
   }
 
   .index {
