@@ -45,3 +45,20 @@ export function setHistoryTab(tab: HistoryTab): void {
     // Storage blocked: the choice still holds for this run.
   }
 }
+
+const COMMIT_BOX_KEY = "tori.changes.commitBox";
+
+const [commitBoxShown, setCommitBoxSignal] = createSignal(
+  localStorage.getItem(COMMIT_BOX_KEY) === "1",
+);
+
+export { commitBoxShown };
+
+export function setCommitBoxShown(on: boolean): void {
+  setCommitBoxSignal(on);
+  try {
+    localStorage.setItem(COMMIT_BOX_KEY, on ? "1" : "0");
+  } catch {
+    // Storage blocked: the choice still holds for this run.
+  }
+}
