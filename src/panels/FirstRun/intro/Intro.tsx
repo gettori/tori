@@ -3,8 +3,10 @@ import { Dynamic } from "solid-js/web";
 import Button from "../../../components/Button/Button";
 import FirstRunShell from "../FirstRunShell";
 import {
+  AutopilotIllustration,
   LayoutIllustration,
   MachineIllustration,
+  PhoneIllustration,
   ReviewIllustration,
   SessionsIllustration,
   TerminalIllustration,
@@ -39,6 +41,16 @@ export const SLIDES: Slide[] = [
     title: "Review what the agent wrote",
     body: "An editor with LSP, and a Changes panel that stages, commits, pushes and opens the PR. Comment on a hunk and it goes straight back into the session.",
     art: ReviewIllustration,
+  },
+  {
+    title: "Hand a queue to Autopilot",
+    body: "Give it a list of tasks and it starts a worker for each, watches them, and only stops for you when something needs a decision. Off by default: turn it on in Settings > Autopilot.",
+    art: AutopilotIllustration,
+  },
+  {
+    title: "Your sessions on your phone",
+    body: "Pair the Tori mobile app with a one-time code, on your own network or over Tailscale. Read along, send or steer a turn, and answer whatever is waiting on you. Off by default: turn it on in Settings > Remote access.",
+    art: PhoneIllustration,
   },
   {
     title: "Your agents, your hosts, your machine",

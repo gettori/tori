@@ -1,6 +1,7 @@
 import { For, Match, Show, Switch, type Component, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { ChevronRight, Folder, Tag } from "lucide-solid";
+import { ChevronRight, Folder, GitPullRequest, Tag } from "lucide-solid";
+import Wheel from "../../../components/Autopilot/Wheel";
 import Icon from "../../../components/Icon/Icon";
 import MemberChip from "../../../components/MemberChip/MemberChip";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
@@ -348,6 +349,119 @@ export function ReviewIllustration() {
         <span class={styles.chip}>Commit</span>
         <span class={styles.chip}>Push</span>
         <span class={styles.chip}>Open PR</span>
+      </div>
+    </div>
+  );
+}
+
+type Worker = { ref: number; title: string; branch: string; doing: string; state: "working" | "needs"; progress: number };
+
+export function AutopilotIllustration() {
+  const crew: Worker[] = [
+    { ref: 212, title: "Cap the rate limiter", branch: "api / fix/rate-limit", doing: "Waiting on you", state: "needs", progress: 1 },
+    { ref: 214, title: "Retry failed webhooks", branch: "web / feat/webhooks", doing: "Running tests", state: "working", progress: 0.6 },
+  ];
+  const queue: { ref: number; title: string; after?: number }[] = [
+    { ref: 215, title: "Dark mode for the blog", after: 214 },
+    { ref: 218, title: "Document the limits" },
+  ];
+  return (
+    <div class={styles.split}>
+      <div class={`${styles.card} ${styles.crew}`}>
+        <div class={styles.cardHead}>
+          <Wheel state="needs" count={1} />
+          <span class={styles.crewName}>Autopilot</span>
+          <span class={styles.stripEnd}>2 out, 2 queued</span>
+        </div>
+        <div class={styles.list}>
+          <div class={styles.eyebrow}>In flight</div>
+          <For each={crew}>
+            {(w, i) => (
+              <div class={`${styles.worker} ${styles.rise}`} style={{ "--i": i() * 2 }}>
+                <span class={styles.porthole} data-state={w.state} style={{ "--p": `${w.progress * 100}%` }} />
+                <span class={styles.workerName}>
+                  <span>
+                    <span class={styles.ref}>{`#${w.ref}`}</span> {w.title}
+                  </span>
+                  <span class={styles.workerBranch}>{w.branch}</span>
+                </span>
+                <span class={w.state === "needs" ? styles.needsYou : styles.muted}>{w.doing}</span>
+              </div>
+            )}
+          </For>
+          <div class={styles.eyebrow}>Queued</div>
+          <For each={queue}>
+            {(q, i) => (
+              <div class={`${styles.listRow} ${styles.rise}`} style={{ "--i": 4 + i() }}>
+                <span class={styles.ref}>{`#${q.ref}`}</span>
+                <span>{q.title}</span>
+                <Show when={q.after}>{(after) => <span class={styles.stripEnd}>{`after #${after()}`}</span>}</Show>
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class={`${styles.card} ${styles.decision} ${styles.rise}`} style={{ "--i": 8 }}>
+        <div class={styles.cardHead}>
+          <Icon icon={GitPullRequest} />
+          <span>PR</span>
+          <span class={styles.ref}>{`#${crew[0].ref}`}</span>
+          <span class={styles.stripEnd}>2m</span>
+        </div>
+        <div class={styles.decisionBody}>
+          <strong>{crew[0].title}</strong>
+          <span class={styles.muted}>Open a PR from fix/rate-limit into main: 3 commits, 18 tests passing.</span>
+        </div>
+        <div class={styles.strip}>
+          <span class={styles.chip}>Dismiss</span>
+          <span class={styles.chip}>Edit</span>
+          <span class={`${styles.send} ${styles.press}`} style={{ "--i": 8 }}>
+            Approve
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function PhoneIllustration() {
+  const setting = (i: number, name: string, value: JSX.Element) => (
+    <div class={`${styles.listRow} ${styles.rise}`} style={{ "--i": i }}>
+      <span>{name}</span>
+      <span class={styles.stripEnd}>{value}</span>
+    </div>
+  );
+  return (
+    <div class={styles.split}>
+      <div class={styles.phone}>
+        <div class={styles.phoneTop}>
+          <StateGlyph state="needsYou" />
+          <span class={styles.mono}>api / fix/rate-limit</span>
+        </div>
+        <div class={styles.phoneBody}>
+          <div class={`${styles.bubble} ${styles.bubbleMe} ${styles.rise}`}>now send the Retry-After header</div>
+          <div class={`${styles.bubble} ${styles.rise}`} style={{ "--i": 3 }}>
+            Added the header and a test. Running the suite next.
+          </div>
+          <div class={`${styles.phoneCard} ${styles.rise}`} style={{ "--i": 6 }}>
+            <strong>Allow Bash?</strong>
+            <span class={`${styles.mono} ${styles.muted}`}>npm test</span>
+            <div class={styles.phoneActions}>
+              <span class={styles.chip}>Deny</span>
+              <span class={`${styles.send} ${styles.press}`} style={{ "--i": 6 }}>
+                Allow once
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class={styles.phoneComposer}>Message</div>
+      </div>
+      <div class={`${styles.card} ${styles.list} ${styles.remote}`}>
+        <div class={styles.eyebrow}>Remote access</div>
+        {setting(0, "Tailscale", "Connected")}
+        {setting(1, "Listening on", <span class={styles.mono}>100.84.12.7:47821</span>)}
+        {setting(2, "Pairing code", <kbd class={styles.kbd}>K7QF-2MXD</kbd>)}
+        {setting(3, "Paired devices", "iPhone")}
       </div>
     </div>
   );
