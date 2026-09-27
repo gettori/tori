@@ -276,6 +276,11 @@ li + li > .item {
   gap: 4px;
   min-width: 0;
   overflow-x: auto;
+  /* `overflow-x: auto` clips the other axis too, and a space's status bubble
+     hangs 4px off its top right corner. The padding is that overhang, inside
+     the clip box; the margins hand it back so the bar does not move. */
+  padding: 4px 4px 0 0;
+  margin: -4px -4px 0 0;
 }
 
 .barItem {
