@@ -21,7 +21,7 @@ const upstream = (over: Record<string, unknown> = {}) => ({
   detached: false,
   dirty: false,
   head_committed_at: 1700000000,
-  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, ...over },
+  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false, ...over },
   base: null,
 });
 

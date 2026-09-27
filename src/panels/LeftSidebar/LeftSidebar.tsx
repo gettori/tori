@@ -102,6 +102,7 @@ import {
 } from "../../utils/sessionActivity";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
 import { resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
+import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
@@ -2378,6 +2379,16 @@ export default function LeftSidebar(props: {
       { label: "New session", onClick: () => startSession(g, p, u) },
       { label: "Graph", onClick: () => openGraph(g, p, u) },
     ];
+    // Only where the branch is the one checked out, since the reset moves HEAD.
+    const checkedOut = u.kind === "worktree" || (u.kind === "plain" && u.isCurrent);
+    if (checkedOut && syncFor(u.folderPath, u.branch)?.upstream.superseded) {
+      items.push({
+        label: "Reset to upstream",
+        onClick: async () => {
+          if (await resetToUpstream(u.folderPath)) await resyncRoot(u.folderPath);
+        },
+      });
+    }
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Remove worktree", warn: true, onClick: () => openRemoveWorktree(p, u) });

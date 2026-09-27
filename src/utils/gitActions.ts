@@ -46,8 +46,16 @@ type FetchEvent = { repo?: string; error?: string; quiet?: boolean; fetchedAt?: 
 /** Where a branch stands against its upstream. `rewritten` separates the two
  *  ways a branch diverges, which want opposite advice: history this side
  *  rewrote needs a force push, a commit somebody else pushed needs a pull.
- *  Only meaningful while both counts are non-zero; elsewhere it reads false. */
-export type UpstreamSync = { ahead: number; behind: number; has_upstream: boolean; rewritten: boolean };
+ *  `superseded` is the third: the upstream was force-pushed over commits this
+ *  side only took from it, so it wants a reset. Both are only meaningful while
+ *  both counts are non-zero; elsewhere they read false. */
+export type UpstreamSync = {
+  ahead: number;
+  behind: number;
+  has_upstream: boolean;
+  rewritten: boolean;
+  superseded: boolean;
+};
 
 /** What the base branch has done since this one left it. `conflicts` is
  *  tri-state: `[]` merges clean, a non-empty list is the paths that would
@@ -205,10 +213,13 @@ export function isConflicted(roots: readonly string[] | null | undefined, absPat
 }
 
 /** Can a push do anything? A branch with no upstream counts: the push sets it.
- *  Unknown (the probe failed, or nothing is selected) reads as no. Takes the
- *  member to ask about, defaulting to the one in front, like the file lists. */
+ *  A superseded one does not, since its commits are the upstream's replaced
+ *  ones. Unknown (the probe failed, or nothing is selected) reads as no. Takes
+ *  the member to ask about, defaulting to the one in front, like the file lists. */
 export function canPush(root?: string | null): boolean {
-  const ab = (root === undefined ? gitState() : gitStateFor(root)).aheadBehind;
+  const state = root === undefined ? gitState() : gitStateFor(root);
+  const ab = state.aheadBehind;
+  if (state.sync?.upstream.superseded) return false;
   return !!ab && (!ab.has_upstream || ab.ahead > 0);
 }
 
@@ -413,6 +424,9 @@ export function fetchIn(root: string): Promise<boolean> {
  *  because a pull can stop on a conflict, which is a state the file list has to
  *  be re-read to show. */
 export async function pull(root: string, rebase = false): Promise<boolean> {
+  // Either kind of pull would replay or merge the history the force push
+  // replaced. The backend re-checks that nothing here is local work.
+  if (gitStateFor(root).sync?.upstream.superseded) return resetToUpstream(root);
   const result = waitFor(root, "git://pull-done", "git://pull-error");
   try {
     await invoke("git_pull", { repo: root, rebase });
@@ -427,6 +441,11 @@ export async function pull(root: string, rebase = false): Promise<boolean> {
     return false;
   }
   return true;
+}
+
+/** Move the branch onto its upstream after a force push replaced what it had. */
+export function resetToUpstream(root: string): Promise<boolean> {
+  return act(root, () => invoke("git_reset_to_upstream", { projectPath: root }), refreshGit);
 }
 
 export async function merge(root: string, branch: string): Promise<IntegrateOutcome | null> {
