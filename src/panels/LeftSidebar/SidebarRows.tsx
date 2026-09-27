@@ -1,6 +1,8 @@
 import { Show, type JSX } from "solid-js";
 import { ChevronDown, ChevronRight, ChevronUp, Ellipsis, Layers } from "lucide-solid";
 import ContextMenu from "../../components/Menu/ContextMenu";
+import Dropdown from "../../components/Menu/Dropdown";
+import IconButton from "../../components/IconButton/IconButton";
 import { type MenuItem } from "../../components/Menu/rows";
 import Icon from "../../components/Icon/Icon";
 import styles from "./SidebarRows.module.css";
@@ -67,6 +69,19 @@ export function ProjectRow(props: {
         </span>
         <span class={styles.label}>{props.name}</span>
         <span class={styles.rowEnd}>{props.end}</span>
+        <Show when={props.menu?.length}>
+          {/* Stops the click so opening the menu does not also toggle the row. */}
+          <span class={styles.rowMenu} onClick={(e) => e.stopPropagation()}>
+            <Dropdown as="span" wrapper items={props.menu} placement="bottom-end">
+              <IconButton
+                size="sm"
+                class={styles.rowMenuBtn}
+                icon={<Icon icon={Ellipsis} />}
+                tooltip={`Actions for ${props.name}`}
+              />
+            </Dropdown>
+          </span>
+        </Show>
       </ContextMenu>
       {props.children}
     </div>
