@@ -73,6 +73,10 @@ pub struct PullRequest {
     /// a timestamp type here would have to be re-serialized to cross to the UI
     /// anyway.
     pub created_at: String,
+    /// When it merged, and when it closed (a merge closes it too). Null while
+    /// open, and a reopen clears both.
+    pub merged_at: Option<String>,
+    pub closed_at: Option<String>,
     /// Conversation comments, which is GitHub's own `comments` count and
     /// GitLab's `user_notes_count`. Review-thread replies are not in it on
     /// either host; the sidebar wants "has anyone said anything", and the two
@@ -82,6 +86,9 @@ pub struct PullRequest {
     pub base_ref: String,
     /// The head commit, used to fetch the PR ref for local gap expansion.
     pub head_sha: String,
+    /// False for a fork's pull request, whose head branch a push to origin
+    /// cannot restore.
+    pub head_repo_is_origin: bool,
     pub url: String,
     pub mergeable_state: MergeableState,
 }
@@ -544,10 +551,13 @@ mod tests {
             is_draft: false,
             author: "skarif2".into(),
             created_at: "2026-09-17T08:14:00Z".into(),
+            merged_at: None,
+            closed_at: None,
             comments: 3,
             head_ref: "wave-3".into(),
             base_ref: "main".into(),
             head_sha: "4d95fc3aa0f1b2c3d4e5f60718293a4b5c6d7e8f".into(),
+            head_repo_is_origin: true,
             url: "https://github.com/skarif2/tori/pull/42".into(),
             mergeable_state: MergeableState::Clean,
         };

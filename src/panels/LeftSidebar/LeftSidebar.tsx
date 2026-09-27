@@ -101,7 +101,8 @@ import {
   inUnit,
 } from "../../utils/sessionActivity";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
-import { resyncRoot, syncFor, syncMarks, syncUnits } from "../../utils/branchSync";
+import { resyncRoot, syncFor, syncMarks, syncUnits, type FinishedPr } from "../../utils/branchSync";
+import { prRelation } from "../../utils/prRelation";
 import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
@@ -2630,7 +2631,6 @@ export default function LeftSidebar(props: {
       const r = rollup();
       return r.waitingForApproval + r.waitingForAnswer + r.executing > 0;
     };
-    const marks = createMemo(() => (held() ? [] : syncMarks(sync())));
     // Whether this branch reports a pull request at all. Nothing is drawn in
     // the end cluster for the forge any more: a branch with a PR says so on
     // its second line, and a branch without one says so by not having the
@@ -2644,6 +2644,7 @@ export default function LeftSidebar(props: {
     // silence, which is the trap `forgeChip` exists to close.
     const showPr = () => chip().kind === "pr";
     const status = () => unitStatus(p.path, u.branch);
+    const relation = () => prRelation(u.folderPath, u.branch, status()?.pullRequest, sync());
     // Memoized, not a bare accessor: the row reads it several times and each
     // read would otherwise re-parse the origin URL.
     const chip = createMemo(() =>
@@ -2659,8 +2660,14 @@ export default function LeftSidebar(props: {
         // "ready" mark on every branch for the instant before the batch lands.
         offBase: sync() ? (sync()!.base?.ahead ?? 0) : undefined,
         hasUpstream: sync()?.upstream.has_upstream,
+        relation: relation(),
       }),
     );
+    const finished = (): FinishedPr | null => {
+      const pr = showPr() ? status()?.pullRequest : null;
+      return pr && pr.state !== "open" ? { state: pr.state, relation: relation() } : null;
+    };
+    const marks = createMemo(() => (held() ? [] : syncMarks(sync(), finished())));
     // One hover target for the whole run rather than one per glyph: they are
     // 13px each, none of them is focusable, and the reader wants the branch's
     // standing in one place rather than four hovers to assemble it.

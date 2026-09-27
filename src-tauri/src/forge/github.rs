@@ -182,6 +182,10 @@ fn str_at(v: &Value, key: &str) -> String {
     v.get(key).and_then(|x| x.as_str()).unwrap_or_default().to_string()
 }
 
+fn opt_str(v: &Value, key: &str) -> Option<String> {
+    v.get(key).and_then(|x| x.as_str()).map(str::to_string)
+}
+
 /// Maps a REST pull-request object.
 ///
 /// `merged_at` rather than a `merged` boolean, because the list endpoint omits
@@ -207,10 +211,17 @@ fn pr_from_rest(v: &Value) -> Result<PullRequest, ForgeError> {
         is_draft: v.get("draft").and_then(|d| d.as_bool()).unwrap_or(false),
         author: v.get("user").map(|u| str_at(u, "login")).unwrap_or_default(),
         created_at: str_at(v, "created_at"),
+        merged_at: opt_str(v, "merged_at"),
+        closed_at: opt_str(v, "closed_at"),
         comments: v.get("comments").and_then(|c| c.as_u64()).unwrap_or(0) as u32,
         head_ref: v.get("head").map(|h| str_at(h, "ref")).unwrap_or_default(),
         base_ref: v.get("base").map(|b| str_at(b, "ref")).unwrap_or_default(),
         head_sha: v.get("head").map(|h| str_at(h, "sha")).unwrap_or_default(),
+        // A deleted fork answers `head.repo: null`, which is not origin either.
+        head_repo_is_origin: {
+            let repo = |side: &str| v.get(side).and_then(|s| s.get("repo")).map(|r| str_at(r, "full_name"));
+            repo("head").is_some_and(|h| Some(h) == repo("base"))
+        },
         url: str_at(v, "html_url"),
         mergeable_state: mergeable_from_rest(v),
     })
@@ -428,6 +439,8 @@ fn pr_from_graphql(v: &Value) -> PullRequest {
         is_draft: v.get("isDraft").and_then(|d| d.as_bool()).unwrap_or(false),
         author: v.get("author").map(|a| str_at(a, "login")).unwrap_or_default(),
         created_at: str_at(v, "createdAt"),
+        merged_at: opt_str(v, "mergedAt"),
+        closed_at: opt_str(v, "closedAt"),
         comments: v
             .get("comments")
             .and_then(|c| c.get("totalCount"))
@@ -436,6 +449,7 @@ fn pr_from_graphql(v: &Value) -> PullRequest {
         head_ref: str_at(v, "headRefName"),
         base_ref: str_at(v, "baseRefName"),
         head_sha,
+        head_repo_is_origin: !v.get("isCrossRepository").and_then(|c| c.as_bool()).unwrap_or(false),
         url: str_at(v, "url"),
         // GraphQL's `mergeable` is **not** REST's `mergeable_state`. It reports
         // merge *conflicts* only, and knows nothing about branch protection or
@@ -492,12 +506,27 @@ fn thread_from_graphql(v: &Value) -> ReviewThread {
 
 /// The PR fields every query needs, so the aliased batch and the single lookup
 /// cannot drift into disagreeing about what a PR is.
-const PR_FIELDS: &str = r#"
+macro_rules! pr_scalar_fields {
+    () => {
+        r#"
   number title body state isDraft url headRefName baseRefName createdAt
+  mergedAt closedAt isCrossRepository
   mergeable
   author { login }
   comments { totalCount }
   reviewDecision
+"#
+    };
+}
+
+/// A merged or closed pull request, for a branch with no open one. The same
+/// fields minus the check rollup: checks on a finished PR are history, and
+/// the rollup is the costly part of the query.
+const ENDED_PR_FIELDS: &str = concat!(pr_scalar_fields!(), "  commits(last: 1) { nodes { commit { oid } } }\n");
+
+const PR_FIELDS: &str = concat!(
+    pr_scalar_fields!(),
+    r#"
   commits(last: 1) { nodes { commit {
     oid
     statusCheckRollup {
@@ -512,7 +541,8 @@ const PR_FIELDS: &str = r#"
       }
     }
   } } }
-"#;
+"#
+);
 
 const THREADS_QUERY: &str = r#"
 query($owner:String!,$repo:String!,$number:Int!,$after:String){
@@ -718,9 +748,11 @@ impl Forge for GitHubForge {
             .iter()
             .enumerate()
             .map(|(i, b)| {
+                let name = serde_json::Value::String(b.clone());
                 format!(
-                    "u{i}: pullRequests(headRefName:{}, states:[OPEN], first:1) {{ nodes {{ {PR_FIELDS} }} }}",
-                    serde_json::Value::String(b.clone())
+                    "u{i}: pullRequests(headRefName:{name}, states:[OPEN], first:1) {{ nodes {{ {PR_FIELDS} }} }}\n\
+                     e{i}: pullRequests(headRefName:{name}, states:[MERGED, CLOSED], \
+                     orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS} }} }}"
                 )
             })
             .collect::<Vec<_>>()
@@ -738,12 +770,15 @@ impl Forge for GitHubForge {
             .iter()
             .enumerate()
             .map(|(i, branch)| {
-                let node = repository
-                    .get(format!("u{i}"))
-                    .and_then(|c| c.get("nodes"))
-                    .and_then(|n| n.as_array())
-                    .and_then(|n| n.first());
-                let Some(node) = node else {
+                let nodes = |alias: String| {
+                    repository.get(alias).and_then(|c| c.get("nodes")).and_then(|n| n.as_array())
+                };
+                let open = nodes(format!("u{i}")).and_then(|n| n.first());
+                let ended = open.is_none();
+                // `headRefName` matches a fork's branch of the same name too, and a
+                // fork's finished PR from its own `main` is not this repo's `main`.
+                let same_repo = |pr: &&Value| !pr.get("isCrossRepository").and_then(|c| c.as_bool()).unwrap_or(false);
+                let Some(node) = open.or_else(|| nodes(format!("e{i}")).and_then(|n| n.iter().find(same_repo))) else {
                     return UnitStatus {
                         head_ref: branch.clone(),
                         pull_request: None,
@@ -762,9 +797,12 @@ impl Forge for GitHubForge {
                     head_ref: branch.clone(),
                     pull_request: Some(pr_from_graphql(node)),
                     checks: checks_from_rollup(rollup),
-                    review_decision: review_decision_from(
-                        node.get("reviewDecision").and_then(|r| r.as_str()),
-                    ),
+                    // A finished PR's verdict is history, like its checks.
+                    review_decision: if ended {
+                        ReviewDecision::None
+                    } else {
+                        review_decision_from(node.get("reviewDecision").and_then(|r| r.as_str()))
+                    },
                 }
             })
             .collect())
@@ -1205,6 +1243,45 @@ mod tests {
         )]);
         let pr = f.pull_request_for_branch(&repo(), "x").unwrap().unwrap();
         assert_eq!(pr.state, PrState::Merged);
+    }
+
+    #[test]
+    fn an_open_pr_outranks_a_finished_one_and_a_finished_one_fills_the_gap() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{
+                "u0":{"nodes":[{"number":9,"state":"OPEN","headRefName":"a","author":{"login":"me"},
+                      "commits":{"nodes":[{"commit":{"oid":"open-tip","statusCheckRollup":null}}]}}]},
+                "e0":{"nodes":[{"number":3,"state":"MERGED","headRefName":"a","author":{"login":"me"},
+                      "commits":{"nodes":[{"commit":{"oid":"old-tip"}}]}}]},
+                "u1":{"nodes":[]},
+                "e1":{"nodes":[{"number":6,"state":"MERGED","headRefName":"b","isCrossRepository":true,
+                      "author":{"login":"a-fork"},"commits":{"nodes":[{"commit":{"oid":"fork-tip"}}]}},
+                      {"number":5,"state":"MERGED","headRefName":"b","body":"Why it exists",
+                      "author":{"login":"me"},"reviewDecision":"APPROVED",
+                      "mergedAt":"2026-09-26T10:00:00Z","closedAt":"2026-09-26T10:00:00Z",
+                      "isCrossRepository":false,
+                      "commits":{"nodes":[{"commit":{"oid":"merged-tip"}}]}}]}
+            }}}"#,
+        )]);
+        let statuses = f.unit_statuses(&repo(), &["a".to_string(), "b".to_string()]).unwrap();
+
+        assert_eq!(statuses[0].pull_request.as_ref().unwrap().number, 9);
+
+        // #6 is newer but came from a fork's branch of the same name.
+        let merged = statuses[1].pull_request.as_ref().unwrap();
+        assert_eq!((merged.number, merged.state), (5, PrState::Merged));
+        assert_eq!(merged.head_sha, "merged-tip");
+        assert_eq!(merged.body.as_deref(), Some("Why it exists"));
+        assert_eq!(merged.merged_at.as_deref(), Some("2026-09-26T10:00:00Z"));
+        assert!(merged.head_repo_is_origin);
+        assert_eq!(statuses[1].review_decision, ReviewDecision::None, "a finished verdict is history");
+        assert_eq!(statuses[1].checks.state, CheckState::None);
+
+        // Which finished PR is the newest is the server's ordering to apply.
+        let query = &stub.bodies()[0];
+        assert!(query.contains("states:[MERGED, CLOSED]"));
+        assert!(query.contains("orderBy:{field:CREATED_AT, direction:DESC}"));
     }
 
     #[test]

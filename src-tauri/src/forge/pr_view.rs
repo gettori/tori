@@ -123,10 +123,13 @@ mod tests {
             is_draft: false,
             author: author.into(),
             created_at: String::new(),
+            merged_at: None,
+            closed_at: None,
             comments: 0,
             head_ref: "feature".into(),
             base_ref: "main".into(),
             head_sha: "abc".into(),
+            head_repo_is_origin: true,
             url: String::new(),
             mergeable_state: MergeableState::Unknown,
         }

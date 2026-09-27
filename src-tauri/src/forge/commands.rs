@@ -1657,10 +1657,13 @@ mod tests {
             is_draft: false,
             author: "skarif2".into(),
             created_at: "2026-09-17T08:14:00Z".into(),
+            merged_at: None,
+            closed_at: None,
             comments: 0,
             head_ref: branch.into(),
             base_ref: "main".into(),
             head_sha: "abc".into(),
+            head_repo_is_origin: true,
             url: "u".into(),
             mergeable_state: super::super::model::MergeableState::Clean,
         }

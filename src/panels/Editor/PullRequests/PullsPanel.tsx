@@ -85,6 +85,7 @@ import { PR_TABS, prLayout, prTab, revealPrTab } from "../../../utils/prSections
 import { SECTION_MIN_H } from "../../../utils/sectionLayout";
 import { reloadPrList } from "../../../utils/prListStore";
 import { projectPathFor, projectUnitFor } from "../../../utils/sessionActivity";
+import { prRelation } from "../../../utils/prRelation";
 import {
   forgeHosts,
   forgePause,
@@ -314,6 +315,7 @@ export default function PullsPanel(props: {
         status: unit,
         offBase: git().sync?.base?.ahead,
         hasUpstream: git().sync?.upstream.has_upstream,
+        relation: prRelation(root, on, unit?.pullRequest, git().sync),
       }),
       status: unit,
       paused: paused(),
