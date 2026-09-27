@@ -31,8 +31,8 @@ export const SLIDES: Slide[] = [
     art: TopicsArt,
   },
   {
-    title: "A real terminal for every session",
-    body: "Each session gets its own terminal or chat tab. Clicking a row focuses it, or resumes it where the agent stopped. Every prompt is checkpointed, so a single turn can be diffed or reverted.",
+    title: "Undo any turn the agent took",
+    body: "Every prompt is checkpointed, so you can diff what a single turn changed or revert the tree to before it. Each session lives in its own chat or terminal tab, and resumes where the agent stopped.",
     art: TerminalArt,
   },
   {
