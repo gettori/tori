@@ -169,6 +169,10 @@ export const ROLES: Role[] = [
   { id: "brand.ring", cssVar: "--brand-ring", group: "brand" },
   { id: "brand.on", cssVar: "--brand-on", group: "brand" },
 
+  { id: "done.wash", cssVar: "--done-wash", group: "done" },
+  { id: "done.selected", cssVar: "--done-selected", group: "done" },
+  { id: "done.bar", cssVar: "--done-bar", group: "done" },
+
   { id: "blocking.surface", cssVar: "--blocking-surface", group: "blocking" },
   { id: "blocking.border", cssVar: "--blocking-border", group: "blocking" },
   { id: "blocking.fg", cssVar: "--blocking-fg", group: "blocking" },
@@ -367,6 +371,13 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // reads if you already know where focus is.
     "brand.ring": alpha(p.brandTint, v({ dark: 0.6, light: 0.77 })),
     "brand.on": p.brandOn,
+
+    // Teal from `info`: green is the open pull request's glyph, and `ansiCyan`
+    // is not teal in every palette. Mixed into `canvas`, which the sidebar sits
+    // on, and opaque so the gate can measure the label drawn on it.
+    "done.wash": mix(p.canvas, p.info, v({ dark: 0.08, light: 0.06 })),
+    "done.selected": mix(p.canvas, p.info, v({ dark: 0.16, light: 0.1 })),
+    "done.bar": p.info,
 
     // The blocking tier: the one look for a surface that has stopped the turn
     // and is waiting on the user. Two of them exist (the permission prompt and

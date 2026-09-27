@@ -101,7 +101,7 @@ import {
   inUnit,
 } from "../../utils/sessionActivity";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
-import { resyncRoot, syncFor, syncMarks, syncUnits, type FinishedPr } from "../../utils/branchSync";
+import { finishedLook, resyncRoot, syncFor, syncMarks, syncUnits, type FinishedPr } from "../../utils/branchSync";
 import { prRelation } from "../../utils/prRelation";
 import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
@@ -2689,6 +2689,7 @@ export default function LeftSidebar(props: {
         iconLabel={iconLabel(u)}
         selected={unitSelected(u)}
         nested={attempt != null}
+        look={finishedLook(finished())}
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
