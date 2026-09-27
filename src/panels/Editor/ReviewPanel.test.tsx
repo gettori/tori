@@ -36,7 +36,9 @@ const quietFetches: { minAgeSecs: number; only: string | null }[] = [];
 // What `git_ahead_behind` reports, and what `git_commit` was called with. Both
 // drive the amend guard, which is the only thing here that asks the backend a
 // question whose answer changes what the panel does rather than what it shows.
-let aheadBehind: { ahead: number; behind: number; has_upstream: boolean } | null = null;
+let aheadBehind: { ahead: number; behind: number; has_upstream: boolean; gone?: boolean } | null = null;
+// The state of the branch's pull request as the poll last reported it.
+let polledPrState: "open" | "closed" | "merged" | null = null;
 // The header only renders once the store knows a branch, so the tests that are
 // about the header say so by naming one.
 let branches: { name: string; current: boolean }[] = [];
@@ -69,6 +71,11 @@ let authState: { kind: string; login?: string } = { kind: "signedOut" };
 // empty array after a click is the assertion that nothing was sent.
 let createPrArgs: unknown[] = [];
 let createPrFails: unknown = null;
+
+vi.mock("../../utils/forgeStatus", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/forgeStatus")>()),
+  unitStatus: () => (polledPrState ? { pullRequest: { state: polledPrState } } : null),
+}));
 
 vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/sessionActivity")>()),
@@ -304,6 +311,7 @@ beforeEach(async () => {
   stageArgs = [];
   backstopRoots = [];
   aheadBehind = null;
+  polledPrState = null;
   branches = [];
   headMsg = "";
   commitArgs = [];
@@ -982,6 +990,28 @@ describe("amend", () => {
       expect(commitArgs).toEqual([{ projectPath: "/proj", message: "local only", amend: true, signoff: false }]),
     );
     expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
+  });
+});
+
+describe("a branch deleted on the remote", () => {
+  it("offers the push that restores it while its pull request is not merged", async () => {
+    branches = [{ name: "feat", current: true }];
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: false, gone: true };
+    polledPrState = "closed";
+    await mountPanel();
+
+    const pill = await screen.findByText("Deleted");
+    expect(pill.closest("button")).not.toBeNull();
+  });
+
+  it("shows a merged one as a label with nothing to push", async () => {
+    branches = [{ name: "feat", current: true }];
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: false, gone: true };
+    polledPrState = "merged";
+    await mountPanel();
+
+    const pill = await screen.findByText("Deleted");
+    expect(pill.closest("button")).toBeNull();
   });
 });
 

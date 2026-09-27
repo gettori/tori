@@ -206,9 +206,11 @@ export function pullsPanelState(input: {
         // The count only where the sync store has answered. A row that said
         // "0 commits that are not on origin yet" while nothing had counted
         // them would be a claim, and one it takes back a moment later.
-        detail: sync
-          ? `${branch} has ${plural(unpushed, "commit")} that are not on origin yet.`
-          : `${branch} is not on origin yet.`,
+        detail: !sync
+          ? `${branch} is not on origin yet.`
+          : upstream?.gone
+            ? `${branch} was deleted on origin.`
+            : `${branch} has ${plural(unpushed, "commit")} that are not on origin yet.`,
       };
     }
     return {

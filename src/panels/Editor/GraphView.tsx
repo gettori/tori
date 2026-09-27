@@ -230,7 +230,11 @@ export default function GraphView(props: { workspace: string }) {
         <Show when={gitStateFor(props.workspace).aheadBehind}>
           {(ab) => (
             <span class={styles.aheadBehind}>
-              {ab().has_upstream ? `${UP}${ab().ahead} ${DOWN}${ab().behind}` : "Unpushed branch"}
+              {ab().has_upstream
+                ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
+                : ab().gone
+                  ? "Deleted on the remote"
+                  : "Unpushed branch"}
             </span>
           )}
         </Show>
