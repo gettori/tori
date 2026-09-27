@@ -13,8 +13,28 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Absent on a fresh checkout: the keystore and this file are deliberately not in
+// the repo, so a build without them stays possible and comes out unsigned.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val signRelease = keystoreProperties.getProperty("storeFile") != null
+
 android {
     compileSdk = 36
+    signingConfigs {
+        if (signRelease) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
     namespace = "com.gettori.tori.mobile"
     defaultConfig {
         // Tori's remote front is ws:// on a LAN or tailnet address, with no TLS.
@@ -38,6 +58,9 @@ android {
             }
         }
         getByName("release") {
+            if (signRelease) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

@@ -58,6 +58,18 @@ xattr -cr /Applications/Tori.app
 Then open Tori normally. This clears the flag macOS attaches to downloaded
 files; it is what the **Open Anyway** button does under the hood.
 
+## The phone app
+
+`Tori_<version>.apk` on the
+[Releases page](https://github.com/gettori/releases/releases) is Tori on
+Android. It pairs with a Mac running Tori rather than standing alone, so turn on
+Settings > Remote there first, pick an address the phone can reach (Tailscale on
+both, across networks), then scan the QR the Remote pane shows.
+
+The APK is signed with Tori's own key rather than distributed through Play, so
+Android asks once whether to allow the install. Later releases carry the same
+key and install over the top.
+
 ## Requirements
 
 - **macOS.** Tori is developed and tested on macOS 15, and the bundle sets no
