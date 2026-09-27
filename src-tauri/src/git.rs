@@ -2569,8 +2569,8 @@ fn resolves(repo: &str, tip: &str) -> bool {
 /// which is what a worktree row wants.
 #[derive(Deserialize, Clone)]
 pub struct SyncUnit {
-    path: String,
-    branch: String,
+    pub(crate) path: String,
+    pub(crate) branch: String,
 }
 
 /// How wide the batch spreads. Each answer is a handful of short-lived `git`

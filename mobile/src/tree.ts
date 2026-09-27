@@ -86,6 +86,11 @@ export function rollupOf(rows: SessionRow[]): Rollup {
   return rollupStatuses(rows.map((row) => ({ status: statusFromDot(row.dot ?? "none") })));
 }
 
+export function agentHolds(rows: SessionRow[]): boolean {
+  const r = rollupOf(rows);
+  return r.waitingForApproval + r.waitingForAnswer + r.executing > 0;
+}
+
 export function phaseOf(row: SessionRow): Phase {
   if (!row.live) return "ended";
   const rollup = rollupOf([row]);

@@ -136,6 +136,31 @@ pub struct ProjectIconParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct SyncRow {
+    /// A unit's folder.
+    pub path: String,
+    /// The branch it shows.
+    pub branch: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnitsSyncParams {
+    /// The units to read, at most 64.
+    pub units: Vec<SyncRow>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnitsPrParams {
+    /// A project's `path` from `projects.list`.
+    pub project: String,
+    /// The branches to report on, most wanted first.
+    pub branches: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UnitsGitParams {
     /// The worktree folders to count, at most 64.
     pub folders: Vec<String>,
@@ -583,6 +608,8 @@ pub trait Backend: Send + Sync {
     fn session_model(&self, principal: &Principal, params: ModelParams) -> Result<Value, RpcError>;
     fn session_mode(&self, principal: &Principal, params: ModeParams) -> Result<Value, RpcError>;
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError>;
+    fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError>;
+    fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError>;
@@ -886,6 +913,12 @@ pub mod tests {
         }
         fn units_git(&self, p: UnitsGitParams) -> Result<Value, RpcError> {
             Ok(json!({ "folders": p.folders }))
+        }
+        fn units_sync(&self, p: UnitsSyncParams) -> Result<Value, RpcError> {
+            Ok(json!({ "units": p.units.len() }))
+        }
+        fn units_pr(&self, p: UnitsPrParams) -> Result<Value, RpcError> {
+            Ok(json!({ "project": p.project }))
         }
         fn worktree_new(&self, _: &Principal, p: WorktreeParams) -> Result<Value, RpcError> {
             Ok(json!({ "branch": p.branch }))
@@ -1249,6 +1282,8 @@ pub mod tests {
                 "session.model",
                 "session.mode",
                 "units.git",
+                "units.sync",
+                "units.pr",
                 "session.spawn",
                 "ask.answer",
                 "projects.list",

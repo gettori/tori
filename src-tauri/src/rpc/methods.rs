@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -833,6 +833,22 @@ impl Backend for TauriBackend {
 
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError> {
         to_json(crate::git::units_git(params.folders))
+    }
+
+    fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError> {
+        let units = params.units.into_iter().map(|u| crate::git::SyncUnit { path: u.path, branch: u.branch }).collect();
+        crate::git::git_branch_sync_many(units).map_err(|e| RpcError::new(INTERNAL_ERROR, e)).and_then(to_json)
+    }
+
+    // A PR body can run to kilobytes and no row draws it, so it stays off the wire.
+    fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError> {
+        let mut report = crate::forge::commands::forge_unit_statuses(params.project, params.branches, false).map_err(|e| refused(e.message))?;
+        for status in &mut report.statuses {
+            if let Some(pr) = status.pull_request.as_mut() {
+                pr.body = None;
+            }
+        }
+        to_json(report)
     }
 
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
