@@ -1,0 +1,166 @@
+@layer components {
+  .card {
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+    overflow: hidden;
+  }
+
+  .cardHead {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    background: var(--canvas-head);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+
+  .mono {
+    font-family: var(--tori-font-mono);
+  }
+
+  .muted {
+    color: var(--fg-muted);
+  }
+
+  .stripEnd {
+    margin-left: auto;
+    color: var(--fg-subtle);
+  }
+
+  .rise {
+    --i: 0;
+    animation: intro-rise 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: calc(140ms + var(--i) * 45ms);
+  }
+
+  @keyframes intro-rise {
+    from {
+      opacity: 0;
+      transform: translateY(calc(6px * var(--ui-scale)));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--tori-space-3);
+    border-top: var(--tori-border-thin) solid var(--border-default);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    font-size: var(--tori-text-xs);
+  }
+
+  .phones {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--tori-space-7);
+  }
+
+  .pairCard {
+    flex: 0 1 calc(250px * var(--ui-scale));
+  }
+
+  .crewName {
+    color: var(--fg-default);
+    font-weight: 600;
+  }
+
+  .pairBody {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-6);
+    font-size: var(--tori-text-xs);
+  }
+
+  .qr {
+    width: calc(150px * var(--ui-scale));
+    height: calc(150px * var(--ui-scale));
+    margin-bottom: var(--tori-space-3);
+    padding: var(--tori-space-2);
+    border-radius: var(--tori-radius-md);
+    background: var(--fg-default);
+    color: var(--canvas-default);
+  }
+
+  .pairCode {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xl);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--fg-default);
+  }
+
+  .connected {
+    color: var(--status-idle);
+  }
+
+  /* A phone in miniature, the same trick as MiniWindow: the app's screens at
+     their own size, zoomed down to fit. */
+  .phone {
+    flex: none;
+    width: calc(216px * var(--ui-scale));
+    height: calc(460px * var(--ui-scale));
+    padding: calc(5px * var(--ui-scale));
+    border-radius: calc(36px * var(--ui-scale));
+    background: var(--border-strong);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .phoneScreen {
+    zoom: 0.54;
+    display: flex;
+    flex-direction: column;
+    width: calc(206px / 0.54 * var(--ui-scale));
+    height: calc(450px / 0.54 * var(--ui-scale));
+    border-radius: calc(58px * var(--ui-scale));
+    overflow: hidden;
+    background: var(--canvas-default);
+  }
+
+  .phoneScreen > :last-child {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+
+  .statusBar {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: calc(50px * var(--ui-scale));
+    padding: 0 calc(34px * var(--ui-scale));
+    font-size: calc(16px * var(--ui-scale));
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+
+  .island {
+    position: absolute;
+    left: 50%;
+    top: calc(12px * var(--ui-scale));
+    width: calc(110px * var(--ui-scale));
+    height: calc(32px * var(--ui-scale));
+    transform: translateX(-50%);
+    border-radius: var(--tori-radius-pill);
+    background: var(--border-strong);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rise {
+      animation: none;
+    }
+  }
+}
