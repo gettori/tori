@@ -38,7 +38,13 @@ export type FileStatus = {
    *  Optional only so a fixture may omit it; the backend always sends it. */
   conflicted?: boolean;
 };
-export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean; sets_upstream: boolean };
+export type AheadBehind = {
+  ahead: number;
+  behind: number;
+  has_upstream: boolean;
+  sets_upstream: boolean;
+  gone: boolean;
+};
 
 /** `FetchResult` in src-tauri/src/git.rs, as it arrives on the two events. */
 type FetchEvent = { repo?: string; error?: string; quiet?: boolean; fetchedAt?: number };
@@ -48,11 +54,14 @@ type FetchEvent = { repo?: string; error?: string; quiet?: boolean; fetchedAt?: 
  *  rewrote needs a force push, a commit somebody else pushed needs a pull.
  *  `superseded` is the third: the upstream was force-pushed over commits this
  *  side only took from it, so it wants a reset. Both are only meaningful while
- *  both counts are non-zero; elsewhere they read false. */
+ *  both counts are non-zero; elsewhere they read false. `gone` is a branch whose
+ *  remote branch was deleted after it tracked it, and only holds without an
+ *  upstream. */
 export type UpstreamSync = {
   ahead: number;
   behind: number;
   has_upstream: boolean;
+  gone: boolean;
   rewritten: boolean;
   superseded: boolean;
 };

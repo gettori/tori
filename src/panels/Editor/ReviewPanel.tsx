@@ -61,7 +61,8 @@ import { sendBlockedReason } from "../../utils/sendTarget";
 import { connectHost } from "../../utils/createPr";
 import { createPrFlow } from "../../utils/prCreateFlow";
 import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
-import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
+import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo, unitStatus } from "../../utils/forgeStatus";
+import { projectPathFor } from "../../utils/sessionActivity";
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/topics";
 import MemberChip from "../../components/MemberChip/MemberChip";
@@ -445,9 +446,17 @@ export default function ReviewPanel(props: {
   function canPushIn(root: string | null): boolean {
     if (!root || pushingIn(root)) return false;
     const ab = gitStateFor(root).aheadBehind;
-    if (!ab || superseded(root)) return false;
+    if (!ab || superseded(root) || mergedAndGone(root)) return false;
     return !ab.has_upstream || ab.ahead > 0;
   }
+
+  /** Merged, and the remote branch deleted after it: a push would only put a
+   *  dead branch back on the remote. */
+  const mergedAndGone = (root: string | null) => {
+    const { aheadBehind, branch } = gitStateFor(root);
+    if (!root || !aheadBehind?.gone || !branch) return false;
+    return unitStatus(projectPathFor(root) ?? root, branch)?.pullRequest?.state === "merged";
+  };
 
   /** The upstream was force-pushed over commits this member only took from it,
    *  so the way forward is a reset, not a push or a merge. */
@@ -1351,20 +1360,31 @@ export default function ReviewPanel(props: {
                 </Tooltip>
               }
             >
-              <Tooltip
-                as="button"
-                type="button"
-                class={styles.aheadPill}
-                disabled={!canPushIn(viewedRoot())}
-                label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
-                onClick={() => pushMember(viewedRoot())}
+              <Show
+                when={!mergedAndGone(viewedRoot())}
+                fallback={
+                  <Tooltip as="span" class={styles.aheadPill} label="Merged, and the remote branch was deleted">
+                    Deleted
+                  </Tooltip>
+                }
               >
-                {pushingIn(viewedRoot())
-                  ? "Pushing"
-                  : ab().has_upstream
-                    ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
-                    : "Unpushed"}
-              </Tooltip>
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={styles.aheadPill}
+                  disabled={!canPushIn(viewedRoot())}
+                  label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
+                  onClick={() => pushMember(viewedRoot())}
+                >
+                  {pushingIn(viewedRoot())
+                    ? "Pushing"
+                    : ab().has_upstream
+                      ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
+                      : ab().gone
+                        ? "Deleted"
+                        : "Unpushed"}
+                </Tooltip>
+              </Show>
             </Show>
           )}
         </Show>

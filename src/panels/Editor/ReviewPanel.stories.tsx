@@ -37,9 +37,9 @@ const STATUS: Record<string, ReturnType<typeof file>[]> = {
 };
 
 const AHEAD: Record<string, AheadBehind> = {
-  [API]: { ahead: 3, behind: 0, has_upstream: true, sets_upstream: false },
-  [WEB]: { ahead: 0, behind: 0, has_upstream: false, sets_upstream: true },
-  [DOCS]: { ahead: 0, behind: 0, has_upstream: true, sets_upstream: false },
+  [API]: { ahead: 3, behind: 0, has_upstream: true, gone: false, sets_upstream: false },
+  [WEB]: { ahead: 0, behind: 0, has_upstream: false, gone: false, sets_upstream: true },
+  [DOCS]: { ahead: 0, behind: 0, has_upstream: true, gone: false, sets_upstream: false },
 };
 
 /** The workshop runs in a plain browser, so every command the panel sends has to

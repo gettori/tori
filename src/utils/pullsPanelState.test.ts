@@ -51,7 +51,7 @@ const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
   dirty: false,
   head_committed_at: 0,
-  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
+  upstream: { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false },
   base: { name: "main", ahead: 12, behind: 0, conflicts: [] },
   ...over,
 });
@@ -109,7 +109,7 @@ const EVERY: Record<string, PullsPanelState> = {
   noPrUnpushed: state({
     status: noPrStatus,
     chipOver: { status: noPrStatus },
-    sync: sync({ upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false } }),
+    sync: sync({ upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false } }),
   }),
   noPrPushed: state({ status: noPrStatus, chipOver: { status: noPrStatus } }),
   error: state({
