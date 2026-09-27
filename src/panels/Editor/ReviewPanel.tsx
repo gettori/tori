@@ -70,6 +70,7 @@ import MemberChip from "../../components/MemberChip/MemberChip";
 import type { ProjectIconSource } from "../../components/Icon/ProjectIcon";
 import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import OverflowTabBar from "../../components/OverflowTabBar";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator, MenuSub } from "../../components/Menu/rows";
 import RebaseDialog from "../../components/Dialogs/RebaseDialog";
@@ -97,6 +98,7 @@ import { CreatePrFlowDialog } from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
+import Tab from "../../components/Tab/Tab";
 import FileIcon from "../../seti/FileIcon";
 import CommitFiles from "./CommitFiles";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -1242,7 +1244,10 @@ export default function ReviewPanel(props: {
     changesLayout.setOpen("history", true);
   }
 
-  const shownTabs = () => HISTORY_TABS.filter((t) => tabShown(t.id));
+  /** Picking a tab out of the `+N` menu reorders the strip. The order keeps
+   *  the tabs the ... menu hid, so they come back where they were. */
+  const [tabOrder, setTabOrder] = createSignal(HISTORY_TABS);
+  const shownTabs = () => tabOrder().filter((t) => tabShown(t.id));
   /** The picked tab, or the first left once the ... menu has hidden it. */
   const tab = (): HistoryTab | undefined =>
     shownTabs().some((t) => t.id === historyTab()) ? historyTab() : shownTabs()[0]?.id;
@@ -1738,36 +1743,40 @@ export default function ReviewPanel(props: {
                 />
               </div>
             </Show>
-            <div class={styles.tabStrip}>
-              <div class={styles.tabs} role="tablist" aria-label="History">
-                <For each={shownTabs()}>
-                  {(t) => (
-                    <button
-                      type="button"
-                      role="tab"
-                      id={`review-tab-${t.id}`}
-                      class={styles.tab}
-                      aria-selected={tab() === t.id}
-                      aria-controls={`review-panel-${t.id}`}
-                      onClick={() => showHistory(t.id)}
-                    >
-                      <span>{t.label}</span>
-                      <Show when={tabCount(t.id)}>
-                        <span class={styles.tabCount}>{tabCount(t.id)}</span>
-                      </Show>
-                    </button>
-                  )}
-                </For>
-              </div>
-              <span class={styles.spacer} />
-              <IconButton
-                size="sm"
-                icon={<Icon icon={historyOpen() ? ChevronDown : ChevronUp} />}
-                aria-expanded={historyOpen()}
-                tooltip={historyOpen() ? "Collapse" : "Expand"}
-                onClick={() => changesLayout.setOpen("history", !historyOpen())}
-              />
-            </div>
+            <OverflowTabBar
+              class={styles.tabStrip}
+              items={shownTabs()}
+              activeId={tab() ?? null}
+              idOf={(t) => t.id}
+              onActivate={(id) => showHistory(id as HistoryTab)}
+              onReorder={(next) =>
+                setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])
+              }
+              renderTab={(t) => (
+                <Tab
+                  quiet
+                  value={t.id}
+                  id={`review-tab-${t.id}`}
+                  trailing={
+                    <Show when={tabCount(t.id)}>
+                      <span class={styles.tabCount}>{tabCount(t.id)}</span>
+                    </Show>
+                  }
+                >
+                  {t.label}
+                </Tab>
+              )}
+              renderMenuItem={(t) => <span class="tab-name">{t.label}</span>}
+              trailing={
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={historyOpen() ? ChevronDown : ChevronUp} />}
+                  aria-expanded={historyOpen()}
+                  tooltip={historyOpen() ? "Collapse" : "Expand"}
+                  onClick={() => changesLayout.setOpen("history", !historyOpen())}
+                />
+              }
+            />
             {/* What the showing tab offers, on its own line under the strip, so
                 the tabs keep one shape whichever is up. Checkpoints offers
                 nothing, so it draws no line. */}
