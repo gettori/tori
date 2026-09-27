@@ -49,6 +49,26 @@
   color: var(--fg-muted);
 }
 
+/* A merge or rebase stopped midway, with Continue, Skip and Abort. */
+.opBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-height: calc(32px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) 0 calc(12px * var(--ui-scale));
+  border-block: 1px solid var(--border-default);
+  background: var(--canvas-card);
+}
+
+.opName {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Why the member picked has no changes to read, and the repair beside it. */
 .unusable {
   display: flex;

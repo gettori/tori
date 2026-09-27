@@ -1,0 +1,88 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  max-height: calc(360px * var(--ui-scale));
+  overflow-y: auto;
+  margin-bottom: calc(10px * var(--ui-scale));
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: var(--tori-radius-md);
+}
+
+.item:hover {
+  background: var(--canvas-card);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  min-width: 0;
+}
+
+.sha {
+  flex: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-subtle);
+}
+
+.subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+}
+
+.tag {
+  flex: none;
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+}
+
+.action {
+  flex: none;
+  width: calc(100px * var(--ui-scale));
+}
+
+/* Indented under the commit it folds into, which is the row above. */
+.folded .line {
+  padding-left: calc(16px * var(--ui-scale));
+}
+
+.dropped .subject {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+}
+
+.message {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+}
+
+.problem {
+  font-size: var(--tori-text-md);
+  color: var(--danger-fg);
+}
+
+.note {
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
+}

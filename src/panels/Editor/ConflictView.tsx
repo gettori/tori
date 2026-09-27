@@ -15,6 +15,7 @@ import {
   prevConflict,
   regionLines,
   seedResult,
+  OP_WORD,
   sideLabels,
   unresolved,
   withSide,
@@ -35,17 +36,6 @@ import { revertGuard } from "../../utils/revertGuard";
 import Button from "../../components/Button/Button";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import styles from "./ConflictView.module.css";
-
-/** What the operation is called in the header. `none` is where a conflicted
- *  `git stash apply` or `git checkout -m` lands: git records no state for
- *  either, but the tree is just as unmerged. */
-const OP_WORD: Record<ConflictOp, string> = {
-  merge: "Merge",
-  rebase: "Rebase",
-  cherrypick: "Cherry-pick",
-  revert: "Revert",
-  none: "Unresolved",
-};
 
 // The base is not one of the two candidates, so it is never a side to take.
 type PaneSide = Side | "base";
