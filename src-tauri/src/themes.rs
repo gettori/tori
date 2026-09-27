@@ -31,7 +31,7 @@ impl Default for ThemesWatch {
 }
 
 fn user_themes_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/themes")
+    crate::owned_state::config_dir().join("themes")
 }
 
 /// A validated palette plus the file it came from. The picker shows the path so

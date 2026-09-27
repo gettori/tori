@@ -29,7 +29,7 @@ pub struct State {
 }
 
 fn state_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/state.json")
+    crate::owned_state::config_dir().join("state.json")
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---

@@ -803,7 +803,7 @@ pub fn mark_background(session: &str) {
 /// link on the child's PATH and `tori mcp` inherits the child's socket env.
 /// Empty if the file cannot be written, so the launch goes on without it.
 pub fn mcp_config_args() -> Vec<String> {
-    let path = dirs::home_dir().unwrap_or_default().join(".config/tori/claude-mcp.json");
+    let path = crate::owned_state::config_dir().join("claude-mcp.json");
     let config = json!({ "mcpServers": { MCP_SERVER: { "command": "tori", "args": ["mcp"] } } });
     let written = path
         .parent()
@@ -825,11 +825,11 @@ pub fn mcp_launch(caller: Caller) -> Option<(PathBuf, Vec<(String, String)>)> {
 }
 
 pub(crate) fn bridge_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/rpc.json")
+    crate::owned_state::config_dir().join("rpc.json")
 }
 
 fn devices_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/devices.json")
+    crate::owned_state::config_dir().join("devices.json")
 }
 
 #[cfg(test)]

@@ -24,9 +24,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 fn stash_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/hot-exit.json")
+    crate::owned_state::config_dir().join("hot-exit.json")
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---

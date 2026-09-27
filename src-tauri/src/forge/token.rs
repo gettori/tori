@@ -170,7 +170,7 @@ mod dev_file {
     use std::path::PathBuf;
 
     fn path() -> PathBuf {
-        dirs::home_dir().unwrap_or_default().join(".config/tori/dev-forge-secrets.json")
+        crate::owned_state::config_dir().join("dev-forge-secrets.json")
     }
 
     pub fn read() -> BTreeMap<String, Secret> {

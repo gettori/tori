@@ -616,7 +616,7 @@ pub fn list_worktrees(items: &[Item]) -> HashMap<String, Option<Vec<Listed>>> {
 }
 
 pub fn dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/autopilot")
+    crate::owned_state::config_dir().join("autopilot")
 }
 
 // Read backwards from the end: the log only grows, and a caller wants its last few lines.

@@ -186,9 +186,7 @@ impl ProjectIndex {
 }
 
 fn config_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/tori.toml")
+    crate::owned_state::config_dir().join("tori.toml")
 }
 
 fn expand_tilde(path: &str) -> String {
@@ -315,9 +313,7 @@ struct AttachedRepo {
 struct AttachedState(HashMap<String, AttachedRepo>);
 
 fn attached_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/attached.json")
+    crate::owned_state::config_dir().join("attached.json")
 }
 
 fn load_attached() -> AttachedState {

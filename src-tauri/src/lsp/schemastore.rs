@@ -91,7 +91,7 @@ pub fn associations_from_catalog(text: &str) -> Vec<SchemaAssociation> {
 }
 
 fn cache_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/cache/schemastore-catalog.json")
+    crate::owned_state::config_dir().join("cache/schemastore-catalog.json")
 }
 
 fn fetch_catalog() -> Result<String, String> {

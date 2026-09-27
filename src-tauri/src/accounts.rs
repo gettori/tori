@@ -388,7 +388,7 @@ pub fn can_add_account(accounts: &crate::agents::AccountsConfig) -> bool {
 
 /// `~/.config/tori/accounts.json`, beside `settings.json` and `agents/`.
 pub fn accounts_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/accounts.json")
+    crate::owned_state::config_dir().join("accounts.json")
 }
 
 /// Where profile homes live: the platform data dir, never `~/.config/tori`.

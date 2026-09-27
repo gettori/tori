@@ -1555,7 +1555,7 @@ const BUNDLED: [(&str, &str); 7] = [
 ];
 
 fn user_agents_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/agents")
+    crate::owned_state::config_dir().join("agents")
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id

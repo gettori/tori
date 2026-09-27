@@ -595,7 +595,7 @@ pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostVi
 }
 
 pub fn accounts_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/forge_accounts.json")
+    crate::owned_state::config_dir().join("forge_accounts.json")
 }
 
 /// An unreadable file reads as empty, like every other Tori store.

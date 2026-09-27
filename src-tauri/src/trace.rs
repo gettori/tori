@@ -30,9 +30,7 @@ static FRONTEND: OnceLock<Mutex<Option<File>>> = OnceLock::new();
 /// Where both trace files live. `~/.config/tori/` is where every other Tori
 /// store already is; Tauri's app-data dir is unused in this codebase.
 pub fn dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/trace")
+    crate::owned_state::config_dir().join("trace")
 }
 
 pub fn enabled() -> bool {
