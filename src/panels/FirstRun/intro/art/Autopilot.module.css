@@ -1,0 +1,15 @@
+@layer components {
+  .cockpit {
+    display: flex;
+  }
+
+  .cockpit > :first-child {
+    flex: 1;
+    min-width: 0;
+    grid-template-columns: calc(330px * var(--ui-scale)) minmax(0, 1fr);
+  }
+
+  .cockpit [aria-label="Activity"] {
+    display: none;
+  }
+}
