@@ -15,6 +15,7 @@ import Tooltip from "../Tooltip/Tooltip";
 import { emitWith, SET_RIGHT_MODE, type SetRightMode } from "../../utils/events";
 import { gitStateFor, type LastFetch } from "../../utils/gitActions";
 import { syncMarks, syncState, type SyncLevel } from "../../utils/branchSync";
+import { finishedPr } from "../../utils/prRelation";
 import { fetchRootNow } from "../../utils/remoteSync";
 import styles from "./SyncChip.module.css";
 
@@ -60,7 +61,8 @@ function fetchedAgo(at: number, now = Date.now() / 1000): string {
 }
 
 export default function SyncChip(props: { root: string | null }) {
-  const state = createMemo(() => syncState(gitStateFor(props.root).sync));
+  const finished = () => finishedPr(props.root, gitStateFor(props.root).branch, gitStateFor(props.root).sync);
+  const state = createMemo(() => syncState(gitStateFor(props.root).sync, finished()));
   const level = () => state().level;
   const lastFetch = (): LastFetch | null => gitStateFor(props.root).lastFetch;
 
@@ -73,7 +75,7 @@ export default function SyncChip(props: { root: string | null }) {
   // Every fact, not just the loudest. This surface outlives the sidebar, which
   // toggles away, so a branch that is ninety-nine behind *and* about to conflict
   // has to show both: the words are the verdict, the marks are what it owes.
-  const marks = createMemo(() => syncMarks(gitStateFor(props.root).sync));
+  const marks = createMemo(() => syncMarks(gitStateFor(props.root).sync, finished()));
   const words = () => (SAYS[level()] ? state().label : "");
 
   return (

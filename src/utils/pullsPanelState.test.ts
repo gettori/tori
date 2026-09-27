@@ -29,11 +29,14 @@ const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
   state: "open",
   isDraft: false,
   createdAt: "2026-09-17T08:14:00Z",
+  mergedAt: null,
+  closedAt: null,
   comments: 0,
   author: "skarif2",
   headRef: "wave-3",
   baseRef: "main",
   headSha: "abc123",
+  headRepoIsOrigin: true,
   url: "https://github.com/skarif2/tori/pull/412",
   mergeableState: "clean",
   ...over,
@@ -246,5 +249,23 @@ describe("what outranks what", () => {
     // other by adding a remote.
     expect(EVERY.noBranch.kind).toBe("noBranch");
     expect(EVERY.noRemote.kind).toBe("noRemote");
+  });
+});
+
+describe("a finished pull request", () => {
+  const merged = status({ pullRequest: pull({ state: "merged", mergedAt: "2026-09-20T00:00:00Z" }) });
+  const closed = status({ pullRequest: pull({ state: "closed", closedAt: "2026-09-20T00:00:00Z" }) });
+
+  it("loads merged and closed pull requests the way it loads an open one", () => {
+    const m = state({ status: merged });
+    expect(m.kind === "loaded" && m.pr.state).toBe("merged");
+    const c = state({ status: closed });
+    expect(c.kind === "loaded" && c.pr.state).toBe("closed");
+  });
+
+  it("agrees with the row when the branch name was reused", () => {
+    const reused = { relation: { kind: "unrelated" } as const };
+    expect(state({ status: merged, chipOver: reused }).kind).not.toBe("loaded");
+    expect(state({ status: merged, chipOver: { relation: { kind: "at" } } }).kind).toBe("loaded");
   });
 });

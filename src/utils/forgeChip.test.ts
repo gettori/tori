@@ -13,11 +13,14 @@ const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
   state: "open",
   isDraft: false,
   createdAt: "2026-09-17T08:14:00Z",
+  mergedAt: null,
+  closedAt: null,
   comments: 0,
   author: "skarif2",
   headRef: "wave-3",
   baseRef: "main",
   headSha: "abc123",
+  headRepoIsOrigin: true,
   url: "https://github.com/skarif2/tori/pull/12",
   mergeableState: "clean",
   ...over,
@@ -61,6 +64,17 @@ describe("the states that render nothing", () => {
     // The sync facts never outrank the forge's own answer.
     expect(chip({ offBase: 3, hasUpstream: true }).kind).toBe("pr");
     expect(chip({ origin: null, offBase: 3, hasUpstream: true }).kind).toBe("inert");
+  });
+
+  it("reads a finished pull request on a reused branch name as no pull request", () => {
+    const merged = status({ pullRequest: pull({ state: "merged", mergedAt: "2026-09-20T00:00:00Z" }) });
+    expect(chip({ status: merged, relation: { kind: "unrelated" } }).kind).toBe("noPr");
+    expect(chip({ status: merged, relation: { kind: "at" } }).pr?.state).toBe("merged");
+    // Not answered yet, or answered without a reflog to go on: shown, not hidden.
+    expect(chip({ status: merged, relation: null }).kind).toBe("pr");
+    expect(chip({ status: merged, relation: { kind: "unknown" } }).kind).toBe("pr");
+    // An open pull request is the branch's by definition.
+    expect(chip({ relation: { kind: "unrelated" } }).kind).toBe("pr");
   });
 
   it("leaves a host with no account inert, wherever the door for it is", () => {

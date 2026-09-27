@@ -30,7 +30,9 @@ use super::model::{
 use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
 use sha1::{Digest, Sha1};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const USER_AGENT: &str = "tori";
 
@@ -288,10 +290,13 @@ fn pr_from(v: &Value) -> Result<PullRequest, ForgeError> {
         is_draft: v.get("draft").and_then(|d| d.as_bool()).unwrap_or(false),
         author: v.get("author").map(|a| str_at(a, "username")).unwrap_or_default(),
         created_at: str_at(v, "created_at"),
+        merged_at: opt_str(v, "merged_at"),
+        closed_at: opt_str(v, "closed_at"),
         comments: v.get("user_notes_count").and_then(|c| c.as_u64()).unwrap_or(0) as u32,
         head_ref: str_at(v, "source_branch"),
         base_ref: str_at(v, "target_branch"),
         head_sha: str_at(v, "sha"),
+        head_repo_is_origin: v.get("source_project_id") == v.get("target_project_id"),
         url: str_at(v, "web_url"),
         mergeable_state: mergeable_from(v),
     })
@@ -430,6 +435,40 @@ fn thread_from(repo: &RepoRef, iid: u64, discussion: &Value) -> Option<ReviewThr
         is_outdated: line.is_none(),
         comments: notes.iter().map(comment_from).collect(),
     })
+}
+
+/// The last history page per project, and which branches it was read for.
+struct History {
+    read_at: Instant,
+    unmatched: BTreeSet<String>,
+    list: Vec<Value>,
+}
+
+static HISTORY: Mutex<BTreeMap<String, History>> = Mutex::new(BTreeMap::new());
+const HISTORY_FOR: Duration = Duration::from_secs(300);
+
+impl GitLabForge {
+    /// One page of recent merge requests for the branches with no open one. Reread
+    /// only when a branch newly lost its open one or the page went stale, since the
+    /// base branch never has one. Best effort: a failure must not blank the open half.
+    fn history(&self, repo: &RepoRef, unmatched: BTreeSet<String>) -> Vec<Value> {
+        let key = format!("{}/projects/{}", self.api_base, project(repo));
+        {
+            let cache = HISTORY.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(h) = cache.get(&key) {
+                if h.read_at.elapsed() < HISTORY_FOR && unmatched.is_subset(&h.unmatched) {
+                    return h.list.clone();
+                }
+            }
+        }
+        let path = format!("/projects/{}/merge_requests?state=all&order_by=updated_at&per_page=100", project(repo));
+        let Ok(Value::Array(list)) = self.send(self.rest("GET", &path, None)) else {
+            return vec![];
+        };
+        let mut cache = HISTORY.lock().unwrap_or_else(|e| e.into_inner());
+        cache.insert(key, History { read_at: Instant::now(), unmatched, list: list.clone() });
+        list
+    }
 }
 
 impl Forge for GitLabForge {
@@ -583,15 +622,26 @@ impl Forge for GitLabForge {
             format!("/projects/{}/merge_requests?state=opened&per_page=100", project(repo));
         let (open, _) =
             paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        let has_open = |branch: &str| open.iter().any(|mr| str_at(mr, "source_branch") == branch);
+
+        let unmatched: BTreeSet<String> = branches.iter().filter(|b| !has_open(b)).cloned().collect();
+        let ended = if unmatched.is_empty() { vec![] } else { self.history(repo, unmatched) };
 
         let mut asked = 0;
         Ok(branches
             .iter()
             .map(|branch| {
                 let Some(mr) = open.iter().find(|mr| str_at(mr, "source_branch") == *branch) else {
+                    // Newest created wins, the same pick GitHub's query makes.
+                    let finished = ended
+                        .iter()
+                        .filter(|mr| str_at(mr, "source_branch") == *branch)
+                        .filter_map(|mr| pr_from(mr).ok())
+                        .filter(|pr| pr.state != PrState::Open && pr.head_repo_is_origin)
+                        .max_by(|a, b| a.created_at.cmp(&b.created_at));
                     return UnitStatus {
                         head_ref: branch.clone(),
-                        pull_request: None,
+                        pull_request: finished,
                         checks: CheckRollup::none(),
                         review_decision: ReviewDecision::None,
                     };
@@ -954,6 +1004,7 @@ mod tests {
         let list = format!("[{}]", mr(r#","head_pipeline":{"status":"failed"}"#));
         let (f, stub) = forge(vec![
             StubTransport::json(200, &list),
+            StubTransport::json(200, "[]"),
             StubTransport::json(200, r#"{"approved":true,"approvals_left":0}"#),
         ]);
         let statuses = f
@@ -967,8 +1018,57 @@ mod tests {
         // A branch with no merge request is answered for, not skipped.
         assert!(statuses[1].pull_request.is_none());
         assert_eq!(statuses[1].checks.state, CheckState::None);
-        // One list call plus one approval call, and nothing per branch.
-        assert_eq!(stub.request_count(), 2);
+        // The open list, one page of history for the unmatched branch, and one
+        // approval call: nothing per branch.
+        assert_eq!(stub.request_count(), 3);
+    }
+
+    #[test]
+    fn a_branch_with_no_open_mr_takes_its_newest_finished_one_from_one_page() {
+        let history = format!(
+            "[{},{},{}]",
+            mr(r#","iid":9,"source_branch":"done","state":"merged","created_at":"2026-09-20T00:00:00Z",
+                "source_project_id":2,"target_project_id":1"#),
+            mr(r#","iid":3,"source_branch":"done","state":"closed","created_at":"2026-08-01T00:00:00Z""#),
+            mr(r#","iid":4,"source_branch":"done","state":"merged","created_at":"2026-09-01T00:00:00Z",
+                "merged_at":"2026-09-02T00:00:00Z","source_project_id":1,"target_project_id":1"#),
+        );
+        let (f, stub) = forge(vec![StubTransport::json(200, "[]"), StubTransport::json(200, &history)]);
+        let statuses = f.unit_statuses(&repo(), &["done".to_string()]).unwrap();
+
+        // !9 is newer, but from a fork's branch of the same name.
+        let pr = statuses[0].pull_request.as_ref().unwrap();
+        assert_eq!((pr.number, pr.state), (4, PrState::Merged));
+        assert_eq!(pr.merged_at.as_deref(), Some("2026-09-02T00:00:00Z"));
+        assert!(pr.head_repo_is_origin);
+        assert!(stub.requests()[1].url.contains("state=all"));
+
+        // Every branch matched an open one, so the history is never asked for.
+        let (f, stub) = forge(vec![StubTransport::json(200, &format!("[{}]", mr("")))]);
+        f.unit_statuses(&repo(), &["wave-3".to_string()]).unwrap();
+        assert_eq!(stub.request_count(), 2, "the open list and its one approval lookup");
+    }
+
+    #[test]
+    fn the_history_page_is_reread_only_for_a_branch_that_newly_lost_its_open_mr() {
+        let open = |branch: &str| format!("[{}]", mr(&format!(r#","source_branch":"{branch}""#)));
+        let (f, stub) = forge(vec![
+            StubTransport::json(200, &open("cache-b")),
+            StubTransport::json(200, "[]"),
+            StubTransport::json(200, r#"{"approved":true,"approvals_left":0}"#),
+            StubTransport::json(200, &open("cache-b")),
+            StubTransport::json(200, r#"{"approved":true,"approvals_left":0}"#),
+            StubTransport::json(200, "[]"),
+            StubTransport::json(200, "[]"),
+        ]);
+        let base_only = ["cache-main".to_string(), "cache-b".to_string()];
+        f.unit_statuses(&repo(), &base_only).unwrap();
+        f.unit_statuses(&repo(), &base_only).unwrap();
+        assert_eq!(stub.request_count(), 5, "the second tick reused the page read for cache-main");
+
+        // cache-b's merge request is no longer open: its history is news.
+        f.unit_statuses(&repo(), &base_only).unwrap();
+        assert!(stub.requests()[6].url.contains("state=all"));
     }
 
     #[test]

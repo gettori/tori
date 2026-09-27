@@ -194,6 +194,22 @@ describe("the marks a row draws for its remote", () => {
     expect(gone[0].title).toContain("remote branch was deleted");
   });
 
+  it("has nothing to push once the pull request merged, unless work came after", () => {
+    const gone = sync({
+      upstream: { ahead: 0, behind: 0, has_upstream: false, gone: true, rewritten: false, superseded: false },
+      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+    });
+    expect(syncMarks(gone, { state: "merged", relation: { kind: "at" } })).toEqual([]);
+    expect(syncMarks(gone, { state: "merged", relation: { kind: "behind" } })).toEqual([]);
+
+    const after = syncMarks(gone, { state: "merged", relation: { kind: "ahead", count: 2 } });
+    expect(after.map((m) => `${m.kind}${m.count}:${m.tone}`)).toEqual(["push2:warn"]);
+    expect(after[0].title).toBe("2 commits after merge");
+
+    // A closed pull request keeps the push, which is how its branch comes back.
+    expect(syncMarks(gone, { state: "closed", relation: { kind: "at" } })[0].title).toContain("was deleted");
+  });
+
   it("puts the force-push warning in the tooltip, not on the row", () => {
     const rewritten = syncMarks(upstream({ ahead: 2, behind: 3, rewritten: true, superseded: false }));
     expect(rewritten.map((m) => m.kind)).toEqual(["push", "pull"]);

@@ -700,4 +700,13 @@ mod tests {
         assert_eq!(pending(&watcher), format!("item {}: pr (#4 open; checks success; review approved)", reviewed.id));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn a_finished_pull_request_is_named_for_how_it_finished() {
+        let state = |s: crate::forge::model::PrState| {
+            json!({ "pull_request": { "number": 9, "state": s }, "checks": "none", "review": "none" })
+        };
+        assert_eq!(pr_detail(&state(crate::forge::model::PrState::Merged)), "#9 merged; checks none; review none");
+        assert_eq!(pr_detail(&state(crate::forge::model::PrState::Closed)), "#9 closed; checks none; review none");
+    }
 }
