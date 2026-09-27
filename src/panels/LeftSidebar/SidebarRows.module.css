@@ -411,6 +411,27 @@
   height: calc(14px * var(--ui-scale));
 }
 
+/* Out of the flow at rest rather than transparent: a reserved slot would pull
+   the project's marks off the column its branch rows' marks sit in. */
+.rowMenu {
+  display: none;
+  flex: none;
+}
+
+.row.project:hover .rowMenu,
+.rowMenu:has([data-expanded]) {
+  display: inline-flex;
+}
+
+.rowMenuBtn {
+  border-color: transparent;
+  color: var(--fg-subtle);
+}
+
+.rowMenuBtn:hover {
+  color: var(--fg-default);
+}
+
 /* Row flag, pushed to the right: the `stub` mark on an empty .bare container
    and a fan-out group's attempt count. The generic `.hint` variant is the
    quieter of the two. */
