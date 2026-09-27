@@ -230,6 +230,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
               client={props.client}
               project={project}
               space={space()?.name ?? ""}
+              topics={tree()?.topics ?? []}
               live={live}
               crew={crew}
               onUnit={(unit) => openUnit(unit, project.name)}

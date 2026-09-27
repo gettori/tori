@@ -8,7 +8,7 @@ import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
 import type { Crew } from "./Autopilot";
 import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
-import { DOT, Offline } from "./Root";
+import { DOT, Offline, PhaseMark } from "./Root";
 import { GitCounts, PushTop, watchGit } from "./Screens";
 import { PHASE_LABEL, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
 import styles from "./shell.module.css";
@@ -36,7 +36,7 @@ function NowCard(props: { row: SessionRow; where?: string; crewed: boolean; spin
           <span class={styles.cardTitle}>{sessionLabel(props.row)}</span>
         </span>
         <span class={styles.stateRow}>
-          <span class={styles.stateDot} data-phase={phase()} />
+          <PhaseMark phase={phase()} />
           <span class={styles.stateLabel} data-phase={phase()}>
             {PHASE_LABEL[phase()]}
           </span>

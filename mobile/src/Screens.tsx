@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createResource, type JSX } from "solid-js";
-import { ChevronLeft, Folder } from "lucide-solid";
+import { ChevronLeft, Folder, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
 import { ago } from "../../src/utils/relativeTime";
@@ -83,7 +83,6 @@ function UnitItem(props: { unit: Unit; name?: string; meta: string; live: Sessio
           <span class={styles.name}>{props.name ?? props.unit.label}</span>
           <span class={styles.meta}>{props.meta}</span>
         </span>
-        <StateMark rows={rows()} />
         <Chevron />
       </button>
     </li>
@@ -104,7 +103,14 @@ export function PushTop(props: { back: string; space?: boolean; onBack: () => vo
   );
 }
 
-function WorktreeCard(props: { unit: Unit; live: SessionRow[]; git: UnitGit | undefined; crewed: boolean; onOpen: () => void }) {
+function WorktreeCard(props: {
+  unit: Unit;
+  live: SessionRow[];
+  git: UnitGit | undefined;
+  topics: Topic[];
+  crewed: boolean;
+  onOpen: () => void;
+}) {
   const rows = () => props.live.filter((row) => inUnit(row.home, props.unit));
   const meta = () => {
     const last = newest(rows());
@@ -116,6 +122,15 @@ function WorktreeCard(props: { unit: Unit; live: SessionRow[]; git: UnitGit | un
         <span class={styles.cardHead}>
           <UnitIcon unit={props.unit} active={props.crewed || rollupOf(rows()).executing > 0} />
           <span class={styles.name}>{props.unit.label}</span>
+          <Show when={props.unit.issue}>{(issue) => <span class={styles.issueKey}>{issue()}</span>}</Show>
+          <For each={props.topics}>
+            {(topic) => (
+              <span class={styles.topicChip}>
+                <Icon icon={Tag} size={12} strokeWidth={2.2} />
+                {topic.name}
+              </span>
+            )}
+          </For>
           <StateMark rows={rows()} />
           <Chevron />
         </span>
@@ -132,6 +147,7 @@ export function ProjectScreen(props: {
   client: RemoteClient;
   project: Project;
   space: string;
+  topics: Topic[];
   live: () => SessionRow[];
   crew: () => Crew;
   onUnit: (unit: Unit) => void;
@@ -163,6 +179,7 @@ export function ProjectScreen(props: {
                 unit={unit}
                 live={props.live()}
                 git={git()?.[unit.folder]}
+                topics={props.topics.filter((topic) => topic.members.some((m) => m.worktreePath === unit.folder))}
                 crewed={props.crew().worktrees.has(unit.folder)}
                 onOpen={() => props.onUnit(unit)}
               />

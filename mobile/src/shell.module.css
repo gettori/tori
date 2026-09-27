@@ -211,43 +211,6 @@ li + li > .item {
   color: var(--m-chevron);
 }
 
-.working {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--progress-on-subtle);
-  background: color-mix(in srgb, var(--status-progress) 12%, transparent);
-}
-
-.working::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--status-progress);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-progress) 20%, transparent);
-}
-
-.needs {
-  display: grid;
-  place-items: center;
-  flex: none;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 11px;
-  font-size: 12px;
-  font-weight: 700;
-  color: color-mix(in srgb, var(--status-needs-you) 18%, black);
-  background: var(--status-needs-you);
-}
-
 .empty {
   margin: 0;
   padding: 8px 20px;
@@ -313,11 +276,6 @@ li + li > .item {
   gap: 4px;
   min-width: 0;
   overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.spaces::-webkit-scrollbar {
-  display: none;
 }
 
 .barItem {
@@ -360,17 +318,6 @@ li + li > .item {
   font-size: 15px;
   font-weight: 700;
   text-align: center;
-}
-
-.activity {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  width: 7px;
-  height: 7px;
-  border-radius: 4px;
-  background: var(--status-idle);
-  box-shadow: 0 0 0 2px var(--canvas-card);
 }
 
 .divider {
@@ -629,10 +576,6 @@ li + li > .item {
     var(--canvas-default);
 }
 
-.pair::-webkit-scrollbar {
-  display: none;
-}
-
 .pairHead {
   display: flex;
   flex-direction: column;
@@ -696,7 +639,6 @@ li + li > .item {
   color: var(--fg-default);
 }
 
-
 .typed {
   border-radius: 22px;
   background: var(--m-surface);
@@ -739,7 +681,6 @@ li + li > .item {
   padding: 2px 16px 16px;
 }
 
-
 .field {
   display: flex;
   flex-direction: column;
@@ -779,7 +720,6 @@ li + li > .item {
   font-size: 14px;
 }
 
-
 .pairButton {
   display: flex;
   align-items: center;
@@ -800,7 +740,6 @@ li + li > .item {
 .pairButton:disabled {
   opacity: 0.5;
 }
-
 
 .notice {
   margin: 0;
@@ -976,28 +915,6 @@ li + li > .item {
   gap: 8px;
   padding-left: 42px;
   font-size: 13px;
-}
-
-.stateDot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 4px;
-  background: var(--fg-subtle);
-}
-
-.stateDot[data-phase="working"] {
-  background: var(--status-progress);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-progress) 20%, transparent);
-}
-
-.stateDot[data-phase="needs"] {
-  background: var(--status-needs-you);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-needs-you) 20%, transparent);
-}
-
-.stateDot[data-phase="idle"] {
-  background: var(--status-idle);
 }
 
 .stateLabel {
@@ -1691,4 +1608,60 @@ li + li > .item {
 .apSend:disabled {
   opacity: 0.5;
   box-shadow: none;
+}
+
+.marks {
+  display: contents;
+}
+
+.marks svg {
+  width: 16px;
+  height: 16px;
+}
+
+.phaseMark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--fg-subtle);
+}
+
+.phaseMark[data-phase="needs"] {
+  color: var(--status-needs-you);
+}
+
+.phaseMark[data-phase="working"] {
+  color: var(--status-progress);
+}
+
+.phaseMark[data-phase="idle"] {
+  color: var(--status-idle);
+}
+
+.endedDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  background: currentColor;
+}
+
+.issueKey {
+  flex: none;
+  font-family: var(--tori-font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.topicChip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 96px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--brand-default);
 }
