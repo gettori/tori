@@ -30,6 +30,7 @@ import {
   unstageAll,
   fetchIn,
   pull as pullIn,
+  resetToUpstream,
   commit as commitStaged,
   headMessage,
   push as pushToOrigin,
@@ -407,9 +408,13 @@ export default function ReviewPanel(props: {
   function canPushIn(root: string | null): boolean {
     if (!root || pushingIn(root)) return false;
     const ab = gitStateFor(root).aheadBehind;
-    if (!ab) return false;
+    if (!ab || superseded(root)) return false;
     return !ab.has_upstream || ab.ahead > 0;
   }
+
+  /** The upstream was force-pushed over commits this member only took from it,
+   *  so the way forward is a reset, not a push or a merge. */
+  const superseded = (root: string | null) => !!gitStateFor(root).sync?.upstream.superseded;
 
   function pushMember(root: string | null) {
     if (!root) return;
@@ -1121,7 +1126,9 @@ export default function ReviewPanel(props: {
       </MenuRow>
       <MenuSeparator />
       <MenuRow onClick={() => menuRoot() && void fetchIn(menuRoot()!)}>Fetch</MenuRow>
-      <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!)}>Pull</MenuRow>
+      <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!)}>
+        {superseded(menuRoot()) ? "Reset to Upstream" : "Pull"}
+      </MenuRow>
       <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
         Push
       </MenuRow>
@@ -1231,20 +1238,35 @@ export default function ReviewPanel(props: {
         <span class={styles.spacer} />
         <Show when={aheadBehind()}>
           {(ab) => (
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.aheadPill}
-              disabled={!canPushIn(viewedRoot())}
-              label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
-              onClick={() => pushMember(viewedRoot())}
+            <Show
+              when={!superseded(viewedRoot())}
+              fallback={
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={styles.aheadPill}
+                  label="The upstream was force-pushed. Reset to it"
+                  onClick={() => viewedRoot() && void resetToUpstream(viewedRoot()!)}
+                >
+                  {`${DOWN}${ab().behind}`}
+                </Tooltip>
+              }
             >
-              {pushingIn(viewedRoot())
-                ? "Pushing"
-                : ab().has_upstream
-                  ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
-                  : "Unpushed"}
-            </Tooltip>
+              <Tooltip
+                as="button"
+                type="button"
+                class={styles.aheadPill}
+                disabled={!canPushIn(viewedRoot())}
+                label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
+                onClick={() => pushMember(viewedRoot())}
+              >
+                {pushingIn(viewedRoot())
+                  ? "Pushing"
+                  : ab().has_upstream
+                    ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
+                    : "Unpushed"}
+              </Tooltip>
+            </Show>
           )}
         </Show>
         <Show when={origin() && baseBranch()}>

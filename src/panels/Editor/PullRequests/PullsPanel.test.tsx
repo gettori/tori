@@ -53,7 +53,7 @@ const SYNC: BranchSync = {
   detached: false,
   dirty: false,
   head_committed_at: 0,
-  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
   base: { name: "main", ahead: 12, behind: 0, conflicts: [] },
 };
 
@@ -892,7 +892,7 @@ describe("starting a pull request from the panel", () => {
   // sentences over the same absent button has only told you the bad news.
   const UNPUSHED: BranchSync = {
     ...SYNC,
-    upstream: { ahead: 3, behind: 0, has_upstream: true, rewritten: false },
+    upstream: { ahead: 3, behind: 0, has_upstream: true, rewritten: false, superseded: false },
   };
 
   const button = (label: string) =>
@@ -1142,7 +1142,7 @@ describe("accessibility", () => {
       state: "noPrUnpushed",
       go: async () => {
         signIn();
-        return open({ sync: { ...SYNC, upstream: { ahead: 3, behind: 0, has_upstream: true, rewritten: false } } });
+        return open({ sync: { ...SYNC, upstream: { ahead: 3, behind: 0, has_upstream: true, rewritten: false, superseded: false } } });
       },
     },
     { state: "noPrPushed", go: async () => { signIn(); return open(); } },

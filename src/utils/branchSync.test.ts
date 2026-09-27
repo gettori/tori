@@ -21,13 +21,13 @@ const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
   dirty: false,
   head_committed_at: 1700000000,
-  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
   base: null,
   ...over,
 });
 
 const upstream = (over: Partial<BranchSync["upstream"]>) =>
-  sync({ upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, ...over } });
+  sync({ upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false, ...over } });
 
 const base = (over: Partial<NonNullable<BranchSync["base"]>>) =>
   sync({ base: { name: "main", ahead: 0, behind: 0, conflicts: [], ...over } });
@@ -47,7 +47,7 @@ describe("what a branch's sync facts are worth saying", () => {
   });
 
   it("sends a rewritten divergence to a force push and any other one to a pull", () => {
-    const rewritten = syncState(upstream({ ahead: 2, behind: 1, rewritten: true }));
+    const rewritten = syncState(upstream({ ahead: 2, behind: 1, rewritten: true, superseded: false }));
     expect(rewritten.level).toBe("diverged");
     expect(rewritten.tone).toBe("warn");
     expect(rewritten.detail).toMatch(/force push/);
@@ -87,7 +87,7 @@ describe("what a branch's sync facts are worth saying", () => {
 
   it("counts commits unique to the base as work to publish before the first push", () => {
     const state = syncState(sync({
-      upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false },
+      upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false },
       base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
     }));
     expect(state.level).toBe("unpushed");
@@ -98,7 +98,7 @@ describe("what a branch's sync facts are worth saying", () => {
   it("resolves the loudest level when several hold at once", () => {
     // Diverged from the upstream *and* behind a base that would conflict.
     const loud = sync({
-      upstream: { ahead: 2, behind: 1, has_upstream: true, rewritten: false },
+      upstream: { ahead: 2, behind: 1, has_upstream: true, rewritten: false, superseded: false },
       base: { name: "main", ahead: 2, behind: 5, conflicts: ["src/a.ts"] },
     });
     expect(syncState(loud).level).toBe("conflicts");
@@ -108,7 +108,7 @@ describe("what a branch's sync facts are worth saying", () => {
 
     // Behind the upstream outranks being behind the base.
     const behindBoth = sync({
-      upstream: { ahead: 0, behind: 1, has_upstream: true, rewritten: false },
+      upstream: { ahead: 0, behind: 1, has_upstream: true, rewritten: false, superseded: false },
       base: { name: "main", ahead: 2, behind: 5, conflicts: [] },
     });
     expect(syncState(behindBoth).level).toBe("behind");
@@ -121,7 +121,7 @@ describe("what a branch's sync facts are worth saying", () => {
   });
 
   it("says nothing for a detached HEAD, or for a branch nothing has answered for", () => {
-    expect(syncState(sync({ detached: true, upstream: { ahead: 0, behind: 4, has_upstream: true, rewritten: false } })).level).toBe("none");
+    expect(syncState(sync({ detached: true, upstream: { ahead: 0, behind: 4, has_upstream: true, rewritten: false, superseded: false } })).level).toBe("none");
     expect(syncState(null).level).toBe("none");
     expect(syncState(undefined).level).toBe("none");
   });
@@ -143,7 +143,7 @@ describe("the marks a row draws for its remote", () => {
       kinds(
         sync({
           dirty: true,
-          upstream: { ahead: 0, behind: 9, has_upstream: true, rewritten: false },
+          upstream: { ahead: 0, behind: 9, has_upstream: true, rewritten: false, superseded: false },
           base: { name: "main", ahead: 1, behind: 2, conflicts: ["src/a.ts"] },
         }),
       ),
@@ -169,7 +169,7 @@ describe("the marks a row draws for its remote", () => {
 
   it("counts unpublished commits against the base before an upstream exists", () => {
     const never = syncMarks(sync({
-      upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false },
+      upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false },
       base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
     }));
     expect(never.map((m) => `${m.kind}${m.count ?? ""}`)).toEqual(["push3"]);
@@ -177,7 +177,7 @@ describe("the marks a row draws for its remote", () => {
   });
 
   it("puts the force-push warning in the tooltip, not on the row", () => {
-    const rewritten = syncMarks(upstream({ ahead: 2, behind: 3, rewritten: true }));
+    const rewritten = syncMarks(upstream({ ahead: 2, behind: 3, rewritten: true, superseded: false }));
     expect(rewritten.map((m) => m.kind)).toEqual(["push", "pull"]);
     expect(rewritten[rewritten.length - 1].title).toContain("force push");
   });

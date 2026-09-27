@@ -14,7 +14,7 @@ const branchSync = {
   detached: false,
   dirty: true,
   head_committed_at: 1700000000,
-  upstream: { ahead: 2, behind: 0, has_upstream: true, rewritten: false },
+  upstream: { ahead: 2, behind: 0, has_upstream: true, rewritten: false, superseded: false },
   base: { name: "main", behind: 4, conflicts: [] as string[] },
 };
 
