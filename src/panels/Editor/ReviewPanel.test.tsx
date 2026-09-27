@@ -238,6 +238,7 @@ import { BLOCKED_REASON } from "../../utils/safeSend";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 import { noteForgeAccounts, resetForgeStatusForTests } from "../../utils/forgeStatus";
 import type { ForgeAccount } from "../../utils/forgeTypes";
+import { setCommitBoxShown } from "../../utils/changesSections";
 
 /** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
  *  not the Tauri event bus, so mocking the transport would never see one. */
@@ -290,6 +291,8 @@ beforeEach(async () => {
   // otherwise still be loaded. Re-entering the root is the reset the app uses:
   // the panel fills its slot but never opens one.
   enterRoots(["/proj"]);
+  // Hidden by default behind the ... menu; these tests are about what it does.
+  setCommitBoxShown(true);
   statusRows = [UNSTAGED];
   calls.status = 0;
   quietFetches.length = 0;

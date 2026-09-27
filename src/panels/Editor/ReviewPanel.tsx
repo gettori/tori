@@ -60,6 +60,8 @@ import { MenuRow, MenuSeparator } from "../../components/Menu/rows";
 import {
   changesLayout,
   HISTORY_TABS,
+  commitBoxShown,
+  setCommitBoxShown,
   historyTab,
   setHistoryTab,
   setTabShown,
@@ -1131,6 +1133,14 @@ export default function ReviewPanel(props: {
         Stash All Changes
       </MenuRow>
       <MenuSeparator />
+      <MenuRow onClick={() => setCommitBoxShown(!commitBoxShown())}>
+        <span class={styles.checkSlot}>
+          <Show when={commitBoxShown()}>
+            <Icon icon={Check} />
+          </Show>
+        </span>
+        Commit
+      </MenuRow>
       <For each={HISTORY_TABS}>
         {(t) => (
           <MenuRow onClick={() => setTabShown(t.id, !tabShown(t.id))}>
@@ -1286,6 +1296,7 @@ export default function ReviewPanel(props: {
       {/* The composer, as one card: the message, then what the commit would
           hold and the buttons that make it, so the numbers sit beside the
           verb they qualify. */}
+      <Show when={commitBoxShown()}>
       <div class={styles.commitCard}>
         <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
           <div class={styles.commitTarget}>
@@ -1332,7 +1343,11 @@ export default function ReviewPanel(props: {
           </div>
         </Show>
         <textarea
-          ref={msgRef}
+          ref={(el) => {
+            msgRef = el;
+            // Remounted with a draft still in the signal, at one row.
+            queueMicrotask(fitMessage);
+          }}
           class={styles.commitInput}
           rows={1}
           placeholder="Message"
@@ -1390,6 +1405,7 @@ export default function ReviewPanel(props: {
           </div>
         </div>
       </div>
+      </Show>
 
       <div class={styles.stack} ref={stackEl}>
         <div class={styles.changesBody}>
