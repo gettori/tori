@@ -552,6 +552,7 @@ pub fn run() {
             git::git_rebase,
             git::git_abort,
             git::git_undo_last_commit,
+            git::git_reset_to_upstream,
             git::git_branch_create,
             git::git_branch_rename,
             git::git_branch_delete,

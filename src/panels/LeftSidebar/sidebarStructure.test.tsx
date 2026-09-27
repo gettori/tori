@@ -532,7 +532,7 @@ const syncOf = (over: Record<string, unknown> = {}) => ({
   detached: false,
   dirty: false,
   head_committed_at: 1_700_000_000,
-  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
   base: null,
   ...over,
 });
@@ -567,7 +567,7 @@ describe("what a branch row says about its remote", () => {
 
   it("draws what the branch owes the remote, and nothing when it owes nothing", async () => {
     bridge.sync = {
-      [syncKey("main")]: syncOf({ upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false } }),
+      [syncKey("main")]: syncOf({ upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false, superseded: false } }),
       [syncKey("feat")]: syncOf(),
     };
     mount(["p:work/repo"]);
@@ -580,7 +580,7 @@ describe("what a branch row says about its remote", () => {
 
   it("marks a branch nobody has pushed without a count to put on it", async () => {
     bridge.sync = {
-      [syncKey("feat")]: syncOf({ upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false } }),
+      [syncKey("feat")]: syncOf({ upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false } }),
     };
     mount(["p:work/repo"]);
 
@@ -590,7 +590,7 @@ describe("what a branch row says about its remote", () => {
   it("counts commits to publish before a branch's first push", async () => {
     bridge.sync = {
       [syncKey("feat")]: syncOf({
-        upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false },
+        upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false },
         base: { name: "main", ahead: 2, behind: 0, conflicts: [] },
       }),
     };
@@ -625,7 +625,7 @@ describe("what a branch row says about its remote", () => {
     // no layout; what pins the height is that the node holds the row and
     // nothing else.
     bridge.sync = {
-      [syncKey("main")]: syncOf({ dirty: true, upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false } }),
+      [syncKey("main")]: syncOf({ dirty: true, upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false, superseded: false } }),
       [syncKey("feat")]: syncOf(),
     };
     const { container } = mount(["p:work/repo"]);
@@ -639,7 +639,7 @@ describe("what a branch row says about its remote", () => {
 
   it("hangs one styled tooltip on the run rather than a native one per glyph", async () => {
     bridge.sync = {
-      [syncKey("main")]: syncOf({ upstream: { ahead: 0, behind: 3, has_upstream: true, rewritten: false } }),
+      [syncKey("main")]: syncOf({ upstream: { ahead: 0, behind: 3, has_upstream: true, rewritten: false, superseded: false } }),
     };
     mount(["p:work/repo"]);
 
@@ -662,7 +662,7 @@ describe("what a branch row says about its remote", () => {
     bridge.sync = {
       [syncKey("feat")]: syncOf({
         dirty: true,
-        upstream: { ahead: 1, behind: 2, has_upstream: true, rewritten: false },
+        upstream: { ahead: 1, behind: 2, has_upstream: true, rewritten: false, superseded: false },
       }),
     };
     mount(["p:work/repo"]);

@@ -172,7 +172,7 @@ export type SyncMark = {
  */
 export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   if (!sync || sync.detached) return [];
-  const { ahead, behind, has_upstream, rewritten } = sync.upstream;
+  const { ahead, behind, has_upstream, rewritten, superseded } = sync.upstream;
   const fighting = sync.base?.conflicts ?? [];
   const unpublished = !has_upstream ? (sync.base?.ahead ?? 0) : 0;
   const marks: SyncMark[] = [];
@@ -189,9 +189,11 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   }
 
   // Both lit is diverged, which needs no word for it: the pair is the word.
-  const diverged = ahead > 0 && behind > 0;
+  // Superseded is not: the commits here are the upstream's own old ones, and an
+  // up arrow would invite the push that throws away somebody's update.
+  const diverged = ahead > 0 && behind > 0 && !superseded;
   const tone: SyncTone = diverged ? "warn" : "muted";
-  if (ahead > 0) {
+  if (ahead > 0 && !superseded) {
     marks.push({ kind: "push", count: ahead, tone, title: `${plural(ahead, "commit")} to push` });
   } else if (unpublished > 0) {
     // Before the first push there is no remote branch to count against. The
@@ -213,6 +215,9 @@ export function syncMarks(sync: BranchSync | null | undefined): SyncMark[] {
   }
   if (diverged && rewritten) {
     marks[marks.length - 1].title += ". The upstream still points at history you rewrote, so this needs a force push";
+  }
+  if (superseded) {
+    marks[marks.length - 1].title += `. The upstream was force-pushed over the ${plural(ahead, "commit")} here, so pulling resets to it`;
   }
   if (sync.dirty) {
     marks.push({ kind: "dirty", count: null, tone: "muted", title: "Uncommitted changes" });
@@ -295,7 +300,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  */
 export function syncState(sync: BranchSync | null | undefined): SyncState {
   if (!sync || sync.detached) return NOTHING;
-  const { ahead, behind, has_upstream, rewritten } = sync.upstream;
+  const { ahead, behind, has_upstream, rewritten, superseded } = sync.upstream;
   const base = sync.base;
 
   // A null `conflicts` is "not asked" (git below 2.38, or no shared history),
@@ -308,6 +313,16 @@ export function syncState(sync: BranchSync | null | undefined): SyncState {
       label: `${base.name}: ${plural(fighting.length, "conflict")}`,
       detail: `${base.name} has moved on, and ${plural(fighting.length, "file")} would conflict when you catch up.`,
       conflicts: fighting,
+    };
+  }
+
+  if (superseded) {
+    return {
+      ...NOTHING,
+      level: "behind",
+      tone: "attention",
+      label: `${DOWN}${behind}`,
+      detail: `The upstream was force-pushed over the ${plural(ahead, "commit")} here. Pulling resets to its ${plural(behind, "commit")}.`,
     };
   }
 

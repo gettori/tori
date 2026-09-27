@@ -2456,13 +2456,16 @@ pub fn git_default_base_branch(project_path: String) -> Result<Option<String>, S
 /// Where a branch stands against its upstream. `rewritten` separates the two
 /// ways a branch diverges, which want opposite advice: history this side
 /// rewrote (rebase, amend) needs a force push, a commit somebody else pushed
-/// needs a pull.
+/// needs a pull. `superseded` is the third: the upstream was force-pushed over
+/// commits this side only ever took from it, so it needs a reset to the
+/// upstream, and a pull would merge the replaced history back in.
 #[derive(Serialize, Default, Debug, PartialEq)]
 pub struct UpstreamSync {
     ahead: u32,
     behind: u32,
     has_upstream: bool,
     rewritten: bool,
+    superseded: bool,
 }
 
 /// What the base branch has done since this one left it. `conflicts` is
@@ -2696,11 +2699,13 @@ fn upstream_sync(repo: &str, tracked: &str, tip: &str) -> UpstreamSync {
     // finds its own tip in its own reflog and would read rewritten forever; one
     // merely behind pays for a reflog read to learn nothing.
     let diverged = ahead > 0 && behind > 0;
+    let rewritten = diverged && upstream_tip_in_reflog(repo, tracked, tip);
     UpstreamSync {
         ahead,
         behind,
         has_upstream: true,
-        rewritten: diverged && upstream_tip_in_reflog(repo, tracked, tip),
+        rewritten,
+        superseded: diverged && !rewritten && only_old_upstream(repo, tracked, tip),
     }
 }
 
@@ -2715,6 +2720,44 @@ fn upstream_tip_in_reflog(repo: &str, tracked: &str, tip: &str) -> bool {
         .map(|log| log.lines().any(|sha| sha == upstream))
         .unwrap_or(false)
 }
+
+/// Whether every commit `tip` has that the upstream lacks was once the
+/// upstream's own: a force push replaced them, and nothing here is local work.
+///
+/// Read off the remote-tracking ref's reflog file rather than `log -g`, which
+/// lists only where each fetch moved the ref *to*. The file keeps where it moved
+/// *from* as well, so the first logged fetch, the one that met the force push,
+/// still names the tip it replaced. The container's own fetches log nothing
+/// (bare repos default `core.logAllRefUpdates` off), but a fetch run in a
+/// worktree, which is where Tori runs its own, does.
+fn only_old_upstream(repo: &str, tracked: &str, tip: &str) -> bool {
+    let log = crate::exec::common_dir(repo).join("logs/refs/remotes").join(tracked);
+    let Ok(text) = std::fs::read_to_string(log) else {
+        return false;
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let recent = &lines[lines.len().saturating_sub(REFLOG_LINES)..];
+    let mut past: Vec<&str> = recent
+        .iter()
+        .flat_map(|line| line.split_whitespace().take(2))
+        .filter(|sha| sha.len() >= 40 && sha.bytes().any(|b| b != b'0'))
+        .collect();
+    past.sort_unstable();
+    past.dedup();
+    if past.is_empty() {
+        return false;
+    }
+    let upstream = format!("refs/remotes/{tracked}");
+    // `--ignore-missing`: a replaced tip gc has since collected is not ours to
+    // count, and without it one such line fails the whole question.
+    let mut args = vec!["rev-list", "--count", "--ignore-missing", tip, "--not", upstream.as_str()];
+    args.extend(past);
+    git_capture(repo, &args).is_ok_and(|n| n == "0")
+}
+
+/// The remote-tracking reflog lines `only_old_upstream` reads, newest last. The
+/// same reach as `REFLOG_DEPTH`, in lines rather than entries.
+const REFLOG_LINES: usize = 200;
 
 fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>) -> Option<BaseSync> {
     let base = git_default_base_branch(repo.to_string()).ok().flatten()?;
@@ -3095,6 +3138,33 @@ pub async fn git_undo_last_commit(project_path: String) -> Result<(), String> {
         }
     })
     .await
+}
+
+/// Move the checked-out branch to its upstream, for the one state that wants
+/// it: `superseded`, where the upstream was force-pushed over commits this side
+/// only took from it. Asked again here rather than trusted from the row, since
+/// a commit made after the row was drawn would be lost to a reset. Refuses a
+/// dirty tree for the same reason.
+#[tauri::command]
+pub async fn git_reset_to_upstream(project_path: String) -> Result<(), String> {
+    crate::exec::git_write("git_reset_to_upstream", project_path.clone(), move || {
+        git_reset_to_upstream_body(Path::new(&project_path))
+    })
+    .await
+}
+
+fn git_reset_to_upstream_body(dir: &Path) -> Result<(), String> {
+    let repo = &*dir.to_string_lossy();
+    let branch = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .map_err(|_| "Not on a branch.".to_string())?;
+    let tracked = sync_ref(repo, &branch).ok_or("This branch has no upstream.")?;
+    if is_dirty(repo) {
+        return Err("Commit or stash your changes first.".into());
+    }
+    if !only_old_upstream(repo, &tracked, "HEAD") {
+        return Err(format!("This branch has commits {tracked} never had, so it was not reset."));
+    }
+    git_run(repo, &["reset", "--hard", &format!("refs/remotes/{tracked}")])
 }
 
 /// Create a branch, optionally from a named start point, optionally checking it
@@ -3594,7 +3664,7 @@ diff --git a/f b/f
         assert!(sync.head_committed_at > 0, "HEAD has a commit time");
         assert_eq!(
             sync.upstream,
-            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false }
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false }
         );
         // The base is named even with nothing to report, so a caller can tell
         // "level with main" from "there is no main".
@@ -3650,6 +3720,57 @@ diff --git a/f b/f
         let sync = sync_of(&local);
         assert_eq!((sync.upstream.ahead, sync.upstream.behind), (1, 1));
         assert!(!sync.upstream.rewritten, "we have never stood where the upstream now points");
+        scrub(&[&local, &remote, &other]);
+    }
+
+    /// The reviewer's case: a branch taken from the upstream and never committed
+    /// to, then rebased and force-pushed by its author.
+    fn force_pushed_over(local: &Path, remote: &Path) -> PathBuf {
+        let other = empty_tmp();
+        git(&other, &["clone", "-q", "--branch", "feat", &remote.to_string_lossy(), "."]);
+        commit_file(&other, "theirs.txt", "theirs");
+        git(&other, &["push", "-q", "origin", "feat"]);
+        git(local, &["fetch", "-q", "origin"]);
+        git(local, &["merge", "-q", "--ff-only", "origin/feat"]);
+        std::fs::write(other.join("theirs.txt"), "theirs, rebased").unwrap();
+        git(&other, &["commit", "-aq", "--amend", "-m", "theirs, rebased"]);
+        git(&other, &["push", "-q", "--force", "origin", "feat"]);
+        git(local, &["fetch", "-q", "origin"]);
+        other
+    }
+
+    #[test]
+    fn branch_sync_calls_a_force_push_over_commits_we_only_took_superseded() {
+        let (local, remote) = repo_on_feature();
+        git(&local, &["push", "-q", "-u", "origin", "feat"]);
+        let other = force_pushed_over(&local, &remote);
+
+        let sync = sync_of(&local);
+        assert_eq!((sync.upstream.ahead, sync.upstream.behind), (1, 1));
+        assert!(sync.upstream.superseded, "the one commit here is the upstream's old tip");
+        assert!(!sync.upstream.rewritten);
+
+        git_reset_to_upstream_body(&local).unwrap();
+        let sync = sync_of(&local);
+        assert_eq!((sync.upstream.ahead, sync.upstream.behind), (0, 0));
+        scrub(&[&local, &remote, &other]);
+    }
+
+    #[test]
+    fn branch_sync_keeps_a_commit_of_our_own_out_of_superseded() {
+        let (local, remote) = repo_on_feature();
+        git(&local, &["push", "-q", "-u", "origin", "feat"]);
+        let other = empty_tmp();
+        git(&other, &["clone", "-q", "--branch", "feat", &remote.to_string_lossy(), "."]);
+        commit_file(&local, "mine.txt", "mine");
+        commit_file(&other, "theirs.txt", "theirs");
+        git(&other, &["push", "-q", "--force", "origin", "feat"]);
+        git(&local, &["fetch", "-q", "origin"]);
+
+        let sync = sync_of(&local);
+        assert_eq!((sync.upstream.ahead, sync.upstream.behind), (1, 1));
+        assert!(!sync.upstream.superseded, "mine.txt was never on the upstream");
+        assert!(git_reset_to_upstream_body(&local).is_err(), "a reset would lose mine.txt");
         scrub(&[&local, &remote, &other]);
     }
 
@@ -3934,7 +4055,7 @@ diff --git a/f b/f
         assert!(!main.detached);
         assert_eq!(
             main.upstream,
-            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false }
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false }
         );
         assert_eq!(main.base, None, "main is the base");
         assert!(main.head_committed_at > 0);
@@ -3958,7 +4079,7 @@ diff --git a/f b/f
         let level = sync_of(&local);
         assert_eq!(
             level.upstream,
-            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false, superseded: false },
             "on origin/main, so there is nothing to say"
         );
 
