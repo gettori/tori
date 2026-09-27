@@ -8,6 +8,63 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.927.1-alpha
+
+A branch keeps its story after its pull request is done. The pull request stays
+on the row once it merges or closes, a deleted remote branch says so, and a
+closed pull request can be reopened. The Changes panel learns to rebase, and
+the first run intro is drawn with the app's real screens.
+
+### Branches and pull requests
+
+- A worktree keeps its pull request line after the pull request merges or
+  closes, with when it happened, on GitHub and GitLab. A new branch reusing an
+  old name, or the base branch itself, does not pick up the old one.
+- A branch whose pull request merged with nothing made since rests on a faint
+  teal wash. A closed one is dimmed.
+- A merged branch has nothing left to push unless work came after the merge,
+  and Open PR goes away when there is nothing new to propose.
+- A branch whose remote was deleted reads as deleted in the sidebar, the
+  Changes pill, the Pull Requests panel and the graph header, instead of as
+  having no upstream yet. Once its pull request has merged, the pill is a plain
+  label, so a push cannot republish it.
+- A pull request closed without merging gets Reopen PR where Open PR was. If its
+  remote branch is gone, the branch is pushed back first, but only when its tip
+  is the pull request's own head and the head is not a fork. Commits made past
+  it get Open PR instead.
+- A branch whose upstream was force-pushed over it offers a reset to the
+  upstream instead of a push and a pull.
+
+### The Changes panel
+
+- Rebase from the Changes menu: onto a branch, interactive, with autosquash,
+  and continue or skip one that stopped.
+- The commit box is hidden until you turn on Commit in the Changes menu.
+- The bottom tabs under Files and Changes fold into +N when they overflow.
+
+### The intro
+
+- Every slide is a miniature Tori window built from the app's own components,
+  the cockpit and the phone app included, in a larger dialog.
+- The autopilot and the phone app get a slide each, saying where to turn them
+  on, since both are off by default.
+
+### Elsewhere
+
+- The Scripts section shows which scripts are running, and clicking one focuses
+  its running tab.
+- The titlebar's phone button shows whenever remote access is on. With no phone
+  paired, its card links to Settings > Remote.
+- A project row shows its actions menu under the pointer, and the menu can
+  prune stale worktrees.
+
+### Fixes
+
+- On the phone, the bottom bar no longer clips a space's status bubble.
+- A dev build keeps its config in `~/.config/tori-dev`, so it no longer takes
+  the installed app's remote port and credential.
+- Leaving an intro slide no longer pulls focus onto a rail button.
+
 ## 26.927.0-alpha
 
 Three things arrive together. Tori has an app socket and a `tori` CLI, so a
