@@ -21,9 +21,7 @@ impl Default for SettingsWatch {
 }
 
 fn settings_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/settings.json")
+    crate::owned_state::config_dir().join("settings.json")
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

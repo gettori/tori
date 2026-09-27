@@ -32,7 +32,7 @@ use serde_json::json;
 use crate::sessions::{SessionMeta, TailState};
 
 fn hooks_status_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/hooks-status")
+    crate::owned_state::config_dir().join("hooks-status")
 }
 
 fn status_path(session_id: &str) -> PathBuf {
@@ -158,7 +158,7 @@ fn claude_settings_json() -> String {
 }
 
 fn claude_settings_file_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/claude-hooks-settings.json")
+    crate::owned_state::config_dir().join("claude-hooks-settings.json")
 }
 
 /// The `--settings <path>` value (phase 1's verified non-invasive injection

@@ -25,9 +25,7 @@ const STEM: &str = "Untitled-";
 const MAX_TRIES: usize = 64;
 
 fn scratch_root() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/scratch")
+    crate::owned_state::config_dir().join("scratch")
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---

@@ -18,6 +18,16 @@
 
 use std::path::{Path, PathBuf};
 
+/// Where every file Tori keeps for itself lives: `~/.config/tori`, or
+/// `~/.config/tori-dev` for a debug build.
+///
+/// A dev build sharing the installed app's folder takes its remote port and
+/// paired phone, restores its tabs, and races its session claims.
+pub fn config_dir() -> PathBuf {
+    let name = if cfg!(debug_assertions) { "tori-dev" } else { "tori" };
+    dirs::home_dir().unwrap_or_default().join(".config").join(name)
+}
+
 /// Where a per-project store lives, under `kind`.
 ///
 /// Shared so every per-project map keys itself the same way. The directory name
@@ -29,9 +39,7 @@ pub fn project_state_path(kind: &str, cwd: &str) -> PathBuf {
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori")
+    config_dir()
         .join(kind)
         .join(format!("{}-{:016x}.json", sanitize_segment(&base), path_hash(cwd)))
 }

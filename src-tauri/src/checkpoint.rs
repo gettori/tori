@@ -31,9 +31,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 fn checkpoint_index_path(session_id: &str) -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/checkpoint-index")
+    crate::owned_state::config_dir().join("checkpoint-index")
         .join(session_id)
 }
 
@@ -65,9 +63,7 @@ fn checkpoint_index_path(session_id: &str) -> PathBuf {
 /// by the same `prompt_ts` that names the turn's checkpoint ref, so the two
 /// cannot drift apart.
 fn attribution_path(session_id: &str, prompt_ts: u64) -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/checkpoint-touched")
+    crate::owned_state::config_dir().join("checkpoint-touched")
         .join(session_id)
         .join(format!("{prompt_ts}.json"))
 }
@@ -196,9 +192,7 @@ struct TouchedIndex {
 }
 
 fn touched_index_path(session_id: &str) -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/tori/checkpoint-touched")
+    crate::owned_state::config_dir().join("checkpoint-touched")
         .join(session_id)
         .join("index.json")
 }

@@ -491,7 +491,7 @@ pub fn settings_path(session_id: &str) -> PathBuf {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect();
-    dirs::home_dir().unwrap_or_default().join(".config/tori/chat-settings").join(format!("{safe}.json"))
+    crate::owned_state::config_dir().join("chat-settings").join(format!("{safe}.json"))
 }
 
 #[cfg(test)]

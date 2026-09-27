@@ -28,7 +28,7 @@ fn lock() -> MutexGuard<'static, ()> {
 }
 
 fn store_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/trusted.json")
+    crate::owned_state::config_dir().join("trusted.json")
 }
 
 fn save(file: &Path, store: &TrustStore) -> Result<(), String> {

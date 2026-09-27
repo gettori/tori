@@ -334,7 +334,7 @@ pub(crate) const BUILTINS: &[(&str, &str)] = &[
 ];
 
 fn user_formatters_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/tori/formatters")
+    crate::owned_state::config_dir().join("formatters")
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`, whole-replacing by id.
