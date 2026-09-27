@@ -11,6 +11,8 @@ export default function MiniWindow(props: {
   zoom: number;
   /** Centred in the title bar, beside the window buttons. */
   bar?: JSX.Element;
+  /** At the title bar's right edge, where the app keeps its view switch. */
+  end?: JSX.Element;
   class?: string;
   children: JSX.Element;
 }) {
@@ -24,6 +26,7 @@ export default function MiniWindow(props: {
             <span />
           </span>
           {props.bar}
+          <span class={styles.end}>{props.end}</span>
         </div>
         <div class={styles.body}>{props.children}</div>
       </div>
