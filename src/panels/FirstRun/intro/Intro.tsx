@@ -31,6 +31,11 @@ export const SLIDES: Slide[] = [
     art: TopicsArt,
   },
   {
+    title: "Your agents, your hosts, your machine",
+    body: "Tori drives the agent CLIs you already have installed. Sign in to GitHub or GitLab to push as your own account. Tori sends no telemetry.",
+    art: AgentsArt,
+  },
+  {
     title: "Undo any turn the agent took",
     body: "Every prompt is checkpointed, so you can diff what a single turn changed or revert the tree to before it. Each session lives in its own chat or terminal tab, and resumes where the agent stopped.",
     art: TerminalArt,
@@ -39,11 +44,6 @@ export const SLIDES: Slide[] = [
     title: "Review what the agent wrote",
     body: "An editor with LSP, and a Changes panel that stages, commits, pushes and opens the PR. Comment on a hunk and it goes straight back into the session.",
     art: ReviewArt,
-  },
-  {
-    title: "Your agents, your hosts, your machine",
-    body: "Tori drives the agent CLIs you already have installed. Sign in to GitHub or GitLab to push as your own account. Tori sends no telemetry.",
-    art: AgentsArt,
   },
   {
     title: "Hand a queue to Autopilot",
