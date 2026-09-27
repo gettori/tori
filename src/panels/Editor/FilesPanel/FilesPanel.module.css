@@ -156,6 +156,23 @@
   color: var(--accent-fg);
 }
 
+/* Lit in the base style and dimmed only inside the keyframes, so the global
+   reduced-motion rule settles it on a visible icon (see FileTree's editingPulse). */
+@keyframes scriptRunningPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.play.running {
+  color: var(--activity-editing);
+  animation: scriptRunningPulse 1.2s ease-in-out infinite;
+}
+
 .command {
   flex: 1;
   min-width: 0;
