@@ -9,6 +9,14 @@
     color: var(--fg-default);
   }
 
+  .empty {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tori-space-3);
+    color: var(--fg-muted);
+  }
+
   .device {
     display: flex;
     align-items: center;
