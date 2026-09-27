@@ -47,7 +47,7 @@ export default function AutopilotArt() {
     },
   ];
   return (
-    <MiniWindow height={470} zoom={0.7} bar={<AutopilotSwitch view="autopilot" state="needs" count={decisions.length} />}>
+    <MiniWindow height={470} zoom={0.7} end={<AutopilotSwitch view="autopilot" state="needs" count={decisions.length} />}>
       <div class={styles.cockpit}>
         <AutopilotView
           state="needs"
