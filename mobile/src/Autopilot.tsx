@@ -19,7 +19,7 @@ import {
 import type { AskApproval, SocketAsk } from "../../src/utils/socketAsks";
 import Chat from "./Chat";
 import type { RemoteClient } from "./remote";
-import { Chevron, DOT } from "./Root";
+import { Chevron, DOT, PhaseMark } from "./Root";
 import { sessionLabel, type SessionRow } from "./tree";
 import styles from "./shell.module.css";
 
@@ -350,7 +350,7 @@ export default function AutopilotScreen(props: {
                       onClick={() => item()?.session && props.onSession(item()!.session!)}
                     >
                       <span class={styles.workerHead}>
-                        <span class={styles.stateDot} data-phase={worker.status === "needs" ? "needs" : worker.status === "idle" ? "idle" : "working"} />
+                        <PhaseMark phase={worker.status === "needs" ? "needs" : worker.status === "idle" ? "idle" : "working"} />
                         <span class={styles.time}>{worker.ticket.label}</span>
                       </span>
                       <span class={styles.workerName}>{worker.title}</span>

@@ -9,6 +9,10 @@
       /* The window is what shrinks for the keyboard; a document that could scroll
          would scroll the header away to reach the focused box instead. */
       html, body, #root { height: 100%; margin: 0; overflow: hidden; background: var(--canvas-default); }
+      /* The desktop's styled scrollbar keeps a track that takes width; a phone
+         scrolls by touch and never needs one. */
+      * { scrollbar-width: none; }
+      *::-webkit-scrollbar { display: none; }
     </style>
   </head>
 

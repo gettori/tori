@@ -7,7 +7,7 @@ import { applyEvent, initialChat, isRunning, settleBackfill, turnModel, type Cha
 import { parseChatEvent, type ChatEvent } from "../../src/utils/chatTypes";
 import Pending, { type PendingRow } from "./Pending";
 import type { RemoteClient } from "./remote";
-import { DOT } from "./Root";
+import { DOT, PhaseMark } from "./Root";
 import { AgentMark } from "./Unit";
 import { PHASE_LABEL, phaseOf, type Phase, type SessionRow } from "./tree";
 import styles from "./mobile.module.css";
@@ -312,7 +312,7 @@ export default function Chat(props: {
         <span class={shell.chatTitles}>
           <span class={shell.chatTitle}>{props.session().name || props.session().title || "New chat"}</span>
           <span class={shell.stateLine}>
-            <span class={shell.stateDot} data-phase={phase()} />
+            <PhaseMark phase={phase()} />
             {PHASE_LABEL[phase()]}
             <Show when={place()}>
               {" "}

@@ -5,7 +5,7 @@ import { resolveIcon } from "../../src/components/Icon/iconRegistry";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
 import { spaceInitials } from "../../src/utils/names";
 import type { Runner } from "./Autopilot";
-import type { RootTab } from "./Root";
+import { StateMark, type RootTab } from "./Root";
 import { projectRows, type SessionRow, type Space } from "./tree";
 import styles from "./shell.module.css";
 
@@ -21,7 +21,7 @@ export default function BottomBar(props: {
   onTopics: () => void;
   onWheel: () => void;
 }) {
-  const busy = (space: Space) => space.projects.some((project) => projectRows(project, props.live()).length > 0);
+  const rows = (space: Space) => space.projects.flatMap((project) => projectRows(project, props.live()));
   const on = () => (props.runner()?.state ?? "off") !== "off";
   return (
     <>
@@ -46,8 +46,8 @@ export default function BottomBar(props: {
                   <Show when={current()}>
                     <span class={styles.spaceName}>{space.name}</span>
                   </Show>
-                  <Show when={busy(space)}>
-                    <span class={styles.activity} />
+                  <Show when={!current()}>
+                    <StateMark rows={rows(space)} tile />
                   </Show>
                 </button>
               );

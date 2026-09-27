@@ -26,6 +26,7 @@ export type Unit = {
   branch: string | null;
   kind: "worktree" | "plain" | "plain-dir" | "incomplete";
   isCurrent: boolean;
+  issue?: string | null;
 };
 
 export type Project = { name: string; path: string; icon?: string | null; image?: string | null; units: Unit[] };

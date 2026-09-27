@@ -1,10 +1,12 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import { ChevronRight, Search, Settings, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
+import { CheckMark, QuestionMark, WorkingMark } from "../../src/components/Icon/statusMarks";
+import StatusBubble from "../../src/panels/LeftSidebar/StatusBubble";
 import { fallbackColor, rgbTriple } from "../../src/utils/spaceTint";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
-import { inUnit, matches, unitCounts, projectRows, rollupOf, sessionLabel, type Project, type SessionRow, type Space, type Topic, type Tree, type Unit } from "./tree";
+import { inUnit, matches, unitCounts, projectRows, rollupOf, sessionLabel, type Phase, type Project, type SessionRow, type Space, type Topic, type Tree, type Unit } from "./tree";
 import styles from "./shell.module.css";
 
 export type RootTab = "projects" | "topics";
@@ -17,18 +19,29 @@ export function Chevron() {
   return <Icon icon={ChevronRight} size={16} strokeWidth={2} class={styles.chevron} />;
 }
 
-export function StateMark(props: { rows: SessionRow[] }) {
-  const rollup = () => rollupOf(props.rows);
-  const needs = () => rollup().waitingForApproval + rollup().waitingForAnswer;
+export function StateMark(props: { rows: SessionRow[]; tile?: boolean }) {
   return (
-    <Switch>
-      <Match when={needs() > 0}>
-        <span class={styles.needs}>{needs()}</span>
-      </Match>
-      <Match when={rollup().executing > 0}>
-        <span class={styles.working}>Working</span>
-      </Match>
-    </Switch>
+    <span class={props.tile ? undefined : styles.marks}>
+      <StatusBubble rollup={() => rollupOf(props.rows)} tile={props.tile} />
+    </span>
+  );
+}
+
+export function PhaseMark(props: { phase: Phase }) {
+  return (
+    <span class={styles.phaseMark} data-phase={props.phase}>
+      <Switch fallback={<span class={styles.endedDot} />}>
+        <Match when={props.phase === "needs"}>
+          <QuestionMark animate size={15} />
+        </Match>
+        <Match when={props.phase === "working"}>
+          <WorkingMark animate size={15} />
+        </Match>
+        <Match when={props.phase === "idle"}>
+          <CheckMark animate size={15} />
+        </Match>
+      </Switch>
+    </span>
   );
 }
 
