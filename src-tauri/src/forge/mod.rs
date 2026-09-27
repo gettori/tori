@@ -349,6 +349,10 @@ pub trait Forge: Send + Sync {
     /// have to be pushed, which is two failure modes where the forge offers one.
     fn update_branch(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError>;
 
+    /// Reopen a pull request that was closed without merging. The server refuses
+    /// one whose head branch is gone, and its refusal is what the caller shows.
+    fn reopen(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError>;
+
     /// The same host as an issue source, where it is one. On the forge rather
     /// than beside it so an issue call rides this account's client, renewal
     /// and all.
@@ -544,6 +548,9 @@ mod tests {
             Err(ForgeError::NotAuthenticated)
         }
         fn update_branch(&self, _repo: &RepoRef, _number: u64) -> Result<(), ForgeError> {
+            Err(ForgeError::NotAuthenticated)
+        }
+        fn reopen(&self, _repo: &RepoRef, _number: u64) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
     }

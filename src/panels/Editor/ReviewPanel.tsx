@@ -61,7 +61,7 @@ import { sendBlockedReason } from "../../utils/sendTarget";
 import { connectHost } from "../../utils/createPr";
 import { createPrFlow } from "../../utils/prCreateFlow";
 import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
-import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo, unitStatus } from "../../utils/forgeStatus";
+import { forgeHosts, forgeRepo, pickForgeAccount, pollNow, resolveForgeRepo, unitStatus } from "../../utils/forgeStatus";
 import { projectPathFor } from "../../utils/sessionActivity";
 import { prRelation } from "../../utils/prRelation";
 import { chromeScale, settings } from "../Settings/settingsStore";
@@ -114,6 +114,7 @@ import {
   GitBranch,
   GitCommitHorizontal,
   GitGraph,
+  GitPullRequest,
   GitPullRequestArrow,
   UserRound,
   Minus,
@@ -455,15 +456,65 @@ export default function ReviewPanel(props: {
    *  dead branch back on the remote. */
   const mergedAndGone = (root: string | null) => !!gitStateFor(root).aheadBehind?.gone && !!mergedPr(root);
 
-  // Null for a branch that only reuses a merged pull request's name.
-  const mergedPr = (root: string | null) => {
+  // Null for a branch that only reuses a finished pull request's name.
+  const finishedPr = (root: string | null, state: "merged" | "closed") => {
     const { branch, sync } = gitStateFor(root);
     if (!root || !branch) return null;
     const pr = unitStatus(projectPathFor(root) ?? root, branch)?.pullRequest;
-    if (pr?.state !== "merged") return null;
+    if (pr?.state !== state) return null;
     const relation = prRelation(root, branch, pr, sync);
     return relation?.kind === "unrelated" ? null : { pr, relation };
   };
+  const mergedPr = (root: string | null) => finishedPr(root, "merged");
+  const closedPr = (root: string | null) => finishedPr(root, "closed");
+
+  const [reopening, setReopening] = createSignal(false);
+
+  // Commits past a closed pull request whose branch is gone belong in a new one:
+  // pushing them back would reopen it with work it never had.
+  const reopenOffered = () => {
+    const root = viewedRoot();
+    const closed = closedPr(root);
+    return !!closed && !(gitStateFor(root).aheadBehind?.gone && closed.relation?.kind === "ahead");
+  };
+
+  // With the remote branch gone, reopening pushes it back first, and that push is
+  // safe only when it restores the pull request's exact head: a push followed by
+  // a refused reopen cannot be undone from here.
+  const reopenBlocked = (): string | null => {
+    const root = viewedRoot();
+    const closed = closedPr(root);
+    if (!closed || !gitStateFor(root).aheadBehind?.gone) return null;
+    if (!closed.pr.headRepoIsOrigin) return "Its branch lives in a fork, so it cannot be restored from here";
+    switch (closed.relation?.kind) {
+      case "at":
+        return null;
+      case "behind":
+        return "This branch is behind the pull request's last commit";
+      case "unknown":
+        return "The pull request's last commit is not on this machine";
+      default:
+        return "Checking this branch against the pull request";
+    }
+  };
+
+  async function reopenPr() {
+    const root = viewedRoot();
+    const closed = closedPr(root);
+    const branch = gitStateFor(root).branch;
+    if (!root || !closed || !branch || reopening() || !reopenOffered() || reopenBlocked()) return;
+    setReopening(true);
+    try {
+      if (gitStateFor(root).aheadBehind?.gone && !(await pushToOrigin(root, branch))) return;
+      await invoke("forge_reopen", { projectPath: root, number: closed.pr.number });
+      emitWith<ToastEvent>(TOAST, { message: `Reopened #${closed.pr.number}`, kind: "info" });
+      void pollNow("manual");
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: forgeErrorMessage(e), kind: "error" });
+    } finally {
+      setReopening(false);
+    }
+  }
 
   const nothingToPropose = () => {
     const kind = mergedPr(viewedRoot())?.relation?.kind;
@@ -1400,7 +1451,17 @@ export default function ReviewPanel(props: {
             </Show>
           )}
         </Show>
-        <Show when={origin() && baseBranch() && !nothingToPropose()}>
+        <Show when={origin() && baseBranch() && reopenOffered()}>
+          <IconButton
+            size="sm"
+            icon={<Icon icon={GitPullRequest} />}
+            disabled={reopening() || reopenBlocked() !== null}
+            aria-label="Reopen PR"
+            tooltip={reopening() ? "Reopening the pull request" : (reopenBlocked() ?? "Reopen the pull request")}
+            onClick={() => void reopenPr()}
+          />
+        </Show>
+        <Show when={origin() && baseBranch() && !nothingToPropose() && !reopenOffered()}>
           <IconButton
             size="sm"
             icon={<Icon icon={GitPullRequestArrow} />}

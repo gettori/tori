@@ -1522,6 +1522,14 @@ pub fn forge_update_branch(project_path: String, number: u64) -> Result<(), Forg
     Ok(landing(&c.repo, || attempt(&c, |f| f.update_branch(&c.repo, number)))?)
 }
 
+/// Reopen a pull request closed without merging. Through `landing` so the next
+/// poll reads it as open rather than serving the cached closed answer.
+#[tauri::command(async)]
+pub fn forge_reopen(project_path: String, number: u64) -> Result<(), ForgeErrorDto> {
+    let c = gated_client(&project_path)?;
+    Ok(landing(&c.repo, || attempt(&c, |f| f.reopen(&c.repo, number)))?)
+}
+
 /// Installs the keychain store, migrates the pre-accounts token, and restores
 /// every account's credential.
 ///

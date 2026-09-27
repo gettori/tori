@@ -40,6 +40,8 @@ let aheadBehind: { ahead: number; behind: number; has_upstream: boolean; gone?: 
 // The state of the branch's pull request as the poll last reported it.
 let polledPrState: "open" | "closed" | "merged" | null = null;
 const [polledRelation, setPolledRelation] = createSignal<PrRelation | null>(null);
+let polledFromFork = false;
+let reopenCalls: string[] = [];
 // The header only renders once the store knows a branch, so the tests that are
 // about the header say so by naming one.
 let branches: { name: string; current: boolean }[] = [];
@@ -77,7 +79,10 @@ vi.mock("../../utils/prRelation", () => ({ prRelation: () => polledRelation() })
 
 vi.mock("../../utils/forgeStatus", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/forgeStatus")>()),
-  unitStatus: () => (polledPrState ? { pullRequest: { state: polledPrState } } : null),
+  unitStatus: () =>
+    polledPrState
+      ? { pullRequest: { number: 12, state: polledPrState, headRepoIsOrigin: !polledFromFork } }
+      : null,
 }));
 
 vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
@@ -168,6 +173,12 @@ vi.mock("@tauri-apps/api/core", () => ({
       // a null settings object in the store instead.
       case "set_settings":
         return Promise.resolve((args as { settings: unknown }).settings);
+      case "git_push":
+        reopenCalls.push("push");
+        return Promise.resolve(null);
+      case "forge_reopen":
+        reopenCalls.push(`reopen #${(args as { number: number }).number}`);
+        return Promise.resolve(null);
       case "forge_push_and_create_pr":
         createPrArgs.push(args);
         if (createPrFails) return Promise.reject(createPrFails);
@@ -317,6 +328,8 @@ beforeEach(async () => {
   aheadBehind = null;
   polledPrState = null;
   setPolledRelation(null);
+  polledFromFork = false;
+  reopenCalls = [];
   branches = [];
   headMsg = "";
   commitArgs = [];
@@ -1017,6 +1030,53 @@ describe("a branch deleted on the remote", () => {
 
     const pill = await screen.findByText("Deleted");
     expect(pill.closest("button")).toBeNull();
+  });
+});
+
+describe("Reopen PR", () => {
+  async function mountClosed(upstream: { has_upstream: boolean; gone: boolean }) {
+    branches = [{ name: "wave-3", current: true }];
+    defaultBase = "main";
+    originUrl = "git@github.com:skarif2/tori.git";
+    polledPrState = "closed";
+    aheadBehind = { ahead: 0, behind: 0, ...upstream };
+    await mountPanel();
+    return (await screen.findByRole("button", { name: "Reopen PR" })) as HTMLButtonElement;
+  }
+
+  it("takes Open PR's place and reopens a closed pull request whose branch is still there", async () => {
+    const button = await mountClosed({ has_upstream: true, gone: false });
+    expect(screen.queryByRole("button", { name: "Open PR" })).toBeNull();
+    fireEvent.click(button);
+    await waitFor(() => expect(reopenCalls).toEqual(["reopen #12"]));
+  });
+
+  it("pushes the deleted branch back before reopening when it stands on the pull request's head", async () => {
+    setPolledRelation({ kind: "at" });
+    const button = await mountClosed({ has_upstream: false, gone: true });
+    fireEvent.click(button);
+    await waitFor(() => expect(reopenCalls).toEqual(["push"]));
+    for (const fn of handlers["git://push-done"] ?? []) fn({ payload: { repo: "/proj" } });
+    await waitFor(() => expect(reopenCalls).toEqual(["push", "reopen #12"]));
+  });
+
+  it("offers Open PR instead for a deleted branch that has moved past the pull request", async () => {
+    setPolledRelation({ kind: "ahead", count: 2 });
+    branches = [{ name: "wave-3", current: true }];
+    defaultBase = "main";
+    originUrl = "git@github.com:skarif2/tori.git";
+    polledPrState = "closed";
+    aheadBehind = { ahead: 0, behind: 0, has_upstream: false, gone: true };
+    await mountPanel();
+    expect(await screen.findByRole("button", { name: "Open PR" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reopen PR" })).toBeNull();
+  });
+
+  it("will not restore a branch that lives in a fork", async () => {
+    setPolledRelation({ kind: "at" });
+    polledFromFork = true;
+    const button = await mountClosed({ has_upstream: false, gone: true });
+    expect(button.disabled).toBe(true);
   });
 });
 

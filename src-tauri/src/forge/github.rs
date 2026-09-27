@@ -1037,6 +1037,13 @@ mutation($threadId:ID!,$body:String!){
         Ok(())
     }
 
+    fn reopen(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError> {
+        self.require_token()?;
+        let path = format!("/repos/{}/{}/pulls/{number}", repo.owner, repo.repo);
+        self.send(self.rest("PATCH", &path, Some(serde_json::json!({ "state": "open" }))))?;
+        Ok(())
+    }
+
     fn issues(&self) -> Option<&dyn crate::issues::IssueSource> {
         Some(self)
     }
@@ -1711,6 +1718,25 @@ mod tests {
         )]);
         let err = f.update_branch(&repo(), 42).unwrap_err();
         assert!(format!("{err}").contains("merge conflict between base and head"), "got {err}");
+    }
+
+    #[test]
+    fn reopening_patches_the_pull_request_open_and_keeps_a_refusal_verbatim() {
+        let (f, stub) = forge(vec![
+            StubTransport::json(200, "{}"),
+            StubTransport::json(
+                422,
+                r#"{"message":"Validation Failed","errors":[{"message":"state cannot be changed. The wave-3 branch has been deleted."}]}"#,
+            ),
+        ]);
+        f.reopen(&repo(), 42).unwrap();
+        let sent = stub.requests();
+        assert_eq!(sent[0].method, "PATCH");
+        assert!(sent[0].url.ends_with("/repos/skarif2/tori/pulls/42"), "got {}", sent[0].url);
+        assert_eq!(serde_json::from_str::<Value>(sent[0].body.as_deref().unwrap()).unwrap()["state"], "open");
+
+        let err = f.reopen(&repo(), 42).unwrap_err();
+        assert!(format!("{err}").contains("The wave-3 branch has been deleted"), "got {err}");
     }
 
     /// The detail response, then the reviews page `pr_summary` reads after it.
