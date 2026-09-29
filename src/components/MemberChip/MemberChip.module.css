@@ -55,3 +55,24 @@
 .chip[data-state]:not([data-state="present"]) {
   opacity: 0.6;
 }
+
+/* The top-left corner, the one the state badge and the sync and dirty dots
+   leave free, so a reference that is also dirty still shows both. */
+.lock {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  left: calc(-4px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(11px * var(--ui-scale));
+  height: calc(11px * var(--ui-scale));
+  border-radius: 50%;
+  color: var(--fg-muted);
+  background: var(--canvas-default);
+}
+
+.chip .lock :global(svg) {
+  width: calc(8px * var(--ui-scale));
+  height: calc(8px * var(--ui-scale));
+}

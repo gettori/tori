@@ -154,7 +154,7 @@ pub(crate) fn branch_exists(repo: &str, branch: &str) -> bool {
 }
 
 /// Origin's default branch (e.g. `main`) via `origin/HEAD`, None when unset.
-fn origin_default(repo: &str) -> Option<String> {
+pub(crate) fn origin_default(repo: &str) -> Option<String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)

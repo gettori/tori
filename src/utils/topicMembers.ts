@@ -6,7 +6,7 @@
 import { createMemo, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { memberState, rootOf, type Member, type MemberStateSummary, type Topic } from "./topics";
+import { memberRoot, memberState, rootOf, type Member, type MemberStateSummary, type Topic } from "./topics";
 import { spaceHue, spaceHueRgb } from "./spaceTint";
 import { isSyntheticId } from "./syntheticTabs";
 import type { ProjectIconSource } from "../components/Icon/ProjectIcon";
@@ -37,9 +37,12 @@ export type ChipStyle = { "--chip-hue": string; "--chip-rgb": string };
  *  no consumer re-derives the Space match or reads `memberState` again. */
 export type TintedMember = {
   member: Member;
-  /** Stable identity: the worktree when there is one, the repo otherwise, so a
-   *  member with nothing on disk is still addressable. */
+  /** Stable identity: the worktree or the reference's checkout when there is
+   *  one, the repo otherwise, so a member with nothing on disk is still
+   *  addressable. */
   key: string;
+  /** The folder the member opens as, null while it cannot be opened. */
+  root: string | null;
   label: string;
   state: MemberStateSummary;
   /** The Space hue, absent for a repo outside every Space. */
@@ -72,6 +75,9 @@ export type MemberRoot = {
   /** The project's icon. Absent draws the glyph derived from `repoPath`. */
   icon?: ProjectIconSource;
   state?: MemberStateSummary;
+  /** A reference member: the user's own checkout, which Tori reads and never
+   *  stages, commits, discards or pushes in. */
+  readOnly?: boolean;
 };
 
 /** A stored member restriction as it applies to the members present now.
@@ -207,7 +213,8 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
   const hue = space ? spaceHue(space.name, space.color) : undefined;
   return {
     member,
-    key: member.worktreePath ?? member.repoPath,
+    key: memberFolder(member) ?? member.repoPath,
+    root: memberRoot(member),
     label: member.displayName,
     state: memberState(member.state),
     hue,
@@ -215,6 +222,12 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
     icon: { seed: member.repoPath, icon: project?.icon, iconFile: project?.iconFile, favicon: project?.favicon },
     kind: projectUnitKind(project),
   };
+}
+
+/** The folder a member reads or writes, whether or not it is there right now:
+ *  a tab stays open when its worktree goes missing. */
+function memberFolder(member: Member): string | null {
+  return member.worktreePath ?? member.checkout?.path ?? null;
 }
 
 /** Every member of a Topic, in member order, tinted. */
@@ -243,7 +256,8 @@ export function memberFor(
   if (!path || !members?.length) return null;
   const byRoot = new Map<string, TintedMember>();
   for (const m of members) {
-    if (m.member.worktreePath) byRoot.set(m.member.worktreePath, m);
+    const folder = memberFolder(m.member);
+    if (folder) byRoot.set(folder, m);
   }
   const root = rootOf(path, [...byRoot.keys()]);
   return root ? (byRoot.get(root) ?? null) : null;

@@ -153,7 +153,14 @@ type StashOutcome = { restored: string[]; deleted: string[] };
 /** One member's worth of the panel: its own file lists, its own branch, its own
  *  stage / commit / push. A branch unit is the one-section case, and the only
  *  one that draws no header, since there is nothing to say whose it is. */
-type Section = { root: string; label?: string; tint?: string; icon?: ProjectIconSource; state?: MemberStateSummary };
+type Section = {
+  root: string;
+  label?: string;
+  tint?: string;
+  icon?: ProjectIconSource;
+  state?: MemberStateSummary;
+  readOnly?: boolean;
+};
 
 // Same wording as the file tree's section headers: one member, one vocabulary.
 
@@ -258,7 +265,14 @@ export default function ReviewPanel(props: {
   // them in, so the three surfaces agree about what "second member" means.
   const sections = createMemo<Section[]>(() =>
     props.roots?.length
-      ? props.roots.map((m) => ({ root: m.path, label: m.label, tint: m.tint, icon: m.icon, state: m.state }))
+      ? props.roots.map((m) => ({
+          root: m.path,
+          label: m.label,
+          tint: m.tint,
+          icon: m.icon,
+          state: m.state,
+          readOnly: m.readOnly,
+        }))
       : props.root
         ? [{ root: props.root }]
         : [],
@@ -286,6 +300,10 @@ export default function ReviewPanel(props: {
    *  would otherwise blank the whole panel instead of showing one repo. */
   const viewedRoot = () => (headed() ? (viewed()?.key ?? props.root) : props.root);
   const viewedSection = () => sections().find((sec) => sec.root === viewedRoot());
+  /** A reference member's checkout is the user's own: it can be fetched and
+   *  pulled, never staged, committed, discarded or pushed from here. */
+  const readOnlyRoot = (root: string | null) => !!root && !!sections().find((s) => s.root === root)?.readOnly;
+  const viewedReadOnly = () => readOnlyRoot(viewedRoot());
   const anyFiles = () => !!gitStateFor(viewedRoot()).files.length;
 
   // The branch, the PR paths and the stash list are all one-repo surfaces, and
@@ -330,7 +348,7 @@ export default function ReviewPanel(props: {
    *  of choices, so a member that stages something later joins the commit
    *  instead of being silently left out of one made before it had changes. */
   const [unticked, setUnticked] = createSignal<ReadonlySet<string>>(new Set());
-  const memberRoots = () => sections().map((s) => s.root);
+  const memberRoots = () => sections().filter((s) => !s.readOnly).map((s) => s.root);
   const stagedRoots = () => memberRoots().filter((r) => stagedFiles(r).length);
 
   /**
@@ -346,7 +364,7 @@ export default function ReviewPanel(props: {
   const commitRoots = () => {
     if (amend()) {
       const one = targetMember();
-      return one ? [one] : [];
+      return one && !readOnlyRoot(one) ? [one] : [];
     }
     const out = stagedRoots().filter((r) => !unticked().has(r));
     return out;
@@ -448,7 +466,7 @@ export default function ReviewPanel(props: {
 
   /** Whether this member has somewhere to push and something to push there. */
   function canPushIn(root: string | null): boolean {
-    if (!root || pushingIn(root)) return false;
+    if (!root || pushingIn(root) || readOnlyRoot(root)) return false;
     const ab = gitStateFor(root).aheadBehind;
     if (!ab || superseded(root) || mergedAndGone(root)) return false;
     return !ab.has_upstream || ab.ahead > 0;
@@ -1087,7 +1105,7 @@ export default function ReviewPanel(props: {
    *  then the status letter last, so a column of letters lines up down the
    *  right edge whatever the names are doing. The folder is on the `title`,
    *  not beside the name; a sidebar has no room for both. */
-  function row(f: FileStatus, opts: { staged: boolean; root: string }) {
+  function row(f: FileStatus, opts: { staged: boolean; root: string; readOnly?: boolean }) {
     const untracked = () => f.status.includes("?");
     const tab = () => diffTabId(opts.root, f.path, opts.staged);
     return (
@@ -1135,7 +1153,7 @@ export default function ReviewPanel(props: {
           {/* Unstaged rows only. A staged file's changes are safe in the index,
               so there is nothing here to destroy; unstage it and the row moves
               down to where discard lives. */}
-          <Show when={!opts.staged}>
+          <Show when={!opts.staged && !opts.readOnly}>
             <IconButton
               size="xs"
               icon={<Icon icon={Undo2} />}
@@ -1152,16 +1170,18 @@ export default function ReviewPanel(props: {
               }}
             />
           </Show>
-          <IconButton
-            size="xs"
-            icon={<Icon icon={opts.staged ? Minus : Plus} />}
-            aria-label={opts.staged ? "Unstage" : "Stage"}
-            tooltip={opts.staged ? "Unstage" : "Stage"}
-            onClick={(e) => {
-              e.stopPropagation();
-              void (opts.staged ? unstage(opts.root, f.path) : stage(opts.root, f.path));
-            }}
-          />
+          <Show when={!opts.readOnly}>
+            <IconButton
+              size="xs"
+              icon={<Icon icon={opts.staged ? Minus : Plus} />}
+              aria-label={opts.staged ? "Unstage" : "Stage"}
+              tooltip={opts.staged ? "Unstage" : "Stage"}
+              onClick={(e) => {
+                e.stopPropagation();
+                void (opts.staged ? unstage(opts.root, f.path) : stage(opts.root, f.path));
+              }}
+            />
+          </Show>
         </span>
         <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>
           {f.status.trim() || "?"}
@@ -1182,7 +1202,9 @@ export default function ReviewPanel(props: {
         </Show>
         <Show when={stagedFiles(sec.root).length}>
           <div class={styles.groupHeader}>Staged Changes</div>
-          <For each={stagedFiles(sec.root)}>{(f) => row(f, { staged: true, root: sec.root })}</For>
+          <For each={stagedFiles(sec.root)}>
+            {(f) => row(f, { staged: true, root: sec.root, readOnly: sec.readOnly })}
+          </For>
         </Show>
         <Show when={changedFiles(sec.root).length}>
           {/* Only when there is a group above to tell it apart from: alone,
@@ -1190,7 +1212,9 @@ export default function ReviewPanel(props: {
           <Show when={stagedFiles(sec.root).length || conflictedFiles(sec.root).length}>
             <div class={styles.groupHeader}>Changes</div>
           </Show>
-          <For each={changedFiles(sec.root)}>{(f) => row(f, { staged: false, root: sec.root })}</For>
+          <For each={changedFiles(sec.root)}>
+            {(f) => row(f, { staged: false, root: sec.root, readOnly: sec.readOnly })}
+          </For>
         </Show>
       </>
     );
@@ -1264,57 +1288,61 @@ export default function ReviewPanel(props: {
    *  `Git:` entries in the palette. */
   const gitMenu = () => (
     <>
-      <MenuRow
-        disabled={applying() || !changedFiles(menuRoot()).length}
-        onClick={() => menuRoot() && void stageAll(menuRoot()!)}
-      >
-        Stage All Changes
-      </MenuRow>
-      <MenuRow
-        disabled={applying() || !stagedFiles(menuRoot()).length}
-        onClick={() => menuRoot() && void unstageAll(menuRoot()!)}
-      >
-        Unstage All Changes
-      </MenuRow>
-      <MenuRow
-        disabled={applying() || !changedFiles(menuRoot()).length}
-        onClick={() => void discardAllChanges(menuRoot())}
-      >
-        Discard All Changes...
-      </MenuRow>
-      <MenuSeparator />
+      <Show when={!viewedReadOnly()}>
+        <MenuRow
+          disabled={applying() || !changedFiles(menuRoot()).length}
+          onClick={() => menuRoot() && void stageAll(menuRoot()!)}
+        >
+          Stage All Changes
+        </MenuRow>
+        <MenuRow
+          disabled={applying() || !stagedFiles(menuRoot()).length}
+          onClick={() => menuRoot() && void unstageAll(menuRoot()!)}
+        >
+          Unstage All Changes
+        </MenuRow>
+        <MenuRow
+          disabled={applying() || !changedFiles(menuRoot()).length}
+          onClick={() => void discardAllChanges(menuRoot())}
+        >
+          Discard All Changes...
+        </MenuRow>
+        <MenuSeparator />
+      </Show>
       <MenuRow onClick={() => menuRoot() && void fetchIn(menuRoot()!)}>Fetch</MenuRow>
-      <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!)}>
+      <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, false, viewedReadOnly())}>
         {superseded(menuRoot()) ? "Reset to Upstream" : "Pull"}
       </MenuRow>
-      <Show when={!superseded(menuRoot())}>
-        <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, true)}>Pull (Rebase)</MenuRow>
-      </Show>
-      <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
-        Push
-      </MenuRow>
-      <MenuSub label="Rebase" disabled={applying() || op() !== "none"}>
-        <Show when={baseBranch() && baseBranch() !== branch()}>
-          <MenuRow
-            onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}
-          >
-            Onto origin/{baseBranch()}
-          </MenuRow>
+      <Show when={!viewedReadOnly()}>
+        <Show when={!superseded(menuRoot())}>
+          <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, true)}>Pull (Rebase)</MenuRow>
         </Show>
-        <MenuRow onClick={() => void pickOnto(menuRoot())}>Onto Branch...</MenuRow>
-        <MenuSeparator />
-        <MenuRow onClick={() => void openRebase(menuRoot())}>Interactive...</MenuRow>
-        <MenuRow onClick={() => rewrite("Autosquash", menuRoot(), rebaseAutosquash)}>
-          Autosquash Fixups
+        <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
+          Push
         </MenuRow>
-      </MenuSub>
-      <MenuSeparator />
-      <MenuRow
-        disabled={applying() || conflictedFiles(menuRoot()).length > 0}
-        onClick={() => void stashAll()}
-      >
-        Stash All Changes
-      </MenuRow>
+        <MenuSub label="Rebase" disabled={applying() || op() !== "none"}>
+          <Show when={baseBranch() && baseBranch() !== branch()}>
+            <MenuRow
+              onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}
+            >
+              Onto origin/{baseBranch()}
+            </MenuRow>
+          </Show>
+          <MenuRow onClick={() => void pickOnto(menuRoot())}>Onto Branch...</MenuRow>
+          <MenuSeparator />
+          <MenuRow onClick={() => void openRebase(menuRoot())}>Interactive...</MenuRow>
+          <MenuRow onClick={() => rewrite("Autosquash", menuRoot(), rebaseAutosquash)}>
+            Autosquash Fixups
+          </MenuRow>
+        </MenuSub>
+        <MenuSeparator />
+        <MenuRow
+          disabled={applying() || conflictedFiles(menuRoot()).length > 0}
+          onClick={() => void stashAll()}
+        >
+          Stash All Changes
+        </MenuRow>
+      </Show>
       <MenuSeparator />
       <MenuRow onClick={() => setCommitBoxShown(!commitBoxShown())}>
         <span class={styles.checkSlot}>
@@ -1563,7 +1591,7 @@ export default function ReviewPanel(props: {
       {/* The composer, as one card: the message, then what the commit would
           hold and the buttons that make it, so the numbers sit beside the
           verb they qualify. */}
-      <Show when={commitBoxShown()}>
+      <Show when={commitBoxShown() && !viewedReadOnly()}>
       <div class={styles.commitCard}>
         <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
           <div class={styles.commitTarget}>
@@ -1713,7 +1741,7 @@ export default function ReviewPanel(props: {
             >
               <OverlayScroll class={styles.sectionScroll}>
                 <div class={styles.memberSection} data-root={viewedRoot()}>
-                  {sectionLists({ root: viewedRoot()! })}
+                  {sectionLists({ root: viewedRoot()!, readOnly: viewedReadOnly() })}
                 </div>
               </OverlayScroll>
             </Show>

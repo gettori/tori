@@ -6,6 +6,8 @@ import type { Topic, Member, MemberState } from "../../utils/topics";
 import type { BranchSync } from "../../utils/gitActions";
 import styles from "./TopicItem.module.css";
 import chipStyles from "../../components/MemberChip/MemberChip.module.css";
+import { TabMemberChip } from "../../components/MemberChip/MemberChip";
+import { tintedMember } from "../../utils/topicMembers";
 
 const SPACES: SpaceTint[] = [
   {
@@ -263,5 +265,64 @@ describe("what a Topic row says about its members' branches", () => {
 
     expect(container.querySelector("[data-topic-sync]")).toBeTruthy();
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a reference member", () => {
+  const reference = (repoPath: string, order: number, branch = "main", defaultBranch = "main"): Member => ({
+    ...member(repoPath, order),
+    mode: "reference",
+    checkout: { path: repoPath, branch, defaultBranch },
+  });
+  const behind = branchSync({
+    upstream: { ahead: 0, behind: 3, has_upstream: true, gone: false, rewritten: false, superseded: false },
+  });
+
+  it("wears a lock on its chip and its row, and reads as a reference", async () => {
+    const { container } = mount(topic([reference("/w/api", 0), member("/w/web", 1)]));
+    const locked = Array.from(container.querySelectorAll("[data-chip] [data-reference]"));
+    expect(locked.map((l) => l.closest("[data-chip]")!.getAttribute("data-chip"))).toEqual(["/w/api"]);
+
+    await expand();
+    const [api, web] = memberRows(container);
+    expect(api.querySelector("[data-reference]")).toBeTruthy();
+    expect(api.querySelector("[data-member-state]")!.textContent).toBe("Reference");
+    expect(web.querySelector("[data-reference]")).toBeNull();
+    expect(web.querySelector("[data-member-state]")!.textContent).toBe("Ready");
+  });
+
+  it("marks how far the checkout is behind origin", async () => {
+    const { container } = mount(topic([reference("/w/api", 0)]), () => {}, {
+      memberSync: () => behind,
+    });
+    await expand();
+    expect(memberRows(container)[0].querySelector("[data-sync-mark]")).toBeTruthy();
+  });
+
+  it("warns when the checkout is off its default branch, or has edits of its own", async () => {
+    const off = mount(topic([reference("/w/api", 0, "feature/x", "main")]));
+    await expand();
+    expect(memberRows(off.container)[0].querySelector("[data-member-warning]")!.textContent).toBe(
+      "On feature/x, not main",
+    );
+    off.unmount();
+
+    const dirty = mount(topic([reference("/w/api", 0)]), () => {}, { memberSync: () => branchSync({ dirty: true }) });
+    await expand();
+    expect(memberRows(dirty.container)[0].querySelector("[data-member-warning]")!.textContent).toBe(
+      "Has uncommitted changes",
+    );
+    dirty.unmount();
+
+    const clean = mount(topic([reference("/w/api", 0)]), () => {}, { memberSync: () => branchSync() });
+    await expand();
+    expect(memberRows(clean.container)[0].querySelector("[data-member-warning]")).toBeNull();
+  });
+
+  it("carries the lock onto the chip a file tab and the breadcrumb wear", () => {
+    const { container } = render(() => <TabMemberChip member={tintedMember(reference("/w/api", 0), SPACES)} />);
+    expect(container.querySelector("[data-reference]")).toBeTruthy();
+    const plain = render(() => <TabMemberChip member={tintedMember(member("/w/web", 0), SPACES)} />);
+    expect(plain.container.querySelector("[data-reference]")).toBeNull();
   });
 });

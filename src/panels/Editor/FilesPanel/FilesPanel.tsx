@@ -84,7 +84,7 @@ export default function FilesPanel(props: {
   const multiMember = () => props.members.length > 1;
   const memberOf = (key: string | null) => props.members.find((m) => m.key === key);
   const viewed = (): TintedMember | undefined =>
-    memberOf(picked()) ?? props.members.find((m) => m.member.worktreePath === props.root);
+    memberOf(picked()) ?? props.members.find((m) => !!m.root && m.root === props.root);
   const treeRoot = () => {
     const m = viewed();
     if (!m) return props.root;
@@ -105,7 +105,7 @@ export default function FilesPanel(props: {
   function pick(key: string) {
     setPicked(key);
     const m = memberOf(key);
-    if (m?.state.usable && m.member.worktreePath) props.onActiveRoot?.(m.member.worktreePath);
+    if (m?.root) props.onActiveRoot?.(m.root);
   }
 
   const branchTitle = () => {

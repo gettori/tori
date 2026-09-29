@@ -14,9 +14,20 @@ import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog"
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
-import { memberState, type Topic, type Member, type RepairAction, topicKey, LAST_MEMBER } from "../../utils/topics";
+import {
+  isReference,
+  memberBranch,
+  memberRoot,
+  memberState,
+  type Topic,
+  type Member,
+  type RepairAction,
+  topicKey,
+  LAST_MEMBER,
+} from "../../utils/topics";
 import { moveKey } from "../../utils/dragReorder";
 import { syncFor } from "../../utils/branchSync";
+import { pull } from "../../utils/gitActions";
 import { finishedPr } from "../../utils/prRelation";
 import { on as onEvent, NEW_TOPIC } from "../../utils/events";
 import { removeMemberWorktree } from "../../utils/memberWorktree";
@@ -342,7 +353,9 @@ export default function TopicList(props: {
     // panels wrote under.
     purgeWorkspace(
       topicKey(topic.id),
-      topic.members.map((m) => m.worktreePath ?? m.repoPath),
+      // Never a reference's folder: that is the user's own checkout, and the
+      // keys under it belong to its Spaces unit as much as to this Topic.
+      topic.members.filter((m) => !isReference(m)).map((m) => m.worktreePath ?? m.repoPath),
     );
     props.onDeleted?.(topic);
     const left = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath);
@@ -399,7 +412,11 @@ export default function TopicList(props: {
     const keys = orderOf(topic);
     const i = keys.indexOf(member.repoPath);
     const last = topic.members.length <= 1;
+    // A reference reads the user's own checkout, which goes stale unless it is
+    // pulled; pulling is the one git write it takes.
+    const root = isReference(member) ? memberRoot(member) : null;
     return [
+      ...(root ? [{ label: "Pull", onClick: () => void pull(root, false, true) }, { separator: true as const }] : []),
       { label: "Rename…", onClick: () => setMemberRenameReq({ topic, member }) },
       { label: "Move up", disabled: i <= 0, onClick: () => move(topic, member, -1) },
       { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(topic, member, 1) },
@@ -450,8 +467,12 @@ export default function TopicList(props: {
                 onRepair={(m, action) => void repair(f, m, action)}
                 menu={menu(f)}
                 memberMenu={memberMenu(f)}
-                memberSync={(m) => syncFor(m.worktreePath, f.branch)}
-                memberFinished={(m) => finishedPr(m.worktreePath, f.branch, syncFor(m.worktreePath, f.branch))}
+                memberSync={(m) => syncFor(memberRoot(m), memberBranch(m, f.branch))}
+                memberFinished={(m) =>
+                  // A reference sits on the repo's default branch, whose PRs are
+                  // not this Topic's.
+                  isReference(m) ? null : finishedPr(memberRoot(m), f.branch, syncFor(memberRoot(m), f.branch))
+                }
                 onReorder={(repoPaths) => void reorder(f, repoPaths)}
                 expanded={!!expanded()[f.id]}
                 onExpand={(open) => setExpanded((prev) => ({ ...prev, [f.id]: open }))}

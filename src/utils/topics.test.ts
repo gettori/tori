@@ -91,6 +91,29 @@ describe("topicSelection", () => {
     expect(sel.folderPath).toBe("");
     expect(selectionRoot(sel)).toBeNull();
   });
+
+  it("opens a references-only Topic on each repo's own checkout, with no worktree path", () => {
+    const reference = (repoPath: string, checkout: string | null, kind: MemberState["kind"], order: number): Member => ({
+      repoPath,
+      displayName: repoPath,
+      mode: "reference",
+      worktreePath: null,
+      checkout: checkout ? { path: checkout, branch: "main", defaultBranch: "main" } : null,
+      state: { kind } as MemberState,
+      order,
+    });
+    const research: Topic = {
+      ...TOPIC,
+      members: [
+        reference("/r/web", "/r/web", "present", 1),
+        reference("/r/api", "/r/api", "present", 0),
+        reference("/c/infra", null, "checkout-missing", 2),
+      ],
+    };
+    const sel = topicSelection(research);
+    expect(sel.roots).toEqual(["/r/api", "/r/web"]);
+    expect(sel.activeRoot).toBe("/r/api");
+  });
 });
 
 describe("workspaceKey and selectionRoot", () => {

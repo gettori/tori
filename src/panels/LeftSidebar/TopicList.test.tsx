@@ -173,7 +173,16 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 const { default: TopicList } = await import("./TopicList");
 const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
-const { PURGE_WORKSPACE } = await import("../../utils/events");
+const { PURGE_WORKSPACE, PURGE_UNDER_PATH } = await import("../../utils/events");
+
+// A reference member reads the repo's own checkout and owns no worktree.
+const asReference = (m: Member): Member => ({
+  ...m,
+  mode: "reference",
+  worktreePath: null,
+  checkout: { path: m.repoPath, branch: "main", defaultBranch: "main" },
+  state: { kind: "present" },
+});
 const { enterRoots } = await import("../../utils/gitActions");
 const { emit, NEW_TOPIC } = await import("../../utils/events");
 
@@ -506,6 +515,22 @@ describe("TopicList", () => {
       expect(screen.getByText("Auth")).toBeTruthy();
     });
 
+    it("sweeps only the worktrees the Topic owns, never a reference member's checkout", async () => {
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
+      const purged: string[] = [];
+      const onPurge = (e: Event) => purged.push(...((e as CustomEvent<{ roots?: string[] }>).detail.roots ?? []));
+      window.addEventListener(PURGE_WORKSPACE, onPurge);
+      try {
+        await toSweep();
+      } finally {
+        window.removeEventListener(PURGE_WORKSPACE, onPurge);
+      }
+      expect(sweepRow("/w/api")).toBeTruthy();
+      expect(document.querySelector('[data-sweep="/w/web"]')).toBeNull();
+      expect(purged).not.toContain("/w/web");
+      expect(bridge.calls.some((c) => c.cmd === "worktree_status" && c.args.path === "/w/web")).toBe(false);
+    });
+
     it("has no accessibility violations", async () => {
       bridge.wtStatus = { [AUTH_API]: { dirty: true, unpushed: true } };
       const dialog = await toSweep();
@@ -674,6 +699,36 @@ describe("TopicList", () => {
       await waitFor(() => expect(memberRow("/w/web")).toBeNull());
       expect(screen.queryByRole("dialog")).toBeNull();
       expect(bridge.calls.some((c) => c.cmd === "worktree_status")).toBe(false);
+    });
+
+    it("offers nothing to remove for a reference member, whose folder is the user's own checkout", async () => {
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
+      const purged: string[] = [];
+      const onPurge = (e: Event) => purged.push((e as CustomEvent<{ path: string }>).detail.path);
+      window.addEventListener(PURGE_UNDER_PATH, onPurge);
+      try {
+        await openOn("Auth", "/w/web");
+        pointerClick(await screen.findByText("Remove repository"));
+        await waitFor(() => expect(memberRow("/w/web")).toBeNull());
+      } finally {
+        window.removeEventListener(PURGE_UNDER_PATH, onPurge);
+      }
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(purged).toEqual([]);
+      expect(bridge.calls.some((c) => c.cmd === "worktree_status" || c.cmd.startsWith("remove_worktree"))).toBe(false);
+    });
+
+    it("offers Pull on a reference member's row, and only there", async () => {
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
+      await openOn("Auth", "/w/web");
+      pointerClick(await screen.findByText("Pull"));
+      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "git_pull" && c.args.repo === "/w/web" && c.args.ffOnly === true)).toBe(true));
+
+      cleanup();
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
+      await openOn("Auth", "/w/api");
+      await screen.findByText("Rename…");
+      expect(screen.queryByText("Pull")).toBeNull();
     });
 
     it("refuses to remove the last member and says why on the row", async () => {

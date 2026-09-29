@@ -45,6 +45,7 @@ import { copyText } from "../../utils/clipboard";
 import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
 import type { TintedMember } from "../../utils/topicMembers";
+import { isReference } from "../../utils/topics";
 import Breadcrumbs from "./Breadcrumbs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import HunkCommentInput from "./HunkCommentInput";
@@ -145,7 +146,10 @@ export default function DiffView(props: {
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
   // Staging re-derives the diff without -w, so a hunk read with it matches
   // nothing git would apply.
-  const canStage = () => !ignoreWhitespace();
+  /** A reference member's checkout is the user's own, never staged or
+   *  discarded from here. */
+  const readOnly = () => !!props.member && isReference(props.member.member);
+  const canStage = () => !readOnly() && !ignoreWhitespace();
   const linesLabel = (count: number) => `${staged() ? "Unstage" : "Stage"} ${count} line${count === 1 ? "" : "s"}`;
 
   function toastError(e: unknown) {
@@ -496,20 +500,22 @@ export default function DiffView(props: {
           <IconButton size="sm" icon={<Icon icon={ChevronUp} />} tooltip="Previous change" onClick={() => nav?.previous()} />
           <IconButton size="sm" icon={<Icon icon={ChevronDown} />} tooltip="Next change" onClick={() => nav?.next()} />
         </Show>
-        <IconButton
-          size="sm"
-          icon={<Icon icon={staged() ? Minus : Plus} />}
-          disabled={applying() || !entry()}
-          tooltip={staged() ? "Unstage this file" : "Stage this file"}
-          onClick={() =>
-            void applied(() =>
-              staged()
-                ? unstageFiles(props.workspace, [file()])
-                : stageFiles(props.workspace, [file()]),
-            )
-          }
-        />
-        <Show when={!staged()}>
+        <Show when={!readOnly()}>
+          <IconButton
+            size="sm"
+            icon={<Icon icon={staged() ? Minus : Plus} />}
+            disabled={applying() || !entry()}
+            tooltip={staged() ? "Unstage this file" : "Stage this file"}
+            onClick={() =>
+              void applied(() =>
+                staged()
+                  ? unstageFiles(props.workspace, [file()])
+                  : stageFiles(props.workspace, [file()]),
+              )
+            }
+          />
+        </Show>
+        <Show when={!staged() && !readOnly()}>
           <IconButton
             size="sm"
             icon={<Icon icon={Undo2} />}

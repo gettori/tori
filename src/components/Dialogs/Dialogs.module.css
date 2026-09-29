@@ -314,6 +314,9 @@
 .collision[data-adopting] {
   color: var(--fg-default);
 }
+.srOnly {
+  composes: srOnly from "../../styles/patterns.module.css";
+}
 
 /* ---- Topic worktree sweep ---- */
 /* One row is two lines: the member and its evidence, then the choice that

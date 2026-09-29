@@ -30,7 +30,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         name: String(args.name),
         branch: String(args.branch),
         createdAt: 1,
-        members: (args.members as string[]).map((repoPath, order) => ({
+        members: (args.members as { repoPath: string }[]).map(({ repoPath }, order) => ({
           repoPath,
           displayName: repoPath.split("/").pop(),
           worktreePath: null,
@@ -66,6 +66,15 @@ const EXISTING: Topic = {
 const name = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
 const branch = () => screen.getByRole("textbox", { name: "Branch" }) as HTMLInputElement;
 const box = (label: string) => screen.getByRole("checkbox", { name: label }) as HTMLInputElement;
+// A tolerant match: jsdom joins the sr-only repo name to the visible label
+// with no space (gotcha_jsdoms_accessible_name_joins_adjacent_nodes_with_no_separator).
+const worktree = (label: string) =>
+  screen.getByRole("checkbox", { name: new RegExp(`^Create worktree\\s*in ${label}$`) }) as HTMLInputElement;
+// Check a repo and ask for a worktree in it, the only rows with a branch to probe.
+const pickWithWorktree = (label: string) => {
+  fireEvent.click(box(label));
+  fireEvent.click(worktree(label));
+};
 const done = () => screen.getByRole("button", { name: /Done|Working/ }) as HTMLButtonElement;
 const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_topic_branch");
 // Kobalte's focus scope settles from a `setTimeout(0)`; a test that moved focus
@@ -105,7 +114,36 @@ describe("NewTopicDialog", () => {
     fireEvent.click(done());
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const call = bridge.calls.find((c) => c.cmd === "create_topic")!;
-    expect(call.args).toEqual({ name: "Search v2", branch: "search-v2", members: ["/w/api", "/w/web"] });
+    expect(call.args).toEqual({
+      name: "Search v2",
+      branch: "search-v2",
+      members: [
+        { repoPath: "/w/api", mode: "reference" },
+        { repoPath: "/w/web", mode: "reference" },
+      ],
+    });
+  });
+
+  it("attaches a checked repo as a reference unless it asks for a worktree, and probes only those", async () => {
+    const { onDone } = open();
+    fireEvent.input(name(), { target: { value: "x" } });
+    fireEvent.click(box("api"));
+    expect(worktree("api").checked).toBe(false);
+    await waitFor(() => expect(done().disabled).toBe(false));
+    await macrotask();
+    expect(probeCalls()).toEqual([]);
+
+    fireEvent.click(box("web"));
+    fireEvent.click(worktree("web"));
+    await waitFor(() => expect(probeCalls().map((c) => c.args.repoPath)).toEqual(["/w/web"]));
+    await waitFor(() => expect(done().disabled).toBe(false));
+    fireEvent.click(done());
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const call = bridge.calls.find((c) => c.cmd === "create_topic")!;
+    expect(call.args.members).toEqual([
+      { repoPath: "/w/api", mode: "reference" },
+      { repoPath: "/w/web", mode: "worktree" },
+    ]);
   });
 
   it("fills Branch from the name until Branch is edited, then creates on the typed branch", async () => {
@@ -117,26 +155,31 @@ describe("NewTopicDialog", () => {
     fireEvent.input(name(), { target: { value: "Login crash" } });
     expect(branch().value).toBe("bug/login");
 
-    fireEvent.click(box("api"));
+    pickWithWorktree("api");
     await waitFor(() => expect(done().disabled).toBe(false));
     expect(probeCalls()[probeCalls().length - 1].args).toEqual({ repoPath: "/w/api", branch: "bug/login" });
     fireEvent.click(done());
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const call = bridge.calls.find((c) => c.cmd === "create_topic")!;
-    expect(call.args).toEqual({ name: "Login crash", branch: "bug/login", members: ["/w/api"] });
+    expect(call.args).toEqual({
+      name: "Login crash",
+      branch: "bug/login",
+      members: [{ repoPath: "/w/api", mode: "worktree" }],
+    });
   });
 
   it("shows the collision row for a repo whose branch exists, and Adopt clears it", async () => {
     bridge.probes["/w/api@x"] = { valid: true, local: true, remote: false, hasWorktree: false };
     open();
     fireEvent.input(name(), { target: { value: "x" } });
-    box("api").focus();
     fireEvent.click(box("api"));
+    worktree("api").focus();
+    fireEvent.click(worktree("api"));
 
     expect(await screen.findByText("x already exists")).toBeTruthy();
     expect(done().disabled).toBe(true);
     // The probe landing must not remount the row the keyboard is on.
-    expect(document.activeElement).toBe(box("api"));
+    expect(document.activeElement).toBe(worktree("api"));
 
     fireEvent.click(screen.getByRole("button", { name: "Adopt in api" }));
     await screen.findByText("Adopting x");
@@ -148,7 +191,7 @@ describe("NewTopicDialog", () => {
     bridge.probes["/w/api@x"] = { valid: true, local: false, remote: true, hasWorktree: false };
     open();
     fireEvent.input(name(), { target: { value: "x" } });
-    fireEvent.click(box("api"));
+    pickWithWorktree("api");
     await screen.findByText("x already exists");
 
     fireEvent.click(screen.getByRole("button", { name: /Rename this Topic/ }));
@@ -160,7 +203,7 @@ describe("NewTopicDialog", () => {
 
   it("ignores a probe answer for a branch the name has moved past", async () => {
     open();
-    fireEvent.click(box("api"));
+    pickWithWorktree("api");
     await waitFor(() => expect(probeCalls().length).toBe(0));
 
     // The first name's probe is held; the name moves on before it answers.
@@ -182,7 +225,7 @@ describe("NewTopicDialog", () => {
     open();
     fireEvent.input(name(), { target: { value: "Auth again" } });
     fireEvent.input(branch(), { target: { value: "feat/auth" } });
-    fireEvent.click(box("web"));
+    pickWithWorktree("web");
     expect(await screen.findByText("already used by Auth")).toBeTruthy();
     await waitFor(() => expect(probeCalls().length).toBeGreaterThan(0));
     expect(done().disabled).toBe(true);
@@ -208,12 +251,12 @@ describe("NewTopicDialog", () => {
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "api" })).toBeNull();
 
-    fireEvent.click(box("web"));
+    pickWithWorktree("web");
     await waitFor(() => expect(done().disabled).toBe(false));
     fireEvent.click(done());
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(EXISTING));
     const adds = bridge.calls.filter((c) => c.cmd === "add_member");
-    expect(adds.map((c) => c.args)).toEqual([{ topicId: "auth-1", repoPath: "/w/web" }]);
+    expect(adds.map((c) => c.args)).toEqual([{ topicId: "auth-1", repoPath: "/w/web", mode: "worktree" }]);
     expect(probeCalls()[0].args).toEqual({ repoPath: "/w/web", branch: "feat/auth" });
   });
 
@@ -223,7 +266,7 @@ describe("NewTopicDialog", () => {
   it("offers Leave out rather than a rename when an added repo already has the branch", async () => {
     bridge.probes["/w/web@feat/auth"] = { valid: true, local: true, remote: false, hasWorktree: false };
     open({ topic: EXISTING });
-    fireEvent.click(box("web"));
+    pickWithWorktree("web");
 
     expect(await screen.findByText("feat/auth already exists")).toBeTruthy();
     expect(done().disabled).toBe(true);

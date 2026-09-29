@@ -204,6 +204,7 @@ describe("per-kind affordances", () => {
 const tinted = (displayName: string, hue: string): TintedMember => ({
   member: { repoPath: `/r/${displayName}`, displayName, worktreePath: `/w/${displayName}`, state: { kind: "present" }, order: 0 },
   key: `/w/${displayName}`,
+  root: `/w/${displayName}`,
   label: displayName,
   state: { label: "Ready", usable: true, action: null, reason: null },
   hue,

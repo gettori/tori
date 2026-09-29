@@ -10,12 +10,28 @@ export type MemberState =
   | { kind: "present" }
   | { kind: "worktree-missing" }
   | { kind: "repo-missing" }
+  | { kind: "checkout-missing" }
   | { kind: "failed"; reason: string };
+
+/** What the user asked a member to be; `state` is what git says it is. */
+export type MemberMode = "reference" | "worktree";
+
+/** Where a reference member reads from, refreshed by every reconcile. */
+export type Checkout = {
+  path: string;
+  branch: string | null;
+  defaultBranch: string | null;
+};
 
 export type Member = {
   repoPath: string;
   displayName: string;
+  /** Absent on a record the backend wrote before modes existed. */
+  mode?: MemberMode;
+  /** Only ever a worktree this Topic owns; a reference keeps it null, so no
+   *  removal or purge keyed on it can reach the user's own checkout. */
   worktreePath: string | null;
+  checkout?: Checkout | null;
   state: MemberState;
   order: number;
 };
@@ -46,7 +62,7 @@ export type MemberStateSummary = {
   /** Whether the member can be opened as a workspace root right now. */
   usable: boolean;
   /** The repair the UI should offer, if any. */
-  action: "recreate" | "locate" | "retry" | null;
+  action: "recreate" | "locate" | "retry" | "checkout" | null;
   /** The failure text, for a tooltip; only a failed member carries one. */
   reason: string | null;
 };
@@ -60,6 +76,7 @@ export const REPAIR_LABEL: Record<RepairAction, string> = {
   recreate: "Recreate",
   locate: "Locate",
   retry: "Retry",
+  checkout: "Check out",
 };
 
 /** Reads the backend's tagged state into what a badge needs to render. */
@@ -71,6 +88,8 @@ export function memberState(state: MemberState): MemberStateSummary {
       return { label: "Worktree missing", usable: false, action: "recreate", reason: null };
     case "repo-missing":
       return { label: "Repository unavailable", usable: false, action: "locate", reason: null };
+    case "checkout-missing":
+      return { label: "No default branch checkout", usable: false, action: "checkout", reason: null };
     case "failed":
       return {
         label: state.reason === "pending" ? "Creating" : "Failed",
@@ -107,13 +126,30 @@ export function isShellsKey(ws: string | null | undefined): boolean {
   return ws === SHELLS_KEY;
 }
 
-/** The present members' worktree folders, in member order. */
+export function isReference(member: Pick<Member, "mode">): boolean {
+  return member.mode === "reference";
+}
+
+/** The folder a member opens as, or null when it cannot be opened. The one
+ *  way to a member's root: a reference has no `worktreePath` by design. */
+export function memberRoot(member: Pick<Member, "mode" | "worktreePath" | "checkout" | "state">): string | null {
+  if (member.state.kind !== "present") return null;
+  return (isReference(member) ? member.checkout?.path : member.worktreePath) ?? null;
+}
+
+/** The branch a member's root has checked out: the Topic's for a worktree,
+ *  whatever the checkout is on for a reference. */
+export function memberBranch(member: Pick<Member, "mode" | "checkout">, topicBranch: string): string | null {
+  return isReference(member) ? (member.checkout?.branch ?? null) : topicBranch;
+}
+
+/** The present members' roots, in member order. */
 export function topicRoots(topic: Pick<Topic, "members">): string[] {
   return topic.members
     .slice()
     .sort((a, b) => a.order - b.order)
-    .filter((m) => m.state.kind === "present" && !!m.worktreePath)
-    .map((m) => m.worktreePath!);
+    .map(memberRoot)
+    .filter((root): root is string => !!root);
 }
 
 /** The Selection a Topic opens as. Never refuses: a stale stored root falls

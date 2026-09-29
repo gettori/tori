@@ -432,13 +432,13 @@ export function fetchIn(root: string): Promise<boolean> {
 /** Pull, waiting for the background op's own event. Separate from `fetchIn`
  *  because a pull can stop on a conflict, which is a state the file list has to
  *  be re-read to show. */
-export async function pull(root: string, rebase = false): Promise<boolean> {
+export async function pull(root: string, rebase = false, ffOnly = false): Promise<boolean> {
   // Either kind of pull would replay or merge the history the force push
   // replaced. The backend re-checks that nothing here is local work.
   if (gitStateFor(root).sync?.upstream.superseded) return resetToUpstream(root);
   const result = waitFor(root, "git://pull-done", "git://pull-error");
   try {
-    await invoke("git_pull", { repo: root, rebase });
+    await invoke("git_pull", { repo: root, rebase, ffOnly });
   } catch (e) {
     toastError(e);
     return false;

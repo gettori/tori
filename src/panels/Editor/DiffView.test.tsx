@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import type { FileStatus } from "../../utils/gitActions";
+import { tintedMember } from "../../utils/topicMembers";
 
 // The diff tab, driven through the real component. Two things are its own and
 // nothing else's: which watcher bursts make it refetch (refetching drops the
@@ -280,6 +281,25 @@ describe("hunk staging", () => {
     // to destroy.
     await mountDiff(true);
     expect(screen.queryByRole("button", { name: "Throw away this hunk" })).toBeNull();
+  });
+  it("offers no staging or discard in a reference member's checkout", async () => {
+    const member = tintedMember(
+      {
+        repoPath: "/proj",
+        displayName: "proj",
+        mode: "reference",
+        worktreePath: null,
+        checkout: { path: "/proj", branch: "main", defaultBranch: "main" },
+        state: { kind: "present" },
+        order: 0,
+      },
+      [],
+    );
+    render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} member={member} />);
+    await waitFor(() => expect(screen.getByText("+TWO")).toBeTruthy());
+    for (const name of ["Stage this hunk", "Throw away this hunk", "Stage this file", "Discard every hunk below"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
   });
 });
 

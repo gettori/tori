@@ -251,6 +251,16 @@
   color: var(--fg-muted);
 }
 
+.memberWarning {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--tori-text-2xs);
+  color: var(--attention-fg);
+}
+
 /* The repair, at the end of the row it repairs. `cursor: pointer` because the
    row itself is `grab`, and a button that looks draggable reads as one. */
 .repair {

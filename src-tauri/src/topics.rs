@@ -35,7 +35,29 @@ pub enum MemberState {
     #[default]
     WorktreeMissing,
     RepoMissing,
+    CheckoutMissing,
     Failed { reason: String },
+}
+
+/// What the user asked a member to be. `state` is what git says it is, and
+/// the two stay apart so a demoted member can still reconcile.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MemberMode {
+    /// The repo's own checkout, read for context. No worktree, no branch.
+    Reference,
+    #[default]
+    Worktree,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Checkout {
+    pub path: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub default_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,11 +67,27 @@ pub struct Member {
     #[serde(default)]
     pub display_name: String,
     #[serde(default)]
+    pub mode: MemberMode,
+    /// Only ever a worktree this Topic owns. A reference keeps it `None`, so no
+    /// removal or purge keyed on it can reach the user's own checkout.
+    #[serde(default)]
     pub worktree_path: Option<String>,
+    #[serde(default)]
+    pub checkout: Option<Checkout>,
     #[serde(default)]
     pub state: MemberState,
     #[serde(default)]
     pub order: u32,
+}
+
+pub fn member_root(m: &Member) -> Option<&str> {
+    if m.state != MemberState::Present {
+        return None;
+    }
+    match m.mode {
+        MemberMode::Worktree => m.worktree_path.as_deref(),
+        MemberMode::Reference => m.checkout.as_ref().map(|c| c.path.as_str()),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,9 +193,16 @@ pub fn list_topics(store: &Store) -> Vec<Topic> {
     let mut changed = false;
     for topic in &mut file.topics {
         for member in &mut topic.members {
-            let next = reconcile_member(member, &topic.branch);
-            if next != member.state {
-                member.state = next;
+            let (state, checkout) = match member.mode {
+                MemberMode::Worktree => (reconcile_member(member, &topic.branch), None),
+                MemberMode::Reference => match reference_checkout(&member.repo_path) {
+                    Ok(c) => (MemberState::Present, Some(c)),
+                    Err(state) => (state, None),
+                },
+            };
+            if state != member.state || checkout != member.checkout {
+                member.state = state;
+                member.checkout = checkout;
                 changed = true;
             }
         }
@@ -193,6 +238,31 @@ fn reconcile_member(member: &Member, branch: &str) -> MemberState {
         Some(w) if w.branch == branch => MemberState::Present,
         _ => MemberState::WorktreeMissing,
     }
+}
+
+fn reference_checkout(repo: &str) -> Result<Checkout, MemberState> {
+    if !crate::worktree::repo_readable(repo) {
+        return Err(MemberState::RepoMissing);
+    }
+    let default_branch = crate::worktree::origin_default(repo);
+    let worktrees = list_worktrees_body(repo.to_string()).unwrap_or_default();
+    if !worktrees.iter().any(|w| w.is_bare) {
+        let branch = worktrees
+            .iter()
+            .find(|w| same_path(&w.path, repo))
+            .map(|w| w.branch.clone())
+            .filter(|b| !b.is_empty());
+        return Ok(Checkout { path: repo.to_string(), branch, default_branch });
+    }
+    worktrees
+        .into_iter()
+        .filter(|w| !w.is_bare && Path::new(&w.path).is_dir())
+        .find(|w| match &default_branch {
+            Some(d) => &w.branch == d,
+            None => w.branch == "main" || w.branch == "master",
+        })
+        .map(|w| Checkout { path: w.path, branch: Some(w.branch), default_branch: default_branch.clone() })
+        .ok_or(MemberState::CheckoutMissing)
 }
 
 fn topic_mut<'a>(file: &'a mut TopicFile, topic_id: &str) -> Result<&'a mut Topic, String> {
@@ -418,14 +488,63 @@ fn same_repo(a: &str, b: &str) -> bool {
     common_dir(a) == common_dir(b)
 }
 
-fn pending_member(repo: &str, order: u32) -> Member {
+fn pending_member(repo: &str, mode: MemberMode, order: u32) -> Member {
     Member {
         repo_path: repo.to_string(),
         display_name: repo_display_name(repo),
+        mode,
         worktree_path: None,
+        checkout: None,
         state: MemberState::Failed { reason: PENDING.into() },
         order,
     }
+}
+
+/// One repo a creating call adds, and what it should be.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewMember {
+    pub repo_path: String,
+    #[serde(default)]
+    pub mode: MemberMode,
+}
+
+fn build(store: &Store, topic_id: &str, repo: &str, branch: &str, mode: MemberMode) -> Result<(), String> {
+    match mode {
+        MemberMode::Worktree => build_member(store, topic_id, repo, branch),
+        MemberMode::Reference => build_reference(store, topic_id, repo, false),
+    }
+}
+
+/// Attaching never writes git. Only the repair, which the user asks for by
+/// name, checks a container's default branch out when it has none.
+fn build_reference(store: &Store, topic_id: &str, repo: &str, repair: bool) -> Result<(), String> {
+    let resolved = match reference_checkout(repo) {
+        Err(MemberState::CheckoutMissing) if repair => {
+            let default = crate::worktree::origin_default(repo).unwrap_or_else(|| "main".into());
+            let lock = repo_lock(repo);
+            let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match create_worktree_in(repo, &default, Path::new(repo), None) {
+                Ok(_) => reference_checkout(repo),
+                Err(reason) => Err(MemberState::Failed { reason }),
+            }
+        }
+        other => other,
+    };
+    store.mutate(|file| {
+        let member = member_mut(topic_mut(file, topic_id)?, repo)?;
+        match resolved {
+            Ok(c) => {
+                member.checkout = Some(c);
+                member.state = MemberState::Present;
+            }
+            Err(state) => {
+                member.checkout = None;
+                member.state = state;
+            }
+        }
+        Ok(())
+    })
 }
 
 /// Create one member's worktree and flip its record. The repo lock covers the
@@ -479,6 +598,7 @@ fn load_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
 /// stays recorded as `Failed` with git's reason and the loop moves on, so the
 /// Topic exists even when one repo has a colliding folder. `on_step` sees
 /// the record after the write and after every member, N+1 times for N repos.
+#[cfg(test)]
 pub fn create_topic(
     store: &Store,
     name: &str,
@@ -486,14 +606,31 @@ pub fn create_topic(
     repos: &[String],
     on_step: &dyn Fn(&Topic),
 ) -> Result<Topic, String> {
+    let members: Vec<NewMember> = repos
+        .iter()
+        .map(|r| NewMember { repo_path: r.clone(), mode: MemberMode::Worktree })
+        .collect();
+    create_topic_with(store, name, branch, &members, on_step)
+}
+
+/// `create_topic` with a mode per repo. A reference creates nothing in git, so
+/// a Topic of only references never creates its branch.
+pub fn create_topic_with(
+    store: &Store,
+    name: &str,
+    branch: &str,
+    members: &[NewMember],
+    on_step: &dyn Fn(&Topic),
+) -> Result<Topic, String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("Topic name is empty".into());
     }
     let branch = valid_branch(branch)?;
-    if repos.is_empty() {
+    if members.is_empty() {
         return Err("A Topic needs at least one repository".into());
     }
+    let repos: Vec<&String> = members.iter().map(|m| &m.repo_path).collect();
     for (i, repo) in repos.iter().enumerate() {
         if repos[..i].iter().any(|seen| same_repo(seen, repo)) {
             return Err(format!("{repo} is listed twice"));
@@ -509,15 +646,19 @@ pub fn create_topic(
             id: id.clone(),
             name: name.to_string(),
             branch: branch.clone(),
-            members: repos.iter().enumerate().map(|(i, r)| pending_member(r, i as u32)).collect(),
+            members: members
+                .iter()
+                .enumerate()
+                .map(|(i, m)| pending_member(&m.repo_path, m.mode, i as u32))
+                .collect(),
             created_at: crate::owned_state::now_ms(),
         });
         Ok(())
     })?;
 
     on_step(&load_topic(store, &id)?);
-    for repo in repos {
-        build_member(store, &id, repo, &branch)?;
+    for m in members {
+        build(store, &id, &m.repo_path, &branch, m.mode)?;
         on_step(&load_topic(store, &id)?);
     }
     load_topic(store, &id)
@@ -527,28 +668,42 @@ pub fn create_topic(
 /// worktree it already has.
 pub fn retry_member(store: &Store, topic_id: &str, repo: &str) -> Result<Topic, String> {
     let topic = load_topic(store, topic_id)?;
-    if !topic.members.iter().any(|m| same_path(&m.repo_path, repo)) {
+    let Some(member) = topic.members.iter().find(|m| same_path(&m.repo_path, repo)) else {
         return Err(format!("{repo} is not a member of {}", topic.name));
+    };
+    match member.mode {
+        MemberMode::Worktree => build_member(store, topic_id, repo, &topic.branch)?,
+        MemberMode::Reference => build_reference(store, topic_id, repo, true)?,
     }
-    build_member(store, topic_id, repo, &topic.branch)?;
     load_topic(store, topic_id)
 }
 
 /// Append a pending member, then build it: one call ends with a member the
 /// user can open, or a `Failed` one with the reason. `on_step` sees the
 /// record after the append and after the build.
+#[cfg(test)]
 pub fn add_member(store: &Store, topic_id: &str, repo: &str, on_step: &dyn Fn(&Topic)) -> Result<Topic, String> {
+    add_member_as(store, topic_id, repo, MemberMode::Worktree, on_step)
+}
+
+pub fn add_member_as(
+    store: &Store,
+    topic_id: &str,
+    repo: &str,
+    mode: MemberMode,
+    on_step: &dyn Fn(&Topic),
+) -> Result<Topic, String> {
     let branch = store.mutate(|file| {
         let topic = topic_mut(file, topic_id)?;
         if topic.members.iter().any(|m| same_repo(&m.repo_path, repo)) {
             return Err(format!("{repo} is already a member of {}", topic.name));
         }
         let order = topic.members.len() as u32;
-        topic.members.push(pending_member(repo, order));
+        topic.members.push(pending_member(repo, mode, order));
         Ok(topic.branch.clone())
     })?;
     on_step(&load_topic(store, topic_id)?);
-    build_member(store, topic_id, repo, &branch)?;
+    build(store, topic_id, repo, &branch, mode)?;
     let topic = load_topic(store, topic_id)?;
     on_step(&topic);
     Ok(topic)
@@ -580,7 +735,7 @@ pub mod commands {
 
     use tauri::{AppHandle, Emitter, State};
 
-    use super::{BranchProbe, MemberState, Store, Topic};
+    use super::{BranchProbe, MemberMode, NewMember, Store, Topic};
     use crate::config::ProjectIndex;
     use crate::exec::blocking;
 
@@ -597,7 +752,11 @@ pub mod commands {
     fn settle(app: &AppHandle, index: &ProjectIndex, topic: &Topic) {
         for m in &topic.members {
             index.evict(Path::new(&m.repo_path));
-            if let (MemberState::Present, Some(path)) = (&m.state, &m.worktree_path) {
+            // A reference's folder is already the user's own unit.
+            if m.mode == MemberMode::Reference {
+                continue;
+            }
+            if let Some(path) = super::member_root(m) {
                 let _ = crate::sessions::adopt(path);
             }
         }
@@ -615,11 +774,12 @@ pub mod commands {
         index: State<'_, ProjectIndex>,
         name: String,
         branch: String,
-        members: Vec<String>,
+        members: Vec<NewMember>,
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("create_topic", move || {
-            let topic = super::create_topic(&Store::default_location(), &name, &branch, &members, &step(&app))?;
+            let topic =
+                super::create_topic_with(&Store::default_location(), &name, &branch, &members, &step(&app))?;
             settle(&app, &index, &topic);
             Ok(topic)
         })
@@ -648,10 +808,13 @@ pub mod commands {
         index: State<'_, ProjectIndex>,
         topic_id: String,
         repo_path: String,
+        mode: Option<MemberMode>,
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("add_member", move || {
-            let topic = super::add_member(&Store::default_location(), &topic_id, &repo_path, &step(&app))?;
+            let store = Store::default_location();
+            let mode = mode.unwrap_or_default();
+            let topic = super::add_member_as(&store, &topic_id, &repo_path, mode, &step(&app))?;
             settle(&app, &index, &topic);
             Ok(topic)
         })
@@ -789,7 +952,9 @@ mod tests {
         Member {
             repo_path: repo_path.to_string(),
             display_name: "m".into(),
+            mode: MemberMode::Worktree,
             worktree_path: worktree_path.map(String::from),
+            checkout: None,
             state,
             order: 0,
         }
@@ -1312,6 +1477,88 @@ mod tests {
         assert!(delete_topic(&store, "nope").is_err());
         delete_topic(&store, "f").unwrap();
         assert!(store.load().topics.is_empty());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn container(tmp: &Path, name: &str) -> String {
+        let src = tmp.join(format!("{name}-src"));
+        repo(&src);
+        let cont = tmp.join(name);
+        std::fs::create_dir_all(&cont).unwrap();
+        let out = Command::new("git")
+            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        cont.to_string_lossy().into_owned()
+    }
+
+    fn git_out(dir: &str, args: &[&str]) -> String {
+        let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    #[test]
+    fn a_record_from_before_modes_loads_as_worktree_members() {
+        let tmp = unique_tmp();
+        let store = Store::at(tmp.join("topics.json"));
+        std::fs::write(
+            &store.path,
+            r#"{"topics":[{"id":"f","name":"f","branch":"feat/f","members":[{"repoPath":"/r/a","worktreePath":"/r/a/.tori/worktrees/f","state":{"kind":"present"}}]}]}"#,
+        )
+        .unwrap();
+        let m = &store.load().topics[0].members[0];
+        assert_eq!(m.mode, MemberMode::Worktree);
+        assert_eq!(m.checkout, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_reference_reconciles_present_on_the_repos_own_checkout() {
+        let tmp = unique_tmp();
+        let a = repo(&tmp.join("a"));
+        let store = Store::at(tmp.join("topics.json"));
+        let branches = git_out(&a, &["branch", "--list"]);
+        let worktrees = git_out(&a, &["worktree", "list"]);
+
+        let members = [NewMember { repo_path: a.clone(), mode: MemberMode::Reference }];
+        let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
+        let m = &t.members[0];
+        assert_eq!(m.state, MemberState::Present);
+        assert_eq!(m.worktree_path, None, "a reference never records a worktree");
+        let checkout = m.checkout.as_ref().expect("a reference records where it reads");
+        assert_eq!(checkout.path, a);
+        assert!(checkout.branch.is_some());
+        assert_eq!(member_root(m), Some(a.as_str()));
+
+        assert_eq!(git_out(&a, &["branch", "--list"]), branches, "no branch is created");
+        assert_eq!(git_out(&a, &["worktree", "list"]), worktrees, "no worktree is created");
+        assert!(!tmp.join("a/.tori").exists());
+
+        let listed = list_topics(&store);
+        assert_eq!(listed[0].members[0].state, MemberState::Present);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_container_without_its_default_checkout_is_named_and_retry_checks_it_out() {
+        let tmp = unique_tmp();
+        let cont = container(&tmp, "cont");
+        let store = Store::at(tmp.join("topics.json"));
+
+        let worktrees = git_out(&cont, &["worktree", "list"]);
+        let members = [NewMember { repo_path: cont.clone(), mode: MemberMode::Reference }];
+        let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
+        assert_eq!(t.members[0].state, MemberState::CheckoutMissing);
+        assert_eq!(git_out(&cont, &["worktree", "list"]), worktrees, "attaching writes nothing");
+        assert_eq!(member_root(&list_topics(&store)[0].members[0]), None);
+
+        let t = retry_member(&store, &t.id, &cont).unwrap();
+        assert_eq!(t.members[0].state, MemberState::Present);
+        let checkout = t.members[0].checkout.as_ref().unwrap();
+        assert!(Path::new(&checkout.path).is_dir());
+        assert_eq!(t.members[0].worktree_path, None);
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

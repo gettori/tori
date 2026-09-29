@@ -5,7 +5,7 @@ import Icon from "../../components/Icon/Icon";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
-import { REPAIR_LABEL, type Topic, type Member, type RepairAction } from "../../utils/topics";
+import { REPAIR_LABEL, isReference, type Topic, type Member, type RepairAction } from "../../utils/topics";
 import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
 import { markTitle, rollupSync, syncMarks, syncState, type FinishedPr } from "../../utils/branchSync";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
@@ -63,6 +63,14 @@ export default function TopicItem(props: {
   const syncOf = (m: Member) => props.memberSync?.(m) ?? null;
   const finishedOf = (m: Member) => props.memberFinished?.(m) ?? null;
   const stateOf = (m: Member) => syncState(syncOf(m), finishedOf(m));
+  const referenceWarning = (m: Member): string | null => {
+    if (!isReference(m) || m.state.kind !== "present") return null;
+    const c = m.checkout;
+    if (c?.branch && c.defaultBranch && c.branch !== c.defaultBranch) return `On ${c.branch}, not ${c.defaultBranch}`;
+    return syncOf(m)?.dirty ? "Has uncommitted changes" : null;
+  };
+  const stateLabel = (m: Member, label: string) =>
+    isReference(m) && m.state.kind === "present" ? "Reference" : label;
   // Over every member, not the six that fit: a Topic speaks for all of them,
   // and the conflict hiding behind `+3` is the one worth knowing about.
   const rollup = createMemo(() =>
@@ -128,16 +136,18 @@ export default function TopicItem(props: {
                 const title = () => {
                   const s = m.state;
                   const branch = [sync().detail, dirty() ? "Uncommitted changes" : ""].filter(Boolean);
+                  const label = stateLabel(m.member, s.label);
                   const head =
                     s.reason && s.reason !== "pending"
-                      ? `${m.label}: ${s.label} (${s.reason})`
-                      : `${m.label}: ${s.label}, ${m.key}`;
-                  return [head, ...branch].join("\n");
+                      ? `${m.label}: ${label} (${s.reason})`
+                      : `${m.label}: ${label}, ${m.key}`;
+                  return [head, referenceWarning(m.member) ?? "", ...branch].filter(Boolean).join("\n");
                 };
                 return (
                   <MemberChip
                     icon={m.icon}
                     chipStyle={m.style}
+                    reference={isReference(m.member)}
                     size="md"
                     // Never `decorative` here: the badge below is the only spoken
                     // account of a member whose worktree is gone.
@@ -201,15 +211,22 @@ export default function TopicItem(props: {
               >
                 {/* Decorative: the name beside it is the spoken account here,
                     unlike the collapsed chip, which is on its own. */}
-                <MemberChip icon={m.icon} chipStyle={m.style} size="md" decorative />
+                <MemberChip icon={m.icon} chipStyle={m.style} reference={isReference(m.member)} size="md" decorative />
                 <span class={styles.memberName}>{m.label}</span>
                 <SyncMarks
                   marks={syncMarks(syncOf(m.member), finishedOf(m.member))}
                   label={markTitle(syncMarks(syncOf(m.member), finishedOf(m.member)))}
                 />
                 <span class={styles.memberState} data-member-state>
-                  {m.state.label}
+                  {stateLabel(m.member, m.state.label)}
                 </span>
+                <Show when={referenceWarning(m.member)}>
+                  {(warning) => (
+                    <span class={styles.memberWarning} data-member-warning>
+                      {warning()}
+                    </span>
+                  )}
+                </Show>
                 {/* On the row rather than in an actions strip below the chips:
                     the strip named the member in the button and still left the
                     seventh one, hidden behind `+N`, with nothing to press. */}
@@ -240,6 +257,7 @@ export default function TopicItem(props: {
 function badgeGlyph(member: Member): string {
   switch (member.state.kind) {
     case "worktree-missing":
+    case "checkout-missing":
       return "!";
     case "repo-missing":
       return "?";

@@ -28,7 +28,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   // the record comes from the shared resource, which also owns the tint and the
   // refetch on `topics://changed` / `config://changed`.
   const members = createTopicMembers(topicId);
-  const isActive = (m: TintedMember) => !!m.member.worktreePath && m.member.worktreePath === sel()?.activeRoot;
+  const isActive = (m: TintedMember) => !!m.root && m.root === sel()?.activeRoot;
   // Which repo the panels below are showing. Absent for a Topic whose members
   // are all broken, where the crumb falls back to the two it always had rather
   // than to an empty middle and a separator with nothing after it.
@@ -119,7 +119,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
                         // where the browser disagrees; carrying a chip must not
                         // also switch the panels below to it.
                         onClick={() =>
-                          !drag.fromDrag() && m.member.worktreePath && props.onActiveRoot?.(m.member.worktreePath)
+                          !drag.fromDrag() && m.root && props.onActiveRoot?.(m.root)
                         }
                       >
                         <ProjectIcon {...m.icon} />
