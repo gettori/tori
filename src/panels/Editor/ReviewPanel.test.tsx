@@ -104,6 +104,7 @@ let statusByRoot: Record<string, FileStatus[]> | null = null;
 let statusArgs: string[] = [];
 let diffArgs: { projectPath: string; file: string }[] = [];
 let stageArgs: { projectPath: string; paths: string[] }[] = [];
+let pullArgs: { repo: string; ffOnly?: boolean }[] = [];
 // Which repo the checkpoint timeline read its backstops from. It has to be the
 // same member the commit box is about, or the strip lists one member's history
 // against another member's changes.
@@ -112,6 +113,9 @@ let backstopRoots: string[] = [];
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
     switch (cmd) {
+      case "git_pull":
+        pullArgs.push(args as { repo: string; ffOnly?: boolean });
+        return Promise.resolve(null);
       case "git_stage":
         stageArgs.push(args as { projectPath: string; paths: string[] });
         statusRows = [STAGED];
@@ -324,6 +328,7 @@ beforeEach(async () => {
   statusArgs = [];
   diffArgs = [];
   stageArgs = [];
+  pullArgs = [];
   backstopRoots = [];
   aheadBehind = null;
   polledPrState = null;
@@ -1514,6 +1519,25 @@ describe("inside a Topic", () => {
 
     await waitFor(() => expect(stageArgs).toHaveLength(1));
     expect(stageArgs[0]).toMatchObject({ projectPath: B, paths: ["src/index.ts"] });
+  });
+
+  it("offers a reference member's files to read but not to stage, discard, commit or push, and still pulls", async () => {
+    await mountTopic(MEMBERS.map((m) => (m.path === A ? { ...m, readOnly: true } : m)));
+    await waitFor(() => expect(shownRoot()).toBe(A));
+    expect(screen.getByTitle("src/index.ts")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stage" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Discard" })).toBeNull();
+    expect(screen.queryByPlaceholderText("Message")).toBeNull();
+
+    pointerClick(screen.getByRole("button", { name: "More Actions" }));
+    pointerClick(await screen.findByRole("menuitem", { name: "Pull" }));
+    expect(screen.queryByRole("menuitem", { name: "Stage All Changes" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Push" })).toBeNull();
+    await waitFor(() => expect(pullArgs).toEqual([expect.objectContaining({ repo: A, ffOnly: true })]));
+
+    fireEvent.click(chip("web"));
+    await waitFor(() => expect(shownRoot()).toBe(B));
+    expect(screen.getByRole("button", { name: "Stage" })).toBeTruthy();
   });
 
   it("opens the diff tab of the member on screen", async () => {

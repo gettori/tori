@@ -21,6 +21,7 @@ const member = (name: string, i: number, broken = false): TintedMember => {
       order: i,
     } as TintedMember["member"],
     key: broken ? `/repos/${name}` : `/feat/${name}`,
+    root: broken ? null : `/feat/${name}`,
     label: name,
     state: broken
       ? { label: "Worktree missing", usable: false, action: "recreate", reason: null }

@@ -2,9 +2,10 @@ import { createSignal, createEffect, on, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
+import Checkbox from "../Checkbox/Checkbox";
 import Dialog from "../Dialog/Dialog";
 import RepoChecklist, { type RepoSpace } from "./RepoChecklist";
-import { topicSlug, type Topic } from "../../utils/topics";
+import { topicSlug, type MemberMode, type Topic } from "../../utils/topics";
 
 const NAME_LABEL = "topic-name-label";
 const BRANCH_LABEL = "topic-branch-label";
@@ -16,8 +17,8 @@ type Probe = { branch: string; result: BranchProbe | null };
 const CLEAR: BranchProbe = { valid: true, local: false, remote: false, hasWorktree: false };
 
 /** Create a Topic, or add repositories to one (`topic` set): the same
- *  checklist, the same probe per checked repo, the same collision row. Only
- *  the name and branch fields and the command differ.
+ *  checklist, the same probe per repo that gets a worktree, the same collision
+ *  row. Only the name and branch fields and the command differ.
  *
  *  A probe answer is keyed on `(repoPath, branch)` and dropped when either
  *  has moved on, so a slow answer for a previous branch can never mark the
@@ -37,6 +38,9 @@ export default function NewTopicDialog(props: {
   const [name, setName] = createSignal("");
   const [typedBranch, setTypedBranch] = createSignal<string | null>(null);
   const [checked, setChecked] = createSignal<string[]>([]);
+  // Repos that get a worktree now. Everything else is attached as a reference,
+  // which touches nothing in git, so only these rows have a branch to probe.
+  const [worktrees, setWorktrees] = createSignal<ReadonlySet<string>>(new Set());
   const [probes, setProbes] = createSignal<Map<string, Probe>>(new Map());
   const [adopting, setAdopting] = createSignal<Map<string, string>>(new Map());
   const [busy, setBusy] = createSignal(false);
@@ -71,16 +75,26 @@ export default function NewTopicDialog(props: {
         setProbes((prev) => new Map(prev).set(repoPath, { branch: forBranch, result: CLEAR }));
       });
   }
+  const withWorktree = () => checked().filter((r) => worktrees().has(r));
+  const modeOf = (repoPath: string): MemberMode => (worktrees().has(repoPath) ? "worktree" : "reference");
+  function setWorktree(repoPath: string, on: boolean) {
+    setWorktrees((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(repoPath);
+      else next.delete(repoPath);
+      return next;
+    });
+  }
   function probeStale() {
     const b = branch();
     if (!b) return;
-    for (const repoPath of checked()) {
+    for (const repoPath of withWorktree()) {
       const have = probes().get(repoPath);
       if (have?.branch !== b) probe(repoPath, b);
     }
   }
   createEffect(
-    on([branch, checked], () => {
+    on([branch, withWorktree], () => {
       clearTimeout(timer);
       const branchChanged = branch() !== lastBranch;
       lastBranch = branch();
@@ -92,15 +106,16 @@ export default function NewTopicDialog(props: {
 
   type Row = "clear" | "pending" | "collided" | "adopting";
   const row = (repoPath: string): Row => {
+    if (!worktrees().has(repoPath)) return "clear";
     if (!branch()) return "pending";
     const p = probes().get(repoPath);
     if (!p || p.branch !== branch() || !p.result) return "pending";
     if (!p.result.local && !p.result.remote && !p.result.hasWorktree) return "clear";
     return adopting().get(repoPath) === branch() ? "adopting" : "collided";
   };
-  const unresolved = () => checked().some((r) => row(r) === "pending" || row(r) === "collided");
+  const unresolved = () => withWorktree().some((r) => row(r) === "pending" || row(r) === "collided");
   const invalid = () =>
-    checked().some((r) => {
+    withWorktree().some((r) => {
       const p = probes().get(r);
       return p?.branch === branch() && p.result?.valid === false;
     });
@@ -127,10 +142,11 @@ export default function NewTopicDialog(props: {
       if (props.topic) {
         topic = props.topic;
         for (const repoPath of checked()) {
-          topic = await invoke<Topic>("add_member", { topicId: props.topic.id, repoPath });
+          topic = await invoke<Topic>("add_member", { topicId: props.topic.id, repoPath, mode: modeOf(repoPath) });
         }
       } else {
-        topic = await invoke<Topic>("create_topic", { name: name().trim(), branch: branch(), members: checked() });
+        const members = checked().map((repoPath) => ({ repoPath, mode: modeOf(repoPath) }));
+        topic = await invoke<Topic>("create_topic", { name: name().trim(), branch: branch(), members });
       }
       props.onDone(topic);
     } catch (e) {
@@ -145,9 +161,27 @@ export default function NewTopicDialog(props: {
     void confirm();
   }
 
+  const rowExtra = (repoPath: string) => {
+    if (!checked().includes(repoPath)) return undefined;
+    return (
+      <>
+        <Checkbox
+          checked={worktrees().has(repoPath)}
+          onChange={(on) => setWorktree(repoPath, on)}
+          label={
+            <>
+              Create worktree<span class={styles.srOnly}> in {repoName(repoPath)}</span>
+            </>
+          }
+        />
+        {collision(repoPath)}
+      </>
+    );
+  };
+
   const collision = (repoPath: string) => {
     const state = row(repoPath);
-    if (state === "clear" || state === "pending" || !checked().includes(repoPath)) return undefined;
+    if (state === "clear" || state === "pending") return undefined;
     return (
       <div class={styles.collision} data-adopting={state === "adopting" ? "" : undefined}>
         <Show
@@ -244,7 +278,7 @@ export default function NewTopicDialog(props: {
         value={checked()}
         onChange={setChecked}
         exclude={exclude()}
-        collision={collision}
+        collision={rowExtra}
       />
     </Dialog>
   );

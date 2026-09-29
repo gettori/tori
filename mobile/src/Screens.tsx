@@ -236,8 +236,10 @@ export function ProjectScreen(props: {
 }
 
 export function memberUnit(tree: Tree | undefined, topic: Topic, member: Topic["members"][number]): Unit {
-  const known = tree?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units)).find((u) => u.folder === member.worktreePath);
-  return known ?? { label: member.displayName, folder: member.worktreePath, branch: topic.branch, kind: "worktree", isCurrent: false };
+  const folder = member.worktreePath ?? member.checkout?.path ?? member.repoPath;
+  const branch = member.worktreePath ? topic.branch : (member.checkout?.branch ?? null);
+  const known = tree?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units)).find((u) => u.folder === folder);
+  return known ?? { label: member.displayName, folder, branch, kind: "worktree", isCurrent: false };
 }
 
 export function TopicScreen(props: {

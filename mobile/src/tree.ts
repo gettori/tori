@@ -33,7 +33,14 @@ export type Project = { name: string; path: string; icon?: string | null; image?
 
 export type Space = { name: string; path: string; icon: string | null; color: string | null; projects: Project[] };
 
-export type TopicMember = { repoPath: string; displayName: string; worktreePath: string; order: number };
+export type TopicMember = {
+  repoPath: string;
+  displayName: string;
+  /** Null for a reference member, which reads the repo's own checkout instead. */
+  worktreePath: string | null;
+  checkout?: { path: string; branch: string | null } | null;
+  order: number;
+};
 
 export type Topic = { id: string; name: string; branch: string; members: TopicMember[] };
 
