@@ -162,7 +162,6 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: calc(4px * var(--ui-scale));
   height: calc(36px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
   /* clip, like every tab strip: an OverflowTabBar must never scroll, or a

@@ -106,7 +106,6 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: calc(4px * var(--ui-scale));
   min-height: calc(40px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale));
   -webkit-user-select: none;
@@ -220,7 +219,6 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: calc(2px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale));
   /* clip, like every tab strip: an OverflowTabBar must never scroll, or a
      focused tab drags the +N model's hidden tabs halfway in. */
