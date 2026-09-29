@@ -197,7 +197,7 @@ import {
 } from "../../utils/events";
 import { copyPaths, revealPaths } from "../../utils/pathActions";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
-import { rootOf, selectionRoot, workspaceKey } from "../../utils/topics";
+import { isReference, rootOf, selectionRoot, workspaceKey } from "../../utils/topics";
 import {
   createTopicMembers,
   focusMemberRoot,
@@ -970,6 +970,7 @@ export default function Editor(props: {
           tint: m.hue,
           icon: m.icon,
           state: m.state,
+          readOnly: isReference(m.member),
         }))
       : undefined;
 
@@ -2298,6 +2299,23 @@ export default function Editor(props: {
   // front otherwise, which is the only answer a branch unit has.
   const gitRoot = () => rootOf(activeId(), watchRoots()) ?? root();
 
+  // The root a palette command that writes git may act in. A reference member's
+  // checkout is the user's own, so it answers null with the reason said, the
+  // same refusal a file outside every member gets.
+  function gitWriteRoot(): string | null {
+    return gitWriteRootFor(gitRoot());
+  }
+  const referenceAt = (r: string | null) => (r ? members().find((m) => isReference(m.member) && m.root === r) : undefined);
+  function gitWriteRootFor(r: string | null): string | null {
+    const ref = referenceAt(r);
+    if (!ref) return r;
+    emitWith<ToastEvent>(TOAST, {
+      message: `${ref.label} is attached for reference. Create a worktree to change it.`,
+      kind: "error",
+    });
+    return null;
+  }
+
   // Repo-relative, which is what every git_* command takes, alongside the repo
   // it is relative to. A file outside every member (a `.shared/` file, say) has
   // no path git would accept, so it is refused by name rather than staged
@@ -2317,6 +2335,7 @@ export default function Editor(props: {
       });
       return null;
     }
+    if (!gitWriteRootFor(r)) return null;
     return { root: r, rel: mentionPath(path, r) };
   }
 
@@ -2327,7 +2346,7 @@ export default function Editor(props: {
   }
 
   async function commitFromPrompt() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     // Re-checked here, not just in the palette's enablement: the index can move
     // between the row being listed and the prompt being answered.
     if (!r || !stagedFiles(r).length) return;
@@ -2337,7 +2356,7 @@ export default function Editor(props: {
   }
 
   function pushCurrentBranch() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     const branch = gitStateFor(r).branch;
     if (r && branch) void pushToOrigin(r, branch);
   }
@@ -2345,7 +2364,7 @@ export default function Editor(props: {
   /** Pull, then push what the pull left ahead. Sequential, not parallel: a push
    *  racing its own pull is how a non-fast-forward rejection happens. */
   async function syncCurrentBranch() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r) return;
     if (!(await pullIn(r))) return;
     const branch = gitStateFor(r).branch;
@@ -2354,7 +2373,7 @@ export default function Editor(props: {
 
   /** A branch to act on, chosen from this repo's own list. */
   async function pickBranch(title: string, { creatable = false, exceptCurrent = false } = {}) {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r) return null;
     const current = gitStateFor(r).branch;
     const names = (await branchNames(r)).filter((n) => !exceptCurrent || n !== current);
@@ -2373,7 +2392,7 @@ export default function Editor(props: {
     run: (root: string) => Promise<IntegrateOutcome | null>,
     quietDone = false,
   ) {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r) return;
     const allowed = await mayRewrite(verb, r, {
       confirm: askConfirm,
@@ -2383,7 +2402,7 @@ export default function Editor(props: {
   }
 
   async function undoLastCommitHere() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r) return;
     const ok = await askConfirm({
       title: "Undo the last commit?",
@@ -2395,7 +2414,7 @@ export default function Editor(props: {
   }
 
   async function discardAllHere() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r) return;
     const files = changedFiles(r).map((f) => f.path);
     if (!files.length) return;
@@ -2424,14 +2443,14 @@ export default function Editor(props: {
   }
 
   async function createBranchHere() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r) return;
     const name = (await askText("New branch name", ""))?.trim();
     if (name) await createBranch(r, name);
   }
 
   async function renameBranchHere() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     const from = gitStateFor(r).branch;
     if (!r || !from) return;
     const to = (await askText("Rename branch to", from))?.trim();
@@ -2453,7 +2472,7 @@ export default function Editor(props: {
   }
 
   async function commitFromPromptSignedOff() {
-    const r = gitRoot();
+    const r = gitWriteRoot();
     if (!r || !stagedFiles(r).length) return;
     const message = (await askText("Commit message (signed off)", ""))?.trim();
     if (message) await commitStaged(r, message, false, true);
@@ -2537,26 +2556,26 @@ export default function Editor(props: {
       }),
       onEvent(GIT_PULL, () => {
         const r = gitRoot();
-        if (r) void pullIn(r);
+        if (r) void pullIn(r, false, !!referenceAt(r));
       }),
       onEvent(GIT_PULL_REBASE, () => {
-        const r = gitRoot();
+        const r = gitWriteRoot();
         if (r) void pullIn(r, true);
       }),
       onEvent(GIT_SYNC, () => void syncCurrentBranch()),
       onEvent(GIT_STAGE_ALL, () => {
-        const r = gitRoot();
+        const r = gitWriteRoot();
         if (r) void stageAll(r);
       }),
       onEvent(GIT_UNSTAGE_ALL, () => {
-        const r = gitRoot();
+        const r = gitWriteRoot();
         if (r) void unstageAll(r);
       }),
       onEvent(GIT_DISCARD_ALL, () => void discardAllHere()),
       onEvent(GIT_COMMIT_SIGNOFF, () => void commitFromPromptSignedOff()),
       onEvent(GIT_UNDO_COMMIT, () => void undoLastCommitHere()),
       onEvent(GIT_STASH_STAGED, () => {
-        const r = gitRoot();
+        const r = gitWriteRoot();
         if (r) void stashStaged(r);
       }),
       onEvent(GIT_MERGE_BRANCH, () => {
@@ -2570,7 +2589,7 @@ export default function Editor(props: {
         });
       }),
       onEvent(GIT_ABORT, () => {
-        const r = gitRoot();
+        const r = gitWriteRoot();
         if (r) void abortIntegrate(r);
       }),
       onEvent(GIT_CONTINUE, () => void rewriteHere("Continue", continueIntegrate, true)),

@@ -37,7 +37,7 @@ export default function MemberChipRow(props: {
       ? props.isOn(m)
       : props.activeKey !== undefined
       ? m.key === props.activeKey
-      : !!m.member.worktreePath && m.member.worktreePath === props.activeRoot;
+      : !!m.root && m.root === props.activeRoot;
   const cap = () => props.cap ?? CHIP_CAP;
   const pickable = (m: TintedMember) => (props.canPick ? props.canPick(m) : !!props.onPick || m.state.usable);
 
@@ -60,7 +60,7 @@ export default function MemberChipRow(props: {
   const nameOf = (m: TintedMember) => (m.state.usable ? m.label : `${m.label}: ${m.state.label}`);
   const switchTo = (m: TintedMember) => {
     if (props.onPick) props.onPick(m);
-    else if (m.member.worktreePath) props.onActiveRoot?.(m.member.worktreePath);
+    else if (m.root) props.onActiveRoot?.(m.root);
   };
 
   return (

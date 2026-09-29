@@ -3107,6 +3107,7 @@ pub fn git_pull(
     state: State<AskpassState>,
     repo: String,
     rebase: Option<bool>,
+    ff_only: Option<bool>,
 ) -> Result<(), String> {
     let inner = state.0.clone();
     let op_id = next_op_id();
@@ -3117,7 +3118,15 @@ pub fn git_pull(
             .as_ref()
             .and_then(|(remote, _)| crate::credential::bridge(&mut cmd, &repo, remote, &op_id));
         cmd.arg("pull");
-        cmd.arg(if rebase.unwrap_or(false) { "--rebase" } else { "--no-rebase" });
+        // A reference member's checkout is the user's own: it may catch up,
+        // never grow a merge commit Tori made.
+        cmd.arg(if ff_only.unwrap_or(false) {
+            "--ff-only"
+        } else if rebase.unwrap_or(false) {
+            "--rebase"
+        } else {
+            "--no-rebase"
+        });
         if let Some((remote, Some(branch))) = target {
             cmd.arg(remote);
             cmd.arg(branch);

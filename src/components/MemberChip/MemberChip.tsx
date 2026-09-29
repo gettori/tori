@@ -1,6 +1,9 @@
-import { createMemo, splitProps, type JSX } from "solid-js";
+import { Show, createMemo, splitProps, type JSX } from "solid-js";
+import { Lock } from "lucide-solid";
+import Icon from "../Icon/Icon";
 import ProjectIcon, { type ProjectIconSource } from "../Icon/ProjectIcon";
 import type { ChipStyle, TintedMember } from "../../utils/topicMembers";
+import { isReference } from "../../utils/topics";
 import styles from "./MemberChip.module.css";
 
 export interface MemberChipProps
@@ -21,6 +24,9 @@ export interface MemberChipProps
    * badge inside would stop being announced.
    */
   decorative?: boolean;
+  /** A reference member: the repo's own checkout, read for context and never
+   *  changed. Drawn as a lock in the corner no other badge uses. */
+  reference?: boolean;
   /** An announced state badge, mounted inside the box so it can corner-pin. */
   children?: JSX.Element;
 }
@@ -37,6 +43,7 @@ export default function MemberChip(props: MemberChipProps) {
     "chipStyle",
     "size",
     "decorative",
+    "reference",
     "children",
     "class",
     "classList",
@@ -60,6 +67,11 @@ export default function MemberChip(props: MemberChipProps) {
       style={style()}
     >
       <ProjectIcon {...local.icon} />
+      <Show when={local.reference}>
+        <span class={styles.lock} role="img" aria-label="Reference, read only" data-reference>
+          <Icon icon={Lock} />
+        </span>
+      </Show>
       {local.children}
     </span>
   );
@@ -75,6 +87,7 @@ export function TabMemberChip(props: { member: TintedMember }) {
       icon={props.member.icon}
       chipStyle={props.member.style}
       decorative
+      reference={isReference(props.member.member)}
       data-chip={props.member.member.repoPath}
       data-state={props.member.member.state.kind}
     />

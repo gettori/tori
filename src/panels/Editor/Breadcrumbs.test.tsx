@@ -115,6 +115,7 @@ describe("the member crumb", () => {
       order: 1,
     },
     key: WEB,
+    root: WEB,
     label: "web",
     state: { label: "Ready", usable: true, action: null, reason: null },
     hue: "oklch(0.72 0.13 250)",
