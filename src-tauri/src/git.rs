@@ -57,7 +57,13 @@ pub(crate) fn git_status_body(project_path: &str) -> Result<Vec<GitFileStatus>, 
     let output = Command::new("git")
         .arg("-C")
         .arg(project_path)
-        .args(["--no-optional-locks", "status", "--porcelain=v2", "-z"])
+        .args([
+            "--no-optional-locks",
+            "status",
+            "--porcelain=v2",
+            "--untracked-files=all",
+            "-z",
+        ])
         .output()
         .map_err(|e| e.to_string())?;
 
