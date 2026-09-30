@@ -284,19 +284,151 @@
 .wtCheck input {
   cursor: pointer;
 }
-/* ---- Topic creation (NewTopicDialog, RepoChecklist): one checkbox group
-   per Space, and under a checked repo whose branch already exists, the
-   collision line with its two answers. ---- */
+/* ---- Topic creation (NewTopicDialog, RepoChecklist): name and branch side
+   by side, then the repo picker on the left and the picked repos, each with
+   its mode, on the right. The panes run edge to edge, so the form pulls itself
+   out to the body's padding. ---- */
+.topicForm {
+  display: flex;
+  flex-direction: column;
+  margin: 0 calc(-1 * var(--tori-space-6)) calc(-1 * var(--tori-space-7));
+}
+.topicFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tori-space-6);
+  padding: 0 var(--tori-space-6) var(--tori-space-6);
+  border-bottom: 1px solid var(--border-default);
+}
+.topicFields .label {
+  margin-top: 0;
+}
+.mono {
+  font-family: var(--tori-font-mono);
+}
+.topicPanes {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  height: calc(360px * var(--ui-scale));
+}
+.topicPicker,
+.topicPicked {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--tori-space-5) var(--tori-space-6);
+}
+.topicPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-5);
+  border-right: 1px solid var(--border-default);
+}
+.topicFilter {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-subtle);
+}
+.topicFilter:focus-within {
+  border-color: var(--brand-default);
+}
+.topicFilter input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+}
+.topicFilterIcon {
+  flex: 0 0 auto;
+}
 .repoChecklist {
   display: flex;
   flex-direction: column;
-  gap: calc(12px * var(--ui-scale));
+  gap: var(--tori-space-5);
+}
+.spaceLabel {
+  font-size: var(--tori-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+/* The checkbox root is the one `[data-checked]` element holding the input;
+   Kobalte stamps the same attribute on the box and the label inside it. The
+   negative margin keeps a highlighted row's text in line with its neighbours. */
+.repoChecklist [data-checked]:has(> input) {
+  margin: calc(-3px * var(--ui-scale)) calc(-6px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: var(--tori-radius-sm);
+  background: var(--neutral-subtle);
+}
+.pickedHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--tori-space-4);
+  margin-bottom: var(--tori-space-4);
+  font-size: var(--tori-text-xs);
+  color: var(--fg-subtle);
+}
+.pickedHead > :first-child {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.spaceWarning {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  margin-bottom: var(--tori-space-4);
+  padding: var(--tori-space-3) var(--tori-space-5);
+  border-radius: var(--tori-radius-md);
+  background: color-mix(in srgb, var(--attention-emphasis) 10%, transparent);
+  font-size: var(--tori-text-md);
+  color: var(--attention-fg);
+}
+.pickedEmpty {
+  font-size: var(--tori-text-md);
+  color: var(--fg-subtle);
+}
+.pickedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pickedCard {
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  background: var(--canvas-card);
+  overflow: hidden;
+}
+.pickedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tori-space-4);
+  padding: var(--tori-space-3) var(--tori-space-3) var(--tori-space-3) var(--tori-space-5);
+}
+.pickedName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
 }
 .slug {
   font-family: var(--tori-font-mono);
   font-size: var(--tori-text-md);
   color: var(--fg-muted);
-  margin-top: calc(6px * var(--ui-scale));
   word-break: break-all;
 }
 .slug strong {
@@ -305,14 +437,33 @@
 }
 .collision {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-3) var(--tori-space-3) var(--tori-space-3) var(--tori-space-5);
+  border-top: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--attention-emphasis) 10%, transparent);
   font-size: var(--tori-text-md);
-  color: var(--fg-muted);
+  color: var(--attention-fg);
 }
 .collision[data-adopting] {
-  color: var(--fg-default);
+  background: none;
+  color: var(--fg-muted);
+}
+.collisionIcon {
+  flex: 0 0 auto;
+}
+.collisionText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.collisionText code {
+  font-family: var(--tori-font-mono);
+}
+.topicStatus {
+  margin-right: auto;
+  align-self: center;
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
 }
 .srOnly {
   composes: srOnly from "../../styles/patterns.module.css";

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { Topic } from "../../utils/topics";
 
@@ -66,16 +66,17 @@ const EXISTING: Topic = {
 const name = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
 const branch = () => screen.getByRole("textbox", { name: "Branch" }) as HTMLInputElement;
 const box = (label: string) => screen.getByRole("checkbox", { name: label }) as HTMLInputElement;
-// A tolerant match: jsdom joins the sr-only repo name to the visible label
-// with no space (gotcha_jsdoms_accessible_name_joins_adjacent_nodes_with_no_separator).
 const worktree = (label: string) =>
-  screen.getByRole("checkbox", { name: new RegExp(`^Create worktree\\s*in ${label}$`) }) as HTMLInputElement;
+  within(screen.getByRole("group", { name: `Mode for ${label}` })).getByRole("button", { name: "Worktree" });
+// The branch is its own `<code>`, so the sentence is only whole on its parent.
+const sentence = (text: string) => (_: string, el: Element | null) =>
+  el?.tagName === "SPAN" && el.textContent === text;
 // Check a repo and ask for a worktree in it, the only rows with a branch to probe.
 const pickWithWorktree = (label: string) => {
   fireEvent.click(box(label));
   fireEvent.click(worktree(label));
 };
-const done = () => screen.getByRole("button", { name: /Done|Working/ }) as HTMLButtonElement;
+const done = () => screen.getByRole("button", { name: /Create Topic|Add to Topic|Working/ }) as HTMLButtonElement;
 const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_topic_branch");
 // Kobalte's focus scope settles from a `setTimeout(0)`; a test that moved focus
 // has to let that run before the render is torn down under it.
@@ -128,7 +129,7 @@ describe("NewTopicDialog", () => {
     const { onDone } = open();
     fireEvent.input(name(), { target: { value: "x" } });
     fireEvent.click(box("api"));
-    expect(worktree("api").checked).toBe(false);
+    expect(worktree("api").getAttribute("aria-pressed")).toBe("false");
     await waitFor(() => expect(done().disabled).toBe(false));
     await macrotask();
     expect(probeCalls()).toEqual([]);
@@ -176,28 +177,28 @@ describe("NewTopicDialog", () => {
     worktree("api").focus();
     fireEvent.click(worktree("api"));
 
-    expect(await screen.findByText("x already exists")).toBeTruthy();
+    expect(await screen.findByText(sentence("x already exists"))).toBeTruthy();
     expect(done().disabled).toBe(true);
     // The probe landing must not remount the row the keyboard is on.
     expect(document.activeElement).toBe(worktree("api"));
 
     fireEvent.click(screen.getByRole("button", { name: "Adopt in api" }));
-    await screen.findByText("Adopting x");
+    await screen.findByText(sentence("Adopting x"));
     expect(box("api").checked).toBe(true);
     await waitFor(() => expect(done().disabled).toBe(false));
   });
 
-  it("Rename this Topic unchecks the repo and returns to the name", async () => {
+  it("Rename Topic unchecks the repo and returns to the name", async () => {
     bridge.probes["/w/api@x"] = { valid: true, local: false, remote: true, hasWorktree: false };
     open();
     fireEvent.input(name(), { target: { value: "x" } });
     pickWithWorktree("api");
-    await screen.findByText("x already exists");
+    await screen.findByText(sentence("x already exists"));
 
-    fireEvent.click(screen.getByRole("button", { name: /Rename this Topic/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Rename Topic/ }));
     expect(box("api").checked).toBe(false);
     expect(document.activeElement).toBe(name());
-    expect(screen.queryByText("x already exists")).toBeNull();
+    expect(screen.queryByText(sentence("x already exists"))).toBeNull();
     await macrotask();
   });
 
@@ -268,12 +269,12 @@ describe("NewTopicDialog", () => {
     open({ topic: EXISTING });
     pickWithWorktree("web");
 
-    expect(await screen.findByText("feat/auth already exists")).toBeTruthy();
+    expect(await screen.findByText(sentence("feat/auth already exists"))).toBeTruthy();
     expect(done().disabled).toBe(true);
-    expect(screen.queryByRole("button", { name: /Rename this Topic/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Rename Topic/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Leave out, web" }));
-    await waitFor(() => expect(screen.queryByText("feat/auth already exists")).toBeNull());
+    await waitFor(() => expect(screen.queryByText(sentence("feat/auth already exists"))).toBeNull());
     expect(box("web").checked).toBe(false);
     expect(bridge.calls.some((c) => c.cmd === "add_member")).toBe(false);
   });

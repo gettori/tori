@@ -62,17 +62,4 @@ describe("RepoChecklist", () => {
     expect(screen.queryByRole("group", { name: "infra" })).toBeNull();
     expect(box("web")).toBeTruthy();
   });
-
-  it("hangs the collision element under its repo", () => {
-    render(() => (
-      <RepoChecklist
-        spaces={SPACES}
-        value={["/w/api"]}
-        onChange={() => {}}
-        collision={(p) => (p === "/w/api" ? <span>feat/x already exists</span> : undefined)}
-      />
-    ));
-    expect(screen.getByText("feat/x already exists")).toBeTruthy();
-    expect(box("api").getAttribute("aria-describedby")).toBeTruthy();
-  });
 });
