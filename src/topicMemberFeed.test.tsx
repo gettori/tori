@@ -1,16 +1,17 @@
 // The record-only commands emit (#159 phase 1). `remove_member`,
 // `reorder_members`, `rename_member` and `rename_topic` used to answer
 // nothing and announce nothing, so every consumer of the shared tinted-members
-// resource - the Toolbar's chips, the editor's tree, the Omnibox - kept showing
+// resource - the editor's tree, the Omnibox - kept showing
 // the name and the order the Topic had when the window opened. The sidebar
 // only looked right because it patched its own signal.
 //
 // What is asserted here is the *feed*, not the sidebar: an emitted
 // `topics://changed` refetches (`createTopicMembers` is invalidation-based
-// by design, one read per generation) and the chip row follows. The panels that
+// by design, one read per generation) and a consumer follows. The panels that
 // take those members as a prop assert the prop drives them in their own files.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, waitFor } from "@solidjs/testing-library";
+import { For } from "solid-js";
 
 const A = "/w/api/.tori/worktrees/auth";
 const B = "/w/web/.tori/worktrees/auth";
@@ -51,27 +52,18 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
-const { default: Toolbar } = await import("./components/Toolbar/Toolbar");
+const { createTopicMembers } = await import("./utils/topicMembers");
 
-const sel = {
-  kind: "topic",
-  topicId: "f1",
-  topicName: "Auth",
-  roots: [A, B],
-  activeRoot: A,
-  spaceName: "",
-  projectName: "Auth",
-  projectPath: A,
-  folderPath: A,
-  branch: "feat/auth",
-  projectKind: "topic",
-};
+// The smallest consumer: the member names, in the resource's order.
+function Feed() {
+  const members = createTopicMembers(() => "f1");
+  return <For each={members()}>{(m) => <span data-member aria-label={m.label} />}</For>;
+}
 
 const changed = () => (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: null }));
 const reads = () => bridge.calls.filter((c) => c.cmd === "list_topics").length;
 const chips = () => Array.from(document.querySelectorAll<HTMLElement>("[data-member]"));
 const names = () => chips().map((c) => c.getAttribute("aria-label"));
-const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 
 beforeEach(() => {
   bridge.calls.length = 0;
@@ -81,14 +73,14 @@ beforeEach(() => {
 // The resource reads once per generation module-wide, so a second test in this
 // file would be served the first one's record from the cache. One emit is what
 // moves the generation on, which is the same mechanism under test.
-async function mount(onActiveRoot?: (root: string) => void) {
-  render(() => <Toolbar selected={sel as never} onActiveRoot={onActiveRoot} />);
+async function mount() {
+  render(() => <Feed />);
   changed();
   await waitFor(() => expect(names()).toEqual(["api", "web"]));
 }
 
 describe("the Topic record feed", () => {
-  it("refetches on the emit, so a renamed member reaches the Toolbar chip", async () => {
+  it("refetches on the emit, so a renamed member reaches a consumer", async () => {
     await mount();
     const before = reads();
 
@@ -99,28 +91,12 @@ describe("the Topic record feed", () => {
     expect(reads()).toBe(before + 1);
   });
 
-  it("reorders the chip row on the emit a reorder produces", async () => {
+  it("reorders the members on the emit a reorder produces", async () => {
     await mount();
 
     bridge.members = [member("/w/api", "api", A, 1), member("/w/web", "web", B, 0)];
     changed();
 
     await waitFor(() => expect(names()).toEqual(["web", "api"]));
-  });
-
-  it("drags a chip onto another and commits that order without switching the active root", async () => {
-    const onActiveRoot = vi.fn();
-    await mount(onActiveRoot);
-    const [api, web] = chips();
-
-    fireEvent.dragStart(web);
-    fireEvent.dragOver(api);
-    fireEvent.drop(api);
-    // The click a drag ends with in the browsers that still send one.
-    fireEvent.click(api);
-
-    await waitFor(() => expect(sent("reorder_members").length).toBe(1));
-    expect(sent("reorder_members")[0].args).toEqual({ topicId: "f1", repoPaths: ["/w/web", "/w/api"] });
-    expect(onActiveRoot).not.toHaveBeenCalled();
   });
 });
