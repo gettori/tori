@@ -1372,12 +1372,16 @@ export default function SearchPanel(props: {
                     class={`${tree.treeRow} ${styles.row} ${styles.memberRow}`}
                     onClick={() => toggleCollapsed(memberKey(member.path))}
                   >
-                    <Chevron open={!isCollapsed(memberKey(member.path))} />
-                    <MemberChip
-                      icon={member.icon ?? { seed: member.repoPath }}
-                      tint={member.tint}
-                      decorative
-                    />
+                    {/* The Spaces project row's icon slot: the project at
+                        rest, the disclosure under the pointer. */}
+                    <span class={styles.memberIcon}>
+                      <span class={styles.memberIconArt}>
+                        <MemberChip icon={member.icon ?? { seed: member.repoPath }} bare decorative />
+                      </span>
+                      <span class={styles.memberIconChevron} aria-hidden="true">
+                        <Chevron open={!isCollapsed(memberKey(member.path))} />
+                      </span>
+                    </span>
                     <span class={styles.fileName}>{member.label}</span>
                     <Show when={!unusable()}>
                       <span class={styles.rowEnd}>
