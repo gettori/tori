@@ -2603,6 +2603,13 @@ export default function LeftSidebar(props: {
     return topics().filter((f) => f.members.some((m) => !!m.worktreePath && sameCwd(m.worktreePath, folder)));
   }
 
+  // Display only: the probe, forge polling and session homes still see every
+  // unit. A selected one stays, for the same reason the branch cap keeps it.
+  const inSpaces = (units: BranchUnit[]) =>
+    appSettings.git.showTopicWorktrees
+      ? units
+      : units.filter((u) => unitSelected(u) || topicsAt(u.folderPath).length === 0);
+
   function selectTopic(f: Topic, preferredRoot: string | null) {
     // Keyed by the workspace key, not the bare id, so the legs the editor
     // reports (which key on the workspace) land on this span.
@@ -3259,7 +3266,7 @@ export default function LeftSidebar(props: {
             // The flat units and the fan-out groups. An attempt of a worktree
             // container arrives as an ordinary worktree unit, so it is lifted
             // out here rather than rendered twice.
-            const split = () => groupAttempts(p.branchUnits, attempts()[p.path] ?? []);
+            const split = () => groupAttempts(inSpaces(p.branchUnits), attempts()[p.path] ?? []);
             // A long branch list is cut to BRANCH_CAP with the rest behind a
             // "N more branches" row. The selected unit is always kept, IN ITS
             // OWN PLACE in the order: a highlight you cannot see is worse than
@@ -3286,7 +3293,7 @@ export default function LeftSidebar(props: {
             // collapsed project row shows: on a plain repo an attempt is not a
             // branch-unit at all, so its running session would bubble nowhere.
             const allUnits = () => [
-              ...p.branchUnits,
+              ...inSpaces(p.branchUnits),
               ...split()
                 .groups.flatMap((grp) => grp.members)
                 .filter((m) => !m.unit)

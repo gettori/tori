@@ -2,7 +2,8 @@ import GitSection from "./GitSection";
 import ForgeSection from "./ForgeSection";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import { settings, setFetchEveryMinutes } from "../../settingsStore";
-import { CardSection, Group, Row, rowLabelId, type PaneProps } from "../../components/paneKit";
+import Switch from "../../../../components/Switch/Switch";
+import { CardSection, Group, Row, rowLabelId, setGit, type PaneProps } from "../../components/paneKit";
 
 /** How often the background fetch runs. Off is first, because it is the answer
  *  someone comes to this row to give: the other five differ only in patience. */
@@ -15,8 +16,8 @@ const FETCH_OPTIONS: SelectOption[] = [
   { value: "30", label: "30 minutes" },
 ];
 
-/** Git itself, what Tori does with remotes, then the forge accounts and their
- *  kill switch. */
+/** Git itself, what Tori does with remotes, whether Spaces lists Topic
+ *  worktrees, then the forge accounts and their kill switch. */
 export default function IntegrationsPane(props: PaneProps) {
   return (
     <>
@@ -30,6 +31,15 @@ export default function IntegrationsPane(props: PaneProps) {
             value={String(settings.git.fetchEveryMinutes)}
             onChange={(v) => setFetchEveryMinutes(Number(v))}
             aria-labelledby={rowLabelId("fetch-every")}
+          />
+        </Row>
+      </Group>
+      <Group {...props} title="Spaces" ids={["topic-worktrees-in-spaces"]}>
+        <Row {...props} id="topic-worktrees-in-spaces" label="Show Topic worktrees in Spaces">
+          <Switch
+            checked={settings.git.showTopicWorktrees}
+            onChange={(showTopicWorktrees) => void setGit({ showTopicWorktrees })}
+            aria-label="Show Topic worktrees in Spaces"
           />
         </Row>
       </Group>

@@ -48,7 +48,7 @@ export type ForgeSettings = { enabled: boolean; picks: Record<string, string> };
 /** Git behaviour Tori decides, as opposed to git's own config. Mirrors `Git` in
  *  src-tauri/src/settings.rs. `fetchEveryMinutes: 0` is off, and off stops the
  *  focus fetch as well as the timer. */
-export type GitSettings = { fetchEveryMinutes: number };
+export type GitSettings = { fetchEveryMinutes: number; showTopicWorktrees: boolean };
 /** What a chat reopens with, remembered per project because the right harness,
  *  model and effort are a property of the work rather than of the user. `model`
  *  is the `--model` **value**, never the resolved id the session reports back:
@@ -337,7 +337,7 @@ export type AgentRow = { agent: string; profile: string };
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark" },
   forge: { enabled: true, picks: {} },
-  git: { fetchEveryMinutes: 10 },
+  git: { fetchEveryMinutes: 10, showTopicWorktrees: false },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,
