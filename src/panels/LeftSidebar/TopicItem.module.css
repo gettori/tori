@@ -150,12 +150,39 @@
   padding-inline: calc(3px * var(--ui-scale));
 }
 
-/* The member's own glyph in the branch row's 16px slot, which would otherwise
-   blow the chip's icon up to the slot's size. */
-span.memberIcon > :global(svg),
-span.memberIcon > img {
-  width: calc(12px * var(--ui-scale));
-  height: calc(12px * var(--ui-scale));
+/* The member's project icon in the branch row's 16px slot, sized as a Spaces
+   project row sizes an image one. */
+.memberIcon {
+  position: relative;
+  display: inline-flex;
+}
+
+.memberIcon img {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  object-fit: contain;
+  border-radius: calc(3px * var(--ui-scale));
+}
+
+/* A reference's lock, in the icon's corner. Out-specifies the slot's 16px glyph
+   rule, which would otherwise size the lock too. */
+.memberLock {
+  position: absolute;
+  right: calc(-4px * var(--ui-scale));
+  bottom: calc(-4px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(11px * var(--ui-scale));
+  height: calc(11px * var(--ui-scale));
+  border-radius: 50%;
+  color: var(--fg-muted);
+  background: var(--canvas-default);
+}
+
+span.memberLock > :global(svg) {
+  width: calc(8px * var(--ui-scale));
+  height: calc(8px * var(--ui-scale));
 }
 
 [data-member] {
