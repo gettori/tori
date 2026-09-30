@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
+import { createSignal } from "solid-js";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import TopicItem, { CHIP_CAP, type SpaceTint } from "./TopicItem";
 import type { Topic, Member, MemberState } from "../../utils/topics";
 import type { BranchSync } from "../../utils/gitActions";
+import type { Rollup } from "../../utils/sessionStatus";
 import styles from "./TopicItem.module.css";
 import chipStyles from "../../components/MemberChip/MemberChip.module.css";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
@@ -265,6 +267,20 @@ describe("what a Topic row says about its members' branches", () => {
 
     expect(container.querySelector("[data-topic-sync]")).toBeTruthy();
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a Topic's chat status", () => {
+  it("lights the title line when one of its chats waits on you", () => {
+    const none = { waitingForApproval: 0, waitingForAnswer: 0, executing: 0, idle: 0, running: 0 };
+    const [status, setStatus] = createSignal<Rollup>(none);
+    const { container } = mount(topic([member("/w/api", 0)]), () => {}, { status });
+    const head = container.querySelector(`.${styles.head}`)!;
+    expect(head.querySelector("[title='Waiting for approval']")).toBeNull();
+
+    setStatus({ ...none, waitingForApproval: 1, executing: 2 });
+    expect(head.querySelector("[title='Waiting for approval']")).toBeTruthy();
+    expect(head.querySelector("[title='Executing']")?.textContent).toBe("2");
   });
 });
 

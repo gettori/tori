@@ -309,9 +309,10 @@ impl Composer {
             *metas = (rows, wanted.into_iter().collect());
         }
         let spaces = OnceCell::new();
+        let topics = OnceCell::new();
         let home_of = |at: &str, branch: Option<&str>| {
             let spaces = spaces.get_or_init(|| crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()));
-            crate::unit_home::home_of(spaces, at, branch)
+            crate::unit_home::home_of(spaces, topics.get_or_init(crate::unit_home::topics), at, branch)
         };
         let tail_blocked = |id: &str, meta: &dots::Meta| {
             crate::sessions::session_tail_state_body(id.to_string(), meta.path.clone(), meta.agent.clone())
@@ -350,12 +351,16 @@ impl Composer {
     fn present(&self) {
         let mut live = self.dots.live();
         let spaces = crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>());
+        let topics = crate::unit_home::topics();
         let metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
         for l in &mut live {
             if l.name.is_empty() {
                 l.name = metas.0.get(&l.id).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| l.id.clone());
             }
             l.project = crate::unit_home::project_name(&spaces, &l.folder);
+            if let (true, Some(t)) = (l.project.is_empty(), crate::unit_home::topic_of(&topics, &l.folder)) {
+                l.project = t.name.clone();
+            }
         }
         drop(metas);
         let chats: HashSet<String> = live.iter().filter(|l| l.chat).map(|l| l.id.clone()).collect();

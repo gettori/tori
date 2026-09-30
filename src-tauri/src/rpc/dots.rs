@@ -470,4 +470,28 @@ mod tests {
         let (_, changes) = dots.compose_all(&HashMap::new(), |_, _| None, |_, _| false);
         assert_eq!(changes.iter().map(|c| c.dot).collect::<Vec<_>>(), [Dot::None]);
     }
+
+    #[test]
+    fn a_home_folder_chat_and_an_old_member_worktree_session_both_land_on_the_topic() {
+        let dots = Dots::default();
+        let home_chat = ChatFact { folder: "topic:auth-1".into(), ..chat("home", Status::WaitingForApproval) };
+        dots.replace(Facts { tabs: vec![], chats: vec![home_chat], forge: vec![] }, |_| false, |_| false);
+        dots.note_running(&[("old".into(), "claude".into())], &HashSet::from(["old".to_string()]));
+        let old = Meta {
+            agent: "claude".into(),
+            path: String::new(),
+            branch: "auth".into(),
+            cwd: "/p/api/.tori/worktrees/auth".into(),
+            name: String::new(),
+        };
+        let topics = [crate::unit_home::tests::topic()];
+        let (_, changes) = dots.compose_all(
+            &HashMap::from([("old".to_string(), old)]),
+            |at, branch| crate::unit_home::home_of(&[], &topics, at, branch),
+            |_, _| false,
+        );
+        let placed = |id: &str| changes.iter().find(|c| c.id == id).map(|c| (c.dot, c.home.as_ref().and_then(|h| h.topic.clone())));
+        assert_eq!(placed("home"), Some((Dot::NeedsYou, Some("auth-1".into()))));
+        assert_eq!(placed("old"), Some((Dot::Hollow, Some("auth-1".into()))));
+    }
 }

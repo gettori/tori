@@ -12,7 +12,7 @@ import type { Crew } from "./Autopilot";
 import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
 import { DOT, Offline, PhaseMark } from "./Root";
 import { GitCounts, PushTop, watchGit, watchSync } from "./Screens";
-import { PHASE_LABEL, agentHolds, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Unit } from "./tree";
+import { PHASE_LABEL, agentHolds, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Topic, type Unit } from "./tree";
 import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
@@ -70,13 +70,14 @@ function HistoryItem(props: { row: SessionRow; where?: string; onOpen: () => voi
 }
 
 /** The live sessions in `units` and the ended ones the Mac lists for their folders. */
-export function unitSessions(client: RemoteClient, units: () => Unit[], live: () => SessionRow[]) {
-  const owned = (row: SessionRow) => units().some((unit) => atUnit(row, unit));
+export function unitSessions(client: RemoteClient, units: () => Unit[], live: () => SessionRow[], topic?: Pick<Topic, "id" | "home">) {
+  const owned = (row: SessionRow) => units().some((unit) => atUnit(row, unit)) || (!!topic && row.home?.topic === topic.id);
+  const folders = () => [...units().map((unit) => unit.folder), ...(topic?.home ? [topic.home] : [])];
   const here = () => live().filter(owned);
   const [earlier, { refetch }] = createResource<SessionRow[], number>(
     () => client.generation() || undefined,
     (_, info) =>
-      Promise.all(units().map((unit) => client.request<SessionRow[]>("sessions.list", { cwd: unit.folder, limit: EARLIER_LIMIT })))
+      Promise.all(folders().map((cwd) => client.request<SessionRow[]>("sessions.list", { cwd, limit: EARLIER_LIMIT })))
         .then((lists) => {
           const rows = new Map(lists.flat().filter((row) => !row.live && owned(row)).map((row) => [row.id, row]));
           return [...rows.values()].sort((a, b) => b.last_active - a.last_active);

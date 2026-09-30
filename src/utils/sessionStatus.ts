@@ -15,7 +15,8 @@ export type StatusCertainty = "exact" | "inferred";
 
 /** The unit row a session sits under, as Rust placed it: its project, the
  *  unit's folder, and for a plain repo the branch that tells siblings apart. */
-export type SessionHome = { project: string; folder: string; branch: string | null };
+/** `topic` is set for a Topic's session, whose `folder` is then the Topic home. */
+export type SessionHome = { project: string; folder: string; branch: string | null; topic?: string };
 
 export type SessionStatus =
   | "executing"
