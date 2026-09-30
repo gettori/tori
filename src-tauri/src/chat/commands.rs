@@ -361,7 +361,8 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     let snapshots = Arc::new(Mutex::new(SnapshotCache::new(CACHE_CAP)));
     let repo = PathBuf::from(&cwd);
     let capture_into = snapshots.clone();
-    let server = approval::start(
+    let guarded_cwd = cwd.clone();
+    let server = approval::start_guarded(
         // Runs on every authenticated call, while the file about to be written
         // still holds its prior content.
         Box::new(move |req| {
@@ -371,6 +372,14 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
                     cache.insert(&req.tool_use_id, captured);
                 }
             }
+        }),
+        // Read per call rather than at spawn, so a promotion mid-chat opens
+        // the new worktree to the very next write.
+        Box::new(move |req| {
+            let topics = crate::unit_home::topics();
+            snapshot::write_targets(&req.tool_name, &req.tool_input)
+                .iter()
+                .find_map(|target| crate::topic_home::write_refusal(&topics, &guarded_cwd, target))
         }),
     )
     .map_err(|e| format!("could not start the capture bridge: {e}"))?;

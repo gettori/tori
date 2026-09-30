@@ -90,6 +90,16 @@ pub fn member_root(m: &Member) -> Option<&str> {
     }
 }
 
+/// What a chat gets when it asks for a worktree in a member it may only read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Promotion {
+    #[default]
+    Ask,
+    Auto,
+    Never,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Topic {
@@ -101,6 +111,8 @@ pub struct Topic {
     pub members: Vec<Member>,
     #[serde(default)]
     pub created_at: u64,
+    #[serde(default)]
+    pub promotion: Promotion,
     /// Where the Topic's chats run. Filled on the way out, never stored: the
     /// folder follows from where the record lives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -367,6 +379,59 @@ pub fn rename_topic(store: &Store, topic_id: &str, name: &str) -> Result<(), Str
         topic_mut(file, topic_id)?.name = name.to_string();
         Ok(())
     })
+}
+
+pub fn set_promotion(store: &Store, topic_id: &str, promotion: Promotion) -> Result<(), String> {
+    store.mutate(|file| {
+        topic_mut(file, topic_id)?.promotion = promotion;
+        Ok(())
+    })
+}
+
+/// The member a chat names: its repository, the folder it opens as, or its
+/// name.
+pub fn member_named<'a>(topic: &'a Topic, named: &str) -> Result<&'a Member, String> {
+    topic
+        .members
+        .iter()
+        .find(|m| {
+            same_path(&m.repo_path, named)
+                || member_root(m).is_some_and(|r| same_path(r, named))
+                || m.display_name.eq_ignore_ascii_case(named.trim())
+        })
+        .ok_or_else(|| format!("{named} is not a member of {}", topic.name))
+}
+
+/// A chat's request for a worktree, settled by the Topic's policy: `ask`
+/// puts the question to the user and says whether they agreed, `promote`
+/// does the work.
+pub fn promote_for_chat(
+    topic: &Topic,
+    member: &Member,
+    ask: impl FnOnce(&str) -> Result<bool, String>,
+    promote: impl FnOnce() -> Result<Topic, String>,
+) -> Result<Topic, String> {
+    if member.mode == MemberMode::Worktree {
+        return Err(format!("{} already has a worktree for this Topic", member.display_name));
+    }
+    match topic.promotion {
+        Promotion::Never => Err(format!(
+            "The Topic {} does not let a chat create worktrees. Ask the user to create one for {}.",
+            topic.name, member.display_name
+        )),
+        Promotion::Auto => promote(),
+        Promotion::Ask => {
+            let question = format!(
+                "Create a worktree for {} on {} so this chat can change it?",
+                member.display_name, topic.branch
+            );
+            if ask(&question)? {
+                promote()
+            } else {
+                Err(format!("The user declined a worktree for {}. Leave it unchanged.", member.display_name))
+            }
+        }
+    }
 }
 
 /// Point a member at the repository it moved to.
@@ -735,6 +800,7 @@ pub fn create_topic_with(
                 .map(|(i, m)| pending_member(&m.repo_path, m.mode, i as u32))
                 .collect(),
             created_at: crate::owned_state::now_ms(),
+            promotion: Promotion::default(),
             home: None,
         });
         Ok(())
@@ -935,14 +1001,17 @@ pub mod commands {
         repo_path: String,
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
-        blocking("promote_member", move || {
-            let before = roots_now(&topic_id);
-            let topic = super::promote_member(&Store::default_location(), &topic_id, &repo_path)?;
-            settle(&app, &index, &topic);
-            tell_chats(&app, &before, &topic);
-            Ok(topic)
-        })
-        .await
+        blocking("promote_member", move || promote_settled(&app, &index, &topic_id, &repo_path)).await
+    }
+
+    /// Promote, then tell the rest of the app: the sidebar, and every chat in
+    /// the Topic's home, which is granted the new worktree.
+    pub(crate) fn promote_settled(app: &AppHandle, index: &ProjectIndex, topic_id: &str, repo: &str) -> Result<Topic, String> {
+        let before = roots_now(topic_id);
+        let topic = super::promote_member(&Store::default_location(), topic_id, repo)?;
+        settle(app, index, &topic);
+        tell_chats(app, &before, &topic);
+        Ok(topic)
     }
 
     /// The UI tears down what runs under the worktree first, the same contract
@@ -1053,6 +1122,15 @@ pub mod commands {
     }
 
     #[tauri::command]
+    pub async fn set_topic_promotion(app: AppHandle, topic_id: String, promotion: super::Promotion) -> Result<Topic, String> {
+        blocking("set_topic_promotion", move || {
+            let store = Store::default_location();
+            announce(&app, &store, &topic_id, || super::set_promotion(&store, &topic_id, promotion))
+        })
+        .await
+    }
+
+    #[tauri::command]
     pub async fn delete_topic(topic_id: String) -> Result<(), String> {
         blocking("delete_topic", move || super::delete_topic(&Store::default_location(), &topic_id)).await
     }
@@ -1114,6 +1192,7 @@ mod tests {
             branch: format!("feat/{id}"),
             members,
             created_at: 1,
+            promotion: Promotion::default(),
             home: None,
         }
     }
@@ -1733,6 +1812,48 @@ mod tests {
         git(Path::new(dir), &["add", "."]);
         git(Path::new(dir), &["commit", "-qm", file]);
         git_out(dir, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn the_promotion_policy_round_trips_and_defaults_to_ask() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        assert_eq!(t.promotion, Promotion::Ask);
+        set_promotion(&store, &t.id, Promotion::Never).unwrap();
+        assert_eq!(recorded(&store)[0].promotion, Promotion::Never);
+        assert!(std::fs::read_to_string(store.path()).unwrap().contains("\"promotion\": \"never\""));
+    }
+
+    #[test]
+    fn a_chat_asking_for_a_worktree_gets_what_the_policy_says() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        let web = member_named(&t, &a).unwrap().clone();
+        let run = |promotion, answer: bool| {
+            let asked = std::cell::Cell::new(false);
+            let promoted = std::cell::Cell::new(false);
+            let out = promote_for_chat(
+                &Topic { promotion, ..t.clone() },
+                &web,
+                |_| {
+                    asked.set(true);
+                    Ok(answer)
+                },
+                || {
+                    promoted.set(true);
+                    Ok(t.clone())
+                },
+            );
+            (out.is_ok(), asked.get(), promoted.get())
+        };
+        assert_eq!(run(Promotion::Ask, true), (true, true, true));
+        assert_eq!(run(Promotion::Ask, false), (false, true, false));
+        assert_eq!(run(Promotion::Auto, false), (true, false, true));
+        assert_eq!(run(Promotion::Never, true), (false, false, false));
     }
 
     #[test]

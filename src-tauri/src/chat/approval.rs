@@ -102,6 +102,8 @@ pub struct HookRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptureAck {
     pub captured: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deny: Option<String>,
 }
 
 /// The marker that makes Tori's own hook identifiable in the in-band
@@ -134,6 +136,21 @@ pub const TORI_HOOK_MARKER: &str = "toriApproval";
 /// needs to know Tori put a hook there at all.
 pub fn hook_output() -> String {
     json!({ TORI_HOOK_MARKER: true }).to_string()
+}
+
+/// The one decision the hook makes: a Topic chat writing into a member it may
+/// only read. Ending the chain here is the point, since asking would offer to
+/// write where the Topic says no.
+pub fn hook_denial(reason: &str) -> String {
+    json!({
+        TORI_HOOK_MARKER: true,
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        },
+    })
+    .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -181,11 +198,12 @@ pub fn run_helper() -> i32 {
     // A payload that could not be read is a call whose before-state is lost, and
     // nothing more. There is no decision to withhold and so nothing to fail
     // closed about; the write proceeds and its card has no diff.
+    let mut deny = None;
     if std::io::stdin().read_to_string(&mut payload).is_ok() {
         let sock = std::env::var(ENV_SOCK).unwrap_or_default();
-        helper_capture(&payload, Path::new(&sock), &std::env::var(ENV_TOKEN).unwrap_or_default());
+        deny = helper_capture(&payload, Path::new(&sock), &std::env::var(ENV_TOKEN).unwrap_or_default());
     }
-    emit_marker()
+    emit(&deny.map_or_else(hook_output, |reason| hook_denial(&reason)))
 }
 
 /// Hand the server this call's before-state, if this call has one.
@@ -193,7 +211,7 @@ pub fn run_helper() -> i32 {
 /// Split out of [`run_helper`] so it is testable against a real socket without
 /// re-execing the binary. Every input is an argument; nothing here reads the
 /// environment.
-fn helper_capture(payload: &str, sock: &Path, token: &str) {
+fn helper_capture(payload: &str, sock: &Path, token: &str) -> Option<String> {
     let parsed: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
     let HookInputs { tool_name, tool_input, session_id, tool_use_id } = hook_inputs(&parsed);
 
@@ -201,26 +219,26 @@ fn helper_capture(payload: &str, sock: &Path, token: &str) {
     // matcher is claude's and this is the claim Tori can keep on its own:
     // nothing with no before-state to capture costs a socket.
     if super::snapshot::write_targets(&tool_name, &tool_input).is_empty() {
-        return;
+        return None;
     }
     let req = HookRequest { token: token.to_string(), session_id, tool_use_id, tool_name, tool_input };
     // Fail-open: whatever went wrong, the agent is still going to ask, and
     // refusing here would be Tori gating again by the back door. The round trip
     // is still synchronous, because a before-state captured after the write is
     // not a before-state.
-    let _ = helper_exchange(sock, &req);
+    helper_exchange(sock, &req).ok().and_then(|ack| ack.deny)
 }
 
-/// Exit 0 having written the marker and no decision.
+/// Exit 0 having written `output`.
 ///
 /// Measured on claude 2.1.231: a `PreToolUse` hook that exits 0 without a
 /// `permissionDecision` lets the permission chain continue to the agent, while
 /// any `permissionDecision` ends the chain there. A stdout that cannot be
 /// written is not worth a non-zero exit - the capture already happened, and all
 /// that is lost is the row's attribution.
-fn emit_marker() -> i32 {
+fn emit(output: &str) -> i32 {
     let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(hook_output().as_bytes());
+    let _ = stdout.write_all(output.as_bytes());
     let _ = stdout.flush();
     0
 }
@@ -240,7 +258,7 @@ fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<CaptureAck
     // app quit mid-call). The capture is lost either way; saying so is only for
     // a caller that wants to log it.
     if line.trim().is_empty() {
-        return Ok(CaptureAck { captured: false });
+        return Ok(CaptureAck { captured: false, deny: None });
     }
     serde_json::from_str(line.trim_end())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
@@ -263,6 +281,8 @@ pub struct CaptureServer {
     /// Called for every authenticated request, so the before-state of a file
     /// about to be written is captured *on the way past*.
     observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
+    /// Asked first; a reason refuses the write, which then has nothing to capture.
+    guard: Box<dyn Fn(&HookRequest) -> Option<String> + Send + Sync>,
 }
 
 impl Drop for CaptureServer {
@@ -312,10 +332,13 @@ impl CaptureServer {
 /// 104 bytes ([[gotchas#darwin-caps-unix-socket-paths-at-104-bytes]]), and a
 /// UUID would eat a third of that for no benefit: the id already travels in the
 /// request payload, where it costs nothing.
-pub fn start(observe: Box<dyn Fn(&HookRequest) + Send + Sync>) -> std::io::Result<Arc<CaptureServer>> {
+pub fn start_guarded(
+    observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
+    guard: Box<dyn Fn(&HookRequest) -> Option<String> + Send + Sync>,
+) -> std::io::Result<Arc<CaptureServer>> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("tori-cha-{}-{}", std::process::id(), seq));
+    let dir = std::env::temp_dir().join(format!("tori-cha-{}-{seq:08x}", std::process::id()));
     std::fs::create_dir_all(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     let sock_path = dir.join("s");
@@ -337,6 +360,7 @@ pub fn start(observe: Box<dyn Fn(&HookRequest) + Send + Sync>) -> std::io::Resul
         connections: AtomicU64::new(0),
         stopping: AtomicBool::new(false),
         observe,
+        guard,
     });
 
     let accept = server.clone();
@@ -361,11 +385,16 @@ pub fn start(observe: Box<dyn Fn(&HookRequest) + Send + Sync>) -> std::io::Resul
     Ok(server)
 }
 
+#[cfg(test)]
+pub fn start(observe: Box<dyn Fn(&HookRequest) + Send + Sync>) -> std::io::Result<Arc<CaptureServer>> {
+    start_guarded(observe, Box::new(|_| None))
+}
+
 fn handle_conn(server: &Arc<CaptureServer>, stream: UnixStream) {
     // A failure inside still gets an answer rather than a dropped connection:
     // the helper is blocking on this line and the write it belongs to is waiting
     // on the helper, so silence would cost more than a `captured: false` does.
-    let ack = handle_request(server, &stream).unwrap_or(CaptureAck { captured: false });
+    let ack = handle_request(server, &stream).unwrap_or(CaptureAck { captured: false, deny: None });
     let _ = write_response(&stream, &ack);
 }
 
@@ -379,10 +408,13 @@ fn handle_request(server: &Arc<CaptureServer>, stream: &UnixStream) -> Option<Ca
         return None;
     }
 
+    if let Some(reason) = (server.guard)(&req) {
+        return Some(CaptureAck { captured: false, deny: Some(reason) });
+    }
     // The file is about to be written, and a before-state captured after the
     // fact is not a before-state. This is the whole errand.
     (server.observe)(&req);
-    Some(CaptureAck { captured: true })
+    Some(CaptureAck { captured: true, deny: None })
 }
 
 fn write_response(mut stream: &UnixStream, ack: &CaptureAck) -> std::io::Result<()> {
@@ -695,6 +727,25 @@ mod tests {
         helper_capture(&payload("Write", json!({"file_path": "/proj/new.rs"})), Path::new("/nonexistent/socket"), "tok");
         let out: Value = serde_json::from_str(&hook_output()).unwrap();
         assert!(out.get("hookSpecificOutput").is_none(), "an unreachable Tori must not become a denial");
+    }
+
+    #[test]
+    fn a_refused_write_is_denied_with_its_reason_and_an_unreachable_tori_denies_nothing() {
+        let server = start_guarded(Box::new(|_| {}), Box::new(|req| {
+            let target = req.tool_input["file_path"].as_str().unwrap_or_default();
+            target.starts_with("/p/web/").then(|| "web is a reference".to_string())
+        }))
+        .unwrap();
+        let call = |path: &str| helper_capture(&payload("Edit", json!({"file_path": path})), server.sock_path(), server.token());
+
+        let reason = call("/p/web/app.ts").expect("a write under a reference is refused");
+        let out: Value = serde_json::from_str(&hook_denial(&reason)).unwrap();
+        assert_eq!(out["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(out["hookSpecificOutput"]["permissionDecisionReason"], "web is a reference");
+        assert_eq!(out[TORI_HOOK_MARKER], true);
+        assert_eq!(call("/p/api/.tori/worktrees/auth/lib.rs"), None);
+        let unreachable = helper_capture(&payload("Edit", json!({"file_path": "/p/web/app.ts"})), Path::new("/nonexistent/socket"), "tok");
+        assert_eq!(unreachable, None, "an unreachable Tori must not become a denial");
     }
 
     /// A payload that is not JSON at all must be survivable for the same reason.
