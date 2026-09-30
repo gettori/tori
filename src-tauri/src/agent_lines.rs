@@ -462,10 +462,7 @@ mod tests {
         let touched =
             crate::owned_state::config_dir().join("checkpoint-touched").join(session);
         std::fs::remove_dir_all(touched).ok();
-        std::fs::remove_file(
-            crate::owned_state::config_dir().join("checkpoint-index").join(session),
-        )
-        .ok();
+        crate::checkpoint::remove_indexes(session);
     }
 
     /// One turn: snapshot the tree as it was before it ran, then write and

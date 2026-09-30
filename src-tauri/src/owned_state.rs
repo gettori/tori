@@ -59,7 +59,7 @@ fn sanitize_segment(value: &str) -> String {
 
 /// FNV-1a over the path bytes. Not cryptographic and does not need to be: it
 /// only has to separate two directories that share a basename.
-fn path_hash(cwd: &str) -> u64 {
+pub(crate) fn path_hash(cwd: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in cwd.as_bytes() {
         h ^= *b as u64;
