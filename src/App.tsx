@@ -1104,7 +1104,7 @@ function App() {
         >
           <WindowControls showSidebar={showSidebar()} />
         </div>
-        <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
+        <Toolbar selected={selected()} />
         <Show when={settings.autopilot.available}>
           <div class="topbar-switch">
             <CockpitSwitch />
