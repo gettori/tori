@@ -10,7 +10,7 @@ use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
     HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
-    SpawnParams, SteerParams, TailParams, WaitParams, WorktreeParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, WaitParams, WorktreeParams,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,6 +339,18 @@ pub static METHODS: &[Method] = &[
         call: |b, p, v| match p {
             Principal::Session(Caller::Chat(session)) => b.ask_create(session, params(v)?),
             _ => Err(RpcError::new(INTERNAL_ERROR, "ask.create reached with a caller its row does not admit")),
+        },
+    },
+    Method {
+        name: "topic.member.promote",
+        description: "Give a member of the calling chat's Topic a worktree on the Topic branch, so the chat can change it; a reference member is read only until then. By the Topic's setting the user is asked first, it happens at once, or it is refused. Returns the worktree's path.",
+        params: schema::<TopicPromoteParams>,
+        callers: &[CallerKind::Chat, CallerKind::Worker],
+        refusal: Some("only a chat runs in a Topic, and the question shows in its panel"),
+        outward: false,
+        call: |b, p, v| match p {
+            Principal::Session(Caller::Chat(session)) => b.topic_member_promote(session, params(v)?),
+            _ => Err(RpcError::new(INTERNAL_ERROR, "topic.member.promote reached with a caller its row does not admit")),
         },
     },
     Method {

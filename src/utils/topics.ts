@@ -37,6 +37,9 @@ export type Member = {
   order: number;
 };
 
+/** What a chat gets when it asks for a worktree in a member it may only read. */
+export type Promotion = "ask" | "auto" | "never";
+
 export type Topic = {
   id: string;
   name: string;
@@ -44,6 +47,8 @@ export type Topic = {
   branch: string;
   members: Member[];
   createdAt: number;
+  /** Absent on a record the backend wrote before the setting existed. */
+  promotion?: Promotion;
   /** The folder the Topic's chats run in. Filled by the backend on every read. */
   home?: string;
 };

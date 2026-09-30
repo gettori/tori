@@ -106,7 +106,7 @@ fn tools_call(connect: &Connect, params: &Value) -> Result<Value, (i64, String)>
         .find(|m| tool_name(m) == name)
         .ok_or_else(|| (INVALID_PARAMS, format!("no tool {name}")))?;
     let mut args = params["arguments"].as_object().cloned().unwrap_or_default();
-    if matches!(method.name, "ask.create" | "ask.wait" | "session.wait") && !args.contains_key("timeout") {
+    if matches!(method.name, "ask.create" | "ask.wait" | "session.wait" | "topic.member.promote") && !args.contains_key("timeout") {
         args.insert("timeout".into(), json!(BLOCKING_CALL_TIMEOUT_SECS));
     }
     let mut socket = connect().map_err(internal)?;

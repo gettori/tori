@@ -235,6 +235,7 @@ pub(crate) mod tests {
                 member("/p/web", MemberMode::Reference, None),
             ],
             created_at: 0,
+            promotion: Default::default(),
             home: Some("/cfg/topics/auth-1".into()),
         }
     }

@@ -371,6 +371,15 @@ pub struct AskParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct TopicPromoteParams {
+    /// The member to give a worktree: its name, its repository, or the folder it reads from.
+    pub member: String,
+    /// Seconds to wait for the user when the Topic asks first; unanswered by then, the question is withdrawn.
+    pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AskAnswerParams {
     /// The id of a question `ask.create` raised in another session.
     pub id: String,
@@ -618,6 +627,7 @@ pub trait Backend: Send + Sync {
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
+    fn topic_member_promote(&self, session: &str, params: TopicPromoteParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
     fn ask_answer(&self, principal: &Principal, params: AskAnswerParams) -> Result<Value, RpcError>;
     fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError>;
@@ -940,6 +950,9 @@ pub mod tests {
         }
         fn budget(&self, _: &Principal, p: BudgetParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
+        }
+        fn topic_member_promote(&self, _: &str, p: TopicPromoteParams) -> Result<Value, RpcError> {
+            Ok(json!({ "member": p.member }))
         }
         fn ask_create(&self, _: &str, p: AskParams) -> Result<Value, RpcError> {
             Ok(json!({ "question": p.question }))
