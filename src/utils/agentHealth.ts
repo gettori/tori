@@ -136,6 +136,14 @@ export function profileSignedOut(id: string, profile: string | null): boolean {
   return (per?.signIn ?? row.signIn) === "signedOut";
 }
 
+/** Whether no account of this agent is signed in. The agent-level verdict: one
+ *  signed-in account is enough to offer the agent, so a signed-out default
+ *  login does not hide another account that works. */
+export function signedOutEverywhere(row: AgentHealth): boolean {
+  const listed = row.profiles ?? [];
+  return listed.length ? listed.every((p) => p.signIn === "signedOut") : row.signIn === "signedOut";
+}
+
 /** The sweep as a list, or null while there is none.
  *
  *  Guarded rather than trusted: `agent_health` is an IPC reply, and one that is
@@ -156,14 +164,17 @@ export function agentHealthFor(id: string): AgentHealth | null {
   return rows()?.find((h) => h.id === id) ?? null;
 }
 
-export function agentReady(id: string, profile: string | null = null): boolean {
+/** `profile` left out asks about the agent as a whole (any account signed in);
+ *  `null` asks about the default account, the way a session spells it. */
+export function agentReady(id: string, profile?: string | null): boolean {
   const all = rows();
   if (!all) return true;
   const row = all.find((h) => h.id === id);
   // An adapter with no health row is one the sweep did not cover, which is
   // ignorance again rather than a verdict.
   if (!row) return true;
-  return row.status !== "notFound" && !noAccounts(id) && !profileSignedOut(id, profile);
+  const signedOut = profile === undefined ? signedOutEverywhere(row) : profileSignedOut(id, profile);
+  return row.status !== "notFound" && !noAccounts(id) && !signedOut;
 }
 
 /** Whether this agent has no account to start a session on: it declares

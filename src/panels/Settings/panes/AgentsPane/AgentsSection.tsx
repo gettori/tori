@@ -25,6 +25,7 @@ import {
 import {
   ensureAgentHealthLoaded,
   refreshAgentHealth,
+  signedOutEverywhere,
   type AgentHealth,
   type BinaryStatus,
 } from "../../../../utils/agentHealth";
@@ -124,7 +125,7 @@ function rowNote(id: string, program: string): string {
 function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
   if (!h) return { label: "Checking", cls: "" };
   if (h.status === "notFound") return { label: "Not installed", cls: "" };
-  if (h.signIn === "signedOut") return { label: "Sign in", cls: styles.statePillWarn };
+  if (signedOutEverywhere(h)) return { label: "Sign in", cls: styles.statePillWarn };
   // Only the behind direction: older than the measured version means a newer
   // release provably exists, which is actionable in a way "newer than what we
   // measured" never is.
