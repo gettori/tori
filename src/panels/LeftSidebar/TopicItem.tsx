@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal, createUniqueId } from "solid-js";
-import { Ellipsis } from "lucide-solid";
+import { Ellipsis, Lock } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -7,6 +7,7 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import Dropdown from "../../components/Menu/Dropdown";
 import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
+import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { REPAIR_LABEL, isReference, memberRoot, type Topic, type Member, type RepairAction } from "../../utils/topics";
 import { CHIP_CAP, tintedMembers, type SpaceTint, type TintedMember } from "../../utils/topicMembers";
 import { markTitle, memberSyncState, rollupSync, syncMarks, type FinishedPr } from "../../utils/branchSync";
@@ -243,15 +244,17 @@ export default function TopicItem(props: {
                 <BranchRow
                   label={m.label}
                   icon={
-                    <MemberChip
-                      icon={m.icon}
-                      chipStyle={m.style}
-                      reference={isReference(m.member)}
-                      class={styles.memberIcon}
-                      // The name beside it is the spoken account here, unlike
-                      // the collapsed chip, which is on its own.
-                      decorative
-                    />
+                    // The project's own icon, as its Spaces row draws it. The
+                    // name beside it is the spoken account here, unlike the
+                    // collapsed chip, which is on its own.
+                    <span class={styles.memberIcon} aria-hidden="true">
+                      <ProjectIcon {...m.icon} />
+                      <Show when={isReference(m.member)}>
+                        <span class={styles.memberLock} data-reference>
+                          <Icon icon={Lock} />
+                        </span>
+                      </Show>
+                    </span>
                   }
                   selected={memberOpen(m.member)}
                   menu={props.memberMenu?.(m.member)}
