@@ -5,7 +5,8 @@
 // as its repair, and a branch unit stays exactly as headerless as it was.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
+import { render, screen, waitFor } from "@solidjs/testing-library";
 
 import { installResizeObserver, EMPTY_PANE } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";
@@ -115,9 +116,8 @@ const sectionRoots = () =>
   Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
 
 const memberChips = () =>
-  Array.from(document.querySelectorAll<HTMLElement>('[role="group"][aria-label="Topic members"] [data-member]'));
-const pickMember = (repoPath: string) =>
-  fireEvent.click(memberChips().find((c) => c.dataset.member === repoPath)!);
+  Array.from(document.querySelectorAll<HTMLElement>('[aria-label="Topic members"] [data-member]'));
+const pickMember = (repoPath: string) => pointerClick(memberChips().find((c) => c.dataset.member === repoPath)!);
 
 const rootsOf = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args.projectPath ?? c.args.root);
 const watchSets = () => calls.filter((c) => c.cmd === "fs_watch_set").map((c) => c.args.roots);
@@ -212,11 +212,9 @@ describe("the editor inside a Topic", () => {
     ));
     await waitFor(() => expect(sectionRoots()).toEqual([A]));
     await waitFor(() => expect(memberChips()).toHaveLength(3));
-    // Every member wears a chip, and the ones outside every Space are untinted.
+    // Every member gets a tab: its project icon and its name.
     const chips = memberChips();
-    expect(chips.map((c) => [c.textContent, !!c.querySelector("svg")])).toEqual([["", true], ["", true], ["", true]]);
-    expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
-    expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
+    expect(chips.every((c) => !!c.querySelector("svg, img") && c.textContent !== "")).toBe(true);
 
     pickMember(REPO_B);
     const repair = await waitFor(() => document.querySelector<HTMLElement>(`[data-repair="${REPO_B}"]`)!);

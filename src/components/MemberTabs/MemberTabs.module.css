@@ -1,0 +1,51 @@
+/* The members across the top of a pane, each tab an equal share of the width
+   and its name cut short rather than pushing a neighbour off the strip. */
+.strip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.memberTab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The trigger, or the span `tooltipWhenDisabled` wraps it in: either way the
+   one child has to hand the pill's width down, or the label never shrinks. */
+.memberTab > * {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.memberTab [role="tab"] {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+}
+
+/* Out-specifies the quiet pill's own `height: auto` and block padding. */
+.strip .memberTab[data-quiet] [role="tab"] {
+  height: calc(32px * var(--ui-scale));
+  padding-block: 0;
+}
+
+.memberTab [role="tab"] :global(svg),
+.memberTab [role="tab"] img {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+.memberTab [role="tab"] img {
+  object-fit: contain;
+  border-radius: calc(2px * var(--ui-scale));
+}
+
+/* A member with nothing on disk reads as unavailable, and is still a tab. */
+.memberTab [role="tab"][data-state]:not([data-state="present"]) {
+  opacity: 0.55;
+}

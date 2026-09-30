@@ -3,7 +3,7 @@
 // its Scripts section is the pane that visibly reloads for the member picked.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
 import { installAnimationFrame } from "../../test/frames";
 import { pointerClick } from "../../test/menus";
 
@@ -171,7 +171,9 @@ async function mountEditor(initial = API) {
 const showMode = (mode: string, section?: string) => emitWith(SET_RIGHT_MODE, { mode, section });
 const showScripts = () => showMode("files", "scripts");
 const chip = (repoPath: string) => document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`);
-const chipRow = () => document.querySelector<HTMLElement>('[role="group"][aria-label="Topic members"]');
+// The Files pane draws the members as tabs, the others as a chip group; both
+// name themselves the same.
+const chipRow = () => document.querySelector<HTMLElement>('[aria-label="Topic members"]');
 
 beforeEach(() => {
   calls.length = 0;
@@ -187,7 +189,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("the member chip row", () => {
+describe("the member tabs", () => {
   it("is drawn for the modes that answer for one member, and no others", async () => {
     await mountEditor();
     for (const mode of ["pulls", "files", "changes"]) {
@@ -206,7 +208,7 @@ describe("the member chip row", () => {
     showScripts();
     await waitFor(() => expect(screen.getByText("api:serve")).toBeTruthy());
 
-    fireEvent.click(chip(WEB_REPO)!);
+    pointerClick(chip(WEB_REPO)!);
 
     await waitFor(() => expect(screen.getByText("web:dev")).toBeTruthy());
     expect(screen.queryByText("api:serve")).toBeNull();
@@ -216,20 +218,20 @@ describe("the member chip row", () => {
     await mountEditor();
     showMode("files");
     await waitFor(() => expect(chip(API_REPO)).toBeTruthy());
-    expect(chip(API_REPO)!.getAttribute("aria-pressed")).toBe("true");
-    expect(chip(WEB_REPO)!.getAttribute("aria-pressed")).toBe("false");
+    expect(chip(API_REPO)!.getAttribute("aria-selected")).toBe("true");
+    expect(chip(WEB_REPO)!.getAttribute("aria-selected")).toBe("false");
   });
 
   it("wears a broken member's state and refuses to switch to it", async () => {
     TOPIC_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", null, 1)];
     await mountEditor();
-    // The right panel's row: the Files row lets a broken member be picked, to
+    // The right panel's tabs: the Files tabs let a broken member be picked, to
     // show its repair (topicRoot.test.tsx).
     showMode("pulls");
     await waitFor(() => expect(chip(WEB_REPO)).toBeTruthy());
     const broken = chip(WEB_REPO) as HTMLButtonElement;
     expect(broken.disabled).toBe(true);
-    expect(broken.getAttribute("aria-label")).toBe("web: Worktree missing");
+    expect(broken.getAttribute("data-state")).toBe("worktree-missing");
   });
 
   it("is absent with only one member, which is not a choice", async () => {
@@ -241,42 +243,19 @@ describe("the member chip row", () => {
   });
 });
 
-describe("the chip row past its cap", () => {
+describe("a Topic with many members", () => {
   const many = (n: number) =>
     Array.from({ length: n }, (_, i) => member(`/w/r${i}`, `r${i}`, `/w/r${i}/auth`, i));
 
-  it("caps the row and puts the rest behind +N", async () => {
-    TOPIC_MEMBERS = many(8);
-    await mountEditor("/w/r0/auth");
-    showMode("files");
-    await waitFor(() => expect(chipRow()).toBeTruthy());
-    expect(chipRow()!.querySelectorAll("[data-member]")).toHaveLength(4);
-    expect(screen.getByRole("button", { name: "4 more members" })).toBeTruthy();
-  });
-
-  it("never hides the member the pane is about", async () => {
-    // The row's whole job is to say which member is in front. Dropping *that*
-    // one for being eighth is the one thing it must not do.
-    TOPIC_MEMBERS = many(8);
-    await mountEditor("/w/r7/auth");
-    showMode("files");
-    await waitFor(() => expect(chip("/w/r7")).toBeTruthy());
-    expect(chip("/w/r7")!.getAttribute("aria-pressed")).toBe("true");
-    expect(chipRow()!.querySelectorAll("[data-member]")).toHaveLength(4);
-    // It took the last slot rather than growing the row.
-    expect(chip("/w/r3")).toBeNull();
-  });
-
-  it("switches to a hidden member from the +N menu", async () => {
+  it("gives every member a tab in Files, however many, and switches to the last", async () => {
     TOPIC_MEMBERS = many(8);
     scripts = { "/w/r0/auth": { first: "x" }, "/w/r7/auth": { last: "y" } };
     await mountEditor("/w/r0/auth");
     showScripts();
     await waitFor(() => expect(screen.getByText("first")).toBeTruthy());
+    expect(screen.getAllByRole("tab").filter((t) => t.hasAttribute("data-member"))).toHaveLength(8);
 
-    pointerClick(screen.getByRole("button", { name: "4 more members" }));
-    await screen.findByRole("menu");
-    pointerClick(screen.getByRole("menuitem", { name: "r7" }));
+    pointerClick(chip("/w/r7")!);
 
     await waitFor(() => expect(screen.getByText("last")).toBeTruthy());
   });

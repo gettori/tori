@@ -68,7 +68,7 @@ import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/topics";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import type { ProjectIconSource } from "../../components/Icon/ProjectIcon";
-import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
+import MemberTabs from "../../components/MemberTabs/MemberTabs";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -1409,16 +1409,12 @@ export default function ReviewPanel(props: {
       {/* Row one, the shape the Files and Search tabs open with: who this tab
           is about, then the dots. Inside a Topic the chips pick one member,
           the way the file tree's do. */}
+      <Show when={headed()}>
+        <MemberTabs members={props.members ?? []} activeKey={viewed()?.key ?? null} onPick={(m) => setPicked(m.key)} />
+      </Show>
       <div class={styles.topBar}>
-        <Show when={headed()} fallback={<span class={styles.title}>Source Control</span>}>
-          <MemberChipRow
-            bare
-            cap={4}
-            members={props.members ?? []}
-            activeRoot={props.root}
-            activeKey={viewed()?.key ?? null}
-            onPick={(m) => setPicked(m.key)}
-          />
+        <Show when={!headed()}>
+          <span class={styles.title}>Source Control</span>
         </Show>
         <span class={styles.spacer} />
         <IconButton

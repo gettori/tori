@@ -102,6 +102,7 @@
 }
 
 .label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: calc(160px * var(--ui-scale));

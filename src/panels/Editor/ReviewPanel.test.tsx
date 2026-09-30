@@ -1404,7 +1404,7 @@ describe("inside a Topic", () => {
       icon: { seed: r.repoPath },
     }));
 
-  const chip = (label: string) => screen.getByRole("button", { name: label });
+  const chip = (label: string) => screen.getByRole("tab", { name: label });
   /** The one member's list on screen. */
   const shownRoot = () => document.querySelector("[data-root]")!.getAttribute("data-root");
 
@@ -1450,24 +1450,24 @@ describe("inside a Topic", () => {
     expect(document.querySelectorAll("[data-root]")).toHaveLength(1);
     expect(shownRoot()).toBe(A);
     expect(screen.getAllByTitle("src/index.ts")).toHaveLength(1);
-    expect(chip("api").getAttribute("aria-pressed")).toBe("true");
-    expect(chip("web").getAttribute("aria-pressed")).toBe("false");
+    expect(chip("api").getAttribute("aria-selected")).toBe("true");
+    expect(chip("web").getAttribute("aria-selected")).toBe("false");
   });
 
   it("switches the whole panel when another chip is pressed", async () => {
     await mountTopic();
 
-    fireEvent.click(chip("web"));
+    pointerClick(chip("web"));
 
     await waitFor(() => expect(shownRoot()).toBe(B));
-    expect(chip("web").getAttribute("aria-pressed")).toBe("true");
-    expect(chip("api").getAttribute("aria-pressed")).toBe("false");
+    expect(chip("web").getAttribute("aria-selected")).toBe("true");
+    expect(chip("api").getAttribute("aria-selected")).toBe("false");
   });
 
   it("draws no chips row outside a Topic", async () => {
     await mountPanel();
 
-    expect(screen.queryByRole("group", { name: "Topic members" })).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Topic members" })).toBeNull();
   });
 
   // A member rename and a member reorder arrive as a new `roots` prop: the
@@ -1498,7 +1498,7 @@ describe("inside a Topic", () => {
 
   it("discards in the member on screen, and leaves the other alone", async () => {
     await mountTopic();
-    fireEvent.click(chip("web"));
+    pointerClick(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
 
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
@@ -1511,7 +1511,7 @@ describe("inside a Topic", () => {
 
   it("stages every change in the member on screen, and only that member", async () => {
     await mountTopic();
-    fireEvent.click(chip("web"));
+    pointerClick(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
 
     pointerClick(screen.getByRole("button", { name: "More Actions" }));
@@ -1535,14 +1535,14 @@ describe("inside a Topic", () => {
     expect(screen.queryByRole("menuitem", { name: "Push" })).toBeNull();
     await waitFor(() => expect(pullArgs).toEqual([expect.objectContaining({ repo: A, ffOnly: true })]));
 
-    fireEvent.click(chip("web"));
+    pointerClick(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
     expect(screen.getByRole("button", { name: "Stage" })).toBeTruthy();
   });
 
   it("opens the diff tab of the member on screen", async () => {
     await mountTopic();
-    fireEvent.click(chip("web"));
+    pointerClick(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
 
     const opened: string[] = [];
@@ -1588,9 +1588,9 @@ describe("inside a Topic", () => {
     render(() => (
       <ReviewPanel root={A} roots={BROKEN as never} members={chipsFor(BROKEN as never) as never} selected={null} />
     ));
-    await waitFor(() => expect(screen.getByRole("button", { name: /web/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("tab", { name: /web/ })).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: /web/ }));
+    pointerClick(screen.getByRole("tab", { name: /web/ }));
 
     // The reason reads out rather than hiding in a title: it is the only
     // account of why this member has nothing to show.

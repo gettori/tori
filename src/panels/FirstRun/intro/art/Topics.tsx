@@ -30,7 +30,7 @@ import MemberChip, { TabMemberChip } from "../../../../components/MemberChip/Mem
 import OverflowTabBar from "../../../../components/OverflowTabBar";
 import Tab from "../../../../components/Tab/Tab";
 import FileIcon from "../../../../seti/FileIcon";
-import { Field, MatchToggles, MemberToggles } from "../../../Editor/SearchFields";
+import { Field, MatchToggles } from "../../../Editor/SearchFields";
 import SpaceTile, { ModeTile } from "../../../LeftSidebar/SpaceTile";
 import TopicItem from "../../../LeftSidebar/TopicItem";
 import { BranchRow, ProjectRow } from "../../../LeftSidebar/SidebarRows";
@@ -274,7 +274,7 @@ function SearchView() {
   return (
     <div class={search.searchPanel}>
       <div class={search.topBar}>
-        <MemberToggles members={MEMBERS} restricted={[]} onChange={() => {}} />
+        <span class={search.title}>Search</span>
         <span class={search.spacer} />
         <IconButton size="sm" icon={<Icon icon={RefreshCw} />} aria-label="Refresh" />
         <IconButton size="sm" icon={<Icon icon={FilePlus2} />} aria-label="Open New Search Editor" />

@@ -93,7 +93,7 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import Tab from "../../components/Tab/Tab";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
-import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
+import MemberTabs from "../../components/MemberTabs/MemberTabs";
 import FileIcon from "../../seti/FileIcon";
 import Icon from "../../components/Icon/Icon";
 import {
@@ -3360,10 +3360,11 @@ export default function Editor(props: {
             one control to learn instead of four. Only alongside other members:
             one member is not a choice. */}
         <Show when={ACTIVE_ROOT_MODES.includes(rightMode()) && topicId() && members().length > 1}>
-          <MemberChipRow
+          <MemberTabs
             members={members()}
-            activeRoot={root()}
-            onActiveRoot={props.onActiveRoot}
+            activeKey={members().find((m) => !!m.root && m.root === root())?.key ?? null}
+            canPick={(m) => m.state.usable}
+            onPick={(m) => m.root && props.onActiveRoot?.(m.root)}
           />
         </Show>
         <Switch>

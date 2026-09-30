@@ -13,7 +13,7 @@ import {
 import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
-import MemberChipRow from "../../../components/MemberChipRow/MemberChipRow";
+import MemberTabs from "../../../components/MemberTabs/MemberTabs";
 import OverflowTabBar from "../../../components/OverflowTabBar";
 import PanelSection from "../../../components/PanelSection/PanelSection";
 import Resizer from "../../../components/Resizer/Resizer";
@@ -170,17 +170,10 @@ export default function FilesPanel(props: {
 
   return (
     <div class={styles.filesPanel}>
+      <Show when={multiMember()}>
+        <MemberTabs members={props.members} activeKey={viewed()?.key ?? null} onPick={(m) => pick(m.key)} />
+      </Show>
       <div class={styles.topBar}>
-        <Show when={multiMember()}>
-          <MemberChipRow
-            bare
-            cap={4}
-            members={props.members}
-            activeRoot={props.root}
-            activeKey={viewed()?.key ?? null}
-            onPick={(m) => pick(m.key)}
-          />
-        </Show>
         <input
           class={tree.filterBox}
           type="text"
