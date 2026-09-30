@@ -84,6 +84,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  padding-top: calc(6px * var(--ui-scale));
   padding-bottom: calc(8px * var(--ui-scale));
 }
 
@@ -93,14 +94,64 @@
   min-width: 0;
 }
 
+/* The file tree's row as it is, so a hit is as tall as a file. Nothing inside
+   may be taller than the label's line: the hover actions and the count pull
+   their own box in, or the row grows as the pointer crosses it. */
 .row {
   min-width: 0;
-  padding-top: calc(2px * var(--ui-scale));
-  padding-bottom: calc(2px * var(--ui-scale));
 }
 
-.memberRow {
-  font-weight: 600;
+/* Dim and regular, as a member's name reads in the Topics list. Doubled with
+   `.row` to outrank the tree row's own colour, which lives in another module. */
+.row.memberRow {
+  color: var(--fg-muted);
+}
+
+/* The icon slot cross-fades from the project to the chevron under the pointer,
+   as a Spaces project row's does. */
+.memberIcon {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+}
+
+.memberIconArt,
+.memberIconChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--tori-duration-fast) ease;
+}
+
+/* The project icon at the Topics list's 16px. Reaches through the chip to its
+   own icon only, so a reference's lock keeps its small size. */
+span.memberIconArt > span > :global(svg),
+span.memberIconArt > span > img {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+}
+
+span.memberIconArt > span > img {
+  object-fit: contain;
+  border-radius: calc(3px * var(--ui-scale));
+}
+
+.memberIconChevron {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.memberRow:hover .memberIconArt {
+  opacity: 0;
+}
+
+.memberRow:hover .memberIconChevron {
+  opacity: 1;
 }
 
 .fileName {
@@ -140,6 +191,7 @@
 .rowActions {
   display: none;
   align-items: center;
+  margin-block: calc(-4px * var(--ui-scale));
 }
 
 .row:hover .rowActions {
@@ -147,6 +199,7 @@
 }
 
 .badge {
+  margin-block: calc(-2px * var(--ui-scale));
   min-width: calc(18px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale));
   background: var(--neutral-subtle);
