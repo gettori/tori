@@ -29,8 +29,8 @@ import { moveKey } from "../../utils/dragReorder";
 import { syncFor } from "../../utils/branchSync";
 import { pull } from "../../utils/gitActions";
 import { finishedPr } from "../../utils/prRelation";
-import { on as onEvent, NEW_TOPIC } from "../../utils/events";
-import { removeMemberWorktree } from "../../utils/memberWorktree";
+import { on as onEvent, emitWith, NEW_TOPIC, ROOT_MOVED, type RootMoved } from "../../utils/events";
+import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import styles from "./TopicList.module.css";
 
@@ -59,7 +59,9 @@ export default function TopicList(props: {
   class?: string;
   /** The selected Topic's id, so exactly one row reads as active. */
   activeId?: string | null;
-  onSelect?: (topic: Topic) => void;
+  /** `moved` names a member root that changed folder, so the active root can
+   *  follow it rather than fall back to the first member. */
+  onSelect?: (topic: Topic, moved?: { from: string; to: string }) => void;
   /** The selected Topic was deleted; the shell drops the selection. */
   onDeleted?: (topic: Topic) => void;
   /** Live shell/agent tabs under a folder, for the removal confirm's warning.
@@ -84,7 +86,8 @@ export default function TopicList(props: {
     running: Record<string, number>;
   } | null>(null);
   const [memberRenameReq, setMemberRenameReq] = createSignal<{ topic: Topic; member: Member } | null>(null);
-  // The worktree offer that follows a Remove repository. `worktreePath` is held
+  // The worktree offer that follows a Remove repository, or a Remove worktree
+  // (`demote`) that keeps the member and its branch. `worktreePath` is held
   // beside the member because the record no longer carries it by the time this
   // opens, and it is what the async fills key on so a second removal started
   // meanwhile cannot land its status on this one.
@@ -92,6 +95,7 @@ export default function TopicList(props: {
     topic: Topic;
     member: Member;
     worktreePath: string;
+    demote: boolean;
     dirty: boolean | null;
     unpushed: boolean | null;
     hasRemote: boolean | null;
@@ -238,10 +242,15 @@ export default function TopicList(props: {
     // reach through its repo, and the dialog would confirm a removal that fails.
     const worktreePath = member.worktreePath;
     if (!worktreePath || !memberState(member.state).usable) return;
+    offerWorktreeRemoval(next, member, worktreePath, false);
+  }
+
+  function offerWorktreeRemoval(topic: Topic, member: Member, worktreePath: string, demote: boolean) {
     setWtReq({
-      topic: next,
+      topic,
       member,
       worktreePath,
+      demote,
       dirty: null,
       unpushed: null,
       hasRemote: null,
@@ -264,6 +273,15 @@ export default function TopicList(props: {
     const req = wtReq();
     if (!req) return;
     setWtReq({ ...req, busy: true });
+    if (req.demote) {
+      try {
+        const next = await demoteMemberWorktree(req.topic.id, { ...req.member, worktreePath: req.worktreePath });
+        demoted(req.topic, next, req.member.repoPath, req.worktreePath);
+      } catch (e) {
+        setError(String(e));
+      }
+      return setWtReq(null);
+    }
     const branch = req.topic.branch;
     if (opts.deleteRemote) {
       try {
@@ -281,6 +299,40 @@ export default function TopicList(props: {
       setError(String(e));
     }
     setWtReq(null);
+  }
+
+  const rootIn = (topic: Topic, repoPath: string) => {
+    const m = topic.members.find((x) => x.repoPath === repoPath);
+    return m ? memberRoot(m) : null;
+  };
+
+  // Clean tabs and the active root follow the member into its new worktree;
+  // the reference's folder stays, so nothing there closes.
+  async function promote(topic: Topic, member: Member) {
+    const from = memberRoot(member);
+    const next = await mutate("promote_member", { topicId: topic.id, repoPath: member.repoPath });
+    if (!next) return;
+    const to = rootIn(next, member.repoPath);
+    const moved = from && to ? { from, to } : undefined;
+    if (moved) emitWith<RootMoved>(ROOT_MOVED, { workspace: topicKey(topic.id), ...moved });
+    if (props.activeId === topic.id) props.onSelect?.(next, moved);
+  }
+
+  function demote(topic: Topic, member: Member) {
+    if (member.worktreePath && memberState(member.state).usable) {
+      return offerWorktreeRemoval(topic, member, member.worktreePath, true);
+    }
+    // Nothing on disk to remove, so nothing to confirm: only the mode flips.
+    void mutate("demote_member", { topicId: topic.id, repoPath: member.repoPath, force: false }).then(
+      (next) => next && demoted(topic, next, member.repoPath, null),
+    );
+  }
+
+  function demoted(topic: Topic, next: Topic, repoPath: string, from: string | null) {
+    apply(next);
+    if (props.activeId !== topic.id) return;
+    const to = rootIn(next, repoPath);
+    props.onSelect?.(next, from && to ? { from, to } : undefined);
   }
 
   /** Member repo paths in the order the record holds them. */
@@ -417,6 +469,9 @@ export default function TopicList(props: {
     const root = isReference(member) ? memberRoot(member) : null;
     return [
       ...(root ? [{ label: "Pull", onClick: () => void pull(root, false, true) }, { separator: true as const }] : []),
+      isReference(member)
+        ? { label: "Create worktree", onClick: () => void promote(topic, member) }
+        : { label: "Remove worktree…", onClick: () => demote(topic, member) },
       { label: "Rename…", onClick: () => setMemberRenameReq({ topic, member }) },
       { label: "Move up", disabled: i <= 0, onClick: () => move(topic, member, -1) },
       { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(topic, member, 1) },
@@ -525,13 +580,15 @@ export default function TopicList(props: {
           <WorktreeRemoveDialog
             label={req().member.displayName}
             path={req().worktreePath}
-            branch={req().topic.branch}
+            // Remove worktree keeps the branch, so there is no branch to offer
+            // deleting, and unpushed commits stay on it rather than being lost.
+            branch={req().demote ? null : req().topic.branch}
             dirty={req().dirty}
-            unpushed={req().unpushed}
-            hasRemote={req().hasRemote}
+            unpushed={req().demote ? false : req().unpushed}
+            hasRemote={req().demote ? false : req().hasRemote}
             runningCount={req().runningCount}
             busy={req().busy}
-            keepLabel="Keep worktree"
+            keepLabel={req().demote ? undefined : "Keep worktree"}
             onConfirm={(opts) => void confirmRemoveWorktree(opts)}
             onCancel={() => setWtReq(null)}
           />

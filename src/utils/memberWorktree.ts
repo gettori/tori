@@ -8,7 +8,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { PURGE_UNDER_PATH, emitWith, type PurgeUnderPath } from "./events";
-import type { Member } from "./topics";
+import type { Member, Topic } from "./topics";
 
 /** A member whose worktree exists. `branch` is the Topic's, since a member
  *  never has one of its own. */
@@ -40,4 +40,11 @@ export async function removeMemberWorktree(
     worktreePath: member.worktreePath,
     force: true,
   });
+}
+
+/** Remove a member's worktree and keep the member as a reference, its branch
+ *  kept. Same purge-first contract as `removeMemberWorktree`. */
+export async function demoteMemberWorktree(topicId: string, member: WorktreeMember): Promise<Topic> {
+  emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: member.worktreePath });
+  return invoke<Topic>("demote_member", { topicId, repoPath: member.repoPath, force: true });
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renameTabsUnder, repoint } from "./renameTabs";
+import { renameTabsUnder, repoint, retargetCleanTabs } from "./renameTabs";
 
 // A rename is not a removal. The whole point of this module is that a tab
 // survives it: same tab, same order, same unsaved work, new path.
@@ -94,5 +94,29 @@ describe("renameTabsUnder", () => {
     // Same reference: a no-op rename must not churn the signal and remount tabs.
     expect(next.tabs).toBe(maps.tabs);
     expect(next.active).toBe(maps.active);
+  });
+});
+
+describe("retargetCleanTabs", () => {
+  it("moves the workspace's clean tabs to the new root and leaves a dirty one on the old", () => {
+    const maps = {
+      tabs: {
+        topic: [tab("/repo/a.ts"), tab("/repo/src/dirty.ts"), tab("/other/c.ts")],
+        unit: [tab("/repo/a.ts")],
+      },
+      active: { topic: "/repo/a.ts", unit: "/repo/a.ts" },
+    };
+    const dirty = (p: string) => p === "/repo/src/dirty.ts";
+    const next = retargetCleanTabs(maps, "topic", "/repo", "/repo/.tori/worktrees/x", dirty);
+
+    expect(next.tabs.topic.map((t) => t.path)).toEqual([
+      "/repo/.tori/worktrees/x/a.ts",
+      "/repo/src/dirty.ts",
+      "/other/c.ts",
+    ]);
+    expect(next.active.topic).toBe("/repo/.tori/worktrees/x/a.ts");
+    // The old folder is still the repo's own unit, and its tabs stay there.
+    expect(next.tabs.unit).toBe(maps.tabs.unit);
+    expect(next.active.unit).toBe("/repo/a.ts");
   });
 });
