@@ -3235,7 +3235,10 @@ export default function LeftSidebar(props: {
           query={query()}
           activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
           countRunning={countRunningAgents}
-          onSelect={(f) => selectTopic(f, props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null)}
+          onSelect={(f, moved) => {
+            const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
+            selectTopic(f, moved && current === moved.from ? moved.to : current);
+          }}
           onDeleted={(f) => {
             if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
           }}

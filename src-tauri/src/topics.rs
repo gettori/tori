@@ -550,30 +550,8 @@ fn build_reference(store: &Store, topic_id: &str, repo: &str, repair: bool) -> R
 /// Create one member's worktree and flip its record. The repo lock covers the
 /// git work only; the store is re-loaded under its own lock for the flip, so
 /// a concurrent read never overwrites this member with a stale copy.
-///
-/// A branch that already has a secondary worktree is adopted as it is; one
-/// checked out in the repo's own working tree is the user's and fails instead.
-///
-/// The prune and the `is_dir` filter are what make Recreate converge. Git keeps
-/// listing a worktree whose folder was deleted outside Tori, so adopting the
-/// entry as it stands would flip the member `Present` and `reconcile_member`
-/// (which checks the disk separately, `topics.rs:189`) would put it straight
-/// back to `WorktreeMissing` on the next read. Both, not either: prune skips a
-/// locked entry, and it can fail on a repo git is unhappy with.
 fn build_member(store: &Store, topic_id: &str, repo: &str, branch: &str) -> Result<(), String> {
-    let outcome = {
-        let lock = repo_lock(repo);
-        let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::worktree::prune_worktrees(repo);
-        let existing = list_worktrees_body(repo.to_string())
-            .ok()
-            .and_then(|wts| wts.into_iter().find(|w| w.branch == branch && Path::new(&w.path).is_dir()));
-        match existing {
-            Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
-            Some(w) => Ok(PathBuf::from(w.path)),
-            None => topic_container(repo).and_then(|c| create_worktree_in(repo, branch, &c, None)),
-        }
-    };
+    let outcome = member_worktree(repo, branch);
     store.mutate(|file| {
         let member = member_mut(topic_mut(file, topic_id)?, repo)?;
         match outcome {
@@ -585,6 +563,81 @@ fn build_member(store: &Store, topic_id: &str, repo: &str, branch: &str) -> Resu
         }
         Ok(())
     })
+}
+
+/// A branch that already has a secondary worktree is adopted as it is; one
+/// checked out in the repo's own working tree is the user's and fails instead.
+///
+/// The prune and the `is_dir` filter are what make Recreate converge. Git keeps
+/// listing a worktree whose folder was deleted outside Tori, so adopting the
+/// entry as it stands would flip the member `Present` and `reconcile_member`
+/// (which checks the disk separately) would put it straight back to
+/// `WorktreeMissing` on the next read. Both, not either: prune skips a locked
+/// entry, and it can fail on a repo git is unhappy with.
+fn member_worktree(repo: &str, branch: &str) -> Result<PathBuf, String> {
+    let lock = repo_lock(repo);
+    let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    crate::worktree::prune_worktrees(repo);
+    let existing = list_worktrees_body(repo.to_string())
+        .ok()
+        .and_then(|wts| wts.into_iter().find(|w| w.branch == branch && Path::new(&w.path).is_dir()));
+    match existing {
+        Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
+        Some(w) => Ok(PathBuf::from(w.path)),
+        None => topic_container(repo).and_then(|c| create_worktree_in(repo, branch, &c, None)),
+    }
+}
+
+fn find_member<'a>(topic: &'a Topic, repo: &str) -> Result<&'a Member, String> {
+    topic
+        .members
+        .iter()
+        .find(|m| same_path(&m.repo_path, repo))
+        .ok_or_else(|| format!("{repo} is not a member of {}", topic.name))
+}
+
+/// Give a reference its worktree on the Topic branch. The record changes only
+/// once git has answered, so a refusal leaves the member a reference.
+pub fn promote_member(store: &Store, topic_id: &str, repo: &str) -> Result<Topic, String> {
+    let topic = load_topic(store, topic_id)?;
+    let member = find_member(&topic, repo)?;
+    if member.mode == MemberMode::Worktree {
+        return Err(format!("{} already has a worktree", member.display_name));
+    }
+    let path = member_worktree(repo, &topic.branch)?;
+    store.mutate(|file| {
+        let member = member_mut(topic_mut(file, topic_id)?, repo)?;
+        member.mode = MemberMode::Worktree;
+        member.worktree_path = Some(path.to_string_lossy().into_owned());
+        member.checkout = None;
+        member.state = MemberState::Present;
+        Ok(())
+    })?;
+    reconciled_topic(store, topic_id)
+}
+
+/// Remove a member's worktree and keep it as a reference. The branch stays,
+/// so promoting again picks the work back up. Only a `Present` worktree is
+/// removed: a recorded folder git no longer lists on the Topic branch may be
+/// holding something else.
+pub fn demote_member(store: &Store, topic_id: &str, repo: &str, force: bool) -> Result<Topic, String> {
+    let topic = load_topic(store, topic_id)?;
+    let member = find_member(&topic, repo)?;
+    if member.mode == MemberMode::Reference {
+        return Err(format!("{} has no worktree", member.display_name));
+    }
+    if let (MemberState::Present, Some(wt)) = (&member.state, member.worktree_path.as_deref()) {
+        let lock = repo_lock(repo);
+        let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::worktree::do_remove_worktree(repo, wt, force)?;
+    }
+    store.mutate(|file| {
+        let member = member_mut(topic_mut(file, topic_id)?, repo)?;
+        member.mode = MemberMode::Reference;
+        member.worktree_path = None;
+        Ok(())
+    })?;
+    reconciled_topic(store, topic_id)
 }
 
 fn load_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
@@ -815,6 +868,41 @@ pub mod commands {
             let store = Store::default_location();
             let mode = mode.unwrap_or_default();
             let topic = super::add_member_as(&store, &topic_id, &repo_path, mode, &step(&app))?;
+            settle(&app, &index, &topic);
+            Ok(topic)
+        })
+        .await
+    }
+
+    #[tauri::command]
+    pub async fn promote_member(
+        app: AppHandle,
+        index: State<'_, ProjectIndex>,
+        topic_id: String,
+        repo_path: String,
+    ) -> Result<Topic, String> {
+        let index = index.inner().clone();
+        blocking("promote_member", move || {
+            let topic = super::promote_member(&Store::default_location(), &topic_id, &repo_path)?;
+            settle(&app, &index, &topic);
+            Ok(topic)
+        })
+        .await
+    }
+
+    /// The UI tears down what runs under the worktree first, the same contract
+    /// `remove_worktree` has, and passes `force` once its confirm has warned.
+    #[tauri::command]
+    pub async fn demote_member(
+        app: AppHandle,
+        index: State<'_, ProjectIndex>,
+        topic_id: String,
+        repo_path: String,
+        force: bool,
+    ) -> Result<Topic, String> {
+        let index = index.inner().clone();
+        blocking("demote_member", move || {
+            let topic = super::demote_member(&Store::default_location(), &topic_id, &repo_path, force)?;
             settle(&app, &index, &topic);
             Ok(topic)
         })
@@ -1559,6 +1647,110 @@ mod tests {
         let checkout = t.members[0].checkout.as_ref().unwrap();
         assert!(Path::new(&checkout.path).is_dir());
         assert_eq!(t.members[0].worktree_path, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn cloned(tmp: &Path, name: &str) -> (String, String) {
+        let src = repo(&tmp.join(format!("{name}-src")));
+        let clone = tmp.join(name);
+        let out = Command::new("git")
+            .args(["clone", "-q", &src, clone.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        git(&clone, &["config", "user.email", "t@t"]);
+        git(&clone, &["config", "user.name", "t"]);
+        (src, clone.to_string_lossy().into_owned())
+    }
+
+    fn reference_topic(store: &Store, repo: &str) -> Topic {
+        let members = [NewMember { repo_path: repo.to_string(), mode: MemberMode::Reference }];
+        create_topic_with(store, "X", "feat/x", &members, &|_| {}).unwrap()
+    }
+
+    fn commit(dir: &str, file: &str) -> String {
+        std::fs::write(Path::new(dir).join(file), file).unwrap();
+        git(Path::new(dir), &["add", "."]);
+        git(Path::new(dir), &["commit", "-qm", file]);
+        git_out(dir, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn promote_branches_from_origins_default_not_the_local_checkout() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        commit(&a, "local-only.txt");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+
+        let t = promote_member(&store, &t.id, &a).unwrap();
+        let m = &t.members[0];
+        assert_eq!(m.mode, MemberMode::Worktree);
+        assert_eq!(m.state, MemberState::Present);
+        assert_eq!(m.checkout, None);
+        let wt = m.worktree_path.as_deref().unwrap();
+        assert_eq!(git_out(wt, &["rev-parse", "HEAD"]), git_out(&a, &["rev-parse", "origin/HEAD"]));
+        assert_eq!(member_root(m), Some(wt));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn promote_tracks_a_topic_branch_that_already_exists_on_origin() {
+        let tmp = unique_tmp();
+        let (src, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        // Pushed after the clone, so only the fetch promote runs can see it.
+        git(Path::new(&src), &["checkout", "-qb", "feat/x"]);
+        let pushed = commit(&src, "remote.txt");
+
+        let t = promote_member(&store, &t.id, &a).unwrap();
+        let wt = t.members[0].worktree_path.clone().unwrap();
+        assert_eq!(git_out(&wt, &["rev-parse", "HEAD"]), pushed);
+        assert_eq!(git_out(&wt, &["rev-parse", "--abbrev-ref", "feat/x@{u}"]).trim(), "origin/feat/x");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn promote_refuses_a_topic_branch_checked_out_in_place_and_stays_a_reference() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        git(Path::new(&a), &["checkout", "-qb", "feat/x"]);
+        let worktrees = git_out(&a, &["worktree", "list"]);
+
+        let err = promote_member(&store, &t.id, &a).unwrap_err();
+        assert!(err.contains("checked out in place"), "{err}");
+        assert_eq!(git_out(&a, &["worktree", "list"]), worktrees);
+        let m = &list_topics(&store)[0].members[0];
+        assert_eq!(m.mode, MemberMode::Reference);
+        assert_eq!(m.worktree_path, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn demote_keeps_the_branch_so_promote_picks_the_work_back_up() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        let t = promote_member(&store, &t.id, &a).unwrap();
+        let wt = t.members[0].worktree_path.clone().unwrap();
+        let work = commit(&wt, "work.txt");
+
+        let t = demote_member(&store, &t.id, &a, false).unwrap();
+        let m = &t.members[0];
+        assert_eq!(m.mode, MemberMode::Reference);
+        assert_eq!(m.state, MemberState::Present);
+        assert_eq!(m.worktree_path, None);
+        assert_eq!(m.checkout.as_ref().map(|c| c.path.as_str()), Some(a.as_str()));
+        assert!(!Path::new(&wt).exists());
+        assert_eq!(git_out(&a, &["rev-parse", "feat/x"]), work);
+
+        let t = promote_member(&store, &t.id, &a).unwrap();
+        let wt = t.members[0].worktree_path.clone().unwrap();
+        assert_eq!(git_out(&wt, &["rev-parse", "HEAD"]), work);
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

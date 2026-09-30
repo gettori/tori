@@ -311,6 +311,8 @@ pub fn run() {
             topics::commands::create_topic,
             topics::commands::retry_member,
             topics::commands::add_member,
+            topics::commands::promote_member,
+            topics::commands::demote_member,
             topics::commands::relocate_member,
             topics::commands::remove_member,
             topics::commands::reorder_members,

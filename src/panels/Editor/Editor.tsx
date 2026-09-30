@@ -191,6 +191,8 @@ import {
   type SearchInFolder,
   type SplitPane,
   type FileRenamed,
+  ROOT_MOVED,
+  type RootMoved,
   type FsChanged,
   MOVE_TAB_TO_PANE,
   type MoveTabToPane,
@@ -253,7 +255,7 @@ import {
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
 import { searchBufferRoots, searchTabTitle } from "./searchResultsStore";
-import { renameTabsUnder, repoint } from "./renameTabs";
+import { renameTabsUnder, repoint, retargetCleanTabs } from "./renameTabs";
 import {
   isSyntheticId,
   parseCommitDiffArg,
@@ -2488,6 +2490,7 @@ export default function Editor(props: {
   let offSetRightMode: (() => void) | undefined;
   let offSearchInFolder: (() => void) | undefined;
   let offFileRenamed: (() => void) | undefined;
+  let offRootMoved: (() => void) | undefined;
   let offGitWatch: (() => void) | undefined;
   let offCommands: (() => void)[] = [];
 
@@ -2645,6 +2648,11 @@ export default function Editor(props: {
     offFileRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
       if (d?.from && d.to) followRename(d.from, d.to);
     });
+    offRootMoved = onWith<RootMoved>(ROOT_MOVED, ({ workspace, from, to }) => {
+      const next = retargetCleanTabs({ tabs: tabsByWs(), active: activeByWs() }, workspace, from, to, (p) => !!dirty()[p]);
+      setTabsByWs(next.tabs);
+      setActiveByWs(next.active);
+    });
     // Follow mode: auto-open the most-recently-changed project file. The watcher
     // already filters .git/node_modules/dist/target, and self-writes are skipped,
     // so follow never jumps to git internals, build output, or our own saves.
@@ -2738,6 +2746,7 @@ export default function Editor(props: {
     offSetRightMode?.();
     offSearchInFolder?.();
     offFileRenamed?.();
+    offRootMoved?.();
     offGitWatch?.();
     for (const off of offCommands) off();
   });

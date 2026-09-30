@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent, within, cleanup } from "@solidjs/te
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
 import { Toast } from "../../lib/toast";
-import { LAST_MEMBER, type Topic, type Member, type MemberState } from "../../utils/topics";
+import { LAST_MEMBER, topicKey, type Topic, type Member, type MemberState } from "../../utils/topics";
 
 function member(repoPath: string, order: number, state: MemberState = { kind: "present" }): Member {
   return {
@@ -129,6 +129,23 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     // The record-only commands answer with the reloaded Topic, the shape the
     // backend took on when it started emitting `topics://changed` for them.
+    // The mode flips answer with the reconciled record, the root moved.
+    if (cmd === "promote_member" || cmd === "demote_member") {
+      const at = (bridge.topics ?? []).findIndex((f) => f.id === args.topicId);
+      const f = bridge.topics![at];
+      const next: Topic = {
+        ...f,
+        members: f.members.map((m) =>
+          m.repoPath !== args.repoPath
+            ? m
+            : cmd === "promote_member"
+              ? { ...m, mode: "worktree", checkout: null, worktreePath: `${m.repoPath}/.tori/worktrees/auth` }
+              : asReference(m),
+        ),
+      };
+      bridge.topics = bridge.topics!.map((x, i) => (i === at ? next : x));
+      return Promise.resolve(next);
+    }
     if (RECORD_ONLY.has(cmd)) {
       const at = (bridge.topics ?? []).findIndex((f) => f.id === args.topicId);
       if (at < 0) return Promise.reject(new Error(`No Topic with id ${args.topicId}`));
@@ -173,7 +190,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 const { default: TopicList } = await import("./TopicList");
 const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
-const { PURGE_WORKSPACE, PURGE_UNDER_PATH } = await import("../../utils/events");
+const { PURGE_WORKSPACE, PURGE_UNDER_PATH, ROOT_MOVED } = await import("../../utils/events");
 
 // A reference member reads the repo's own checkout and owns no worktree.
 const asReference = (m: Member): Member => ({
@@ -729,6 +746,51 @@ describe("TopicList", () => {
       await openOn("Auth", "/w/api");
       await screen.findByText("Rename…");
       expect(screen.queryByText("Pull")).toBeNull();
+    });
+
+    it("Create worktree promotes a reference and moves its tabs and the active root", async () => {
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
+      const onSelect = vi.fn();
+      const moved: unknown[] = [];
+      const onMoved = (e: Event) => moved.push((e as CustomEvent).detail);
+      window.addEventListener(ROOT_MOVED, onMoved);
+      try {
+        render(() => <TopicList spaces={SPACES} query="" activeId="auth-1" onSelect={onSelect} />);
+        await screen.findByText("Auth");
+        await expand("Auth");
+        fireEvent.contextMenu(memberRow("/w/web"));
+        pointerClick(await screen.findByText("Create worktree"));
+        await waitFor(() => expect(moved.length).toBe(1));
+      } finally {
+        window.removeEventListener(ROOT_MOVED, onMoved);
+      }
+      const to = "/w/web/.tori/worktrees/auth";
+      expect(bridge.calls.find((c) => c.cmd === "promote_member")!.args).toEqual({ topicId: "auth-1", repoPath: "/w/web" });
+      expect(moved).toEqual([{ workspace: topicKey("auth-1"), from: "/w/web", to }]);
+      expect(onSelect.mock.lastCall![1]).toEqual({ from: "/w/web", to });
+    });
+
+    it("Remove worktree demotes the member after the confirm, never offering to delete the branch", async () => {
+      const purged: string[] = [];
+      const onPurge = (e: Event) => purged.push((e as CustomEvent<{ path: string }>).detail.path);
+      window.addEventListener(PURGE_UNDER_PATH, onPurge);
+      try {
+        await openOn("Auth", "/w/api");
+        pointerClick(await screen.findByText("Remove worktree…"));
+        const dialog = await screen.findByRole("dialog", { name: /Remove worktree/ });
+        expect(dialog.textContent).not.toContain("Delete local branch");
+        fireEvent.click(within(dialog).getByRole("button", { name: "Remove worktree" }));
+        await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "demote_member")).toBe(true));
+      } finally {
+        window.removeEventListener(PURGE_UNDER_PATH, onPurge);
+      }
+      expect(purged).toEqual(["/w/api/.tori/worktrees/auth"]);
+      expect(bridge.calls.find((c) => c.cmd === "demote_member")!.args).toEqual({
+        topicId: "auth-1",
+        repoPath: "/w/api",
+        force: true,
+      });
+      expect(bridge.calls.some((c) => c.cmd.startsWith("remove_worktree"))).toBe(false);
     });
 
     it("refuses to remove the last member and says why on the row", async () => {
