@@ -222,6 +222,7 @@ const riskRow = (scope: HTMLElement, repoPath: string) =>
 
 describe("TopicList", () => {
   beforeEach(() => {
+    localStorage.clear();
     bridge.calls.length = 0;
     bridge.handlers.clear();
     bridge.topics = [AUTH, PAY];
@@ -386,7 +387,7 @@ describe("TopicList", () => {
     fireEvent.input(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Search" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "api" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "web" }));
-    const done = () => screen.getByRole("button", { name: "Done" }) as HTMLButtonElement;
+    const done = () => screen.getByRole("button", { name: "Create Topic" }) as HTMLButtonElement;
     await waitFor(() => expect(done().disabled).toBe(false));
     fireEvent.click(done());
 
@@ -758,6 +759,7 @@ describe("TopicList", () => {
       await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "git_pull" && c.args.repo === "/w/web" && c.args.ffOnly === true)).toBe(true));
 
       cleanup();
+      localStorage.clear();
       bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
       await openOn("Auth", "/w/api");
       await screen.findByText("Rename…");

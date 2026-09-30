@@ -57,10 +57,22 @@ const lower = (t: Topic) => t.name.toLowerCase();
 const byName = (a: Topic, b: Topic) =>
   lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
+const LS_EXPANDED = "tori.topics-expanded.v1";
+
+function loadExpanded(): Record<string, boolean> {
+  try {
+    const ids = JSON.parse(localStorage.getItem(LS_EXPANDED) ?? "[]") as string[];
+    return Object.fromEntries(ids.map((id) => [id, true]));
+  } catch {
+    return {};
+  }
+}
+
 export default function TopicList(props: {
   spaces: TopicSpace[];
   query: string;
   class?: string;
+  hidden?: boolean;
   /** The selected Topic's id, so exactly one row reads as active. */
   activeId?: string | null;
   /** `moved` names a member root that changed folder, so the active root can
@@ -111,8 +123,17 @@ export default function TopicList(props: {
   } | null>(null);
   // Kept here rather than on the row: applying a record replaces the object the
   // `<For>` keys on, so a row's own open state would not survive a rename.
-  const [expanded, setExpanded] = createSignal<Record<string, boolean>>({});
-  createEffect(() => props.onExpanded?.(Object.keys(expanded()).filter((id) => expanded()[id])));
+  // In localStorage so a restart reopens the rows that were open.
+  const [expanded, setExpanded] = createSignal<Record<string, boolean>>(loadExpanded());
+  createEffect(() => {
+    const open = Object.keys(expanded()).filter((id) => expanded()[id]);
+    props.onExpanded?.(open);
+    try {
+      localStorage.setItem(LS_EXPANDED, JSON.stringify(open));
+    } catch {
+      // ignore quota
+    }
+  });
 
   // Latest request wins: a refetch started later must not be overwritten by
   // an earlier one that resolved later.
@@ -527,7 +548,7 @@ export default function TopicList(props: {
   });
 
   return (
-    <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} data-topic-list>
+    <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} hidden={props.hidden} data-topic-list>
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
       <Show
         when={visible().length > 0}

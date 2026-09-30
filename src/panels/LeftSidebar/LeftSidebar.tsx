@@ -3278,24 +3278,25 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      <Show when={mode() === "topics"}>
-        <TopicList
-          class={styles.topicList}
-          spaces={visibleSpaces()}
-          query={query()}
-          activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
-          countRunning={countRunningAgents}
-          onExpanded={setExpandedTopics}
-          topicStatus={(f) => bubbleFor((s) => s.home?.topic === f.id)}
-          onSelect={(f, moved) => {
-            const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
-            selectTopic(f, moved && current === moved.from ? moved.to : current);
-          }}
-          onDeleted={(f) => {
-            if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
-          }}
-        />
-      </Show>
+      {/* Hidden rather than unmounted, unlike the Spaces tree: this list owns
+          its records, so a remount refetches them and redraws every row. */}
+      <TopicList
+        hidden={mode() !== "topics"}
+        class={styles.topicList}
+        spaces={visibleSpaces()}
+        query={query()}
+        activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
+        countRunning={countRunningAgents}
+        onExpanded={setExpandedTopics}
+        topicStatus={(f) => bubbleFor((s) => s.home?.topic === f.id)}
+        onSelect={(f, moved) => {
+          const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
+          selectTopic(f, moved && current === moved.from ? moved.to : current);
+        }}
+        onDeleted={(f) => {
+          if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
+        }}
+      />
 
       <Show when={mode() === "spaces"}>
       <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu}>
