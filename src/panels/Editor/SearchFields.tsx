@@ -2,8 +2,6 @@ import { For, Show, type JSX } from "solid-js";
 import { BookOpen, CaseSensitive, ListFilter, Regex, WholeWord, type LucideIcon } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
-import type { TintedMember } from "../../utils/topicMembers";
 import { isUnsupported, unsupportedReason, type SearchOptions, type ToggleKey } from "../../utils/searchOptions";
 import styles from "./SearchFields.module.css";
 
@@ -151,34 +149,5 @@ export function GlobFields(props: {
         </Field>
       </div>
     </div>
-  );
-}
-
-/** Which members a search covers. Every chip lit means every member; clicking
- *  one turns it off, and turning off the last lit one goes back to all. */
-export function MemberToggles(props: {
-  members: readonly TintedMember[];
-  restricted: readonly string[];
-  onChange: (repos: string[]) => void;
-}) {
-  const usable = () => props.members.filter((m) => m.state.usable).map((m) => m.member.repoPath);
-  const isOn = (m: TintedMember) =>
-    m.state.usable && (!props.restricted.length || props.restricted.includes(m.member.repoPath));
-  function toggle(m: TintedMember) {
-    const now = props.restricted.length ? [...props.restricted] : usable();
-    const repo = m.member.repoPath;
-    const next = now.includes(repo) ? now.filter((p) => p !== repo) : [...now, repo];
-    props.onChange(!next.length || next.length === usable().length ? [] : next);
-  }
-  return (
-    <MemberChipRow
-      bare
-      cap={4}
-      members={props.members}
-      activeRoot={null}
-      isOn={isOn}
-      canPick={(m) => m.state.usable}
-      onPick={toggle}
-    />
   );
 }
