@@ -137,10 +137,11 @@ describe("selecting a Topic", () => {
 
   it("leaves the selection alone across a mode cycle", async () => {
     const { onSelect } = await mounted(topicSel);
+    const list = () => document.querySelector("[data-topic-list]") as HTMLElement;
     emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(screen.queryByText("Auth")).toBeNull());
+    await waitFor(() => expect(list().hidden).toBe(true));
     emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(screen.queryByText("Auth")).toBeTruthy());
+    await waitFor(() => expect(list().hidden).toBe(false));
     expect(onSelect).not.toHaveBeenCalled();
   });
 
