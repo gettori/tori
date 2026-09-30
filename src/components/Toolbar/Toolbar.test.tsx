@@ -1,6 +1,5 @@
-// The Toolbar for a Topic (#154 phase 2): its name and branch as the crumb,
-// then one chip per member. A present chip moves the active root; a member
-// with no worktree is disabled and says why.
+// The Toolbar: the crumb to the selected branch and its sync chip, and for a
+// Topic just `Topics > name`, with no member row to switch from.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -28,32 +27,6 @@ const upstream = (over: Record<string, unknown> = {}) => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "list_topics")
-      return Promise.resolve([
-        {
-          id: "f1",
-          name: "Auth",
-          branch: "feat/auth",
-          createdAt: 1,
-          members: [
-            { repoPath: "/w/api", displayName: "api", worktreePath: A, state: { kind: "present" }, order: 0 },
-            { repoPath: "/w/web", displayName: "web", worktreePath: B, state: { kind: "present" }, order: 1 },
-            { repoPath: "/w/ledger", displayName: "ledger", worktreePath: null, state: { kind: "worktree-missing" }, order: 2 },
-          ],
-        },
-        // A second record rather than a second mock: `topicMembers` reads once
-        // per generation module-wide, so a test that swapped this payload would
-        // be served the first one from the cache.
-        {
-          id: "f2",
-          name: "Broken",
-          branch: "feat/broken",
-          createdAt: 2,
-          members: [
-            { repoPath: "/w/api", displayName: "api", worktreePath: null, state: { kind: "worktree-missing" }, order: 0 },
-          ],
-        },
-      ]);
     if (cmd === "git_branch_sync") return Promise.resolve(sync.byRoot[String(args?.projectPath)] ?? null);
     if (cmd === "get_config")
       return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }] });
@@ -108,21 +81,7 @@ const sessionSel = {
   sessionName: null,
 };
 
-const brokenSel = {
-  kind: "topic",
-  topicId: "f2",
-  topicName: "Broken",
-  roots: [],
-  activeRoot: null,
-  spaceName: "",
-  projectName: "Broken",
-  projectPath: "",
-  folderPath: "",
-  branch: "feat/broken",
-  projectKind: "topic",
-};
 
-const chip = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
 const crumbs = () =>
   [...document.querySelectorAll("nav[aria-label='location'] > span")].map((s) => s.textContent);
 
@@ -158,46 +117,12 @@ const fireFetch = (name: string, payload: unknown) => {
 };
 
 describe("Toolbar for a Topic", () => {
-  it("shows the Topic crumb and a chip per member, the active root pressed", async () => {
-    const onActiveRoot = vi.fn();
-    render(() => <Toolbar selected={topicSel(A) as never} onActiveRoot={onActiveRoot} />);
-    expect(screen.getByText("Auth")).toBeTruthy();
-    expect(screen.getByText("feat/auth")).toBeTruthy();
-    await waitFor(() => expect(screen.queryByRole("button", { name: "api" })).toBeTruthy());
-    expect(chip("api").getAttribute("aria-pressed")).toBe("true");
-    expect(chip("web").getAttribute("aria-pressed")).toBe("false");
-    await waitFor(() => expect(chip("api").style.getPropertyValue("--chip-hue")).not.toBe(""));
-
-    fireEvent.click(chip("web"));
-    expect(onActiveRoot).toHaveBeenCalledWith(B);
-  });
-
-  it("names the active member between the Topic and its branch", async () => {
-    // Three crumbs, and the middle one follows the chip row: the crumb says
-    // where you are, the chips are what move it (#158).
-    const onActiveRoot = vi.fn();
-    render(() => <Toolbar selected={topicSel(B) as never} onActiveRoot={onActiveRoot} />);
-    await waitFor(() => expect(crumbs()).toEqual(["Auth", "web", "feat/auth"]));
-
-    fireEvent.click(chip("api"));
-    expect(onActiveRoot).toHaveBeenCalledWith(A);
-  });
-
-  it("falls back to two crumbs when no member is open, with no dangling separator", async () => {
-    render(() => <Toolbar selected={brokenSel as never} />);
-    await waitFor(() => expect(screen.queryByRole("button", { name: /api/ })).toBeTruthy());
-    // Not an empty middle crumb: the separator leaves with the name it followed.
-    expect(crumbs()).toEqual(["Broken", "feat/broken"]);
-    expect(document.querySelectorAll("nav[aria-label='location'] svg").length).toBe(1);
-  });
-
-  it("disables a member with no worktree and names the state", async () => {
-    const onActiveRoot = vi.fn();
-    render(() => <Toolbar selected={topicSel(A) as never} onActiveRoot={onActiveRoot} />);
-    await waitFor(() => expect(screen.queryByRole("button", { name: "ledger: Worktree missing" })).toBeTruthy());
-    expect(chip("ledger: Worktree missing").disabled).toBe(true);
-    fireEvent.click(chip("ledger: Worktree missing"));
-    expect(onActiveRoot).not.toHaveBeenCalled();
+  it("shows Topics and the Topic's name, with no member to switch to", async () => {
+    await loadSync({ [A]: upstream({ behind: 3 }) });
+    render(() => <Toolbar selected={topicSel(A) as never} />);
+    expect(crumbs()).toEqual(["Topics", "Auth"]);
+    expect(screen.queryByRole("group", { name: "Topic members" })).toBeNull();
+    expect(syncChip()).toBeNull();
   });
 
   it("draws the sync chip at every level that has something to say", async () => {
@@ -224,17 +149,6 @@ describe("Toolbar for a Topic", () => {
     // No element, not a blank one: an empty pill is still a thing to hover,
     // focus and click into a state the branch is not in.
     expect(syncChip()).toBeNull();
-  });
-
-  it("speaks for the member in front inside a Topic", async () => {
-    await loadSync({ [A]: upstream({ behind: 3 }), [B]: upstream({ ahead: 1 }) });
-
-    const onA = render(() => <Toolbar selected={topicSel(A) as never} />);
-    await waitFor(() => expect(syncChip()?.dataset.syncLevel).toBe("behind"));
-    onA.unmount();
-
-    render(() => <Toolbar selected={topicSel(B) as never} />);
-    await waitFor(() => expect(syncChip()?.dataset.syncLevel).toBe("ahead"));
   });
 
   it("opens the Changes panel, where every one of these states is acted on", async () => {

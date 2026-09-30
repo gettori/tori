@@ -2,10 +2,10 @@
 // worktree is offered second, and Keep is a real outcome rather than an undo:
 // the member has already left the Topic by the time the dialog opens.
 //
-// Mounted with the Toolbar beside the sidebar because the half worth pinning is
-// the one no unit test reaches: removing the *active* member has to move
-// `activeRoot` onto a member that still exists, before anything touches the
-// folder, or the crumb keeps naming a repo the Topic no longer has.
+// The half worth pinning is the one no unit test reaches: removing the *active*
+// member has to move `activeRoot` onto a member that still exists, before
+// anything touches the folder, or the panels keep showing a repo the Topic no
+// longer has.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
@@ -94,7 +94,6 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
-const { default: Toolbar } = await import("../../components/Toolbar/Toolbar");
 const { topicSelection } = await import("../../utils/topics");
 const { PURGE_UNDER_PATH } = await import("../../utils/events");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
@@ -103,29 +102,23 @@ const { resetSessionActivityForTests } = await import("../../utils/sessionActivi
 const changed = () =>
   (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: topic() }));
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
-const crumbs = () =>
-  Array.from(document.querySelectorAll('nav[aria-label="location"] > span')).map((s) => s.textContent);
 
-// The sidebar owns the selection the Toolbar reads, exactly as the shell wires
-// them: `onSelect` re-resolves the Topic through `topicSelection`, which is
+// The sidebar owns the selection, exactly as the shell wires it: `onSelect` re-resolves the Topic through `topicSelection`, which is
 // where a departed root drops out of `roots` and off `activeRoot`.
 async function mount() {
   const [selected, setSelected] = createSignal(topicSelection(topic() as never, WT_A));
   render(() => (
-    <>
-      <Toolbar selected={selected()} />
-      <LeftSidebar
-        selected={selected()}
-        onSelect={(s) => setSelected(s as never)}
-        onActiveRoot={() => {}}
-        liveTabs={[]}
-      />
-    </>
+    <LeftSidebar
+      selected={selected()}
+      onSelect={(s) => setSelected(s as never)}
+      onActiveRoot={() => {}}
+      liveTabs={[]}
+    />
   ));
   // One emit moves the shared resource's generation on, so a second test in
   // this file is not served the first one's record from the cache.
+  await waitFor(() => expect(handlers["topics://changed"]?.length).toBeTruthy());
   changed();
-  await waitFor(() => expect(crumbs()).toEqual(["Auth", "api", "feat/auth"]));
   fireEvent.click(await screen.findByRole("button", { name: "Show members of Auth" }));
   return selected;
 }
@@ -201,8 +194,6 @@ describe("Remove repository", () => {
     await removeRepo(REPO_A);
 
     expect(selected()!.activeRoot).toBe(WT_B);
-    changed();
-    await waitFor(() => expect(crumbs()).toEqual(["Auth", "web", "feat/auth"]));
     // Still before the worktree is touched: Keep is offered, not assumed.
     expect(sent("remove_worktree")).toEqual([]);
   });
