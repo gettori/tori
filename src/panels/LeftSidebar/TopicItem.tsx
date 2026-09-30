@@ -228,9 +228,13 @@ export default function TopicItem(props: {
                   marks={syncMarks(syncOf(m.member), finishedOf(m.member))}
                   label={markTitle(syncMarks(syncOf(m.member), finishedOf(m.member)))}
                 />
-                <span class={styles.memberState} data-member-state>
-                  {stateLabel(m.member, m.state.label)}
-                </span>
+                {/* Only when something is wrong: a working member is the norm,
+                    and a reference already wears its lock. */}
+                <Show when={!m.state.usable}>
+                  <span class={styles.memberState} data-member-state>
+                    {m.state.label}
+                  </span>
+                </Show>
                 <Show when={referenceWarning(m.member)}>
                   {(warning) => (
                     <span class={styles.memberWarning} data-member-warning>

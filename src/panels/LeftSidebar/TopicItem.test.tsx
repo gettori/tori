@@ -136,14 +136,14 @@ describe("TopicItem", () => {
       );
     });
 
-    it("names each member and says what state it is in", async () => {
+    it("names each member and says what state it is in only when broken", async () => {
       const { container } = mount(
         topic([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]),
       );
       await expand();
 
       const rows = memberRows(container);
-      expect(rows.map((r) => r.textContent)).toEqual(["apiReady", "webWorktree missingRecreate web"]);
+      expect(rows.map((r) => r.textContent)).toEqual(["api", "webWorktree missingRecreate web"]);
       expect(rows[1].getAttribute("data-state")).toBe("worktree-missing");
     });
 
@@ -339,7 +339,7 @@ describe("a reference member", () => {
     upstream: { ahead: 0, behind: 3, has_upstream: true, gone: false, rewritten: false, superseded: false },
   });
 
-  it("wears a lock on its chip and its row, and reads as a reference", async () => {
+  it("wears a lock on its chip and its row, with no state label beside either", async () => {
     const { container } = mount(topic([reference("/w/api", 0), member("/w/web", 1)]));
     const locked = Array.from(container.querySelectorAll("[data-chip] [data-reference]"));
     expect(locked.map((l) => l.closest("[data-chip]")!.getAttribute("data-chip"))).toEqual(["/w/api"]);
@@ -347,9 +347,9 @@ describe("a reference member", () => {
     await expand();
     const [api, web] = memberRows(container);
     expect(api.querySelector("[data-reference]")).toBeTruthy();
-    expect(api.querySelector("[data-member-state]")!.textContent).toBe("Reference");
+    expect(api.querySelector("[data-member-state]")).toBeNull();
     expect(web.querySelector("[data-reference]")).toBeNull();
-    expect(web.querySelector("[data-member-state]")!.textContent).toBe("Ready");
+    expect(web.querySelector("[data-member-state]")).toBeNull();
   });
 
   it("marks how far the checkout is behind origin", async () => {
