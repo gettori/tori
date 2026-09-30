@@ -29,6 +29,7 @@ import {
 } from "./forgeTypes";
 import { canonicalHost, type KnownHosts } from "./prUrl";
 import { orgNotice, type OrgNotice } from "./orgNotice";
+import { isReference, type Topic } from "./topics";
 import {
   askOrder,
   backoffAfter,
@@ -46,6 +47,36 @@ import {
 /// is looking at it. `branch` is null for a `plain-dir` unit, which has none.
 export type WatchedUnit = { branch: string | null; visible: boolean };
 export type WatchedProject = { path: string; units: readonly WatchedUnit[] };
+
+/** What a Topic adds to the poll: each member's repo, asked about the Topic
+ *  branch. Only a member whose branch exists somewhere has a pull request to
+ *  find, and a worktree member's always does; a reference is asked about only
+ *  once `branchKnown` says a promotion, or someone else, made it. */
+export function topicProjects(
+  topics: readonly { topic: Topic; visible: boolean }[],
+  branchKnown: (repo: string, branch: string) => boolean,
+): WatchedProject[] {
+  return topics.flatMap(({ topic, visible }) =>
+    topic.members
+      .filter((m) => !isReference(m) || branchKnown(m.repoPath, topic.branch))
+      .map((m) => ({ path: m.repoPath, units: [{ branch: topic.branch, visible }] })),
+  );
+}
+
+/** One entry per project, its branches unioned; a branch any list shows is
+ *  shown. */
+export function mergeWatched(lists: readonly (readonly WatchedProject[])[]): WatchedProject[] {
+  const byPath = new Map<string, Map<string | null, WatchedUnit>>();
+  for (const p of lists.flat()) {
+    const units = byPath.get(p.path) ?? new Map<string | null, WatchedUnit>();
+    for (const u of p.units) {
+      const had = units.get(u.branch);
+      units.set(u.branch, { branch: u.branch, visible: u.visible || !!had?.visible });
+    }
+    byPath.set(p.path, units);
+  }
+  return [...byPath].map(([path, units]) => ({ path, units: [...units.values()] }));
+}
 
 // --- fed inputs -------------------------------------------------------------
 

@@ -7,12 +7,14 @@ import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { REPAIR_LABEL, isReference, type Topic, type Member, type RepairAction } from "../../utils/topics";
 import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
-import { markTitle, rollupSync, syncMarks, syncState, type FinishedPr } from "../../utils/branchSync";
+import { markTitle, memberSyncState, rollupSync, syncMarks, type FinishedPr } from "../../utils/branchSync";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import type { BranchSync } from "../../utils/gitActions";
 import { createDragReorder } from "../../utils/dragReorder";
 import type { Rollup } from "../../utils/sessionStatus";
 import StatusBubble from "./StatusBubble";
+import PrLine from "./PrLine";
+import type { UnitStatus } from "../../utils/forgeTypes";
 import styles from "./TopicItem.module.css";
 
 export type { SpaceTint };
@@ -45,6 +47,8 @@ export default function TopicItem(props: {
    *  at all, which is what a story or a Topic nothing has answered for wants. */
   memberSync?: (member: Member) => BranchSync | null;
   memberFinished?: (member: Member) => FinishedPr | null;
+  /** A member's pull request on the Topic branch, when the poller has one. */
+  memberPr?: (member: Member) => UnitStatus | null;
   status?: () => Rollup | null;
   /** The members' repo paths in the order a drag or a Move landed on. */
   onReorder?: (repoPaths: string[]) => void;
@@ -65,7 +69,8 @@ export default function TopicItem(props: {
 
   const syncOf = (m: Member) => props.memberSync?.(m) ?? null;
   const finishedOf = (m: Member) => props.memberFinished?.(m) ?? null;
-  const stateOf = (m: Member) => syncState(syncOf(m), finishedOf(m));
+  const prOf = (m: Member) => props.memberPr?.(m) ?? null;
+  const stateOf = (m: Member) => memberSyncState({ sync: syncOf(m), finished: finishedOf(m), pr: prOf(m) });
   const referenceWarning = (m: Member): string | null => {
     if (!isReference(m) || m.state.kind !== "present") return null;
     const c = m.checkout;
@@ -77,7 +82,9 @@ export default function TopicItem(props: {
   // Over every member, not the six that fit: a Topic speaks for all of them,
   // and the conflict hiding behind `+3` is the one worth knowing about.
   const rollup = createMemo(() =>
-    rollupSync(members().map((m) => ({ label: m.label, sync: syncOf(m.member), finished: finishedOf(m.member) }))),
+    rollupSync(
+      members().map((m) => ({ label: m.label, sync: syncOf(m.member), finished: finishedOf(m.member), pr: prOf(m.member) })),
+    ),
   );
 
   const drag = createDragReorder({
@@ -133,7 +140,7 @@ export default function TopicItem(props: {
             <For each={shown()}>
               {(m) => {
                 // Memoized, not bare accessors: the chip reads each of them in
-                // its title, its dot and that dot's tone, and `syncState`
+                // its title, its dot and that dot's tone, and `memberSyncState`
                 // rebuilds its verdict on every read.
                 const sync = createMemo(() => stateOf(m.member));
                 const dirty = createMemo(() => !!syncOf(m.member)?.dirty);
@@ -247,6 +254,13 @@ export default function TopicItem(props: {
                     >
                       {REPAIR_LABEL[action()]} {m.label}
                     </Button>
+                  )}
+                </Show>
+                <Show when={prOf(m.member)?.pullRequest ? prOf(m.member) : null}>
+                  {(status) => (
+                    <div class={styles.memberPr} data-member-pr>
+                      <PrLine status={status()} />
+                    </div>
                   )}
                 </Show>
               </ContextMenu>
