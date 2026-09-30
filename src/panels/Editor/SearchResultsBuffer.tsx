@@ -23,7 +23,7 @@ import {
 import { adoptBufferText, dirtyBuffers, liveBufferText, patchBuffer } from "./liveBuffers";
 import { noteSearchQuery, searchBuffer, type EditorForm } from "./searchResultsStore";
 import { grepRoot, MAX_RESULTS, readHitFiles } from "./searchRun";
-import { Field, GlobFields, MatchToggles, MemberToggles } from "./SearchFields";
+import { Field, GlobFields, MatchToggles } from "./SearchFields";
 import {
   buildSearchDoc,
   collectEdits,
@@ -415,9 +415,7 @@ export default function SearchResultsBuffer(props: {
       setOutcome(null);
       return showDoc();
     }
-    const roots = props.roots.filter(
-      (r) => r.state?.usable !== false && (!f.repos.length || f.repos.includes(r.repoPath)),
-    );
+    const roots = props.roots.filter((r) => r.state?.usable !== false);
     setRunning(true);
     try {
       const legs = await Promise.all(
@@ -531,13 +529,6 @@ export default function SearchResultsBuffer(props: {
         {(f) => (
           <div class={styles.form}>
             <div class={styles.queryRow}>
-              <Show when={props.members.length > 1}>
-                <MemberToggles
-                  members={props.members}
-                  restricted={f().repos}
-                  onChange={(repos) => edit({ repos })}
-                />
-              </Show>
               <Field
                 ref={(el) => (queryEl = el)}
                 value={f().query}
