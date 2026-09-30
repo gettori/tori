@@ -19,6 +19,8 @@ export interface MemberChipProps
   /** An outlined square, for the collapsed Topic row, where a run of chips has
    *  to read at a glance. */
   outlined?: boolean;
+  /** The icon alone, no tinted box, as the Topics list's member rows draw it. */
+  bare?: boolean;
   /**
    * Hide the chip from assistive tech, for a surface that names the repo in
    * adjacent text (a tab's hidden name, a section header's own label).
@@ -46,6 +48,7 @@ export default function MemberChip(props: MemberChipProps) {
     "chipStyle",
     "size",
     "outlined",
+    "bare",
     "decorative",
     "reference",
     "children",
@@ -67,6 +70,7 @@ export default function MemberChip(props: MemberChipProps) {
         [styles.chip]: true,
         [styles.md]: local.size === "md",
         [styles.outlined]: !!local.outlined,
+        [styles.bare]: !!local.bare,
         [styles.neutral]: !style(),
       }}
       style={style()}
@@ -91,6 +95,7 @@ export function TabMemberChip(props: { member: TintedMember }) {
     <MemberChip
       icon={props.member.icon}
       chipStyle={props.member.style}
+      bare
       decorative
       reference={isReference(props.member.member)}
       data-chip={props.member.member.repoPath}
