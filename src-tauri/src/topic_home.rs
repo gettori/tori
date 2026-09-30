@@ -193,6 +193,16 @@ pub fn launch_for(store: &crate::topics::Store, cwd: &str) -> Option<HomeLaunch>
     Some(out)
 }
 
+/// The Topic whose home, or `topic:<id>` workspace key, `at` is. Never a
+/// member's own folder, which a chat started there has to itself.
+pub fn topic_at_home<'a>(topics: &'a [Topic], at: &str) -> Option<&'a Topic> {
+    if let Some(id) = at.strip_prefix(crate::unit_home::TOPIC_KEY) {
+        return topics.iter().find(|t| t.id == id);
+    }
+    let at = at.trim_end_matches('/');
+    topics.iter().find(|t| t.home.as_deref().is_some_and(|h| h.trim_end_matches('/') == at))
+}
+
 /// The roots a live chat in this Topic's home has not been given yet.
 pub fn roots_of(topic: &Topic) -> Vec<String> {
     let mut members: Vec<&Member> = topic.members.iter().collect();
