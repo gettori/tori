@@ -11,6 +11,8 @@ import { markTitle, rollupSync, syncMarks, syncState, type FinishedPr } from "..
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import type { BranchSync } from "../../utils/gitActions";
 import { createDragReorder } from "../../utils/dragReorder";
+import type { Rollup } from "../../utils/sessionStatus";
+import StatusBubble from "./StatusBubble";
 import styles from "./TopicItem.module.css";
 
 export type { SpaceTint };
@@ -43,6 +45,7 @@ export default function TopicItem(props: {
    *  at all, which is what a story or a Topic nothing has answered for wants. */
   memberSync?: (member: Member) => BranchSync | null;
   memberFinished?: (member: Member) => FinishedPr | null;
+  status?: () => Rollup | null;
   /** The members' repo paths in the order a drag or a Move landed on. */
   onReorder?: (repoPaths: string[]) => void;
   /** Controlled disclosure. A list that replaces the record on every rename or
@@ -116,6 +119,7 @@ export default function TopicItem(props: {
         {/* At the trailing end of line one, so a Topic with news is exactly as
             tall as one without. The loudest member's own glyphs, not a summary
             of them: the tooltip is where "which member" belongs. */}
+        <StatusBubble rollup={() => props.status?.() ?? null} />
         <Show when={rollup().state.level !== "none"}>
           <span class={styles.rollup} data-topic-sync={rollup().state.level}>
             <SyncMarks marks={rollup().marks} label={rollup().state.detail} />

@@ -202,6 +202,11 @@ fn same_path(a: &str, b: &str) -> bool {
     canon(a) == canon(b)
 }
 
+/// Every Topic as the file holds it, homes filled, nothing asked of git.
+pub fn recorded(store: &Store) -> Vec<Topic> {
+    store.load().topics.into_iter().map(|t| store.with_home(t)).collect()
+}
+
 /// Every Topic, each member's `state` refreshed against git. Membership is
 /// never changed by a read.
 pub fn list_topics(store: &Store) -> Vec<Topic> {

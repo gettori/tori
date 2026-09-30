@@ -25,6 +25,7 @@ import {
   topicKey,
   LAST_MEMBER,
 } from "../../utils/topics";
+import type { Rollup } from "../../utils/sessionStatus";
 import { moveKey } from "../../utils/dragReorder";
 import { syncFor } from "../../utils/branchSync";
 import { pull } from "../../utils/gitActions";
@@ -68,6 +69,7 @@ export default function TopicList(props: {
    *  The sidebar owns the live-tab list, so it answers this rather than the
    *  list holding a second copy of the attribution rule. Absent means zero. */
   countRunning?: (path: string) => Promise<number>;
+  topicStatus?: (topic: Topic) => Rollup | null;
 }) {
   const [topics, setTopics] = createSignal<Topic[]>([]);
   const [error, setError] = createSignal<string | null>(null);
@@ -523,6 +525,7 @@ export default function TopicList(props: {
                 menu={menu(f)}
                 memberMenu={memberMenu(f)}
                 memberSync={(m) => syncFor(memberRoot(m), memberBranch(m, f.branch))}
+                status={() => props.topicStatus?.(f) ?? null}
                 memberFinished={(m) =>
                   // A reference sits on the repo's default branch, whose PRs are
                   // not this Topic's.

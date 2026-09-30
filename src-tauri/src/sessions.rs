@@ -651,15 +651,15 @@ pub fn list_sessions(
 ) -> Result<Vec<Listed>, String> {
     let accounts = crate::accounts::load();
     let rows = filter_sort(ensure_index(&index, &accounts), &folder, inclusive.unwrap_or(false));
-    let spaces = match rows.is_empty() {
+    let (spaces, topics) = match rows.is_empty() {
         true => Default::default(),
-        false => crate::unit_home::spaces(&projects),
+        false => (crate::unit_home::spaces(&projects), crate::unit_home::topics()),
     };
     Ok(stamp_listing(rows, &load_overlay(), &accounts)
         .into_iter()
         .map(|meta| {
             let branch = Some(meta.branch.as_str()).filter(|b| !b.is_empty());
-            let home = crate::unit_home::home_of(&spaces, &meta.cwd, branch);
+            let home = crate::unit_home::home_of(&spaces, &topics, &meta.cwd, branch);
             Listed { meta, home }
         })
         .collect())
@@ -3142,7 +3142,7 @@ mod tests {
     /// records, caught the same way.
     #[test]
     fn the_typescript_mirror_lists_every_serialized_field() {
-        let home = crate::unit_home::Home { project: "/repo".into(), folder: "/repo".into(), branch: None };
+        let home = crate::unit_home::Home { project: "/repo".into(), folder: "/repo".into(), branch: None, topic: None };
         let row = Listed { meta: meta("a", "/repo", "claude", 1), home: Some(home) };
         let json = serde_json::to_value(&row).unwrap();
         let fields: Vec<String> =
