@@ -771,6 +771,21 @@ impl AgentTransport for ClaudeTransport {
         self.write_frame(&turn_frame(blocks))
     }
 
+    /// Measured against claude 2.1.283: `apply_flag_settings` merges into the
+    /// launch settings, so the `--add-dir` folders and Tori's capture hook stay
+    /// in force. `/add-dir` is not available over stream-json.
+    fn grant_dirs(&mut self, dirs: &[String]) -> Result<(), String> {
+        let request_id = self.next_request_id();
+        self.write_frame(&json!({
+            "type": "control_request",
+            "request_id": request_id,
+            "request": {
+                "subtype": "apply_flag_settings",
+                "settings": { "permissions": { "additionalDirectories": dirs } },
+            },
+        }))
+    }
+
     /// Abandon the running turn, withdrawing any question it left open.
     ///
     /// The withdrawal goes first, and only questions are withdrawn. A permission

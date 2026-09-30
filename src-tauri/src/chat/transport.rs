@@ -196,6 +196,12 @@ pub trait AgentTransport: Send {
     fn echoes_sent_turns(&self) -> bool {
         false
     }
+
+    /// Let the running session reach `dirs` without a prompt, as `--add-dir`
+    /// would have at launch. A transport with no way to do that says so.
+    fn grant_dirs(&mut self, _dirs: &[String]) -> Result<(), String> {
+        Err("this agent cannot be given a folder while it runs".into())
+    }
 }
 
 /// The trait's test double. It lives beside the trait rather than in the host's

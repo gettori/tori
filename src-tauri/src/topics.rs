@@ -101,6 +101,10 @@ pub struct Topic {
     pub members: Vec<Member>,
     #[serde(default)]
     pub created_at: u64,
+    /// Where the Topic's chats run. Filled on the way out, never stored: the
+    /// folder follows from where the record lives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -134,9 +138,23 @@ impl Store {
             .unwrap_or_default()
     }
 
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
     fn save(&self, file: &TopicFile) -> Result<(), String> {
-        let text = serde_json::to_string_pretty(file).map_err(|e| e.to_string())?;
-        write_atomically(&self.path, &text)
+        let stored = TopicFile {
+            topics: file.topics.iter().cloned().map(|t| Topic { home: None, ..t }).collect(),
+        };
+        let text = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
+        write_atomically(&self.path, &text)?;
+        crate::topic_home::sync(&self.path, &file.topics);
+        Ok(())
+    }
+
+    fn with_home(&self, mut topic: Topic) -> Topic {
+        topic.home = Some(crate::topic_home::home_dir(&self.path, &topic.id).to_string_lossy().into_owned());
+        topic
     }
 
     /// Load, edit, save, under the store's lock.
@@ -207,10 +225,15 @@ pub fn list_topics(store: &Store) -> Vec<Topic> {
             }
         }
     }
+    // Every read, not only a changed one: a Topic from before homes existed
+    // has none until something writes it, and a chat cannot start in a folder
+    // that is not there. A note already current costs one read.
     if changed {
         let _ = store.save(&file);
+    } else {
+        crate::topic_home::sync(&store.path, &file.topics);
     }
-    file.topics
+    file.topics.into_iter().map(|t| store.with_home(t)).collect()
 }
 
 /// Three checks, in order: the repo answers git at all, the recorded worktree
@@ -450,7 +473,9 @@ pub fn delete_topic(store: &Store, topic_id: &str) -> Result<(), String> {
             return Err(format!("No Topic with id {topic_id}"));
         }
         Ok(())
-    })
+    })?;
+    crate::topic_home::remove(&store.path, topic_id);
+    Ok(())
 }
 
 // --- creation ---
@@ -644,7 +669,7 @@ fn load_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
     let lock = named_lock("topics");
     let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut file = store.load();
-    topic_mut(&mut file, topic_id).map(|f| f.clone())
+    topic_mut(&mut file, topic_id).map(|f| store.with_home(f.clone()))
 }
 
 /// Record first, then one worktree per member in order. A member that fails
@@ -705,6 +730,7 @@ pub fn create_topic_with(
                 .map(|(i, m)| pending_member(&m.repo_path, m.mode, i as u32))
                 .collect(),
             created_at: crate::owned_state::now_ms(),
+            home: None,
         });
         Ok(())
     })?;
@@ -786,7 +812,7 @@ pub fn probe_topic_branch(repo: &str, branch: &str) -> BranchProbe {
 pub mod commands {
     use std::path::Path;
 
-    use tauri::{AppHandle, Emitter, State};
+    use tauri::{AppHandle, Emitter, Manager, State};
 
     use super::{BranchProbe, MemberMode, NewMember, Store, Topic};
     use crate::config::ProjectIndex;
@@ -814,6 +840,24 @@ pub mod commands {
             }
         }
         let _ = app.emit("config://changed", ());
+    }
+
+    fn roots_now(topic_id: &str) -> Vec<String> {
+        super::load_topic(&Store::default_location(), topic_id)
+            .map(|t| crate::topic_home::roots_of(&t))
+            .unwrap_or_default()
+    }
+
+    /// Running chats in the Topic's home hear about roots they did not have.
+    fn tell_chats(app: &AppHandle, before: &[String], topic: &Topic) {
+        let host = &app.state::<crate::chat::host::ChatState>().0;
+        crate::topic_home::tell_home_chats(
+            before,
+            topic,
+            &host.live_sessions(),
+            |session, dirs| host.grant_dirs(session, dirs),
+            |session, text| crate::rpc::tell_session(app, session, "topic", text),
+        );
     }
 
     #[tauri::command]
@@ -848,8 +892,10 @@ pub mod commands {
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("retry_member", move || {
+            let before = roots_now(&topic_id);
             let topic = super::retry_member(&Store::default_location(), &topic_id, &repo_path)?;
             settle(&app, &index, &topic);
+            tell_chats(&app, &before, &topic);
             Ok(topic)
         })
         .await
@@ -867,8 +913,10 @@ pub mod commands {
         blocking("add_member", move || {
             let store = Store::default_location();
             let mode = mode.unwrap_or_default();
+            let before = roots_now(&topic_id);
             let topic = super::add_member_as(&store, &topic_id, &repo_path, mode, &step(&app))?;
             settle(&app, &index, &topic);
+            tell_chats(&app, &before, &topic);
             Ok(topic)
         })
         .await
@@ -883,8 +931,10 @@ pub mod commands {
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("promote_member", move || {
+            let before = roots_now(&topic_id);
             let topic = super::promote_member(&Store::default_location(), &topic_id, &repo_path)?;
             settle(&app, &index, &topic);
+            tell_chats(&app, &before, &topic);
             Ok(topic)
         })
         .await
@@ -902,8 +952,10 @@ pub mod commands {
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("demote_member", move || {
+            let before = roots_now(&topic_id);
             let topic = super::demote_member(&Store::default_location(), &topic_id, &repo_path, force)?;
             settle(&app, &index, &topic);
+            tell_chats(&app, &before, &topic);
             Ok(topic)
         })
         .await
@@ -923,9 +975,11 @@ pub mod commands {
         let index = index.inner().clone();
         blocking("relocate_member", move || {
             index.evict(Path::new(&repo_path));
+            let before = roots_now(&topic_id);
             let topic =
                 super::relocate_member(&Store::default_location(), &topic_id, &repo_path, &new_repo_path)?;
             settle(&app, &index, &topic);
+            tell_chats(&app, &before, &topic);
             Ok(topic)
         })
         .await
@@ -1055,6 +1109,7 @@ mod tests {
             branch: format!("feat/{id}"),
             members,
             created_at: 1,
+            home: None,
         }
     }
 
@@ -1751,6 +1806,66 @@ mod tests {
         let t = promote_member(&store, &t.id, &a).unwrap();
         let wt = t.members[0].worktree_path.clone().unwrap();
         assert_eq!(git_out(&wt, &["rev-parse", "HEAD"]), work);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn the_home_note_follows_every_record_change_and_goes_with_the_topic() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let b = repo(&tmp.join("b"));
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        let home = crate::topic_home::home_dir(&store.path, &t.id);
+        assert_eq!(t.home.as_deref(), Some(home.to_string_lossy().as_ref()));
+        let note = || std::fs::read_to_string(home.join(crate::topic_home::NOTE)).unwrap();
+        assert!(note().contains(&format!("a (reference, read only): `{a}`")), "{}", note());
+
+        add_member_as(&store, &t.id, &b, MemberMode::Reference, &|_| {}).unwrap();
+        assert!(note().contains(&format!("`{b}`")));
+
+        let wt = promote_member(&store, &t.id, &a).unwrap().members[0].worktree_path.clone().unwrap();
+        assert!(note().contains(&format!("a (worktree): `{wt}`")), "{}", note());
+
+        demote_member(&store, &t.id, &a, false).unwrap();
+        assert!(!note().contains(&wt));
+        assert!(note().contains(&format!("a (reference, read only): `{a}`")));
+
+        remove_member(&store, &t.id, &b).unwrap();
+        assert!(!note().contains(&format!("`{b}`")));
+        assert!(!std::fs::read_to_string(&store.path).unwrap().contains("\"home\""), "the home is never stored");
+
+        delete_topic(&store, &t.id).unwrap();
+        assert!(!home.exists());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn promote_grants_the_new_worktree_to_a_live_home_chat_and_says_so_once() {
+        use std::cell::RefCell;
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        let home = t.home.clone().unwrap();
+        let before = crate::topic_home::roots_of(&load_topic(&store, &t.id).unwrap());
+
+        let topic = promote_member(&store, &t.id, &a).unwrap();
+        let wt = topic.members[0].worktree_path.clone().unwrap();
+        let (grants, notes) = (RefCell::new(Vec::new()), RefCell::new(Vec::new()));
+        let live = [("home-chat".to_string(), home), ("member-chat".to_string(), a.clone())];
+        crate::topic_home::tell_home_chats(
+            &before,
+            &topic,
+            &live,
+            |s, dirs| Ok(grants.borrow_mut().push((s.to_string(), dirs.to_vec()))),
+            |s, text| Ok(notes.borrow_mut().push((s.to_string(), text.to_string()))),
+        );
+        assert_eq!(grants.into_inner(), vec![("home-chat".to_string(), vec![wt.clone()])]);
+        let notes = notes.into_inner();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].0, "home-chat");
+        assert!(notes[0].1.contains(&wt), "{}", notes[0].1);
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

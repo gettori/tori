@@ -4,6 +4,7 @@
 import { findAdapter } from "./agents";
 import { agentHealthFor, asProfileId, namedProfiles, profileLabel } from "./agentHealth";
 import { isUnderPath } from "./pathScope";
+import { memberRoot, topicAtHome } from "./topics";
 import { saveSettings, settings, type AgentRow } from "../panels/Settings/settingsStore";
 
 /** What a refused row says, where a sentence will not fit. */
@@ -45,13 +46,34 @@ export function agentRefusal(
   agentId: string,
   profile: string | null,
 ): string | null {
+  // A Topic chat runs in the Topic's home and works in every member, so every
+  // member's rule applies, and the refusal says which member refused.
+  const topic = topicAtHome(folder);
+  if (topic) {
+    const roots = topic.members.flatMap((m) => {
+      const root = memberRoot(m);
+      return root ? [{ name: m.displayName, refused: refusalAt(root, agentId, profile) }] : [];
+    });
+    const refused = roots.filter((r) => r.refused);
+    if (!refused.length) return null;
+    const allowed = roots.filter((r) => !r.refused);
+    const label = refused[0].refused!;
+    const where = `${label} is not allowed in ${refused.map((r) => r.name).join(", ")}`;
+    return allowed.length ? `${where}, only in ${allowed.map((r) => r.name).join(", ")}` : where;
+  }
+  const refused = refusalAt(folder, agentId, profile);
+  return refused && `${refused} is not allowed in this project`;
+}
+
+/** The row `folder`'s project refuses, by name, or null when it allows it. */
+function refusalAt(folder: string | null | undefined, agentId: string, profile: string | null): string | null {
   const rows = allowedRows(folder);
   if (!rows) return null;
   // A palette row on a one-account install carries `null` whichever account
   // that is, so it is read as the account it would actually run on.
   const id = profile === null && !namedProfiles(agentId).length ? soleProfile(agentId) : asProfileId(profile);
   if (rows.some((r) => r.agent === agentId && r.profile === id)) return null;
-  return `${rowLabel(agentId, id)} is not allowed in this project`;
+  return rowLabel(agentId, id);
 }
 
 /** Replace the rows one project allows. None removes the rule. */
