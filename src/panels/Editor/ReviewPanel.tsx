@@ -292,6 +292,17 @@ export default function ReviewPanel(props: {
     memberOf(picked()) ??
     memberOf(rootOf(props.activePath, (props.members ?? []).map((m) => m.key))) ??
     props.members?.[0];
+  // The member picked in the sidebar is a press too, made somewhere else: it
+  // seeds the chip when the panel opens and moves it whenever it changes.
+  createEffect(
+    on(
+      () => props.root,
+      (root) => {
+        const m = props.members?.find((x) => !!x.root && x.root === root);
+        if (m) setPicked(m.key);
+      },
+    ),
+  );
   /** The root every list below is about. One member at a time: a stack of every
    *  member's changes is a list nobody reads.
    *
