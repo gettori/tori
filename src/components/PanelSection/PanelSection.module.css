@@ -68,6 +68,10 @@
   cursor: pointer;
 }
 
+.sectionFixed {
+  cursor: default;
+}
+
 .sectionTitle {
   display: flex;
   align-items: center;

@@ -30,7 +30,6 @@ import {
   SECTION_MIN_H,
   filesLayout,
   filesTab,
-  sectionOpen,
   sectionShown,
   setFilesTab,
   setSectionShown,
@@ -121,9 +120,6 @@ export default function FilesPanel(props: {
   const maxH = () => (stackEl?.clientHeight ?? 0) - 120 * chromeScale();
   const viewsOpen = () => filesLayout.open("views");
   const viewsHeight = () => filesLayout.size("views") * chromeScale();
-  // With the tree shut the views take its room; only then is the height a
-  // drag's business no more.
-  const viewsFill = () => viewsOpen() && !sectionOpen("folders");
 
   /** Picking a tab out of the `+N` menu reorders the strip. The order keeps
    *  the tabs the ... menu hid, so they come back where they were. */
@@ -195,6 +191,7 @@ export default function FilesPanel(props: {
         <PanelSection
           layout={filesLayout}
           id="folders"
+          collapsible={false}
           fill
           maxH={maxH}
           title={
@@ -270,11 +267,11 @@ export default function FilesPanel(props: {
         <Show when={shownTabs().length}>
           <section
             class={styles.views}
-            classList={{ [styles.viewsOpen]: viewsOpen(), [styles.fill]: viewsFill() }}
-            style={viewsOpen() && !viewsFill() ? { flex: `0 1 ${viewsHeight()}px` } : undefined}
+            classList={{ [styles.viewsOpen]: viewsOpen() }}
+            style={viewsOpen() ? { flex: `0 1 ${viewsHeight()}px` } : undefined}
             data-section="views"
           >
-            <Show when={viewsOpen() && !viewsFill()}>
+            <Show when={viewsOpen()}>
               <div class={styles.sash}>
                 <Resizer
                   axis="y"

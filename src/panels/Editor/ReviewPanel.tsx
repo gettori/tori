@@ -1413,9 +1413,7 @@ export default function ReviewPanel(props: {
         <MemberTabs members={props.members ?? []} activeKey={viewed()?.key ?? null} onPick={(m) => setPicked(m.key)} />
       </Show>
       <div class={styles.topBar}>
-        <Show when={!headed()}>
-          <span class={styles.title}>Source Control</span>
-        </Show>
+        <span class={styles.title}>Source Control</span>
         <span class={styles.spacer} />
         <IconButton
           size="sm"

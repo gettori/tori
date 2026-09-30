@@ -17,13 +17,12 @@
   flex: none;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
-  min-height: calc(40px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale));
+  height: calc(32px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
 }
 
-/* The tab's name, outside a Topic. Inside one the member chips take this
-   spot, the same swap the Search tab makes, so the two tabs open the same way
-   and this matches Search's title exactly. */
+/* The tab's name, matching Search's title exactly. */
 .title {
   padding-left: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
@@ -31,7 +30,7 @@
   font-weight: 600;
 }
 
-/* Row two: the repo the chip above names. Shorter than row one, which carries
+/* Row two: the repo the tab above names. Shorter than row one, which carries
    the tab's own title and has to match the other tabs' opening row. */
 .branchBar {
   display: flex;
