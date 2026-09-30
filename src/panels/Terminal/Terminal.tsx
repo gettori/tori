@@ -90,6 +90,8 @@ import {
   isTopicKey,
   isShellsKey,
   selectionRoot,
+  chatRoot,
+  ensureTopicsNoted,
   SHELLS_KEY,
   workspaceFolders,
   workspaceKey,
@@ -496,6 +498,7 @@ export default function Terminal(props: {
     // subscribes; a terminal cannot, because the id **is** the key, and a
     // collision hands back a fresh one that names nothing.
     const live = await backendLive();
+    if (isTopicKey(ws)) await ensureTopicsNoted();
     const restoredId = (stored: string | undefined, fresh: () => string, hosts: (id: string) => boolean) => {
       const id = restoreId(stored, new Set(open().map((t) => t.id)), fresh);
       if (!hosts(id)) seedInert(id);
@@ -1052,7 +1055,7 @@ export default function Terminal(props: {
     // was read when it opened, and the selection can have moved since.
     offComposeDraft = onWith<ComposeDraft>(COMPOSE_DRAFT, (d) => {
       const sel = props.selected;
-      const root = selectionRoot(sel);
+      const root = chatRoot(sel);
       if (!sel || !root) {
         emitWith<ToastEvent>(TOAST, { message: "Select a project first", kind: "info" });
         return;
@@ -1962,7 +1965,7 @@ export default function Terminal(props: {
   // message decides there is going to be a conversation at all.
   function newChat(agentId?: string) {
     const sel = props.selected;
-    const root = selectionRoot(sel);
+    const root = chatRoot(sel);
     if (!sel || !root) return;
     const ws = workspaceKey(sel);
     const agent = agentId ?? draftAgent(ws, root);

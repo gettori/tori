@@ -437,9 +437,32 @@ fn sh_quote(s: &str) -> String {
 /// settings rather than replacing them: their hooks still load and fire
 /// alongside ours. Passing `--setting-sources ''` would silently disable their
 /// hooks, permissions and config, and must never ship.
+#[cfg(test)]
 pub fn settings_json(exe: &Path, sock: &Path, token: &str, background: bool) -> String {
+    settings_json_with(exe, sock, token, background, None)
+}
+
+/// `settings_json` plus the member rules a Topic home chat carries. Only the
+/// rules: a member's hooks are tied to its own folder and never come along.
+pub fn settings_json_with(
+    exe: &Path,
+    sock: &Path,
+    token: &str,
+    background: bool,
+    home: Option<&crate::topic_home::HomeLaunch>,
+) -> String {
+    let mut permissions = json!({ "allow": crate::rpc::mcp_allow(background) });
+    if let Some(home) = home {
+        for (key, rules) in [("allow", &home.allow), ("deny", &home.deny), ("ask", &home.ask)] {
+            if rules.is_empty() {
+                continue;
+            }
+            let list = permissions.as_object_mut().unwrap().entry(key).or_insert_with(|| json!([]));
+            list.as_array_mut().unwrap().extend(rules.iter().cloned().map(Value::String));
+        }
+    }
     json!({
-        "permissions": { "allow": crate::rpc::mcp_allow(background) },
+        "permissions": permissions,
         "hooks": {
             "PreToolUse": [{
                 "matcher": matcher(),
@@ -468,13 +491,14 @@ pub fn settings_args(
     token: &str,
     transport: ChatTransport,
     background: bool,
+    home: Option<&crate::topic_home::HomeLaunch>,
 ) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, settings_json(&exe, sock, token, background)).map_err(|e| e.to_string())?;
+    std::fs::write(&path, settings_json_with(&exe, sock, token, background, home)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
     let mut args = match transport {
         ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),
@@ -836,7 +860,7 @@ mod tests {
         let before = std::fs::read(&user_settings).ok();
 
         let session = format!("settings-guard-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false, None).unwrap();
 
         let after = std::fs::read(&user_settings).ok();
         assert_eq!(before, after, "~/.claude/settings.json must be byte-identical before and after");
@@ -872,7 +896,7 @@ mod tests {
     #[test]
     fn the_settings_file_is_a_private_path_not_an_argv_blob() {
         let session = format!("perm-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", ChatTransport::ClaudeStreamJson, false).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", ChatTransport::ClaudeStreamJson, false, None).unwrap();
         let [.., flag, file] = args.as_slice() else { panic!("no --settings in {args:?}") };
         assert_eq!(flag, "--settings");
         assert!(!file.trim_start().starts_with('{'), "a token in argv is visible in `ps`");
@@ -886,13 +910,13 @@ mod tests {
     #[test]
     fn a_claude_session_gets_the_mcp_config_right_before_its_settings() {
         let session = format!("mcp-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false).unwrap();
+        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false, None).unwrap();
         assert_eq!(args.len(), 4, "{args:?}");
         assert_eq!((args[0].as_str(), args[2].as_str()), ("--mcp-config", "--settings"));
         let config: Value = serde_json::from_str(&std::fs::read_to_string(&args[1]).unwrap()).unwrap();
         assert_eq!(config["mcpServers"]["tori"], json!({ "command": "tori", "args": ["mcp"] }));
 
-        let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp, false).unwrap();
+        let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp, false, None).unwrap();
         assert_eq!(acp[0], "--settings");
         let _ = std::fs::remove_file(settings_path(&session));
     }
@@ -901,7 +925,7 @@ mod tests {
     fn only_a_background_session_pre_allows_the_outward_tools() {
         let allowed = |background| {
             let session = format!("allow-{background}-{}", std::process::id());
-            let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, background).unwrap();
+            let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, background, None).unwrap();
             let settings: Value = serde_json::from_str(&std::fs::read_to_string(&args[3]).unwrap()).unwrap();
             let _ = std::fs::remove_file(settings_path(&session));
             settings["permissions"]["allow"].clone()
