@@ -35,12 +35,18 @@ const config = {
   ],
 };
 
-const bridge = vi.hoisted(() => ({ topics: [] as unknown[] }));
+const bridge = vi.hoisted(() => ({ topics: [] as unknown[], showTopicWorktrees: true }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     if (cmd === "get_config") return Promise.resolve(config);
     if (cmd === "list_topics") return Promise.resolve(bridge.topics);
+    if (cmd === "get_settings") {
+      return import("../Settings/settingsStore").then(({ DEFAULT_SETTINGS }) => ({
+        ...DEFAULT_SETTINGS,
+        git: { ...DEFAULT_SETTINGS.git, showTopicWorktrees: bridge.showTopicWorktrees },
+      }));
+    }
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -64,10 +70,22 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   onAction: () => Promise.resolve(() => {}),
 }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
+const forgeUnits = vi.hoisted(() => ({ last: [] as { folderPath: string }[] }));
+vi.mock("../../utils/sessionActivity", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../utils/sessionActivity")>();
+  return {
+    ...real,
+    noteForgeUnits: (units: { folderPath: string }[]) => {
+      forgeUnits.last = units;
+      return real.noteForgeUnits(units as never);
+    },
+  };
+});
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+const { loadSettings } = await import("../Settings/settingsStore");
 
 const AUTH = {
   id: "f1",
@@ -113,7 +131,9 @@ const chips = () => document.querySelectorAll("[data-topic-chip]");
 const activeUnits = () => document.querySelectorAll('[draggable="true"][aria-current="true"]');
 
 describe("a Topic worktree in Spaces", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    bridge.showTopicWorktrees = true;
+    await loadSettings();
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     bridge.topics = [AUTH];
@@ -186,5 +206,49 @@ describe("a Topic worktree in Spaces", () => {
     await waitFor(() => expect(chips().length).toBe(1));
     const row = screen.getByRole("button", { name: "Open Topic Kept" }).closest('[draggable="true"]');
     expect(row?.textContent).toContain("feat/kept");
+  });
+});
+
+describe("hiding Topic worktrees in Spaces", () => {
+  const unitRow = (label: string) => screen.queryByText(label)?.closest('[draggable="true"]') ?? null;
+
+  beforeEach(async () => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    bridge.topics = [
+      AUTH,
+      // A reference member names the repo's own checkout and owns no worktree.
+      {
+        ...AUTH,
+        id: "f3",
+        name: "Research",
+        branch: "research",
+        members: [{ ...AUTH.members[0], mode: "reference", worktreePath: null, checkout: { path: REPO } }],
+      },
+    ];
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/api"]));
+  });
+
+  it("hides a Topic's worktree by default, keeping the repo's own row and the forge feed", async () => {
+    bridge.showTopicWorktrees = false;
+    await loadSettings();
+    await mounted(null);
+    await waitFor(() => expect(unitRow("feat/auth")).toBeNull());
+    expect(chips().length).toBe(0);
+    expect(unitRow("main")).toBeTruthy();
+    expect(unitRow("feat/kept")).toBeTruthy();
+    expect(forgeUnits.last.map((u) => u.folderPath)).toContain(MEMBER);
+  });
+
+  it("shows it when the setting is on", async () => {
+    bridge.showTopicWorktrees = true;
+    await loadSettings();
+    await mounted(null);
+    await waitFor(() => expect(unitRow("feat/auth")).toBeTruthy());
+    expect(unitRow("main")).toBeTruthy();
   });
 });
