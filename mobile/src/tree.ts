@@ -1,6 +1,6 @@
 import { rollupStatuses, statusFromDot, type Rollup } from "../../src/utils/sessionStatus";
 
-export type Home = { project: string; folder: string; branch: string | null };
+export type Home = { project: string; folder: string; branch: string | null; topic?: string };
 
 export type SessionRow = {
   id: string;
@@ -42,7 +42,7 @@ export type TopicMember = {
   order: number;
 };
 
-export type Topic = { id: string; name: string; branch: string; members: TopicMember[] };
+export type Topic = { id: string; name: string; branch: string; members: TopicMember[]; home?: string };
 
 export type Tree = { spaces: Space[]; topics: Topic[] };
 

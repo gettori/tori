@@ -255,7 +255,7 @@ export function TopicScreen(props: {
 }) {
   const members = () =>
     [...props.topic.members].sort((a, b) => a.order - b.order).map((member) => ({ member, unit: memberUnit(props.tree, props.topic, member) }));
-  const { here, earlier } = unitSessions(props.client, () => members().map((m) => m.unit), props.live);
+  const { here, earlier } = unitSessions(props.client, () => members().map((m) => m.unit), props.live, props.topic);
   const where = (row: SessionRow) => members().find((m) => atUnit(row, m.unit))?.member.displayName;
   return (
     <div class={styles.glow}>
