@@ -42,10 +42,6 @@
   min-height: calc(90px * var(--ui-scale));
 }
 
-.views.fill {
-  flex: 1 1 0;
-}
-
 /* The drag handle sits over the top border rather than beside it. */
 .sash {
   position: absolute;
