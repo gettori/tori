@@ -58,6 +58,15 @@
   background: var(--neutral-subtle);
 }
 
+/* After `.neutral`, so a repo in no Space goes bare too. The glyph takes the
+   list's muted tone rather than the Space hue it drew on the tint. */
+.bare {
+  min-width: 0;
+  padding: 0;
+  color: var(--fg-muted);
+  background: none;
+}
+
 /* A member that cannot be opened right now keeps its chip and wears the state.
    Gated on the attribute being *present*, not only on its value: a chip that
    passes no state at all is not a broken one, and `:not([data-state="present"])`
