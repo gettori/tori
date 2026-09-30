@@ -24,9 +24,12 @@ export default function PanelSection<Id extends string>(props: {
   title: JSX.Element;
   /** Buttons at the header's right, drawn only while the section is open. */
   actions?: JSX.Element;
+  /** Off for a section that is always open (the Files tree): no chevron, and
+   *  the header is a label rather than a toggle. */
+  collapsible?: boolean;
   children: JSX.Element;
 }) {
-  const open = () => props.layout.open(props.id);
+  const open = () => props.collapsible === false || props.layout.open(props.id);
   const fixed = () => open() && !props.fill;
   const height = () => props.layout.size(props.id) * chromeScale();
   return (
@@ -50,15 +53,24 @@ export default function PanelSection<Id extends string>(props: {
         </div>
       </Show>
       <div class={styles.sectionHeader}>
-        <button
-          type="button"
-          class={styles.sectionToggle}
-          aria-expanded={open()}
-          onClick={() => props.layout.setOpen(props.id, !open())}
+        <Show
+          when={props.collapsible !== false}
+          fallback={
+            <span class={`${styles.sectionToggle} ${styles.sectionFixed}`}>
+              <span class={styles.sectionTitle}>{props.title}</span>
+            </span>
+          }
         >
-          <Chevron open={open()} class={styles.sectionChevron} />
-          <span class={styles.sectionTitle}>{props.title}</span>
-        </button>
+          <button
+            type="button"
+            class={styles.sectionToggle}
+            aria-expanded={open()}
+            onClick={() => props.layout.setOpen(props.id, !open())}
+          >
+            <Chevron open={open()} class={styles.sectionChevron} />
+            <span class={styles.sectionTitle}>{props.title}</span>
+          </button>
+        </Show>
         <Show when={open()}>{props.actions}</Show>
       </div>
       <Show when={open()}>
