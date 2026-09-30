@@ -8,6 +8,14 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+### Topics
+
+- A Topic's worktrees no longer show under their repository in Spaces. They
+  live in their Topic. Turn on Show Topic worktrees in Spaces, in Settings,
+  Integrations, to list them there too.
+
 ## 26.927.1-alpha
 
 A branch keeps its story after its pull request is done. The pull request stays

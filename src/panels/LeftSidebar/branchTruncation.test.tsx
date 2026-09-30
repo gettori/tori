@@ -64,6 +64,7 @@ const liveTabs = [
 
 const bridge = vi.hoisted(() => ({
   handlers: {} as Record<string, (e: { payload: unknown }) => void>,
+  topics: [] as unknown[],
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -74,6 +75,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve(args.folder === folderOf(HIDDEN_LABEL) ? [onHidden] : []);
     }
     if (cmd === "list_project_attempts") return Promise.resolve([]);
+    if (cmd === "list_topics") return Promise.resolve(bridge.topics);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
     if (cmd === "sessions_running")
@@ -129,6 +131,7 @@ describe("a project card truncates a long branch list", () => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     bridge.handlers = {};
+    bridge.topics = [];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
@@ -141,6 +144,22 @@ describe("a project card truncates a long branch list", () => {
     expect(visibleLabels()).toEqual(["wt-01", "wt-02", "wt-03", "wt-04", "wt-05", "wt-06"]);
     expect(screen.getByText("4 more branches")).toBeTruthy();
     expect(screen.queryByText("Show less")).toBeNull();
+  });
+
+  it("does not count a Topic's worktrees that Spaces hides", async () => {
+    const owned = (label: string, order: number) => ({
+      repoPath: BIG,
+      displayName: label,
+      worktreePath: folderOf(label),
+      state: { kind: "present" },
+      order,
+    });
+    bridge.topics = [
+      { id: "t", name: "T", branch: "t", createdAt: 1, members: [owned("wt-09", 0), owned("wt-10", 1)] },
+    ];
+    mount();
+
+    await waitFor(() => expect(screen.getByText("2 more branches")).toBeTruthy());
   });
 
   it("reveals every branch on click, and re-truncates on Show less", async () => {

@@ -302,6 +302,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "How often Tori fetches every repository in the background, so a branch can say it is behind before you ask. Never asks for a password: a repo whose remote needs one is simply left alone. Off stops the timer and the fetch on window focus.",
   },
   {
+    id: "topic-worktrees-in-spaces",
+    section: "git",
+    label: "Show Topic worktrees in Spaces",
+    hint: "List a Topic's worktrees under their repository in Spaces too. Off, they live only in their Topic.",
+  },
+  {
     id: "forge",
     section: "forge",
     label: "Hosts",

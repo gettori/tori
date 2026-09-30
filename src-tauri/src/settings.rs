@@ -669,11 +669,15 @@ fn default_fetch_every_minutes() -> u32 {
 pub struct Git {
     #[serde(default = "default_fetch_every_minutes")]
     pub fetch_every_minutes: u32,
+    /// Off by default: a Topic's worktrees are the Topic's, and listing them
+    /// under their repo too doubles every member in Spaces.
+    #[serde(default)]
+    pub show_topic_worktrees: bool,
 }
 
 impl Default for Git {
     fn default() -> Self {
-        Self { fetch_every_minutes: default_fetch_every_minutes() }
+        Self { fetch_every_minutes: default_fetch_every_minutes(), show_topic_worktrees: false }
     }
 }
 
