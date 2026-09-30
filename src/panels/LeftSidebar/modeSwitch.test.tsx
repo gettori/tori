@@ -106,6 +106,7 @@ describe("switching between Spaces and Topics", () => {
     segment("Topics");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     click("Auth");
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
     await waitFor(() => expect(sel()?.kind).toBe("topic"));
 
     segment("work");

@@ -3286,6 +3286,8 @@ export default function LeftSidebar(props: {
         spaces={visibleSpaces()}
         query={query()}
         activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
+        activeRoot={props.selected?.kind === "topic" ? (props.selected.activeRoot ?? null) : null}
+        onOpenMember={(f, root) => selectTopic(f, root)}
         countRunning={countRunningAgents}
         onExpanded={setExpandedTopics}
         topicStatus={(f) => bubbleFor((s) => s.home?.topic === f.id)}

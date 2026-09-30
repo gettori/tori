@@ -75,6 +75,10 @@ export default function TopicList(props: {
   hidden?: boolean;
   /** The selected Topic's id, so exactly one row reads as active. */
   activeId?: string | null;
+  /** The member root the selected Topic is showing, so one member row reads as open. */
+  activeRoot?: string | null;
+  /** Open a Topic on one of its members. */
+  onOpenMember?: (topic: Topic, root: string) => void;
   /** `moved` names a member root that changed folder, so the active root can
    *  follow it rather than fall back to the first member. */
   onSelect?: (topic: Topic, moved?: { from: string; to: string }) => void;
@@ -570,7 +574,11 @@ export default function TopicList(props: {
                 topic={f}
                 spaces={props.spaces}
                 active={props.activeId === f.id}
-                onSelect={props.onSelect}
+                activeRoot={props.activeRoot}
+                onSelectMember={(m) => {
+                  const root = memberRoot(m);
+                  if (root) props.onOpenMember?.(f, root);
+                }}
                 onRepair={(m, action) => void repair(f, m, action)}
                 menu={menu(f)}
                 memberMenu={memberMenu(f)}

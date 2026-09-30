@@ -86,12 +86,10 @@
   color: var(--fg-default);
 }
 
-/* The Topic list on the tree's insets, like the cards it replaces, and stood
-   off the title and the strip by block padding of its own: the New Topic
-   button that used to hold the gap at the top has moved into the head row. */
+/* The Topic list on the Spaces tree's own padding: its Topics are project
+   cards, which bring their inset with them. */
 .topicList {
-  padding-inline: var(--tree-inset) var(--tree-gutter);
-  padding-block: calc(8px * var(--ui-scale));
+  padding: 0 var(--tree-gutter) calc(10px * var(--ui-scale)) 0;
 }
 
 .searchInput {
