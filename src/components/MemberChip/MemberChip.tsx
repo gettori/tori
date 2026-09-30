@@ -16,6 +16,9 @@ export interface MemberChipProps
   chipStyle?: ChipStyle;
   /** Squarer box for the sidebar's Topic rows. */
   size?: "sm" | "md";
+  /** An outlined square, for the collapsed Topic row, where a run of chips has
+   *  to read at a glance. */
+  outlined?: boolean;
   /**
    * Hide the chip from assistive tech, for a surface that names the repo in
    * adjacent text (a tab's hidden name, a section header's own label).
@@ -42,6 +45,7 @@ export default function MemberChip(props: MemberChipProps) {
     "tint",
     "chipStyle",
     "size",
+    "outlined",
     "decorative",
     "reference",
     "children",
@@ -62,6 +66,7 @@ export default function MemberChip(props: MemberChipProps) {
         ...local.classList,
         [styles.chip]: true,
         [styles.md]: local.size === "md",
+        [styles.outlined]: !!local.outlined,
         [styles.neutral]: !style(),
       }}
       style={style()}

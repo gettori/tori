@@ -223,6 +223,7 @@ export default function TopicList(props: {
   // not build stays on the chip as a badge and gets one toast naming it, with
   // Retry running every failed member again.
   function settled(topic: Topic) {
+    if (!dialog()?.topic) setExpanded((prev) => ({ ...prev, [topic.id]: true }));
     setDialog(null);
     apply(topic);
     const failed = topic.members.filter((m) => memberState(m.state).action === "retry");

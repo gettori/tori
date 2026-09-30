@@ -41,6 +41,16 @@
   height: calc(14px * var(--ui-scale));
 }
 
+/* The collapsed Topic row's chip: a square outlined in the Space hue, on a
+   fainter fill so the outline carries the colour. */
+.outlined {
+  width: calc(20px * var(--ui-scale));
+  min-width: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--chip-hue) 55%, transparent);
+  background: color-mix(in srgb, var(--chip-hue) 12%, transparent);
+}
+
 /* A repo in no Space has no hue to mix, so it falls back to a flat neutral
    rather than to a muted-grey mix of itself. */
 .neutral {
