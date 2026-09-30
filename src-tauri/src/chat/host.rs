@@ -498,6 +498,9 @@ pub struct ChatHost {
     outputs: Arc<Mutex<HashMap<String, OutputCache>>>,
     waiting: WaitingMap,
     lifecycle: Lifecycle,
+    /// What Tori has to tell an idle session, carried on the user's next turn
+    /// rather than starting a turn of its own that the agent would answer.
+    notes: Arc<Mutex<HashMap<String, Vec<ContentBlock>>>>,
 }
 
 /// Tauri state wrapper, matching `PtyState`'s shape.
@@ -538,6 +541,7 @@ impl ChatHost {
             outputs: Arc::default(),
             waiting: Arc::default(),
             lifecycle: Lifecycle::default(),
+            notes: Arc::default(),
         }
     }
 
@@ -993,11 +997,30 @@ impl ChatHost {
     /// Convenience wrappers over [`Self::dispatch`], so command handlers read as
     /// what they do rather than as enum construction.
     pub fn send(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
-        self.dispatch(&ChatCommand::SendTurn { session_id: session_id.to_string(), blocks })
+        let notes = lock(&self.notes).remove(session_id).unwrap_or_default();
+        let blocks = if notes.is_empty() { blocks } else { notes.iter().cloned().chain(blocks).collect() };
+        let sent = self.dispatch(&ChatCommand::SendTurn { session_id: session_id.to_string(), blocks });
+        if sent.is_err() && !notes.is_empty() {
+            lock(&self.notes).entry(session_id.to_string()).or_default().splice(0..0, notes);
+        }
+        sent
+    }
+
+    pub fn note_for_next_turn(&self, session_id: &str, text: String) {
+        lock(&self.notes).entry(session_id.to_string()).or_default().push(ContentBlock::Text { text });
     }
 
     pub fn steer(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
         self.dispatch(&ChatCommand::Steer { session_id: session_id.to_string(), blocks })
+    }
+
+    pub fn grant_dirs(&self, session_id: &str, dirs: &[String]) -> Result<(), String> {
+        let transport = lock(&self.sessions)
+            .get(session_id)
+            .map(|e| e.transport.clone())
+            .ok_or_else(|| format!("no live chat session {session_id}"))?;
+        let granted = lock(&transport).grant_dirs(dirs);
+        granted
     }
 
     // A message from outside the panel (the app socket). The panel did not draw
@@ -2179,7 +2202,7 @@ mod tests {
         let session = format!("teardown-{}", std::process::id());
         let server = crate::chat::approval::start(Box::new(|_| {})).unwrap();
         let transport = crate::agents::ChatTransport::ClaudeStreamJson;
-        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport, false).unwrap();
+        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport, false, None).unwrap();
         let settings_path = std::path::PathBuf::from(settings.last().unwrap());
         assert!(settings_path.exists(), "the session was launched with a settings file");
 

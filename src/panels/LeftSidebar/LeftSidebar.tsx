@@ -155,7 +155,7 @@ import {
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
-import { topicKey, topicSelection, isShellsKey, tabUnderFolder, type Topic } from "../../utils/topics";
+import { noteTopics, topicKey, topicSelection, isShellsKey, tabUnderFolder, type Topic } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
 import PrLine from "./PrLine";
 import StatusBubble, { CountBubble } from "./StatusBubble";
@@ -262,6 +262,8 @@ export type Selection = {
   // run against. Null when no member is present; `folderPath` then mirrors "".
   roots?: string[];
   activeRoot?: string | null;
+  /** A Topic's home folder, where its new chats run. */
+  home?: string | null;
   spaceName: string;
   projectName: string;
   projectPath: string;
@@ -361,6 +363,7 @@ export default function LeftSidebar(props: {
   // Every Topic record, for the "in <Topic>" chip on a member unit row.
   // Latest request wins, as in `TopicList`.
   const [topics, setTopics] = createSignal<Topic[]>([]);
+  createEffect(() => noteTopics(topics()));
   let topicsSeq = 0;
   async function loadTopics() {
     const mine = ++topicsSeq;

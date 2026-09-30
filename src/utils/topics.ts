@@ -4,6 +4,7 @@
 // helpers exist so a chip and a state badge do not each re-derive them.
 
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
+import { invoke } from "@tauri-apps/api/core";
 import { isUnderPath } from "./pathScope";
 
 export type MemberState =
@@ -43,6 +44,8 @@ export type Topic = {
   branch: string;
   members: Member[];
   createdAt: number;
+  /** The folder the Topic's chats run in. Filled by the backend on every read. */
+  home?: string;
 };
 
 /** The branch a creation dialog suggests for a Topic name: every character
@@ -164,6 +167,7 @@ export function topicSelection(topic: Topic, storedActiveRoot?: string | null): 
     topicName: topic.name,
     roots,
     activeRoot,
+    home: topic.home ?? null,
     spaceName: "",
     projectName: topic.name,
     projectPath: activeRoot ?? "",
@@ -174,6 +178,36 @@ export function topicSelection(topic: Topic, storedActiveRoot?: string | null): 
     // and the profile arrives with the session picked inside it.
     profile: null,
   };
+}
+
+/** Where a new chat starts: a Topic's home folder, which reaches every member,
+ *  or the folder git and a terminal use everywhere else. */
+export function chatRoot(sel: Pick<Selection, "kind" | "activeRoot" | "folderPath" | "home"> | null | undefined): string | null {
+  if (sel?.kind === "topic" && sel.home) return sel.home;
+  return selectionRoot(sel);
+}
+
+// Every Topic by its home folder, so a check handed only a chat's cwd can tell
+// it is a Topic chat and answer for the members.
+const byHome = new Map<string, Topic>();
+let notedOnce = false;
+
+export function noteTopics(list: readonly Topic[]): void {
+  notedOnce = true;
+  byHome.clear();
+  for (const t of list) if (t.home) byHome.set(t.home, t);
+}
+
+/** The registry filled at least once. A restore can run before the sidebar's
+ *  first listing lands, and would then check a Topic chat as a plain folder. */
+export async function ensureTopicsNoted(): Promise<void> {
+  if (notedOnce) return;
+  const list = await invoke<Topic[] | null>("list_topics").catch(() => null);
+  if (!notedOnce && list) noteTopics(list);
+}
+
+export function topicAtHome(folder: string | null | undefined): Topic | null {
+  return (folder && byHome.get(folder)) || null;
 }
 
 /** The root that owns `path`, longest match first so a member nested inside

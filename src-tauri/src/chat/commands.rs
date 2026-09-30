@@ -121,6 +121,17 @@ pub fn build_args(
     args
 }
 
+/// A chat started in a Topic's home folder reaches every member root without
+/// a prompt.
+fn with_member_roots(mut dirs: Vec<String>, home: Option<&crate::topic_home::HomeLaunch>) -> Vec<String> {
+    for root in home.map(|h| h.roots.as_slice()).unwrap_or_default() {
+        if !dirs.contains(root) {
+            dirs.push(root.clone());
+        }
+    }
+    dirs
+}
+
 /// Which account a chat session runs as.
 ///
 /// `asked` is what the caller passed (`None` for "I did not say"), `found` is
@@ -313,6 +324,9 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     // taken records the account the session will actually run as, which is what
     // the removal guard reads. The transcript is looked up only when there is
     // one to look up: a fresh session has no file and no opinion to overrule.
+    let home = crate::topic_home::launch_for(&crate::topics::Store::default_location(), &cwd);
+    let extra_dirs = with_member_roots(extra_dirs, home.as_ref());
+
     let source = fork_from.as_deref().unwrap_or(session_id.as_str());
     let found = (resume || fork_from.is_some())
         .then(|| crate::sessions::transcript_of(source, &agent_id))
@@ -379,7 +393,20 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             crate::rpc::mark_spawned_worker(&session_id, spawner);
         }
     }
-    args.extend(approval::settings_args(&session_id, server.sock_path(), server.token(), chat.transport, background)?);
+    args.extend(approval::settings_args(
+        &session_id,
+        server.sock_path(),
+        server.token(),
+        chat.transport,
+        background,
+        home.as_ref(),
+    )?);
+    let mut env: HashMap<String, String> = profile_env.into_iter().collect();
+    // Members' CLAUDE.md files, which claude reads from an added directory only
+    // when asked to.
+    if home.is_some() && chat.transport == ChatTransport::ClaudeStreamJson {
+        env.insert("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD".into(), "1".into());
+    }
 
     let spec = StartSpec {
         session_id: session_id.clone(),
@@ -392,7 +419,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         // The account this session runs as, and the only thing that makes it
         // one: the agent resolves its login from this variable, so the whole of
         // "which account" is here rather than in a flag.
-        env: profile_env.into_iter().collect(),
+        env,
     };
 
     let transport = chat.transport;
@@ -499,6 +526,18 @@ pub async fn chat_steer(
 ) -> Result<(), String> {
     crate::rpc::refuse_locked(&app, &session_id)?;
     state.0.steer(&session_id, blocks)
+}
+
+/// A Topic member came or moved while this chat runs.
+#[tauri::command]
+pub async fn chat_grant_dirs(
+    state: State<'_, ChatState>,
+    app: AppHandle,
+    session_id: String,
+    dirs: Vec<String>,
+) -> Result<(), String> {
+    crate::rpc::refuse_locked(&app, &session_id)?;
+    state.0.grant_dirs(&session_id, &dirs)
 }
 
 #[tauri::command]
@@ -1459,6 +1498,45 @@ mod tests {
         assert_eq!(found.map(|o| o.turn_id), Some("turn-2".to_string()));
 
         let _ = std::fs::remove_file(open_turn_path(&sid));
+    }
+
+    #[test]
+    fn a_topic_home_chat_adds_every_member_and_carries_their_rules_but_not_their_hooks() {
+        use crate::topics::{create_topic_with, MemberMode, NewMember, Store};
+        let tmp = std::fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!("tori-home-spawn-{}-{}", std::process::id(), crate::owned_state::now_ms()));
+        let root = tmp.join("api");
+        std::fs::create_dir_all(root.join(".claude")).unwrap();
+        let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&root).args(args).output().unwrap().status.success());
+        git(&["init", "-q"]);
+        std::fs::write(
+            root.join(".claude/settings.json"),
+            r#"{"permissions":{"allow":["Bash(npm test)"],"deny":["Read(./.env)"]},
+                "hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"member-hook"}]}]}}"#,
+        )
+        .unwrap();
+        let root_s = root.to_string_lossy().into_owned();
+        let store = Store::at(tmp.join("topics.json"));
+        let members = [NewMember { repo_path: root_s.clone(), mode: MemberMode::Reference }];
+        let topic = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
+        let home = topic.home.clone().unwrap();
+
+        let launch = crate::topic_home::launch_for(&store, &home).expect("a home chat");
+        let dirs = with_member_roots(vec!["/attachments".into()], Some(&launch));
+        let args = build_args(claude_chat(), "s1", false, None, None, None, None, &dirs);
+        assert!(args.windows(2).any(|w| w == ["--add-dir", root_s.as_str()]));
+        assert!(args.windows(2).any(|w| w == ["--add-dir", "/attachments"]));
+
+        let settings = approval::settings_json_with(std::path::Path::new("/bin/tori"), std::path::Path::new("/tmp/s"), "tok", false, Some(&launch));
+        assert!(settings.contains("Bash(npm test)"), "{settings}");
+        assert!(settings.contains(&format!("Read(/{root_s}/.env)")), "{settings}");
+        assert!(!settings.contains("member-hook"), "{settings}");
+
+        // A Topic chat started in a member's own folder before homes existed
+        // resumes there as a plain chat.
+        assert_eq!(crate::topic_home::launch_for(&store, &root_s), None);
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

@@ -52,6 +52,7 @@ mod settings;
 mod shared;
 mod workspace_settings;
 mod themes;
+mod topic_home;
 mod topics;
 mod trace;
 mod trust;
@@ -322,6 +323,7 @@ pub fn run() {
             topics::commands::probe_topic_branch,
             chat::commands::chat_send,
             chat::commands::chat_steer,
+            chat::commands::chat_grant_dirs,
             chat::commands::chat_interrupt,
             chat::commands::chat_send_held,
             chat::commands::chat_set_visible,

@@ -414,6 +414,24 @@ fn start_composer(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, 
     });
 }
 
+/// Tori telling one live chat something it should know: steered into the
+/// running turn, or held for the user's next one when the session is idle, so
+/// the note never starts a turn of its own.
+pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> Result<(), String> {
+    let states = &app.state::<RpcState>().states;
+    let mid_turn = matches!(
+        states.snapshot().get(session),
+        Some(states::SessionState::Working | states::SessionState::NeedsYou)
+    );
+    let text = events::from_tori(kind, None, text);
+    let host = &app.state::<crate::chat::host::ChatState>().0;
+    if !mid_turn {
+        host.note_for_next_turn(session, text);
+        return Ok(());
+    }
+    host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], true, events::TurnBy::Local)
+}
+
 fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
     let status = runner.clone();
     let (watcher, nudges) = Watcher::new(states.clone(), autopilot.clone(), Box::new(move || status.status()));
