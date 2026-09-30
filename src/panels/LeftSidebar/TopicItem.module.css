@@ -1,79 +1,62 @@
-/* One Topic row in the sidebar's Topics mode. The name never wraps and
-   the chip row never wraps either: a Topic with more members than fit shows
-   CHIP_CAP chips and a +N, so the row height is the same for every Topic. */
+/* One Topic in the sidebar's Topics mode, drawn with the Spaces project
+   card's rows (SidebarRows.module.css); what stays here is what only a Topic
+   has. */
 .item {
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(7px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  /* Square on the left, where the selection bar runs, and rounded on the
-     right: a rounded left corner would cut the bar into a lozenge. */
-  border-radius: 0 var(--tori-radius-lg) var(--tori-radius-lg) 0;
-  min-width: 0;
 }
 
-.item:hover {
-  background: linear-gradient(to right, var(--neutral-hover), transparent);
-}
-
-/* The selected Topic, marked the way a selected branch row is: the brand bar
-   down the left edge over a wash that fades out to the right. Declared after
-   :hover at equal specificity, so hovering the open Topic keeps the gold. */
-.item.active,
-.item.active:hover {
+/* The open Topic's head, while no member row carries the selection: the brand
+   bar over a wash that fades out to the right, as a selected branch row. */
+/* Scoped under `.item` so it outranks the shared row's :hover wash, which
+   would otherwise win or lose on bundle order. */
+.item > .headSel,
+.item > .headSel:hover {
   background:
     linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
       var(--tori-border-thick) 100% no-repeat,
     linear-gradient(to right, var(--brand-subtle), transparent);
 }
 
-.head {
-  display: flex;
-  align-items: center;
-  gap: var(--tori-space-2);
-  min-width: 0;
+/* The menu sits on the whole card, so the card is what Kobalte marks while it
+   is open; the head row takes the hover wash for it, as a project row does. */
+.item[data-expanded] > :first-child {
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
+/* The disclosure is the icon slot itself, so the chevron that cross-fades in
+   under the pointer is also what a keyboard reaches. */
 .disclosure {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* The spaces rows' `.rowChevron`: a 16px box around a 14px glyph. */
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
+  position: absolute;
+  inset: 0;
   padding: 0;
   border: 0;
   border-radius: var(--tori-radius-sm);
   background: transparent;
-  color: var(--fg-muted);
+  color: inherit;
   cursor: pointer;
 }
 
-.disclosure:hover {
-  color: var(--fg-default);
+.disclosure:focus-visible {
+  outline: 1px solid var(--brand-default);
 }
 
-.caret {
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
-  transition: transform 120ms ease;
+/* Up to four members, one cell each on its Space tint. */
+.glyph {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(2px * var(--ui-scale));
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
 }
 
-.caretOpen {
-  transform: rotate(90deg);
+.cell {
+  --chip-hue: var(--fg-muted);
+  border-radius: calc(2px * var(--ui-scale));
+  background: color-mix(in srgb, var(--chip-hue) 70%, transparent);
 }
 
-.name {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--tori-text-xl);
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--fg-default);
+.cellEmpty {
+  background: var(--neutral-subtle);
 }
 
 /* The roll-up, at the trailing end of the name's line. Sized from its own text
@@ -199,63 +182,34 @@
   padding-inline: calc(3px * var(--ui-scale));
 }
 
-/* The expanded list. Uncapped, unlike the chip row: every member needs a row a
-   right-click can land on, and one hidden behind a +N would have none. */
-.members {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  gap: calc(2px * var(--ui-scale));
+/* The member's own glyph in the branch row's 16px slot, which would otherwise
+   blow the chip's icon up to the slot's size. */
+span.memberIcon > :global(svg),
+span.memberIcon > img {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
 }
 
-.member {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
-  border-radius: var(--tori-radius-sm);
-  min-width: 0;
+[data-member] {
   cursor: grab;
 }
 
-.member:hover {
-  background: var(--neutral-hover);
-}
-
-.memberDragging {
+[data-member][data-dragging] {
   opacity: 0.5;
 }
 
 /* The whole row, not an edge line. A drop puts the carried member where this
    one sits, which is above it going up and below it going down; an edge would
    be right half the time. */
-.memberOver {
+[data-member][data-over] {
   background: var(--brand-wash);
   box-shadow: inset 0 0 0 1px var(--brand-default);
-}
-
-.memberName {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--tori-text-sm);
-  color: var(--fg-default);
 }
 
 .memberState {
   flex: 0 0 auto;
   font-size: var(--tori-text-2xs);
   color: var(--fg-muted);
-}
-
-/* The pull request gets a line of its own under the member, as a branch row's does. */
-.memberPr {
-  flex-basis: 100%;
-  min-width: 0;
 }
 
 .memberWarning {
@@ -275,8 +229,8 @@
   cursor: pointer;
 }
 
-.member[data-state="failed"] .memberState,
-.member[data-state="repo-missing"] .memberState,
-.member[data-state="worktree-missing"] .memberState {
+[data-member][data-state="failed"] .memberState,
+[data-member][data-state="repo-missing"] .memberState,
+[data-member][data-state="worktree-missing"] .memberState {
   color: var(--danger-fg);
 }
