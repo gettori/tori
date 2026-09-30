@@ -392,9 +392,10 @@ describe("TopicList", () => {
     fireEvent.click(done());
 
     await waitFor(() => expect(dialog.isConnected).toBe(false));
-    const chip = row("Search").querySelector('[data-chip="/w/web"]')!;
-    expect(chip.getAttribute("data-state")).toBe("failed");
-    expect(chip.querySelector('[role="img"]')!.getAttribute("aria-label")).toBe("Failed");
+    // A new Topic opens expanded, so the failure is on its member row.
+    const web = row("Search").querySelector('[data-member="/w/web"]')!;
+    expect(web.getAttribute("data-state")).toBe("failed");
+    expect(web.querySelector("[data-member-state]")!.textContent).toBe("Failed");
     const toast = await screen.findByRole("status");
     expect(toast.textContent).toContain("Search: no worktree for web");
     expect(listCalls()).toBe(1);
