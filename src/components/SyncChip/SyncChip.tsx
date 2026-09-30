@@ -42,6 +42,7 @@ const SAYS: Partial<Record<SyncLevel, true>> = {
  *  reader would otherwise read out as characters rather than as a state. */
 const NAME: Record<Exclude<SyncLevel, "none">, string> = {
   conflicts: "Conflicts with the base branch",
+  checks: "Pull request checks failing",
   diverged: "Diverged from the upstream",
   behind: "Behind the upstream",
   baseBehind: "Behind the base branch",
