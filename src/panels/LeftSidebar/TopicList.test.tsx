@@ -157,10 +157,11 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const RECORD_ONLY = new Set(["rename_topic", "rename_member", "reorder_members", "remove_member"]);
+const RECORD_ONLY = new Set(["rename_topic", "rename_member", "reorder_members", "remove_member", "set_topic_promotion"]);
 
 function recordOnly(cmd: string, f: Topic, args: Record<string, unknown>): Topic {
   if (cmd === "rename_topic") return { ...f, name: String(args.name) };
+  if (cmd === "set_topic_promotion") return { ...f, promotion: args.promotion as Topic["promotion"] };
   if (cmd === "rename_member") {
     return {
       ...f,
@@ -407,6 +408,21 @@ describe("TopicList", () => {
 
   // The count is the git slot map's, and the editor only enters the open
   // Topic's roots, so every other row sums to nothing without being told to.
+  it("sets what a chat gets when it needs a worktree, asking by default", async () => {
+    render(() => <TopicList spaces={SPACES} query="" />);
+    await screen.findByText("Auth");
+    fireEvent.contextMenu(row("Auth"));
+    expect((await screen.findByText("Ask me first")).closest("[role=menuitem]")?.textContent).toContain("Current");
+    pointerClick(screen.getByText("Refuse"));
+    await waitFor(() =>
+      expect(bridge.calls.find((c) => c.cmd === "set_topic_promotion")?.args).toEqual({ topicId: "auth-1", promotion: "never" }),
+    );
+
+    fireEvent.contextMenu(row("Auth"));
+    expect((await screen.findByText("Refuse")).closest("[role=menuitem]")?.textContent).toContain("Current");
+    expect(screen.getByText("Ask me first").closest("[role=menuitem]")?.textContent).not.toContain("Current");
+  });
+
   it("renames from the context menu", async () => {
     render(() => <TopicList spaces={SPACES} query="" />);
     await screen.findByText("Auth");

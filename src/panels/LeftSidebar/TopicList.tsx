@@ -1,4 +1,5 @@
 import { createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
+import { Check } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TopicItem, { type SpaceTint } from "./TopicItem";
@@ -21,6 +22,7 @@ import {
   memberState,
   type Topic,
   type Member,
+  type Promotion,
   type RepairAction,
   topicKey,
   LAST_MEMBER,
@@ -141,14 +143,20 @@ export default function TopicList(props: {
 
   let unlistenTopics: UnlistenFn | undefined;
   let unlistenConfig: UnlistenFn | undefined;
+  let unlistenPromoted: UnlistenFn | undefined;
   onMount(async () => {
     await load();
     unlistenTopics = await listen<Topic>("topics://changed", (e) => apply(e.payload));
     unlistenConfig = await listen("config://changed", () => load());
+    unlistenPromoted = await listen<{ topic: Topic; from: string | null; to: string | null }>("topics://promoted", (e) => {
+      apply(e.payload.topic);
+      promoted(e.payload.topic, e.payload.from, e.payload.to);
+    });
   });
   onCleanup(() => {
     unlistenTopics?.();
     unlistenConfig?.();
+    unlistenPromoted?.();
   });
 
   async function retry(topic: Topic, member: Member) {
@@ -313,11 +321,13 @@ export default function TopicList(props: {
   async function promote(topic: Topic, member: Member) {
     const from = memberRoot(member);
     const next = await mutate("promote_member", { topicId: topic.id, repoPath: member.repoPath });
-    if (!next) return;
-    const to = rootIn(next, member.repoPath);
+    if (next) promoted(next, from, rootIn(next, member.repoPath));
+  }
+
+  function promoted(next: Topic, from: string | null, to: string | null) {
     const moved = from && to ? { from, to } : undefined;
-    if (moved) emitWith<RootMoved>(ROOT_MOVED, { workspace: topicKey(topic.id), ...moved });
-    if (props.activeId === topic.id) props.onSelect?.(next, moved);
+    if (moved) emitWith<RootMoved>(ROOT_MOVED, { workspace: topicKey(next.id), ...moved });
+    if (props.activeId === next.id) props.onSelect?.(next, moved);
   }
 
   function demote(topic: Topic, member: Member) {
@@ -452,9 +462,24 @@ export default function TopicList(props: {
     setSweepReq({ ...req, members: stuck, busy: false, failures });
   }
 
+  const promotionRow = (topic: Topic, promotion: Promotion, label: string): MenuItem => {
+    const current = (topic.promotion ?? "ask") === promotion;
+    return {
+      label,
+      icon: current ? Check : undefined,
+      note: current ? "Current" : undefined,
+      onClick: () => void mutate("set_topic_promotion", { topicId: topic.id, promotion }),
+    };
+  };
+
   const menu = (topic: Topic): MenuItem[] => [
     { label: "Rename…", onClick: () => setRenameReq(topic) },
     { label: "Add repository…", onClick: () => setDialog({ topic }) },
+    { separator: true },
+    { heading: "When a chat needs a worktree" },
+    promotionRow(topic, "ask", "Ask me first"),
+    promotionRow(topic, "auto", "Create it"),
+    promotionRow(topic, "never", "Refuse"),
     { separator: true },
     { label: "Delete…", danger: true, onClick: () => openDelete(topic) },
   ];

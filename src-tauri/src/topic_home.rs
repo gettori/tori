@@ -7,9 +7,13 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::topics::{member_root, Member, MemberMode, MemberState, Topic};
+use crate::topics::{member_root, Member, MemberMode, MemberState, Promotion, Topic};
 
 pub const NOTE: &str = "TOPIC.md";
+
+/// The MCP name of `topic.member.promote`, which the rules and a refused write
+/// point a chat at.
+pub const PROMOTE_TOOL: &str = "mcp__tori__topic_member_promote";
 
 /// Beside the record, so a store in a temp dir gets its homes there too.
 pub fn home_dir(store_path: &Path, topic_id: &str) -> PathBuf {
@@ -138,9 +142,14 @@ pub fn topic_md(topic: &Topic) -> String {
             }
         }
     }
-    out.push_str(
-        "\n## Rules\n\n- A reference member is the repository's own checkout. Read it, never change it. Ask the user to create a worktree for it before changing anything there.\n- Change a worktree member only inside the path listed above.\n",
-    );
+    let promote = match topic.promotion {
+        Promotion::Ask => format!("To change one, call `{PROMOTE_TOOL}` with its name; the user is asked to create its worktree."),
+        Promotion::Auto => format!("To change one, call `{PROMOTE_TOOL}` with its name; its worktree is created at once."),
+        Promotion::Never => "This Topic does not let a chat create worktrees. Ask the user to create one.".to_string(),
+    };
+    out.push_str(&format!(
+        "\n## Rules\n\n- A reference member is the repository's own checkout. Read it, never change it. {promote}\n- Change a worktree member only inside the path listed above.\n"
+    ));
     if !unavailable.is_empty() {
         out.push_str("\n## Not available in this chat\n\nProject hooks and project MCP servers belong to their own folder and do not run here.\n\n");
         out.push_str(&unavailable.join("\n"));
@@ -203,6 +212,55 @@ pub fn topic_at_home<'a>(topics: &'a [Topic], at: &str) -> Option<&'a Topic> {
     topics.iter().find(|t| t.home.as_deref().is_some_and(|h| h.trim_end_matches('/') == at))
 }
 
+/// Why a chat running for a Topic may not write `target`, or `None` when it
+/// may. Its own worktrees are open; the rest of every member's repository,
+/// the user's checkout and other Topics' worktrees included, is not. Outside
+/// every member Tori has no say.
+pub fn write_refusal(topics: &[Topic], cwd: &str, target: &str) -> Option<String> {
+    use crate::sessions::cwd_matches;
+    let topic = crate::unit_home::topic_of(topics, cwd)?;
+    let path = lexical(&Path::new(cwd).join(target));
+    let own = |m: &&Member| m.mode == MemberMode::Worktree && m.worktree_path.as_deref().is_some_and(|w| cwd_matches(&path, w));
+    if topic.members.iter().any(|m| own(&m)) {
+        return None;
+    }
+    let under = |m: &&Member| {
+        cwd_matches(&path, &m.repo_path) || m.checkout.as_ref().is_some_and(|c| cwd_matches(&path, &c.path))
+    };
+    let m = topic.members.iter().find(under)?;
+    Some(match (m.mode, m.worktree_path.as_deref()) {
+        (MemberMode::Worktree, Some(w)) => format!(
+            "{} has a worktree for the Topic {} at {w}. Make this change there, not in {}.",
+            m.display_name, topic.name, m.repo_path
+        ),
+        _ if topic.promotion == Promotion::Never => format!(
+            "{} is a reference in the Topic {}, so it is read only here, and this Topic does not let a chat create worktrees. Ask the user to create one.",
+            m.display_name, topic.name
+        ),
+        _ => format!(
+            "{} is a reference in the Topic {}, so it is read only here. Call {PROMOTE_TOOL} with member \"{}\" to get a worktree, then make the change there.",
+            m.display_name, topic.name, m.display_name
+        ),
+    })
+}
+
+// `..` resolved without touching the disk, so a path climbing out of a
+// worktree is judged where it lands.
+fn lexical(path: &Path) -> String {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out.to_string_lossy().into_owned()
+}
+
 /// The roots a live chat in this Topic's home has not been given yet.
 pub fn roots_of(topic: &Topic) -> Vec<String> {
     let mut members: Vec<&Member> = topic.members.iter().collect();
@@ -261,5 +319,26 @@ mod tests {
         assert_eq!(anchor("Read(~/.ssh/**)", root), "Read(~/.ssh/**)");
         assert_eq!(anchor("Bash(npm run test:*)", root), "Bash(npm run test:*)");
         assert_eq!(anchor("WebFetch", root), "WebFetch");
+    }
+
+    #[test]
+    fn a_topic_chat_writes_only_inside_its_own_worktrees() {
+        let mut topic = crate::unit_home::tests::topic();
+        topic.members[0].display_name = "api".into();
+        topic.members[1].display_name = "web".into();
+        let topics = [topic];
+        let home = "/cfg/topics/auth-1";
+        let refused = |target: &str| write_refusal(&topics, home, target);
+
+        let reference = refused("/p/web/src/app.ts").expect("a reference root is refused");
+        assert!(reference.contains(PROMOTE_TOOL) && reference.contains("\"web\""), "{reference}");
+        let promoted = refused("/p/api/src/lib.rs").expect("a promoted member's own checkout is refused");
+        assert!(promoted.contains("/p/api/.tori/worktrees/auth"), "{promoted}");
+        assert_eq!(refused("/p/api/.tori/worktrees/auth/src/lib.rs"), None);
+        assert!(refused("/p/api/.tori/worktrees/auth/../../../../web/x.ts").is_some(), "climbing out of the worktree lands in web");
+        assert!(refused("/p/api/.tori/worktrees/other/x.rs").is_some(), "another Topic's worktree is not this chat's");
+        assert_eq!(refused("TOPIC.md"), None);
+        assert_eq!(refused("/tmp/scratch.txt"), None);
+        assert_eq!(write_refusal(&topics, "/elsewhere", "/p/web/src/app.ts"), None);
     }
 }

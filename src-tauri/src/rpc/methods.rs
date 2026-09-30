@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, TopicPromoteParams, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -557,6 +557,30 @@ impl TauriBackend {
         }
     }
 
+    // A question still open at the timeout is withdrawn: a late yes would
+    // otherwise promote with nobody waiting on it.
+    fn ask_for_worktree(&self, session: &str, question: &str, timeout: Option<u64>) -> Result<bool, String> {
+        const YES: &str = "Create worktree";
+        let params = AskParams {
+            question: question.to_string(),
+            options: Some(vec![YES.to_string(), "Not now".to_string()]),
+            timeout,
+            approval: None,
+            project: None,
+            item: None,
+        };
+        let answered = self.ask_create(session, params).map_err(|e| e.message)?;
+        match answered["answer"].as_str() {
+            Some(answer) => Ok(answer == YES),
+            None => {
+                let id = answered["id"].as_str().unwrap_or_default();
+                self.asks.forget(id);
+                let _ = self.bridge.request("ask.close", json!({ "id": id }));
+                Err("The user has not answered yet. Carry on without changing that member, and ask again later.".into())
+            }
+        }
+    }
+
     fn background_session<'a>(&self, principal: &'a Principal) -> Option<&'a str> {
         match principal {
             Principal::Session(Caller::Chat(id)) if self.states.is_background(id) => Some(id),
@@ -1061,6 +1085,32 @@ impl Backend for TauriBackend {
         }
         let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
         Ok(json!({}))
+    }
+
+    fn topic_member_promote(&self, session: &str, params: TopicPromoteParams) -> Result<Value, RpcError> {
+        let cwd = self.session_cwd(session)?;
+        let topics = crate::unit_home::topics();
+        let topic = crate::unit_home::topic_of(&topics, &cwd)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("{session} is not a Topic chat")))?;
+        let member = crate::topics::member_named(topic, &params.member).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        let index = self.app.state::<crate::config::ProjectIndex>().inner().clone();
+        let promoted = crate::topics::promote_for_chat(
+            topic,
+            member,
+            |question| self.ask_for_worktree(session, question, params.timeout),
+            || crate::topics::commands::promote_settled(&self.app, &index, &topic.id, &member.repo_path),
+        )
+        .map_err(refused)?;
+        let root = promoted
+            .members
+            .iter()
+            .find(|m| m.repo_path == member.repo_path)
+            .and_then(crate::topics::member_root);
+        // The sidebar's own promote moves the Topic's tabs itself; this one
+        // happened behind its back.
+        let from = crate::topics::member_root(member);
+        let _ = self.app.emit("topics://promoted", json!({ "topic": promoted, "from": from, "to": root }));
+        Ok(json!({ "member": member.display_name, "branch": promoted.branch, "worktree": root }))
     }
 
     fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError> {
