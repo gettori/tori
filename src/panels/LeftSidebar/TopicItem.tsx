@@ -166,6 +166,7 @@ export default function TopicItem(props: {
                   return (
                     <MemberChip
                       icon={m.icon}
+                      outlined
                       chipStyle={m.style}
                       reference={isReference(m.member)}
                       size="md"
