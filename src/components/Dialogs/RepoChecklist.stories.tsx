@@ -45,18 +45,3 @@ export const WithExclusions: Story = {
     return <RepoChecklist {...args} value={value()} onChange={setValue} exclude={["/w/api", "/i/terraform"]} />;
   },
 };
-
-/** The collision slot, as the creation dialog fills it. */
-export const WithCollision: Story = {
-  render: (args) => {
-    const [value, setValue] = createSignal<string[]>(["/w/api"]);
-    return (
-      <RepoChecklist
-        {...args}
-        value={value()}
-        onChange={setValue}
-        collision={(path) => (path === "/w/api" ? <span>feat/auth already exists</span> : undefined)}
-      />
-    );
-  },
-};
