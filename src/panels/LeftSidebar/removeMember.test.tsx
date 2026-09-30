@@ -124,7 +124,7 @@ async function mount() {
 }
 
 const removeRepo = async (repoPath: string) => {
-  fireEvent.contextMenu(document.querySelector<HTMLElement>(`li[data-member="${repoPath}"]`)!);
+  fireEvent.contextMenu(document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!);
   pointerClick(await screen.findByText("Remove repository"));
   await screen.findByRole("dialog", { name: /Remove worktree/ });
 };

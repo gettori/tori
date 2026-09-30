@@ -5,6 +5,7 @@ import Dropdown from "../../components/Menu/Dropdown";
 import IconButton from "../../components/IconButton/IconButton";
 import { type MenuItem } from "../../components/Menu/rows";
 import Icon from "../../components/Icon/Icon";
+import type { DragRowProps } from "../../utils/dragReorder";
 import styles from "./SidebarRows.module.css";
 
 /** Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned
@@ -113,6 +114,9 @@ export function BranchRow(props: {
   menu?: MenuItem[];
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
+  /** Spread on the row last, for a caller that keys or reorders its rows (a
+   *  Topic's members carry `data-member` and the drag-reorder handlers). */
+  rowProps?: Partial<DragRowProps> & { [data: `data-${string}`]: string | undefined };
 }) {
   const glyph = () => (
     <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
@@ -134,6 +138,7 @@ export function BranchRow(props: {
         draggable={true}
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         aria-current={props.selected ? "true" : undefined}
+        {...props.rowProps}
       >
         {/* The glyph rides inside the first line rather than beside the pair
             of them. Centred against the whole stack it belongs to neither

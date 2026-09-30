@@ -7,7 +7,7 @@ import type { Topic, Member, MemberState } from "../../utils/topics";
 import type { BranchSync } from "../../utils/gitActions";
 import type { Rollup } from "../../utils/sessionStatus";
 import type { UnitStatus } from "../../utils/forgeTypes";
-import styles from "./TopicItem.module.css";
+import rows from "./SidebarRows.module.css";
 import chipStyles from "../../components/MemberChip/MemberChip.module.css";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
 import { tintedMember } from "../../utils/topicMembers";
@@ -50,7 +50,7 @@ const mount = (f: Topic, onRepair = () => {}, extra: Record<string, unknown> = {
 
 const expand = async () => fireEvent.click(await screen.findByRole("button", { name: /^Show members/ }));
 const memberRows = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll<HTMLElement>("li[data-member]"));
+  Array.from(container.querySelectorAll<HTMLElement>("[data-member]"));
 
 describe("TopicItem", () => {
   it("caps the chip row at six and counts the rest", () => {
@@ -60,7 +60,7 @@ describe("TopicItem", () => {
     expect(screen.getByText("+3")).toBeTruthy();
     const name = container.querySelector("[data-name]")!;
     expect(name.textContent).toBe("Auth flow");
-    expect(name.className).toBe(styles.name);
+    expect(name.className).toBe(rows.label);
   });
 
   it("tints a chip by its Space and leaves a repo outside every Space neutral", () => {
@@ -254,8 +254,8 @@ describe("what a Topic row says about its members' branches", () => {
       .querySelector("[data-topic]")!;
 
     expect(loud.children.length).toBe(quiet.children.length);
-    expect(loud.querySelector("[data-topic-sync]")!.parentElement!.className).toBe(
-      loud.querySelector("[data-name]")!.parentElement!.className,
+    expect(loud.querySelector("[data-topic-sync]")!.closest(`.${rows.row}`)).toBe(
+      loud.querySelector("[data-name]")!.closest(`.${rows.row}`),
     );
   });
 
@@ -320,7 +320,7 @@ describe("a Topic's chat status", () => {
     const none = { waitingForApproval: 0, waitingForAnswer: 0, executing: 0, idle: 0, running: 0 };
     const [status, setStatus] = createSignal<Rollup>(none);
     const { container } = mount(topic([member("/w/api", 0)]), () => {}, { status });
-    const head = container.querySelector(`.${styles.head}`)!;
+    const head = container.querySelector(`.${rows.project}`)!;
     expect(head.querySelector("[title='Waiting for approval']")).toBeNull();
 
     setStatus({ ...none, waitingForApproval: 1, executing: 2 });

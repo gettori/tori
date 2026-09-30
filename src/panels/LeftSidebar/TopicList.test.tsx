@@ -352,7 +352,7 @@ describe("TopicList", () => {
         newRepoPath: "/moved/web",
       });
       // `repoPath` is the member's identity, so the row now answers to the new one.
-      await waitFor(() => expect(document.querySelector('li[data-member="/moved/web"]')).toBeTruthy());
+      await waitFor(() => expect(document.querySelector('[data-member="/moved/web"]')).toBeTruthy());
     });
 
     it("leaves the record alone when the picker is cancelled", async () => {
@@ -663,7 +663,7 @@ describe("TopicList", () => {
     const expand = async (name: string) =>
       fireEvent.click(await screen.findByRole("button", { name: `Show members of ${name}` }));
     const memberRow = (repoPath: string) =>
-      document.querySelector<HTMLElement>(`li[data-member="${repoPath}"]`)!;
+      document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!;
 
     async function openOn(topicName: string, repoPath: string) {
       render(() => <TopicList spaces={SPACES} query="" />);
@@ -682,7 +682,7 @@ describe("TopicList", () => {
         repoPaths: ["/w/web", "/w/api"],
       });
       await waitFor(() =>
-        expect(Array.from(document.querySelectorAll("li[data-member]")).map((r) => r.getAttribute("data-member"))).toEqual([
+        expect(Array.from(document.querySelectorAll("[data-member]")).map((r) => r.getAttribute("data-member"))).toEqual([
           "/w/web",
           "/w/api",
         ]),

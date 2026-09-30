@@ -114,9 +114,12 @@ describe("selecting a Topic", () => {
     localStorage.setItem("tori.sidebar-mode.v1", "topics");
   });
 
-  it("hands the shell a Topic Selection on click, keeping a stored active root", async () => {
+  it("toggles on a Topic click and hands the shell a Topic Selection on a member click", async () => {
     const { onSelect } = await mounted(topicSel);
-    fireEvent.click(row("Auth"));
+    const member = (repoPath: string) => document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`);
+    fireEvent.click(screen.getByText("Auth"));
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(member("/w/web")!);
     expect(onSelect).toHaveBeenCalledTimes(1);
     const sel = onSelect.mock.calls[0][0];
     expect(sel.kind).toBe("topic");
@@ -124,8 +127,8 @@ describe("selecting a Topic", () => {
     expect(sel.roots).toEqual([A, B]);
     expect(sel.activeRoot).toBe(B);
 
-    fireEvent.click(row("Payments"));
-    expect(onSelect.mock.calls[1][0]).toMatchObject({ kind: "topic", topicId: "f2", activeRoot: A });
+    fireEvent.click(member("/w/api")!);
+    expect(onSelect.mock.calls[1][0]).toMatchObject({ kind: "topic", topicId: "f1", activeRoot: A });
   });
 
   it("marks exactly the selected row active", async () => {
