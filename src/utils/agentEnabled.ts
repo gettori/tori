@@ -18,6 +18,7 @@ import {
   knownProfile,
   noAccounts,
   profileSignedOut,
+  signedOutEverywhere,
 } from "./agentHealth";
 import { saveSettings, settings, settingsLoaded } from "../panels/Settings/settingsStore";
 import { allowedRows, soleProfile } from "./projectAgents";
@@ -50,7 +51,7 @@ export function enableBlockedReason(id: string): string | null {
   if (!row) return "Still being checked";
   if (row.status === "notFound") return "Install it first";
   if (noAccounts(id)) return "Add an account first";
-  if (row.signIn === "signedOut") return "Sign in first";
+  if (signedOutEverywhere(row)) return "Sign in first";
   return null;
 }
 
@@ -63,7 +64,7 @@ export function enableBlockedReason(id: string): string | null {
  * second or two the sweep takes - on exactly the machines where it takes
  * longest. Turning one on is the strict question; keeping one on is not.
  */
-export function agentEnabled(id: string, profile: string | null = null): boolean {
+export function agentEnabled(id: string, profile?: string | null): boolean {
   return agentChosen(id) && agentReady(id, profile);
 }
 
@@ -174,7 +175,11 @@ function layeredProfile(agentId: string, remembered?: string | null): string | n
   if (project !== undefined) return project;
   const chosen = knownProfile(agentId, settings.agent?.defaultProfiles?.[agentId]);
   if (chosen !== undefined) return chosen;
-  return asTabProfile(soleProfile(agentId));
+  const sole = asTabProfile(soleProfile(agentId));
+  if (!profileSignedOut(agentId, sole)) return sole;
+  // Nobody chose this account, so moving off a signed-out one overrides nothing.
+  const signedIn = agentHealthFor(agentId)?.profiles?.find((p) => p.signIn === "signedIn");
+  return signedIn ? asTabProfile(signedIn.id) : sole;
 }
 
 /** The account this agent's new sessions start on absent a project's own

@@ -25,7 +25,7 @@ import {
 } from "../../../../utils/modelCatalog";
 import { fuzzyMatch, type Range } from "../../../../utils/fuzzy";
 import { CmdLine, Mark } from "../../components/paneKit";
-import { asTabProfile, type AgentHealth } from "../../../../utils/agentHealth";
+import { asTabProfile, signedOutEverywhere, type AgentHealth } from "../../../../utils/agentHealth";
 import { setupJob, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import { OPEN_JOB, emitWith, type OpenJob } from "../../../../utils/events";
@@ -352,10 +352,9 @@ export default function AgentDetail(props: {
   const behind = () =>
     a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
   // The page has two shapes. An agent that is not usable yet gets the setup
-  // steps; one that is gets its accounts. Never both: the setup page's sign-in
-  // step signs in the default profile, which is the account that decides
-  // whether the agent is offered at all.
-  const setupMode = () => !installed() || a().signIn === "signedOut";
+  // steps; one that is gets its accounts. Never both. Any signed-in account
+  // makes it usable, and a signed-out default then signs in from its own row.
+  const setupMode = () => !installed() || signedOutEverywhere(a());
 
   // From the resolved adapter rather than from `agent_health`, which answers
   // about the binary on disk and knows nothing about the chat transport.
@@ -444,7 +443,7 @@ export default function AgentDetail(props: {
    *  which gets a banner with room to name both versions instead of a pill. */
   const verdict = () => {
     if (!installed()) return { label: "Not installed", cls: "" };
-    if (a().signIn === "signedOut") return { label: "Sign in", cls: styles.statePillWarn };
+    if (signedOutEverywhere(a())) return { label: "Sign in", cls: styles.statePillWarn };
     return { label: "Ready", cls: styles.statePillOk };
   };
 
