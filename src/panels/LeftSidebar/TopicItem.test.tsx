@@ -6,6 +6,7 @@ import TopicItem, { CHIP_CAP, type SpaceTint } from "./TopicItem";
 import type { Topic, Member, MemberState } from "../../utils/topics";
 import type { BranchSync } from "../../utils/gitActions";
 import type { Rollup } from "../../utils/sessionStatus";
+import type { UnitStatus } from "../../utils/forgeTypes";
 import styles from "./TopicItem.module.css";
 import chipStyles from "../../components/MemberChip/MemberChip.module.css";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
@@ -267,6 +268,50 @@ describe("what a Topic row says about its members' branches", () => {
 
     expect(container.querySelector("[data-topic-sync]")).toBeTruthy();
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a member's pull request", () => {
+  const pr = (failing: number): UnitStatus => ({
+    headRef: "feat/auth-flow",
+    pullRequest: {
+      number: 41,
+      title: "Auth flow",
+      body: null,
+      state: "open",
+      isDraft: false,
+      createdAt: new Date().toISOString(),
+      mergedAt: null,
+      closedAt: null,
+      comments: 0,
+      author: "skarif2",
+      headRef: "feat/auth-flow",
+      baseRef: "main",
+      headSha: "abc",
+      headRepoIsOrigin: true,
+      url: "https://github.com/o/api/pull/41",
+      mergeableState: "clean",
+    },
+    checks: { state: failing ? "failure" : "success", total: 3, failing, contexts: [] },
+    reviewDecision: "none",
+  });
+
+  it("draws the pull request line only on a member that has one, a reference included", async () => {
+    const web = { ...member("/w/web", 1), mode: "reference" as const };
+    const { container } = mount(topic([member("/w/api", 0), web]), () => {}, {
+      memberPr: (m: Member) => (m.repoPath === "/w/web" ? pr(0) : null),
+    });
+    await expand();
+    const [api, webRow] = memberRows(container);
+    expect(api.querySelector("[data-member-pr]")).toBeNull();
+    expect(webRow.querySelector("[data-member-pr]")?.textContent).toContain("#41");
+  });
+
+  it("lights the Topic's roll-up when a member's checks fail", () => {
+    const { container } = mount(topic([member("/w/api", 0)]), () => {}, { memberPr: () => pr(2) });
+    const pill = container.querySelector("[data-topic-sync]")!;
+    expect(pill.getAttribute("data-topic-sync")).toBe("checks");
+    expect(pill.querySelector("[data-sync-mark=checks]")?.textContent).toBe("2");
   });
 });
 

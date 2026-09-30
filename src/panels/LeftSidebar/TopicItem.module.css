@@ -212,6 +212,7 @@
 
 .member {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
@@ -249,6 +250,12 @@
   flex: 0 0 auto;
   font-size: var(--tori-text-2xs);
   color: var(--fg-muted);
+}
+
+/* The pull request gets a line of its own under the member, as a branch row's does. */
+.memberPr {
+  flex-basis: 100%;
+  min-width: 0;
 }
 
 .memberWarning {

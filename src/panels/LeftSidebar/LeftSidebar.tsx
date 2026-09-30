@@ -116,8 +116,10 @@ import {
   forgeRepo,
   noteForgeEnabled,
   pickForgeAccount,
+  mergeWatched,
   noteWatchedProjects,
   pollNow,
+  topicProjects,
   pollOnFocus,
   startForgePolling,
   unitStatus,
@@ -155,7 +157,7 @@ import {
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
-import { noteTopics, topicKey, topicSelection, isShellsKey, tabUnderFolder, type Topic } from "../../utils/topics";
+import { noteTopics, topicKey, topicSelection, isShellsKey, isReference, tabUnderFolder, type Topic } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
 import PrLine from "./PrLine";
 import StatusBubble, { CountBubble } from "./StatusBubble";
@@ -2952,6 +2954,38 @@ export default function LeftSidebar(props: {
   // next launch.
   createEffect(() => noteForgeEnabled(appSettings.forge?.enabled ?? true));
 
+  const [expandedTopics, setExpandedTopics] = createSignal<string[]>([]);
+  const watchedTopics = createMemo(() => {
+    const open = props.selected?.kind === "topic" ? props.selected.topicId : null;
+    const listed = mode() === "topics" ? expandedTopics() : [];
+    return topics()
+      .filter((t) => t.id === open || listed.includes(t.id))
+      .map((topic) => ({ topic, visible: true }));
+  });
+
+  // Whether a reference's Topic branch exists, locally or on origin: until it
+  // does there is no pull request to look for. Only a yes is kept, since a
+  // promotion can make the branch at any time; a no is asked again whenever
+  // the watched Topics change, which a promote or a demote always does.
+  const [topicBranches, setTopicBranches] = createSignal<Record<string, true>>({});
+  const probing = new Set<string>();
+  createEffect(() => {
+    for (const { topic } of watchedTopics()) {
+      for (const m of topic.members.filter(isReference)) {
+        const k = `${m.repoPath}\n${topic.branch}`;
+        if (untrack(topicBranches)[k] || probing.has(k)) continue;
+        probing.add(k);
+        void invoke<{ local: boolean; remote: boolean }>("probe_topic_branch", { repoPath: m.repoPath, branch: topic.branch })
+          .then((p) => p.local || p.remote)
+          .catch(() => false)
+          .then((known) => {
+            probing.delete(k);
+            if (known) setTopicBranches((prev) => ({ ...prev, [k]: true }));
+          });
+      }
+    }
+  });
+
   // What the poller watches, and which of it is on screen.
   //
   // **The active space only.** A tick costs one request per project, so watching
@@ -2969,7 +3003,7 @@ export default function LeftSidebar(props: {
     const g = activeSpace();
     const seen = origins();
     const hosts = forgeHosts();
-    const watched: WatchedProject[] = (g?.projects ?? [])
+    const spaces: WatchedProject[] = (g?.projects ?? [])
       .filter((p) => apiCanServe(seen[p.path] ?? null, hosts))
       .map((p) => {
         const open = expanded().has(pkey(g!, p));
@@ -2980,6 +3014,12 @@ export default function LeftSidebar(props: {
             .map((u) => ({ branch: u.branch, visible: open })),
         };
       });
+    const watched = mergeWatched([
+      spaces,
+      topicProjects(watchedTopics(), (repo, branch) => !!topicBranches()[`${repo}\n${branch}`]).filter((p) =>
+        apiCanServe(seen[p.path] ?? null, hosts),
+      ),
+    ]);
     noteWatchedProjects(watched);
     // The opening tick. `startForgePolling` deliberately does not fire one at
     // mount (nothing is watched yet), so the first ask is here, the moment there
@@ -3245,6 +3285,7 @@ export default function LeftSidebar(props: {
           query={query()}
           activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
           countRunning={countRunningAgents}
+          onExpanded={setExpandedTopics}
           topicStatus={(f) => bubbleFor((s) => s.home?.topic === f.id)}
           onSelect={(f, moved) => {
             const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;

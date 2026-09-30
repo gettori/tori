@@ -73,8 +73,11 @@ import {
   forgePause,
   forgeViewer,
   noteForgeCliInstalled,
+  mergeWatched,
+  topicProjects,
   type WatchedProject,
 } from "./forgeStatus";
+import type { Topic } from "./topics";
 
 const NOW = 1_785_179_400_000;
 const SIGNED_IN: AuthState = { kind: "signedIn", login: "skarif2" };
@@ -252,6 +255,31 @@ describe("the viewer identity", () => {
     noteAuth(SIGNED_IN);
     await flush();
     expect(viewerReads).toBe(1);
+  });
+});
+
+describe("a Topic's members", () => {
+  const topic = (members: Topic["members"]): Topic => ({ id: "t", name: "Auth", branch: "auth", members, createdAt: 0 });
+  const member = (repoPath: string, mode: "reference" | "worktree"): Topic["members"][number] => ({
+    repoPath,
+    displayName: repoPath,
+    mode,
+    worktreePath: mode === "worktree" ? `${repoPath}/.tori/worktrees/auth` : null,
+    state: { kind: "present" },
+    order: 0,
+  });
+
+  it("asks about the Topic branch in a plain repo, and never for a reference that was never promoted", async () => {
+    const watched = topicProjects(
+      [{ topic: topic([member("/api", "worktree"), member("/web", "reference"), member("/docs", "reference")]), visible: true }],
+      (repo) => repo === "/docs",
+    );
+    signedInWith(mergeWatched([[project("/api", ["main"])], watched]));
+    await pollNow("interval", NOW);
+    const asked = Object.fromEntries(asks.map((a) => [a.projectPath, a.branches]));
+    expect(asked["/api"]).toEqual(["main", "auth"]);
+    expect(asked["/docs"]).toEqual(["auth"]);
+    expect(asked["/web"]).toBeUndefined();
   });
 });
 

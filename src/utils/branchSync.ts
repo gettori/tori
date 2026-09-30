@@ -13,6 +13,7 @@ import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PrRelation } from "./prRelation";
+import type { UnitStatus } from "./forgeTypes";
 
 // Escaped rather than literal so the source stays ASCII, as the Changes panel's
 // own pills are.
@@ -122,6 +123,7 @@ async function ask(units: { path: string; branch: string }[]): Promise<void> {
  *  its upstream reports the divergence. */
 export type SyncLevel =
   | "conflicts"
+  | "checks"
   | "diverged"
   | "behind"
   | "baseBehind"
@@ -150,7 +152,7 @@ const NOTHING: SyncState = { level: "none", tone: "muted", label: "", detail: ""
 /** One glyph a surface draws for one fact. `count` is null where the fact has
  *  no number: uncommitted work, a branch that has never been pushed. */
 export type SyncMark = {
-  kind: "conflict" | "push" | "pull" | "dirty";
+  kind: "conflict" | "checks" | "push" | "pull" | "dirty";
   count: number | null;
   tone: SyncTone;
   /** This mark's own clause of the sentence a tooltip assembles. */
@@ -260,17 +262,57 @@ export const markTitle = (marks: readonly SyncMark[]): string => marks.map((m) =
  *  added to `SyncLevel` and forgotten here will not compile. */
 const SEVERITY: Record<SyncLevel, number> = {
   conflicts: 0,
-  diverged: 1,
-  behind: 2,
-  baseBehind: 3,
-  ahead: 4,
-  unpushed: 5,
-  none: 6,
+  checks: 1,
+  diverged: 2,
+  behind: 3,
+  baseBehind: 4,
+  ahead: 5,
+  unpushed: 6,
+  none: 7,
 };
 
 /** One member, as a roll-up reads it: what to call it, and the facts its own
  *  row is drawn from. */
-export type MemberSync = { label: string; sync: BranchSync | null | undefined; finished?: FinishedPr | null };
+export type MemberSync = {
+  label: string;
+  sync: BranchSync | null | undefined;
+  finished?: FinishedPr | null;
+  /** The member's pull request on the Topic branch, as the poller last read it. */
+  pr?: UnitStatus | null;
+};
+
+// Only an open pull request's checks: a finished one has nothing left to fix.
+function failingChecks(pr: UnitStatus | null | undefined): number {
+  return pr?.pullRequest?.state === "open" ? pr.checks.failing : 0;
+}
+
+function checksState(pr: UnitStatus | null | undefined): SyncState {
+  const failing = failingChecks(pr);
+  if (!failing) return NOTHING;
+  return {
+    ...NOTHING,
+    level: "checks",
+    tone: "danger",
+    label: `${failing} failing`,
+    detail: `${plural(failing, "check")} failing on #${pr!.pullRequest!.number}.`,
+  };
+}
+
+/** A member's own verdict: its branch's, or its failing checks when those are
+ *  louder. The chip and the roll-up read this, so they cannot disagree. */
+export function memberSyncState(member: Omit<MemberSync, "label">): SyncState {
+  const git = syncState(member.sync, member.finished);
+  const checks = checksState(member.pr);
+  return SEVERITY[checks.level] < SEVERITY[git.level] ? checks : git;
+}
+
+function memberMarks(member: MemberSync): SyncMark[] {
+  const failing = failingChecks(member.pr);
+  const checks: SyncMark[] = failing
+    ? [{ kind: "checks", count: failing, tone: "danger", title: `${plural(failing, "check")} failing` }]
+    : [];
+  return [...checks, ...syncMarks(member.sync, member.finished)];
+}
 
 /** A Topic's answer: the loudest member's verdict, its glyphs, and which member
  *  it was. `label` is empty when no member had anything to say. */
@@ -289,7 +331,7 @@ export function rollupSync(states: readonly MemberSync[]): Rollup {
   let loudest: { member: MemberSync; state: SyncState } | null = null;
   let others = 0;
   for (const member of states) {
-    const state = syncState(member.sync, member.finished);
+    const state = memberSyncState(member);
     if (state.level === "none") continue;
     if (!loudest || SEVERITY[state.level] < SEVERITY[loudest.state.level]) {
       loudest = { member, state };
@@ -306,7 +348,7 @@ export function rollupSync(states: readonly MemberSync[]): Rollup {
   const more = others > 0 ? ` And ${others} other${others === 1 ? "" : "s"} like it.` : "";
   return {
     state: { ...loudest.state, detail: `${loudest.member.label}: ${loudest.state.detail}${more}` },
-    marks: syncMarks(loudest.member.sync, loudest.member.finished),
+    marks: memberMarks(loudest.member),
     label: loudest.member.label,
   };
 }

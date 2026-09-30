@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
+import { createEffect, createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
 import { Check } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -32,6 +32,7 @@ import { moveKey } from "../../utils/dragReorder";
 import { syncFor } from "../../utils/branchSync";
 import { pull } from "../../utils/gitActions";
 import { finishedPr } from "../../utils/prRelation";
+import { forgePause, unitStatus } from "../../utils/forgeStatus";
 import { on as onEvent, emitWith, NEW_TOPIC, ROOT_MOVED, type RootMoved } from "../../utils/events";
 import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
@@ -72,6 +73,8 @@ export default function TopicList(props: {
    *  list holding a second copy of the attribution rule. Absent means zero. */
   countRunning?: (path: string) => Promise<number>;
   topicStatus?: (topic: Topic) => Rollup | null;
+  /** The Topics whose member list is open, for the forge poller. */
+  onExpanded?: (ids: string[]) => void;
 }) {
   const [topics, setTopics] = createSignal<Topic[]>([]);
   const [error, setError] = createSignal<string | null>(null);
@@ -109,6 +112,7 @@ export default function TopicList(props: {
   // Kept here rather than on the row: applying a record replaces the object the
   // `<For>` keys on, so a row's own open state would not survive a rename.
   const [expanded, setExpanded] = createSignal<Record<string, boolean>>({});
+  createEffect(() => props.onExpanded?.(Object.keys(expanded()).filter((id) => expanded()[id])));
 
   // Latest request wins: a refetch started later must not be overwritten by
   // an earlier one that resolved later.
@@ -551,6 +555,7 @@ export default function TopicList(props: {
                 memberMenu={memberMenu(f)}
                 memberSync={(m) => syncFor(memberRoot(m), memberBranch(m, f.branch))}
                 status={() => props.topicStatus?.(f) ?? null}
+                memberPr={(m) => (forgePause(m.repoPath) ? null : unitStatus(m.repoPath, f.branch))}
                 memberFinished={(m) =>
                   // A reference sits on the repo's default branch, whose PRs are
                   // not this Topic's.
