@@ -65,3 +65,25 @@ export function renameTabsUnder<T extends PathTab>(
   }
   return { tabs, active, moved };
 }
+
+/**
+ * Repoint one workspace's clean tabs under `from` to `to`, for a root that moved
+ * while the old folder stays. A dirty tab keeps its path. Other workspaces are
+ * untouched: the old folder is still somebody's unit, and its tabs are theirs.
+ */
+export function retargetCleanTabs<T extends PathTab>(
+  maps: TabMaps<T>,
+  ws: string,
+  from: string,
+  to: string,
+  dirty: (path: string) => boolean,
+): TabMaps<T> {
+  const list = maps.tabs[ws];
+  if (!list) return maps;
+  const next = (p: string) => (isSyntheticId(p) || dirty(p) ? null : repoint(p, from, to));
+  const current = maps.active[ws] ?? null;
+  return {
+    tabs: { ...maps.tabs, [ws]: list.map((t) => ({ ...t, path: next(t.path) ?? t.path })) },
+    active: { ...maps.active, [ws]: current && (next(current) ?? current) },
+  };
+}

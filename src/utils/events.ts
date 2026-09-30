@@ -448,6 +448,13 @@ export type ComposeDraft = { blocks: ContentBlock[] };
 export const FILE_RENAMED = "tori:file-renamed";
 export type FileRenamed = { from: string; to: string };
 
+// Payload-carrying event: a Topic member's root moved (a reference got its
+// worktree). Unlike a rename both folders stay, so only the workspace's clean
+// tabs follow; a dirty one keeps its path, since its unsaved text was written
+// against the old folder's file.
+export const ROOT_MOVED = "tori:root-moved";
+export type RootMoved = { workspace: string; from: string; to: string };
+
 // Payload-carrying event: the files a chat session's tool call just wrote,
 // straight off its `toolCallCompleted`/`fileEdit` events.
 //
