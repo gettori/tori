@@ -641,8 +641,8 @@ export async function push(root: string, branch: string): Promise<boolean> {
  *
  * Watcher bursts included, because the Changes panel is unmounted whenever the
  * right pane shows anything else and the palette still has to know what is
- * staged. `.git` is watcher-filtered (gotchas), so a fetch that moves the
- * upstream emits no `fs://changed` and arrives on its own event instead.
+ * staged. `.git` is watcher-filtered (gotchas), so its signal files arrive on
+ * `git://changed` instead, and a fetch on its own events.
  * Called once from Editor.tsx, which is always mounted.
  */
 export async function startGitWatch(): Promise<() => void> {
@@ -663,10 +663,12 @@ export async function startGitWatch(): Promise<() => void> {
   };
   const unlisteners = await Promise.all([
     listen<FsChanged>("fs://changed", (e) => refreshOne(e.payload?.root, refreshStatus)),
+    // HEAD, the index or a ref moved: a commit, push or checkout run anywhere
+    // but Tori's own buttons, which refresh on their own.
+    listen<{ root?: string }>("git://changed", (e) => refreshOne(e.payload?.root, refreshGit)),
     // A fetch moves remote-tracking refs and nothing else, so the scheduled one
     // re-reads only what is derived from them. The manual one keeps the fuller
-    // refresh: `.git` is watcher-filtered, so a commit made in a terminal has no
-    // `fs://changed` to arrive on and this is where it gets noticed.
+    // refresh the user asked for by pressing it.
     listen<FetchEvent>("git://fetch-done", (e) => {
       noteFetch(e.payload ?? {}, true);
       refreshOne(e.payload?.repo, e.payload?.quiet ? refreshMeta : refreshGit);

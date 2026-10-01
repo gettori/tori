@@ -728,6 +728,80 @@ fn fs_watch_start_body(app: AppHandle, state: &FsWatch, project_path: String) ->
     Ok(())
 }
 
+#[derive(Clone, Serialize)]
+struct GitChanged {
+    root: String,
+}
+
+/// Names directly in a git dir whose write means HEAD, the index or an
+/// in-progress operation moved.
+const GIT_SIGNAL_FILES: &[&str] =
+    &["HEAD", "index", "packed-refs", "MERGE_HEAD", "REBASE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"];
+
+/// A root's git dir and the common dir its refs live in. The same folder for a
+/// plain clone; for a linked worktree the git dir is `<common>/worktrees/<name>`.
+#[derive(Clone, Debug, PartialEq)]
+struct GitDirs {
+    git: PathBuf,
+    common: PathBuf,
+}
+
+impl GitDirs {
+    /// Read off `.git` by hand rather than asking `git rev-parse`, so selecting
+    /// a root spawns no process. Canonical, because the watcher reports
+    /// canonical paths and `commondir` is usually `../..`.
+    fn resolve(root: &Path) -> Option<Self> {
+        let dot = root.join(".git");
+        let git = if dot.is_dir() {
+            dot
+        } else {
+            let text = std::fs::read_to_string(&dot).ok()?;
+            let target = PathBuf::from(text.strip_prefix("gitdir:")?.trim());
+            if target.is_absolute() { target } else { root.join(target) }
+        };
+        let git = git.canonicalize().ok()?;
+        let common = match std::fs::read_to_string(git.join("commondir")) {
+            Ok(rel) => git.join(rel.trim()).canonicalize().ok()?,
+            Err(_) => git.clone(),
+        };
+        Some(Self { git, common })
+    }
+
+    fn contains(&self, p: &Path) -> bool {
+        p.starts_with(&self.git) || p.starts_with(&self.common)
+    }
+
+    /// A write git finishes by renaming its `.lock` into place, so the lock
+    /// itself is skipped and the rename's target is what counts.
+    fn is_signal(&self, p: &Path) -> bool {
+        if p.extension().is_some_and(|e| e == "lock") {
+            return false;
+        }
+        if p.starts_with(self.common.join("refs")) {
+            return true;
+        }
+        let in_dir = p.parent().is_some_and(|d| d == self.git || d == self.common);
+        in_dir && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| GIT_SIGNAL_FILES.contains(&n))
+    }
+
+    /// What the root's own recursive watch does not already cover. Not the
+    /// common dir recursively: `objects` churns on every write.
+    fn extra_watches(&self, root: &Path) -> Vec<(PathBuf, RecursiveMode)> {
+        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let mut out = Vec::new();
+        if !self.git.starts_with(&root) {
+            out.push((self.git.clone(), RecursiveMode::NonRecursive));
+        }
+        if !self.common.starts_with(&root) {
+            if self.common != self.git {
+                out.push((self.common.clone(), RecursiveMode::NonRecursive));
+            }
+            out.push((self.common.join("refs"), RecursiveMode::Recursive));
+        }
+        out
+    }
+}
+
 /// Watch one root and wire its bursts to `fs://changed`. Shared by the
 /// single-root command and the set one, which differ only in bookkeeping.
 fn install_watcher(
@@ -743,16 +817,21 @@ fn install_watcher(
     // background root cannot pile paths into the channel while silent.
     let (tx, rx) = mpsc::channel::<PathBuf>();
 
+    let dirs = GitDirs::resolve(root);
+    let handler_dirs = dirs.clone();
     let handler_muted = muted.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if handler_muted.load(Ordering::Relaxed) {
             return;
         }
-        if let Ok(event) = res {
-            for p in event.paths {
-                if !is_ignored(&p) {
-                    let _ = tx.send(p);
-                }
+        let Ok(event) = res else { return };
+        // Every git command reads HEAD, the refresh this event triggers
+        // included, so an access event let through here would loop.
+        let access = matches!(event.kind, notify::EventKind::Access(_));
+        for p in event.paths {
+            let signal = !access && handler_dirs.as_ref().is_some_and(|d| d.is_signal(&p));
+            if signal || !is_ignored(&p) {
+                let _ = tx.send(p);
             }
         }
     })
@@ -761,6 +840,13 @@ fn install_watcher(
     watcher
         .watch(root, RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
+    // A linked worktree keeps its git dir outside the root, so the recursive
+    // watch above never sees a commit or a push made from it.
+    if let Some(d) = &dirs {
+        for (dir, mode) in d.extra_watches(root) {
+            let _ = watcher.watch(&dir, mode);
+        }
+    }
 
     // Trailing-edge debounce: collect a burst, emit once it goes quiet for
     // 250ms. recv() returns Err when the watcher (and its sender) is dropped
@@ -779,7 +865,13 @@ fn install_watcher(
             if muted.load(Ordering::Relaxed) {
                 continue;
             }
-            let paths: Vec<String> = batch
+            let (git, rest): (Vec<PathBuf>, Vec<PathBuf>) = batch
+                .into_iter()
+                .partition(|p| dirs.as_ref().is_some_and(|d| d.contains(p)));
+            if git.iter().any(|p| dirs.as_ref().is_some_and(|d| d.is_signal(p))) {
+                let _ = app_handle.emit("git://changed", GitChanged { root: emit_root.clone() });
+            }
+            let paths: Vec<String> = rest
                 .into_iter()
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
