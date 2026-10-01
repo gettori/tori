@@ -34,6 +34,8 @@
     background-size: 200% 100%;
     opacity: 0.8;
     animation: driving-sweep 3.2s linear infinite;
+    /* Its own layer, so the sweep's per-frame repaint stays this thin. */
+    will-change: transform;
   }
 
   @keyframes driving-sweep {

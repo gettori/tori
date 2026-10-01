@@ -15,6 +15,17 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use crate::trace;
 
+/// Start a command whose result nobody reads, and reap it when it ends.
+///
+/// A `Child` dropped without a `wait` stays a zombie until Tori quits.
+pub fn spawn_detached(cmd: &mut Command) -> std::io::Result<()> {
+    let mut child = cmd.spawn()?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 /// Run `f` on the blocking pool and await its result.
 ///
 /// `spawn_blocking` rather than `#[tauri::command(async)]`: the attribute form

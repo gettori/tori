@@ -18,13 +18,8 @@ fn check_reveal_target(path: &str) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn reveal_in_finder(path: String) -> Result<(), String> {
     check_reveal_target(&path)?;
-    Command::new("open")
-        .env("PATH", augmented_path())
-        .arg("-R")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    crate::exec::spawn_detached(Command::new("open").env("PATH", augmented_path()).arg("-R").arg(&path))
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
