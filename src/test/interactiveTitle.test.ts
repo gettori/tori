@@ -176,7 +176,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Editor/PullRequests/PullsPanel.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/Editor/CheckpointTimeline.tsx",
-    { count: 5, reason: `three ${TRUNCATION}, one ${ROW_ONCLICK}, and one ${HEADING}` },
+    { count: 1, reason: `one ${HEADING}` },
   ],
   [
     "panels/Editor/Editor.tsx",
@@ -355,12 +355,16 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Down one**: the pull request detail view is gone. Its branch line moved
  *  into the Pull requests panel, which still truncates the head ref, and the
- *  file list it also drew now names its rows through `aria-label`. */
-const RAW_ELEMENT_TITLES = 69;
+ *  file list it also drew now names its rows through `aria-label`.
+ *
+ *  **Down four**: the checkpoint timeline became a list with a detail view.
+ *  Its rows are buttons that describe themselves through `Tooltip`, and a
+ *  file's name and folder each get a line of their own. */
+const RAW_ELEMENT_TITLES = 65;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
-const ROW_ONCLICK_ROWS = 10;
+const ROW_ONCLICK_ROWS = 9;
 
 const TITLE = /\btitle=/g;
 
@@ -483,12 +487,14 @@ describe("the title= guard", () => {
     // describes itself through `Tooltip` rather than the native attribute.
     // Up one, on a tag this census had never seen: a plugin row in Settings >
     // Agents is an `li`, and its install path sits behind the plugin's name.
+    // Down two divs and two spans: the checkpoint timeline's file row, its
+    // backstop row and its two markers, all of which its rebuild dropped.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
-      div: 15,
+      div: 13,
       li: 1,
       // Down one span: the pull request detail view went, and the branch line
       // it truncated is drawn once now, in the panel that replaced it.
-      span: 53,
+      span: 51,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

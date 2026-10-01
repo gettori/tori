@@ -71,6 +71,7 @@ import FileHistory from "./FileHistory";
 import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import CommitDiffView from "./CommitDiffView";
+import CheckpointDiffView from "./CheckpointDiffView";
 import PrDiffView from "./PullRequests/PrDiffView";
 import PrOverviewView from "./PullRequests/PrOverviewView";
 import PrAllFilesView from "./PullRequests/PrAllFilesView";
@@ -259,6 +260,7 @@ import { renameTabsUnder, repoint, retargetCleanTabs } from "./renameTabs";
 import {
   isSyntheticId,
   parseCommitDiffArg,
+  parseCheckpointDiffArg,
   parsePrArg,
   parsePrDiffArg,
   parseDiffArg,
@@ -423,6 +425,9 @@ function tabIcon(t: FileTab) {
   if (parsed?.kind === "commitdiff") {
     return <FileIcon name={basename(parseCommitDiffArg(parsed.arg).file)} />;
   }
+  if (parsed?.kind === "checkpointdiff") {
+    return <FileIcon name={basename(parseCheckpointDiffArg(parsed.arg).file)} />;
+  }
   // Same for a pull request's file, and the strip tells its tabs apart by the
   // number in the label.
   if (parsed?.kind === "prdiff") {
@@ -462,7 +467,7 @@ function prTabHasPending(id: string): boolean {
 function tabLabel(t: FileTab) {
   const name = tabName(t);
   const kind = parseSyntheticId(t.path)?.kind;
-  if (kind !== "diff" && kind !== "commitdiff" && kind !== "prdiff") return name;
+  if (kind !== "diff" && kind !== "commitdiff" && kind !== "prdiff" && kind !== "checkpointdiff") return name;
   const at = name.lastIndexOf(" (");
   if (at < 0) return name;
   return (
@@ -3016,6 +3021,9 @@ export default function Editor(props: {
                 </Show>
                 <Show when={t().kind === "commitdiff"}>
                   <CommitDiffView workspace={t().workspace} arg={t().arg} />
+                </Show>
+                <Show when={t().kind === "checkpointdiff"}>
+                  <CheckpointDiffView workspace={t().workspace} arg={t().arg} />
                 </Show>
                 {/* One file of a pull request, commentable. The patches, the
                     conversations and the draft all come from `prReviewStore`,

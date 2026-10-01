@@ -112,12 +112,14 @@ import {
   EDITOR_TAB_CLOSED,
   FOCUS_SESSION_TAB,
   REVEAL_TURN,
+  REWIND_CHAT,
   TOAST,
   type AgentFilesWritten,
   type EditorFileSaved,
   type EditorTabClosed,
   type FocusSessionTab,
   type RevealTurn,
+  type RewindChat,
   type ToastEvent,
 } from "../../utils/events";
 import {
@@ -1921,6 +1923,21 @@ export default function ChatView(props: {
     await invoke("chat_mark_turn", { sessionId: props.sessionId, turnId: null }).catch(() => {});
     props.onRewindFrom(promptTs);
   }
+
+  // The Changes panel asking for the same rewind a turn header offers. It names
+  // a checkpoint ref it listed, so a turn this tab only replayed is rewindable
+  // from there even though its header has no stamp to offer it with.
+  onCleanup(
+    onWith<RewindChat>(REWIND_CHAT, (ev) => {
+      if (ev.sessionId !== props.sessionId) return;
+      if (tier().rewind !== "fork" || locked()) {
+        emitWith<ToastEvent>(TOAST, { message: "This chat can't be rewound.", kind: "error" });
+        return;
+      }
+      emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: props.tabId });
+      void onRewind(ev.promptTs);
+    }),
+  );
 
   // Undo one hunk of an edit this session made.
   //

@@ -30,7 +30,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::checkpoint::{parse_raw_change, write_blob_to_disk, write_tree_scratch};
+use crate::checkpoint::{
+    count_lines, git_output, parse_name_status, parse_raw_change, write_blob_to_disk, write_tree_scratch, CheckpointFile,
+};
 
 /// How many backstops one worktree keeps. Each costs a tree object and a ref,
 /// and a tree that shares almost every blob with its neighbours is cheap, so the
@@ -341,6 +343,40 @@ pub fn backstop_list(repo_path: String) -> Result<Vec<BackstopRecord>, String> {
     let mut records = read_records(&dir);
     records.sort_by_key(|r| r.ts);
     Ok(records)
+}
+
+/// What has changed in the working tree since a backstop was taken, which is
+/// what restoring it would undo.
+///
+/// Behind the write lock although it changes no file the user owns: the scratch
+/// index it snapshots through is the one `take` writes, and git fails on a
+/// held `index.lock` rather than waiting for it.
+#[tauri::command]
+pub async fn backstop_files(repo_path: String, ts: u64) -> Result<Vec<CheckpointFile>, String> {
+    crate::exec::git_write("backstop_files", repo_path.clone(), move || backstop_files_body(repo_path, ts)).await
+}
+
+pub(crate) fn backstop_files_body(repo_path: String, ts: u64) -> Result<Vec<CheckpointFile>, String> {
+    let rec = resolve(&repo_path, ts)?;
+    let current = write_tree_scratch(&repo_path, &index_path(&sidecar_dir(&repo_path)?))?;
+    if current == rec.tree {
+        return Ok(Vec::new());
+    }
+    let mut files = parse_name_status(&git_capture(&repo_path, &["diff", "--name-status", &rec.tree, &current])?);
+    count_lines(&repo_path, &rec.tree, &current, &mut files);
+    Ok(files)
+}
+
+/// Unified diff text for one file, from a backstop to the working tree.
+#[tauri::command]
+pub async fn backstop_diff_file(repo_path: String, ts: u64, file: String) -> Result<String, String> {
+    crate::exec::git_write("backstop_diff_file", repo_path.clone(), move || backstop_diff_file_body(repo_path, ts, file)).await
+}
+
+pub(crate) fn backstop_diff_file_body(repo_path: String, ts: u64, file: String) -> Result<String, String> {
+    let rec = resolve(&repo_path, ts)?;
+    let current = write_tree_scratch(&repo_path, &index_path(&sidecar_dir(&repo_path)?))?;
+    git_output(&repo_path, &["diff", "--no-color", &rec.tree, &current, "--", &file])
 }
 
 /// Put the whole working tree back to a backstop.
