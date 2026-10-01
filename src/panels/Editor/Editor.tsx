@@ -723,6 +723,8 @@ export default function Editor(props: {
   let searchScopeNonce = 0;
   // Source-vs-render preview toggle, per tab id (so switching tabs remembers
   // each previewable file's own choice: .md renders to HTML, .svg to its image).
+  // Holds the tabs flipped away from `openRendered`, not the rendered ones, so
+  // the setting reaches every tab nobody has chosen for.
   const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
   // Per-tab soft-wrap overrides; the rule itself lives in `softWrapTabs.ts`.
   const [wrapById, setWrapById] = createSignal<WrapOverrides>({});
@@ -856,7 +858,7 @@ export default function Editor(props: {
     return t ? parseSyntheticId(t.path) : null;
   };
   const previewingOf = (id: string | null) =>
-    (markdownOf(id) || svgOf(id)) && previewOn().has(id ?? "");
+    (markdownOf(id) || svgOf(id)) && previewOn().has(id ?? "") !== editorDefaults().openRendered;
   /** What a pane's own CodeMirror view should hold: nothing at all unless the
    *  tab it shows is a file being edited rather than rendered. */
   const editablePathOf = (id: string | null) =>
@@ -895,7 +897,7 @@ export default function Editor(props: {
   // Tabs that carry a source-vs-render toggle: Markdown renders to HTML, SVG
   // renders to its image. Everything else edits in place with no toggle.
   const isPreviewableTab = () => isMarkdownTab() || isSvgTab();
-  const showingPreview = () => isPreviewableTab() && previewOn().has(activeId() ?? "");
+  const showingPreview = () => isPreviewableTab() && previewingOf(activeId());
   function togglePreviewOf(id: string) {
     setPreviewOn((prev) => {
       const next = new Set(prev);
@@ -2614,8 +2616,13 @@ export default function Editor(props: {
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
       if (!d?.path) return;
       if (d.preview) void openPreview(d.path);
-      else openFile(d.path);
-      if (d.rendered && !previewOn().has(d.path)) togglePreviewOf(d.path);
+      else {
+        openFile(d.path);
+        // A plain open asks for a tab of its own, so a preview already showing
+        // this file is kept rather than left for the next click to replace.
+        pinTab(d.path);
+      }
+      if (d.rendered && !previewingOf(d.path)) togglePreviewOf(d.path);
       if (d.side) emitWith<SplitPane>(SPLIT_PANE, { dir: "row", tabId: d.path, kind: "file" });
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
       // The one place arrivals are recorded. Go-to-definition, a search hit and

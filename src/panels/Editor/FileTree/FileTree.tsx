@@ -573,7 +573,7 @@ function TreeNode(props: {
     }
     props.ctx?.clearSelected();
     if (!props.entry.is_dir) {
-      emitWith(OPEN_IN_EDITOR, { path: props.entry.path });
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: props.entry.path, preview: true });
       return;
     }
     // Read before the transient goes, since it is half of what `open()` says.
@@ -715,6 +715,10 @@ function TreeNode(props: {
         }}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
+        onDblClick={(e) => {
+          if (props.entry.is_dir || e.metaKey || e.ctrlKey) return;
+          emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: props.entry.path });
+        }}
         draggable={true}
         onDragStart={(e) => {
           e.dataTransfer?.setData(DRAG_PATH_MIME, props.entry.path);
