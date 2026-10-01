@@ -230,6 +230,11 @@ export default function QuestionCard(props: {
                   placeholder="Your own answer, if none of these fit."
                   value={typed()}
                   onInput={(e) => setDrafts(i(), { ...draft(), freeText: e.currentTarget.value })}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+                    e.preventDefault();
+                    e.currentTarget.form?.requestSubmit();
+                  }}
                 />
               </Show>
             </div>
