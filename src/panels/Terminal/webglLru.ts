@@ -9,6 +9,13 @@ import type { Terminal } from "@xterm/xterm";
 // otherwise churn a context per switch, taxing the exact path this exists for.
 const CAP = 8;
 
+// A live context holds three or more surfaces the size of its canvas (measured:
+// 24 to 30 pane-sized surfaces for 8 contexts), so the count alone lets eight
+// terminals on a large display keep over a gigabyte. Off-screen contexts share
+// this many canvas pixels between them, about 250MB, and one always stays warm
+// so an A/B flip still costs no context.
+const WARM_PIXELS = 20_000_000;
+
 // Three lost contexts is a GPU that will not hold this terminal. Stop
 // re-attaching and let xterm keep the DOM renderer it already fell back to.
 const MAX_LOSSES = 3;
@@ -116,19 +123,29 @@ function onLoss(e: Entry) {
   }, 0);
 }
 
+function canvasPixels(handle: Handle): number {
+  let most = 0;
+  for (const c of handle.canvases) most = Math.max(most, c.width * c.height);
+  return most;
+}
+
 function evict() {
-  let live = liveCount();
-  while (live > CAP) {
+  for (;;) {
+    let warm = 0;
+    let warmPixels = 0;
     let victim: Entry | undefined;
     for (const e of entries) {
       if (!e.handle || e.pinned) continue;
+      warm++;
+      warmPixels += canvasPixels(e.handle);
       if (!victim || e.seq < victim.seq) victim = e;
     }
     // Every live context is on screen. Over the cap is the right answer then:
     // taking a context off a visible terminal is a visible regression.
     if (!victim) break;
+    const over = liveCount() > CAP || (warm > 1 && warmPixels > WARM_PIXELS);
+    if (!over) break;
     detach(victim);
-    live--;
   }
 }
 
@@ -158,6 +175,7 @@ export function acquireWebgl(term: Terminal, host: HTMLElement): WebglSlot {
     },
     conceal() {
       entry.pinned = false;
+      evict();
     },
     release() {
       entries.delete(entry);
