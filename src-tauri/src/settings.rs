@@ -271,6 +271,11 @@ pub struct ChatDefaults {
     /// to the write tools.)
     #[serde(default)]
     pub show_tori_hooks: bool,
+    /// Fold each run of thinking, tool calls, hooks and answered questions into
+    /// a one line card. Off by default, so a bare default is right: a file
+    /// predating the switch reads as the transcript it has always had.
+    #[serde(default)]
+    pub collapse_work: bool,
     /// Render `AskUserQuestion` as an answerable form in the transcript.
     ///
     /// Off restores what shipped before it: the call becomes a permission
@@ -332,6 +337,7 @@ impl Default for ChatDefaults {
             density: TranscriptDensity::default(),
             tool_output_lines: default_tool_output_lines(),
             show_tori_hooks: false,
+            collapse_work: false,
             answer_questions_inline: true,
             attach_long_pastes: true,
             max_concurrent_chats: default_max_concurrent_chats(),
@@ -1271,6 +1277,7 @@ mod tests {
                 density: TranscriptDensity::Compact,
                 tool_output_lines: 5,
                 show_tori_hooks: true,
+                collapse_work: true,
                 answer_questions_inline: false,
                 attach_long_pastes: false,
                 max_concurrent_chats: 9,
@@ -1317,6 +1324,7 @@ mod tests {
         assert!(load_from(&p).chat_defaults.answer_questions_inline, "absent means on");
         // Same trap for the paste switch: absent is on, not off.
         assert!(load_from(&p).chat_defaults.attach_long_pastes, "absent means on");
+        assert!(!load_from(&p).chat_defaults.collapse_work, "absent means off");
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1602,6 +1610,7 @@ mod tests {
         assert_eq!(back.chat_defaults.tool_output_lines, 20);
         // Tori's own hook noise stays folded until asked for.
         assert!(!back.chat_defaults.show_tori_hooks);
+        assert!(!back.chat_defaults.collapse_work);
         assert_eq!(back.agent.path, None);
         // Nothing offered until something says so. Empty rather than "every
         // agent", because the pickers read this map and a missing key has to
