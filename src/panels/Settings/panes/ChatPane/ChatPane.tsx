@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+import { Play } from "lucide-solid";
 import {
   Group,
   Row,
@@ -10,7 +12,9 @@ import {
   setCheckpoints,
   type PaneProps,
 } from "../../components/paneKit";
-import { settings, type DefaultSurface, type TranscriptDensity } from "../../settingsStore";
+import { settings, type DefaultSurface, type NotificationSettings, type TranscriptDensity } from "../../settingsStore";
+import Icon from "../../../../components/Icon/Icon";
+import IconButton from "../../../../components/IconButton/IconButton";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import Slider from "../../../../components/Slider/Slider";
 import styles from "../../Settings.module.css";
@@ -64,6 +68,20 @@ const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "c
 const WARN_AT_MIN = 0.5;
 const WARN_AT_MAX = 1;
 const WARN_AT_STEP = 0.05;
+
+/** Hear a state's sound without waiting for a session to reach it. Played by
+ *  Rust, the same way the real one is, so what is heard is what will play. */
+function PlaySound(props: { sound: keyof NotificationSettings; label: string }) {
+  return (
+    <IconButton
+      size="sm"
+      icon={<Icon icon={Play} />}
+      tooltip="Play the sound"
+      aria-label={props.label}
+      onClick={() => void invoke("sound_preview", { sound: props.sound }).catch(() => {})}
+    />
+  );
+}
 
 export default function ChatPane(props: PaneProps) {
   return (
@@ -174,6 +192,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row {...props} id="sound-needs-you" label="Play a sound when a session needs you">
+          <PlaySound sound="needsYou" label="Play the needs you sound" />
           <Switch
             checked={settings.notifications.needsYou.sound}
             onChange={(sound) => setAlert("needsYou", { sound })}
@@ -190,6 +209,7 @@ export default function ChatPane(props: PaneProps) {
         </Row>
 
         <Row {...props} id="sound-turn-finished" label="Play a sound when a chat finishes its turn">
+          <PlaySound sound="turnFinished" label="Play the turn finished sound" />
           <Switch
             checked={settings.notifications.turnFinished.sound}
             onChange={(sound) => setAlert("turnFinished", { sound })}

@@ -655,6 +655,7 @@ pub fn run() {
             issues::commands::issues_record,
             settings::get_settings,
             settings::set_settings,
+            sound::sound_preview,
             workspace_settings::get_workspace_settings,
             workspace_settings::set_workspace_settings,
             settings::settings_watch_start,
