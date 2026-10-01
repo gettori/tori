@@ -101,7 +101,7 @@ import { agentVersion, asProfileId, asTabProfile, namedProfiles, profileLabel } 
 import { revealTarget } from "../../utils/agentLines";
 import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
-import { rememberChatPrefs, settings } from "../Settings/settingsStore";
+import { rememberChatPrefs, saveSettings, settings } from "../Settings/settingsStore";
 import { agentRefusal } from "../../utils/projectAgents";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
@@ -2119,6 +2119,22 @@ export default function ChatView(props: {
                 </Button>
                 <Button
                   size="sm"
+                  tooltip={
+                    settings.chatDefaults.collapseWork
+                      ? "Show thinking, tool calls and hooks in the transcript again, in every chat"
+                      : "Fold thinking, tool calls and hooks into one line between replies, in every chat"
+                  }
+                  onClick={() =>
+                    void saveSettings({
+                      ...settings,
+                      chatDefaults: { ...settings.chatDefaults, collapseWork: !settings.chatDefaults.collapseWork },
+                    })
+                  }
+                >
+                  {settings.chatDefaults.collapseWork ? "Show agent work" : "Collapse agent work"}
+                </Button>
+                <Button
+                  size="sm"
                   tooltip="Open a new chat and send what is in the composer to it"
                   onClick={onSendToNewSession}
                 >
@@ -2201,6 +2217,7 @@ export default function ChatView(props: {
         onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
         onRewind={onRewind}
         replyMark={props.cockpit ? ReplyMark : undefined}
+        collapseWork={settings.chatDefaults.collapseWork}
       />
       </Show>
       {/* Selected transcript text goes into the reply as a quote. Scoped to this
