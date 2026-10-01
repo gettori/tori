@@ -42,8 +42,8 @@ mod mac {
 
     pub fn play(app: &AppHandle, sound: Sound) {
         let (slot, file) = match sound {
-            Sound::NeedsYou => (&NEEDS_YOU, "resources/sounds/needs-you.wav"),
-            Sound::TurnFinished => (&TURN_FINISHED, "resources/sounds/turn-finished.wav"),
+            Sound::NeedsYou => (&NEEDS_YOU, "resources/sounds/needs-you.mp3"),
+            Sound::TurnFinished => (&TURN_FINISHED, "resources/sounds/turn-finished.mp3"),
         };
         slot.with(|cell| {
             if let Some(loaded) = cell.get_or_init(|| load(app, file)) {
