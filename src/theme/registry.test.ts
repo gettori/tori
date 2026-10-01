@@ -15,17 +15,13 @@ function fakeStyle() {
 }
 
 describe("bundled registry", () => {
-  it("offers the two Tori themes and the three ports", () => {
-    expect(listSelectableBundled().map((t) => t.id)).toEqual([
-      "tori-dark",
-      "tori-light",
-      "catppuccin-mocha",
-      "tokyo-night",
-      "rose-pine-dawn",
-    ]);
-    // Tori's own two lead, so the picker's first entries are the ones the app
-    // was designed against.
-    expect(listSelectableBundled().slice(0, 2).map((t) => t.label)).toEqual(["Tori Dark", "Tori Light"]);
+  it("offers the two Tori themes, then the ports in alphabetical order", () => {
+    const ids = listSelectableBundled().map((t) => t.id);
+    // Tori's own two lead the registry; the picker sorts by label on its own.
+    expect(ids.slice(0, 2)).toEqual(["tori-dark", "tori-light"]);
+    expect(ids.slice(2)).toEqual([...ids.slice(2)].sort());
+    expect(ids).toHaveLength(22);
+    expect(new Set(ids).size).toBe(22);
   });
 
   it("defaults to Tori Dark", () => {
