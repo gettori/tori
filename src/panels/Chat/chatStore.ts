@@ -396,7 +396,7 @@ export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean, 
 
 /** A row the session is stopped on until the user answers it: a call waiting on
  *  approval, or a question still open. */
-function blocking(it: ChatItem): boolean {
+export function blocking(it: ChatItem): boolean {
   if (it.kind === "tool") return it.state === "awaitingApproval";
   return it.kind === "question" && answerable(it);
 }

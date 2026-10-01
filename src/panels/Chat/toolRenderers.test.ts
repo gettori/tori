@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent } from "../../utils/chatTypes";
-import { applyEvent, initialChat, type ToolItem } from "./chatStore";
+import { applyEvent, initialChat, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
 import {
   foldEdits,
   formatDuration,
+  groupRuns,
   isEditCall,
+  runLabel,
   toolDigest,
   toolPaths,
   toolRenderer,
@@ -205,6 +207,182 @@ describe("foldEdits", () => {
     const { followers, hidden } = foldEdits([card({ id: "x", toolUseId: "x" })]);
     expect(followers.size).toBe(0);
     expect(hidden.size).toBe(0);
+  });
+});
+
+describe("groupRuns", () => {
+  const tool = (id: string, over: Partial<ToolItem> = {}): ToolItem => card({ id, toolUseId: id, ...over });
+  const text = (id: string): ChatItem => ({ kind: "text", id, turnId: "t1", text: "reply", agentId: null });
+  const thinking = (id: string): ChatItem => ({
+    kind: "thinking",
+    id,
+    turnId: "t1",
+    text: "hm",
+    startedAt: 0,
+    endedAt: 0,
+    agentId: null,
+  });
+  const hook = (id: string): ChatItem => ({
+    kind: "hook",
+    id,
+    hookId: id,
+    name: "Stop",
+    event: "Stop",
+    phase: "finished",
+    toriOwned: false,
+    outcome: null,
+    exitCode: 1,
+    output: null,
+    stderr: null,
+  });
+  const question = (id: string, over: Partial<QuestionItem> = {}): QuestionItem => ({
+    kind: "question",
+    id,
+    toolUseId: id,
+    turnId: "t1",
+    requestId: null,
+    agentId: null,
+    questions: [],
+    submitted: null,
+    result: "answered",
+    ...over,
+  });
+  const shape = (items: ChatItem[], cache = new Map()) => {
+    const { rows, members } = groupRuns(items, cache);
+    return rows.map((r) => (r.kind === "run" ? members.get(r)?.map((m) => m.id) : r.id));
+  };
+
+  it("gathers thinking, calls, hooks and settled questions between two replies into one run", () => {
+    expect(shape([text("a"), thinking("b"), tool("c"), hook("d"), question("e"), text("f")])).toEqual([
+      "a",
+      ["b", "c", "d", "e"],
+      "f",
+    ]);
+  });
+
+  it("ends a run at a prompt, a reply, a command's output and a notice", () => {
+    const breakers: ChatItem[] = [
+      { kind: "user", id: "u", blocks: [], steer: false },
+      text("x"),
+      { kind: "command", id: "c", turnId: "t1", command: null, output: "" },
+      { kind: "notice", id: "n", text: "", level: "info" },
+    ];
+    for (const b of breakers) {
+      expect(shape([tool("a"), b, tool("z")]), b.kind).toEqual([["a"], b.id, ["z"]]);
+    }
+  });
+
+  // A prompt hidden behind a card is a session that looks hung.
+  it("keeps a row the session is stopped on out of any run", () => {
+    const waiting = tool("p", { state: "awaitingApproval" });
+    expect(shape([tool("a"), waiting, tool("z")])).toEqual([["a"], "p", ["z"]]);
+    const asked = question("q", { requestId: "r1", result: null });
+    expect(shape([tool("a"), asked, tool("z")])).toEqual([["a"], "q", ["z"]]);
+  });
+
+  it("hands back the same run as it grows, loses its head, and absorbs the run after it", () => {
+    const cache = new Map();
+    const [a, b, c] = [tool("a"), tool("b"), tool("c")];
+    const first = groupRuns([a, b], cache).rows[0];
+
+    expect(groupRuns([a, b, c], cache).rows[0]).toBe(first);
+    expect(groupRuns([b, c], cache).rows[0]).toBe(first);
+
+    const waiting = tool("p", { state: "awaitingApproval" });
+    const split = groupRuns([b, c, waiting, tool("z")], cache).rows;
+    expect(split[0]).toBe(first);
+    expect(split[2]).not.toBe(first);
+
+    const merged = groupRuns([b, c, { ...waiting, state: "ok" }, tool("z")], cache).rows;
+    expect(merged).toEqual([first]);
+    expect(merged[0]).toBe(first);
+  });
+
+  it("gives the second half its own run when a call in the middle starts waiting", () => {
+    const cache = new Map();
+    const [a, p, z] = [tool("a"), tool("p"), tool("z")];
+    const whole = groupRuns([a, p, z], cache).rows[0];
+    const split = groupRuns([a, { ...p, state: "awaitingApproval" }, z], cache).rows;
+    expect(split[0]).toBe(whole);
+    expect(split[2]).not.toBe(whole);
+  });
+});
+
+describe("runLabel", () => {
+  const tool = (id: string, over: Partial<ToolItem> = {}): ToolItem => card({ id, toolUseId: id, ...over });
+  const thinking = (id: string, ms: number): ChatItem => ({
+    kind: "thinking",
+    id,
+    turnId: "t1",
+    text: "hm",
+    startedAt: 0,
+    endedAt: ms,
+    agentId: null,
+  });
+  const hook = (id: string, hookId: string, exitCode: number | null): ChatItem => ({
+    kind: "hook",
+    id,
+    hookId,
+    name: "Stop",
+    event: "Stop",
+    phase: exitCode === null ? "started" : "finished",
+    toriOwned: false,
+    outcome: null,
+    exitCode,
+    output: null,
+    stderr: null,
+  });
+  const question: QuestionItem = {
+    kind: "question",
+    id: "q",
+    toolUseId: "q",
+    turnId: "t1",
+    requestId: null,
+    agentId: null,
+    questions: [],
+    submitted: null,
+    result: "answered",
+  };
+
+  it("counts what a settled run holds", () => {
+    expect(runLabel([thinking("a", 500), tool("b"), tool("c"), question], false).text).toBe(
+      "2 tool calls, 1 question",
+    );
+    expect(runLabel([tool("b")], false).text).toBe("1 tool call");
+  });
+
+  // Two frames per execution, so counting rows would say a hook ran twice.
+  it("counts a hook once however many frames it sent", () => {
+    const label = runLabel([hook("a", "h1", null), hook("b", "h1", 0), tool("c")], false);
+    expect(label.text).toBe("1 tool call, 1 hook");
+    expect(label.failed).toBe(0);
+  });
+
+  // A hook on a session event sits between a reply and the next prompt with
+  // no call beside it, and by default only a failed one is shown at all.
+  it("names a run that is only a hook as a hook", () => {
+    expect(runLabel([hook("a", "h1", 2)], false)).toEqual({ text: "1 hook", failed: 1, live: false });
+  });
+
+  it("says how long a run of thinking alone took, across its blocks", () => {
+    expect(runLabel([thinking("a", 5000), thinking("b", 7000)], false).text).toBe("Thought for 12s");
+  });
+
+  it("counts a call that errored and a hook that exited non-zero as failed", () => {
+    const label = runLabel([tool("a", { state: "error" }), tool("b"), hook("c", "h1", 1)], false);
+    expect(label.failed).toBe(2);
+  });
+
+  it("names the last member while the run is the live tail, whatever state it is in", () => {
+    expect(runLabel([tool("a"), tool("b", { state: "running" })], true).text).toBe("Bash git status");
+    expect(runLabel([tool("a"), tool("b", { state: "ok" })], true).text).toBe("Bash git status");
+    expect(runLabel([tool("a", { title: "Run the tests", input: {} })], true).text).toBe("Run the tests");
+    expect(runLabel([tool("a"), thinking("b", 0)], true)).toEqual({ text: "Thinking", failed: 0, live: true });
+    expect(runLabel([tool("a"), hook("b", "h1", null)], true).text).toBe("Stop");
+  });
+
+  it("falls back to the count for a live tail that is a settled question", () => {
+    expect(runLabel([tool("a"), question], true)).toEqual({ text: "1 tool call, 1 question", failed: 0, live: false });
   });
 });
 
