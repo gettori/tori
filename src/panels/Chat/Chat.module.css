@@ -693,6 +693,57 @@
   white-space: pre-wrap;
 }
 
+/* A run of agent work, shut. It borrows the thinking toggle's tier and size on
+   purpose: both are a line you may open, sitting between two replies. */
+.work {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  max-width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  cursor: pointer;
+}
+
+.workToggle:hover {
+  color: var(--fg-default);
+}
+
+.workText {
+  display: flex;
+  min-width: 0;
+}
+
+/* A live label is a Bash command, which can be any length. */
+.workLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workFailed {
+  flex: none;
+  color: var(--danger-fg);
+}
+
+.workBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+  margin-top: calc(8px * var(--ui-scale));
+  padding-left: calc(12px * var(--ui-scale));
+  border-left: 2px solid var(--border-strong);
+}
+
 /* ---- the granted-rules list (inside the overflow menu) ---- */
 
 .rules {
