@@ -161,6 +161,13 @@ fn expand_tilde(path: &str) -> PathBuf {
     }
 }
 
+/// PATH for a child that runs the user's own tools (an agent session, its
+/// hooks). The login PATH when the startup probe has it, since a dir only the
+/// user's rc adds is invisible to `augmented_path`.
+pub fn session_path() -> String {
+    login_path_if_captured().map_or_else(augmented_path, str::to_string)
+}
+
 pub fn augmented_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut parts: Vec<String> = vec![

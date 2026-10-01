@@ -836,12 +836,14 @@ pub fn mark_background(session: &str) {
 }
 
 /// `["--mcp-config", <path>]` naming `tori mcp`, for a claude Tori launches.
-/// One static file for every session: `tori` resolves through the `bin/tori`
-/// link on the child's PATH and `tori mcp` inherits the child's socket env.
+/// One static file for every session: the command is the `bin/tori` link by
+/// its full path, so an `env.PATH` in the user's claude settings cannot hide
+/// it, and `tori mcp` inherits the child's socket env.
 /// Empty if the file cannot be written, so the launch goes on without it.
 pub fn mcp_config_args() -> Vec<String> {
     let path = crate::owned_state::config_dir().join("claude-mcp.json");
-    let config = json!({ "mcpServers": { MCP_SERVER: { "command": "tori", "args": ["mcp"] } } });
+    let command = CLI_DIR.get().map_or_else(|| "tori".to_string(), |dir| dir.join("tori").to_string_lossy().into_owned());
+    let config = json!({ "mcpServers": { MCP_SERVER: { "command": command, "args": ["mcp"] } } });
     let written = path
         .parent()
         .map_or(Ok(()), std::fs::create_dir_all)
