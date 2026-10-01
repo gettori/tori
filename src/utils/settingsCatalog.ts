@@ -593,6 +593,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Off, the transcript shows a hook only when it fails. On reveals every execution.",
   },
   {
+    id: "collapse-work",
+    section: "chat",
+    label: "Collapse agent work",
+    hint: "Thinking, tool calls, hooks and answered questions fold into a one line card between replies. Click a card to see them.",
+  },
+  {
     id: "attach-long-pastes",
     section: "chat",
     label: "Attach long pastes as files",

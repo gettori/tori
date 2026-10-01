@@ -92,6 +92,9 @@ export type ChatDefaults = {
   density: TranscriptDensity;
   toolOutputLines: number;
   showToriHooks: boolean;
+  /** Fold each run of thinking, tool calls, hooks and answered questions into
+   *  a one line card, so the transcript reads as prompts and replies. */
+  collapseWork: boolean;
   /** Render `AskUserQuestion` as an answerable form in the transcript. Off
    *  restores the permission card it used to be, where the only answers are
    *  allow and deny and allowing makes the CLI answer for the user. */
@@ -370,6 +373,7 @@ export const DEFAULT_SETTINGS: Settings = {
     density: "comfortable",
     toolOutputLines: 20,
     showToriHooks: false,
+    collapseWork: false,
     answerQuestionsInline: true,
     attachLongPastes: true,
     maxConcurrentChats: 4,
