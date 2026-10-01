@@ -320,6 +320,29 @@ export function enterRoots(roots: readonly string[], active: string | null = roo
   setSlots(next);
 }
 
+const sameFile = (a: FileStatus, b: FileStatus) =>
+  a.path === b.path &&
+  a.status === b.status &&
+  (a.orig_path ?? null) === (b.orig_path ?? null) &&
+  a.staged === b.staged &&
+  a.unstaged === b.unstaged &&
+  !!a.conflicted === !!b.conflicted;
+
+// Every watcher burst re-reads status, and a `<For>` keys rows by object: a
+// list of fresh objects remounts every row of the Changes panel per burst.
+// Returns `prev` itself when nothing moved, so the caller can skip the write.
+function keepIdentity(prev: FileStatus[], next: FileStatus[]): FileStatus[] {
+  const known = new Map(prev.map((f) => [f.path, f]));
+  let same = prev.length === next.length;
+  const out = next.map((f, i) => {
+    const old = known.get(f.path);
+    const kept = old && sameFile(old, f) ? old : f;
+    if (kept !== prev[i]) same = false;
+    return kept;
+  });
+  return same ? prev : out;
+}
+
 /** Re-read the file list. The cheap refresh, run after a stage or unstage. */
 export function refreshStatus(root: string | null): Promise<void> {
   const at = root ? epochs.get(root) : undefined;
@@ -337,7 +360,9 @@ export function refreshStatus(root: string | null): Promise<void> {
     // The root left the set while we were reading, so this answer is about a
     // workspace nobody is looking at any more.
     if (epochs.get(root) !== at) return;
-    writeSlot(root, { files });
+    const prev = gitStateFor(root).files;
+    const kept = keepIdentity(prev, files);
+    if (kept !== prev) writeSlot(root, { files: kept });
   });
 }
 
