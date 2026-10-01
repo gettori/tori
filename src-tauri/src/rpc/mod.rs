@@ -369,18 +369,32 @@ impl Composer {
         });
         // Released before the OS calls: building the tray's menu waits on the
         // main thread, which may itself be waiting on this lock.
-        let (notify, (tray, badge)) = {
+        let (edges, quiet, (tray, badge)) = {
             let mut presence = self.presence();
-            let rose = presence.step(&live);
-            let notify: Vec<&crate::presence::Live> = live
+            let edges = presence.step(&live);
+            let quiet: HashSet<String> = live
                 .iter()
-                .filter(|l| rose.contains(&l.id))
-                .filter(|l| !crate::presence::relayed(l.spawner.as_deref(), &chats, pilot) && !presence.suppressed(l))
+                .filter(|l| crate::presence::relayed(l.spawner.as_deref(), &chats, pilot) || presence.suppressed(l))
+                .map(|l| l.id.clone())
                 .collect();
-            (notify, presence.surface(&live))
+            (edges, quiet, presence.surface(&live))
         };
-        for l in notify {
-            crate::presence::notify_needs_you(self.app.clone(), l);
+        if !edges.rose.is_empty() || !edges.finished.is_empty() {
+            let alerts = crate::presence::decide(edges, &quiet, &crate::settings::get_settings().notifications);
+            for l in live.iter().filter(|l| alerts.needs_you.contains(&l.id)) {
+                crate::presence::notify_session(self.app.clone(), l, crate::presence::needs_you_body(l), true);
+            }
+            // No click wait: a turn finishes far more often than one blocks,
+            // and a wait parks a thread for as long as the notification stays.
+            for l in live.iter().filter(|l| alerts.finished.contains(&l.id)) {
+                crate::presence::notify_session(self.app.clone(), l, crate::presence::finished_body(l), false);
+            }
+            if alerts.needs_you_sound {
+                crate::sound::play(&self.app, crate::sound::Sound::NeedsYou);
+            }
+            if alerts.finished_sound {
+                crate::sound::play(&self.app, crate::sound::Sound::TurnFinished);
+            }
         }
         if let Some((tooltip, entries)) = tray {
             let _ = crate::presence::set_tray(&self.app, &tooltip, &entries);

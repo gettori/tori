@@ -135,6 +135,8 @@ pub struct ChatFact {
     pub spawner: Option<String>,
     #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub done_at: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -297,6 +299,7 @@ impl Dots {
             chat: false,
             visible: false,
             spawner: None,
+            done_at: 0,
         };
         let tabs = inner.facts.tabs.iter().map(|t| hosted(&t.session, &t.workspace));
         let chats = inner.facts.chats.iter().map(|c| Live {
@@ -304,6 +307,7 @@ impl Dots {
             chat: true,
             visible: c.visible,
             spawner: c.spawner.clone(),
+            done_at: c.done_at,
             ..hosted(&c.session, &c.folder)
         });
         tabs.chain(chats).collect()
@@ -444,7 +448,7 @@ mod tests {
     }
 
     fn chat(session: &str, status: Status) -> ChatFact {
-        ChatFact { session: session.into(), status, folder: "/p/repo".into(), visible: false, spawner: None, name: String::new() }
+        ChatFact { session: session.into(), status, folder: "/p/repo".into(), visible: false, spawner: None, name: String::new(), done_at: 0 }
     }
 
     #[test]
