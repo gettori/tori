@@ -163,7 +163,7 @@ pub fn open_tailscale() -> Result<(), String> {
     } else {
         open.arg(TAILSCALE_DOWNLOAD);
     }
-    open.spawn().map(|_| ()).map_err(|e| e.to_string())
+    crate::exec::spawn_detached(&mut open).map_err(|e| e.to_string())
 }
 
 pub fn interfaces() -> Vec<Interface> {

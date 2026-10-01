@@ -1,4 +1,4 @@
-import { Index, Match, Switch, createMemo } from "solid-js";
+import { Index, Match, Switch, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import { Marked, type Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
@@ -51,12 +51,39 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
   // cost is one lexer pass plus one segment's parse and sanitize.
   let prev = new Map<string, string>();
 
+  // The lexer below reads the whole message, so a delta per token is quadratic
+  // over a long answer. The first change after a quiet frame lands at once;
+  // the rest of that frame's deltas land together on the next one.
+  const [text, setText] = createSignal(props.text);
+  let frame: number | undefined;
+  const settle = () => {
+    frame = undefined;
+    if (props.text === text()) return;
+    setText(props.text);
+    frame = requestAnimationFrame(settle);
+  };
+  createEffect(
+    on(
+      () => props.text,
+      (next) => {
+        if (typeof requestAnimationFrame === "undefined") return setText(next);
+        if (frame !== undefined) return;
+        setText(next);
+        frame = requestAnimationFrame(settle);
+      },
+      { defer: true },
+    ),
+  );
+  onCleanup(() => {
+    if (frame !== undefined) cancelAnimationFrame(frame);
+  });
+
   const segments = createMemo<Segment[]>(() => {
     // One instance for both halves, or they disagree about what a newline is:
     // the lexer decides whether one becomes a break token, the parser decides
     // whether it renders.
     const md = props.breaks === true ? LINEWISE : PROSE;
-    const tokens = md.lexer(props.text);
+    const tokens = md.lexer(text());
     const next = new Map<string, string>();
     const segs: Segment[] = [];
     let run: Token[] = [];
