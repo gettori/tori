@@ -6,7 +6,7 @@
 // server, a future release, a kind published after this build - so the fallback
 // is the common case, not the error case.
 
-import type { ChatItem, ToolItem } from "./chatStore";
+import { blocking, hookFailed, type ChatItem, type ToolItem } from "./chatStore";
 import type { ToolKind, ToolSummary } from "../../utils/chatTypes";
 
 /** The renderers a card can pick. `generic` is a JSON dump, and is correct for
@@ -181,6 +181,129 @@ export function foldEdits(items: ChatItem[]): { followers: Map<string, ToolItem[
     lead = item;
   }
   return { followers, hidden };
+}
+
+/** A run of agent work drawn as one card. It holds nothing but an id because
+ *  its identity is the point: `For` keys on the object, and the members are
+ *  looked up fresh on every pass. */
+export type WorkRun = { kind: "run"; id: string };
+
+export type TranscriptRow = ChatItem | WorkRun;
+
+/** Member id to the run it was last drawn in. */
+export type RunCache = Map<string, WorkRun>;
+
+/**
+ * The transcript with everything between two replies gathered into runs.
+ *
+ * Thinking, tool calls, hooks and questions join a run. A row the session is
+ * stopped on stays out of one until it is answered, so a prompt is never hidden
+ * behind a card, and everything else (a prompt, a reply, a command's output, a
+ * notice) ends the run and renders as itself.
+ *
+ * A run keeps the wrapper its first already known member had. Keying on the
+ * first member alone would hand the top run a new wrapper every time the window
+ * slid past its head, which remounts the card on every append.
+ */
+export function groupRuns(
+  items: readonly ChatItem[],
+  cache: RunCache,
+): { rows: TranscriptRow[]; members: Map<WorkRun, ChatItem[]> } {
+  const rows: TranscriptRow[] = [];
+  const members = new Map<WorkRun, ChatItem[]>();
+  let open: ChatItem[] = [];
+
+  const joins = (it: ChatItem) =>
+    (it.kind === "thinking" || it.kind === "tool" || it.kind === "hook" || it.kind === "question") && !blocking(it);
+
+  const close = () => {
+    if (!open.length) return;
+    let run: WorkRun | undefined;
+    for (const m of open) {
+      const known = cache.get(m.id);
+      // A run that split in two (a call inside it started waiting on approval)
+      // leaves both halves pointing at one wrapper, and only the first keeps it.
+      if (known && !members.has(known)) {
+        run = known;
+        break;
+      }
+    }
+    run ??= { kind: "run", id: open[0].id };
+    members.set(run, open);
+    rows.push(run);
+    open = [];
+  };
+
+  for (const item of items) {
+    if (joins(item)) {
+      open.push(item);
+      continue;
+    }
+    close();
+    rows.push(item);
+  }
+  close();
+
+  cache.clear();
+  for (const [run, held] of members) for (const m of held) cache.set(m.id, run);
+  return { rows, members };
+}
+
+/** The settled label: measured seconds when the span is real, plain past tense
+ *  when it is not (a replay folds in one tick and measures nothing). */
+export function thoughtLabel(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  if (secs < 1) return "Thought";
+  if (secs < 60) return `Thought for ${secs}s`;
+  return `Thought for ${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+function counted(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * What a run's card says on its one line.
+ *
+ * While the run is the live tail it names what is happening now, which is its
+ * last member whatever state that is in: a turn between two calls is still on
+ * the call it just finished. Settled, it counts what the run holds. `failed` is
+ * apart from `text` because it is drawn in its own tone.
+ */
+export function runLabel(held: readonly ChatItem[], live: boolean): { text: string; failed: number; live: boolean } {
+  let calls = 0;
+  let questions = 0;
+  let thoughtMs = 0;
+  let failed = 0;
+  const hooks = new Set<string>();
+  for (const it of held) {
+    if (it.kind === "tool") {
+      calls += 1;
+      if (it.state === "error") failed += 1;
+    } else if (it.kind === "question") questions += 1;
+    else if (it.kind === "thinking") thoughtMs += it.endedAt - it.startedAt;
+    else if (it.kind === "hook") {
+      // One execution is two rows, a `started` frame and a `finished` one.
+      hooks.add(it.hookId);
+      if (hookFailed(it)) failed += 1;
+    }
+  }
+
+  const last = held[held.length - 1];
+  if (live && last) {
+    if (last.kind === "tool") {
+      const text = [last.title ?? last.name ?? "tool", toolDigest(last)].filter(Boolean).join(" ");
+      return { text, failed, live };
+    }
+    if (last.kind === "hook") return { text: last.toriOwned ? "Tori's before-state hook" : last.name, failed, live };
+    if (last.kind === "thinking") return { text: "Thinking", failed, live };
+  }
+
+  const parts: string[] = [];
+  if (calls) parts.push(counted(calls, "tool call"));
+  if (questions) parts.push(counted(questions, "question"));
+  if (hooks.size) parts.push(counted(hooks.size, "hook"));
+  return { text: parts.length ? parts.join(", ") : thoughtLabel(thoughtMs), failed, live: false };
 }
 
 /** How long a call took, when it is long enough to be worth saying. */
