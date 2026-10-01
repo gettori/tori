@@ -1991,7 +1991,6 @@ export default function ReviewPanel(props: {
                 {/* Both fields name the target member: the refs it reads, the
                     chats it lists and the revert paths it resolves all have to
                     name one repo. */}
-                <OverlayScroll class={styles.sectionScroll}>
                 <CheckpointTimeline
                   root={targetMember()}
                   sessionId={props.selected?.sessionId ?? null}
@@ -2002,7 +2001,6 @@ export default function ReviewPanel(props: {
                   }}
                   onCount={setCheckpointCount}
                 />
-                </OverlayScroll>
               </div>
             </div>
           </section>

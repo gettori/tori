@@ -2570,6 +2570,47 @@ pub async fn session_prompt_tail(path: String, agent: String) -> Result<PromptTa
     crate::exec::blocking("session_prompt_tail", move || session_prompt_tail_body(path, agent)).await
 }
 
+#[derive(Serialize)]
+pub struct PromptLine {
+    pub ts: u64,
+    pub text: String,
+}
+
+/// Every prompt in a transcript with its timestamp, oldest first, so a
+/// checkpoint can be named by the prompt it was taken at instead of by a time.
+///
+/// A skill invocation is kept as the command the person typed, which
+/// `is_human_prompt` leaves out of the counts but which opens a turn like any
+/// other prompt. Empty for an agent that keeps no transcript Tori can read.
+#[tauri::command]
+pub async fn session_prompts(path: String, agent: String) -> Result<Vec<PromptLine>, String> {
+    crate::exec::blocking("session_prompts", move || session_prompts_body(path, agent)).await
+}
+
+pub(crate) fn session_prompts_body(path: String, agent: String) -> Result<Vec<PromptLine>, String> {
+    if !crate::chat::commands::keeps_a_transcript(&agent) {
+        return Ok(Vec::new());
+    }
+    // See `extract_touched_files` on why the kind is matched exhaustively.
+    match agents::parser_kind_for(&agent) {
+        Some(agents::ParserKind::ClaudeJsonl) => {}
+        None => return Ok(Vec::new()),
+    }
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    Ok(BufReader::new(file).lines().map_while(Result::ok).filter_map(|line| prompt_line(&line)).collect())
+}
+
+fn prompt_line(line: &str) -> Option<PromptLine> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    if v.get("type").and_then(|t| t.as_str()) != Some("user") || v.get("isMeta").and_then(|m| m.as_bool()) == Some(true) {
+        return None;
+    }
+    let content = v.get("message")?.get("content")?;
+    let text = if is_human_prompt(content) { extract_text(content)? } else { command_prompt(&extract_text(content)?)? };
+    let ts = v.get("timestamp").and_then(|t| t.as_str()).and_then(parse_rfc3339_secs).unwrap_or(0);
+    Some(PromptLine { ts, text: clean_title(&text) })
+}
+
 /// How much of the file's head identifies it, so an appended transcript can be
 /// told from a different one written to the same path. A rewrite that kept the
 /// first line byte-for-byte AND only ever grew would still fool this, which is
