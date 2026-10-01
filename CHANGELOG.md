@@ -10,6 +10,12 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 ## Unreleased
 
+### Notifications
+
+- A chat can notify when it finishes its turn, and both that and needs you can
+  play a sound. Each has its own switch in Settings, Chat, Notifications. Only
+  the needs you notification is on to begin with, as before.
+
 ### Topics
 
 - A Topic's worktrees no longer show under their repository in Spaces. They

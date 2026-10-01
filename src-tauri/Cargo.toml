@@ -91,8 +91,9 @@ xattr = "1"
 # NSUserDefaults for WebKit's text-checking switches (spell check on, smart
 # substitutions off). Already in the tree under tauri; only the features are new.
 objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", "NSData", "NSArray"] }
-# NSApplication.setApplicationIconImage for the Dock icon. Both already in the
-# tree under tauri; only the features are new.
+# NSApplication.setApplicationIconImage for the Dock icon, and NSSound for the
+# sounds a session state plays. Both already in the tree under tauri; only the
+# features are new.
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSPasteboard"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSPasteboard", "NSSound"] }
 

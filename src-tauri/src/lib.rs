@@ -50,6 +50,7 @@ mod search;
 mod sessions;
 mod settings;
 mod shared;
+mod sound;
 mod workspace_settings;
 mod themes;
 mod topic_home;

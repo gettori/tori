@@ -4,6 +4,7 @@ import {
   Stepper,
   optionalNumber,
   rowLabelId,
+  setAlert,
   setBudgets,
   setChatDefaults,
   setCheckpoints,
@@ -17,18 +18,19 @@ import Switch from "../../../../components/Switch/Switch";
 import { warnAtLabel } from "../../../../utils/chatBudget";
 
 /**
- * Chat, in three groups.
+ * Chat, in four groups.
  *
  * The `chat` and `checkpoints` catalogue sections both land here, regrouped by
  * the question each row answers rather than by the section it is filed under:
- * how a chat opens and reads, what stops it running away, and what it may cost.
+ * how a chat opens and reads, what it tells you about, what stops it running
+ * away, and what it may cost.
  * Spending is the group the budgets fix in the data layer unblocked - the
  * ceilings were writable here before it and gone on the next read.
  *
  * The id lists are written out rather than derived from a section, because the
  * grouping cuts across two of them. `settingsPanel.test.tsx` checks that every
  * catalogue entry reaches exactly one row on screen, which is what would catch
- * one being dropped from all three lists.
+ * one being dropped from all four lists.
  */
 const SESSIONS = [
   "default-surface",
@@ -52,6 +54,7 @@ const DENSITIES: SelectOption[] = [
   { value: "compact", label: "Compact" },
 ];
 
+const NOTIFICATIONS = ["notify-needs-you", "sound-needs-you", "notify-turn-finished", "sound-turn-finished"];
 const SAFETY = ["checkpoints"];
 const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget", "warn-at"];
 
@@ -157,6 +160,40 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.chatDefaults.attachLongPastes}
             onChange={(attachLongPastes) => setChatDefaults({ attachLongPastes })}
             aria-label="Attach long pastes as files"
+          />
+        </Row>
+      </Group>
+
+      <Group {...props} title="Notifications" ids={NOTIFICATIONS}>
+        <Row {...props} id="notify-needs-you" label="Notify when a session needs you">
+          <Switch
+            checked={settings.notifications.needsYou.notify}
+            onChange={(notify) => setAlert("needsYou", { notify })}
+            aria-label="Notify when a session needs you"
+          />
+        </Row>
+
+        <Row {...props} id="sound-needs-you" label="Play a sound when a session needs you">
+          <Switch
+            checked={settings.notifications.needsYou.sound}
+            onChange={(sound) => setAlert("needsYou", { sound })}
+            aria-label="Play a sound when a session needs you"
+          />
+        </Row>
+
+        <Row {...props} id="notify-turn-finished" label="Notify when a chat finishes its turn">
+          <Switch
+            checked={settings.notifications.turnFinished.notify}
+            onChange={(notify) => setAlert("turnFinished", { notify })}
+            aria-label="Notify when a chat finishes its turn"
+          />
+        </Row>
+
+        <Row {...props} id="sound-turn-finished" label="Play a sound when a chat finishes its turn">
+          <Switch
+            checked={settings.notifications.turnFinished.sound}
+            onChange={(sound) => setAlert("turnFinished", { sound })}
+            aria-label="Play a sound when a chat finishes its turn"
           />
         </Row>
       </Group>

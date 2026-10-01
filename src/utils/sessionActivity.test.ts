@@ -276,7 +276,7 @@ describe("a failing check on the branch a session owns", () => {
     expect(sessionFacts()).toEqual({
       tabs: [{ id: "t1", session: "pty", live: true, workspace: FOLDER, agent: "claude" }],
       chats: [
-        { session: "c-idle", status: "idle", folder: FOLDER, visible: false, spawner: undefined, name: "the idle chat" },
+        { session: "c-idle", status: "idle", folder: FOLDER, visible: false, spawner: undefined, name: "the idle chat", doneAt: 0 },
       ],
       forge: [{ folderPath: FOLDER, kind: "worktree", branch: "main", isCurrent: false, attention: true }],
     });

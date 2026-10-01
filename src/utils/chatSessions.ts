@@ -34,6 +34,10 @@ export type LiveChat = {
   /** The session that spawned it, which relays its questions while it is
    *  there to; see `relayed` in sessionActivity. */
   spawner?: string;
+  /** When its last turn ran to completion, in epoch milliseconds. Read by
+   *  presence to tell a turn that finished from one that was cancelled, failed,
+   *  replayed from history, or has a queued message about to follow it. */
+  doneAt?: number;
 };
 
 const [liveChats, setLiveChats] = createSignal<LiveChat[]>([]);
