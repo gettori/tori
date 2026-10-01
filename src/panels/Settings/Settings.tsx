@@ -17,6 +17,7 @@ import {
   Columns2,
   FileCode,
   FolderCog,
+  Keyboard,
   ListChecks,
   MessageSquare,
   Palette,
@@ -31,7 +32,15 @@ import { WheelGlyph } from "../../components/Autopilot/Wheel";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
-import { COMPOSE_DRAFT, OPEN_IN_EDITOR, OPEN_JOB, OPEN_TERMINAL, onWith } from "../../utils/events";
+import {
+  COMPOSE_DRAFT,
+  OPEN_IN_EDITOR,
+  OPEN_JOB,
+  OPEN_TERMINAL,
+  TOGGLE_SHORTCUTS,
+  emit,
+  onWith,
+} from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import { FOCUSABLE } from "../../utils/focusable";
 import Icon from "../../components/Icon/Icon";
@@ -406,13 +415,22 @@ export default function Settings(props: {
         >
           <div class={styles.header}>
             <div class={styles.title}>Settings</div>
-            <IconButton
-              icon={<Icon icon={X} />}
-              size="sm"
-              aria-label="Close"
-              tooltip="Close"
-              onClick={() => props.onClose()}
-            />
+            <div class={styles.headerActions}>
+              <IconButton
+                icon={<Icon icon={Keyboard} />}
+                size="sm"
+                aria-label="Keyboard shortcuts"
+                tooltip="Keyboard shortcuts (⌘/)"
+                onClick={() => emit(TOGGLE_SHORTCUTS)}
+              />
+              <IconButton
+                icon={<Icon icon={X} />}
+                size="sm"
+                aria-label="Close"
+                tooltip="Close"
+                onClick={() => props.onClose()}
+              />
+            </div>
           </div>
 
           <div class={styles.srOnly} role="status" aria-live="polite">

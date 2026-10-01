@@ -78,6 +78,13 @@
     flex: none;
   }
 
+  .headerActions {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-1);
+    flex: none;
+  }
+
   .title {
     font-size: var(--tori-text-3xl);
     font-weight: 600;
