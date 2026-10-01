@@ -230,6 +230,9 @@ export type EditorDefaults = {
   /** Render a chain of single-child folders as one row, `src/utils/helpers`,
    *  so a deep package layout costs one line instead of four. (Wave 6) */
   compactFolders: boolean;
+  /** Open Markdown and SVG tabs rendered rather than as source. The tab bar's
+   *  preview button still flips one tab either way. */
+  openRendered: boolean;
   /**
    * Comma-separated tags the TODO panel looks for, e.g. `TODO,FIXME,HACK`.
    * The one value here that is not a switch, and the reason it is a string
@@ -398,6 +401,7 @@ export const DEFAULT_SETTINGS: Settings = {
     wordCompletion: true,
     hotExit: true,
     compactFolders: true,
+    openRendered: false,
     todoPatterns: "TODO,FIXME,HACK,XXX",
   },
   agent: {},

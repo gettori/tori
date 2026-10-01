@@ -122,6 +122,11 @@
           "description": "Compact single-child folders. A folder whose only child is another folder renders as one row rather than a staircase.",
           "default": true
         },
+        "openRendered": {
+          "type": "boolean",
+          "description": "Open Markdown and SVG rendered. Their tabs show the rendered view instead of the source; the tab bar's preview button still flips one tab.",
+          "default": false
+        },
         "todoPatterns": {
           "type": "string",
           "description": "TODO tags. Comma-separated tags the TODO panel searches for, matched case-sensitively so a marker is not confused with the word in prose.",

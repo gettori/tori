@@ -457,6 +457,13 @@ export const SETTINGS: SettingEntry[] = [
     toggles: "compactFolders",
     hint: "A folder whose only child is another folder renders as one row, src/utils/helpers, instead of a staircase. Gitignored folders are left alone.",
   },
+  {
+    id: "open-rendered",
+    section: "editing",
+    label: "Open Markdown and SVG rendered",
+    toggles: "openRendered",
+    hint: "Markdown and SVG tabs show the rendered view instead of the source. The tab bar's preview button still flips one tab either way.",
+  },
   // Two reader preferences that live in localStorage rather than in
   // `EditorDefaults`: each is something you switch on while reading one file and
   // off again a minute later, so neither belongs in the settings file or its
