@@ -1,9 +1,11 @@
 // The sounds Tori plays itself, apart from the OS notification: macOS decides
 // whether a notification shows, and these play whatever it decides.
 
+use serde::Deserialize;
 use tauri::AppHandle;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Sound {
     NeedsYou,
     TurnFinished,
@@ -63,4 +65,10 @@ pub fn play(app: &AppHandle, sound: Sound) {
     }
     #[cfg(not(target_os = "macos"))]
     let _ = (app, sound);
+}
+
+/// Play a sound because the user asked to hear it, from its row in Settings.
+#[tauri::command]
+pub fn sound_preview(app: AppHandle, sound: Sound) {
+    play(&app, sound);
 }
