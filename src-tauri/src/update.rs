@@ -48,11 +48,7 @@ pub struct UpdateInfo {
 /// arbitrary. Matches `launch.rs`'s "spawn the real tool" convention.
 #[tauri::command(async)]
 pub fn open_releases_page() -> Result<(), String> {
-    std::process::Command::new("open")
-        .arg(RELEASES_PAGE)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::exec::spawn_detached(std::process::Command::new("open").arg(RELEASES_PAGE)).map_err(|e| e.to_string())
 }
 
 /// Parse a semver-ish string into comparable parts, tolerating a `v` prefix and

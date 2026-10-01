@@ -665,6 +665,11 @@
   -webkit-background-clip: text;
   color: transparent;
   animation: thinkingSheen 1.6s linear infinite;
+  /* A layer of its own: `background-position` repaints every frame, and
+     without one that repaint lands on the whole transcript's surface. A box,
+     because an inline span cannot be a layer. */
+  display: inline-block;
+  will-change: transform;
 }
 
 /* 0% to 200% of a 200%-wide tiling image is exactly one tile, so the loop has

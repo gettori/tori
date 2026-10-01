@@ -14,7 +14,7 @@
 // One slot per root, not one slot total: inside a Topic every member is a
 // repo of its own, and the member in front is a pointer into the set rather
 // than the only one whose numbers are true.
-import { createSignal } from "solid-js";
+import { createMemo, createRoot, createSignal, type Accessor } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
@@ -176,17 +176,50 @@ export { setActiveRoot };
 /** This root's numbers. A root nobody entered reads blank rather than reading
  *  somebody else's, which is what keeps every consumer failing closed. */
 export function gitStateFor(root: string | null | undefined): GitState {
-  return (root ? slots().get(root) : null) ?? NO_SLOT;
+  return root ? viewOf(root).state() : NO_SLOT;
+}
+
+type RootView = {
+  state: Accessor<GitState>;
+  staged: Accessor<FileStatus[]>;
+  changed: Accessor<FileStatus[]>;
+  conflicted: Accessor<FileStatus[]>;
+};
+
+// One set of memos per root, so a write to one member's slot wakes that
+// member's readers only. Never disposed: a reader subscribed to a disposed
+// memo would not hear the root come back, and a root that left reads NO_SLOT.
+const views = new Map<string, RootView>();
+
+function viewOf(root: string): RootView {
+  let view = views.get(root);
+  if (!view) {
+    view = createRoot(() => {
+      const state = createMemo(() => slots().get(root) ?? NO_SLOT);
+      const files = createMemo(() => state().files);
+      return {
+        state,
+        staged: createMemo(() => files().filter((f) => f.staged)),
+        changed: createMemo(() => files().filter((f) => f.unstaged)),
+        conflicted: createMemo(() => files().filter((f) => !!f.conflicted)),
+      };
+    });
+    views.set(root, view);
+  }
+  return view;
 }
 
 /** The active member's slot: what a surface showing one repo at a time reads. */
 export const gitState = () => gitStateFor(activeRoot());
 
-const filesIn = (root?: string | null) => (root === undefined ? gitState() : gitStateFor(root)).files;
+const listIn = (pick: "staged" | "changed" | "conflicted", root?: string | null): FileStatus[] => {
+  const at = root === undefined ? activeRoot() : root;
+  return at ? viewOf(at)[pick]() : NO_FILES;
+};
 
-export const stagedFiles = (root?: string | null) => filesIn(root).filter((f) => f.staged);
-export const changedFiles = (root?: string | null) => filesIn(root).filter((f) => f.unstaged);
-export const conflictedFiles = (root?: string | null) => filesIn(root).filter((f) => f.conflicted);
+export const stagedFiles = (root?: string | null) => listIn("staged", root);
+export const changedFiles = (root?: string | null) => listIn("changed", root);
+export const conflictedFiles = (root?: string | null) => listIn("conflicted", root);
 
 // Deliberately not the no-argument form of the three above: a union under those
 // names would compile clean at every existing call site and quietly arm the

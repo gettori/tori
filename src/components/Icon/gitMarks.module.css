@@ -70,6 +70,11 @@
     stroke-dasharray: 55 200;
   }
 
+  /* Its own layer while it loops, for the reason statusMarks gives. */
+  .mark[data-active="true"] {
+    will-change: transform;
+  }
+
   .mark[data-active="true"] .tail {
     animation: gm-tail var(--gm-cycle) linear infinite;
   }
