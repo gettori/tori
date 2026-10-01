@@ -103,12 +103,14 @@ fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> 
 /// WebKit's text checking is a user default, not a menu item or an element
 /// attribute: continuous spell check on, and the smart dash, quote and text
 /// substitutions off, since `--` and straight quotes are what a prompt means.
+/// Grammar off too: spelling is the only check a prompt wants.
 #[cfg(target_os = "macos")]
 fn set_webkit_text_defaults() {
     use objc2_foundation::{NSString, NSUserDefaults};
     let defaults = NSUserDefaults::standardUserDefaults();
     for (key, on) in [
         ("WebContinuousSpellCheckingEnabled", true),
+        ("WebGrammarCheckingEnabled", false),
         ("WebAutomaticDashSubstitutionEnabled", false),
         ("WebAutomaticQuoteSubstitutionEnabled", false),
         ("WebAutomaticTextReplacementEnabled", false),
