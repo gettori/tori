@@ -42,6 +42,7 @@ const SESSIONS = [
   "transcript-density",
   "tool-output-lines",
   "show-hooks",
+  "collapse-work",
   "answer-questions",
   "attach-long-pastes",
 ];
@@ -152,6 +153,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.chatDefaults.showToriHooks}
             onChange={(showToriHooks) => setChatDefaults({ showToriHooks })}
             aria-label="Show every hook event"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="collapse-work"
+          label="Collapse agent work"
+          hint="On, the transcript reads as prompts and replies: thinking, tool calls, hooks and answered questions fold into a one line card you can open. A permission prompt or a question still waiting on you shows as usual until you answer it."
+        >
+          <Switch
+            checked={settings.chatDefaults.collapseWork}
+            onChange={(collapseWork) => setChatDefaults({ collapseWork })}
+            aria-label="Collapse agent work"
           />
         </Row>
 

@@ -204,6 +204,7 @@ describe("every frontend setting has a field in the struct that persists it", ()
     density: "comfortable",
     toolOutputLines: 20,
     showToriHooks: false,
+    collapseWork: false,
     answerQuestionsInline: true,
     attachLongPastes: true,
     maxConcurrentChats: 4,
