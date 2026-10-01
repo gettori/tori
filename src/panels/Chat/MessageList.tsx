@@ -12,7 +12,7 @@ import {
   onMount,
   type JSX,
 } from "solid-js";
-import { Brain, FoldVertical, Info, TriangleAlert, Webhook } from "lucide-solid";
+import { Brain, ChevronDown, ChevronRight, FoldVertical, Info, TriangleAlert, Webhook } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
 import { attachmentKind } from "../../utils/chatCompose";
@@ -27,7 +27,7 @@ import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
-import { foldEdits } from "./toolRenderers";
+import { foldEdits, groupRuns, runLabel, thoughtLabel, type RunCache, type WorkRun } from "./toolRenderers";
 
 /** Every token that could name an attachment, for splitting a prompt into the
  *  parts that name one and the parts that are prose. */
@@ -121,15 +121,6 @@ function PromptImages(props: { blocks: readonly ContentBlock[] }) {
       </div>
     </Show>
   );
-}
-
-/** The settled label: measured seconds when the span is real, plain past tense
- *  when it is not (a replay folds in one tick and measures nothing). */
-function thoughtLabel(ms: number): string {
-  const secs = Math.round(ms / 1000);
-  if (secs < 1) return "Thought";
-  if (secs < 60) return `Thought for ${secs}s`;
-  return `Thought for ${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
 function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }) {
@@ -277,6 +268,9 @@ export default function MessageList(props: {
   /** Fetch the page before the first item, for a caller that holds only the
    *  latest pages. Asked for once every held item is already shown. */
   onFetchEarlier?: () => void;
+  /** Draw each run of thinking, calls, hooks and answered questions as a one
+   *  line card, so the transcript reads as prompts and replies. */
+  collapseWork?: boolean;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -291,6 +285,12 @@ export default function MessageList(props: {
   // answer. Folded at render time rather than in the store, because what folded
   // is still its own call: its own approval, its own revert, its own id.
   const folded = createMemo(() => foldEdits(shown()));
+
+  const runCache: RunCache = new Map();
+  // Null while the setting is off: grouping reads every call's state, and a
+  // transcript nobody collapsed should not re-run it each time a call settles.
+  const grouped = createMemo(() => (props.collapseWork ? groupRuns(shown(), runCache) : null));
+  const rows = () => grouped()?.rows ?? shown();
 
   const turnIdOf = (it: ChatItem) =>
     it.kind === "text" || it.kind === "thinking" || it.kind === "tool" || it.kind === "question"
@@ -353,8 +353,8 @@ export default function MessageList(props: {
 
   // Zero height: it exists to carry the turn id, not to take up room. The
   // negative bottom margin cancels the flex gap it would otherwise open.
-  const TurnAnchor = (p: { itemId: string }) => (
-    <Show when={turnOpeners().get(p.itemId)}>
+  const TurnAnchor = (p: { itemId: string; off?: boolean }) => (
+    <Show when={!p.off && turnOpeners().get(p.itemId)}>
       {(id) => (
         <>
           <div class={styles.turnAnchor} data-turn-id={id()} />
@@ -513,6 +513,206 @@ export default function MessageList(props: {
     onCleanup(() => ro.disconnect());
   });
 
+  const Row = (p: { item: ChatItem; unanchored?: boolean }) => (
+    <Switch>
+      {/* The one side of the conversation that gets a bubble, held to the
+          right: with no bylines left, the shape and the side are what say
+          who is speaking, and prompts are the landmarks a reader scrolls
+          back to. A steer is the same person, so it keeps the bubble; it
+          is inset and labelled because it landed *inside* the turn above
+          it, and reading it as an ordinary prompt would suggest the reply
+          below answers only that. It opens no turn group: `turnOpeners`
+          counts assistant-side rows only. */}
+      <Match when={p.item.kind === "user" && toriNote(p.item.blocks)}>
+        {(note) => <ToriNoteRow note={note()} />}
+      </Match>
+      <Match when={p.item.kind === "user" && p.item}>
+        {(it) => (
+          <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
+            <div class={styles.userBubble}>
+              <Show when={rewindTsForPrompt(it().id)}>
+                {(ts) => (
+                  <Tooltip
+                    as="button"
+                    type="button"
+                    class={styles.userRewind}
+                    label="Put the files back to how they were before this prompt, and carry the conversation into a new chat"
+                    onClick={() => props.onRewind?.(ts())}
+                  >
+                    Rewind to here
+                  </Tooltip>
+                )}
+              </Show>
+              <PromptImages blocks={it().blocks} />
+              <Show when={it().steer}>
+                <span class={styles.steerLabel}>Steer</span>
+              </Show>
+              <PromptText blocks={it().blocks} />
+            </div>
+          </div>
+        )}
+      </Match>
+      <Match when={p.item.kind === "text" && p.item}>
+        {(it) => (
+          <>
+            <TurnAnchor itemId={it().id} off={p.unanchored} />
+            <Show
+              when={props.replyMark}
+              fallback={
+                <div class={styles.assistant}>
+                  <Markdown text={it().text} cwd={props.cwd} />
+                </div>
+              }
+            >
+              {(mark) => (
+                <div class={styles.markedReply}>
+                  {mark()()}
+                  <div class={styles.assistant}>
+                    <Markdown text={it().text} cwd={props.cwd} />
+                  </div>
+                </div>
+              )}
+            </Show>
+          </>
+        )}
+      </Match>
+      <Match when={p.item.kind === "command" && p.item}>
+        {(it) => (
+          <>
+            <TurnAnchor itemId={it().id} off={p.unanchored} />
+            <div class={styles.command}>
+              {/* Only when a record named it. Live nothing does, and the
+                  prompt that ran the command is the row directly above,
+                  so a header there would just say it twice. */}
+              <Show when={it().command}>
+                {(name) => <div class={styles.commandName}>{name()}</div>}
+              </Show>
+              <div class={styles.commandBody}>
+                <Markdown text={it().output} cwd={props.cwd} breaks />
+              </div>
+            </div>
+          </>
+        )}
+      </Match>
+      <Match when={p.item.kind === "thinking" && p.item}>
+        {(it) => (
+          <>
+            <TurnAnchor itemId={it().id} off={p.unanchored} />
+            <ThinkingBlock
+              text={it().text}
+              live={props.streaming && tailId() === it().id}
+              thoughtMs={it().endedAt - it().startedAt}
+            />
+          </>
+        )}
+      </Match>
+      <Match when={p.item.kind === "notice" && p.item}>
+        {(it) => (
+          <div
+            class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""} ${
+              it().level === "attention" ? styles.noticeAttention : ""
+            }`}
+          >
+            <Show
+              when={it().pendingSince}
+              fallback={
+                <span class={styles.noticeLine}>
+                  <Icon
+                    icon={it().level === "info" ? Info : TriangleAlert}
+                    size={14}
+                    class={styles.noticeIcon}
+                    aria-hidden="true"
+                  />
+                  <span>{it().text}</span>
+                </span>
+              }
+            >
+              {(since) => <PendingNotice text={it().text} since={since()} />}
+            </Show>
+            {/* Closed by default: the line is the news, the details are
+                what you go looking for afterwards. A plain `<details>`
+                because it needs no state of its own - one open summary
+                does not concern the rest of the transcript. */}
+            <Show when={it().details}>
+              {(d) => (
+                <details class={styles.noticeDetails}>
+                  <summary>Summary</summary>
+                  <div class={styles.noticeDetailsBody}>{d()}</div>
+                </details>
+              )}
+            </Show>
+          </div>
+        )}
+      </Match>
+      <Match when={p.item.kind === "hook" && p.item}>{(it) => <HookRow item={it()} />}</Match>
+      <Match when={p.item.kind === "question" && p.item}>
+        {(it) => (
+          <>
+            <TurnAnchor itemId={it().id} off={p.unanchored} />
+            <QuestionCard
+              item={it()}
+              onAnswer={
+                props.onAnswerQuestion ? (answers) => props.onAnswerQuestion?.(it(), answers) : undefined
+              }
+              inLane={props.blockedIn?.(it()) ?? null}
+              onOpenLane={props.onOpenLane}
+            />
+          </>
+        )}
+      </Match>
+      <Match when={p.item.kind === "tool" && !folded().hidden.has(p.item.id) && p.item}>
+        {(it) => (
+          <>
+            <TurnAnchor itemId={it().id} off={p.unanchored} />
+            <ToolCallCard
+              card={it()}
+              also={folded().followers.get(it().id) ?? []}
+              sessionId={props.sessionId}
+              cwd={props.cwd}
+              onAnswer={props.onAnswer}
+              onSetMode={props.onSetMode}
+              onRevertHunk={props.onRevertHunk}
+              lane={props.laneOpenedBy?.(it().toolUseId) ?? null}
+              inLane={props.blockedIn?.(it()) ?? null}
+              onOpenLane={props.onOpenLane}
+            />
+          </>
+        )}
+      </Match>
+    </Switch>
+  );
+
+  const WorkCard = (p: { run: WorkRun }) => {
+    const [open, setOpen] = createSignal(false);
+    const held = () => grouped()?.members.get(p.run) ?? [];
+    const label = createMemo(() => runLabel(held(), props.streaming && held()[held().length - 1]?.id === tailId()));
+    return (
+      <>
+        {/* A turn that opens inside the card still needs its anchor on screen
+            while the card is shut, so the card carries it and the rows do not. */}
+        <For each={held()}>{(m) => <TurnAnchor itemId={m.id} />}</For>
+        <div class={styles.work}>
+          <button type="button" class={styles.workToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
+            <Icon icon={open() ? ChevronDown : ChevronRight} size={14} aria-hidden="true" />
+            <span class={styles.workText}>
+              <span class={styles.workLabel} classList={{ [styles.thinkingLive]: label().live }}>
+                {label().text}
+              </span>
+              <Show when={label().failed}>
+                <span class={styles.workFailed}>{`, ${label().failed} failed`}</span>
+              </Show>
+            </span>
+          </button>
+          <Show when={open()}>
+            <div class={styles.workBody}>
+              <For each={held()}>{(m) => <Row item={m} unanchored />}</For>
+            </div>
+          </Show>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div
       class={styles.list}
@@ -535,176 +735,7 @@ export default function MessageList(props: {
           </Button>
         </div>
       </Show>
-      <For each={shown()}>
-        {(item) => (
-          <Switch>
-            {/* The one side of the conversation that gets a bubble, held to the
-                right: with no bylines left, the shape and the side are what say
-                who is speaking, and prompts are the landmarks a reader scrolls
-                back to. A steer is the same person, so it keeps the bubble; it
-                is inset and labelled because it landed *inside* the turn above
-                it, and reading it as an ordinary prompt would suggest the reply
-                below answers only that. It opens no turn group: `turnOpeners`
-                counts assistant-side rows only. */}
-            <Match when={item.kind === "user" && toriNote(item.blocks)}>
-              {(note) => <ToriNoteRow note={note()} />}
-            </Match>
-            <Match when={item.kind === "user" && item}>
-              {(it) => (
-                <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
-                  <div class={styles.userBubble}>
-                    <Show when={rewindTsForPrompt(it().id)}>
-                      {(ts) => (
-                        <Tooltip
-                          as="button"
-                          type="button"
-                          class={styles.userRewind}
-                          label="Put the files back to how they were before this prompt, and carry the conversation into a new chat"
-                          onClick={() => props.onRewind?.(ts())}
-                        >
-                          Rewind to here
-                        </Tooltip>
-                      )}
-                    </Show>
-                    <PromptImages blocks={it().blocks} />
-                    <Show when={it().steer}>
-                      <span class={styles.steerLabel}>Steer</span>
-                    </Show>
-                    <PromptText blocks={it().blocks} />
-                  </div>
-                </div>
-              )}
-            </Match>
-            <Match when={item.kind === "text" && item}>
-              {(it) => (
-                <>
-                  <TurnAnchor itemId={it().id} />
-                  <Show
-                    when={props.replyMark}
-                    fallback={
-                      <div class={styles.assistant}>
-                        <Markdown text={it().text} cwd={props.cwd} />
-                      </div>
-                    }
-                  >
-                    {(mark) => (
-                      <div class={styles.markedReply}>
-                        {mark()()}
-                        <div class={styles.assistant}>
-                          <Markdown text={it().text} cwd={props.cwd} />
-                        </div>
-                      </div>
-                    )}
-                  </Show>
-                </>
-              )}
-            </Match>
-            <Match when={item.kind === "command" && item}>
-              {(it) => (
-                <>
-                  <TurnAnchor itemId={it().id} />
-                  <div class={styles.command}>
-                    {/* Only when a record named it. Live nothing does, and the
-                        prompt that ran the command is the row directly above,
-                        so a header there would just say it twice. */}
-                    <Show when={it().command}>
-                      {(name) => <div class={styles.commandName}>{name()}</div>}
-                    </Show>
-                    <div class={styles.commandBody}>
-                      <Markdown text={it().output} cwd={props.cwd} breaks />
-                    </div>
-                  </div>
-                </>
-              )}
-            </Match>
-            <Match when={item.kind === "thinking" && item}>
-              {(it) => (
-                <>
-                  <TurnAnchor itemId={it().id} />
-                  <ThinkingBlock
-                    text={it().text}
-                    live={props.streaming && tailId() === it().id}
-                    thoughtMs={it().endedAt - it().startedAt}
-                  />
-                </>
-              )}
-            </Match>
-            <Match when={item.kind === "notice" && item}>
-              {(it) => (
-                <div
-                  class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""} ${
-                    it().level === "attention" ? styles.noticeAttention : ""
-                  }`}
-                >
-                  <Show
-                    when={it().pendingSince}
-                    fallback={
-                      <span class={styles.noticeLine}>
-                        <Icon
-                          icon={it().level === "info" ? Info : TriangleAlert}
-                          size={14}
-                          class={styles.noticeIcon}
-                          aria-hidden="true"
-                        />
-                        <span>{it().text}</span>
-                      </span>
-                    }
-                  >
-                    {(since) => <PendingNotice text={it().text} since={since()} />}
-                  </Show>
-                  {/* Closed by default: the line is the news, the details are
-                      what you go looking for afterwards. A plain `<details>`
-                      because it needs no state of its own - one open summary
-                      does not concern the rest of the transcript. */}
-                  <Show when={it().details}>
-                    {(d) => (
-                      <details class={styles.noticeDetails}>
-                        <summary>Summary</summary>
-                        <div class={styles.noticeDetailsBody}>{d()}</div>
-                      </details>
-                    )}
-                  </Show>
-                </div>
-              )}
-            </Match>
-            <Match when={item.kind === "hook" && item}>{(it) => <HookRow item={it()} />}</Match>
-            <Match when={item.kind === "question" && item}>
-              {(it) => (
-                <>
-                  <TurnAnchor itemId={it().id} />
-                  <QuestionCard
-                    item={it()}
-                    onAnswer={
-                      props.onAnswerQuestion ? (answers) => props.onAnswerQuestion?.(it(), answers) : undefined
-                    }
-                    inLane={props.blockedIn?.(it()) ?? null}
-                    onOpenLane={props.onOpenLane}
-                  />
-                </>
-              )}
-            </Match>
-            <Match when={item.kind === "tool" && !folded().hidden.has(item.id) && item}>
-              {(it) => (
-                <>
-                  <TurnAnchor itemId={it().id} />
-                  <ToolCallCard
-                    card={it()}
-                    also={folded().followers.get(it().id) ?? []}
-                    sessionId={props.sessionId}
-                    cwd={props.cwd}
-                    onAnswer={props.onAnswer}
-                    onSetMode={props.onSetMode}
-                    onRevertHunk={props.onRevertHunk}
-                    lane={props.laneOpenedBy?.(it().toolUseId) ?? null}
-                    inLane={props.blockedIn?.(it()) ?? null}
-                    onOpenLane={props.onOpenLane}
-                  />
-                </>
-              )}
-            </Match>
-          </Switch>
-        )}
-      </For>
+      <For each={rows()}>{(row) => (row.kind === "run" ? <WorkCard run={row} /> : <Row item={row} />)}</For>
       <Show when={props.streaming}>
         <span class={styles.cursor} aria-hidden="true" />
       </Show>

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { Show, createSignal } from "solid-js";
+import { createStore } from "solid-js/store";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
-import type { ChatItem, QuestionItem } from "./chatStore";
+import type { ChatItem, QuestionItem, ToolItem } from "./chatStore";
 import type { QuestionAnswer } from "../../utils/chatTypes";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -43,6 +44,7 @@ function list(
     rewindTsFor?: (turnId: string) => number | null;
     agentTurn?: (turnId: string) => boolean;
     onRewind?: (promptTs: number) => void;
+    collapseWork?: boolean;
   } = {},
 ) {
   return (
@@ -705,5 +707,152 @@ describe("a turn the agent opened for itself", () => {
       }),
     );
     expect(asked).toEqual(["turn-1"]);
+  });
+});
+
+describe("agent work collapsed into a card", () => {
+  const call = (id: string, over: Partial<ToolItem> = {}): ToolItem => ({
+    kind: "tool",
+    id,
+    toolUseId: id,
+    agentId: null,
+    turnId: "turn-1",
+    name: "Bash",
+    title: null,
+    toolKind: "execute",
+    locations: [],
+    input: { command: `echo ${id}` },
+    state: "ok",
+    outputTruncated: false,
+    approval: null,
+    output: null,
+    summary: null,
+    patch: [],
+    files: [],
+    durationMs: null,
+    edits: [],
+    ...over,
+  });
+  const waiting = (id: string) =>
+    call(id, {
+      state: "awaitingApproval",
+      approval: { requestId: `req-${id}`, autoDenyAtMs: null, suggestions: [], agentId: null },
+    });
+  const PROMPT: ChatItem = { kind: "user", id: "u1", blocks: [{ type: "text", text: "do it" }], steer: false };
+  const REPLY: ChatItem = { kind: "text", id: "t1", turnId: "turn-1", text: "done", agentId: null };
+  const QUESTION: QuestionItem = {
+    kind: "question",
+    id: "q1",
+    toolUseId: "toolu_q",
+    turnId: "turn-1",
+    requestId: "req-q",
+    agentId: null,
+    questions: [
+      {
+        question: "Which channel do you want?",
+        header: "Channel",
+        multiSelect: false,
+        options: [
+          { label: "Stable", description: "", preview: null },
+          { label: "Beta", description: "", preview: null },
+        ],
+      },
+    ],
+    submitted: null,
+    result: null,
+  };
+
+  // Off a store: a call settles by mutation in place, and a plain array would
+  // never show whether the card follows it.
+  function mount(initial: ChatItem[]) {
+    const [state, setState] = createStore({ items: initial });
+    const view = render(() => list({ items: state.items, collapseWork: true }));
+    return { ...view, setState };
+  }
+
+  it("leaves the transcript alone while the setting is off", () => {
+    render(() => list({ items: [PROMPT, call("a"), REPLY] }));
+    expect(screen.queryByRole("button", { name: "1 tool call" })).toBeNull();
+    expect(screen.getByText("echo a")).toBeTruthy();
+  });
+
+  it("shows the prompt and the reply, and the calls only once the card is opened", () => {
+    mount([PROMPT, call("a"), call("b"), REPLY]);
+    expect(screen.getByText("do it")).toBeTruthy();
+    expect(screen.getByText("done")).toBeTruthy();
+    expect(screen.queryByText("echo a")).toBeNull();
+
+    const card = screen.getByRole("button", { name: "2 tool calls" });
+    expect(card.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(card);
+    expect(card.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("echo a")).toBeTruthy();
+    expect(screen.getByText("echo b")).toBeTruthy();
+  });
+
+  // A prompt behind a card is a session that looks hung.
+  it("keeps a call waiting on approval outside the card, and takes it in once it is answered", () => {
+    const { setState } = mount([PROMPT, call("a"), waiting("p")]);
+    expect(screen.getByRole("button", { name: "Allow once" })).toBeTruthy();
+
+    const card = screen.getByRole("button", { name: "1 tool call" });
+    fireEvent.click(card);
+
+    setState("items", 2, { state: "ok", approval: null });
+    expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
+    const after = screen.getByRole("button", { name: "2 tool calls" });
+    expect(after, "the card was rebuilt rather than kept").toBe(card);
+    expect(after.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("echo p")).toBeTruthy();
+  });
+
+  it("keeps an open question outside the card, and takes it in once it is answered", () => {
+    const { setState } = mount([PROMPT, call("a"), QUESTION]);
+    expect(screen.getByText("Which channel do you want?")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "1 tool call" })).toBeTruthy();
+
+    setState("items", 2, { result: "Stable" });
+    expect(screen.queryByText("Which channel do you want?")).toBeNull();
+    expect(screen.getByRole("button", { name: "1 tool call, 1 question" })).toBeTruthy();
+  });
+
+  it("starts a replayed question inside the card, since nothing can answer it", () => {
+    mount([PROMPT, call("a"), { ...QUESTION, requestId: null, result: "Stable" }]);
+    expect(screen.queryByText("Which channel do you want?")).toBeNull();
+    expect(screen.getByRole("button", { name: "1 tool call, 1 question" })).toBeTruthy();
+  });
+
+  // Scroll restore and the model line hang off the turn's first row, which is
+  // usually a call and so usually inside a card that is shut.
+  it("still marks a turn that opens inside a card that is shut", () => {
+    const { container } = mount([PROMPT, call("a"), REPLY]);
+    const marks = [...container.querySelectorAll<HTMLElement>("[data-turn-id]")].map((e) => e.dataset.turnId);
+    expect(marks).toEqual(["turn-1"]);
+  });
+
+  it("marks the turn once when the card is open", () => {
+    const { container } = mount([PROMPT, call("a"), REPLY]);
+    fireEvent.click(screen.getByRole("button", { name: "1 tool call" }));
+    expect(container.querySelectorAll("[data-turn-id]")).toHaveLength(1);
+  });
+
+  it("says a call failed the moment it does", () => {
+    const { setState } = mount([PROMPT, call("a", { state: "running" }), REPLY]);
+    expect(screen.getByRole("button", { name: "1 tool call" })).toBeTruthy();
+    setState("items", 1, { state: "error" });
+    expect(screen.getByRole("button", { name: "1 tool call, 1 failed" })).toBeTruthy();
+  });
+
+  it("names the call in flight while the run is the streaming tail", () => {
+    const [state] = createStore({ items: [PROMPT, call("a", { state: "running" })] as ChatItem[] });
+    render(() => list({ items: state.items, collapseWork: true, streaming: true }));
+    expect(screen.getByRole("button", { name: "Bash echo a" })).toBeTruthy();
+  });
+
+  it("stays clean shut and open", async () => {
+    const { container } = mount([PROMPT, call("a"), call("b", { state: "error" }), REPLY]);
+    await expectNoAxeViolations(container);
+    fireEvent.click(screen.getByRole("button", { name: "2 tool calls, 1 failed" }));
+    await expectNoAxeViolations(container);
   });
 });
