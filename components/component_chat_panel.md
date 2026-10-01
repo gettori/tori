@@ -1,7 +1,7 @@
 ---
 summary: chat panel folds live and replayed events through one applyEvent reducer, so history and a running turn render alike
 status: current
-updated: 2026-09-07
+updated: 2026-10-02
 source: "plan \"Chat composer Tier 1, spell check, safe sends, draft tooling\" (branch `composer-260907`), commits 39a05ac, face7c4, c3eb12f, 8e8579e; plan \"Multi-account: pick, lock and default an account per session\" (branch `multiaccount`), phases 3 and 4, commits 0bac9e3, 7b33143; `src/panels/Chat/`"
 ---
 
@@ -136,8 +136,21 @@ Seven changes to the input box, all of them **on the existing textarea**. The su
 
 **Source:** plan "Chat composer Tier 1: spell check, safe sends, draft tooling" (personal/tori, branch `composer-260907`, merged into `logo-update-260907`) . commits `39a05ac`, `face7c4`, `c3eb12f`, `8e8579e`
 
+## Collapsed agent work (2026-10-02)
+
+`chatDefaults.collapseWork` folds everything between two replies into a one line card. The model is [[concept_collapsed_agent_work]]; what belongs to this panel:
+
+- **The transcript's row `Switch` is a `Row` component now**, inside `MessageList`, so the list and the card draw a row through one path. It takes a flag that suppresses its `TurnAnchor`, which the card renders in its place.
+- **`blocking` is exported from `chatStore.ts`** and answers two questions with one rule: which rows show in main from another lane, and which rows stay out of a card.
+- **`MessageList` takes the switch as a prop.** It has callers in `FirstRun/intro/art` that must not collapse, and importing the settings store into it would drag `localStorage` into its suite.
+- **`thoughtLabel` moved to `toolRenderers.ts`**, beside `runLabel`, which needs it for a run of thinking alone.
+- The trap this work nearly shipped: [[gotcha_a_run_keyed_by_its_first_member_remounts_as_the_window_slides]].
+
+**Source:** plan "Collapse agent work into one line cards" (personal/tori, branch `performance-20261002`) . `src/panels/Chat/MessageList.tsx`, `src/panels/Chat/toolRenderers.ts`, `src/panels/Chat/ChatView.tsx`
+
 ## Related
 
+- [[concept_collapsed_agent_work]] - the cards between replies, and why the cut is at every text
 - [[component_pdf_viewer]] - the other surface mounting `components/QuoteSelection/`, which is why it is no longer this panel's file.
 - [[concept_scratch_draft_link]] - the draft's one-writer link to a scratch tab
 - [[lesson_keep_the_composer_a_textarea_until_colour_is_the_ask]] - why the textarea stayed
