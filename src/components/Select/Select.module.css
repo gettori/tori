@@ -99,6 +99,32 @@
   box-shadow: var(--shadow-md);
 }
 
+/* The tab strip of a tabbed list: the full width of the surface, segments
+   sharing it equally, so the strip reads as the list's header. */
+.tabs {
+  display: flex;
+  margin-bottom: var(--tori-space-3);
+}
+.tabs > * {
+  flex: 1;
+}
+
+/* An inactive tab's rows. Spelled out because .item sets its own display,
+   which outranks the UA rule for [hidden]. */
+.item[hidden],
+.section[hidden] {
+  display: none;
+}
+
+/* Wider and a fixed floor on the list, so the surface holds one size as the
+   tabs swap lists of different lengths under the pointer. */
+.tabbed {
+  min-width: calc(260px * var(--ui-scale));
+}
+.tabbed .listbox {
+  min-height: calc(280px * var(--ui-scale));
+}
+
 .listbox {
   margin: 0;
   padding: 0;

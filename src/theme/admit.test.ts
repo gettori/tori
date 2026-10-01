@@ -63,7 +63,7 @@ describe("the user-theme path", () => {
   // The point of the phase: one door. Feeding every bundled palette through the
   // loader's own code path proves the two sources differ in where the JSON came
   // from and in nothing else.
-  it("admits all five bundled palettes when they arrive as user themes", () => {
+  it("admits every bundled palette when they arrive as user themes", () => {
     const payload = {
       themes: BUNDLED.map((t) => ({
         // Renamed, because a bundled id is refused as a user theme by design.

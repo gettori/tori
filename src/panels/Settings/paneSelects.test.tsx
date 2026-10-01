@@ -131,7 +131,16 @@ describe("the settings pickers", () => {
     it("round-trips a theme choice through the store", async () => {
       render(() => <AppearancePane {...paneProps} />);
 
-      await pick("Theme", "Tori Light");
+      const trigger = screen.getByLabelText("Theme");
+      pointerClick(trigger);
+      await screen.findByRole("listbox");
+      fireEvent.click(screen.getByRole("button", { name: "Light" }));
+      // Browsing the other tab commits nothing, and the trigger still names
+      // what is painted.
+      expect(trigger.textContent).toContain("Tori Dark");
+      expect(settings.appearance.theme).toBe("tori-dark");
+      pointerClick(await screen.findByRole("option", { name: "Tori Light" }));
+      await macrotask();
 
       expect(settings.appearance.theme).toBe("tori-light");
       expect(screen.getByLabelText("Theme").textContent).toContain("Tori Light");
@@ -148,13 +157,13 @@ describe("the settings pickers", () => {
       expect(screen.getByLabelText("Theme").textContent).toContain("Tori Dark");
     });
 
-    it("omits the user group entirely when the themes folder is empty", async () => {
+    it("lists themes with no group headings when the themes folder is empty", async () => {
       render(() => <AppearancePane {...paneProps} />);
 
       pointerClick(screen.getByLabelText("Theme"));
       await screen.findByRole("listbox");
 
-      expect(screen.getByText("Bundled")).toBeTruthy();
+      expect(screen.queryByText("Bundled")).toBeNull();
       expect(screen.queryByText("From ~/.config/tori/themes")).toBeNull();
     });
 

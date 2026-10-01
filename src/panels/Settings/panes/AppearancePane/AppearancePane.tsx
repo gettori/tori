@@ -14,9 +14,13 @@ import {
   type PaneProps,
 } from "../../components/paneKit";
 import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../../settingsStore";
-import { listSelectableThemes, DEFAULT_THEME_ID } from "../../../../theme";
+import { listSelectableThemes, DEFAULT_THEME_ID, type ThemeChoice } from "../../../../theme";
 import { primaryFamily } from "../../../../utils/fontLoad";
-import Select, { type SelectGroup, type SelectOption } from "../../../../components/Select/Select";
+import Select, {
+  type SelectGroup,
+  type SelectOption,
+  type SelectTab,
+} from "../../../../components/Select/Select";
 import styles from "../../Settings.module.css";
 
 /** A theme as a row: the id is what settings.json stores, the label is what the
@@ -29,21 +33,38 @@ const asOption = (t: { id: string; label: string }): SelectOption => ({
 /** The theme picker and the type scale: everything about what the app looks
  *  like, which is the one question a user arrives at this tab with. */
 export default function AppearancePane(props: PaneProps) {
-  // One memo, split into the two groups the picker renders. The list folds the
+  // One memo for every tab and group the picker renders. The list folds the
   // bundled set together with whatever is in the themes folder, so rebuilding it
   // per group would do that work twice for one render.
-  const themes = createMemo(() => listSelectableThemes());
-  const bundledThemes = createMemo(() => themes().filter((t) => t.source === "bundled"));
-  const userThemes = createMemo(() => themes().filter((t) => t.source !== "bundled"));
+  // Tori's own themes lead their tab, then everything else by label. Sorted
+  // here rather than in the registry so a user theme lands in the same alphabet.
+  const isTori = (t: ThemeChoice) => t.source === "bundled" && t.id.startsWith("tori-");
+  const themes = createMemo(() =>
+    listSelectableThemes().sort(
+      (a, b) => Number(isTori(b)) - Number(isTori(a)) || a.label.localeCompare(b.label),
+    ),
+  );
 
-  // Grouped by source so a user theme is visibly not one of Tori's, and a file
-  // dropped in the folder is visibly the thing that appeared. The user group is
-  // omitted entirely when the folder is empty, rather than shown empty.
-  const themeGroups = createMemo<SelectGroup[]>(() => [
-    { label: "Bundled", options: bundledThemes().map(asOption) },
-    ...(userThemes().length > 0
-      ? [{ label: "From ~/.config/tori/themes", options: userThemes().map(asOption) }]
-      : []),
+  // Headings only once the themes folder holds something: then a user theme is
+  // visibly not one of Tori's. With bundled themes alone a "Bundled" heading
+  // labels the only group there is, so the list is flat. Decided across both
+  // tabs, because a Select list is flat or grouped, never mixed.
+  const hasUserThemes = () => themes().some((t) => t.source !== "bundled");
+  const bySource = (list: ThemeChoice[]): SelectOption[] | SelectGroup[] => {
+    if (!hasUserThemes()) return list.map(asOption);
+    const user = list.filter((t) => t.source !== "bundled");
+    return [
+      { label: "Bundled", options: list.filter((t) => t.source === "bundled").map(asOption) },
+      ...(user.length > 0
+        ? [{ label: "From ~/.config/tori/themes", options: user.map(asOption) }]
+        : []),
+    ];
+  };
+
+  // Dark first: it is the default, and the side most themes live on.
+  const themeTabs = createMemo<SelectTab[]>(() => [
+    { label: "Dark", options: bySource(themes().filter((t) => t.appearance === "dark")) },
+    { label: "Light", options: bySource(themes().filter((t) => t.appearance === "light")) },
   ]);
 
   // The registry falls back to the default for an id it does not know, so the
@@ -63,7 +84,9 @@ export default function AppearancePane(props: PaneProps) {
         <Row {...props} id="theme" label="Theme">
           <div class={styles.control}>
             <Select
-              options={themeGroups()}
+              options={[]}
+              tabs={themeTabs()}
+              tabsLabel="Theme appearance"
               value={currentTheme()}
               onChange={(value) => setAppearance({ theme: value })}
               aria-labelledby={rowLabelId("theme")}
