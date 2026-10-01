@@ -484,17 +484,25 @@ fn ref_name(session_id: &str, prompt_ts: u64) -> String {
 /// A backstop's ref carries a `.backstop` suffix after the timestamp, so the
 /// timeline can label it without a side table; `parse_ref_segment` reads it
 /// back. A plain prompt-boundary snapshot has no suffix.
+///
+/// The checkpoint the revert was heading for follows as a second suffix, which
+/// is what lets the row say "before revert to 00:04". A backstop written
+/// before that existed has none.
 const KIND_BACKSTOP: &str = "backstop";
 
-fn backstop_ref_name(session_id: &str, ts: u64) -> String {
-    format!("{}{}.{}", ref_prefix(session_id), ts, KIND_BACKSTOP)
+fn backstop_ref_name(session_id: &str, ts: u64, target: u64) -> String {
+    format!("{}{}.{}.{}", ref_prefix(session_id), ts, KIND_BACKSTOP, target)
 }
 
-/// `"1700.backstop"` -> `(1700, "backstop")`; `"1700"` -> `(1700, "")`.
-fn parse_ref_segment(segment: &str) -> Option<(u64, String)> {
-    match segment.split_once('.') {
-        Some((ts, kind)) => Some((ts.parse().ok()?, kind.to_string())),
-        None => Some((segment.parse().ok()?, String::new())),
+/// `"1700.backstop.1650"` -> `(1700, "backstop", Some(1650))`;
+/// `"1700.backstop"` -> `(1700, "backstop", None)`; `"1700"` -> `(1700, "", None)`.
+fn parse_ref_segment(segment: &str) -> Option<(u64, String, Option<u64>)> {
+    let Some((ts, rest)) = segment.split_once('.') else {
+        return Some((segment.parse().ok()?, String::new(), None));
+    };
+    match rest.split_once('.') {
+        Some((kind, target)) => Some((ts.parse().ok()?, kind.to_string(), target.parse().ok())),
+        None => Some((ts.parse().ok()?, rest.to_string(), None)),
     }
 }
 
@@ -535,6 +543,8 @@ struct Checkpoint {
     /// "" for a prompt-boundary snapshot, "backstop" for the pre-revert
     /// safety snapshot `checkpoint_revert_tree` writes.
     kind: String,
+    /// The checkpoint a backstop was taken on the way to.
+    target: Option<u64>,
 }
 
 /// Every existing checkpoint ref for this session, ascending by `ts`.
@@ -553,8 +563,8 @@ fn list_checkpoints(repo: &str, session_id: &str) -> Vec<Checkpoint> {
         .lines()
         .filter_map(|line| {
             let (name, tree) = line.split_once(' ')?;
-            let (ts, kind) = parse_ref_segment(name.strip_prefix(&prefix)?)?;
-            Some(Checkpoint { ts, tree: tree.to_string(), kind })
+            let (ts, kind, target) = parse_ref_segment(name.strip_prefix(&prefix)?)?;
+            Some(Checkpoint { ts, tree: tree.to_string(), kind, target })
         })
         .collect();
     entries.sort_by_key(|c| c.ts);
@@ -662,6 +672,10 @@ pub struct CheckpointFile {
     pub path: String,
     /// "added" | "modified" | "deleted"
     pub status: String,
+    /// Lines the span added to and took from this file. Both zero for a binary
+    /// file, which git counts no lines for.
+    pub added: u32,
+    pub removed: u32,
     /// Another live session also reported writing this file in an overlapping
     /// turn.
     ///
@@ -680,7 +694,7 @@ pub struct CheckpointFile {
     pub unattributed: bool,
 }
 
-fn parse_name_status(text: &str) -> Vec<CheckpointFile> {
+pub(crate) fn parse_name_status(text: &str) -> Vec<CheckpointFile> {
     text.lines()
         .filter_map(|line| {
             let mut parts = line.splitn(2, '\t');
@@ -694,11 +708,40 @@ fn parse_name_status(text: &str) -> Vec<CheckpointFile> {
             Some(CheckpointFile {
                 path: path.to_string(),
                 status: status.to_string(),
+                added: 0,
+                removed: 0,
                 shared_with: Vec::new(),
                 unattributed: false,
             })
         })
         .collect()
+}
+
+/// Fill in each file's line counts from one `git diff --numstat` over the same
+/// two trees the list came from.
+///
+/// A failure leaves the counts at zero rather than failing the list: the counts
+/// decorate the rows, and the rows are what a revert is decided from.
+pub(crate) fn count_lines(repo: &str, before: &str, after: &str, files: &mut [CheckpointFile]) {
+    if files.is_empty() {
+        return;
+    }
+    let Ok(out) = git_capture(repo, &["diff", "--numstat", "--no-renames", before, after]) else { return };
+    let counts: HashMap<&str, (u32, u32)> = out
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, '\t');
+            let added = parts.next()?.parse().unwrap_or(0);
+            let removed = parts.next()?.parse().unwrap_or(0);
+            Some((parts.next()?, (added, removed)))
+        })
+        .collect();
+    for f in files {
+        if let Some((added, removed)) = counts.get(f.path.as_str()) {
+            f.added = *added;
+            f.removed = *removed;
+        }
+    }
 }
 
 /// The "after" side of a turn's diff. Normally the next prompt boundary (or a
@@ -763,13 +806,15 @@ fn turn_files_one(
         return Ok(Vec::new());
     }
     let out = git_capture(&repo_path, &["diff", "--name-status", &before, &after])?;
-    Ok(attributed_files(
+    let mut files = attributed_files(
         &repo_path,
         &session_id,
         prompt_ts,
         parse_name_status(&out),
         &others.unwrap_or_default(),
-    ))
+    );
+    count_lines(&repo_path, &before, &after, &mut files);
+    Ok(files)
 }
 
 /// Narrow a whole-tree diff to what *this* session wrote, and mark what it
@@ -910,6 +955,8 @@ pub struct CheckpointEntry {
     pub prompt_ts: u64,
     /// "" for a prompt-boundary snapshot, "backstop" for a pre-revert one.
     pub kind: String,
+    /// The checkpoint a backstop was taken on the way to, when its ref says.
+    pub target_ts: Option<u64>,
     pub file_count: usize,
     /// Approximate: the summed post-turn size of the blobs the turn wrote.
     /// Deletions contribute nothing, so it reads as "how much this turn put
@@ -967,6 +1014,28 @@ fn batch_blob_sizes(repo: &str, ids: &[String]) -> Result<HashMap<String, u64>, 
     Ok(sizes)
 }
 
+/// Every session with a checkpoint in this repository, so the timeline can
+/// list more than the one that happens to be selected.
+///
+/// The refs live in the common dir, which every worktree of a bare repo
+/// shares, so this names sessions from sibling worktrees too. The caller keeps
+/// the ones whose folder is the one on screen; nothing here can tell.
+#[tauri::command(async)]
+pub fn checkpoint_sessions(repo_path: String) -> Result<Vec<String>, String> {
+    const ROOT: &str = "refs/tori/checkpoint/";
+    let roots = worktree_members(&repo_path).unwrap_or_else(|| vec![repo_path]);
+    let mut ids = std::collections::BTreeSet::new();
+    for root in roots.iter().filter(|r| is_git_worktree(r)) {
+        let refs = git_capture(root, &["for-each-ref", "--format=%(refname)", ROOT])?;
+        ids.extend(
+            refs.lines()
+                .filter_map(|name| name.strip_prefix(ROOT)?.rsplit_once('/'))
+                .map(|(id, _)| id.to_string()),
+        );
+    }
+    Ok(ids.into_iter().collect())
+}
+
 /// The session's checkpoints as an ordered timeline: prompt timestamp, kind,
 /// how many files the turn starting there touched, and roughly how many bytes
 /// it wrote. Empty (never an error) outside a git worktree or for a session
@@ -1016,6 +1085,7 @@ fn list_one(repo_path: String, session_id: String) -> Result<Vec<CheckpointEntry
         .map(|(cp, (file_count, blobs))| CheckpointEntry {
             prompt_ts: cp.ts,
             kind: cp.kind.clone(),
+            target_ts: cp.target,
             file_count,
             bytes: blobs.iter().filter_map(|b| sizes.get(b)).sum(),
         })
@@ -1295,6 +1365,7 @@ fn write_backstop(
     session_id: &str,
     checkpoints: &[Checkpoint],
     tree: &str,
+    target: u64,
 ) -> Result<u64, String> {
     let mut ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1303,7 +1374,7 @@ fn write_backstop(
     while checkpoints.iter().any(|c| c.ts == ts) {
         ts += 1;
     }
-    git_run(repo, &["update-ref", &backstop_ref_name(session_id, ts), tree])?;
+    git_run(repo, &["update-ref", &backstop_ref_name(session_id, ts, target), tree])?;
     Ok(ts)
 }
 
@@ -1411,7 +1482,7 @@ fn revert_tree_one(
     }
     // Backstop before any write: if a later step fails, the pre-revert state
     // is already recoverable from the timeline.
-    let backstop_ts = write_backstop(&repo_path, &session_id, &checkpoints, &current)?;
+    let backstop_ts = write_backstop(&repo_path, &session_id, &checkpoints, &current, prompt_ts)?;
 
     let raw = git_capture(
         &repo_path,

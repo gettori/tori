@@ -492,6 +492,13 @@ export type SessionDeleted = { sessionId: string };
 export const REVEAL_TURN = "tori:reveal-turn";
 export type RevealTurn = { sessionId: string; promptTs: number };
 
+// Payload-carrying event: rewind a chat to one of its checkpoints, asked for
+// from the Changes panel. The chat tab hosting the session answers, because the
+// rewind is its own: it forks the session and cuts the replay as well as
+// reverting the tree, and only the tab can do the first two.
+export const REWIND_CHAT = "tori:rewind-chat";
+export type RewindChat = { sessionId: string; promptTs: number };
+
 // Payload-carrying event: a History row was acted on. The dropdown lives in the
 // terminal pane and reaches none of what these actions need - the selection
 // chain with its plain-repo checkout guard, the rename prompt, the delete

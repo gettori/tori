@@ -100,6 +100,57 @@ export function parseCommitDiffArg(arg: string): { sha: string; file: string } {
   return { sha: arg.slice(0, at), file: arg.slice(at + 1) };
 }
 
+/** Which span of a checkpoint a diff covers: the one turn that started there,
+ *  or everything from there to the working tree as it is now. */
+export type CheckpointScope = "turn" | "since";
+
+/** What a checkpoint diff reads from: a session's checkpoint, or one of the
+ *  worktree's own backstops, which belong to no session. */
+export const WORKTREE_SOURCE = "worktree";
+
+/**
+ * A checkpoint file's diff: one file's change within one checkpoint, its own
+ * tab. The fixed-shape fields go in front, so a session id or a path holding a
+ * colon cannot be read back as a different field.
+ */
+export function checkpointDiffTabId(
+  workspace: string,
+  target: { source: string; ts: number; scope: CheckpointScope; file: string },
+): string {
+  const { source, ts, scope, file } = target;
+  return syntheticId("checkpointdiff", workspace, `${scope}:${ts}:${encodeURIComponent(source)}:${file}`);
+}
+
+/** Read a checkpoint diff's arg back. A malformed arg reads as timestamp 0,
+ *  which names no checkpoint, so the tab draws its own "nothing here". */
+export function parseCheckpointDiffArg(arg: string): {
+  source: string;
+  ts: number;
+  scope: CheckpointScope;
+  file: string;
+} {
+  const [scope = "", ts = "", source = "", ...file] = arg.split(":");
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(source);
+  } catch {
+    decoded = "";
+  }
+  return {
+    source: decoded,
+    ts: Number(ts) || 0,
+    scope: scope === "since" ? "since" : "turn",
+    file: file.join(":"),
+  };
+}
+
+// Checkpoint timestamps are epoch *seconds* (`parse_rfc3339_secs` in
+// sessions.rs), which `Date` would otherwise read as milliseconds and render
+// as 1970.
+export function checkpointClock(epochSecs: number): string {
+  return new Date(epochSecs * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 /**
  * A pull request file's diff: one file of one pull request, its own tab.
  *
@@ -224,6 +275,12 @@ export function syntheticTabName(id: string): string {
   if (t.kind === "commitdiff") {
     const { sha, file } = parseCommitDiffArg(t.arg);
     return `${file.split("/").pop() || file} (${sha.slice(0, 7)})`;
+  }
+  // The checkpoint's time rather than the session: two checkpoints' copies of
+  // one file are told apart by when each was taken.
+  if (t.kind === "checkpointdiff") {
+    const { ts, file } = parseCheckpointDiffArg(t.arg);
+    return `${file.split("/").pop() || file} (${checkpointClock(ts)})`;
   }
   // `<session>:<sourceReference>:<name>` - only the name means anything to a
   // reader, and the two ids before it exist so two runs cannot share a tab.

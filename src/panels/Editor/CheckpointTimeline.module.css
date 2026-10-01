@@ -1,209 +1,377 @@
-/* Checkpoint timeline inside the Changes panel, hash-scoped. Tokens and the
+/* The Checkpoints tab of the Changes panel, hash-scoped. Tokens and the
    --ui-scale multipliers match ReviewPanel's so the two read as one surface.
    prefers-reduced-motion is handled globally (src/styles/base.css). */
-.timeline {
-  border-bottom: 1px solid var(--border-default);
-  padding: calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.timelineHeader {
+.scroll {
+  flex: 1;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6px * var(--ui-scale));
+  margin: calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.groupKind {
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.groupName {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A row is a <button> so it is reachable by keyboard, which costs the browser's
+   own button chrome back. */
+.row {
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-
-.timelineTitle {
-  flex: 1;
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.cumulativeToggle {
-  display: flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-  cursor: pointer;
-}
-
-/* The turn strip scrolls on its own rather than widening the panel. */
-.strip {
-  display: flex;
-  gap: calc(3px * var(--ui-scale));
-  overflow-x: auto;
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-
-.strip:focus-visible {
-  outline: 1px solid var(--accent-fg);
-  outline-offset: -1px;
-}
-
-.turnChip {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  min-width: calc(44px * var(--ui-scale));
-  padding: calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
-  border: 1px solid var(--border-default);
+  width: calc(100% - 8px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 0;
   border-radius: var(--tori-radius-sm);
-  background: var(--canvas-default);
-  color: var(--fg-muted);
-  font-size: var(--tori-text-sm);
-  cursor: pointer;
-}
-
-.turnChip:hover {
-  background: var(--neutral-hover);
-}
-
-.turnChipActive {
-  border-color: var(--accent-fg);
+  background: none;
   color: var(--fg-default);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--tori-duration-fast) ease;
 }
 
-/* A backstop is a pre-revert safety snapshot, not a turn the agent ran. */
-.turnChipBackstop {
-  border-style: dashed;
+.row:hover {
+  background: var(--tree-row-hover);
 }
 
-.turnTime {
+.row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-ring);
+}
+
+/* The row whose detail was last open, so coming back lands on it. */
+.row.active {
+  background: var(--brand-subtle);
+}
+
+.row.active .rowTime {
+  color: var(--brand-default);
+}
+
+.rowTime {
+  flex: none;
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
-.turnCount {
-  color: var(--fg-muted);
-}
-
-.scopeHint {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-  line-height: 1.4;
-}
-
-.timelineActions {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-
-/* "Revert tree to here" is a shared <Button size="sm"> now. */
-
-.timelineEmpty {
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-}
-
-.timelineRow {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  cursor: pointer;
-}
-
-.timelineRow:hover {
-  background: var(--neutral-hover);
-}
-
-.timelineStatus {
-  flex: none;
-  width: calc(14px * var(--ui-scale));
-  text-align: center;
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-md);
-}
-
-.timelineStatus.added {
-  color: var(--diff-added);
-}
-.timelineStatus.modified {
-  color: var(--diff-modified);
-}
-.timelineStatus.deleted {
-  color: var(--diff-deleted);
-}
-
-.timelineName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-default);
-}
-
-.timelineDiff {
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-md);
-  line-height: 1.4;
-  overflow-x: auto;
-  padding: calc(4px * var(--ui-scale)) 0;
-  background: var(--canvas-default);
-}
-
-.diffLine {
-  white-space: pre;
-  padding: 0 calc(8px * var(--ui-scale));
-}
-
-.diffLine.add {
-  color: var(--diff-added);
-}
-.diffLine.del {
-  color: var(--diff-deleted);
-}
-.diffLine.hunk {
-  color: var(--accent-fg);
-}
-.diffLine.meta {
-  color: var(--fg-muted);
-}
-
-/* A file more than one live chat wrote this turn. Marked rather than resolved:
-   both sessions really did write it, so reverting is not only this session's
-   business. */
-/* A pre-discard snapshot. Same row shape as a turn's file, minus the click-to-
-   expand, plus a trailing time and its own Restore button. */
-.backstopRow {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-
-.backstopRow:hover {
-  background: var(--neutral-hover);
-}
-
-/* The label takes the slack so the time and Restore sit hard right. */
-.backstopRow .timelineName {
+.rowTitle {
   flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  font-size: var(--tori-text-md);
+  font-weight: 500;
+  text-overflow: ellipsis;
 }
 
-.backstopTime {
+.backstop .rowTitle {
+  color: var(--fg-muted);
+  font-weight: 400;
+}
+
+.rowCount {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--tori-text-md);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
-.sharedMarker {
-  margin-left: var(--tori-space-2);
-  padding: 0 var(--tori-space-1);
+.rowChevron {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-subtle);
+}
+
+/* Whose backstop it is: a session's, taken before a revert, or the worktree's
+   own, taken before a discard. */
+.ownerTag {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-sm);
-  background: var(--attention-subtle, var(--neutral-hover));
-  color: var(--attention-fg);
+  color: var(--fg-muted);
   font-size: var(--tori-text-xs);
 }
 
-/* Announced, never drawn: what the cumulative checkbox compares against, which
-   used to be a `title` on the surrounding `<label>` that no keyboard user ever
-   saw. Same recipe as `.srOnly` in ReviewPanel.module.css, copied rather than
-   shared so this module stays self-contained. */
-.srOnly {
-  composes: srOnly from "../../styles/patterns.module.css";
+.back {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 0;
+  border-bottom: 1px solid var(--border-default);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.back:hover {
+  color: var(--fg-default);
+}
+
+.back:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-ring);
+}
+
+.back svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+.detailHead {
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.detailTitle {
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.detailMeta {
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
+}
+
+/* The control is an inline strip everywhere else. Here it is the detail's one
+   switch, so it spans the panel and its two halves share the width. Doubled
+   selector to beat the control's own `inline-flex`. */
+.range.range {
+  display: flex;
+  margin: 0 calc(12px * var(--ui-scale)) calc(6px * var(--ui-scale));
+}
+
+.range > button {
+  flex: 1;
+}
+
+.note {
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  line-height: 1.4;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: var(--tori-radius-sm);
+  cursor: pointer;
+}
+
+.fileRow:hover {
+  background: var(--tree-row-hover);
+}
+
+.fileStatus {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  color: var(--diff-modified);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
+.fileStatus.added {
+  color: var(--diff-added);
+}
+
+.fileStatus.deleted {
+  color: var(--diff-deleted);
+}
+
+/* The name over its folder. A <button> for the keyboard; the click itself is
+   the row's, so the counts and the space between are part of the target. */
+.fileMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fileMain:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+
+.fileName {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileDir {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The row's actions, there on hover or once one of them has focus. */
+.rowEnd {
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
+  align-items: center;
+  gap: calc(1px * var(--ui-scale));
+  width: 0;
+  opacity: 0;
+}
+
+.fileRow:hover .rowEnd,
+.rowEnd:focus-within {
+  width: auto;
+  opacity: 1;
+}
+
+.sharedDot {
+  flex: none;
+  width: calc(7px * var(--ui-scale));
+  height: calc(7px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--scale-purple);
+}
+
+.unattributed {
+  display: inline-flex;
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.added,
+.removed {
+  flex: none;
+  min-width: calc(26px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.added {
+  color: var(--diff-added);
+}
+
+.removed {
+  color: var(--diff-deleted);
+}
+
+.fileDiff {
+  overflow-x: auto;
+  margin-bottom: calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) 0;
+  background: var(--canvas-default);
+  font-family: var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace);
+  font-size: var(--tori-text-sm);
+  line-height: 1.4;
+}
+
+.more {
+  margin: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(3px * var(--ui-scale))
+    calc(28px * var(--ui-scale));
+  border: 0;
+  border-radius: var(--tori-radius-sm);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--tori-text-md);
+  cursor: pointer;
+}
+
+.more:hover {
+  color: var(--fg-default);
+}
+
+.more:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-ring);
+}
+
+.legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+}
+
+.footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+}
+
+.action {
+  width: 100%;
+}
+
+.footNote {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+  text-align: center;
 }
