@@ -684,6 +684,51 @@ impl Default for Git {
     }
 }
 
+/// What one session state does when a session crosses into it: the OS
+/// notification, and the sound Tori plays itself.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Alert {
+    #[serde(default)]
+    pub notify: bool,
+    #[serde(default)]
+    pub sound: bool,
+}
+
+fn default_needs_you_alert() -> Alert {
+    Alert { notify: true, sound: false }
+}
+
+// Needs you notified before it had a switch, so a block that leaves `notify`
+// out must still read as on, where `Alert`'s own default would switch it off.
+fn needs_you_alert<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Alert, D::Error> {
+    #[derive(Deserialize)]
+    struct Raw {
+        #[serde(default = "yes")]
+        notify: bool,
+        #[serde(default)]
+        sound: bool,
+    }
+    let raw = Raw::deserialize(d)?;
+    Ok(Alert { notify: raw.notify, sound: raw.sound })
+}
+
+/// Per session state, whether it notifies and whether it makes a sound.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Notifications {
+    #[serde(default = "default_needs_you_alert", deserialize_with = "needs_you_alert")]
+    pub needs_you: Alert,
+    #[serde(default)]
+    pub turn_finished: Alert,
+}
+
+impl Default for Notifications {
+    fn default() -> Self {
+        Self { needs_you: default_needs_you_alert(), turn_finished: Alert::default() }
+    }
+}
+
 /// Language server preferences. `disabled` names server ids that never start;
 /// a workspace's own `lsp.disabled` adds to it and cannot take anything away.
 /// `never_offer` names servers the editor never offers to install.
@@ -826,6 +871,8 @@ pub struct Settings {
     pub forge: Forge,
     #[serde(default)]
     pub git: Git,
+    #[serde(default)]
+    pub notifications: Notifications,
     #[serde(default)]
     pub chat_defaults: ChatDefaults,
     #[serde(default)]
@@ -1278,6 +1325,32 @@ mod tests {
     /// existence: the user typed a ceiling, saved, and found the field empty on
     /// the next read. Same silent-total failure `organizeImportsOnSave` guards,
     /// arrived at from the frontend's side.
+    #[test]
+    fn notifications_default_to_the_needs_you_banner_alone_and_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        let loaded = load_from(&p);
+        assert_eq!(loaded.notifications.needs_you, Alert { notify: true, sound: false });
+        assert_eq!(loaded.notifications.turn_finished, Alert { notify: false, sound: false });
+
+        std::fs::write(&p, r#"{"notifications":{"needsYou":{"sound":true},"turnFinished":{"sound":true}}}"#).unwrap();
+        let partial = load_from(&p);
+        assert_eq!(partial.notifications.needs_you, Alert { notify: true, sound: true });
+        assert_eq!(partial.notifications.turn_finished, Alert { notify: false, sound: true });
+
+        let mut s = partial;
+        s.notifications =
+            Notifications { needs_you: Alert { notify: false, sound: true }, turn_finished: Alert { notify: true, sound: false } };
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p), s);
+
+        let raw = std::fs::read_to_string(&p).unwrap();
+        for key in ["needsYou", "turnFinished", "notify", "sound"] {
+            assert!(raw.contains(key), "{key} missing from {raw}");
+        }
+        let _ = std::fs::remove_file(&p);
+    }
+
     #[test]
     fn budgets_round_trip_and_default_to_unlimited() {
         let p = tmp_file();

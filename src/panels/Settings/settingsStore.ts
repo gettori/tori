@@ -49,6 +49,11 @@ export type ForgeSettings = { enabled: boolean; picks: Record<string, string> };
  *  src-tauri/src/settings.rs. `fetchEveryMinutes: 0` is off, and off stops the
  *  focus fetch as well as the timer. */
 export type GitSettings = { fetchEveryMinutes: number; showTopicWorktrees: boolean };
+/** What one session state does when a session crosses into it: the OS
+ *  notification, and the sound Tori plays itself. Mirrors `Alert` in
+ *  src-tauri/src/settings.rs, which is where both are acted on. */
+export type Alert = { notify: boolean; sound: boolean };
+export type NotificationSettings = { needsYou: Alert; turnFinished: Alert };
 /** What a chat reopens with, remembered per project because the right harness,
  *  model and effort are a property of the work rather than of the user. `model`
  *  is the `--model` **value**, never the resolved id the session reports back:
@@ -292,6 +297,7 @@ export type Settings = {
   panePins: PanePins;
   forge: ForgeSettings;
   git: GitSettings;
+  notifications: NotificationSettings;
   chatDefaults: ChatDefaults;
   budgets: Budgets;
   editorDefaults: EditorDefaults;
@@ -341,6 +347,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark" },
   forge: { enabled: true, picks: {} },
   git: { fetchEveryMinutes: 10, showTopicWorktrees: false },
+  notifications: { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: false } },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,

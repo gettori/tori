@@ -24,6 +24,24 @@ pub struct Live {
     pub chat: bool,
     pub visible: bool,
     pub spawner: Option<String>,
+    pub done_at: u64,
+}
+
+/// The sessions that crossed into a state on one tick.
+#[derive(Debug, Default, PartialEq)]
+pub struct Edges {
+    pub rose: Vec<String>,
+    pub finished: Vec<String>,
+}
+
+/// What one tick's edges come to under the user's switches: the sessions to
+/// send a notification for, and whether each state's sound plays.
+#[derive(Debug, Default, PartialEq)]
+pub struct Alerts {
+    pub needs_you: Vec<String>,
+    pub finished: Vec<String>,
+    pub needs_you_sound: bool,
+    pub finished_sound: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +53,8 @@ pub struct TrayEntry {
 pub struct Presence {
     attended: HashMap<String, bool>,
     last: HashMap<String, Dot>,
+    announced: HashMap<String, u64>,
+    worked: HashSet<String>,
     selected: Option<String>,
     focused: bool,
     tray: Option<(String, Vec<TrayEntry>)>,
@@ -43,27 +63,47 @@ pub struct Presence {
 
 impl Default for Presence {
     fn default() -> Self {
-        Self { attended: HashMap::new(), last: HashMap::new(), selected: None, focused: true, tray: None, badge: None }
+        Self { attended: HashMap::new(), last: HashMap::new(), announced: HashMap::new(), worked: HashSet::new(), selected: None, focused: true, tray: None, badge: None }
     }
 }
 
 impl Presence {
     /// Fold one tick of dots in. Returns the sessions that just crossed into
     /// needs-you: the rising edge, so one still blocked from the last tick does
-    /// not fire again, and one that moved in between does.
-    pub fn step(&mut self, live: &[Live]) -> Vec<String> {
-        let mut rose = Vec::new();
+    /// not fire again, and one that moved in between does. And the chats whose
+    /// turn just finished: idle after working, on a completion not yet
+    /// announced. Going idle and the completion can arrive a tick apart.
+    pub fn step(&mut self, live: &[Live]) -> Edges {
+        let mut edges = Edges::default();
         for l in live {
-            if l.dot == Dot::NeedsYou && self.last.get(&l.id) != Some(&Dot::NeedsYou) {
+            let was = self.last.insert(l.id.clone(), l.dot);
+            if l.dot == Dot::NeedsYou && was != Some(Dot::NeedsYou) {
                 self.attended.insert(l.id.clone(), false);
-                rose.push(l.id.clone());
+                edges.rose.push(l.id.clone());
             }
-            self.last.insert(l.id.clone(), l.dot);
+            match l.dot {
+                Dot::Working => {
+                    self.worked.insert(l.id.clone());
+                }
+                // A turn that ended blocked is needs-you's to announce, and
+                // the block clearing later is not the turn finishing.
+                Dot::NeedsYou => {
+                    self.worked.remove(&l.id);
+                }
+                _ => {}
+            }
+            let fresh = l.done_at != 0 && self.announced.get(&l.id) != Some(&l.done_at);
+            if l.dot == Dot::Solid && fresh && self.worked.remove(&l.id) {
+                self.announced.insert(l.id.clone(), l.done_at);
+                edges.finished.push(l.id.clone());
+            }
         }
         let ids: HashSet<&str> = live.iter().map(|l| l.id.as_str()).collect();
         self.last.retain(|id, _| ids.contains(id.as_str()));
         self.attended.retain(|id, _| ids.contains(id.as_str()));
-        rose
+        self.announced.retain(|id, _| ids.contains(id.as_str()));
+        self.worked.retain(|id| ids.contains(id.as_str()));
+        edges
     }
 
     /// What the user is looking at. A selected row in a focused window is attended.
@@ -114,6 +154,19 @@ pub fn should_suppress(id: &str, on_screen: bool, selected: Option<&str>, focuse
 /// the chat that spawned it is open, or while the autopilot runs.
 pub fn relayed(spawner: Option<&str>, live_chats: &HashSet<String>, autopilot_on: bool) -> bool {
     spawner.is_some_and(|s| autopilot_on || live_chats.contains(s))
+}
+
+/// Apply the switches to one tick's edges. `quiet` holds the sessions that are
+/// being watched or relayed, which neither notify nor count toward a sound.
+pub fn decide(edges: Edges, quiet: &HashSet<String>, on: &crate::settings::Notifications) -> Alerts {
+    let loud = |ids: Vec<String>| ids.into_iter().filter(|id| !quiet.contains(id)).collect::<Vec<_>>();
+    let (rose, finished) = (loud(edges.rose), loud(edges.finished));
+    Alerts {
+        needs_you_sound: on.needs_you.sound && !rose.is_empty(),
+        finished_sound: on.turn_finished.sound && !finished.is_empty(),
+        needs_you: if on.needs_you.notify { rose } else { Vec::new() },
+        finished: if on.turn_finished.notify { finished } else { Vec::new() },
+    }
 }
 
 fn tooltip(live: &[Live]) -> String {
@@ -177,11 +230,20 @@ pub fn handle_tray_menu_event(app: &AppHandle, id: &str) {
     let _ = app.emit("tray://focus-session", id.to_string());
 }
 
-/// Shows a needs-you notification whose click brings the window forward and
-/// opens the session. Elsewhere than macOS it is the plugin's, with no click.
-pub fn notify_needs_you(app: AppHandle, live: &Live) {
+pub fn needs_you_body(live: &Live) -> String {
+    if live.project.is_empty() { "Needs you".to_string() } else { format!("{} needs you", live.project) }
+}
+
+pub fn finished_body(live: &Live) -> String {
+    if live.project.is_empty() { "Finished".to_string() } else { format!("{} finished", live.project) }
+}
+
+/// Shows a notification about a session. With `click`, a click brings the
+/// window forward and opens the session, at the cost of a thread parked until
+/// the notification is clicked or cleared. Elsewhere than macOS it is the
+/// plugin's, with no click.
+pub fn notify_session(app: AppHandle, live: &Live, body: String, click: bool) {
     let title = live.name.clone();
-    let body = if live.project.is_empty() { "Needs you".to_string() } else { format!("{} needs you", live.project) };
     let target = crate::autopilot::NavTarget { folder: Some(live.folder.clone()), session: Some(live.id.clone()) };
     #[cfg(target_os = "macos")]
     std::thread::spawn(move || {
@@ -189,9 +251,10 @@ pub fn notify_needs_you(app: AppHandle, live: &Live) {
         // Terminal's, as the plugin does; the first call wins for both.
         let bundle = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
         let _ = mac_notification_sys::set_application(&bundle);
-        // Blocks this thread until the notification is clicked or dismissed.
-        let answer = mac_notification_sys::Notification::new().title(&title).message(&body).wait_for_click(true).send();
-        if !matches!(answer, Ok(mac_notification_sys::NotificationResponse::Click)) {
+        // With a click wait this blocks until the notification is clicked or
+        // dismissed, and without one only until it is delivered.
+        let answer = mac_notification_sys::Notification::new().title(&title).message(&body).wait_for_click(click).send();
+        if !click || !matches!(answer, Ok(mac_notification_sys::NotificationResponse::Click)) {
             return;
         }
         if let Some(window) = app.get_webview_window("main") {
@@ -204,7 +267,7 @@ pub fn notify_needs_you(app: AppHandle, live: &Live) {
     #[cfg(not(target_os = "macos"))]
     {
         use tauri_plugin_notification::NotificationExt;
-        let _ = target;
+        let _ = (target, click);
         let _ = app.notification().builder().title(title).body(body).show();
     }
 }
@@ -228,14 +291,15 @@ mod tests {
             chat: false,
             visible: false,
             spawner: None,
+            done_at: 0,
         }
     }
 
     #[test]
     fn fires_once_on_the_rising_edge_not_while_it_stays_blocked() {
         let mut p = Presence::default();
-        assert_eq!(p.step(&[live("s1", Dot::NeedsYou)]), ["s1"]);
-        assert!(p.step(&[live("s1", Dot::NeedsYou)]).is_empty());
+        assert_eq!(p.step(&[live("s1", Dot::NeedsYou)]).rose, ["s1"]);
+        assert!(p.step(&[live("s1", Dot::NeedsYou)]).rose.is_empty());
     }
 
     #[test]
@@ -244,11 +308,101 @@ mod tests {
         p.step(&[live("s1", Dot::NeedsYou)]);
         p.attend(Some("s1".into()), true);
         assert!(!p.unattended("s1", Dot::NeedsYou));
-        assert!(p.step(&[live("s1", Dot::NeedsYou)]).is_empty());
+        assert!(p.step(&[live("s1", Dot::NeedsYou)]).rose.is_empty());
         assert!(!p.unattended("s1", Dot::NeedsYou));
         p.step(&[live("s1", Dot::Working)]);
-        assert_eq!(p.step(&[live("s1", Dot::NeedsYou)]), ["s1"]);
+        assert_eq!(p.step(&[live("s1", Dot::NeedsYou)]).rose, ["s1"]);
         assert!(p.unattended("s1", Dot::NeedsYou));
+    }
+
+    fn chat(id: &str, dot: Dot, done_at: u64) -> Live {
+        Live { chat: true, done_at, ..live(id, dot) }
+    }
+
+    #[test]
+    fn a_chat_finishes_once_when_a_completed_turn_goes_idle() {
+        let mut p = Presence::default();
+        assert!(p.step(&[chat("c", Dot::Working, 0)]).finished.is_empty());
+        assert_eq!(p.step(&[chat("c", Dot::Solid, 10)]).finished, ["c"]);
+        assert!(p.step(&[chat("c", Dot::Solid, 10)]).finished.is_empty());
+        p.step(&[chat("c", Dot::Working, 10)]);
+        assert_eq!(p.step(&[chat("c", Dot::Solid, 20)]).finished, ["c"]);
+    }
+
+    #[test]
+    fn a_completion_that_arrives_a_tick_after_idle_still_finishes_once() {
+        let mut p = Presence::default();
+        p.step(&[chat("c", Dot::Working, 0)]);
+        assert!(p.step(&[chat("c", Dot::Solid, 0)]).finished.is_empty());
+        assert_eq!(p.step(&[chat("c", Dot::Solid, 10)]).finished, ["c"]);
+        assert!(p.step(&[chat("c", Dot::Solid, 10)]).finished.is_empty());
+    }
+
+    #[test]
+    fn going_idle_without_a_new_completion_is_not_a_finish() {
+        let mut p = Presence::default();
+        // A session with no completion to report: a terminal, or a chat whose
+        // history is replaying.
+        p.step(&[live("pty", Dot::Working), chat("replay", Dot::Working, 0)]);
+        assert!(p.step(&[live("pty", Dot::Solid), chat("replay", Dot::Solid, 0)]).finished.is_empty());
+        // A turn that ended with a message queued behind it, or was cancelled:
+        // idle shows for a moment and the last completion is the old one.
+        p.step(&[chat("c", Dot::Working, 0)]);
+        p.step(&[chat("c", Dot::Solid, 10)]);
+        p.step(&[chat("c", Dot::Working, 10)]);
+        assert!(p.step(&[chat("c", Dot::Solid, 10)]).finished.is_empty());
+    }
+
+    #[test]
+    fn only_idle_after_working_is_a_finish() {
+        let mut p = Presence::default();
+        p.step(&[chat("blocked", Dot::Working, 0), chat("detached", Dot::Hollow, 0)]);
+        let edges = p.step(&[chat("blocked", Dot::NeedsYou, 10), chat("detached", Dot::Solid, 10)]);
+        assert_eq!(edges.rose, ["blocked"]);
+        assert!(edges.finished.is_empty());
+        // The red check clears later: that is not the turn finishing.
+        assert!(p.step(&[chat("blocked", Dot::Solid, 10)]).finished.is_empty());
+    }
+
+    fn switches(needs_you: (bool, bool), finished: (bool, bool)) -> crate::settings::Notifications {
+        use crate::settings::Alert;
+        crate::settings::Notifications {
+            needs_you: Alert { notify: needs_you.0, sound: needs_you.1 },
+            turn_finished: Alert { notify: finished.0, sound: finished.1 },
+        }
+    }
+
+    fn edges(rose: &[&str], finished: &[&str]) -> Edges {
+        let own = |ids: &[&str]| ids.iter().map(|id| id.to_string()).collect();
+        Edges { rose: own(rose), finished: own(finished) }
+    }
+
+    #[test]
+    fn each_switch_decides_its_own_alert_and_nothing_else() {
+        let none = HashSet::new();
+        let both = || edges(&["a"], &["b"]);
+        let banner = decide(both(), &none, &switches((true, false), (false, false)));
+        assert_eq!(banner, Alerts { needs_you: vec!["a".into()], ..Alerts::default() });
+        let sound = decide(both(), &none, &switches((false, true), (false, false)));
+        assert_eq!(sound, Alerts { needs_you_sound: true, ..Alerts::default() });
+        let done = decide(both(), &none, &switches((false, false), (true, false)));
+        assert_eq!(done, Alerts { finished: vec!["b".into()], ..Alerts::default() });
+        let chime = decide(both(), &none, &switches((false, false), (false, true)));
+        assert_eq!(chime, Alerts { finished_sound: true, ..Alerts::default() });
+        assert_eq!(decide(both(), &none, &switches((false, false), (false, false))), Alerts::default());
+    }
+
+    #[test]
+    fn a_watched_or_relayed_session_neither_notifies_nor_sounds() {
+        let quiet: HashSet<String> = ["a".to_string(), "b".to_string()].into();
+        assert_eq!(decide(edges(&["a"], &["b"]), &quiet, &switches((true, true), (true, true))), Alerts::default());
+    }
+
+    #[test]
+    fn several_chats_finishing_at_once_are_one_sound() {
+        let quiet: HashSet<String> = ["x".to_string()].into();
+        let got = decide(edges(&[], &["x", "y", "z"]), &quiet, &switches((true, true), (true, true)));
+        assert_eq!(got, Alerts { finished: vec!["y".into(), "z".into()], finished_sound: true, ..Alerts::default() });
     }
 
     #[test]
@@ -256,15 +410,15 @@ mod tests {
         let mut p = Presence::default();
         p.step(&[live("s1", Dot::NeedsYou)]);
         p.attend(Some("s1".into()), true);
-        assert!(p.step(&[live("s1", Dot::Working)]).is_empty());
-        assert_eq!(p.step(&[live("s1", Dot::NeedsYou)]), ["s1"]);
+        assert!(p.step(&[live("s1", Dot::Working)]).rose.is_empty());
+        assert_eq!(p.step(&[live("s1", Dot::NeedsYou)]).rose, ["s1"]);
     }
 
     #[test]
     fn tracks_sessions_independently() {
         let mut p = Presence::default();
-        assert_eq!(p.step(&[live("a", Dot::NeedsYou), live("b", Dot::Working)]), ["a"]);
-        assert_eq!(p.step(&[live("a", Dot::NeedsYou), live("b", Dot::NeedsYou)]), ["b"]);
+        assert_eq!(p.step(&[live("a", Dot::NeedsYou), live("b", Dot::Working)]).rose, ["a"]);
+        assert_eq!(p.step(&[live("a", Dot::NeedsYou), live("b", Dot::NeedsYou)]).rose, ["b"]);
     }
 
     #[test]

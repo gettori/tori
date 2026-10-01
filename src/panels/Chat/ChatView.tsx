@@ -394,6 +394,7 @@ export default function ChatView(props: {
   // tree state nothing recorded would fail at the revert with nothing on screen
   // having warned it might.
   const [turnStamps, setTurnStamps] = createSignal<Record<string, number>>({});
+  const [doneAt, setDoneAt] = createSignal(0);
   // What this session and its project have spent, read back from disk on open so
   // a reopened tab resumes its budget rather than restarting it.
   const [spent, setSpent] = createSignal<UsageTotals | null>(null);
@@ -793,6 +794,9 @@ export default function ChatView(props: {
       // ceiling, and a crash mid-session must not reset the tally to zero.
       if (ev.type === "turnCompleted") {
         void recordSpend(ev.usage ? turnTokens(ev.usage) : 0, ev.costUsd);
+        // A queued message is about to start the next turn, so the work the
+        // user is waiting on is not over yet.
+        if (ev.outcome === "completed" && !pendingFlush(state)) setDoneAt(Date.now());
       }
       // Tori's own record of whether a turn is in flight. A killed app leaves
       // this set, which is the only way to tell a turn that was interrupted
@@ -1157,6 +1161,7 @@ export default function ChatView(props: {
       background: outstandingBackground(state),
       visible: props.active,
       spawner: props.spawner,
+      doneAt: doneAt(),
     });
   });
 

@@ -283,6 +283,7 @@ export function sessionFacts() {
       visible: c.visible,
       spawner: c.spawner,
       name: c.sessionName,
+      doneAt: c.doneAt ?? 0,
     }))
     .sort((a, b) => a.session.localeCompare(b.session));
   const forge = forgeUnits().map(({ folderPath, kind, branch, isCurrent, attention }) => ({

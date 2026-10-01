@@ -33,7 +33,9 @@ import {
   type Budgets,
   type ChatDefaults,
   type Checkpoints,
+  type Alert,
   type GitSettings,
+  type NotificationSettings,
   type PanePins,
   type Agent,
   type AutopilotSettings,
@@ -88,6 +90,11 @@ export const setTypography = (t: Partial<Typography>) =>
   saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
 export const setGit = (g: Partial<GitSettings>) =>
   saveSettings({ ...settings, git: { ...settings.git, ...g } });
+export const setAlert = (state: keyof NotificationSettings, a: Partial<Alert>) =>
+  saveSettings({
+    ...settings,
+    notifications: { ...settings.notifications, [state]: { ...settings.notifications[state], ...a } },
+  });
 export const setCheckpoints = (c: Partial<Checkpoints>) =>
   saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
 export const setChatDefaults = (c: Partial<ChatDefaults>) =>

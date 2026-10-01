@@ -518,6 +518,31 @@ export const SETTINGS: SettingEntry[] = [
   },
 
   {
+    id: "notify-needs-you",
+    section: "chat",
+    label: "Notify when a session needs you",
+    hint: "A macOS notification when a session is waiting on you: a question, an approval, a spend limit or a failing check. Not for the one you are looking at.",
+  },
+  {
+    id: "sound-needs-you",
+    section: "chat",
+    label: "Play a sound when a session needs you",
+    hint: "Played by Tori, whatever macOS does with the notification. Silent for the session you are looking at.",
+  },
+  {
+    id: "notify-turn-finished",
+    section: "chat",
+    label: "Notify when a chat finishes its turn",
+    hint: "A macOS notification when a chat's turn runs to its end. Not for a turn you stopped or one that failed, and not for the chat on screen.",
+  },
+  {
+    id: "sound-turn-finished",
+    section: "chat",
+    label: "Play a sound when a chat finishes its turn",
+    hint: "Played by Tori, whatever macOS does with the notification. Silent for the chat on screen.",
+  },
+
+  {
     id: "default-surface",
     section: "chat",
     label: "Open sessions in",
