@@ -466,6 +466,8 @@ pub struct EditorDefaults {
     pub hot_exit: bool,
     #[serde(default = "default_true")]
     pub compact_folders: bool,
+    #[serde(default)]
+    pub open_rendered: bool,
     /// Comma-separated tags the TODO panel looks for. A string rather than a
     /// list because the workspace overlay validates an override by comparing
     /// `typeof` against the default and reports its origin by inequality;
@@ -514,6 +516,7 @@ impl Default for EditorDefaults {
             word_completion: true,
             hot_exit: true,
             compact_folders: true,
+            open_rendered: false,
             todo_patterns: default_todo_patterns(),
         }
     }
