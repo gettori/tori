@@ -13,10 +13,10 @@
    repeated to take the specificity outright.
 
    `wide` is the right panel behavior for this sheet but not its width: it is a
-   clamp that grows to 52vw, where the sheet has always been a fixed 680px. */
+   clamp that grows to 52vw, where the sheet is a fixed 780px. */
 .sheetWidth.sheetWidth {
-  width: min(calc(680px * var(--ui-scale)), calc(100vw - calc(64px * var(--ui-scale))));
-  max-height: min(80vh, calc(720px * var(--ui-scale)));
+  width: min(calc(780px * var(--ui-scale)), calc(100vw - calc(64px * var(--ui-scale))));
+  max-height: min(92vh, calc(940px * var(--ui-scale)));
 }
 
 @layer components {
