@@ -30,6 +30,7 @@ const PREFS: EditorDefaults = {
   wordCompletion: true,
   hotExit: true,
   compactFolders: true,
+  openRendered: false,
   todoPatterns: "TODO,FIXME,HACK,XXX",
 };
 
