@@ -23,7 +23,7 @@ import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/cha
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
 import { recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
-import { askToTrust, noteRefused } from "../../utils/projectTrust";
+import { askToTrust, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
 import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import {
   approaching,
@@ -949,10 +949,11 @@ export default function ChatView(props: {
           }
         })
         .catch((e) => {
-          edit((s) =>
-            applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: true }),
-          );
-          failFirstSend(String(e));
+          const refused = String(e) === UNTRUSTED;
+          const message = refused ? "This agent stays off until you trust this project." : String(e);
+          if (refused) askToTrust(props.cwd, message);
+          edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message, fatal: true }));
+          failFirstSend(message);
         });
     }
 

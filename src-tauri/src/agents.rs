@@ -353,7 +353,8 @@ pub struct ChatConfig {
     /// `{dir}` template, applied once per extra directory.
     pub add_dir_args: Vec<String>,
     /// Added when the folder is not a trusted project, to keep the agent from
-    /// loading settings the folder ships. See `ChatConfig::trust_args`.
+    /// loading settings the folder ships. An agent that declares none does not
+    /// start there. See `ChatConfig::trust_args`.
     pub untrusted_args: Vec<String>,
     /// Effort levels Tori measured that this agent never advertises. See
     /// [`ChatEffortExtra`]. Empty for every agent nobody has measured, which is
@@ -387,11 +388,11 @@ impl ChatConfig {
     ///
     /// Both callers (Phase 6's mode selector, Phase 9's effort control) go
     /// through here rather than reading the fields directly.
-    pub fn trust_args(&self, trusted: bool) -> &[String] {
-        if trusted {
-            &[]
-        } else {
-            &self.untrusted_args
+    pub fn trust_args(&self, trusted: bool) -> Result<&[String], String> {
+        match (trusted, self.untrusted_args.is_empty()) {
+            (true, _) => Ok(&[]),
+            (false, false) => Ok(&self.untrusted_args),
+            (false, true) => Err(crate::trust::UNTRUSTED.to_string()),
         }
     }
 
@@ -1796,8 +1797,16 @@ mod tests {
     fn an_untrusted_folder_starts_claude_without_the_folders_own_settings() {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         let chat = claude.chat.as_ref().expect("claude has a chat table");
-        assert_eq!(chat.trust_args(false), ["--setting-sources", "user"]);
-        assert!(chat.trust_args(true).is_empty(), "a trusted project keeps its own settings");
+        assert_eq!(chat.trust_args(false).unwrap(), ["--setting-sources", "user"]);
+        assert!(chat.trust_args(true).unwrap().is_empty(), "a trusted project keeps its own settings");
+    }
+
+    #[test]
+    fn an_agent_that_cannot_leave_a_folders_config_out_does_not_start_in_an_untrusted_one() {
+        let opencode = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
+        let chat = opencode.chat.as_ref().expect("opencode has a chat table");
+        assert_eq!(chat.trust_args(false), Err(crate::trust::UNTRUSTED.to_string()));
+        assert!(chat.trust_args(true).unwrap().is_empty());
     }
 
     #[test]
