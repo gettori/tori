@@ -19,8 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-const RELEASES_API: &str = "https://api.github.com/repos/gettori/releases/releases/latest";
-const RELEASES_PAGE: &str = "https://github.com/gettori/releases/releases/latest";
+const RELEASES_API: &str = "https://api.github.com/repos/gettori/tori/releases/latest";
+const RELEASES_PAGE: &str = "https://github.com/gettori/tori/releases/latest";
 
 /// Gap after a check that actually reached GitHub.
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
