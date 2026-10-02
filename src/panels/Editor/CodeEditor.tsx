@@ -76,6 +76,7 @@ import { codeLensExtension, setCodeLenses } from "./codeLensWidget";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
+import { askToTrust, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
 import { organizeForSave, type OrganizeDeps } from "./organizeOnSave";
 import { whitespaceEdits, type WhitespaceEdit } from "./whitespaceOnSave";
 import { editsByUri } from "./workspaceEdit";
@@ -782,12 +783,16 @@ export default function CodeEditor(props: {
 
   /** Run the project's formatter over `text`, or hand it straight back when the
    *  project has none. Never rejects for a formatter's own refusal. */
-  function runProjectFormatter(path: string, text: string): Promise<FormatResult> {
-    return invoke<FormatResult>("format_document", {
-      path,
-      text,
-      projectPath: props.projectRoot ?? "",
-    });
+  async function runProjectFormatter(path: string, text: string, asked = false): Promise<FormatResult> {
+    const projectPath = props.projectRoot ?? "";
+    const result = await invoke<FormatResult>("format_document", { path, text, projectPath });
+    if (result.error !== UNTRUSTED) return result;
+    // A save says so once a session, or every save would. A format the user
+    // asked for by hand always answers, since doing nothing reads as broken.
+    if (noteRefused(projectPath) || asked) {
+      askToTrust(projectPath, "Formatters stay off until you trust this project.");
+    }
+    return { ...result, error: null };
   }
 
   /** That path's live document, on screen or stashed, or null when no buffer
@@ -2490,7 +2495,8 @@ export default function CodeEditor(props: {
   async function formatNow() {
     const path = shown;
     if (!path || !view) return;
-    const outcome = await formatForSave(formatDeps, path, {
+    const byHand: FormatDeps = { ...formatDeps, format: (p, text) => runProjectFormatter(p, text, true) };
+    const outcome = await formatForSave(byHand, path, {
       text: view.state.sliceDoc(),
       id: view.state.doc,
     });

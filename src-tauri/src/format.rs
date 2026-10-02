@@ -255,7 +255,18 @@ fn workspace_choices(root: &str) -> BTreeMap<String, String> {
 
 // Only a `not_applicable` decline moves on down the chain. Any other refusal
 // stops it, since a syntax error is the same error whoever formats next.
-fn format_with(formatters: &[Formatter], path: &str, text: String, root: &Path, choices: &Choices) -> FormatResult {
+//
+// The gate is asked only once a formatter is about to run, so a project with
+// nothing to format never raises the trust question. No formatter is exempt:
+// one found on PATH still loads the config the project ships.
+fn format_with(
+    formatters: &[Formatter],
+    path: &str,
+    text: String,
+    root: &Path,
+    choices: &Choices,
+    gate: impl Fn(&Path) -> Result<(), String>,
+) -> FormatResult {
     let file = Path::new(path);
     if root.as_os_str().is_empty() || !file.starts_with(root) {
         return FormatResult::none(text);
@@ -294,6 +305,9 @@ fn format_with(formatters: &[Formatter], path: &str, text: String, root: &Path, 
             );
             return FormatResult::refused(text, &formatter.id, error);
         };
+        if let Err(refusal) = gate(root) {
+            return FormatResult::refused(text, &formatter.id, refusal);
+        }
         match run(&program, &formatter.args_for(path), &dir, &text) {
             Ok(formatted) => return FormatResult { text: formatted, formatter: Some(formatter.id.clone()), error: None },
             Err(failure) if failure.is_decline_by(formatter) => continue,
@@ -318,7 +332,7 @@ pub fn format_document(path: String, text: String, project_path: String) -> Form
         user: by_extension(format.by_extension),
         disabled: format.disabled,
     };
-    format_with(registry::registry(), &path, text, Path::new(&project_path), &choices)
+    format_with(registry::registry(), &path, text, Path::new(&project_path), &choices, crate::trust::gate_project)
 }
 
 /// A formatter's card in Settings, read the way `lsp::LspHealth` reads.
@@ -438,7 +452,7 @@ mod tests {
     }
 
     fn format(formatters: &[Formatter], file: &Path, text: &str, root: &Path, choices: &Choices) -> FormatResult {
-        format_with(formatters, &file.to_string_lossy(), text.into(), root, choices)
+        format_with(formatters, &file.to_string_lossy(), text.into(), root, choices, |_| Ok(()))
     }
 
     fn choose(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -814,6 +828,41 @@ mod tests {
         assert_eq!(out.formatter.as_deref(), Some("prettier"));
         assert_eq!(out.error, None);
         assert_eq!(out.text, "constx=1\n");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn an_untrusted_project_runs_no_formatter_not_even_one_from_path() {
+        // The project-local binary and the PATH one are the same risk: the
+        // second still evaluates the `prettier.config.js` the repo ships.
+        let root = tmp_tree();
+        touch(&root.join("prettier.config.js"), "module.exports = {}");
+        touch(&root.join("a.ts"), "");
+        let ran = root.join("ran");
+        stub(&root.join("node_modules/.bin"), "prettier", &format!("touch '{}'\ntr -d ' '", ran.display()));
+        let markers = "[markers]\nprefixes = [\"prettier.config.\"]";
+        let local = formatter("prettier", "", markers);
+        let on_path = load_formatter_str(
+            &format!("schema_version = 1\nid = \"onpath\"\nlabel = \"onpath\"\n{markers}\n[launch]\nkind = \"path\"\nprogram = \"tr\"\nargs = [\"-d\", \" \"]\n"),
+            "test",
+        )
+        .unwrap();
+        let file = root.join("a.ts").to_string_lossy().into_owned();
+        let untrusted = |_: &Path| Err(crate::trust::UNTRUSTED.to_string());
+
+        for one in [local, on_path] {
+            let formatters = [one];
+            let out = format_with(&formatters, &file, "const  x = 1\n".into(), &root, &Choices::default(), untrusted);
+            assert_eq!(out.error.as_deref(), Some(crate::trust::UNTRUSTED), "{}", formatters[0].id);
+            assert_eq!(out.text, "const  x = 1\n");
+            assert!(!ran.exists(), "{} ran in an untrusted project", formatters[0].id);
+
+            let out = format_with(&formatters, &file, "const  x = 1\n".into(), &root, &Choices::default(), |_| Ok(()));
+            assert_eq!(out.error, None, "{}", formatters[0].id);
+            assert_eq!(out.text, "constx=1\n");
+            assert_eq!(ran.exists(), formatters[0].launch == LaunchKind::ProjectBin);
+            std::fs::remove_file(&ran).ok();
+        }
         std::fs::remove_dir_all(&root).ok();
     }
 
