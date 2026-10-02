@@ -35,11 +35,11 @@ android {
             }
         }
     }
-    namespace = "com.gettori.tori.mobile"
+    namespace = "app.gettori.tori.mobile"
     defaultConfig {
         // Tori's remote front is ws:// on a LAN or tailnet address, with no TLS.
         manifestPlaceholders["usesCleartextTraffic"] = "true"
-        applicationId = "com.gettori.tori.mobile"
+        applicationId = "app.gettori.tori.mobile"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

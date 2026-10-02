@@ -8,6 +8,16 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- The app's identifier is now `app.gettori.tori`, after the domain it lives at
+  (`app.gettori.tori.mobile` on the phone). macOS and Android treat that as a
+  new app, once: what the window remembered (open tabs, zoom, view choices,
+  unsent PR review drafts) starts fresh, macOS asks for its permissions again,
+  and the phone app installs beside the old one and has to be paired again.
+  Everything under `~/.config/tori/` is untouched. Remove the old phone app by
+  hand.
+
 ## 26.1002.0-alpha
 
 A Topic can hold a repository without branching it. A member starts as a
