@@ -36,6 +36,11 @@
   border: 1px solid color-mix(in srgb, var(--status-needs-you) 30%, transparent);
 }
 
+.pending .card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .question {
   display: flex;
   flex-direction: column;
@@ -49,8 +54,10 @@
 }
 
 .choice {
+  max-width: 100%;
   min-height: 36px;
-  padding: 0 14px;
+  padding: 6px 14px;
+  text-align: left;
   color: var(--fg-default);
   background: color-mix(in srgb, var(--fg-default) 6%, transparent);
   border: 1px solid transparent;
@@ -75,6 +82,7 @@
 
 .cardActions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   align-items: center;
@@ -97,8 +105,9 @@
 .primarySmall,
 .secondary {
   flex: none;
+  max-width: 100%;
   min-height: 44px;
-  padding: 0 18px;
+  padding: 8px 18px;
   border-radius: 14px;
   font: inherit;
   font-weight: 600;
