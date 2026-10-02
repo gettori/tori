@@ -12,6 +12,10 @@ with LSP, and a review panel that stages and commits what the agent wrote. It
 does not bundle an agent and it is not tied to one. Claude ships supported out
 of the box, and any other CLI agent is a TOML file away.
 
+**Status: alpha.** It is used every day by the person who builds it, it ships
+often, and things still move. macOS only, on Apple Silicon and Intel, with a
+companion Android app that shows a paired Mac's chats.
+
 ## Why
 
 Running one agent in one terminal is fine. Running four, across three
@@ -155,6 +159,8 @@ Report it privately, as [SECURITY.md](SECURITY.md) describes.
 ## License
 
 [Apache-2.0](LICENSE). Third-party material is listed in [NOTICE](NOTICE).
+The licence covers the code. The name Tori and its logo are not part of it: a
+fork is welcome, under a name and a mark of its own.
 
 **What that means if the project stops.** One person maintains Tori and does
 not take outside code, so it is fair to ask what you are relying on. The answer
