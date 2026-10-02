@@ -80,6 +80,9 @@ fn first_error<'a>(mut lines: impl Iterator<Item = &'a str>) -> Option<String> {
 pub fn build(root: &Path, bin: &str, id: &str, mut on_line: impl FnMut(&str)) -> Result<Built, String> {
     let mut child = tool("cargo", root)
         .args(["build", "--bin", bin, "--message-format=json-render-diagnostics"])
+        // A shell that forces colour would wrap `error[E0308]` in escape codes,
+        // and the first error is found by its plain text.
+        .env("CARGO_TERM_COLOR", "never")
         // Its own group, so a cancel takes rustc and build scripts with it.
         .process_group(0)
         .stdout(Stdio::piped())
