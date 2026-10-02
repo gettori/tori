@@ -3,6 +3,7 @@ name = "tori"
 version = "26.1002.0-alpha"
 description = "Dev workflow manager: session tree + Claude terminal + editor"
 authors = ["skarif"]
+license = "Apache-2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -1,0 +1,53 @@
+Tori
+Copyright 2026 Sk Arif and the Tori contributors
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes third-party material. Each item keeps its own licence.
+
+Kept in this repository
+-----------------------
+
+JetBrains Mono Nerd Font Mono (public/fonts, fonts-src)
+  Nerd Fonts 3.4.0 patching JetBrains Mono 2.304.
+  Copyright 2020 The JetBrains Mono Project Authors.
+  SIL Open Font License 1.1, in public/fonts/OFL.txt. See docs/FONTS.md.
+
+Inter (public/inter.woff2)
+  Copyright The Inter Project Authors (https://github.com/rsms/inter).
+  SIL Open Font License 1.1.
+
+Seti file icons (public/seti.woff, scripts/vs-seti-icon-theme.json,
+src/seti/mapping.ts)
+  From the theme-seti extension of Visual Studio Code.
+  Copyright Microsoft Corporation, MIT License.
+  The icon font comes from seti-ui, copyright Jesse Weed, MIT License.
+
+Agent marks (src/components/Icon/agentMarks.tsx)
+  Path data from Simple Icons, CC0 1.0. The Codex mark is from lobe-icons,
+  copyright LobeHub, MIT License. The marks are trademarks of their owners
+  and are used only to name the agent a session runs.
+
+PDF text layer styles (src/panels/Editor/PdfView.module.css)
+  Copied from pdf_viewer.css of pdf.js 6.3.289.
+  Copyright Mozilla Foundation, Apache License 2.0.
+
+Fetched at build time and shipped inside the app
+------------------------------------------------
+
+Pinned in src-tauri/resources/lsp/package.json and
+src-tauri/resources/dap/manifest.json. Each ships with its own licence file.
+
+  typescript                     Microsoft Corporation   Apache-2.0
+  typescript-language-server     its contributors        Apache-2.0
+  vscode-json-languageserver     Microsoft Corporation   MIT
+  vscode-langservers-extracted   Microsoft Corporation   MIT
+  yaml-language-server           Red Hat                 MIT
+  vscode-js-debug                Microsoft Corporation   MIT
+
+Linked dependencies
+-------------------
+
+The app also links the Rust crates in src-tauri/Cargo.lock and
+mobile/src-tauri/Cargo.lock and the npm packages in pnpm-lock.yaml, each
+under the licence its own manifest declares.
