@@ -14,8 +14,8 @@ source: "plan \"Multi-account: pick, lock and default an account per session\" (
 `namedProfiles(agentId)` returns the sweep's accounts for that agent, or an **empty list** when there is only one. Callers spread it and fall back to one unnamed row:
 
 - The palette emits one provider row per account, or `[null]` for the plain row (`agentPaletteData.ts`).
-- The model pill appends the account ("Opus / Fonn") only when the list is non-empty (`ModelPicker.tsx`).
-- The launch menu is one Claude row per account, in a single parenthetical ("Claude (Fonn, terminal)"), or the bare name.
+- The model pill appends the account ("Opus / Globex") only when the list is non-empty (`ModelPicker.tsx`).
+- The launch menu is one Claude row per account, in a single parenthetical ("Claude (Globex, terminal)"), or the bare name.
 - The Agents card shows the plan and the Default radio only where there is a choice.
 - The project's remembered account is written only for an agent that has two, so a one-account install stores nothing and a Settings default set later still applies.
 - `sessions.rs::profile_label` applies the same rule to session rows, so History says nothing on a single-account machine.
