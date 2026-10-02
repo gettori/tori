@@ -1,4 +1,4 @@
-# Point the Homebrew tap at a *published* release on gettori/releases.
+# Point the Homebrew tap at a *published* release on this repo.
 # Dispatched by hand after publishing the draft, never automatically: a draft's
 # asset URLs are not publicly downloadable, so a cask written against one would
 # 404 for every tester.
@@ -7,8 +7,9 @@
 # prefix is what lets `brew install --cask gettori/tap/tori` tap it on its own.
 #
 # Rewrites Casks/tori.rb whole from a template rather than sed-patching fields,
-# so the same run also creates the file the first time. Needs RELEASES_TOKEN
-# (fine-grained PAT, Contents read/write on gettori/releases and the tap repo).
+# so the same run also creates the file the first time. Needs TAP_TOKEN, a
+# fine-grained PAT with Contents read/write on the tap repo: github.token reads
+# the release here and cannot push anywhere else.
 name: Update cask
 
 on:
@@ -18,11 +19,12 @@ on:
         description: "Published release version, without the v prefix (e.g. 0.1.0-alpha.1)"
         required: true
 
-permissions: {}
+permissions:
+  contents: read
 
 env:
-  GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-  RELEASES_REPO: gettori/releases
+  GH_TOKEN: ${{ github.token }}
+  RELEASES_REPO: gettori/tori
   TAP_REPO: gettori/homebrew-tap
 
 jobs:
@@ -61,8 +63,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Write and push the cask
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" tap
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${TAP_REPO}.git" tap
           mkdir -p tap/Casks
           cat > tap/Casks/tori.rb <<EOF
           cask "tori" do

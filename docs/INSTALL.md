@@ -21,7 +21,7 @@ only for a DMG you downloaded yourself. The rest of this page is that route.
 ## 1. Install
 
 1. Download `Tori_<version>_universal.dmg` from the
-   [Releases page](https://github.com/gettori/releases/releases).
+   [Releases page](https://github.com/gettori/tori/releases).
 2. Open the DMG and drag **Tori** into **Applications**.
 3. Eject the DMG.
 
@@ -61,7 +61,7 @@ files; it is what the **Open Anyway** button does under the hood.
 ## The phone app
 
 `Tori_<version>.apk` on the
-[Releases page](https://github.com/gettori/releases/releases) is Tori on
+[Releases page](https://github.com/gettori/tori/releases) is Tori on
 Android. It pairs with a Mac running Tori rather than standing alone, so turn on
 Settings > Remote there first, pick an address the phone can reach (Tailscale on
 both, across networks), then scan the QR the Remote pane shows.

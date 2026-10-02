@@ -10,6 +10,9 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 ## Unreleased
 
+- Releases are published at github.com/gettori/tori/releases, beside the
+  source. Builds up to 26.1002 look for updates in the old place and will hear
+  of one more, which says where to go.
 - Join lines is on Ctrl-J. Its old chord, Shift-Cmd-J, has opened the autopilot
   since 26.927, so in the editor it did nothing.
 - A link the autopilot writes to a place in Tori opens it again. The sanitizer

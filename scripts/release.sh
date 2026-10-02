@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Cut a release locally: derive the version, build the universal DMG and the
-# Android APK, verify both, tag, publish them on the public releases repo, and
-# bump the Homebrew cask. Local counterpart of release.yml for when CI macOS
-# minutes are not worth paying for.
+# Android APK, verify both, tag, publish them as a release on this repo, and
+# bump the Homebrew cask. Local counterpart of release.yml, and the real path
+# until that workflow signs: it has the Android keystore, which CI does not.
 #
 # The desktop and the phone app share one version, so five files carry it and
 # all five are checked before anything is built.
@@ -13,10 +13,10 @@
 # free number for that date. The stage suffix (-alpha, -beta, none) is carried
 # over from the current version in src-tauri/tauri.conf.json, so editing the
 # suffix there is how a release changes stage. Write the changelog section
-# before running. Needs `gh` logged in with write access to both public repos.
+# before running. Needs `gh` logged in with write access to this repo and the tap.
 set -euo pipefail
 
-RELEASES_REPO=gettori/releases
+RELEASES_REPO=gettori/tori
 TAP_REPO=gettori/homebrew-tap
 
 cd "$(git rev-parse --show-toplevel)"
@@ -85,6 +85,13 @@ fi
 # to unsigned when this file is missing rather than failing the Gradle build.
 if [ ! -f mobile/src-tauri/gen/android/keystore.properties ]; then
   echo "error: no mobile/src-tauri/gen/android/keystore.properties; the APK would be unsigned" >&2
+  exit 1
+fi
+
+# A private repo's release assets cannot be downloaded, so the cask and every
+# install link would 404.
+if [ "$(gh repo view "$RELEASES_REPO" --json visibility -q .visibility)" != PUBLIC ]; then
+  echo "error: $RELEASES_REPO is not public; its release assets would not be downloadable" >&2
   exit 1
 fi
 
