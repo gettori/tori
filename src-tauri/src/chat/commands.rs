@@ -175,6 +175,9 @@ pub struct SpawnResult {
     /// would otherwise keep believing it had no account. `None` only when
     /// ownership was refused.
     pub profile_id: Option<String>,
+    /// The folder is not a trusted project, so the agent started without the
+    /// settings the folder ships.
+    pub untrusted: bool,
 }
 
 /// Open a chat session: create it, resume it, or fork it.
@@ -316,6 +319,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             // A rewire never re-resolves, so the claim taken at the original
             // spawn is the account of record.
             profile_id: host.registry.profile_of(&session_id),
+            untrusted: false,
         });
     }
 
@@ -346,7 +350,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
-            return Ok(SpawnResult { ownership: outcome, spawned: None, profile_id: None });
+            return Ok(SpawnResult { ownership: outcome, spawned: None, profile_id: None, untrusted: false });
         }
         // Carried through rather than rebuilt: a granted-but-**contested** claim
         // means a `claude` we do not control is resuming this same id, and its
@@ -410,6 +414,8 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         background,
         home.as_ref(),
     )?);
+    let untrusted = !chat.untrusted_args.is_empty() && !crate::trust::trusted_folder(std::path::Path::new(&cwd));
+    args.extend(chat.trust_args(!untrusted).iter().cloned());
     let mut env: HashMap<String, String> = profile_env.into_iter().collect();
     // Members' CLAUDE.md files, which claude reads from an added directory only
     // when asked to.
@@ -495,7 +501,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         }
     }
 
-    Ok(SpawnResult { ownership, spawned: Some(spawned), profile_id: Some(profile_id) })
+    Ok(SpawnResult { ownership, spawned: Some(spawned), profile_id: Some(profile_id), untrusted })
 }
 
 #[tauri::command]
@@ -1657,6 +1663,7 @@ mod tests {
             ownership: ClaimOutcome::Granted { contested: true },
             spawned: Some(Spawned::Started),
             profile_id: Some("fonn".into()),
+            untrusted: false,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "granted");
@@ -1673,6 +1680,7 @@ mod tests {
             ownership: ClaimOutcome::Granted { contested: false },
             spawned: Some(Spawned::Started),
             profile_id: Some(resolved),
+            untrusted: false,
         };
         assert_eq!(serde_json::to_value(&result).unwrap()["profileId"], "fonn");
     }
@@ -1685,6 +1693,7 @@ mod tests {
             ownership: ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-1".into() },
             spawned: None,
             profile_id: None,
+            untrusted: false,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "heldByOther");
