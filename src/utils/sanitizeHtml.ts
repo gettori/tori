@@ -8,6 +8,11 @@ import DOMPurify from "dompurify";
 const FORBID_TAGS = ["style", "form", "button", "select", "option", "textarea"];
 const FORBID_ATTR = ["style"];
 
+// DOMPurify's own list plus `tori:`, the scheme the autopilot links a place in
+// the app with. A scheme it does not know loses its href.
+const ALLOWED_URI_REGEXP =
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|tori):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+
 type Purifier = ReturnType<typeof DOMPurify>;
 let purifier: Purifier | undefined;
 
@@ -24,5 +29,5 @@ function instance(): Purifier {
 }
 
 export function sanitizeHtml(html: string): string {
-  return instance().sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS, FORBID_ATTR });
+  return instance().sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS, FORBID_ATTR, ALLOWED_URI_REGEXP });
 }
