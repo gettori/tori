@@ -50,13 +50,16 @@ pub async fn git_status(project_path: String) -> Result<Vec<GitFileStatus>, Stri
 }
 
 pub(crate) fn git_status_body(project_path: &str) -> Result<Vec<GitFileStatus>, String> {
+    // Said rather than folded into the empty list below: the panel offers to
+    // trust the project on this answer.
+    if !crate::trust::allows_git(Path::new(project_path)) {
+        return Err(crate::trust::UNTRUSTED.into());
+    }
     // `--no-optional-locks`: status opportunistically takes index.lock to save
     // its refresh, and a concurrent stage or commit *fails* on that lock rather
     // than waiting. Reads run outside the repo write lock, so they must not
     // take locks a writer can trip over; re-refreshing later costs less.
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
+    let output = crate::exec::git_in(project_path)
         .args([
             "--no-optional-locks",
             "status",
@@ -209,9 +212,7 @@ pub fn git_file_slice(
     }
 
     let content = if mode.unwrap_or_default() == DiffMode::Staged {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(&project_path)
+        let output = crate::exec::git_in(&project_path)
             .args(["show", &format!(":{}", file)])
             .output()
             .map_err(|e| e.to_string())?;
@@ -236,9 +237,7 @@ pub fn git_file_slice(
 
 /// Whether this repo already has the commit `sha` in its object store.
 fn has_commit(project_path: &str, sha: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(project_path)
+    crate::exec::git_in(project_path)
         .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
         .output()
         .map(|o| o.status.success())
@@ -337,9 +336,7 @@ pub fn git_blob_slice(
     if start == 0 || end < start {
         return Ok(vec![]);
     }
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    let output = crate::exec::git_in(&project_path)
         .args(["show", &format!("{rev}:{file}")])
         .output()
         .map_err(|e| e.to_string())?;
@@ -400,9 +397,7 @@ pub fn git_blob_sizes(
 /// ref that was never fetched is the ordinary case for a pull request nobody
 /// has checked out, and it means no base size rather than a wrong one.
 fn merge_base(project_path: &str, head: &str, base: &str) -> Option<String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
+    let output = crate::exec::git_in(project_path)
         .args(["merge-base", head, base])
         .output()
         .ok()?;
@@ -419,9 +414,7 @@ fn merge_base(project_path: &str, head: &str, base: &str) -> Option<String> {
 /// that commit, the commit is not local yet) means the same thing to the caller,
 /// which is that there is no size to show for that side.
 fn blob_size(project_path: &str, rev: &str, path: &str) -> Option<u64> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
+    let output = crate::exec::git_in(project_path)
         .args(["cat-file", "-s", &format!("{rev}:{path}")])
         .output()
         .ok()?;
@@ -746,6 +739,11 @@ pub async fn git_discard_files(project_path: String, files: Vec<String>) -> Resu
 }
 
 pub(crate) fn git_discard_files_body(project_path: String, files: Vec<String>) -> Result<DiscardOutcome, String> {
+    // A refused git lists nothing, and a file git does not list reads as
+    // untracked below, which is the kind this deletes.
+    if !crate::trust::allows_git(Path::new(&project_path)) {
+        return Err(crate::trust::UNTRUSTED.into());
+    }
     if files.is_empty() {
         return Err("No files selected".into());
     }
@@ -809,9 +807,7 @@ pub(crate) fn git_discard_files_body(project_path: String, files: Vec<String>) -
 /// makes a file unmerged without the row under the pointer changing, and the
 /// path that then arrives here is a conflicted one from a list that predates it.
 fn is_conflicted(project_path: &str, file: &str) -> Result<bool, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
+    let output = crate::exec::git_in(project_path)
         .args(["ls-files", "-u", "--", file])
         .output()
         .map_err(|e| e.to_string())?;
@@ -822,9 +818,7 @@ const CONFLICTED: &str = "That file has merge conflicts. Resolve them first, the
 
 /// True when git does not track `file` at all (no index entry).
 fn is_untracked(project_path: &str, file: &str) -> Result<bool, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
+    let output = crate::exec::git_in(project_path)
         .args(["ls-files", "--", file])
         .output()
         .map_err(|e| e.to_string())?;
@@ -843,12 +837,12 @@ fn git_apply(project_path: &str, patch: &str, cached: bool, reverse: bool) -> Re
     use std::io::Write;
     use std::process::Stdio;
 
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::exec::git_in(project_path);
     // No --unidiff-zero: the panel always diffs with real context, and that
     // flag exists to disable the context checks a zero-context patch cannot
     // satisfy. Keeping them on means a patch that no longer fits is rejected
     // rather than applied somewhere plausible-looking.
-    cmd.arg("-C").arg(project_path).arg("apply");
+    cmd.arg("apply");
     if cached {
         cmd.arg("--cached");
     }
@@ -1529,9 +1523,7 @@ pub fn git_commit_file_diff(
     if let Some(old) = old_path.as_deref() {
         args.push(old);
     }
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    let out = crate::exec::git_in(&project_path)
         .args(&args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -1609,9 +1601,7 @@ pub async fn git_diff_file(project_path: String, file: String, mode: Option<Diff
 pub(crate) fn git_diff_file_body(project_path: String, file: String, mode: Option<DiffMode>) -> Result<Vec<DiffHunk>, String> {
     let mode = mode.unwrap_or_default();
     // -U0: hunk headers carry exact ranges, no surrounding context to walk.
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    let output = crate::exec::git_in(&project_path)
         .args(["diff"])
         .args(mode.args())
         .args(["--no-color", "-U0", "--", &file])
@@ -1649,9 +1639,7 @@ pub fn git_diff_text(
     let unified: Vec<String> = context.map(|n| format!("-U{}", n)).into_iter().collect();
     let whitespace: &[&str] = if ignore_whitespace.unwrap_or(false) { &["-w"] } else { &[] };
 
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    let output = crate::exec::git_in(&project_path)
         .args(["diff"])
         .args(mode.args())
         .args(["--no-color"])
@@ -1671,9 +1659,7 @@ pub fn git_diff_text(
     }
 
     // Untracked (or no HEAD): diff against an empty tree so new files still show.
-    let untracked = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    let untracked = crate::exec::git_in(&project_path)
         .args(["diff", "--no-color", "--no-index"])
         .args(&unified)
         .args(whitespace)
@@ -1741,9 +1727,7 @@ pub async fn git_checkout(repo_path: String, branch: String) -> Result<(), Strin
 }
 
 pub(crate) fn git_checkout_body(repo_path: String, branch: String) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&repo_path)
+    let out = crate::exec::git_in(&repo_path)
         .args(["checkout", &branch])
         .output()
         .map_err(|e| e.to_string())?;
@@ -1756,9 +1740,7 @@ pub(crate) fn git_checkout_body(repo_path: String, branch: String) -> Result<(),
 // --- plain-dir git lifecycle (init / remote / origin) ---
 
 fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -1795,9 +1777,7 @@ Thumbs.db
 /// scope), so an initial commit won't fail with "Author identity unknown".
 fn has_git_identity(repo: &str) -> bool {
     let set = |key: &str| {
-        Command::new("git")
-            .arg("-C")
-            .arg(repo)
+        crate::exec::git_in(repo)
             .args(["config", "--get", key])
             .output()
             .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
@@ -1846,7 +1826,17 @@ pub async fn git_init(app: AppHandle, project_path: String, branch: Option<Strin
     crate::exec::git_write("git_init", project_path.clone(), move || git_init_body(app, project_path, branch)).await
 }
 
+// A folder with no repository in it has no git config of anyone else's, and the
+// repository about to be made there is the user's own.
+fn trust_a_folder_with_no_repo(project_path: &str) {
+    let dir = Path::new(project_path);
+    if !dir.join(".git").exists() && !dir.join(".bare").exists() {
+        let _ = crate::trust::trust(project_path);
+    }
+}
+
 pub(crate) fn git_init_body(app: AppHandle, project_path: String, branch: Option<String>) -> Result<bool, String> {
+    trust_a_folder_with_no_repo(&project_path);
     let committed = do_init(Path::new(&project_path), branch.as_deref())?;
     crate::exec::forget_common_dir(&project_path);
     let _ = app.emit("config://changed", ());
@@ -1855,9 +1845,7 @@ pub(crate) fn git_init_body(app: AppHandle, project_path: String, branch: Option
 
 /// Capture the trimmed stdout of `git -C <repo> <args>`, or an error with stderr.
 fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -1911,6 +1899,7 @@ pub async fn bare_init(app: AppHandle, project_path: String, branch: Option<Stri
 }
 
 pub(crate) fn bare_init_body(app: AppHandle, project_path: String, branch: Option<String>) -> Result<(), String> {
+    trust_a_folder_with_no_repo(&project_path);
     do_bare_init(Path::new(&project_path), branch.as_deref())?;
     crate::exec::forget_common_dir(&project_path);
     let _ = app.emit("config://changed", ());
@@ -1928,9 +1917,7 @@ pub(crate) fn git_remote_add_body(app: AppHandle, project_path: String, url: Str
     if url.is_empty() {
         return Err("Remote URL is empty".into());
     }
-    let exists = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    let exists = crate::exec::git_in(&project_path)
         .args(["remote", "get-url", "origin"])
         .output()
         .map(|o| o.status.success())
@@ -1946,9 +1933,7 @@ pub(crate) fn git_remote_add_body(app: AppHandle, project_path: String, url: Str
 
 /// One remote's URL, or None when the repo has no such remote.
 pub(crate) fn remote_url(repo: &str, remote: &str) -> Result<Option<String>, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(["remote", "get-url", remote])
         .output()
         .map_err(|e| e.to_string())?;
@@ -1985,8 +1970,7 @@ fn next_op_id() -> String {
 /// coordinates ride through the env into the helper.
 fn git_command(repo: &str, op_id: &str, sock: &Path, token: &str) -> Command {
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("git"));
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo);
+    let mut cmd = crate::exec::git_in(repo);
     cmd.env("GIT_ASKPASS", &exe);
     cmd.env("SSH_ASKPASS", &exe);
     cmd.env("SSH_ASKPASS_REQUIRE", "force");
@@ -2165,8 +2149,7 @@ pub(crate) fn fetch_branch_quiet(repo: &str, branch: &str) -> Result<(), String>
 /// rather than merely not set: a parent shell may have exported them, and a
 /// fetch on a ten-minute timer must not pop a dialog over what you are doing.
 fn quiet_git_command(repo: &str) -> Command {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo);
+    let mut cmd = crate::exec::git_in(repo);
     cmd.env_remove("GIT_ASKPASS");
     cmd.env_remove("SSH_ASKPASS");
     cmd.env_remove("SSH_ASKPASS_REQUIRE");
@@ -2447,9 +2430,7 @@ pub fn git_default_base_branch(project_path: String) -> Result<Option<String>, S
     }
     for candidate in ["main", "master"] {
         let refname = format!("refs/remotes/origin/{candidate}");
-        if Command::new("git")
-            .arg("-C")
-            .arg(&project_path)
+        if crate::exec::git_in(&project_path)
             .args(["rev-parse", "--verify", "--quiet", &refname])
             .output()
             .map(|o| o.status.success())
@@ -2665,9 +2646,7 @@ fn sync_entry(unit: &SyncUnit) -> Option<(String, BranchSync)> {
 /// reason `git_status` states: a read must not take the lock a concurrent
 /// commit would fail on.
 fn is_dirty(repo: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["--no-optional-locks", "status", "--porcelain", "-z"])
         .output()
         .map(|out| out.status.success() && !out.stdout.is_empty())
@@ -2937,9 +2916,7 @@ fn conflict_key(repo: &str, base_ref: &str, tip: &str) -> Option<ConflictKey> {
 /// the working tree. The 2.38 `--write-tree` exit code is the answer: 0 clean,
 /// 1 conflicted with the paths after the oid, anything else unknown, not clean.
 fn merge_tree_conflicts(repo: &str, base_ref: &str, tip: &str) -> Option<Vec<String>> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(["merge-tree", "--write-tree", "--name-only", "--no-messages", base_ref, tip])
         .output()
         .ok()?;
@@ -2999,9 +2976,7 @@ pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
     if crate::credential::answers_fetch(&repo) {
         return Ok(true);
     }
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&repo)
+    let out = crate::exec::git_in(&repo)
         .args(["config", "--get", "credential.helper"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -3020,7 +2995,7 @@ pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
 /// Idempotent, and silent on every failure: a repo that cannot be excluded still
 /// works, it just shows the directory as untracked.
 pub(crate) fn exclude_from_repo(root: &str, dir: &str) {
-    let Ok(out) = Command::new("git").arg("-C").arg(root).args(["rev-parse", "--git-dir"]).output() else {
+    let Ok(out) = crate::exec::git_in(root).args(["rev-parse", "--git-dir"]).output() else {
         return;
     };
     if !out.status.success() {
@@ -3205,8 +3180,8 @@ pub async fn git_rebase(project_path: String, onto: String) -> Result<IntegrateO
 /// resolved commit's own), and `sequence` replaces a rebase's todo when given.
 /// Without this a GUI git with no TTY dies on `vi`, or waits on one forever.
 fn integrate_edited(repo: &str, args: &[&str], sequence: Option<&str>) -> Result<IntegrateOutcome, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo).args(args).env("GIT_EDITOR", "true");
+    let mut cmd = crate::exec::git_in(repo);
+    cmd.args(args).env("GIT_EDITOR", "true");
     cmd.env("GIT_SEQUENCE_EDITOR", sequence.unwrap_or("true"));
     let out = cmd.output().map_err(|e| e.to_string())?;
     if out.status.success() {

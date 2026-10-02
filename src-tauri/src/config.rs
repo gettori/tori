@@ -175,6 +175,13 @@ struct ProbeEntry {
 pub struct ProjectIndex(std::sync::Arc<Mutex<HashMap<PathBuf, ProbeEntry>>>);
 
 impl ProjectIndex {
+    /// Drop every cached probe, forcing a fresh probe of each project.
+    pub(crate) fn forget_all(&self) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.clear();
+        }
+    }
+
     /// Drop the cached probe for `path`, forcing a fresh probe on next discovery.
     /// Attach/detach/delete/new-branch call this after writing the store, so a
     /// re-probe can never re-cache the pre-write branch set.
@@ -229,9 +236,7 @@ fn ensure_config() -> Result<String, String> {
 // --- git probing ---
 
 fn run_git(path: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let out = crate::exec::git_in(path)
         .args(args)
         .output()
         .ok()?;
@@ -824,9 +829,7 @@ pub async fn list_branches(path: String) -> Result<Vec<Branch>, String> {
 }
 
 pub(crate) fn list_branches_body(path: String) -> Result<Vec<Branch>, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&path)
+    let output = crate::exec::git_in(&path)
         .args(["branch", "--format=%(refname:short)\t%(HEAD)"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -854,9 +857,7 @@ pub(crate) fn list_branches_body(path: String) -> Result<Vec<Branch>, String> {
 /// the Attach Existing Branch picker's live remote-branch fold after a fetch.
 #[tauri::command(async)]
 pub fn list_remote_branches(repo: String) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(&repo)
+    let output = crate::exec::git_in(&repo)
         .args(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -999,9 +1000,7 @@ pub fn new_branch(
     if let Some(start) = start.as_deref() {
         args.push(start);
     }
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&path)
+    let out = crate::exec::git_in(&path)
         .args(&args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -1070,9 +1069,7 @@ pub fn delete_branch(
     let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = PathBuf::from(&repo);
     refuse_if_current(&path, &branch)?;
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&path)
+    let out = crate::exec::git_in(&path)
         .args(["branch", "-D", &branch])
         .output()
         .map_err(|e| e.to_string())?;
@@ -1098,9 +1095,7 @@ fn ensure_local_tracking(path: &Path, name: &str) -> Result<(), String> {
         return Ok(()); // already local: attach it, never clobber
     }
     let remote_ref = format!("refs/remotes/origin/{name}");
-    let exists = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let exists = crate::exec::git_in(path)
         .args(["rev-parse", "--verify", "--quiet", &remote_ref])
         .output()
         .map(|o| o.status.success())
@@ -1108,9 +1103,7 @@ fn ensure_local_tracking(path: &Path, name: &str) -> Result<(), String> {
     if !exists {
         return Err(format!("No remote branch \"origin/{name}\". Fetch first."));
     }
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let out = crate::exec::git_in(path)
         .args(["branch", "--track", name, &format!("origin/{name}")])
         .output()
         .map_err(|e| e.to_string())?;

@@ -24,7 +24,6 @@
 
 use serde::Serialize;
 use std::path::Path;
-use std::process::Command;
 
 /// One conflicted file's three versions, as the index holds them.
 #[derive(Serialize, Debug, PartialEq, Default)]
@@ -81,9 +80,7 @@ pub struct ConflictSides {
 }
 
 fn capture(repo: &str, args: &[&str]) -> Result<Vec<u8>, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -283,6 +280,7 @@ pub(crate) fn git_conflict_resolve_body(
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};

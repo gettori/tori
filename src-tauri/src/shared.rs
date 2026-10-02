@@ -101,9 +101,7 @@ fn link_state(worktree: &Path, shared: &Path, name: &str) -> LinkState {
 }
 
 fn git_says(worktree: &Path, args: &[&str], name: &str) -> bool {
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(worktree)
+    crate::exec::git_in(worktree)
         .args(args)
         .arg("--")
         .arg(name)
@@ -125,9 +123,7 @@ fn is_ignored(worktree: &Path, name: &str) -> bool {
 /// the container's own git dir, not the per-worktree one, which is exactly why
 /// one line here hides a name in all of them at once.
 fn exclude_file(worktree: &Path) -> Option<PathBuf> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(worktree)
+    let out = crate::exec::git_in(worktree)
         .args(["rev-parse", "--git-common-dir"])
         .output()
         .ok()
