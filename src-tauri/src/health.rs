@@ -453,6 +453,10 @@ mod tests {
     #[test]
     fn the_default_accounts_row_reuses_the_answer_the_sweep_already_has() {
         let adapter = agents::find("claude").expect("claude ships bundled");
+        if !crate::accounts::default_present(adapter) {
+            eprintln!("skipping: this machine has no default claude home, so there is no default account row");
+            return;
+        }
         let answer = crate::auth::Whoami {
             state: SignIn::SignedIn,
             email: Some("a@b.c".into()),
