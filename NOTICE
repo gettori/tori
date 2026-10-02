@@ -14,18 +14,18 @@ JetBrains Mono Nerd Font Mono (public/fonts, fonts-src)
   SIL Open Font License 1.1, in public/fonts/OFL.txt. See docs/FONTS.md.
 
 Inter (public/inter.woff2)
-  Copyright The Inter Project Authors (https://github.com/rsms/inter).
-  SIL Open Font License 1.1.
+  Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter).
+  SIL Open Font License 1.1, in public/inter-OFL.txt.
 
 Seti file icons (public/seti.woff, scripts/vs-seti-icon-theme.json,
 src/seti/mapping.ts)
   From the theme-seti extension of Visual Studio Code.
   Copyright Microsoft Corporation, MIT License.
-  The icon font comes from seti-ui, copyright Jesse Weed, MIT License.
+  The icon font comes from seti-ui, copyright (c) 2014 Jesse Weed, MIT License.
 
 Agent marks (src/components/Icon/agentMarks.tsx)
   Path data from Simple Icons, CC0 1.0. The Codex mark is from lobe-icons,
-  copyright LobeHub, MIT License. The marks are trademarks of their owners
+  copyright (c) 2023 LobeHub, MIT License. The marks are trademarks of their owners
   and are used only to name the agent a session runs.
 
 PDF text layer styles (src/panels/Editor/PdfView.module.css)
@@ -39,10 +39,10 @@ Pinned in src-tauri/resources/lsp/package.json and
 src-tauri/resources/dap/manifest.json. Each ships with its own licence file.
 
   typescript                     Microsoft Corporation   Apache-2.0
-  typescript-language-server     its contributors        Apache-2.0
+  typescript-language-server     Microsoft Corporation   Apache-2.0
   vscode-json-languageserver     Microsoft Corporation   MIT
-  vscode-langservers-extracted   Microsoft Corporation   MIT
-  yaml-language-server           Red Hat                 MIT
+  vscode-langservers-extracted   hrsh7th                 MIT
+  yaml-language-server           Red Hat Inc. and others MIT
   vscode-js-debug                Microsoft Corporation   MIT
 
 Linked dependencies
