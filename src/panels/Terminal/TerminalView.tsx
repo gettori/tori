@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
+import { WriteOnlyClipboard } from "./writeOnlyClipboard";
 import { acquireWebgl, type WebglSlot } from "./webglLru";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
@@ -234,7 +235,7 @@ export default function TerminalView(props: {
     term.loadAddon(new WebLinksAddon());
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
-    term.loadAddon(new ClipboardAddon());
+    term.loadAddon(new ClipboardAddon(undefined, new WriteOnlyClipboard()));
     term.open(host);
 
     // WebGL renderer, held by a page-wide LRU rather than owned here: contexts
