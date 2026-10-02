@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1003.0-alpha
 
 - Releases are published at github.com/gettori/tori/releases, beside the
   source. Builds up to 26.1002 look for updates in the old place and will hear
