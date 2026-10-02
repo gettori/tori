@@ -360,9 +360,9 @@ mod tests {
   "loggedIn": true,
   "authMethod": "claude.ai",
   "apiProvider": "firstParty",
-  "email": "skarif2@gmail.com",
+  "email": "dev@example.com",
   "orgId": "e065b006-25be-40a7-96cb-b55881e1b0a0",
-  "orgName": "skarif2@gmail.com's Organization",
+  "orgName": "dev@example.com's Organization",
   "subscriptionType": "max"
 }"#;
 
@@ -389,7 +389,7 @@ mod tests {
     fn claude_reports_its_account_from_json() {
         let answer = parse_whoami(WhoamiKind::ClaudeJson, true, CLAUDE_IN, "");
         assert_eq!(answer.state, SignIn::SignedIn);
-        assert_eq!(answer.email.as_deref(), Some("skarif2@gmail.com"));
+        assert_eq!(answer.email.as_deref(), Some("dev@example.com"));
         assert_eq!(answer.api_key_source, None);
     }
 
