@@ -4626,6 +4626,13 @@ diff --git a/f b/f
             .arg(&p)
             .args(["config", "--local", "--unset-all", "user.email"])
             .output();
+        // Without this git invents an identity from the login and the hostname
+        // wherever the hostname is fully qualified, as it is on a CI runner.
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&p)
+            .args(["config", "--local", "user.useConfigOnly", "true"])
+            .output();
 
         if has_git_identity(&p) {
             // Ambient global identity is configured on this machine/CI - the
