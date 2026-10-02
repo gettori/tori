@@ -8,19 +8,113 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1002.0-alpha
 
-### Notifications
-
-- A chat can notify when it finishes its turn, and both that and needs you can
-  play a sound. Each has its own switch in Settings, Chat, Notifications. Only
-  the needs you notification is on to begin with, as before.
+A Topic can hold a repository without branching it. A member starts as a
+reference, a read only view of the repo's own checkout, and becomes a worktree
+when the work needs one. Topic chats run from a home folder that sees every
+member. A security audit lands with it: nothing in a folder runs until you
+trust the folder, rendered HTML is sanitized behind a content security policy,
+and remote devices connect over Tailscale only.
 
 ### Topics
 
+- A Topic can attach a project as a reference, with no worktree. Tori never
+  stages, commits, discards or pushes in a reference, and a pull is fast-forward
+  only. Its row wears a lock, says how far behind origin it is, and warns when
+  the checkout is off its default branch or has local changes.
+- A member moves between reference and worktree from its menu. Create worktree
+  builds it on the Topic branch, and Remove worktree keeps the branch, so
+  creating it again picks the work back up.
+- A Topic chat starts in the Topic's home folder with every member added, along
+  with each member's permission rules and its CLAUDE.md. Running chats pick up a
+  member that is added or moved.
+- A Topic chat cannot write in a member's repo outside its own worktrees. It
+  asks for a worktree instead, and a setting on the Topic menu decides what
+  happens then: ask first, create it, or refuse.
+- Checkpoints from a Topic chat cover every worktree member, and a rewind checks
+  all of them before it writes anything.
+- The New Topic dialog is a picker and a picked list: repos on the left grouped
+  by Space, a card on the right for each with a Reference or Worktree toggle.
+- A Topic draws as a project row with its members as worktree rows under it.
+  Collapsed it is one line with member chips and a status. Click a member to
+  open the Topic on it. A new Topic opens expanded, and the list keeps its open
+  rows across mode switches and restarts.
+- An expanded member row shows its pull request on a second line, and a failing
+  check lights the member's chip and the Topic's rollup.
+- The Topic row shows its chat status beside the sync pill.
+- Files, Changes and Pull requests show members as a strip of tabs. Search
+  always covers the whole Topic. The titlebar reads Topics > name.
 - A Topic's worktrees no longer show under their repository in Spaces. They
   live in their Topic. Turn on Show Topic worktrees in Spaces, in Settings,
   Integrations, to list them there too.
+
+### Security
+
+- Git runs only in a trusted project, since a repository's own config and hooks
+  run with it. A refused folder offers the trust prompt.
+- claude starts without a folder's own settings until the folder is trusted, so
+  its hooks cannot run on the first message.
+- No formatter runs in a project that is not trusted. The editor offers to trust
+  it once a session on save, and every time on a manual Format Document.
+- Rendered HTML is sanitized with DOMPurify. Chat shows raw HTML as text and
+  turns a remote image into a link, and links in the Markdown preview are routed
+  rather than followed.
+- The app has a content security policy on desktop and on the phone, and the
+  asset scope is narrowed from every file to the home directory, external
+  volumes and temp.
+- Remote devices connect over Tailscale or loopback only. A LAN address is no
+  longer offered, and one saved by an older build is refused. Settings says why.
+- The autopilot no longer answers a worker's permission prompt. It waits on the
+  card or a paired device.
+- A terminal program can no longer read the clipboard. It can still set it,
+  which is how a copy over ssh works.
+- The phone's device credential stays out of Android backups and device
+  transfers.
+- Crates with open advisories are updated: rustls, plist and wayland-scanner.
+
+### Chat
+
+- A chat can notify when it finishes its turn, and both that and needs you can
+  play a sound. Each has its own switch in Settings, Chat, Notifications, with
+  a play button to hear it. Only the needs you notification is on to begin
+  with, as before.
+- Collapse agent work, off by default, folds the thinking, tool calls and hooks
+  between two replies into a one line card you can open. It is in Settings and
+  on the status strip menu.
+- Enter sends a question's answers. Shift+Enter is a new line.
+- An agent is ready when any of its accounts is signed in, and a new chat with
+  no chosen account starts on a signed in one.
+- Chat sessions get the login shell's PATH, so hooks find tools that only your
+  shell rc adds.
+
+### Files and changes
+
+- A single click in the Files tree opens a preview that the next click
+  replaces. A double click on the row or the tab keeps it, as does the first
+  edit.
+- Open Markdown and SVG rendered, in Settings, Editing, makes the rendered view
+  the default.
+- The Checkpoints tab lists every session's turns by prompt. A row opens the
+  turn's files with their line counts and diffs, and the revert and rewind
+  actions.
+- Git state refreshes when HEAD, the index or a ref changes outside Tori.
+- A new untracked folder shows as its files in Changes, not as one line.
+
+### Elsewhere
+
+- 17 more themes, and the picker is split into Dark and Light tabs.
+- The Settings header has a keyboard shortcuts button, and the shortcut sheet
+  fits without scrolling.
+- Tab strips have no gap between tabs.
+
+### Fixes
+
+- Long sessions stay smoother: looping animations are isolated, Markdown lexing
+  is capped per frame, and off-screen terminals give up their WebGL contexts by
+  canvas size.
+- The Changes panel follows the member picked in the sidebar.
+- The tori MCP server still starts when claude settings set their own PATH.
 
 ## 26.927.1-alpha
 
