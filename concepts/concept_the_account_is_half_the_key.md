@@ -18,7 +18,7 @@ Everything Tori remembers about an agent is remembered per **(agent, account)**,
 
 ## Why it's this way
 
-Measured on 2026-09-05: the default account is on `max`, the `fonn` account on `team`, and the cached catalogue was whichever probed last, so the picker offered one account's models under the other's login. Three places leaked the wrong account even after the file was split: the probe's own env, the `whoami` behind a failure verdict (it asked with no home, so a Fonn failure was graded by the personal account's sign-in), and `user_configured_models`, which read the *process's* `CLAUDE_CONFIG_DIR` and credited the launching environment's pinned models to every account.
+Measured on 2026-09-05: the default account is on `max`, the `globex` account on `team`, and the cached catalogue was whichever probed last, so the picker offered one account's models under the other's login. Three places leaked the wrong account even after the file was split: the probe's own env, the `whoami` behind a failure verdict (it asked with no home, so a Globex failure was graded by the personal account's sign-in), and `user_configured_models`, which read the *process's* `CLAUDE_CONFIG_DIR` and credited the launching environment's pinned models to every account.
 
 `catalogFor` deliberately does **not** fall back to the default account, while `profileSignedOut` does. The asymmetry is the point: ignorance about sign-in must not block, ignorance about models must not invent.
 

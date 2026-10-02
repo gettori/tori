@@ -62,7 +62,7 @@ ACP's capability handshake is a *negotiation between peers*, not a feature list 
 
 The two per-agent overrides (`mcpServers` and client capabilities) exist because they are the only places where a *correct* client can still be wrong for a *particular* agent: everything else is either fixed by the spec or discoverable at `initialize`. Keeping them to two, and naming them in the adapter TOML rather than in Rust, is what keeps `[[adr_harness_breadth]]`'s "a new harness is a TOML file" claim true.
 
-The licensing boundary matters here: entries marked *(reported)* were learned from another implementation's behaviour and documentation as protocol facts and agent misbehaviours. No code or structure was taken. See the plan's Paseo decision.
+The licensing boundary matters here: entries marked *(reported)* were learned from another implementation's behaviour and documentation as protocol facts and agent misbehaviours. No code or structure was taken.
 
 ## Related
 
