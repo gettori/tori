@@ -4,12 +4,17 @@
 // (see `settings.rs`). Same file format for the same reason: JSONC in, pretty
 // JSON out, so a hand edit with comments in it survives a write from the panel.
 //
-// **Local to the machine, never committed.** On the first write the directory is
-// added to the repo's own `.git/info/exclude`, so it is invisible to git from
-// the moment it exists rather than showing up in the Changes panel as a file
-// nobody asked for, and a teammate who never runs Tori sees nothing. The cost of
-// that choice is that these settings cannot be shared with a team; the global
-// file is where a preference meant to travel belongs.
+// **Local to the machine, not committed by Tori.** On the first write the
+// directory is added to the repo's own `.git/info/exclude`, so it is invisible
+// to git from the moment it exists rather than showing up in the Changes panel
+// as a file nobody asked for, and a teammate who never runs Tori sees nothing.
+// The cost of that choice is that these settings cannot be shared with a team;
+// the global file is where a preference meant to travel belongs.
+//
+// A repo can still ship one, since the exclude only hides an untracked file. So
+// every reader treats it as the repo's word, not the user's: typed editor
+// preferences and additions to `lsp.disabled`, and never anything that turns a
+// server on or grants trust.
 //
 // **The keys are opaque here.** The overlay is carried as a `serde_json::Value`
 // and validated on the frontend against the shape of the editor defaults, so a
