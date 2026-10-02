@@ -95,6 +95,13 @@ the **Open Anyway** step.
 
 To stop the check entirely, use the app offline; a failed check is silent.
 
+## Older builds
+
+Alpha builds up to 26.1002 were published in a separate repository, which is
+archived and still downloadable:
+[gettori/releases](https://github.com/gettori/releases/releases). The first
+twelve are from before the rename and are called Sway.
+
 ## Uninstalling
 
 `brew uninstall --cask tori`, or drag `/Applications/Tori.app` to the Trash.
