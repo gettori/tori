@@ -1,5 +1,5 @@
-// Which projects may run their own code through a language server or a
-// debugger. Kept in Tori's config directory and never in the project, because a
+// Which projects may run their own code through a language server, a debugger
+// or a formatter. Kept in Tori's config directory and never in the project, because a
 // flag the repo could ship would let the repo answer for itself.
 
 use std::io::ErrorKind;
@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::lsp::registry::LspServer;
 
-/// What `lsp_start` and `dap_start` refuse an untrusted project with.
+/// What `lsp_start`, `dap_start` and `format_document` refuse an untrusted
+/// project with.
 /// `utils/projectTrust.ts` matches it exactly.
 pub const UNTRUSTED: &str = "untrusted";
 
