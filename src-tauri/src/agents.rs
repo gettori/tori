@@ -352,6 +352,9 @@ pub struct ChatConfig {
     pub mode_args: Vec<String>,
     /// `{dir}` template, applied once per extra directory.
     pub add_dir_args: Vec<String>,
+    /// Added when the folder is not a trusted project, to keep the agent from
+    /// loading settings the folder ships. See `ChatConfig::trust_args`.
+    pub untrusted_args: Vec<String>,
     /// Effort levels Tori measured that this agent never advertises. See
     /// [`ChatEffortExtra`]. Empty for every agent nobody has measured, which is
     /// all of them but claude.
@@ -384,6 +387,14 @@ impl ChatConfig {
     ///
     /// Both callers (Phase 6's mode selector, Phase 9's effort control) go
     /// through here rather than reading the fields directly.
+    pub fn trust_args(&self, trusted: bool) -> &[String] {
+        if trusted {
+            &[]
+        } else {
+            &self.untrusted_args
+        }
+    }
+
     pub fn mode_args_for(&self, mode_id: &str) -> Option<Vec<String>> {
         let mode = self.modes.iter().find(|m| m.id == mode_id)?;
         if !mode.args.is_empty() {
@@ -911,6 +922,8 @@ struct ChatToml {
     #[serde(default)]
     add_dir_args: Vec<String>,
     #[serde(default)]
+    untrusted_args: Vec<String>,
+    #[serde(default)]
     effort_extras: Vec<ChatEffortExtra>,
     #[serde(default)]
     split_model_names: bool,
@@ -1210,6 +1223,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 effort_args: c.effort_args,
                 mode_args: c.mode_args,
                 add_dir_args: c.add_dir_args,
+                untrusted_args: c.untrusted_args,
                 effort_extras: c.effort_extras,
                 split_model_names: c.split_model_names,
                 modes: c.modes,
@@ -1776,6 +1790,14 @@ mod tests {
         ] {
             assert!(!re.is_match(&cmdline), "{label} must not count as running: {cmdline}");
         }
+    }
+
+    #[test]
+    fn an_untrusted_folder_starts_claude_without_the_folders_own_settings() {
+        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        let chat = claude.chat.as_ref().expect("claude has a chat table");
+        assert_eq!(chat.trust_args(false), ["--setting-sources", "user"]);
+        assert!(chat.trust_args(true).is_empty(), "a trusted project keeps its own settings");
     }
 
     #[test]

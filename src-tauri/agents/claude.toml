@@ -284,6 +284,10 @@ model_args = ["--model", "{model}"]
 effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]
 add_dir_args = ["--add-dir", "{dir}"]
+# Measured on 2.1.285: `-p` shows no workspace trust dialog, so a folder's own
+# `.claude/settings.json` hooks run on the first message. `user` leaves them out
+# and keeps the user's settings and Tori's `--settings` file.
+untrusted_args = ["--setting-sources", "user"]
 
 # No [[chat.models]]. **Tori declares no model this CLI did not name.**
 #
