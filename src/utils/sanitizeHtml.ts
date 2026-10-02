@@ -1,34 +1,28 @@
-// Strips script-execution vectors from marked's rendered HTML before it goes
-// into innerHTML: a local markdown file (a plan doc, a README, an agent
-// transcript export) is untrusted content as far as script execution goes,
-// and the Tauri webview can call backend commands, so an embedded <script>
-// or an `on*`/`javascript:` handler is a real risk, not a theoretical one.
-// Allowlist-based (removes disallowed elements/attributes) rather than a
-// blocklist, so an unknown-but-dangerous tag/attribute is dropped by default.
-const DISALLOWED_TAGS = new Set(["script", "style", "iframe", "object", "embed", "link", "meta", "base", "form"]);
+// A markdown file, an agent transcript and a language server's documentation
+// are all untrusted, and the Tauri webview can call backend commands, so a
+// script that runs from any of them runs with the app's own reach.
+import DOMPurify from "dompurify";
 
-function isDangerousAttr(name: string, value: string): boolean {
-  const n = name.toLowerCase();
-  if (n.startsWith("on")) return true;
-  if ((n === "href" || n === "src") && /^\s*javascript:/i.test(value)) return true;
-  return false;
-}
+// DOMPurify's defaults allow these, and none belongs in prose: a <style> can
+// redraw the app around the content, and a form can post what it collects.
+const FORBID_TAGS = ["style", "form", "button", "select", "option", "textarea"];
+const FORBID_ATTR = ["style"];
 
-function sanitizeNode(node: Element) {
-  for (const child of Array.from(node.children)) {
-    if (DISALLOWED_TAGS.has(child.tagName.toLowerCase())) {
-      child.remove();
-      continue;
-    }
-    for (const attr of Array.from(child.attributes)) {
-      if (isDangerousAttr(attr.name, attr.value)) child.removeAttribute(attr.name);
-    }
-    sanitizeNode(child);
-  }
+type Purifier = ReturnType<typeof DOMPurify>;
+let purifier: Purifier | undefined;
+
+// Its own instance: mermaid sanitizes through the shared default one, and a
+// hook added there would run on every diagram too.
+function instance(): Purifier {
+  if (purifier) return purifier;
+  purifier = DOMPurify(window);
+  purifier.addHook("afterSanitizeAttributes", (node) => {
+    // `marked` draws a task list item as a checkbox, the only input prose needs.
+    if (node.nodeName === "INPUT" && node.getAttribute("type") !== "checkbox") node.remove();
+  });
+  return purifier;
 }
 
 export function sanitizeHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  sanitizeNode(doc.body);
-  return doc.body.innerHTML;
+  return instance().sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS, FORBID_ATTR });
 }

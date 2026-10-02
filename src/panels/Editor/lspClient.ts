@@ -22,6 +22,7 @@ import { ChangeSet, type Extension, type Text } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
+import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "../../utils/projectTrust";
 import { NOT_INSTALLED, offerInstall, onServerInstalled } from "../../utils/serverInstall";
 import { dropDiagnostics, dropDiagnosticsUnder } from "../../utils/diagnostics";
@@ -460,6 +461,9 @@ async function startFor(
     // view of a file that is already on screen and null for everything else,
     // which is every cross-file operation there is.
     workspace: (c) => (workspace = new ToriWorkspace(c, workspaceDeps(server))),
+    // The library puts a server's documentation into innerHTML as rendered,
+    // and a doc comment is whatever a dependency's author wrote.
+    sanitizeHTML: sanitizeHtml,
     extensions: clientExtensions(server.id),
   }).connect(transport);
 
