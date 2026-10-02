@@ -6,7 +6,6 @@
 
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -194,8 +193,7 @@ fn gitignored_paths<'a>(
     if paths.is_empty() {
         return set;
     }
-    let mut child = match Command::new("git")
-        .current_dir(dir)
+    let mut child = match crate::exec::git_in(dir)
         .args(["check-ignore", "--stdin"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -524,9 +522,7 @@ pub async fn list_project_files(project_path: String) -> Result<Vec<String>, Str
 }
 
 pub(crate) fn list_project_files_body(project_path: String) -> Result<Vec<String>, String> {
-    if let Ok(out) = Command::new("git")
-        .arg("-C")
-        .arg(&project_path)
+    if let Ok(out) = crate::exec::git_in(&project_path)
         .args(["ls-files", "--cached", "--others", "--exclude-standard"])
         .output()
     {
@@ -926,6 +922,7 @@ fn fs_watch_set_body(app: AppHandle, state: &FsWatch, roots: Vec<String>) -> Res
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::sync::Mutex;
 

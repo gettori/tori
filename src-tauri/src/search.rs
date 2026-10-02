@@ -109,9 +109,7 @@ fn has_rg() -> bool {
 }
 
 fn is_git_repo(root: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
+    crate::exec::git_in(root)
         .args(["rev-parse", "--is-inside-work-tree"])
         .output()
         .map(|o| o.status.success())
@@ -390,8 +388,7 @@ fn run_git_grep(
     literal: Option<&str>,
     opts: &SearchOptions,
 ) -> Result<Vec<Candidate>, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(root);
+    let mut cmd = crate::exec::git_in(root);
     cmd.args(["grep", "-n", "--untracked"]);
     // `--no-exclude-standard` is what reaches ignored files. Merely dropping
     // `--exclude-standard` does nothing: git honours .gitignore by default

@@ -276,7 +276,7 @@ fn sync_config(hosts: &[&str], helper: &str, own: &Path, global: &Path) -> Resul
 }
 
 fn git_config_exit(file: &Path, args: &[&str]) -> Result<i32, String> {
-    let out = Command::new("git")
+    let out = crate::exec::git_outside_a_repo()
         .arg("config")
         .arg("--file")
         .arg(file)
@@ -287,7 +287,7 @@ fn git_config_exit(file: &Path, args: &[&str]) -> Result<i32, String> {
 }
 
 fn lone_remote(repo: &str) -> Option<String> {
-    let out = Command::new("git").arg("-C").arg(repo).arg("remote").output().ok()?;
+    let out = crate::exec::git_in(repo).arg("remote").output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     match text.split_whitespace().collect::<Vec<_>>().as_slice() {
         [only] => Some((*only).to_string()),

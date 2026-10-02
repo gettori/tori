@@ -26,7 +26,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
-use std::process::Command;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -92,8 +91,7 @@ pub fn capture(repo: &Path, path: &str) -> BeforeState {
     if !Path::new(path).exists() {
         return BeforeState::Absent;
     }
-    let out = Command::new("git")
-        .current_dir(repo)
+    let out = crate::exec::git_in(repo)
         .args(["hash-object", "-w", "--no-filters", "--", path])
         .output();
     match out {
@@ -127,8 +125,7 @@ pub fn capture(repo: &Path, path: &str) -> BeforeState {
 /// `None` is the file having no prior content at all - a creation, which the
 /// caller turns into `Absent` rather than into a failed capture.
 pub fn store_text(repo: &Path, text: &str) -> BeforeState {
-    let child = Command::new("git")
-        .current_dir(repo)
+    let child = crate::exec::git_in(repo)
         .args(["hash-object", "-w", "--no-filters", "--stdin"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -156,7 +153,7 @@ pub fn store_text(repo: &Path, text: &str) -> BeforeState {
 
 /// Read a captured blob back, for a card the user expanded.
 pub fn read_back(repo: &Path, sha: &str) -> Option<String> {
-    let out = Command::new("git").current_dir(repo).args(["cat-file", "-p", sha]).output().ok()?;
+    let out = crate::exec::git_in(repo).args(["cat-file", "-p", sha]).output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -205,8 +202,7 @@ pub fn diff_against_now(repo: &Path, before: &BeforeState, path: &str) -> Option
         return Some(String::new());
     }
 
-    let out = Command::new("git")
-        .current_dir(repo)
+    let out = crate::exec::git_in(repo)
         .args(["diff", "--no-color", &format!("-U{DIFF_CONTEXT}"), &before_sha, &after_sha])
         .output()
         .ok()?;
@@ -219,8 +215,7 @@ pub fn diff_against_now(repo: &Path, before: &BeforeState, path: &str) -> Option
 /// Its sha is a constant, but an object that has never been written cannot be
 /// diffed against.
 fn empty_blob(repo: &Path) -> Option<String> {
-    let mut child = Command::new("git")
-        .current_dir(repo)
+    let mut child = crate::exec::git_in(repo)
         .args(["hash-object", "-w", "--stdin"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -492,8 +487,7 @@ fn relative_to(repo: &Path, path: &str) -> Result<String, String> {
 /// Feed a reverse patch to `git apply` on stdin, in the working tree.
 fn apply_reverse(repo: &Path, patch: &str) -> Result<(), String> {
     use std::io::Write;
-    let mut child = Command::new("git")
-        .current_dir(repo)
+    let mut child = crate::exec::git_in(repo)
         .args(["apply", "--reverse", "--whitespace=nowarn", "-"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -516,6 +510,7 @@ fn apply_reverse(repo: &Path, patch: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use serde_json::json;
 

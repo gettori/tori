@@ -30,7 +30,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
 
@@ -180,7 +179,7 @@ fn apply_hunks(attr: &mut Vec<i32>, hunks: &[Hunk], value: i32) {
 }
 
 fn capture(repo: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new("git").arg("-C").arg(repo).args(args).output().ok()?;
+    let out = crate::exec::git_in(repo).args(args).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
@@ -277,6 +276,7 @@ pub fn agent_lines(project_path: String, file: String, sessions: Vec<String>) ->
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
 
     fn turn(session: &str, ts: u64, ordinal: usize) -> AgentTurn {

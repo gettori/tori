@@ -188,7 +188,7 @@ pub fn valid_branch(branch: &str) -> Result<String, String> {
     if branch.is_empty() {
         return Err("Branch name is empty".into());
     }
-    let out = std::process::Command::new("git")
+    let out = crate::exec::git_outside_a_repo()
         .args(["check-ref-format", "--branch", branch])
         .output()
         .map_err(|e| e.to_string())?;
@@ -495,9 +495,7 @@ pub fn relocate_member(
         if let Some(wt) = worktree_path.as_deref() {
             args.push(wt.to_string());
         }
-        let _ = std::process::Command::new("git")
-            .arg("-C")
-            .arg(new_repo_path)
+        let _ = crate::exec::git_in(new_repo_path)
             .args(&args)
             .output();
         crate::worktree::prune_worktrees(new_repo_path);

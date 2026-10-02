@@ -13,7 +13,6 @@ use crate::config::BranchUnit;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// What a branch unit remembers about its issue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,9 +92,7 @@ pub fn attach(units: &mut [BranchUnit], issues: Option<&RepoIssues>) {
 }
 
 fn has_ref(repo: &str, name: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["show-ref", "--verify", "--quiet", name])
         .status()
         .map(|s| s.success())
@@ -122,6 +119,7 @@ fn record_in(file: &Path, repo: &str, branch: &str, issue: UnitIssue) -> Result<
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use crate::config::ProjectKind;
 

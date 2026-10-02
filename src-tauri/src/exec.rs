@@ -26,6 +26,37 @@ pub fn spawn_detached(cmd: &mut Command) -> std::io::Result<()> {
     Ok(())
 }
 
+/// What a refused [`git_in`] prints, which is `trust::UNTRUSTED`.
+const REFUSE: &str = "echo untrusted >&2; exit 128";
+
+/// `git -C <repo>`, or a command that fails with `untrusted` when `repo` is not
+/// a trusted project.
+///
+/// Git runs a repository's own `.git/config` (`core.fsmonitor`, filter drivers,
+/// hooks), so reading one is running it. A stand-in rather than an error, so
+/// each of the ninety call sites keeps reporting failure the way it already did.
+pub fn git_in(repo: impl AsRef<std::ffi::OsStr>) -> Command {
+    let repo = repo.as_ref();
+    git_gated(repo, crate::trust::allows_git(std::path::Path::new(repo)))
+}
+
+fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
+    if !allowed {
+        let mut refused = Command::new("/bin/sh");
+        refused.args(["-c", REFUSE, "git"]);
+        return refused;
+    }
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    cmd
+}
+
+/// `git` for a subcommand that opens no repository, so there is no config of
+/// anyone else's to run.
+pub fn git_outside_a_repo() -> Command {
+    Command::new("git")
+}
+
 /// Run `f` on the blocking pool and await its result.
 ///
 /// `spawn_blocking` rather than `#[tauri::command(async)]`: the attribute form
@@ -99,9 +130,7 @@ pub(crate) fn common_dir(path: &str) -> PathBuf {
     {
         return hit.clone();
     }
-    let resolved = Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let resolved = crate::exec::git_in(path)
         .args(["rev-parse", "--git-common-dir"])
         .output()
         .ok()
@@ -156,6 +185,51 @@ mod tests {
             .args(args)
             .output()
             .expect("git runs")
+    }
+
+    #[test]
+    fn a_refused_git_never_runs_the_folders_own_config() {
+        let dir = temp_repo("hostile");
+        let marker = dir.join("ran");
+        git(&dir, &["config", "core.fsmonitor", &format!("touch {}", marker.display())]);
+        let _ = std::fs::remove_file(&marker);
+
+        let refused = git_gated(dir.as_os_str(), false).args(["status", "--porcelain"]).output().unwrap();
+        assert!(!refused.status.success());
+        assert_eq!(String::from_utf8_lossy(&refused.stderr).trim(), crate::trust::UNTRUSTED);
+        assert!(!marker.exists(), "a refused git ran the folder's fsmonitor command");
+
+        let allowed = git_gated(dir.as_os_str(), true).args(["status", "--porcelain"]).output().unwrap();
+        assert!(allowed.status.success());
+        assert!(marker.exists(), "the fixture is not hostile: git status did not run core.fsmonitor");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_git_starts_outside_the_gate() {
+        fn sources(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    sources(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        sources(&src, &mut files);
+        let spawn = format!("Command::new(\"{}\")", "git");
+        let mut outside = Vec::new();
+        for file in files.iter().filter(|f| !f.ends_with("exec.rs")) {
+            let text = std::fs::read_to_string(file).unwrap();
+            let shipped = text.split("#[cfg(test)]").next().unwrap();
+            if shipped.contains(&spawn) {
+                outside.push(file.strip_prefix(&src).unwrap().display().to_string());
+            }
+        }
+        assert!(outside.is_empty(), "use `exec::git_in` so the trust gate sees it: {outside:?}");
     }
 
     fn temp_repo(name: &str) -> PathBuf {

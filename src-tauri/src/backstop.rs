@@ -25,7 +25,6 @@
 // and inherits nothing. `backstop_prune` sweeps the refs whose sidecar is gone.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -40,9 +39,7 @@ use crate::checkpoint::{
 const RETENTION: usize = 20;
 
 fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -53,9 +50,7 @@ fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
 }
 
 fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -468,6 +463,7 @@ pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 

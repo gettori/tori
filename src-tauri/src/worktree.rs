@@ -3,7 +3,6 @@
 // (see [[concept_folder_anchored_sessions]] / [[component_project_discovery]]).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -33,9 +32,7 @@ pub struct Worktree {
 /// empty list for both "no worktrees" and "not a repo", so a caller that must
 /// tell a vanished repo from an empty one asks this first.
 pub(crate) fn repo_readable(repo: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["rev-parse", "--git-dir"])
         .output()
         .map(|o| o.status.success())
@@ -48,9 +45,7 @@ pub async fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> 
 }
 
 pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&repo_path)
+    let out = crate::exec::git_in(&repo_path)
         .args(["worktree", "list", "--porcelain"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -116,9 +111,7 @@ fn worked_in(w: &Worktree) -> bool {
 // --- helpers ---
 
 fn git_ok(repo: &str, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -136,17 +129,13 @@ fn git_ok(repo: &str, args: &[&str]) -> Result<(), String> {
 /// so. Every caller that reads the list to decide whether a worktree exists has
 /// to prune first, or it adopts a folder that is not there.
 pub(crate) fn prune_worktrees(repo: &str) {
-    let _ = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let _ = crate::exec::git_in(repo)
         .args(["worktree", "prune"])
         .output();
 }
 
 pub(crate) fn branch_exists(repo: &str, branch: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["rev-parse", "--verify", &format!("refs/heads/{branch}")])
         .output()
         .map(|o| o.status.success())
@@ -155,9 +144,7 @@ pub(crate) fn branch_exists(repo: &str, branch: &str) -> bool {
 
 /// Origin's default branch (e.g. `main`) via `origin/HEAD`, None when unset.
 pub(crate) fn origin_default(repo: &str) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
         .output()
         .ok()?;
@@ -173,9 +160,7 @@ pub(crate) fn origin_default(repo: &str) -> Option<String> {
 /// Does `origin/<name>` exist as a remote-tracking ref? Lets a new worktree base
 /// (and track) a remote-only branch instead of origin's default.
 pub(crate) fn remote_branch_exists(repo: &str, name: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{name}")])
         .output()
         .map(|o| o.status.success())
@@ -207,9 +192,7 @@ pub(crate) fn resolve_base(repo: &str, base: &str) -> Result<String, String> {
     if remote_branch_exists(repo, base) {
         return Ok(format!("origin/{base}"));
     }
-    let known = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let known = crate::exec::git_in(repo)
         .args(["rev-parse", "--verify", "--quiet", &format!("{base}^{{commit}}")])
         .output()
         .map(|o| o.status.success())
@@ -347,7 +330,7 @@ pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, containe
 }
 
 fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
-    let out = Command::new("git").arg("-C").arg(repo).args(["rev-parse", "--verify", rev]).output().map_err(|e| e.to_string())?;
+    let out = crate::exec::git_in(repo).args(["rev-parse", "--verify", rev]).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -392,9 +375,7 @@ pub(crate) fn create_worktree_in(
         let start = match base.map(str::trim).filter(|b| !b.is_empty()) {
             Some(b) => Some(resolve_base(repo, b)?),
             None => {
-                let _ = Command::new("git")
-                    .arg("-C")
-                    .arg(repo)
+                let _ = crate::exec::git_in(repo)
                     .arg("fetch")
                     .output();
                 new_branch_start_point(repo, branch)
@@ -425,9 +406,7 @@ pub(crate) fn create_worktree_in(
 /// freshly created worktree that linked any `.shared/` file would read as dirty and
 /// could never be removed. See [[gotchas#shared-symlinks-read-as-untracked-and-block-worktree-removal]].
 fn tree_dirty(worktree: &Path) -> Result<bool, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(worktree)
+    let out = crate::exec::git_in(worktree)
         .args(["status", "--porcelain"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -490,9 +469,7 @@ pub struct WorktreeStatus {
 /// against any path in the repo (a worktree resolves to the shared config).
 pub(crate) fn branch_push_target(repo: &Path, branch: &str) -> Option<(String, String)> {
     let cfg = |key: String| {
-        Command::new("git")
-            .arg("-C")
-            .arg(repo)
+        crate::exec::git_in(repo)
             .args(["config", "--get", &key])
             .output()
             .ok()
@@ -508,9 +485,7 @@ pub(crate) fn branch_push_target(repo: &Path, branch: &str) -> Option<(String, S
 
 /// Whether a ref exists in `repo`.
 fn ref_exists(repo: &Path, refname: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["rev-parse", "--verify", "--quiet", refname])
         .output()
         .map(|o| o.status.success())
@@ -526,9 +501,7 @@ pub(crate) fn resolve_remote_branch(repo: &Path, branch: &str) -> Option<(String
     if let Some(target) = branch_push_target(repo, branch) {
         return Some(target);
     }
-    let remotes = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let remotes = crate::exec::git_in(repo)
         .arg("remote")
         .output()
         .ok()
@@ -550,9 +523,7 @@ pub(crate) fn resolve_remote_branch(repo: &Path, branch: &str) -> Option<(String
 
 /// The worktree's currently checked-out branch, or None for a detached/unborn HEAD.
 fn branch_at(path: &Path) -> Option<String> {
-    Command::new("git")
-        .arg("-C")
-        .arg(path)
+    crate::exec::git_in(path)
         .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
         .output()
         .ok()
@@ -566,9 +537,7 @@ fn branch_at(path: &Path) -> Option<String> {
 /// carrying at least one commit. A detached / unborn HEAD has nothing to push.
 fn branch_unpushed(worktree: &Path) -> bool {
     let cap = |args: &[&str]| {
-        Command::new("git")
-            .arg("-C")
-            .arg(worktree)
+        crate::exec::git_in(worktree)
             .args(args)
             .output()
             .ok()
@@ -618,9 +587,7 @@ fn named_branch_unpushed(repo: &Path, branch: &str) -> bool {
     if branch_push_target(repo, branch).is_none() {
         return true; // local-only branch
     }
-    let count = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let count = crate::exec::git_in(repo)
         .args(["rev-list", "--count", &format!("{branch}@{{upstream}}..{branch}")])
         .output()
         .ok()
@@ -686,9 +653,7 @@ pub fn remove_worktree(
 pub fn prune_worktree_records(app: AppHandle, repo_path: String) -> Result<usize, String> {
     let lock = crate::exec::repo_lock(&repo_path);
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&repo_path)
+    let out = crate::exec::git_in(&repo_path)
         .args(["worktree", "prune", "-v"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -718,9 +683,7 @@ pub fn remove_worktree_and_branch(
     let lock = crate::exec::repo_lock(&repo_path);
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     do_remove_worktree(&repo_path, &worktree_path, force)?;
-    let del = Command::new("git")
-        .arg("-C")
-        .arg(&repo_path)
+    let del = crate::exec::git_in(&repo_path)
         .args(["branch", "-D", &branch])
         .output()
         .map_err(|e| e.to_string())?;
@@ -737,6 +700,7 @@ pub fn remove_worktree_and_branch(
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 

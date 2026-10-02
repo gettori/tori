@@ -231,9 +231,7 @@ pub(crate) fn create_attempt_body(
     let target = container.join(&folder);
     let target_str = target.to_string_lossy().into_owned();
 
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&root)
+    let out = crate::exec::git_in(&root)
         .args(["worktree", "add", "-b", &branch, &target_str])
         .output()
         .map_err(|e| e.to_string())?;
@@ -374,9 +372,7 @@ fn discard_attempt(
     crate::worktree::do_remove_worktree(root, path, true)?;
 
     if let Some(branch) = branch {
-        let del = Command::new("git")
-            .arg("-C")
-            .arg(root)
+        let del = crate::exec::git_in(root)
             .args(["branch", "-D", &branch])
             .output()
             .map_err(|e| e.to_string())?;

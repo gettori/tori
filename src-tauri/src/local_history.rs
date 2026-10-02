@@ -27,7 +27,6 @@
 //! to.
 
 use std::path::Path;
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -132,9 +131,7 @@ fn delete_refs(repo: &str, names: &[String]) -> Result<(), String> {
         return Ok(());
     }
     use std::io::Write;
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let mut child = crate::exec::git_in(repo)
         .args(["update-ref", "--stdin"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -282,9 +279,7 @@ pub(crate) fn local_history_restore_body(repo_path: String, path: String, ts: u6
         .into_iter()
         .find(|e| e.ts == ts)
         .ok_or("that version is no longer stored")?;
-    let bytes = Command::new("git")
-        .arg("-C")
-        .arg(&repo_path)
+    let bytes = crate::exec::git_in(&repo_path)
         .args(["cat-file", "blob", &entry.blob])
         .output()
         .map_err(|e| e.to_string())?;
@@ -494,6 +489,7 @@ pub(crate) fn local_history_prune_body(repo_path: String) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
