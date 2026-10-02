@@ -90,6 +90,7 @@ const agent = (id: string, label: string, patch: Partial<AgentHealth>): AgentHea
   label,
   program: id,
   status: "notFound",
+  chatProgramMissing: null,
   signIn: "unknown",
   account: null,
   apiKeySource: null,

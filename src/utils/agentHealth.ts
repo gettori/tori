@@ -33,6 +33,10 @@ export type AgentHealth = {
   label: string;
   program: string;
   status: BinaryStatus;
+  // The program chat runs through, when it is not `program` and is not on the
+  // login PATH. codex and pi chat through `npx`, so `status` alone can say
+  // installed while no chat can spawn. The terminal path does not need it.
+  chatProgramMissing: string | null;
   // For the **default** profile: what a session started without choosing an
   // account runs as. `profiles` below is the same answer per account.
   signIn: SignIn;
@@ -265,6 +269,14 @@ export function knownProfile(id: string, profile: string | null | undefined): st
   const known = rows()?.find((h) => h.id === id)?.profiles;
   if (!known) return asTabProfile(profile);
   return known.some((p) => p.id === profile) ? asTabProfile(profile) : undefined;
+}
+
+/** The program a chat of this agent would spawn through and cannot, or null.
+ *
+ *  Not folded into `agentReady`: that gate also admits the terminal, which
+ *  runs on the launch binary alone and works without this one. */
+export function chatRuntimeMissing(id: string): string | null {
+  return rows()?.find((h) => h.id === id)?.chatProgramMissing ?? null;
 }
 
 /** The binary's version as the sweep measured it, or null while nothing has. */

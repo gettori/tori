@@ -10,6 +10,7 @@ import { openAgentCard } from "../../../../utils/agentCard";
 import {
   agentReady,
   agentVersion,
+  chatRuntimeMissing,
   ensureAgentHealthLoaded,
   namedProfiles,
   profileLabel,
@@ -40,6 +41,7 @@ export default function AutopilotPane(props: PaneProps) {
       ready: agentReady,
       signedOut: profileSignedOut,
       probing: isProbing,
+      chatRuntime: chatRuntimeMissing,
       version: agentVersion,
     }),
   );

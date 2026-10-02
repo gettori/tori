@@ -30,6 +30,7 @@ import { openAgentCard } from "../../utils/agentCard";
 import {
   agentReady,
   agentVersion,
+  chatRuntimeMissing,
   ensureAgentHealthLoaded,
   namedProfiles,
   profileLabel,
@@ -123,6 +124,7 @@ export default function ChatDraft(props: {
       ready: agentReady,
       signedOut: profileSignedOut,
       probing: isProbing,
+      chatRuntime: chatRuntimeMissing,
       allowed: (id, profile) => !agentRefusal(props.cwd, id, profile),
       version: agentVersion,
     }),

@@ -30,6 +30,7 @@ const row = (
   label: id,
   program: id,
   status,
+  chatProgramMissing: null,
   signIn,
   account: null,
   apiKeySource: null,

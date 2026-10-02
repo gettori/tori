@@ -126,6 +126,8 @@ function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
   if (!h) return { label: "Checking", cls: "" };
   if (h.status === "notFound") return { label: "Not installed", cls: "" };
   if (signedOutEverywhere(h)) return { label: "Sign in", cls: styles.statePillWarn };
+  // A warning, not "Not installed": the terminal works, only chat cannot spawn.
+  if (h.chatProgramMissing) return { label: `Chat needs ${h.chatProgramMissing}`, cls: styles.statePillWarn };
   // Only the behind direction: older than the measured version means a newer
   // release provably exists, which is actionable in a way "newer than what we
   // measured" never is.
@@ -137,6 +139,7 @@ function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
 /** The dot beside the mark, agreeing with the pill: warn only for the drift
  *  direction the pill warns about. */
 function rowTone(h: AgentHealth): string {
+  if (h.chatProgramMissing) return styles.dotWarn;
   if (h.status === "versionDrift" && behindVerified(h.version, h.verifiedAgainst))
     return styles.dotWarn;
   return TONE[h.status];

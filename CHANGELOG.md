@@ -15,6 +15,10 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
   of one more, which says where to go.
 - Join lines is on Ctrl-J. Its old chord, Shift-Cmd-J, has opened the autopilot
   since 26.927, so in the editor it did nothing.
+- Codex and Pi chat through `npx`, and the Agents card said Ready without it.
+  It now says "Chat needs npx", the picker leaves the row inert with the same
+  words, and the terminal, which needs only the agent's own binary, is
+  unchanged.
 - A link the autopilot writes to a place in Tori opens it again. The sanitizer
   added in 26.1002 dropped the link's target.
 - The app's identifier is now `app.gettori.tori`, after the domain it lives at
