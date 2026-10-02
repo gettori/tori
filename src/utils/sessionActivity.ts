@@ -325,7 +325,9 @@ createRoot(() => {
     const key = JSON.stringify(facts);
     if (key === pushed) return;
     pushed = key;
-    invoke("rpc_session_facts", { facts }).catch(() => {});
+    void Promise.resolve()
+      .then(() => invoke("rpc_session_facts", { facts }))
+      .catch(() => {});
   });
 });
 

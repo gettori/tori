@@ -181,7 +181,8 @@
   --count-size: calc(14px * var(--ui-scale));
   position: absolute;
   top: calc(50% + var(--control-icon) / 2 - var(--count-size) / 2);
-  right: calc(var(--tab-pad) - var(--count-size) / 2);
+  /* The pad is the Tab pill's own, inherited; the fallback is its value there. */
+  right: calc(var(--tab-pad, calc(8px * var(--ui-scale))) - var(--count-size) / 2);
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -180,9 +180,9 @@ export const splitSelectionIntoLines: StateCommand = ({ state, dispatch }) => {
 export const selectionKeymap: readonly KeyBinding[] = [
   { key: "Mod-i", run: expandSelection, preventDefault: true },
   { key: "Mod-Shift-i", run: shrinkSelection, preventDefault: true },
-  // Not `Mod-j`: that is the app's "focus the terminal", which wins the key
-  // before the editor ever sees it.
-  { key: "Mod-Shift-j", run: joinLines, preventDefault: true },
+  // Not `Mod-j` or `Mod-Shift-j`: those are the app's "focus the terminal" and
+  // the autopilot, which win the key before the editor ever sees it.
+  { key: "Ctrl-j", run: joinLines, preventDefault: true },
   // `Mod-Alt-l` rather than VS Code's `Alt-Shift-i`, because a bare Option
   // chord cannot work here. macOS rewrites `event.key` to the Option glyph
   // (Opt+I -> "ˆ"), and CM6 falls back to the physical key for exactly this

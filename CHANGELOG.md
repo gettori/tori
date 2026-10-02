@@ -10,6 +10,10 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 ## Unreleased
 
+- Join lines is on Ctrl-J. Its old chord, Shift-Cmd-J, has opened the autopilot
+  since 26.927, so in the editor it did nothing.
+- A link the autopilot writes to a place in Tori opens it again. The sanitizer
+  added in 26.1002 dropped the link's target.
 - The app's identifier is now `app.gettori.tori`, after the domain it lives at
   (`app.gettori.tori.mobile` on the phone). macOS and Android treat that as a
   new app, once: what the window remembered (open tabs, zoom, view choices,
