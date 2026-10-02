@@ -75,7 +75,7 @@ jobs:
 
             url "https://github.com/${RELEASES_REPO}/releases/download/v#{version}/${{ steps.rel.outputs.pattern }}"
             name "Tori"
-            desc "Dev workflow manager: session tree + Claude terminal + editor"
+            desc "Cockpit for the coding agents you already run"
             homepage "https://github.com/${RELEASES_REPO}"
 
             # No version bound: the bundle sets no minimum, so older macOS is untested
