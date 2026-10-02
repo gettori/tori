@@ -1,5 +1,5 @@
-// Which projects may run their own code through a language server, a debugger
-// or a formatter. Kept in Tori's config directory and never in the project, because a
+// Which projects may run their own code through git, a language server, a
+// debugger or a formatter. Kept in Tori's config directory and never in the project, because a
 // flag the repo could ship would let the repo answer for itself.
 
 use std::io::ErrorKind;
@@ -145,6 +145,22 @@ pub fn gate_project(project: &Path) -> Result<(), String> {
     gate_project_at(&store_path(), crate::config::discovered_project_dirs, project)
 }
 
+fn trusted_folder_at(owned: &Path, trusted: impl FnOnce(&Path) -> bool, folder: &Path) -> bool {
+    folder.starts_with(owned) || trusted(folder)
+}
+
+/// Whether `folder` is Tori's own state, which no project wrote, or a trusted
+/// project.
+pub fn trusted_folder(folder: &Path) -> bool {
+    trusted_folder_at(&crate::owned_state::config_dir(), |folder| gate_project(folder).is_ok(), folder)
+}
+
+/// Whether git may open `repo`.
+pub fn allows_git(repo: &Path) -> bool {
+    // Tests build their repositories under the temp dir, which no store covers.
+    cfg!(test) || trusted_folder(repo)
+}
+
 /// Every trusted project, as stored.
 #[tauri::command(async)]
 pub fn trusted_projects() -> Vec<String> {
@@ -165,21 +181,45 @@ pub fn untrusted_projects() -> Vec<String> {
         .collect()
 }
 
-/// Trust the project `path` belongs to, returning the path that was trusted.
-#[tauri::command(async)]
-pub fn trust_project(path: String) -> Result<String, String> {
+// A project's branches are read through git and cached until its folder
+// changes, which a change of trust does not do.
+fn reprobe(app: &tauri::AppHandle, index: &crate::config::ProjectIndex) {
+    use tauri::Emitter;
+    index.forget_all();
+    let _ = app.emit("config://changed", ());
+}
+
+pub(crate) fn trust(path: &str) -> Result<String, String> {
     trust_at(
         &store_path(),
         crate::config::discovered_project_dirs,
         crate::config::discovery_root().as_deref(),
-        Path::new(&path),
+        Path::new(path),
     )
+}
+
+/// Trust the project `path` belongs to, returning the path that was trusted.
+#[tauri::command(async)]
+pub fn trust_project(
+    app: tauri::AppHandle,
+    index: tauri::State<crate::config::ProjectIndex>,
+    path: String,
+) -> Result<String, String> {
+    let scope = trust(&path)?;
+    reprobe(&app, &index);
+    Ok(scope)
 }
 
 /// Stop trusting a project, by the path `trusted_projects` listed it under.
 #[tauri::command(async)]
-pub fn revoke_project(path: String) -> Result<(), String> {
-    revoke_at(&store_path(), crate::config::discovered_project_dirs, &path)
+pub fn revoke_project(
+    app: tauri::AppHandle,
+    index: tauri::State<crate::config::ProjectIndex>,
+    path: String,
+) -> Result<(), String> {
+    revoke_at(&store_path(), crate::config::discovered_project_dirs, &path)?;
+    reprobe(&app, &index);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -264,6 +304,15 @@ mod tests {
 
         trust_at(&store, Vec::new, Some(&root), &project).unwrap();
         assert_eq!(gate_project_at(&store, Vec::new, &project), Ok(()));
+    }
+
+    #[test]
+    fn git_opens_toris_own_state_and_trusted_projects_and_nothing_else() {
+        let owned = Path::new("/Users/me/.config/tori");
+        let trusted = |repo: &Path| repo.starts_with("/code/mine");
+        assert!(trusted_folder_at(owned, trusted, Path::new("/Users/me/.config/tori/autopilot/s1")));
+        assert!(trusted_folder_at(owned, trusted, Path::new("/code/mine/wt")));
+        assert!(!trusted_folder_at(owned, trusted, Path::new("/Downloads/unpacked")));
     }
 
     #[test]

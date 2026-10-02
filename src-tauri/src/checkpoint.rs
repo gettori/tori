@@ -22,7 +22,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 
@@ -381,9 +381,7 @@ pub(crate) fn relative_to(repo: &str, path: &str) -> Option<String> {
 }
 
 pub(crate) fn is_git_worktree(repo: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    crate::exec::git_in(repo)
         .args(["rev-parse", "--is-inside-work-tree"])
         .output()
         .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
@@ -391,9 +389,7 @@ pub(crate) fn is_git_worktree(repo: &str) -> bool {
 }
 
 pub(crate) fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -404,9 +400,7 @@ pub(crate) fn git_run(repo: &str, args: &[&str]) -> Result<(), String> {
 }
 
 pub(crate) fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -419,9 +413,7 @@ pub(crate) fn git_capture(repo: &str, args: &[&str]) -> Result<String, String> {
 /// Raw (untrimmed) stdout, for unified-diff text where leading/trailing lines
 /// matter.
 pub(crate) fn git_output(repo: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -450,9 +442,7 @@ pub(crate) fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String
     // ignored paths makes `git add` error rather than skip - so a fanned-out
     // project's every snapshot would have failed. See
     // [[gotchas#an-exclude-pathspec-over-ignored-paths-fails-git-add]].
-    let add = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let add = crate::exec::git_in(repo)
         .args(["add", "-A"])
         .env("GIT_INDEX_FILE", &index_str)
         .output()
@@ -460,9 +450,7 @@ pub(crate) fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String
     if !add.status.success() {
         return Err(String::from_utf8_lossy(&add.stderr).trim().to_string());
     }
-    let tree = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let tree = crate::exec::git_in(repo)
         .args(["write-tree"])
         .env("GIT_INDEX_FILE", &index_str)
         .output()
@@ -550,9 +538,7 @@ struct Checkpoint {
 /// Every existing checkpoint ref for this session, ascending by `ts`.
 fn list_checkpoints(repo: &str, session_id: &str) -> Vec<Checkpoint> {
     let prefix = ref_prefix(session_id);
-    let out = match Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = match crate::exec::git_in(repo)
         .args(["for-each-ref", "--format=%(refname) %(objectname)", &prefix])
         .output()
     {
@@ -983,9 +969,7 @@ fn batch_blob_sizes(repo: &str, ids: &[String]) -> Result<HashMap<String, u64>, 
     if ids.is_empty() {
         return Ok(sizes);
     }
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let mut child = crate::exec::git_in(repo)
         .args(["cat-file", "--batch-check"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1177,9 +1161,7 @@ fn range_diff_one(
 }
 
 fn tree_has_file(repo: &str, tree: &str, file: &str) -> Result<bool, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(["ls-tree", "--name-only", tree, "--", file])
         .output()
         .map_err(|e| e.to_string())?;
@@ -1262,9 +1244,7 @@ fn revert_file_one(
         return Ok("deleted".into());
     }
     // Edited, or deleted during the turn: restore the pre-turn blob.
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&repo_path)
+    let out = crate::exec::git_in(&repo_path)
         .args(["show", &format!("{before}:{file}")])
         .output()
         .map_err(|e| e.to_string())?;
@@ -1312,9 +1292,7 @@ pub(crate) fn parse_raw_change(line: &str) -> Option<RawChange> {
 /// a `120000` entry is a symlink (its blob content is the link target, which
 /// must not be written as a regular file), `100755` keeps the exec bit.
 pub(crate) fn write_blob_to_disk(repo: &str, change: &RawChange, abs: &Path) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(["cat-file", "blob", &change.dst_sha])
         .output()
         .map_err(|e| e.to_string())?;
@@ -1524,9 +1502,7 @@ fn revert_tree_one(
 }
 
 fn prune_refs(repo_path: &str, session_id: &str) {
-    let Ok(out) = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
+    let Ok(out) = crate::exec::git_in(repo_path)
         .args(["for-each-ref", "--format=%(refname)", &ref_prefix(session_id)])
         .output()
     else {
@@ -1536,7 +1512,7 @@ fn prune_refs(repo_path: &str, session_id: &str) {
         return;
     }
     for line in String::from_utf8_lossy(&out.stdout).lines() {
-        let _ = Command::new("git").arg("-C").arg(repo_path).args(["update-ref", "-d", line]).output();
+        let _ = crate::exec::git_in(repo_path).args(["update-ref", "-d", line]).output();
     }
 }
 
@@ -1571,6 +1547,7 @@ pub(crate) fn checkpoint_prune_body(repo_path: String, session_id: String) -> Re
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};

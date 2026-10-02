@@ -14,7 +14,6 @@
 
 use serde::Serialize;
 use std::collections::HashMap;
-use std::process::Command;
 
 /// The commit a line came from.
 ///
@@ -53,9 +52,7 @@ pub struct Blame {
 pub const UNCOMMITTED: &str = "0000000000000000000000000000000000000000";
 
 fn capture(repo: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let out = crate::exec::git_in(repo)
         .args(args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -135,6 +132,7 @@ pub fn git_blame(project_path: String, file: String) -> Result<Blame, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use super::*;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};

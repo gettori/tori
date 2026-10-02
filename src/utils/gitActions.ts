@@ -21,6 +21,7 @@ import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, typ
 import { rootOf } from "./topics";
 import { adoptSync } from "./branchSync";
 import { mentionPath } from "./pathScope";
+import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "./projectTrust";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
  *  and since the backend moved to `--porcelain=v2 -z` it is always a real
@@ -283,7 +284,8 @@ function markPushing(root: string, on: boolean): void {
 }
 
 function toastError(e: unknown) {
-  emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+  const message = String(e) === UNTRUSTED ? "Git stays off until you trust this project." : String(e);
+  emitWith<ToastEvent>(TOAST, { message, kind: "error" });
 }
 
 // Which generation of membership each entered root is on. Doubles as the
@@ -387,8 +389,11 @@ export function refreshStatus(root: string | null): Promise<void> {
     let files: FileStatus[] = [];
     try {
       files = await invoke<FileStatus[]>("git_status", { projectPath: root });
-    } catch {
+    } catch (e) {
       files = [];
+      if (String(e) === UNTRUSTED && noteRefused(root)) {
+        askToTrust(root, "Git stays off until you trust this project.");
+      }
     }
     // The root left the set while we were reading, so this answer is about a
     // workspace nobody is looking at any more.
@@ -719,6 +724,7 @@ export async function startGitWatch(): Promise<() => void> {
       lastFetch: { at: e.fetchedAt ?? 0, error: ok ? "" : (e.error ?? "Fetch failed"), quiet: !!e.quiet },
     });
   };
+  const untrust = onTrustChange(() => refreshOne(undefined, refreshGit));
   const unlisteners = await Promise.all([
     listen<FsChanged>("fs://changed", (e) => refreshOne(e.payload?.root, refreshStatus)),
     // HEAD, the index or a ref moved: a commit, push or checkout run anywhere
@@ -739,6 +745,7 @@ export async function startGitWatch(): Promise<() => void> {
     }),
   ]);
   return () => {
+    untrust();
     for (const un of unlisteners) un();
   };
 }
