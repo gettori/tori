@@ -13,14 +13,14 @@ import { DEFAULT_SETTINGS, loadSettings } from "./settingsStore";
 
 beforeEach(async () => {
   // What `remote_set` saved is what the next `get_settings` reads, as on disk.
-  let stored = { enabled: false, address: "192.168.1.20", port: 47821 };
+  let stored = { enabled: false, address: "100.101.7.9", port: 47821 };
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string, args: { remote?: typeof stored }) => {
-    if (cmd === "remote_interfaces") return [{ name: "en0", address: "192.168.1.20", kind: "lan" }];
+    if (cmd === "remote_interfaces") return [{ name: "utun4", address: "100.101.7.9", kind: "tailscale" }];
     if (cmd === "remote_status") return { state: "off" };
     if (cmd === "remote_set") {
       stored = args.remote!;
-      return { state: "listening", url: "ws://192.168.1.20:47821" };
+      return { state: "listening", url: "ws://100.101.7.9:47821" };
     }
     if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, remote: stored };
     return null;
@@ -40,9 +40,9 @@ describe("the Remote settings section", () => {
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("remote_set", expect.anything()));
     const [, args] = invoke.mock.calls.find(([c]) => c === "remote_set")!;
-    expect(args).toEqual({ remote: { enabled: true, address: "192.168.1.20", port: 47821 } });
+    expect(args).toEqual({ remote: { enabled: true, address: "100.101.7.9", port: 47821 } });
     expect(invoke).not.toHaveBeenCalledWith("set_settings", expect.anything());
-    expect(await screen.findByText("Listening on ws://192.168.1.20:47821")).toBeTruthy();
+    expect(await screen.findByText("Listening on ws://100.101.7.9:47821")).toBeTruthy();
     expect(invoke.mock.calls.filter(([c]) => c === "remote_set"), "one click, one write").toHaveLength(1);
   });
 

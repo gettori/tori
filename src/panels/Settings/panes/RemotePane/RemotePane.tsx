@@ -11,7 +11,7 @@ import Button from "../../../../components/Button/Button";
 import { pushToast } from "../../../../components/Toasts/Toasts";
 
 /** Mirrors `remote::Interface` in src-tauri/src/rpc/remote.rs. */
-type Interface = { name: string; address: string; kind: "lan" | "tailscale" | "loopback" };
+type Interface = { name: string; address: string; kind: "tailscale" | "loopback" };
 
 /** Mirrors `remote::Tailscale` in src-tauri/src/rpc/remote.rs. */
 type Tailscale = { state: "missing" } | { state: "stopped" } | { state: "connected"; address: string };
@@ -61,7 +61,7 @@ function pairedOn(ms: number): string {
 }
 
 function optionFor(i: Interface): SelectOption {
-  const where = i.kind === "tailscale" ? "Tailscale" : i.kind === "loopback" ? "this Mac only" : i.name;
+  const where = i.kind === "tailscale" ? "Tailscale" : "this Mac only";
   return { value: i.address, label: `${i.address} (${where})` };
 }
 
@@ -126,7 +126,7 @@ export default function RemotePane(props: PaneProps) {
     const found = interfaces().map(optionFor);
     const stored = settings.remote.address;
     return stored && !found.some((o) => o.value === stored)
-      ? [...found, { value: stored, label: `${stored} (not on this Mac)` }]
+      ? [...found, { value: stored, label: `${stored} (not available)` }]
       : found;
   };
 
