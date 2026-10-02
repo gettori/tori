@@ -1,9 +1,10 @@
 import { Index, Match, Switch, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
-import { Marked, type Token } from "marked";
+import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, TOAST, type NavTarget, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { linkTarget } from "./links";
+import { LINEWISE, PROSE } from "./chatMarked";
 import CodeBlock from "./CodeBlock";
 import styles from "./Chat.module.css";
 
@@ -11,27 +12,16 @@ type Segment =
   | { kind: "prose"; html: string }
   | { kind: "code"; lang: string; code: string };
 
-/** The two newline rules, built once each rather than configured per call.
- *
- *  Instances because the static `marked.lexer`/`marked.parser` take an options
- *  object that *replaces* the defaults instead of merging into them, and
- *  `breaks` does nothing without the `gfm` it would have dropped. Measured on
- *  marked 18.0.6: passing `{breaks: true}` to both halves renders no `<br>` at
- *  all, which is a silent no-op and exactly the shape of bug that survives
- *  review. */
-const PROSE = new Marked();
-const LINEWISE = new Marked({ breaks: true });
-
 /**
  * Assistant markdown, rendered block by block rather than as one innerHTML
  * blob. That is what makes streaming cheap - a delta re-renders only the tail
  * segment, everything above it is untouched DOM - and it is what lets a code
  * fence be a real component with controls instead of inert markup.
  *
- * Assistant text is model output, so the prose segments get the same
- * treatment as a local markdown file: rendered locally with `marked`, then
- * stripped of script-execution vectors before going near innerHTML. Fence
- * contents never become markup at all, so they need no sanitizing.
+ * Assistant text is model output, so raw HTML in it is shown as the text it
+ * is, a remote image becomes a link, and what `marked` renders is sanitized
+ * before going near innerHTML. Fence contents never become markup at all, so
+ * they need no sanitizing.
  *
  * Links are routed rather than followed. `sanitizeHtml` leaves anchors alone -
  * they are not a script vector - but an anchor the webview follows takes the

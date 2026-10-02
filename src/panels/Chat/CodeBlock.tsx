@@ -1,9 +1,9 @@
 import { Match, Show, Switch, createMemo, createSignal, onCleanup } from "solid-js";
 import { Check, Code, Copy, Eye } from "lucide-solid";
-import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { copyText } from "../../utils/clipboard";
 import { cappedHtml } from "./highlight";
+import { PROSE } from "./chatMarked";
 import Icon from "../../components/Icon/Icon";
 import Diagram from "../../components/Diagram/Diagram";
 import styles from "./Chat.module.css";
@@ -73,7 +73,7 @@ export default function CodeBlock(props: { lang: string; code: string }) {
         fallback={
           <div
             class={styles.codePreview}
-            innerHTML={sanitizeHtml(marked.parse(stripFrontMatter(props.code)) as string)}
+            innerHTML={sanitizeHtml(PROSE.parse(stripFrontMatter(props.code)) as string)}
           />
         }
       >
