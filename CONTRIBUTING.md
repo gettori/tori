@@ -64,10 +64,11 @@ pnpm tauri:dev
 
 `pnpm tauri:dev` layers `src-tauri/tauri.dev.conf.json` over the main config:
 the app is named "Tori Dev", wears an orange stripe and a `dev` chip in the
-topbar, and uses its own identifier (`com.skarif.tori.dev`) so it keeps its
-own data dir and can run beside the installed build. It runs `pnpm lsp:install` first, which installs the bundled
-TypeScript language server into `src-tauri/resources/lsp`. The first Rust build
-takes a while; later ones are incremental.
+topbar, and uses its own identifier (`app.gettori.tori.dev`) so it keeps its
+own data dir and can run beside the installed build. It runs `pnpm lsp:install`
+and `pnpm dap:install` first, which fetch the bundled language servers and the
+debug adapter into `src-tauri/resources`. The first Rust build takes a while;
+later ones are incremental.
 
 To build a release bundle locally:
 

@@ -1,4 +1,4 @@
-package com.gettori.tori.mobile
+package app.gettori.tori.mobile
 
 import android.graphics.Color
 import android.os.Bundle
