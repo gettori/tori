@@ -170,7 +170,7 @@ fn device_name(sent: &str) -> String {
     if name.is_empty() { DEFAULT_DEVICE_NAME.to_string() } else { name }
 }
 
-pub(super) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }

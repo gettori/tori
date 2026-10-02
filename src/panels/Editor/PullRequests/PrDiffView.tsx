@@ -10,6 +10,7 @@
 // a tab that opens after the read has landed shows its diff immediately.
 
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { ArrowDown, Columns2, ExternalLink, FileCode } from "lucide-solid";
 import { emitWith, OPEN_IN_EDITOR } from "../../../utils/events";
 import { parsePrDiffArg, prDiffTabId } from "../../../utils/syntheticTabs";
@@ -160,7 +161,7 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
               size="sm"
               icon={<Icon icon={ExternalLink} />}
               tooltip={`Open pull request ${p().number} on github.com`}
-              onClick={() => window.open(`${p().url}/files`, "_blank", "noreferrer")}
+              onClick={() => void invoke("plugin:opener|open_url", { url: `${p().url}/files` }).catch(() => {})}
             />
           )}
         </Show>

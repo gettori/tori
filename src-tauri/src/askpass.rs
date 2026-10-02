@@ -317,13 +317,14 @@ fn handle_request(inner: &Arc<AskpassInner>, stream: &UnixStream) -> Option<Stri
     reader.read_line(&mut line).ok()?;
     let req: Request = serde_json::from_str(line.trim_end()).ok()?;
 
-    // Constant-ish token check. A private 0700 dir already gates access; the
-    // token is defense-in-depth against a same-user process guessing the path.
+    // A private 0700 dir already gates access; the token is defense-in-depth
+    // against a same-user process guessing the path.
     let token = req.token.as_bytes();
-    let full = token == inner.token.as_bytes();
-    let reach = if full || token == inner.credential_token.as_bytes() {
+    let is = |held: &str| crate::rpc::auth::constant_time_eq(token, held.as_bytes());
+    let full = is(&inner.token);
+    let reach = if full || is(&inner.credential_token) {
         crate::credential::Reach::Tori
-    } else if token == inner.everywhere_token.as_bytes() {
+    } else if is(&inner.everywhere_token) {
         crate::credential::Reach::Everywhere
     } else {
         return None;

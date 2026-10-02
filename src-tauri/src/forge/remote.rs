@@ -62,7 +62,15 @@ pub fn parse(url: &str) -> Result<Remote, ForgeError> {
     let mut bits = path.splitn(2, '/');
     let owner = bits.next().unwrap_or_default();
     let repo = bits.next().unwrap_or_default();
-    if owner.is_empty() || repo.is_empty() {
+    // Both go into API paths on the account's host, where `..` or a `?` would
+    // address another endpoint with the same token.
+    let plain = |segment: &str| {
+        !segment.is_empty()
+            && segment != "."
+            && segment != ".."
+            && !segment.contains(|c: char| c.is_whitespace() || matches!(c, '?' | '#' | '%' | '\\'))
+    };
+    if !plain(owner) || !repo.split('/').all(plain) {
         return Err(ForgeError::UnsupportedRemote { host });
     }
     Ok(Remote { host, repo: RepoRef { owner: owner.to_string(), repo: repo.to_string() } })
