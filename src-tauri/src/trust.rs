@@ -152,13 +152,13 @@ fn trusted_folder_at(owned: &Path, trusted: impl FnOnce(&Path) -> bool, folder: 
 /// Whether `folder` is Tori's own state, which no project wrote, or a trusted
 /// project.
 pub fn trusted_folder(folder: &Path) -> bool {
-    trusted_folder_at(&crate::owned_state::config_dir(), |folder| gate_project(folder).is_ok(), folder)
+    // Tests build their folders under the temp dir, which no store covers.
+    cfg!(test) || trusted_folder_at(&crate::owned_state::config_dir(), |folder| gate_project(folder).is_ok(), folder)
 }
 
 /// Whether git may open `repo`.
 pub fn allows_git(repo: &Path) -> bool {
-    // Tests build their repositories under the temp dir, which no store covers.
-    cfg!(test) || trusted_folder(repo)
+    trusted_folder(repo)
 }
 
 /// Every trusted project, as stored.

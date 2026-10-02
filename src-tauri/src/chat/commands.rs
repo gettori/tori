@@ -323,6 +323,12 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         });
     }
 
+    // Before the claim and the capture bridge, so a refusal leaves nothing
+    // behind. Measured 2026-10-02: `opencode acp` runs a folder's plugins and
+    // MCP servers at `session/new`, and codex-acp its project MCP servers.
+    let trusted = crate::trust::trusted_folder(std::path::Path::new(&cwd));
+    let trust_args = chat.trust_args(trusted)?.to_vec();
+
     // Before the claim, for two reasons: a caller naming the wrong account is
     // refused while the session is still only an idea, and the claim that is
     // taken records the account the session will actually run as, which is what
@@ -414,8 +420,8 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         background,
         home.as_ref(),
     )?);
-    let untrusted = !chat.untrusted_args.is_empty() && !crate::trust::trusted_folder(std::path::Path::new(&cwd));
-    args.extend(chat.trust_args(!untrusted).iter().cloned());
+    let untrusted = !trusted;
+    args.extend(trust_args);
     let mut env: HashMap<String, String> = profile_env.into_iter().collect();
     // Members' CLAUDE.md files, which claude reads from an added directory only
     // when asked to.
