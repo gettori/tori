@@ -1,0 +1,47 @@
+name: Feature request
+description: Something you want Tori to do that it does not do today
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for asking. The most useful request describes the work you were
+        doing when you missed the feature, more than the feature itself: there
+        is often a smaller change that solves the same problem.
+
+        For a new agent, use the adapter request form instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you were trying to do
+      description: The task, and where Tori got in the way or left you to do it by hand.
+      placeholder: |
+        I run three worktrees of one repo and wanted to see which of them has
+        a session waiting on me, without opening each one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like instead
+      description: How you picture it working. A rough sketch is enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today
+      description: A workaround, another tool, or nothing. It shows how much this matters.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, how another tool does it, or a related issue.
+    validations:
+      required: false
