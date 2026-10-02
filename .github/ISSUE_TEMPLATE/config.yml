@@ -10,6 +10,11 @@ contact_links:
     about: >
       Agents are TOML files, not code. This is the full schema, with a
       from-scratch example.
+  - name: Ask a question or float an idea
+    url: https://github.com/gettori/tori/discussions
+    about: >
+      Discussions are for questions, setups and half-formed ideas. An issue is
+      for something specific to fix or build.
   - name: Report a security problem
     url: https://github.com/gettori/tori/security/advisories/new
     about: >

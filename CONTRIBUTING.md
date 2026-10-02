@@ -12,6 +12,10 @@ What helps most is an issue:
 - a **feature request** that says what you were trying to do,
 - an **adapter request** for an agent Tori does not support yet.
 
+A question, or an idea that is not a request yet, goes in
+[Discussions](https://github.com/gettori/tori/discussions). Everyone taking part
+is asked to follow the [code of conduct](CODE_OF_CONDUCT.md).
+
 If you have already written the fix, say so in the issue and link your fork or
 paste the diff. That is useful as a description of the problem even when the
 change that lands is a different one.
