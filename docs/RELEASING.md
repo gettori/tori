@@ -100,6 +100,7 @@ Run `scripts/release.sh status`. Then:
 | `prepare` failed before the PR | nothing, or a `release/<version>` branch on GitHub | delete that branch if it exists, run `prepare` again |
 | The release PR is wrong | an open PR | close it, delete its branch, fix `main`, run `prepare` again |
 | `publish` failed during a build | nothing: the tag is made only after both builds | fix the cause, run `publish` again |
+| The APK build says `Unresolved reference: TauriActivity` | nothing | the identifier changed since the last Android build on this machine, and Tauri's build script did not notice: `cargo clean -p tauri --release --target <triple>` for the four Android triples, delete the stale `gen/android/app/src/main/java/<old package path>`, run `publish` again |
 | `publish` failed during upload | the tag and a draft release | run `publish` again, it replaces the draft |
 | `publish` failed at the cask | a published release, the old cask | `publish` will not run again on a published release, so dispatch the `Update cask` workflow or edit the cask by hand |
 | Something merged after the release PR | `publish` refuses | run `prepare` again for a new version that includes it |
