@@ -235,11 +235,11 @@ describe("a chat restored from the store", () => {
   // that named no account runs under the one that holds it. A tab that kept its
   // `null` would file this session's readings under nobody.
   it("takes the transcript's account when it asked for none", async () => {
-    spawnProfile = "fonn";
+    spawnProfile = "globex";
     const recorded: (string | null)[] = [];
     mount(true, "claude", null, (p) => recorded.push(p));
 
-    await waitFor(() => expect(recorded).toEqual(["fonn"]));
+    await waitFor(() => expect(recorded).toEqual(["globex"]));
   });
 
   // The common path, and the reason this is a difference rather than an
@@ -263,9 +263,9 @@ describe("a chat restored from the store", () => {
 // new one, and that conversation lives in exactly one profile home.
 describe("the account a reconnect comes back on", () => {
   it("is the tab's own, on the first spawn and on every one after it", async () => {
-    mount(true, "claude", "fonn");
+    mount(true, "claude", "globex");
     await waitFor(() => expect(spawn()).toBeTruthy());
-    expect(spawn()).toMatchObject({ profile: "fonn" });
+    expect(spawn()).toMatchObject({ profile: "globex" });
 
     // Drop the child, which is what a reload leaves behind, then take the way
     // back the strip offers.
@@ -274,7 +274,7 @@ describe("the account a reconnect comes back on", () => {
 
     await waitFor(() => expect(spawns()).toHaveLength(2));
     const again = spawns()[1];
-    expect(again).toMatchObject({ resume: true, profile: "fonn" });
+    expect(again).toMatchObject({ resume: true, profile: "globex" });
     // The pick is dropped on a reconnect, so this pins that the account is not
     // being carried by accident along with something else.
     expect(again).toMatchObject({ model: null, mode: null, effort: null });

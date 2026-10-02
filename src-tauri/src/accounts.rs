@@ -1347,13 +1347,13 @@ mod tests {
         let mut a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
         a.accounts.as_mut().unwrap().home_default = Some(missing.clone());
         let mut file = AccountsFile::default();
-        add_profile(&mut file, "claude", added("fonn", "/canonical/fonn")).unwrap();
+        add_profile(&mut file, "claude", added("globex", "/canonical/globex")).unwrap();
 
         for id in [None, Some(DEFAULT_PROFILE_ID)] {
             let err = profile_env(&a, &file, id).unwrap_err();
             assert!(err.contains(&missing.display().to_string()), "{err}");
         }
-        assert!(profile_env(&a, &file, Some("fonn")).is_ok(), "an added profile still resolves");
+        assert!(profile_env(&a, &file, Some("globex")).is_ok(), "an added profile still resolves");
     }
 
     #[test]
@@ -1486,15 +1486,15 @@ mod tests {
     fn an_added_profile_resolves_to_its_home_variable() {
         let a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
         let mut file = AccountsFile::default();
-        add_profile(&mut file, "claude", added("fonn", "/canonical/fonn")).unwrap();
+        add_profile(&mut file, "claude", added("globex", "/canonical/globex")).unwrap();
 
-        let env = profile_env(&a, &file, Some("fonn")).unwrap();
-        assert_eq!(env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/canonical/fonn"));
+        let env = profile_env(&a, &file, Some("globex")).unwrap();
+        assert_eq!(env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/canonical/globex"));
     }
 
     /// A tab persisted against a profile that has since been removed. An empty
     /// map here would start the session on the user's own login while the tab
-    /// still said "Fonn", which is the failure the whole feature exists for.
+    /// still said "Globex", which is the failure the whole feature exists for.
     #[test]
     fn an_unknown_profile_is_an_error_rather_than_the_default_account() {
         let a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
@@ -1508,9 +1508,9 @@ mod tests {
     fn a_missing_home_env_surfaces_as_the_spawn_envs_own_error() {
         let a = adapter_with(None, false);
         let mut file = AccountsFile::default();
-        add_profile(&mut file, "claude", added("fonn", "/canonical/fonn")).unwrap();
+        add_profile(&mut file, "claude", added("globex", "/canonical/globex")).unwrap();
 
-        let err = profile_env(&a, &file, Some("fonn")).unwrap_err();
+        let err = profile_env(&a, &file, Some("globex")).unwrap_err();
         assert!(err.contains("home_env"), "{err}");
     }
 

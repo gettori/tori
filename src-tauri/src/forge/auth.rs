@@ -486,7 +486,7 @@ mod tests {
         let mut store = AuthStore::restored(
             vec![
                 restored("personal", Some("gho_a"), Some("skarif2"), false),
-                restored("work", Some("gho_b"), Some("fonn-arif"), false),
+                restored("work", Some("gho_b"), Some("globex-arif"), false),
             ],
             true,
         );
@@ -501,13 +501,13 @@ mod tests {
     }
 
     fn work(rejected: bool) -> AuthStore {
-        AuthStore::restored(vec![restored("work", Some("gho_b"), Some("fonn-arif"), rejected)], true)
+        AuthStore::restored(vec![restored("work", Some("gho_b"), Some("globex-arif"), rejected)], true)
     }
 
     fn on_disk() -> (super::super::accounts::AccountsFile, String) {
         use super::super::accounts::{add_account, AccountsFile, Provider, Source, GITHUB_COM};
         let mut file = AccountsFile::default();
-        let id = add_account(&mut file, Provider::Github, "https://github.com", GITHUB_COM, "fonn-arif", Source::Token, None).unwrap();
+        let id = add_account(&mut file, Provider::Github, "https://github.com", GITHUB_COM, "globex-arif", Source::Token, None).unwrap();
         (file, id)
     }
 
@@ -548,7 +548,7 @@ mod tests {
     #[test]
     fn a_rejected_account_comes_back_suspect_after_a_restart() {
         let store = work(true);
-        assert_eq!(store.state("work"), AuthState::Suspect { login: Some("fonn-arif".into()) });
+        assert_eq!(store.state("work"), AuthState::Suspect { login: Some("globex-arif".into()) });
         assert!(!store.may_call("work"));
 
         let keychain_empty = AuthStore::restored(vec![restored("work", None, None, true)], true);

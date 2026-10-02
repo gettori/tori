@@ -73,7 +73,7 @@ describe("the tab model's spelling of an account", () => {
     // An empty string is not an account either, and would otherwise ride
     // through to a spawn as an id nothing resolves.
     expect(asTabProfile("")).toBeNull();
-    expect(asTabProfile("fonn")).toBe("fonn");
+    expect(asTabProfile("globex")).toBe("globex");
   });
 });
 
@@ -87,7 +87,7 @@ describe("agentReady before the sweep lands", () => {
   // remembered account against, and dropping it would move a project onto
   // another login for the second the probe takes.
   it("leaves a remembered account standing", () => {
-    expect(knownProfile("claude", "fonn")).toBe("fonn");
+    expect(knownProfile("claude", "globex")).toBe("globex");
     expect(knownProfile("claude", "default")).toBeNull();
   });
 });
@@ -101,8 +101,8 @@ describe("agentReady once the sweep has landed", () => {
       row("missing", "notFound"),
       row("signed-out", "versionMatch", "signedOut"),
       row("signed-in", "versionMatch", "signedIn"),
-      withProfiles("split", "signedOut", { default: "signedOut", fonn: "signedIn" }),
-      withProfiles("split-other-way", "signedIn", { default: "signedIn", fonn: "signedOut" }),
+      withProfiles("split", "signedOut", { default: "signedOut", globex: "signedIn" }),
+      withProfiles("split-other-way", "signedIn", { default: "signedIn", globex: "signedOut" }),
     ]);
     ensureAgentHealthLoaded();
     await vi.waitFor(() => expect(agentHealth()).not.toBeNull());
@@ -147,10 +147,10 @@ describe("agentReady once the sweep has landed", () => {
   // account must not be refused because the other login expired, and a draft
   // on the expired one must not be let through because the other is fine.
   it("answers per account, not per agent", () => {
-    expect(agentReady("split", "fonn")).toBe(true);
+    expect(agentReady("split", "globex")).toBe(true);
     expect(agentReady("split", null)).toBe(false);
 
-    expect(agentReady("split-other-way", "fonn")).toBe(false);
+    expect(agentReady("split-other-way", "globex")).toBe(false);
     expect(agentReady("split-other-way", null)).toBe(true);
   });
 
@@ -164,7 +164,7 @@ describe("agentReady once the sweep has landed", () => {
   // "nothing remembered" has to leave room for the layer below to answer.
   describe("a remembered account, checked against the sweep", () => {
     it("comes back in the tab model's spelling", () => {
-      expect(knownProfile("split", "fonn")).toBe("fonn");
+      expect(knownProfile("split", "globex")).toBe("globex");
       expect(knownProfile("split", "default")).toBeNull();
     });
 
@@ -172,7 +172,7 @@ describe("agentReady once the sweep has landed", () => {
       expect(knownProfile("split", "removed-since")).toBeUndefined();
       // An agent the sweep answered for with no accounts at all is an answer,
       // not the ignorance the pre-sweep case is.
-      expect(knownProfile("matched", "fonn")).toBeUndefined();
+      expect(knownProfile("matched", "globex")).toBeUndefined();
     });
 
     it("is nothing at all when nothing was remembered", () => {

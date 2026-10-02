@@ -115,7 +115,7 @@ const CAPS = {
 
 describe("projectPause", () => {
   const auth = (id: string): AuthState =>
-    id === "work" ? { kind: "suspect", login: "fonn-arif" } : SIGNED_IN;
+    id === "work" ? { kind: "suspect", login: "globex-arif" } : SIGNED_IN;
   const on = (accountId: string): RepoAccount => ({
     kind: "account",
     accountId,

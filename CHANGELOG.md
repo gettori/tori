@@ -936,7 +936,7 @@ the Features and Shells lists were redrawn against the design.
   lit one grows into a pill that says its name, because a rail of twelve glyphs
   is a legend you have to learn.
 - The tile animates between glyph and pill, and its name truncates as the column
-  narrows: Craftsmen, then Cra..., then the glyph alone. Before, one name too
+  narrows: Hooli, then Hoo..., then the glyph alone. Before, one name too
   wide dropped every name in the row at once.
 - Tiles pack left with the actions gear alone on the far right. The "new space"
   + is gone, having been a second route to the first entry of that gear's menu.

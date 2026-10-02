@@ -2398,8 +2398,8 @@ mod tests {
     /// **Codex, end to end, from its own adapter TOML.**
     ///
     /// The second agent driven with no Rust of its own, and the one that
-    /// justified the phase's scope decision: `codex app-server` exists and Paseo
-    /// spends ~9,000 lines on it, while this route is `codex.toml` plus the mode
+    /// justified the phase's scope decision: `codex app-server` exists and a typed adapter
+    /// for it runs to ~9,000 lines elsewhere, while this route is `codex.toml` plus the mode
     /// switch below. What it proves is everything the tier claims for Codex - a
     /// live model catalogue, a real permission prompt answered in the agent's own
     /// vocabulary, and an exact before-and-after diff, which ACP was assumed not

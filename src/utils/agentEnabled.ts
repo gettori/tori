@@ -72,8 +72,8 @@ export function agentEnabled(id: string, profile?: string | null): boolean {
  *  says, so the reader learns whether to flip a switch or fix an install.
  *
  *  `profile` is the account the caller means; `null` is the default one. Being
- *  signed out is per account, so a draft on Fonn must not be refused because
- *  the personal login expired, and must not be let through because Fonn's did
+ *  signed out is per account, so a draft on Globex must not be refused because
+ *  the personal login expired, and must not be let through because Globex's did
  *  not. Everything else here is per agent: a binary is installed or it is not,
  *  and the Settings switch is one per agent. */
 export function agentOffReason(id: string, profile: string | null = null): string | null {

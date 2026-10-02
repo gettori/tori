@@ -953,30 +953,30 @@ mod tests {
         let state = PtyState::default();
         {
             let mut guard = state.0.lock().unwrap();
-            // A fresh fonn agent tab: no claimed session, and the case this
+            // A fresh globex agent tab: no claimed session, and the case this
             // whole accessor exists for.
-            guard.insert("tab-fresh-fonn".into(), agent_session(None, Some("claude"), Some("fonn")));
+            guard.insert("tab-fresh-globex".into(), agent_session(None, Some("claude"), Some("globex")));
             guard.insert(
-                "tab-resumed-fonn".into(),
-                agent_session(Some("s-1"), Some("claude"), Some("fonn")),
+                "tab-resumed-globex".into(),
+                agent_session(Some("s-1"), Some("claude"), Some("globex")),
             );
             guard.insert("tab-default".into(), agent_session(None, Some("claude"), None));
-            guard.insert("tab-other-agent".into(), agent_session(None, Some("codex"), Some("fonn")));
+            guard.insert("tab-other-agent".into(), agent_session(None, Some("codex"), Some("globex")));
             guard.insert("tab-shell".into(), live_session(None));
         }
 
-        let fonn = state.live_agent_tabs("claude", "fonn");
+        let globex = state.live_agent_tabs("claude", "globex");
         let default = state.live_agent_tabs("claude", "default");
         for session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
             let _ = session.child.lock().unwrap().kill();
         }
 
-        assert_eq!(fonn, vec!["tab-fresh-fonn", "tab-resumed-fonn"]);
+        assert_eq!(globex, vec!["tab-fresh-globex", "tab-resumed-globex"]);
         // A tab that recorded no profile ran on the login the user already had.
         assert_eq!(default, vec!["tab-default"]);
         // Another agent's tab is not this account's, and a bare shell runs no
         // agent at all, so neither can block a removal.
-        assert!(!fonn.iter().any(|id| id == "tab-other-agent" || id == "tab-shell"));
+        assert!(!globex.iter().any(|id| id == "tab-other-agent" || id == "tab-shell"));
     }
 
     /// "remounting a running task's tab re-subscribes without re-typing the

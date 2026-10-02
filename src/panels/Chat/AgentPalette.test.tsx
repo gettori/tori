@@ -317,17 +317,17 @@ describe("AgentPalette", () => {
   // rows. They share an `agentId`, which is why nothing here may key on it: the
   // highlight, the marks and the recheck all have to name a pair.
   describe("two accounts of one agent", () => {
-    const onFonn = (over: Partial<PaletteProvider> = {}): PaletteProvider => ({
+    const onGlobex = (over: Partial<PaletteProvider> = {}): PaletteProvider => ({
       ...lockedProvider(adapter("claude", "Claude"), [model("opus", "Opus")], {
-        profile: "fonn",
-        account: "Fonn",
+        profile: "globex",
+        account: "Globex",
       }),
       plan: "Claude Team",
       ...over,
     });
 
     it("marks the row this chat is actually on, not the other one", () => {
-      setup({ providers: [claude, onFonn()], agentId: "claude", profile: "fonn" });
+      setup({ providers: [claude, onGlobex()], agentId: "claude", profile: "globex" });
       const rows = screen.getAllByRole("option").filter((o) => o.id.includes("providers-"));
       expect(rows.map((r) => r.getAttribute("aria-selected"))).toEqual(["false", "true"]);
     });
@@ -335,23 +335,23 @@ describe("AgentPalette", () => {
     // The plan is what says whose answer this list is, and it only means
     // anything once there are two accounts to tell apart.
     it("heads the list with the account's plan beside the count", () => {
-      setup({ providers: [onFonn()], agentId: "claude", profile: "fonn" });
+      setup({ providers: [onGlobex()], agentId: "claude", profile: "globex" });
       expect(document.querySelector(`.${styles.headFact}`)?.textContent).toBe("Claude Team, 1");
     });
 
     it("selects and rechecks the pair, not the agent", () => {
       const onRecheck = vi.fn();
       const { onSelect, filter } = setup({
-        providers: [onFonn()],
+        providers: [onGlobex()],
         agentId: "claude",
-        profile: "fonn",
+        profile: "globex",
         onRecheck,
       });
-      fireEvent.click(screen.getByRole("button", { name: /check claude \/ fonn for new models/i }));
-      expect(onRecheck).toHaveBeenCalledWith("claude", "fonn");
+      fireEvent.click(screen.getByRole("button", { name: /check claude \/ globex for new models/i }));
+      expect(onRecheck).toHaveBeenCalledWith("claude", "globex");
 
       fireEvent.keyDown(filter, { key: "Enter" });
-      expect(onSelect).toHaveBeenCalledWith("claude", "fonn", expect.objectContaining({ value: "opus" }));
+      expect(onSelect).toHaveBeenCalledWith("claude", "globex", expect.objectContaining({ value: "opus" }));
     });
   });
 

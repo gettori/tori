@@ -1007,8 +1007,8 @@ mod tests {
             "s-default".to_string(),
             on_tab(held_on("claude", DEFAULT_PROFILE, 1, Some(9)), "on-default"),
         );
-        claims.insert("s-fonn".to_string(), on_tab(held_on("claude", "fonn", 1, Some(9)), "on-fonn"));
-        assert_eq!(held_by(&claims, "claude", "fonn", |_| true), ["on-fonn"]);
+        claims.insert("s-globex".to_string(), on_tab(held_on("claude", "globex", 1, Some(9)), "on-globex"));
+        assert_eq!(held_by(&claims, "claude", "globex", |_| true), ["on-globex"]);
         assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, |_| true), ["on-default"]);
     }
 

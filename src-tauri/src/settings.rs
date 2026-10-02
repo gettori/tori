@@ -1286,7 +1286,7 @@ mod tests {
                 path: Some("/opt/claude".into()),
                 paths: [("codex".to_string(), "/opt/codex".to_string())].into(),
                 enabled: [("codex".to_string(), true)].into(),
-                default_profiles: [("claude".to_string(), "fonn".to_string())].into(),
+                default_profiles: [("claude".to_string(), "globex".to_string())].into(),
                 usage: [(
                     "claude".to_string(),
                     UsageSettings {
@@ -1638,10 +1638,10 @@ mod tests {
     fn the_default_account_round_trips_and_goes_with_the_account_it_names() {
         let p = tmp_file();
         let mut s = Settings::default();
-        s.agent.default_profiles.insert("claude".into(), "fonn".into());
+        s.agent.default_profiles.insert("claude".into(), "globex".into());
         save_to(&p, &s).unwrap();
         let back = load_from(&p);
-        assert_eq!(back.agent.default_profiles.get("claude").map(String::as_str), Some("fonn"));
+        assert_eq!(back.agent.default_profiles.get("claude").map(String::as_str), Some("globex"));
         // An agent nobody answered for starts on the login the user already
         // had, which is the absence of an entry rather than a stored "default".
         assert_eq!(back.agent.default_profiles.get("codex"), None);
@@ -1650,10 +1650,10 @@ mod tests {
         // Removing another account leaves this answer alone, and removing the
         // one it names clears it.
         assert!(!drop_default_profile(&mut agent, "claude", "work"));
-        assert!(!drop_default_profile(&mut agent, "codex", "fonn"));
-        assert!(drop_default_profile(&mut agent, "claude", "fonn"));
+        assert!(!drop_default_profile(&mut agent, "codex", "globex"));
+        assert!(drop_default_profile(&mut agent, "claude", "globex"));
         assert_eq!(agent.default_profiles.get("claude"), None);
-        assert!(!drop_default_profile(&mut agent, "claude", "fonn"));
+        assert!(!drop_default_profile(&mut agent, "claude", "globex"));
 
         // A file written before the key existed loads with an empty map rather
         // than failing the whole agent block back to defaults and losing an
@@ -1794,7 +1794,7 @@ mod tests {
     fn removing_an_account_leaves_the_rest_of_the_file_alone() {
         let p = tmp_file();
         let mut s = Settings::default();
-        s.agent.default_profiles.insert("claude".into(), "fonn".into());
+        s.agent.default_profiles.insert("claude".into(), "globex".into());
         s.agent.default_profiles.insert("codex".into(), "work".into());
         s.agent.paths.insert("claude".into(), "/builds/claude".into());
         s.chat_defaults.model = Some("opus".into());
@@ -1802,9 +1802,9 @@ mod tests {
 
         // Another agent's account of the same name is not this one's.
         forget_default_profile_in(&p, "claude", "work");
-        assert_eq!(load_from(&p).agent.default_profiles.get("claude").map(String::as_str), Some("fonn"));
+        assert_eq!(load_from(&p).agent.default_profiles.get("claude").map(String::as_str), Some("globex"));
 
-        forget_default_profile_in(&p, "claude", "fonn");
+        forget_default_profile_in(&p, "claude", "globex");
         let back = load_from(&p);
         assert_eq!(back.agent.default_profiles.get("claude"), None);
         // Only that entry: this file holds every other preference too, and a
@@ -2000,7 +2000,7 @@ mod tests {
             "/repo/a".into(),
             ChatPrefs {
                 agent: Some("codex".into()),
-                profile: Some("fonn".into()),
+                profile: Some("globex".into()),
                 model: Some("sonnet".into()),
                 effort: Some("xhigh".into()),
                 mode: Some("plan".into()),
@@ -2020,7 +2020,7 @@ mod tests {
         assert_eq!(back.chat["/repo/a"].agent.as_deref(), Some("codex"));
         // The account rides with the agent: a project remembers the pair, so a
         // draft opens on the login the last one here actually ran as.
-        assert_eq!(back.chat["/repo/a"].profile.as_deref(), Some("fonn"));
+        assert_eq!(back.chat["/repo/a"].profile.as_deref(), Some("globex"));
         assert_eq!(back.chat["/repo/a"].model.as_deref(), Some("sonnet"));
         assert_eq!(back.chat["/repo/a"].effort.as_deref(), Some("xhigh"));
         assert_eq!(back.chat["/repo/b"].model.as_deref(), Some("haiku"));

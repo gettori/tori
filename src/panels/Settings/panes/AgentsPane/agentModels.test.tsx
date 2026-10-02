@@ -419,7 +419,7 @@ describe("the model list on a agent page", () => {
   const twoAccounts = {
     profiles: [
       { id: "default", label: "Default", signIn: "signedIn", account: "me@example.com", apiKeySource: null },
-      { id: "fonn", label: "Fonn", signIn: "signedIn", account: "arif@fonngroup.com", apiKeySource: null },
+      { id: "globex", label: "Globex", signIn: "signedIn", account: "arif@globex.test", apiKeySource: null },
     ],
   };
   const onPlan = (plan: string) => ({
@@ -432,7 +432,7 @@ describe("the model list on a agent page", () => {
         probed("claude", [model("opus", "claude-opus-5")], onPlan("Claude Max")),
         {
           ...probed("claude", [model("sonnet", "claude-sonnet-5")], onPlan("Claude Team")),
-          profileId: "fonn",
+          profileId: "globex",
         },
       ]),
       /Claude/,
@@ -440,12 +440,12 @@ describe("the model list on a agent page", () => {
 
     // Both accounts are named; the lit one is the list on screen.
     expect(r.getByRole("button", { name: "Default", pressed: true })).toBeTruthy();
-    expect(r.getByRole("button", { name: "Fonn", pressed: false })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Globex", pressed: false })).toBeTruthy();
     expect(r.container.textContent).toContain("Claude Max, 1 of 1");
     expect(r.container.textContent).toContain("opus");
     expect(r.container.textContent).not.toContain("sonnet");
 
-    fireEvent.click(r.getByRole("button", { name: "Fonn" }));
+    fireEvent.click(r.getByRole("button", { name: "Globex" }));
 
     await waitFor(() => expect(r.container.textContent).toContain("Claude Team, 1 of 1"));
     expect(r.container.textContent).toContain("sonnet");
@@ -458,11 +458,11 @@ describe("the model list on a agent page", () => {
     const r = await open(
       mount(twoAccounts, [
         probed("claude", [model("opus", "claude-opus-5")]),
-        { ...probed("claude", [model("sonnet", "claude-sonnet-5")]), profileId: "fonn" },
+        { ...probed("claude", [model("sonnet", "claude-sonnet-5")]), profileId: "globex" },
       ]),
       /Claude/,
     );
-    fireEvent.click(r.getByRole("button", { name: "Fonn" }));
+    fireEvent.click(r.getByRole("button", { name: "Globex" }));
     invoked.mockClear();
     fireEvent.click(r.getByRole("button", { name: /Ask again/ }));
 
@@ -473,7 +473,7 @@ describe("the model list on a agent page", () => {
     );
     expect(invoked.mock.calls.find(([cmd]) => cmd === "refresh_model_catalog")?.[1]).toEqual({
       agentId: "claude",
-      profileId: "fonn",
+      profileId: "globex",
     });
   });
 

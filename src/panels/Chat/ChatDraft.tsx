@@ -73,7 +73,7 @@ export default function ChatDraft(props: {
    *  so the tab bar and the palette cannot disagree about it. */
   agentId: string;
   /** Which account of `agentId` it would start on; `null` is the default
-   *  profile. The send gate is per account: a draft on Fonn must not be
+   *  profile. The send gate is per account: a draft on Globex must not be
    *  refused because the personal login expired. */
   profile: string | null;
   /** Why the last first-send attempt did not reach a session. Rendered above the

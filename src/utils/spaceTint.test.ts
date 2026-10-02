@@ -37,7 +37,7 @@ describe("spaceTint", () => {
 
   it("derives a stable hue per name, and spreads across the set", () => {
     expect(fallbackColor("personal")).toBe(fallbackColor("personal"));
-    const names = ["personal", "work", "saga", "craftsmen", "side", "labs", "docs", "ops"];
+    const names = ["personal", "work", "initech", "hooli", "side", "labs", "docs", "ops"];
     expect(new Set(names.map(fallbackColor)).size).toBeGreaterThan(4);
   });
 

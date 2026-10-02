@@ -468,7 +468,7 @@ describe("which account new sessions start on", () => {
   const two = {
     profiles: [
       profile(),
-      profile({ id: "fonn", label: "Fonn", isDefault: false, home: "/h/fonn", account: "a@fonn" }),
+      profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex", account: "a@globex" }),
     ],
   };
 
@@ -488,22 +488,22 @@ describe("which account new sessions start on", () => {
   // is what a reader hears, and it has to say which row it is on.
   it("offers one per account, on the inherited login until told otherwise", async () => {
     const { container, getByRole } = await open(mount({ accounts: two }));
-    await waitFor(() => expect(container.textContent).toContain("Fonn"));
+    await waitFor(() => expect(container.textContent).toContain("Globex"));
     expect((getByRole("radio", { name: "Default account: Default" }) as HTMLInputElement).checked).toBe(true);
-    expect((getByRole("radio", { name: "Default account: Fonn" }) as HTMLInputElement).checked).toBe(false);
+    expect((getByRole("radio", { name: "Default account: Globex" }) as HTMLInputElement).checked).toBe(false);
   });
 
   it("stores the account it is moved to", async () => {
     const { container, getByRole } = await open(mount({ accounts: two }));
-    await waitFor(() => expect(container.textContent).toContain("Fonn"));
+    await waitFor(() => expect(container.textContent).toContain("Globex"));
 
-    fireEvent.click(getByRole("radio", { name: "Default account: Fonn" }));
+    fireEvent.click(getByRole("radio", { name: "Default account: Globex" }));
 
     await waitFor(() => {
       const saved = invoked.mock.calls.find(([cmd]) => cmd === "set_settings")?.[1] as
         | { settings: { agent: { defaultProfiles: Record<string, string> } } }
         | undefined;
-      expect(saved?.settings.agent.defaultProfiles).toEqual({ claude: "fonn" });
+      expect(saved?.settings.agent.defaultProfiles).toEqual({ claude: "globex" });
     });
   });
 });
@@ -520,12 +520,12 @@ describe("what each account can run", () => {
         accounts: {
           profiles: [
             profile(),
-            profile({ id: "fonn", label: "Fonn", isDefault: false, home: "/h/fonn" }),
+            profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" }),
           ],
         },
         catalogs: [
           catalogue("default", "max", ["opus", "sonnet", "haiku", "fable", "default"]),
-          catalogue("fonn", "team", ["opus", "sonnet", "haiku", "default"]),
+          catalogue("globex", "team", ["opus", "sonnet", "haiku", "default"]),
         ],
       }),
     );
@@ -723,15 +723,15 @@ describe("renaming an account", () => {
         accounts: {
           profiles: [
             profile(),
-            profile({ id: "fonn", label: "Fonn", isDefault: false, home: "/h/fonn" }),
+            profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" }),
           ],
         },
       }),
     );
-    await waitFor(() => expect(container.textContent).toContain("Fonn"));
+    await waitFor(() => expect(container.textContent).toContain("Globex"));
 
-    renameTo(getByRole("button", { name: "Fonn" }), "Work");
-    await waitFor(() => expect(sent("fonn", "Work")).toBe(true));
+    renameTo(getByRole("button", { name: "Globex" }), "Work");
+    await waitFor(() => expect(sent("globex", "Work")).toBe(true));
     // And the page re-reads its own copy of the sweep, or the Models tabs keep
     // the old name until Settings is closed and reopened.
     await waitFor(() =>

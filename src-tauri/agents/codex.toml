@@ -78,7 +78,7 @@ sources = ["cli"]
 [chat]
 transport = "acp"
 # **Codex is the one bundled adapter whose chat binary is not its launch
-# binary.** `codex app-server` exists and is what Paseo drives, but `codex` has
+# binary.** `codex app-server` exists and other clients drive it, but `codex` has
 # no `acp` subcommand, so the first-party wrapper is how Codex reaches an ACP
 # client. Measured 2026-08-14 against both on one live turn: the wrapper carries
 # the permission prompt, the exact before-and-after diff, the same four models

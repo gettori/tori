@@ -54,7 +54,7 @@ describe("the account key", () => {
   // readings somewhere the titlebar never looks.
   it("gives the default account one spelling", () => {
     expect(accountKey("claude", null)).toBe(accountKey("claude", "default"));
-    expect(accountKey("claude", "fonn")).not.toBe(accountKey("claude", null));
+    expect(accountKey("claude", "globex")).not.toBe(accountKey("claude", null));
   });
 });
 
@@ -105,10 +105,10 @@ describe("merging samples", () => {
 
   it("keeps two accounts of one agent apart", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour", { utilization: 0.1 })], NOW);
-    recordReadings("claude", "fonn", "sessions", [reading("five_hour", { utilization: 0.9 })], NOW);
+    recordReadings("claude", "globex", "sessions", [reading("five_hour", { utilization: 0.9 })], NOW);
 
     expect(windowFor("claude", null, "five_hour")?.utilization).toBe(0.1);
-    expect(windowFor("claude", "fonn", "five_hour")?.utilization).toBe(0.9);
+    expect(windowFor("claude", "globex", "five_hour")?.utilization).toBe(0.9);
     expect(accountsWithReadings()).toHaveLength(2);
   });
 });
@@ -167,7 +167,7 @@ describe("announcing a transition once", () => {
 
   it("keeps two accounts' notices apart", () => {
     expect(shouldAnnounce("claude", null, warned(), "approaching")).toBe(true);
-    expect(shouldAnnounce("claude", "fonn", warned(), "approaching")).toBe(true);
+    expect(shouldAnnounce("claude", "globex", warned(), "approaching")).toBe(true);
   });
 });
 
@@ -206,15 +206,15 @@ describe("the snapshot", () => {
   });
 
   it("reads its readings back", async () => {
-    recordReadings("claude", "fonn", "sessions", [reading("five_hour", { utilization: 0.33 })], NOW);
+    recordReadings("claude", "globex", "sessions", [reading("five_hour", { utilization: 0.33 })], NOW);
     const snap = usageSnapshot(NOW);
 
     resetUsageStoreForTests();
-    expect(windowFor("claude", "fonn", "five_hour")).toBeNull();
+    expect(windowFor("claude", "globex", "five_hour")).toBeNull();
     loaded = snap;
     await loadUsageStore(NOW);
 
-    expect(windowFor("claude", "fonn", "five_hour")?.utilization).toBe(0.33);
+    expect(windowFor("claude", "globex", "five_hour")?.utilization).toBe(0.33);
   });
 
   // A corrupt or absent file is one cold start, never a titlebar that cannot

@@ -131,7 +131,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       ]);
     }
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
-    if (cmd === "profile_spawn_env") return Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/fonn" });
+    if (cmd === "profile_spawn_env") return Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/globex" });
     return Promise.resolve(null);
   },
 }));
@@ -222,7 +222,7 @@ beforeEach(() => {
   bridge.defaultProfiles = {};
   bridge.enabled = { claude: true, codex: true };
   bridge.profiles = [];
-  // The spawn env is memoized per (agent, account), so one test resolving fonn
+  // The spawn env is memoized per (agent, account), so one test resolving globex
   // would spare the next one the call this file reads the account off.
   forgetProfileEnvs();
   localStorage.clear();
@@ -291,13 +291,13 @@ describe("the launch control", () => {
   it("offers the agent terminal once per account", async () => {
     bridge.profiles = [
       { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
-      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "globex", label: "Globex", signIn: "signedIn", account: null, apiKeySource: null },
     ];
     await mountLoaded();
     pointerClick(screen.getByLabelText("Launch an agent session"));
 
     expect(await screen.findByRole("menuitem", { name: "Claude (Default, terminal)" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Claude (Fonn, terminal)" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Claude (Globex, terminal)" })).toBeTruthy();
   });
 
   // And says nothing about accounts on an install with one login, where naming
@@ -313,10 +313,10 @@ describe("the launch control", () => {
   it("spawns the account whose row was picked", async () => {
     bridge.profiles = [
       { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
-      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "globex", label: "Globex", signIn: "signedIn", account: null, apiKeySource: null },
     ];
     await mountLoaded();
-    await menuItem("Claude (Fonn, terminal)");
+    await menuItem("Claude (Globex, terminal)");
 
     // The env is resolved from the profile id at every spawn rather than stored
     // on the tab, so asking for it at all is what says the account arrived.
@@ -396,17 +396,17 @@ describe("which harness a new draft opens on", () => {
 describe("which account a new session opens on", () => {
   const TWO = [
     { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
-    { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+    { id: "globex", label: "Globex", signIn: "signedIn", account: null, apiKeySource: null },
   ];
 
   it("is the one this project last used", async () => {
     bridge.profiles = TWO;
-    bridge.prefs = { agent: "claude", profile: "fonn" };
+    bridge.prefs = { agent: "claude", profile: "globex" };
     await mountLoaded();
     fireEvent.click(screen.getByLabelText("New chat in repo"));
 
     const draft = await screen.findByTestId("draft");
-    expect(draft.dataset.profile).toBe("fonn");
+    expect(draft.dataset.profile).toBe("globex");
   });
 
   // The agent tab reads the same memory: it runs as an account the way a chat
@@ -414,14 +414,14 @@ describe("which account a new session opens on", () => {
   // rule for one question.
   it("is that account for the next agent tab too", async () => {
     bridge.profiles = TWO;
-    bridge.prefs = { agent: "claude", profile: "fonn" };
+    bridge.prefs = { agent: "claude", profile: "globex" };
     await mountLoaded();
     await menuItem("Claude (yolo)");
 
     await waitFor(() =>
       expect(
         bridge.calls.some(
-          ({ cmd, args }) => cmd === "profile_spawn_env" && args?.profileId === "fonn",
+          ({ cmd, args }) => cmd === "profile_spawn_env" && args?.profileId === "globex",
         ),
       ).toBe(true),
     );
@@ -429,19 +429,19 @@ describe("which account a new session opens on", () => {
 
   it("is this agent's Settings default for a project that has never chatted", async () => {
     bridge.profiles = TWO;
-    bridge.defaultProfiles = { claude: "fonn" };
+    bridge.defaultProfiles = { claude: "globex" };
     await mountLoaded();
     fireEvent.click(screen.getByLabelText("New chat in repo"));
 
     const draft = await screen.findByTestId("draft");
-    expect(draft.dataset.profile).toBe("fonn");
+    expect(draft.dataset.profile).toBe("globex");
   });
 
   // The project's own answer wins, including when that answer is the login the
   // user already had: the two are told apart on disk for exactly this case.
   it("keeps a project on the inherited login over the Settings default", async () => {
     bridge.profiles = TWO;
-    bridge.defaultProfiles = { claude: "fonn" };
+    bridge.defaultProfiles = { claude: "globex" };
     bridge.prefs = { agent: "claude", profile: "default" };
     await mountLoaded();
     fireEvent.click(screen.getByLabelText("New chat in repo"));
@@ -483,13 +483,13 @@ describe("what an agent tab remembers", () => {
   it("records the account it started on", async () => {
     bridge.profiles = [
       { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
-      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "globex", label: "Globex", signIn: "signedIn", account: null, apiKeySource: null },
     ];
     await mountLoaded();
-    await menuItem("Claude (Fonn, terminal)");
+    await menuItem("Claude (Globex, terminal)");
 
     await waitFor(() => expect(bridge.remembered).toHaveLength(1));
-    expect(bridge.remembered[0].prefs).toEqual({ profile: "fonn" });
+    expect(bridge.remembered[0].prefs).toEqual({ profile: "globex" });
     expect(bridge.remembered[0].prefs).not.toHaveProperty("agent");
   });
 
@@ -522,10 +522,10 @@ describe("where a project's memory is kept", () => {
   it("writes an agent tab's under the same key", async () => {
     bridge.profiles = [
       { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
-      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "globex", label: "Globex", signIn: "signedIn", account: null, apiKeySource: null },
     ];
     await mountLoaded(topicSelection);
-    await menuItem("Claude (Fonn, terminal)");
+    await menuItem("Claude (Globex, terminal)");
 
     await waitFor(() => expect(bridge.remembered).toHaveLength(1));
     expect(bridge.remembered[0].path).toBe("topic:f1");

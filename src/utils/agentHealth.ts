@@ -120,9 +120,9 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
  * Told apart from `agentReady` because the two failures need different words: a
  * missing binary is installed, a missing login is signed in to.
  *
- * Per account because the gate is. A draft on the Fonn account blocked because
+ * Per account because the gate is. A draft on the Globex account blocked because
  * the personal account is signed out is a refusal the user cannot act on from
- * that tab, and one let through because Fonn is signed in is a session that
+ * that tab, and one let through because Globex is signed in is a session that
  * will not start.
  *
  * An account with no row of its own falls back to the agent's default answer,

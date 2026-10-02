@@ -742,7 +742,7 @@ mod tests {
     fn two_users_make_two_accounts_and_one_user_twice_makes_one() {
         let mut file = AccountsFile::default();
         let first = signed_in(&mut file, "skarif2");
-        let second = signed_in(&mut file, "fonn-arif");
+        let second = signed_in(&mut file, "globex-arif");
         assert_ne!(first, second);
         assert_eq!(signed_in(&mut file, "SKARIF2"), first, "logins compare without case");
         assert_eq!(file.hosts[GITHUB_COM].accounts.len(), 2);
@@ -805,7 +805,7 @@ mod tests {
         let personal = signed_in(&mut file, "skarif2");
         assert_eq!(resolve(&file, &picks, &tori()), Resolution::Account(personal.clone()));
 
-        let work = signed_in(&mut file, "fonn-arif");
+        let work = signed_in(&mut file, "globex-arif");
         assert!(matches!(resolve(&file, &picks, &tori()), Resolution::Pick { candidates } if candidates.len() == 2));
 
         picks.insert(tori().key(), work.clone());
@@ -830,7 +830,7 @@ mod tests {
     fn a_repo_pick_beats_the_host_default_which_beats_the_pick_state() {
         let mut file = AccountsFile::default();
         let personal = signed_in(&mut file, "skarif2");
-        let work = signed_in(&mut file, "fonn-arif");
+        let work = signed_in(&mut file, "globex-arif");
         let mut picks = BTreeMap::new();
         assert!(matches!(resolve(&file, &picks, &tori()), Resolution::Pick { .. }));
 
@@ -873,7 +873,7 @@ mod tests {
     fn a_host_default_lets_git_be_answered_without_a_repo_pick() {
         let mut file = AccountsFile::default();
         signed_in(&mut file, "skarif2");
-        let work = signed_in(&mut file, "fonn-arif");
+        let work = signed_in(&mut file, "globex-arif");
         set_git_credentials(&mut file, GITHUB_COM, true);
         let picks = BTreeMap::new();
         assert!(!serves_git(&file, &picks, &tori()));

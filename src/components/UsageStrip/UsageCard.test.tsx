@@ -323,11 +323,11 @@ describe("two logins on one agent", () => {
   function withTwo() {
     bench.profiles = [
       { id: "default", label: "Personal", signIn: "signedIn", account: "me@example.com", apiKeySource: null },
-      { id: "fonn", label: "Fonn", signIn: "signedIn", account: "arif@fonngroup.com", apiKeySource: null },
+      { id: "globex", label: "Globex", signIn: "signedIn", account: "arif@globex.test", apiKeySource: null },
     ];
     seedUsageStoreForTests(
       "claude",
-      "fonn",
+      "globex",
       [{ kind: "seven_day", utilization: NEAR, resetsAt: LATER, status: null, reachedType: null }],
       NOW,
     );
@@ -341,7 +341,7 @@ describe("two logins on one agent", () => {
     const open = screen.getByRole("dialog", { name: /usage detail/ });
     expect(open.textContent).toContain("42.0%");
 
-    fireEvent.click(screen.getByRole("button", { name: "Fonn" }));
+    fireEvent.click(screen.getByRole("button", { name: "Globex" }));
     // The other login's own window, not the one the strip was hovered on.
     expect(open.textContent).toContain("88.1%");
     expect(open.textContent).not.toContain("42.0%");
@@ -353,7 +353,7 @@ describe("two logins on one agent", () => {
     withTwo();
 
     const text = screen.getByRole("dialog", { name: /usage detail/ }).textContent!;
-    expect(text).toContain("Fonn is the one to watch");
+    expect(text).toContain("Globex is the one to watch");
     expect(text).toContain("88.1%");
   });
 });
