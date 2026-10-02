@@ -3,10 +3,15 @@ contact_links:
   - name: Installing Tori (Gatekeeper, "Apple could not verify")
     url: https://github.com/gettori/tori/blob/main/docs/INSTALL.md
     about: >
-      macOS blocking the first launch is expected - Tori v0.1 is unsigned. The
+      macOS blocking the first launch is expected: Tori is not signed yet. The
       install doc has the two ways past it.
   - name: Adding an agent yourself
     url: https://github.com/gettori/tori/blob/main/docs/ADAPTERS.md
     about: >
       Agents are TOML files, not code. This is the full schema, with a
       from-scratch example.
+  - name: Report a security problem
+    url: https://github.com/gettori/tori/security/advisories/new
+    about: >
+      Privately, not as an issue. SECURITY.md says what counts and what to
+      expect.
