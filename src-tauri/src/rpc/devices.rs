@@ -138,6 +138,18 @@ mod tests {
     }
 
     #[test]
+    fn the_phone_keeps_its_credential_out_of_backups() {
+        let manifest = include_str!("../../../mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml");
+        assert!(manifest.contains(r#"android:allowBackup="false""#));
+        assert!(manifest.contains(r#"android:dataExtractionRules="@xml/data_extraction_rules""#));
+        let rules = include_str!("../../../mobile/src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml");
+        for section in ["cloud-backup", "device-transfer"] {
+            let body = rules.split(&format!("<{section}>")).nth(1).and_then(|r| r.split(&format!("</{section}>")).next()).expect(section);
+            assert!(body.contains(r#"<exclude domain="root" />"#), "{section} still carries the WebView's storage");
+        }
+    }
+
+    #[test]
     fn a_minted_credential_is_found_after_a_reload_and_never_stored() {
         let path = temp_path("reload");
         let (device, credential) = Devices::open(path.clone()).mint("phone").unwrap();
