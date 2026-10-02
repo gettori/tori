@@ -15,14 +15,15 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 
 import Settings from "./Settings";
-import { DEFAULT_SETTINGS, loadWorkspaceSettings } from "./settingsStore";
+import { loadWorkspaceSettings } from "./settingsStore";
 import { SETTING_TABS } from "../../utils/settingsCatalog";
+import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
     async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+      cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   // The overlay outlives any one test, so a workspace selected elsewhere would
   // otherwise still be adding its buttons to these rows.

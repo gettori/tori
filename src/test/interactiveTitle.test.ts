@@ -206,7 +206,7 @@ const KEPT = new Map<string, Kept>([
   ],
   [
     "panels/Editor/ReviewPanel.tsx",
-    { count: 4, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and one ${HEADING}` },
+    { count: 5, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
   [
     "panels/Editor/SessionPanel.tsx",
@@ -260,10 +260,26 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/components/paneKit.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Settings/panes/AppearancePane/AppearancePane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/AutopilotPane/AutopilotPane.tsx", { count: 1, reason: GROUP_HEADING }],
-  ["panels/Settings/panes/ChatPane/ChatPane.tsx", { count: 3, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/ChatPane/ChatPane.tsx", { count: 4, reason: GROUP_HEADING }],
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
-  ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 1, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 2, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/RemotePane/RemotePane.tsx", { count: 1, reason: GROUP_HEADING }],
+  [
+    "panels/Settings/panes/LanguagesPane/TrustedProjects.tsx",
+    { count: 2, reason: `one ${HEADING}, and one ${TRUNCATION}: a trusted project's path, on a \`code\`` },
+  ],
+  ["components/Autopilot/DecisionCard.tsx", { count: 1, reason: TRUNCATION }],
+  ["components/Dialogs/RebaseDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
+  [
+    "panels/Editor/FilesPanel/ScriptsSection.tsx",
+    { count: 1, reason: "the word behind a script row's play glyph while it runs, on a span no keyboard reaches" },
+  ],
+  ["panels/LeftSidebar/TopicItem.test.tsx", { count: 3, reason: FIXTURE }],
+  [
+    "utils/sanitizeHtml.test.tsx",
+    { count: 2, reason: "attack strings fed to the sanitizer, whose payload hides inside a title attribute" },
+  ],
   ["panels/Settings/panes/LanguagesPane/toolActions.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Settings/panes/IntegrationsPane/ForgeSection.tsx",
@@ -360,7 +376,7 @@ const KEPT = new Map<string, Kept>([
  *  **Down four**: the checkpoint timeline became a list with a detail view.
  *  Its rows are buttons that describe themselves through `Tooltip`, and a
  *  file's name and folder each get a line of their own. */
-const RAW_ELEMENT_TITLES = 65;
+const RAW_ELEMENT_TITLES = 71;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -489,12 +505,19 @@ describe("the title= guard", () => {
     // Agents is an `li`, and its install path sits behind the plugin's name.
     // Down two divs and two spans: the checkpoint timeline's file row, its
     // backstop row and its two markers, all of which its rebuild dropped.
+    // Up four spans, down one div, and three tags new to this census: a
+    // decision card's ticket, a rebase row's subject and a script row's running
+    // mark are spans, a trusted project's path is a `code`, and the `p` and
+    // `img` are attack strings in the sanitizer's test, not elements.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
-      div: 13,
+      code: 1,
+      div: 12,
+      img: 1,
       li: 1,
+      p: 1,
       // Down one span: the pull request detail view went, and the branch line
       // it truncated is drawn once now, in the panel that replaced it.
-      span: 51,
+      span: 55,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

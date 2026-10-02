@@ -1,4 +1,4 @@
-# The frontend gate: type-check and the vitest suite, on every push and PR.
+# The gate: type-check, the vitest suite and the Rust tests, on every push and PR.
 #
 # It exists because a guard nothing runs is only a suggestion. `src/lib/` holds
 # the whole of Tori's contact surface with its headless-primitives library, and
@@ -10,9 +10,9 @@
 # which transpiles without type-checking, so nothing else in the repo would
 # ever notice a type error.
 #
-# Deliberately builds no Rust. The Rust and Tauri side is built by release.yml
-# on a macOS runner; putting it here too would trade minutes for a signal that
-# workflow already gives. The `audit` job only reads the two lockfiles.
+# The `rust` job runs on macOS because Tori is macOS only: a Linux runner is
+# cheaper and would not compile the same code. It runs the tests and builds no
+# bundle; that is still release.yml's. The `audit` job only reads the lockfiles.
 name: Check
 
 # Every pull request, plus main after a merge. Not bare `on: push`, which would
@@ -43,6 +43,24 @@ jobs:
       # Runs check-tokens.mjs first, then both vitest projects.
       - name: Test
         run: pnpm test
+
+  rust:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            mobile/src-tauri
+
+      - name: Test the desktop crate
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Check the mobile crate
+        run: cargo check --manifest-path mobile/src-tauri/Cargo.toml
 
   # Its own job, so an advisory published overnight reads as an advisory and
   # not as a broken test run.

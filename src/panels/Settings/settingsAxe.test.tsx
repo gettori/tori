@@ -24,14 +24,15 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 
 import Settings from "./Settings";
-import { DEFAULT_SETTINGS, loadWorkspaceSettings } from "./settingsStore";
+import { loadWorkspaceSettings } from "./settingsStore";
 import { expectNoAxeViolations } from "../../test/axe";
+import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
     async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+      cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   await loadWorkspaceSettings(null);
 });
@@ -105,7 +106,7 @@ describe("the Settings panel's accessibility", () => {
             defaultPresent: true,
             profiles: [],
           };
-        return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
+        return cmd === "set_settings" ? args.settings : unstubbed(cmd);
       },
     );
     render(() => <Settings onClose={() => {}} />);

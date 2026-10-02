@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings, type NotificationSettings, type Settings as Stored } from "./settingsStore";
+import { unstubbed } from "../../test/settingsBackend";
 
 /** Taken before any test runs: the store's `createStore` wraps
  *  `DEFAULT_SETTINGS` itself, so a save writes through it. */
@@ -17,7 +18,7 @@ beforeEach(async () => {
   invoke.mockImplementation(async (cmd: string, args: { settings?: Stored }) => {
     if (cmd === "set_settings") return args.settings;
     if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, notifications: structuredClone(PRISTINE) };
-    return DEFAULT_SETTINGS;
+    return unstubbed(cmd);
   });
   await loadSettings();
 });

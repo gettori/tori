@@ -104,6 +104,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([]);
       case "git_ahead_behind":
         return Promise.resolve({ ahead: 0, behind: 0, has_upstream: false });
+      case "git_conflict_op":
+        return Promise.resolve("none");
       default:
         return Promise.resolve(null);
     }

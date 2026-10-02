@@ -16,13 +16,14 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 import Settings, { EDITOR_TOGGLES } from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings, loadWorkspaceSettings, type EditorDefaults } from "./settingsStore";
+import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(() => {
   invoke.mockReset();
   // `set_settings` echoes what it was handed, the way the backend does.
   invoke.mockImplementation(
     async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+      cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
 });
 
@@ -121,7 +122,7 @@ describe("overriding a setting for one workspace", () => {
         if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
         if (cmd === "get_workspace_settings") return { editor: overlay };
         if (cmd === "set_workspace_settings") return args.settings;
-        return DEFAULT_SETTINGS;
+        return unstubbed(cmd);
       },
     );
     await loadSettings();

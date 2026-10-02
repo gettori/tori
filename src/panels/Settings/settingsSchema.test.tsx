@@ -110,7 +110,7 @@ describe("the shipped settings schemas", () => {
     // session starts on) is the newest of them: the Settings panel writes it,
     // so it is described where the panel is, not here. Modelling half the
     // `agent` block would report the other half as errors.
-    expect(Object.keys(user.properties), USER_FILE).toEqual(["editorDefaults", "lsp", "format"]);
+    expect(Object.keys(user.properties), USER_FILE).toEqual(["editorDefaults", "lsp", "dap", "format"]);
   });
 
   it("are the files the associations point at", () => {

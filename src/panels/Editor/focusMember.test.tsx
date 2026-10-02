@@ -63,6 +63,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       // The backend's walk, faked at the seam: whichever root it is asked
       // about is the one it answers with, so a launch names the member it
       // actually started from.
+      case "dap_registry":
+        return Promise.resolve([
+          { id: "js-debug", label: "JavaScript", languages: { ts: "pwa-node", js: "pwa-node" }, childSessions: true, install: null },
+        ]);
       case "dap_root_for":
         return Promise.resolve(args!.projectPath);
       case "dap_launch_env":

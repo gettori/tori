@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 
 import Settings, { FOCUSABLE } from "./Settings";
-import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
+import { loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
@@ -30,12 +30,13 @@ import {
 } from "../../utils/events";
 import { rowDomId } from "./components/paneKit";
 import styles from "./Settings.module.css";
+import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
     async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+      cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   await loadWorkspaceSettings(null);
 });
