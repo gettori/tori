@@ -17,11 +17,13 @@ name: Check
 
 # Every pull request, plus main after a merge. Not bare `on: push`, which would
 # run this a second time for each PR branch and would also fire on the `v*`
-# tags release.yml already builds.
+# tags release.yml already builds. By hand too, so a red main can be re-run
+# without a commit to hang it on.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   check:
