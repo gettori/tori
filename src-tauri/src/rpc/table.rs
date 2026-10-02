@@ -160,7 +160,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.answer",
-        description: "Answer a question or permission prompt a session you spawned is waiting on, by the id session.pending gave it. A paired device answers for any session. An id nothing waits on any more is an error.",
+        description: "Answer a question or permission prompt a session you spawned is waiting on, by the id session.pending gave it. A background session answers questions only: a permission prompt waits for a person. A paired device answers for any session. An id nothing waits on any more is an error.",
         params: schema::<SessionAnswerParams>,
         callers: &[CallerKind::Chat, CallerKind::Device],
         refusal: Some("only the session that spawned a worker, or a paired device, answers for it"),
