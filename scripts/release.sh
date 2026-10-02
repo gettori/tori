@@ -329,7 +329,7 @@ cask "tori" do
   url "https://github.com/${RELEASES_REPO}/releases/download/v#{version}/$pattern"
   name "Tori"
   desc "Cockpit for the coding agents you already run"
-  homepage "https://github.com/${RELEASES_REPO}"
+  homepage "https://gettori.app"
 
   # No version bound: the bundle sets no minimum, so older macOS is untested
   # rather than blocked, and this says only what the app really requires.
