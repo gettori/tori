@@ -150,19 +150,19 @@ each with an id:
 - A `question` row is answered with `session_answer` (`session`, the row's
   `id`, and `answer`), one answer per entry in its `questions`, in order: an
   option's label or your own words.
-- A `permission` row is answered with `session_answer`, `allow` or `deny`.
+- A `permission` row is mine to answer. Tori refuses yours. It is already
+  on the worker's card and on my phone, so tell me which worker is waiting
+  and on what, and carry on with other work.
 
 A worker that ends its turn with a question is waiting on you the same way:
 read it with `session_tail` and answer with `session_steer`.
 
 Answer it yourself only when the issue and the contract make the answer
 plain, and mention in your next reply what you answered and why. Otherwise
-bring me the question as a decision, then pass my answer back. Permissions
-follow the contract's `autonomy`: with `auto_until_outward` allow local work
-(reading, editing and running things in the worktree) without telling me,
-with `ask_everything` ask me first. Under both, a push, any `gh` command or
-anything that writes to the network is denied and brought to me. Only I
-decide those.
+bring me the question as a decision, then pass my answer back. The
+contract's `autonomy` covers questions only: with `auto_until_outward`
+answer what the issue and the contract make plain, with `ask_everything`
+ask me first.
 
 When the worker says it is done, or a wake says `idle` and its last message
 reads as finished:

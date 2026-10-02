@@ -222,7 +222,7 @@ pub enum Waiting {
 }
 
 impl Waiting {
-    fn id(&self) -> &str {
+    pub fn id(&self) -> &str {
         match self {
             Waiting::Question { id, .. } | Waiting::Permission { id, .. } => id,
         }
