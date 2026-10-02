@@ -343,6 +343,17 @@ fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Re
     }
 }
 
+// A session nobody watches reads issue and pull request text, so its allow on a
+// worker's tool call would be that text's allow.
+fn permission_needs_a_person(caller: &Principal, unattended: impl Fn(&str) -> bool, id: &str) -> Result<(), RpcError> {
+    match caller {
+        Principal::Session(Caller::Chat(caller)) if unattended(caller) => Err(refused(format!(
+            "{id} is a permission prompt, which a person answers: it waits on the session's card and on a paired device"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 #[derive(Debug, Default, PartialEq)]
 struct Picks {
     agent: Option<String>,
@@ -822,6 +833,13 @@ impl Backend for TauriBackend {
         let spawner = self.states.spawner_of(&params.session).map(|s| super::current_spawner(&s));
         answers_for(principal, spawner, &params.session)?;
         let host = &self.app.state::<ChatState>().0;
+        let waits_on_a_permission = host
+            .waiting(&params.session)
+            .iter()
+            .any(|w| w.id() == params.id && matches!(w, crate::chat::host::Waiting::Permission { .. }));
+        if waits_on_a_permission {
+            permission_needs_a_person(principal, |caller| self.states.is_background(caller), &params.id)?;
+        }
         host.settle(&params.session, &params.id, &params.answer.into_list()).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
         Ok(json!({ "answered": params.id }))
     }
@@ -1727,6 +1745,16 @@ mod tests {
             let err = answers_for(&caller, spawner, "w1").unwrap_err();
             assert_eq!(err.code, REFUSED, "{}", err.message);
         }
+    }
+
+    #[test]
+    fn an_unattended_spawner_cannot_allow_its_workers_tool_call() {
+        let chat = |id: &str| Principal::Session(Caller::Chat(id.into()));
+        let unattended = |id: &str| id == "pilot";
+        let err = permission_needs_a_person(&chat("pilot"), unattended, "p1").unwrap_err();
+        assert_eq!(err.code, REFUSED, "{}", err.message);
+        assert!(permission_needs_a_person(&chat("watched"), unattended, "p1").is_ok(), "a foreground session's own harness asks the user");
+        assert!(permission_needs_a_person(&Principal::Device("d1".into()), unattended, "p1").is_ok(), "a device is a person");
     }
 
     #[test]
