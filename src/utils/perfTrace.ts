@@ -60,6 +60,11 @@ let lastKey = "";
 const buffer: string[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Held until `trace_config` answers: a policy does most of its refusing while
+// the app is still loading, before that round trip is back.
+let early: string[] | null = [];
+const EARLY_MAX = 200;
+
 const wall = () => performance.timeOrigin + performance.now();
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -88,6 +93,25 @@ function flush(): void {
   void invoke("trace_write", { lines }).catch(() => {});
 }
 
+function violationLine(e: SecurityPolicyViolationEvent): string {
+  return JSON.stringify({
+    t: "csp",
+    directive: e.effectiveDirective,
+    blocked: e.blockedURI,
+    source: e.sourceFile,
+    line: e.lineNumber,
+    sample: e.sample,
+  });
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("securitypolicyviolation", (e) => {
+    const line = violationLine(e);
+    if (on) write(line);
+    else if (early && early.length < EARLY_MAX) early.push(line);
+  });
+}
+
 /** Ask the backend whether to instrument, and if so start recording invokes.
  *
  *  The recorder is handed to `tracedCore`, which the production build puts in
@@ -101,9 +125,13 @@ export async function installTrace(): Promise<void> {
   try {
     config = await invoke<{ enabled: boolean; dir: string; recipe: string }>("trace_config");
   } catch {
+    early = null;
     return;
   }
-  if (!config?.enabled) return;
+  if (!config?.enabled) {
+    early = null;
+    return;
+  }
 
   setInvokeRecorder((cmd, args) => {
     // The trace's own plumbing stays out of the trace: logging `trace_write`
@@ -128,6 +156,8 @@ export async function installTrace(): Promise<void> {
   // is set but never consulted. Spans still work; the per-invoke breakdown is
   // a release-build reading, which is the profile every number is pinned to.
   report(true, "");
+  for (const line of early ?? []) write(line);
+  early = null;
 
   // SIGTERM and a window close both skip `beforeunload`, so the buffer is kept
   // short-lived rather than trusted to a teardown that may not run.
