@@ -4879,7 +4879,7 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "tori"
-version = "26.927.1-alpha"
+version = "26.1002.0-alpha"
 dependencies = [
  "agent-client-protocol",
  "apple-native-keyring-store",

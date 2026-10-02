@@ -1,6 +1,6 @@
 [package]
 name = "tori"
-version = "26.927.1-alpha"
+version = "26.1002.0-alpha"
 description = "Dev workflow manager: session tree + Claude terminal + editor"
 authors = ["skarif"]
 edition = "2021"
