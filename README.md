@@ -98,7 +98,7 @@ tori` keeps it current. Otherwise download the latest
 Applications, then follow **[docs/INSTALL.md](docs/INSTALL.md)** for the first
 launch.
 
-Tori v0.1 is **unsigned**, so macOS will refuse to open it the first time. That
+Tori is **unsigned** for now, so macOS will refuse to open it the first time. That
 is expected. The fix is System Settings > Privacy & Security > **Open Anyway**,
 or `xattr -cr /Applications/Tori.app` from a terminal. Both are written out
 step by step in [docs/INSTALL.md](docs/INSTALL.md), along with updating and
@@ -146,6 +146,11 @@ requests from outside the project are turned off for now, while one person
 maintains it and the design is still moving. The reasons, the build steps for
 a clean clone, and how to write an adapter are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+Found a way for a folder, a transcript or a document to run code it should not?
+Report it privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## License
 
