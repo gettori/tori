@@ -166,11 +166,17 @@ describe("a file tab inside a Topic", () => {
   });
 
   it("spells out <repo> / <rel path> on every overflow row", async () => {
-    // 150px fits one 120px tab once the +N button is reserved, so two collapse.
+    // Too narrow for three tabs, so some collapse. The right panel's mode bar
+    // is given the same width and overflows too, hence the editor strip by class.
     setTabBarWidth(150);
     openTabs("topic:f1", [FILE_A, FILE_B, DEEP_A]);
     mount(topicSel);
-    pointerClick(await screen.findByRole("button", { name: "2 more" }));
+    const strip = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".unified-strip");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    pointerClick(await within(strip).findByRole("button", { name: /^\d more$/ }));
     const menu = await waitFor(() => screen.getByRole("menu"));
     expect(menu.textContent).toContain("web / src/b.txt");
     expect(menu.textContent).toContain("api / deep/c.txt");

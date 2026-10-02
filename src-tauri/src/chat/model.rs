@@ -2268,8 +2268,8 @@ mod tests {
                 ChatEvent::ConfigOptions { .. } => "configOptions",
             };
         }
-        // 25 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 28, "every_event() must hold exactly one sample per variant");
+        // A mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 29, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]

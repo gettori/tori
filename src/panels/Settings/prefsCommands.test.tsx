@@ -20,6 +20,7 @@ import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings, loadWorkspaceSettings, toggleEditorDefault } from "./settingsStore";
 import { COMMANDS } from "../../utils/commands";
 import { onWith, PREFS_TOGGLE, type PrefsToggle } from "../../utils/events";
+import { unstubbed } from "../../test/settingsBackend";
 
 const WS = "/space/proj/main";
 const PRISTINE = structuredClone(DEFAULT_SETTINGS.editorDefaults);
@@ -37,7 +38,7 @@ beforeEach(async () => {
       if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
       if (cmd === "get_workspace_settings") return { editor: overlay };
       if (cmd === "set_workspace_settings") return args.settings;
-      return DEFAULT_SETTINGS;
+      return unstubbed(cmd);
     },
   );
   off?.();

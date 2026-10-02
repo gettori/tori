@@ -34,7 +34,8 @@ import { setAppearance } from "./components/paneKit";
 import { pointerClick } from "../../test/menus";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
-import { DEFAULT_SETTINGS, loadWorkspaceSettings, settings } from "./settingsStore";
+import { loadWorkspaceSettings, settings } from "./settingsStore";
+import { unstubbed } from "../../test/settingsBackend";
 
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -42,7 +43,7 @@ beforeEach(async () => {
   invoke.mockReset();
   invoke.mockImplementation(
     async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS,
+      cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   await loadWorkspaceSettings(null);
 });
