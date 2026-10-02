@@ -6,6 +6,10 @@
 
 <p align="center">A cockpit for the coding agents you already run.</p>
 
+<p align="center">
+  <img alt="The Tori window: projects and branches on the left, an agent session waiting for approval in the middle, source control and checkpoints on the right" src="docs/images/workspace.png" width="900">
+</p>
+
 Tori is a macOS app that puts every agent session you have going into one
 window: a tree of projects and branches, a real terminal per session, an editor
 with LSP, and a review panel that stages and commits what the agent wrote. It
@@ -39,6 +43,19 @@ list, and a context-window meter come along for adapters that report one.
 gutters, and markdown/image preview. The Changes panel stages, unstages,
 commits, pushes, and opens a PR. You can send a hunk comment or an editor
 selection straight into a session, and search across the whole project.
+
+<p align="center">
+  <img alt="A pull request in Tori: the diff of one file, with checks, approval and the merge button beside it" src="docs/images/pull-request.png" width="900">
+</p>
+
+**Autopilot.** Hand it a list of tickets and it runs each one in its own
+worktree with its own agent session, in the order their dependencies allow. It
+stops and asks before anything leaves the machine, such as opening a pull
+request, and a worker's permission prompts stay yours to answer.
+
+<p align="center">
+  <img alt="The autopilot's cockpit: two workers on deck, one waiting for approval to open its pull request, and a log of what happened" src="docs/images/autopilot.png" width="900">
+</p>
 
 **Interface.** Command palette (`Cmd+K`), quick open (`Cmd+P`), a shortcut
 sheet on `Cmd+/`, and remappable hotkeys. Menu-bar tray, OS notifications, and
