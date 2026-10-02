@@ -6,8 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import { isUnderPath } from "./pathScope";
 
-/** Mirrors `trust::UNTRUSTED`, what `lsp_start` and `dap_start` reject an
- *  untrusted project with. */
+/** Mirrors `trust::UNTRUSTED`, what `lsp_start`, `dap_start` and
+ *  `format_document` refuse an untrusted project with. */
 export const UNTRUSTED = "untrusted";
 
 /** `path` is the trusted scope, which can sit above the project a start was
