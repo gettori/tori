@@ -64,6 +64,10 @@
         "--add-dir",
         "{dir}"
       ],
+      "untrusted_args": [
+        "--setting-sources",
+        "user"
+      ],
       "effort_extras": [
         {
           "id": "ultracode",
@@ -209,6 +213,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
+      "untrusted_args": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -269,6 +274,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
+      "untrusted_args": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -320,6 +326,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
+      "untrusted_args": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -360,6 +367,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
+      "untrusted_args": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -402,6 +410,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
+      "untrusted_args": [],
       "effort_extras": [],
       "split_model_names": true,
       "modes": [],
@@ -456,6 +465,7 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
+      "untrusted_args": [],
       "effort_extras": [],
       "split_model_names": true,
       "modes": [],

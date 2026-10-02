@@ -23,6 +23,7 @@ import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/cha
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
 import { recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
+import { askToTrust, noteRefused } from "../../utils/projectTrust";
 import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import {
   approaching,
@@ -200,6 +201,8 @@ type SpawnResult = {
   /** The account the session actually runs as, in the backend's spelling. Not
    *  always what was asked: a resume takes it off the transcript. */
   profileId: string | null;
+  /** The folder is not a trusted project, so its own agent settings were left out. */
+  untrusted: boolean;
 };
 
 /** One changed file as `checkpoint_turn_files` reports it. */
@@ -929,6 +932,9 @@ export default function ChatView(props: {
           if (res.profileId !== null && resolved !== props.profile) {
             setResolvedProfile(resolved);
             props.onProfileResolved(resolved);
+          }
+          if (res.untrusted && !props.background && noteRefused(props.cwd)) {
+            askToTrust(props.cwd, "This project's own agent settings stay off until you trust it.");
           }
           if (res.ownership.type === "granted" && res.ownership.contested) {
             emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
