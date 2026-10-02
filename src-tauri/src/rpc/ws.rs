@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::protocol::{CloseFrame, Role, WebSocketConfig, WebSocketContext};
+use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::{Error as WsError, Message};
 
 use super::frame::MAX_FRAME;
@@ -106,6 +107,19 @@ impl Transport for WsTransport {
         for shared in streams {
             WsStream(shared).close_with(CloseCode::Away);
         }
+    }
+}
+
+/// The phone app's webview, per platform.
+const APP_ORIGINS: [&str; 3] = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
+
+// A browser always names the page it runs, so any web page the user has open
+// could reach this port. A client that is not a browser sends no origin. A dev
+// build also takes the Vite page and `dev/remote-probe.html`.
+fn origin_allowed(origin: Option<&str>, dev: bool) -> bool {
+    match origin {
+        None => true,
+        Some(origin) => dev || APP_ORIGINS.contains(&origin),
     }
 }
 
@@ -228,9 +242,17 @@ impl WsStream {
     }
 
     fn handshake(reader: &mut Reader) -> io::Result<()> {
+        let from_the_app = |request: &Request, response: Response| {
+            let origin = request.headers().get("origin").and_then(|o| o.to_str().ok());
+            if origin_allowed(origin, cfg!(debug_assertions)) {
+                Ok(response)
+            } else {
+                Err(ErrorResponse::new(Some("this origin is not the Tori app".into())))
+            }
+        };
         // A browser waits for the 101 before it sends a frame, so nothing is
         // left buffered behind the request when the handshake hands back.
-        tungstenite::accept(reader.tcp.try_clone()?).map_err(|e| io::Error::other(e.to_string()))?;
+        tungstenite::accept_hdr(reader.tcp.try_clone()?, from_the_app).map_err(|e| io::Error::other(e.to_string()))?;
         reader.ctx = Some(WebSocketContext::new(Role::Server, Some(config())));
         Ok(())
     }

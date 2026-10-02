@@ -352,6 +352,8 @@ pub(crate) fn create_worktree_in(
     if branch.is_empty() {
         return Err("Branch name is empty".into());
     }
+    crate::git::not_an_option(branch)?;
+    crate::git::not_an_option(base.unwrap_or_default())?;
     if let Some(existing) = list_worktrees_body(repo.to_string())?.into_iter().find(|w| w.branch == branch) {
         if existing.is_main && !existing.is_bare {
             return Err(format!("Branch \"{branch}\" is checked out in the repository itself; switch it away first."));
@@ -608,6 +610,7 @@ pub async fn branch_status(repo: String, branch: String) -> Result<BranchStatus,
 }
 
 pub(crate) fn branch_status_body(repo: String, branch: String) -> Result<BranchStatus, String> {
+    crate::git::not_an_option(&branch)?;
     let p = Path::new(&repo);
     Ok(BranchStatus {
         unpushed: named_branch_unpushed(p, &branch),
@@ -682,6 +685,7 @@ pub fn remove_worktree_and_branch(
 ) -> Result<(), String> {
     let lock = crate::exec::repo_lock(&repo_path);
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    crate::git::not_an_option(&branch)?;
     do_remove_worktree(&repo_path, &worktree_path, force)?;
     let del = crate::exec::git_in(&repo_path)
         .args(["branch", "-D", &branch])

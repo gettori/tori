@@ -336,6 +336,7 @@ pub fn git_blob_slice(
     if start == 0 || end < start {
         return Ok(vec![]);
     }
+    not_an_option(&rev)?;
     let output = crate::exec::git_in(&project_path)
         .args(["show", &format!("{rev}:{file}")])
         .output()
@@ -386,6 +387,8 @@ pub fn git_blob_sizes(
     base: String,
     path: String,
 ) -> Result<BlobSizes, String> {
+    not_an_option(&head)?;
+    not_an_option(&base)?;
     Ok(BlobSizes {
         head: blob_size(&project_path, &head, &path),
         base: merge_base(&project_path, &head, &base)
@@ -1331,6 +1334,7 @@ pub struct DiffStat {
 /// whatever was last pulled.
 #[tauri::command(async)]
 pub fn git_branch_paths(project_path: String, base: String) -> Result<Vec<String>, String> {
+    not_an_option(&base)?;
     let range = format!("{base}...HEAD");
     let out = git_capture(&project_path, &["diff", "--name-only", &range])?;
     Ok(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
@@ -1427,6 +1431,16 @@ const COMMIT_DIFF_ARGS: &[&str] = &[
     "-M",
     "--no-commit-id",
 ];
+
+/// A branch or rev a caller named, refused when git would read it as an option.
+/// Git will not create a branch that starts with `-`, but a ref made by
+/// plumbing or named by a forge can.
+pub(crate) fn not_an_option(rev: &str) -> Result<(), String> {
+    if rev.trim_start().starts_with('-') {
+        return Err(format!("\"{rev}\" is not a branch or commit."));
+    }
+    Ok(())
+}
 
 /// A commit id, and nothing that could be read as an option. Tab ids are strings
 /// and so is `--output=/etc/passwd`; the sha reaching a command line has to be
@@ -1727,6 +1741,7 @@ pub async fn git_checkout(repo_path: String, branch: String) -> Result<(), Strin
 }
 
 pub(crate) fn git_checkout_body(repo_path: String, branch: String) -> Result<(), String> {
+    not_an_option(&branch)?;
     let out = crate::exec::git_in(&repo_path)
         .args(["checkout", &branch])
         .output()
@@ -3156,6 +3171,7 @@ pub async fn git_merge(
     no_ff: Option<bool>,
 ) -> Result<IntegrateOutcome, String> {
     crate::exec::git_write("git_merge", project_path.clone(), move || {
+        not_an_option(&branch)?;
         let mut args = vec!["merge"];
         if no_ff.unwrap_or(false) {
             args.push("--no-ff");
@@ -3170,6 +3186,7 @@ pub async fn git_merge(
 #[tauri::command]
 pub async fn git_rebase(project_path: String, onto: String) -> Result<IntegrateOutcome, String> {
     crate::exec::git_write("git_rebase", project_path.clone(), move || {
+        not_an_option(&onto)?;
         integrate(&project_path, &["rebase", &onto])
     })
     .await
@@ -3511,6 +3528,8 @@ pub async fn git_branch_create(
             return Err("Branch name is empty".into());
         }
         let start = from.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        not_an_option(&name)?;
+        not_an_option(start.unwrap_or_default())?;
         let mut args = vec![if checkout.unwrap_or(false) { "checkout" } else { "branch" }];
         if checkout.unwrap_or(false) {
             args.push("-b");
@@ -3533,6 +3552,8 @@ pub async fn git_branch_rename(project_path: String, from: String, to: String) -
         if to.is_empty() {
             return Err("Branch name is empty".into());
         }
+        not_an_option(&from)?;
+        not_an_option(&to)?;
         git_run(&project_path, &["branch", "-m", &from, &to])
     })
     .await
@@ -3547,6 +3568,7 @@ pub async fn git_branch_delete(
     force: Option<bool>,
 ) -> Result<(), String> {
     crate::exec::git_write("git_branch_delete", project_path.clone(), move || {
+        not_an_option(&branch)?;
         git_run(&project_path, &["branch", if force.unwrap_or(false) { "-D" } else { "-d" }, &branch])
     })
     .await

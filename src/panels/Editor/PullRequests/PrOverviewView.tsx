@@ -10,6 +10,7 @@
 // two buttons that merge is two places a stale verdict can offer it.
 
 import { createEffect, createMemo, on, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { ExternalLink, FileStack } from "lucide-solid";
 import { prMetaParts } from "../../../utils/prMeta";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
@@ -85,7 +86,7 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
                 size="sm"
                 icon={<Icon icon={ExternalLink} />}
                 tooltip={`Open pull request ${p().number} on github.com`}
-                onClick={() => window.open(p().url, "_blank", "noreferrer")}
+                onClick={() => void invoke("plugin:opener|open_url", { url: p().url }).catch(() => {})}
               />
             </div>
             <div class={styles.meta}>{meta().join(", ")}</div>

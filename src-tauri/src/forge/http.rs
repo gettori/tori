@@ -415,6 +415,12 @@ pub fn parse_link_next(header: &str) -> Option<String> {
     None
 }
 
+fn origin_of(url: &str) -> &str {
+    let after_scheme = url.find("://").map_or(0, |i| i + 3);
+    let end = url[after_scheme..].find(['/', '?', '#']).map_or(url.len(), |i| after_scheme + i);
+    &url[..end]
+}
+
 /// Follows `Link: rel="next"` until it runs out or hits [`PAGE_CAP`].
 ///
 /// Returns the concatenated JSON arrays plus whether the cap cut it short. The
@@ -465,6 +471,11 @@ pub fn paginate_rest(
         }
 
         match resp.header("Link").and_then(parse_link_next) {
+            // The request carries the token, so the next page has to be on the
+            // host that was asked.
+            Some(next) if origin_of(&next) != origin_of(&req.url) => {
+                return Err(ForgeError::Malformed { message: format!("the next page is on another host: {next}") })
+            }
             Some(next) => req.url = next,
             None => return Ok((out, false)),
         }
