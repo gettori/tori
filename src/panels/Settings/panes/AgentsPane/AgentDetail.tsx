@@ -444,6 +444,8 @@ export default function AgentDetail(props: {
   const verdict = () => {
     if (!installed()) return { label: "Not installed", cls: "" };
     if (signedOutEverywhere(a())) return { label: "Sign in", cls: styles.statePillWarn };
+    if (a().chatProgramMissing)
+      return { label: `Chat needs ${a().chatProgramMissing}`, cls: styles.statePillWarn };
     return { label: "Ready", cls: styles.statePillOk };
   };
 
@@ -543,6 +545,14 @@ export default function AgentDetail(props: {
       </Show>
       <Show when={installed() && a().status === "versionUnknown" && !a().version}>
         <div class={styles.hint}>It does not report a version, so Tori cannot check it.</div>
+      </Show>
+      <Show when={a().chatProgramMissing}>
+        {(program) => (
+          <div class={styles.hint}>
+            Chat runs through <code>{program()}</code>, which is not on your login shell's PATH.
+            The terminal works without it.
+          </div>
+        )}
       </Show>
 
       {/* The agent's own statement about which credential it will bill

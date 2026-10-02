@@ -100,9 +100,11 @@ export function fixReason(
   agentId: string,
   ready: (id: string) => boolean,
   signedOut: (id: string) => boolean,
+  chatRuntime: (id: string) => string | null = () => null,
 ): string | null {
-  if (ready(agentId)) return null;
-  return signedOut(agentId) ? "Signed out" : "Not installed";
+  if (!ready(agentId)) return signedOut(agentId) ? "Signed out" : "Not installed";
+  const program = chatRuntime(agentId);
+  return program ? `Chat needs ${program}` : null;
 }
 
 /** One account of one agent, as much of it as a row needs. */
@@ -133,6 +135,9 @@ export function paletteProviders(input: {
   ready: (id: string, profile: string | null) => boolean;
   signedOut: (id: string, profile: string | null) => boolean;
   probing: (id: string, profile: string | null) => boolean;
+  /** The program this agent's chat spawns through and cannot, from
+   *  `chatRuntimeMissing`. Per agent, since it is a PATH fact. */
+  chatRuntime?: (id: string) => string | null;
   /** Whether the project allows this row. One it leaves out is not listed, unlike
    *  a broken agent: the project chose that, so there is nothing to fix. */
   allowed?: (id: string, profile: string | null) => boolean;
@@ -157,6 +162,7 @@ export function paletteProviders(input: {
         adapter.id,
         (id) => input.ready(id, profile),
         (id) => input.signedOut(id, profile),
+        input.chatRuntime,
       );
       return {
         key: catalogKey(adapter.id, profile),

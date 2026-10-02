@@ -1744,6 +1744,17 @@ pub fn test_adapter(program: &str) -> AgentAdapter {
     load_adapter_str(&text, "bundled:test").expect("test adapter parses")
 }
 
+/// `test_adapter` with a chat surface that runs through `chat_program`, the
+/// codex and pi shape (launch `codex`, chat `npx`).
+#[cfg(test)]
+pub fn test_adapter_with_chat(program: &str, chat_program: &str) -> AgentAdapter {
+    let text = VALID_MINIMAL
+        .replacen("schema_version = 1", "schema_version = 2", 1)
+        .replace("program = \"x\"", &format!("program = \"{program}\""));
+    let text = format!("{text}\n[chat]\ntransport = \"acp\"\nprogram = \"{chat_program}\"\n");
+    load_adapter_str(&text, "bundled:test").expect("test adapter with chat parses")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
