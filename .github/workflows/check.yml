@@ -10,9 +10,9 @@
 # which transpiles without type-checking, so nothing else in the repo would
 # ever notice a type error.
 #
-# Deliberately frontend-only. The Rust and Tauri side is built by release.yml
+# Deliberately builds no Rust. The Rust and Tauri side is built by release.yml
 # on a macOS runner; putting it here too would trade minutes for a signal that
-# workflow already gives.
+# workflow already gives. The `audit` job only reads the two lockfiles.
 name: Check
 
 # Every pull request, plus main after a merge. Not bare `on: push`, which would
@@ -43,3 +43,28 @@ jobs:
       # Runs check-tokens.mjs first, then both vitest projects.
       - name: Test
         run: pnpm test
+
+  # Its own job, so an advisory published overnight reads as an advisory and
+  # not as a broken test run.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Audit npm dependencies
+        run: pnpm audit --prod
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit desktop crates
+        run: cargo audit --file src-tauri/Cargo.lock
+
+      - name: Audit mobile crates
+        run: cargo audit --file mobile/src-tauri/Cargo.lock
