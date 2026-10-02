@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import Intro, { SLIDES } from "./Intro";
+import { installResizeObserver } from "../../Editor/__fixtures__/editorAgent";
+
+installResizeObserver();
 
 describe("Intro", () => {
   it("walks all eight slides with the arrow keys and finishes on the last", () => {
