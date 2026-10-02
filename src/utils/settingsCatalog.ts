@@ -646,13 +646,13 @@ export const SETTINGS: SettingEntry[] = [
     id: "remote-tailscale",
     section: "remote",
     label: "Tailscale",
-    hint: "Lets your phone reach this Mac from anywhere, not only the same Wi-Fi. Install it on both and sign in with the same account, then listen on the Tailscale address.",
+    hint: "Lets your phone reach this Mac from anywhere, over an encrypted connection. Install it on both and sign in with the same account, then listen on the Tailscale address.",
   },
   {
     id: "remote-address",
     section: "remote",
     label: "Listen on",
-    hint: "One address on this Mac: a LAN address, your Tailscale address, or this Mac only. Tori never listens on every address at once.",
+    hint: "One address on this Mac: your Tailscale address, or this Mac only. A local network address is not offered, because the connection is not encrypted there.",
   },
   {
     id: "remote-port",

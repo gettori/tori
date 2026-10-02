@@ -43,7 +43,7 @@ impl Remote {
 
     pub fn apply(&self, config: &Config) -> Status {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let wanted = if config.enabled { Some(address(config)) } else { None };
+        let wanted = if config.enabled { Some(address(config, &interfaces())) } else { None };
         if let (Some(Ok(addr)), Some(running)) = (&wanted, &state.0) {
             if running.transport.addr() == *addr {
                 return state.1.clone();
@@ -94,11 +94,18 @@ impl Remote {
     }
 }
 
-fn address(config: &Config) -> Result<SocketAddr, String> {
+fn address(config: &Config, offered: &[Interface]) -> Result<SocketAddr, String> {
     let text = config.address.as_deref().filter(|a| !a.is_empty()).ok_or("pick an address to listen on")?;
     let ip: IpAddr = text.parse().map_err(|_| format!("{text} is not an IP address"))?;
     if ip.is_unspecified() {
         return Err("listening on every address is not offered; pick one".into());
+    }
+    // Refused here and not only left out of the picker: the front speaks plain
+    // ws://, and settings.json can still name a LAN address an older build saved.
+    if !ip.is_loopback() && !offered.iter().any(|i| i.address == ip.to_string()) {
+        return Err(format!(
+            "{text} is neither Tailscale nor this Mac itself, and the connection is not encrypted on any other network"
+        ));
     }
     Ok(SocketAddr::new(ip, config.port))
 }
@@ -106,7 +113,6 @@ fn address(config: &Config) -> Result<SocketAddr, String> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    Lan,
     Tailscale,
     Loopback,
 }
@@ -122,12 +128,12 @@ pub struct Interface {
 pub fn classify(name: &str, ip: Ipv4Addr) -> Option<Kind> {
     let [a, b, ..] = ip.octets();
     match () {
-        _ if ip.is_unspecified() || ip.is_link_local() => None,
         _ if ip.is_loopback() => Some(Kind::Loopback),
         // Tailscale hands out 100.64.0.0/10 on a utun.
         _ if name.starts_with("utun") && a == 100 && (64..128).contains(&b) => Some(Kind::Tailscale),
-        _ if name.starts_with("utun") => None,
-        _ => Some(Kind::Lan),
+        // Everything else is refused, a LAN too: a device's credential would
+        // cross it unencrypted.
+        _ => None,
     }
 }
 
@@ -195,14 +201,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_picker_offers_lan_tailscale_and_loopback_and_nothing_else() {
-        assert_eq!(classify("en0", Ipv4Addr::new(192, 168, 1, 20)), Some(Kind::Lan));
+    fn the_picker_offers_tailscale_and_loopback_and_nothing_else() {
+        assert_eq!(classify("en0", Ipv4Addr::new(192, 168, 1, 20)), None, "a LAN is not encrypted");
         assert_eq!(classify("utun4", Ipv4Addr::new(100, 101, 7, 9)), Some(Kind::Tailscale));
         assert_eq!(classify("lo0", Ipv4Addr::LOCALHOST), Some(Kind::Loopback));
         assert_eq!(classify("en0", Ipv4Addr::UNSPECIFIED), None);
         assert_eq!(classify("en0", Ipv4Addr::new(169, 254, 3, 4)), None);
         assert_eq!(classify("utun2", Ipv4Addr::new(10, 8, 0, 2)), None, "another VPN's tunnel");
-        assert_eq!(classify("en0", Ipv4Addr::new(100, 101, 7, 9)), Some(Kind::Lan), "100.x off a utun is a carrier LAN");
+        assert_eq!(classify("en0", Ipv4Addr::new(100, 101, 7, 9)), None, "100.x off a utun is a carrier LAN");
+    }
+
+    #[test]
+    fn a_saved_lan_address_is_refused_and_tailscale_and_loopback_are_not() {
+        let tailnet = [Interface { name: "utun4".into(), address: "100.101.7.9".into(), kind: Kind::Tailscale }];
+        let at = |address: &str| address_of(address, &tailnet);
+        assert_eq!(at("100.101.7.9"), Ok("100.101.7.9:47821".parse().unwrap()));
+        assert_eq!(at("127.0.0.1"), Ok("127.0.0.1:47821".parse().unwrap()));
+        assert!(at("192.168.1.20").unwrap_err().contains("not encrypted"));
+        assert!(address_of("100.101.7.9", &[]).is_err(), "Tailscale that has since stopped");
+    }
+
+    fn address_of(ip: &str, offered: &[Interface]) -> Result<SocketAddr, String> {
+        address(&Config { enabled: true, address: Some(ip.into()), port: 47821 }, offered)
     }
 
     #[test]
