@@ -141,7 +141,10 @@ where the agents put them; Tori reads them and never modifies or uploads them.
 
 ## Contributing
 
-Build steps for a clean clone, and the details of writing an adapter, are in
+Issues are welcome: bug reports, feature requests and adapter requests. Pull
+requests from outside the project are turned off for now, while one person
+maintains it and the design is still moving. The reasons, the build steps for
+a clean clone, and how to write an adapter are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License

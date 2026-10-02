@@ -1,4 +1,4 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Installing Tori (Gatekeeper, "Apple could not verify")
     url: https://github.com/gettori/tori/blob/main/docs/INSTALL.md

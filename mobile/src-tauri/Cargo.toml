@@ -2,6 +2,7 @@
 name = "tori-mobile"
 version = "26.1002.0-alpha"
 description = "Tori on a phone: the chats of a paired Tori, over its remote front"
+license = "Apache-2.0"
 edition = "2021"
 
 [lib]
