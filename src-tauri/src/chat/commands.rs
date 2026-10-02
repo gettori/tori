@@ -1634,24 +1634,24 @@ mod tests {
         assert_eq!(resolve_profile(Some("default"), None).unwrap(), "default");
         // A chat killed before its first turn wrote a file: nothing on disk to
         // ask, so the tab is the only thing that knows which account it is on.
-        assert_eq!(resolve_profile(Some("fonn"), None).unwrap(), "fonn");
+        assert_eq!(resolve_profile(Some("globex"), None).unwrap(), "globex");
     }
 
     /// The root that holds the transcript is the account, so a caller that
     /// forgot to pass one still resumes into the right home.
     #[test]
     fn a_resume_takes_its_profile_from_the_matched_root() {
-        assert_eq!(resolve_profile(None, Some("fonn")).unwrap(), "fonn");
-        assert_eq!(resolve_profile(Some("fonn"), Some("fonn")).unwrap(), "fonn");
+        assert_eq!(resolve_profile(None, Some("globex")).unwrap(), "globex");
+        assert_eq!(resolve_profile(Some("globex"), Some("globex")).unwrap(), "globex");
     }
 
     /// The failure this rule exists for: a caller naming a different account is
     /// refused, rather than resuming somebody else's session in the wrong home.
     #[test]
     fn a_resume_naming_a_different_account_is_refused() {
-        let err = resolve_profile(Some("default"), Some("fonn")).unwrap_err();
-        assert!(err.contains("fonn"), "the error names the account the session is actually in: {err}");
-        assert!(resolve_profile(Some("fonn"), Some("default")).is_err());
+        let err = resolve_profile(Some("default"), Some("globex")).unwrap_err();
+        assert!(err.contains("globex"), "the error names the account the session is actually in: {err}");
+        assert!(resolve_profile(Some("globex"), Some("default")).is_err());
     }
 
     /// `chat_spawn` needs a Tauri `State` to run, so the flag's survival is
@@ -1668,7 +1668,7 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::Granted { contested: true },
             spawned: Some(Spawned::Started),
-            profile_id: Some("fonn".into()),
+            profile_id: Some("globex".into()),
             untrusted: false,
         };
         let json = serde_json::to_value(&result).unwrap();
@@ -1681,14 +1681,14 @@ mod tests {
     /// `null` would file that session's quota readings under no account at all.
     #[test]
     fn the_resolved_profile_reaches_the_frontend() {
-        let resolved = resolve_profile(None, Some("fonn")).unwrap();
+        let resolved = resolve_profile(None, Some("globex")).unwrap();
         let result = SpawnResult {
             ownership: ClaimOutcome::Granted { contested: false },
             spawned: Some(Spawned::Started),
             profile_id: Some(resolved),
             untrusted: false,
         };
-        assert_eq!(serde_json::to_value(&result).unwrap()["profileId"], "fonn");
+        assert_eq!(serde_json::to_value(&result).unwrap()["profileId"], "globex");
     }
 
     /// A refusal is a normal answer, not an error, so the frontend can focus the

@@ -210,16 +210,16 @@ describe("ModelPicker", () => {
    */
   it("names the account on the pill only when there is one to name", () => {
     expect(setup({ value: "sonnet" }).pills()[0].textContent).toBe("Sonnet");
-    expect(setup({ value: "sonnet", profileLabel: "Fonn" }).pills()[0].textContent).toBe(
-      "Sonnet / Fonn",
+    expect(setup({ value: "sonnet", profileLabel: "Globex" }).pills()[0].textContent).toBe(
+      "Sonnet / Globex",
     );
   });
 
   it("names the account in the tooltip too", () => {
-    const pill = setup({ value: "sonnet", profileLabel: "Fonn" }).pills()[0];
+    const pill = setup({ value: "sonnet", profileLabel: "Globex" }).pills()[0];
     pill.focus();
     fireEvent.focus(pill);
-    expect(screen.getByRole("tooltip").textContent).toContain("on Fonn");
+    expect(screen.getByRole("tooltip").textContent).toContain("on Globex");
   });
 
   it("keeps the row's own full label in the tooltip", () => {

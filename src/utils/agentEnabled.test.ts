@@ -164,19 +164,19 @@ describe("the sentence a refusal gets", () => {
     expect(agentOffReason("claude")).toBe("Claude is signed out");
   });
 
-  // The failure this is here for: a draft on Fonn refused because the personal
+  // The failure this is here for: a draft on Globex refused because the personal
   // login expired is a refusal the user cannot act on from that tab, and one
-  // let through because Fonn is fine is a session that will not start.
+  // let through because Globex is fine is a session that will not start.
   it("answers for the account asked about, in the same words either way", () => {
     bench.enabled = { claude: true };
     health.signedOut.add(key("claude"));
-    expect(agentOffReason("claude", "fonn")).toBeNull();
+    expect(agentOffReason("claude", "globex")).toBeNull();
     expect(agentOffReason("claude", null)).toBe("Claude is signed out");
 
     health.signedOut.clear();
-    health.signedOut.add(key("claude", "fonn"));
+    health.signedOut.add(key("claude", "globex"));
     expect(agentOffReason("claude", null)).toBeNull();
-    expect(agentOffReason("claude", "fonn")).toBe("Claude is signed out");
+    expect(agentOffReason("claude", "globex")).toBe("Claude is signed out");
   });
 
   it("says nothing at all before the settings file has been read", () => {
@@ -229,29 +229,29 @@ describe("which agent a new draft opens on", () => {
 // per-project memory a suggestion.
 describe("which account a new session opens on", () => {
   beforeEach(() => {
-    health.accounts = { claude: ["default", "fonn"] };
+    health.accounts = { claude: ["default", "globex"] };
     bench.enabled = { claude: true };
   });
 
   it("keeps what this project last used", () => {
-    bench.defaultProfiles = { claude: "fonn" };
-    expect(draftChatProfile("claude", "fonn")).toBe("fonn");
+    bench.defaultProfiles = { claude: "globex" };
+    expect(draftChatProfile("claude", "globex")).toBe("globex");
     // And the default account is an answer, not a silence: a project that ran
     // on the user's own login stays there, whatever Settings says.
     expect(draftChatProfile("claude", "default")).toBeNull();
   });
 
   it("takes this agent's Settings default when the project has no memory", () => {
-    bench.defaultProfiles = { claude: "fonn" };
-    expect(draftChatProfile("claude", null)).toBe("fonn");
-    expect(draftChatProfile("claude", undefined)).toBe("fonn");
+    bench.defaultProfiles = { claude: "globex" };
+    expect(draftChatProfile("claude", null)).toBe("globex");
+    expect(draftChatProfile("claude", undefined)).toBe("globex");
   });
 
   it("falls through an account that has been removed since", () => {
-    bench.defaultProfiles = { claude: "fonn" };
+    bench.defaultProfiles = { claude: "globex" };
     // The project named an account the sweep no longer lists, so the layer
     // below answers rather than the spawn being handed an id nothing resolves.
-    expect(draftChatProfile("claude", "gone")).toBe("fonn");
+    expect(draftChatProfile("claude", "gone")).toBe("globex");
     // And with the Settings default gone too, the login the user already had.
     bench.defaultProfiles = { claude: "also-gone" };
     expect(draftChatProfile("claude", "gone")).toBeNull();
@@ -262,36 +262,36 @@ describe("which account a new session opens on", () => {
   });
 
   it("answers per agent, since an account id belongs to one of them", () => {
-    bench.defaultProfiles = { claude: "fonn" };
-    health.accounts = { claude: ["default", "fonn"], codex: ["default"] };
-    expect(draftChatProfile("codex", "fonn")).toBeNull();
+    bench.defaultProfiles = { claude: "globex" };
+    health.accounts = { claude: ["default", "globex"], codex: ["default"] };
+    expect(draftChatProfile("codex", "globex")).toBeNull();
   });
 
   it("starts on the first added account when there is no login to inherit", () => {
-    health.accounts = { claude: ["fonn", "work"] };
-    expect(draftChatProfile("claude", null)).toBe("fonn");
-    expect(draftChatProfile("claude", "default")).toBe("fonn");
+    health.accounts = { claude: ["globex", "work"] };
+    expect(draftChatProfile("claude", null)).toBe("globex");
+    expect(draftChatProfile("claude", "default")).toBe("globex");
   });
 });
 
 describe("the stored default account", () => {
   it("reads as the inherited login until one is chosen", () => {
     expect(defaultProfile("claude")).toBe("default");
-    bench.defaultProfiles = { claude: "fonn" };
-    expect(defaultProfile("claude")).toBe("fonn");
+    bench.defaultProfiles = { claude: "globex" };
+    expect(defaultProfile("claude")).toBe("globex");
   });
 
   // Absent and "default" are one answer, so only one of them is ever stored.
   it("deletes the entry rather than storing the default account", () => {
-    bench.defaultProfiles = { claude: "fonn" };
+    bench.defaultProfiles = { claude: "globex" };
     setDefaultProfile("claude", "default");
     expect((bench.saved[0] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual(
       {},
     );
 
-    setDefaultProfile("claude", "fonn");
+    setDefaultProfile("claude", "globex");
     expect((bench.saved[1] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual(
-      { claude: "fonn" },
+      { claude: "globex" },
     );
   });
 });

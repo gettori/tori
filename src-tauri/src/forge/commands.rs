@@ -1895,7 +1895,7 @@ mod tests {
 
         let mut file = AccountsFile::default();
         github_account(&mut file, "skarif2");
-        let work = github_account(&mut file, "fonn-arif");
+        let work = github_account(&mut file, "globex-arif");
         let mut picks = BTreeMap::new();
 
         let resolve = |path: &std::path::Path, picks: &BTreeMap<String, String>| {
@@ -2093,27 +2093,27 @@ mod tests {
         // Pressing add again with gh logged in as the account already held would
         // re-sign-in that one instead of adding the second identity asked for.
         assert!(!gh_may_answer(&file, host, "skarif2", None, CliAsk::Whoever));
-        assert!(gh_may_answer(&file, host, "fonn-arif", None, CliAsk::Whoever), "a login Tori does not hold yet");
+        assert!(gh_may_answer(&file, host, "globex-arif", None, CliAsk::Whoever), "a login Tori does not hold yet");
 
         // Re-auth follows the account, not gh: only the account gh supplied.
         assert!(gh_may_answer(&file, host, "skarif2", Some(&personal), CliAsk::Whoever));
-        let pasted = github_account(&mut file, "fonn-arif");
+        let pasted = github_account(&mut file, "globex-arif");
         assert!(
-            !gh_may_answer(&file, host, "fonn-arif", Some(&pasted), CliAsk::Whoever),
+            !gh_may_answer(&file, host, "globex-arif", Some(&pasted), CliAsk::Whoever),
             "a pasted account is repaired with a token, not silently re-sourced"
         );
         // gh switched accounts under a cli-sourced one: storing that token here
         // would file somebody else's credential under this account's id.
-        assert!(!gh_may_answer(&file, host, "fonn-arif", Some(&personal), CliAsk::Whoever));
+        assert!(!gh_may_answer(&file, host, "globex-arif", Some(&personal), CliAsk::Whoever));
         assert!(!gh_may_answer(&file, host, "skarif2", Some("no-such-account"), CliAsk::Whoever));
 
         // Pressed by hand, on a control that names the CLI: the pasted account
         // and gh are the same person, and an organisation that refused Tori's
         // application has no quarrel with gh's, so this is the one route left.
-        assert!(gh_may_answer(&file, host, "fonn-arif", Some(&pasted), CliAsk::Named));
+        assert!(gh_may_answer(&file, host, "globex-arif", Some(&pasted), CliAsk::Named));
         // Still not somebody else. Asking for gh cannot move an account to a
         // login that is not the one it holds.
-        assert!(!gh_may_answer(&file, host, "fonn-arif", Some(&personal), CliAsk::Named));
+        assert!(!gh_may_answer(&file, host, "globex-arif", Some(&personal), CliAsk::Named));
     }
 
     #[test]
@@ -2139,13 +2139,13 @@ mod tests {
 
         // `gh auth switch` since: the account's id is already picked by repos,
         // so adopting this token would quietly re-point them at another person.
-        let e = switched_away(account(), "fonn-arif").expect("a switch is refused");
+        let e = switched_away(account(), "globex-arif").expect("a switch is refused");
         let message = e.to_string();
-        assert!(message.contains("fonn-arif"), "names who gh is now: {message}");
+        assert!(message.contains("globex-arif"), "names who gh is now: {message}");
         assert!(message.contains("skarif2"), "and who the account is: {message}");
 
         // A pasted account is nobody's business but the user's, switch or not.
-        let pasted = github_account(&mut file, "fonn-arif");
+        let pasted = github_account(&mut file, "globex-arif");
         let pasted = accounts::find(&file, &pasted).unwrap().1;
         assert!(switched_away(pasted, "someone-else").is_none());
     }
@@ -2199,7 +2199,7 @@ mod tests {
         assert_eq!(git_account_at(&file, &picks, "gitlab.com:8443", path, tori), None);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", "", tori), None);
 
-        let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "fonn-arif", accounts::Source::Token, None).unwrap();
+        let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "globex-arif", accounts::Source::Token, None).unwrap();
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), None, "two accounts, no pick, no default");
         let picks = BTreeMap::from([("gitlab.com/skarif2/masterchef".to_string(), work.clone())]);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), Some(work));

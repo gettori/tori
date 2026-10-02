@@ -57,9 +57,9 @@ describe("where a link in assistant prose goes", () => {
   });
 
   it("takes a Tori place to the navigator, cwd or not", () => {
-    expect(linkTarget("tori://open?folder=/r/Saga%20News/app/my%20wt&session=s-1", CWD)).toEqual({
+    expect(linkTarget("tori://open?folder=/r/Initech%20News/app/my%20wt&session=s-1", CWD)).toEqual({
       kind: "navigate",
-      target: { folder: "/r/Saga News/app/my wt", session: "s-1" },
+      target: { folder: "/r/Initech News/app/my wt", session: "s-1" },
     });
     expect(linkTarget("tori://open?folder=/r/personal/tori", "")).toEqual({
       kind: "navigate",

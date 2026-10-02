@@ -431,7 +431,7 @@ describe("backing off", () => {
     repoOf = { "/b": on("work") };
     signedInWith(
       [project("/a", ["main"]), project("/b", ["main"])],
-      [account("personal", SIGNED_IN), account("work", { kind: "signedIn", login: "fonn-arif" })],
+      [account("personal", SIGNED_IN), account("work", { kind: "signedIn", login: "globex-arif" })],
     );
     answers = [forgeError("rateLimited", { rateLimitKind: "primary" }), report([status("main")])];
     await pollNow("interval", NOW);
@@ -445,7 +445,7 @@ describe("backing off", () => {
     repoOf = { "/b": on("work") };
     signedInWith(
       [project("/a", ["main"]), project("/b", ["main"])],
-      [account("personal", SIGNED_IN), account("work", { kind: "suspect", login: "fonn-arif" })],
+      [account("personal", SIGNED_IN), account("work", { kind: "suspect", login: "globex-arif" })],
     );
     await pollNow("interval", NOW);
     expect(asks.map((a) => a.projectPath)).toEqual(["/a"]);

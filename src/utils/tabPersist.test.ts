@@ -349,15 +349,15 @@ describe("parseStore", () => {
   it("brings a chat and an agent tab back on the account they ran as", () => {
     const written = toStore(
       [
-        tab({ id: "1", kind: "chat", program: "claude", sessionId: "c1", profile: "fonn" }),
-        tab({ id: "2", kind: "agent", program: "claude", sessionId: "a1", profile: "fonn" }),
+        tab({ id: "1", kind: "chat", program: "claude", sessionId: "c1", profile: "globex" }),
+        tab({ id: "2", kind: "agent", program: "claude", sessionId: "a1", profile: "globex" }),
       ],
       {},
       100,
     );
-    expect(written["/w/a"].tabs.map((t) => t.profile)).toEqual(["fonn", "fonn"]);
+    expect(written["/w/a"].tabs.map((t) => t.profile)).toEqual(["globex", "globex"]);
     const back = parseStore(JSON.stringify(written));
-    expect(back["/w/a"].tabs.map((t) => t.profile)).toEqual(["fonn", "fonn"]);
+    expect(back["/w/a"].tabs.map((t) => t.profile)).toEqual(["globex", "globex"]);
     // The home variable is never stored: it is resolved from this id at spawn,
     // so a profile moved or renamed since cannot respawn against a dead path.
     expect(JSON.stringify(written)).not.toContain("CONFIG_DIR");
