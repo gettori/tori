@@ -157,6 +157,40 @@ describe("a mermaid fence in the transcript", () => {
   });
 });
 
+describe("a transcript loads nothing from the network", () => {
+  const LOADERS = "img, video, audio, source, iframe, object, embed, [style], [poster], [srcset], [background]";
+
+  it("shows raw HTML as the text it is", () => {
+    const { container } = render(() => (
+      <Markdown
+        text={'<video poster="https://x.dev/p"></video>\n\nand <div style="background:url(https://x.dev/b)">inline</div>'}
+        cwd="/repo"
+      />
+    ));
+    expect(container.querySelector(LOADERS)).toBeNull();
+    expect(container.textContent).toContain('<video poster="https://x.dev/p">');
+  });
+
+  it("turns a remote image into a link and keeps an inline one", () => {
+    const { container } = render(() => (
+      <Markdown text={"![chart](https://x.dev/y?d=secret) ![dot](data:image/png;base64,AAAA)"} cwd="/repo" />
+    ));
+    const imgs = [...container.querySelectorAll("img")];
+    expect(imgs.map((i) => i.getAttribute("src"))).toEqual(["data:image/png;base64,AAAA"]);
+    const link = container.querySelector("a");
+    expect(link?.getAttribute("href")).toBe("https://x.dev/y?d=secret");
+    expect(link?.textContent).toBe("chart");
+  });
+
+  it("holds inside a previewed md fence too", () => {
+    const { container, getByLabelText } = render(() => (
+      <Markdown text={"```md\n![chart](https://x.dev/y)\n\n<img src=\"https://x.dev/z\">\n```"} cwd="/repo" />
+    ));
+    fireEvent.click(getByLabelText("Preview markdown"));
+    expect(container.querySelector(LOADERS)).toBeNull();
+  });
+});
+
 describe("links in prose are routed, never followed", () => {
   // The regression: an anchor the webview follows navigates off the SPA, which
   // reads as the app crashing and takes the session with it.

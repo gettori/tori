@@ -21,6 +21,7 @@ const clientConfigs: {
   rootUri?: string;
   timeout?: number;
   workspace?: (client: unknown) => unknown;
+  sanitizeHTML?: (html: string) => string;
   extensions?: unknown[];
 }[] = [];
 
@@ -500,6 +501,17 @@ describe("per-server timeout", () => {
     resolveRoot = () => "/proj/s/packages/a";
     await m.ensureLspFor("/proj/s/packages/a/index.ts", "/proj/s");
     expect(clientConfigs[0].rootUri).toBe("file:///proj/s/packages/a");
+  });
+});
+
+describe("server documentation", () => {
+  it("hands every client the sanitizer", async () => {
+    // The library renders hover, completion and signature docs into innerHTML
+    // and sanitizes only when it is given something to do it with.
+    const m = await freshModule();
+    await m.ensureLspFor("/proj/doc/a.ts", "/proj/doc");
+    const { sanitizeHtml } = await import("../../utils/sanitizeHtml");
+    expect(clientConfigs[0].sanitizeHTML).toBe(sanitizeHtml);
   });
 });
 

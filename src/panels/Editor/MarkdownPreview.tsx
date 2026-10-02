@@ -3,6 +3,8 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { marked, type Token } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { bufferTextOf, handOff, takeHandOff, scrollFraction } from "../../utils/liveBuffer";
+import { emitWith, NAVIGATE, OPEN_IN_EDITOR, type NavTarget, type OpenInEditor } from "../../utils/events";
+import { linkTarget } from "../Chat/links";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import PreviewCode from "./PreviewCode";
 import styles from "./MarkdownPreview.module.css";
@@ -101,6 +103,24 @@ export default function MarkdownPreview(props: { path: string }) {
     });
   });
 
+  // An anchor the webview follows takes the whole app off the SPA. A link
+  // out of the file's directory still opens: a README links its siblings.
+  function onLinkClick(e: MouseEvent) {
+    const anchor = (e.target as Element | null)?.closest?.("a");
+    if (!anchor) return;
+    e.preventDefault();
+    const target = linkTarget(anchor.getAttribute("href") ?? "", dirOf(props.path));
+    if (target.kind === "external") {
+      void invoke("plugin:opener|open_url", { url: target.url }).catch(() => {});
+    } else if (target.kind === "navigate") {
+      emitWith<NavTarget>(NAVIGATE, target.target);
+    } else if (target.kind === "file") {
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: target.path, line: target.line });
+    } else if (target.kind === "outside") {
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: target.path });
+    }
+  }
+
   return (
     <OverlayScroll
       class={styles.preview}
@@ -118,7 +138,7 @@ export default function MarkdownPreview(props: { path: string }) {
         <div class="tree-empty">Loading…</div>
       </Show>
       <Show when={text() !== undefined}>
-        <div class={styles.markdownBody}>
+        <div class={styles.markdownBody} onClick={onLinkClick}>
           <For each={segments()}>
             {(seg) =>
               seg.kind === "prose" ? (
