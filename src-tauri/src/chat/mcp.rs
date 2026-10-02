@@ -270,8 +270,8 @@ mod tests {
     /// is one account's servers listed under another account's name.
     #[test]
     fn an_isolated_home_keeps_its_claude_json_inside_it() {
-        let isolated = user_config_path(Some("/homes/fonn")).expect("an explicit home always resolves");
-        assert_eq!(isolated, Path::new("/homes/fonn/.claude.json"));
+        let isolated = user_config_path(Some("/homes/globex")).expect("an explicit home always resolves");
+        assert_eq!(isolated, Path::new("/homes/globex/.claude.json"));
 
         // And the default account's is a sibling of `~/.claude`, not a child.
         let default = user_config_path(None).expect("this machine has a home directory");

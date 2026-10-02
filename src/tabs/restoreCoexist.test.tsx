@@ -62,8 +62,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(livePtys);
       case "profile_spawn_env":
         if (args.profileId === null) return Promise.resolve({});
-        return args.profileId === "fonn"
-          ? Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/fonn" })
+        return args.profileId === "globex"
+          ? Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/globex" })
           : Promise.reject(`no profile \`${String(args.profileId)}\``);
       default:
         return Promise.resolve(null);
@@ -356,21 +356,21 @@ describe("restore, per pane", () => {
 // restore, so a profile moved or removed since cannot respawn a dead path.
 describe("restore brings a tab back on its own account", () => {
   it("re-derives an agent tab's home variable from the stored profile id", async () => {
-    storeTabs([shell({ id: "sh:1", kind: "agent", program: "claude", args: [], profile: "fonn" })]);
+    storeTabs([shell({ id: "sh:1", kind: "agent", program: "claude", args: [], profile: "globex" })]);
 
     await restore();
 
-    expect(open()[0].profile).toBe("fonn");
-    expect(open()[0].env).toEqual({ CLAUDE_CONFIG_DIR: "/homes/fonn" });
-    expect(invokes.some((i) => i.cmd === "profile_spawn_env" && i.args.profileId === "fonn")).toBe(true);
+    expect(open()[0].profile).toBe("globex");
+    expect(open()[0].env).toEqual({ CLAUDE_CONFIG_DIR: "/homes/globex" });
+    expect(invokes.some((i) => i.cmd === "profile_spawn_env" && i.args.profileId === "globex")).toBe(true);
   });
 
   it("brings a chat tab back on its account, which chat_spawn resolves the env for", async () => {
-    storeTabs([{ ...chatTab(1), profile: "fonn" }]);
+    storeTabs([{ ...chatTab(1), profile: "globex" }]);
 
     await restore();
 
-    expect(open()[0].profile).toBe("fonn");
+    expect(open()[0].profile).toBe("globex");
   });
 
   it("reads a tab stored before accounts existed as the default profile, and asks for its env", async () => {

@@ -170,11 +170,11 @@ const FAST_MODE = {
 };
 
 const CATALOGS = [
-  // The Fonn account's own answer. Only reachable while the sweep says claude
+  // The Globex account's own answer. Only reachable while the sweep says claude
   // has two logins, so it changes nothing for the tests that say it has one.
   {
     agentId: "claude",
-    profileId: "fonn",
+    profileId: "globex",
     state: "probed",
     catalogue: {
       version: "1",
@@ -811,7 +811,7 @@ describe("picking a model on another account", () => {
         ...HEALTH[0],
         profiles: [
           { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
-          { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+          { id: "globex", label: "Globex", signIn: "signedIn", account: null, apiKeySource: null },
         ],
       },
       HEALTH[1],
@@ -832,14 +832,14 @@ describe("picking a model on another account", () => {
     await settle();
     const filter = openPalette();
 
-    // Down onto the Fonn row, then into its models and commit.
+    // Down onto the Globex row, then into its models and commit.
     fireEvent.keyDown(filter, { key: "Tab" });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.keyDown(filter, { key: "Enter" });
     fireEvent.keyDown(filter, { key: "Enter" });
 
-    expect(onSelectAgent).toHaveBeenCalledWith("claude", "fonn");
-    // And the model came from the Fonn list, which is the whole point of
+    expect(onSelectAgent).toHaveBeenCalledWith("claude", "globex");
+    // And the model came from the Globex list, which is the whole point of
     // splitting the row: a model absent from that account cannot be picked here.
     expect(draftPick(TAB).model).toBe("opus-team");
   });
@@ -854,7 +854,7 @@ describe("picking a model on another account", () => {
 
     // Twice each: the row on the left and the head of the list on the right.
     expect(screen.getAllByText("Claude / Default").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Claude / Fonn").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Claude / Globex").length).toBeGreaterThan(0);
   });
 });
 

@@ -56,14 +56,14 @@ pub enum BinaryStatus {
 
 /// What the sweep learned about one account of one adapter.
 ///
-/// Per profile because the send gate is per profile: a draft on the Fonn
+/// Per profile because the send gate is per profile: a draft on the Globex
 /// account must not be blocked by the personal account being signed out, and a
-/// draft on the personal one must not be let through because Fonn is signed in.
+/// draft on the personal one must not be let through because Globex is signed in.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileHealth {
     pub id: String,
-    /// The user's own name for this account, so a surface can say "Fonn"
+    /// The user's own name for this account, so a surface can say "Globex"
     /// without a second command. Carried here rather than fetched per chat
     /// header: the sweep already reads `accounts.json` to enumerate profiles.
     pub label: String,

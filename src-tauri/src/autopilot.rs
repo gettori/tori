@@ -1158,10 +1158,10 @@ pub mod tests {
         assert_eq!(r.place, Vec::<String>::new(), "a folder no space holds");
         assert_eq!(r.markdown, "[#212](https://github.com/o/tori/issues/212)", "a url key is its own link");
 
-        let spaced = Item { project: "/r/Saga News/app".into(), worktree: Some("/r/Saga News/app/my wt".into()), ..ship("ENG-9") };
+        let spaced = Item { project: "/r/Initech News/app".into(), worktree: Some("/r/Initech News/app/my wt".into()), ..ship("ENG-9") };
         let r = reference(&spaced, &HashMap::new(), Some(root));
-        assert_eq!(r.place, vec!["Saga News".to_string(), "app".into(), "my wt".into()], "an unlisted worktree reads by its folder");
-        assert!(r.markdown.ends_with("(tori://open?folder=/r/Saga%20News/app/my%20wt))"), "{}", r.markdown);
+        assert_eq!(r.place, vec!["Initech News".to_string(), "app".into(), "my wt".into()], "an unlisted worktree reads by its folder");
+        assert!(r.markdown.ends_with("(tori://open?folder=/r/Initech%20News/app/my%20wt))"), "{}", r.markdown);
         assert!(r.markdown.starts_with("[ENG-9]("), "a key that is not a number reads as it is");
         let linear = Item { url: None, ..ship("https://linear.app/x/issue/ENG-9/fix-login") };
         assert_eq!(reference(&linear, &HashMap::new(), Some(root)).label, "ENG-9", "the key, not the slug after it");

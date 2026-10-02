@@ -62,7 +62,7 @@ use crate::chat::transport::{build_command, StartSpec};
 /// **A ceiling, not an expectation.** Measured on claude 2.1.231, a full probe
 /// (spawn, handshake, answer, kill) takes ~1.6s, so this is not a number
 /// anything healthy comes near. It is sized for the agents that are not
-/// measured yet: Paseo's notes report cold starts on the slow side, and Phase
+/// measured yet: cold starts are reported on the slow side, and Phase
 /// 3's ACP probe has to spawn an agent and open a session before it can read
 /// anything. Overrunning it is not fatal to anything: the agent lands in
 /// [`FailureReason::TimedOut`] and keeps whatever catalogue it had.
@@ -1103,7 +1103,7 @@ pub fn probe_with(
 /// accusation.
 ///
 /// Asked in the same home the probe ran in. With no home it answered for the
-/// default account, so a Fonn probe that failed while the personal account was
+/// default account, so a Globex probe that failed while the personal account was
 /// signed in kept a reason it had no evidence for, and the reverse read as an
 /// accusation against an account that was signed in.
 fn refine_signed_out(
@@ -1217,7 +1217,7 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
 /// and race to write one file; two different pairs write different files and
 /// should not queue behind each other. Keyed on the pair rather than the agent
 /// because that is what the file is keyed on: an agent-wide lock would make a
-/// Fonn re-check wait out a 45-second default-account timeout for nothing. The
+/// Globex re-check wait out a 45-second default-account timeout for nothing. The
 /// map only ever grows by the number of accounts, so nothing prunes it.
 fn agent_lock(agent_id: &str, profile_id: &str) -> Arc<Mutex<()>> {
     static LOCKS: OnceLock<Mutex<HashMap<(String, String), Arc<Mutex<()>>>>> = OnceLock::new();
@@ -1263,7 +1263,7 @@ async fn versions() -> HashMap<String, Option<String>> {
 /// What Tori remembers, one row per (agent with a chat transport, account).
 ///
 /// Every account in `accounts.json`, including ones nobody has probed: a row in
-/// the never-probed state is what tells the frontend a Fonn catalogue is due,
+/// the never-probed state is what tells the frontend a Globex catalogue is due,
 /// where an absent row would read as an agent that has no such account.
 ///
 /// **Reads only.** No spawn, no subprocess, nothing that could take a second:
@@ -1520,7 +1520,7 @@ mod tests {
     fn the_default_account_keeps_the_bare_file_name_and_an_added_one_is_suffixed() {
         let root = Path::new("/tmp/tori-catalogs");
         assert_eq!(catalog_path(root, "claude", "default"), root.join("claude.json"));
-        assert_eq!(catalog_path(root, "claude", "fonn"), root.join("claude__fonn.json"));
+        assert_eq!(catalog_path(root, "claude", "globex"), root.join("claude__globex.json"));
     }
 
     /// And the file already on disk reads as that account's answer rather than
@@ -1548,14 +1548,14 @@ mod tests {
         let root = temp_root("per-account");
         let mut default = ModelCatalog::never_probed("claude", "default");
         default.absorb(Ok(a_catalogue(Some("2.1.231"))));
-        let mut fonn = ModelCatalog::never_probed("claude", "fonn");
-        fonn.absorb(Err(ProbeFailure::now(FailureReason::SignedOut, "not logged in")));
+        let mut globex = ModelCatalog::never_probed("claude", "globex");
+        globex.absorb(Err(ProbeFailure::now(FailureReason::SignedOut, "not logged in")));
         save_to(&root, &default).unwrap();
-        save_to(&root, &fonn).unwrap();
+        save_to(&root, &globex).unwrap();
 
-        assert!(root.join("claude__fonn.json").exists(), "the added account writes its own file");
+        assert!(root.join("claude__globex.json").exists(), "the added account writes its own file");
         assert_eq!(load_from(&root, "claude", "default"), default);
-        assert_eq!(load_from(&root, "claude", "fonn"), fonn);
+        assert_eq!(load_from(&root, "claude", "globex"), globex);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1566,13 +1566,13 @@ mod tests {
         let root = temp_root("forget");
         let mut default = ModelCatalog::never_probed("claude", "default");
         default.absorb(Ok(a_catalogue(Some("2.1.231"))));
-        let mut fonn = ModelCatalog::never_probed("claude", "fonn");
-        fonn.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        let mut globex = ModelCatalog::never_probed("claude", "globex");
+        globex.absorb(Ok(a_catalogue(Some("2.1.231"))));
         save_to(&root, &default).unwrap();
-        save_to(&root, &fonn).unwrap();
+        save_to(&root, &globex).unwrap();
 
-        forget_in(&root, "claude", "fonn");
-        assert_eq!(load_from(&root, "claude", "fonn").state, CatalogState::NeverProbed);
+        forget_in(&root, "claude", "globex");
+        assert_eq!(load_from(&root, "claude", "globex").state, CatalogState::NeverProbed);
         assert_eq!(load_from(&root, "claude", "default").state, CatalogState::Probed);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1584,20 +1584,20 @@ mod tests {
     #[test]
     fn a_file_naming_another_account_is_not_read_as_this_ones_answer() {
         let root = temp_root("collision");
-        let mut fonn = ModelCatalog::never_probed("claude", "fonn");
-        fonn.absorb(Ok(a_catalogue(Some("2.1.231"))));
-        save_to(&root, &fonn).unwrap();
+        let mut globex = ModelCatalog::never_probed("claude", "globex");
+        globex.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        save_to(&root, &globex).unwrap();
 
-        // `claude..fonn` sanitizes onto the same file the pair above wrote.
+        // `claude..globex` sanitizes onto the same file the pair above wrote.
         assert_eq!(
-            catalog_path(&root, "claude..fonn", "default"),
-            catalog_path(&root, "claude", "fonn"),
+            catalog_path(&root, "claude..globex", "default"),
+            catalog_path(&root, "claude", "globex"),
         );
-        assert_eq!(load_from(&root, "claude..fonn", "default").state, CatalogState::NeverProbed);
+        assert_eq!(load_from(&root, "claude..globex", "default").state, CatalogState::NeverProbed);
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Probes queue per account rather than per agent, so a Fonn re-check does
+    /// Probes queue per account rather than per agent, so a Globex re-check does
     /// not wait out the default account's 45-second deadline.
     #[test]
     fn one_account_probing_does_not_hold_up_another() {
@@ -1605,7 +1605,7 @@ mod tests {
         let _guard = held.lock().unwrap();
 
         let started = std::time::Instant::now();
-        let other = agent_lock("claude", "fonn");
+        let other = agent_lock("claude", "globex");
         let taken = other.try_lock().is_ok();
 
         assert!(taken, "the other account's lock is a different lock");
@@ -1674,10 +1674,10 @@ mod tests {
     /// Tori inherited, so it answers for the default one and nobody else.
     #[test]
     fn the_configured_models_come_from_the_account_being_probed() {
-        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-fonn".to_string());
+        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-globex".to_string());
         assert_eq!(
             claude_settings_path(Some(&home)),
-            Path::new("/tmp/tori-homes/claude-fonn/settings.json"),
+            Path::new("/tmp/tori-homes/claude-globex/settings.json"),
         );
         assert!(claude_settings_path(None).ends_with("settings.json"));
         assert!(!claude_settings_path(None).starts_with("/tmp/tori-homes"));
@@ -1690,10 +1690,10 @@ mod tests {
     fn a_probe_runs_in_the_accounts_own_home() {
         let claude = crate::agents::find("claude").expect("claude is a registered adapter");
         let chat = claude.chat.as_ref().expect("claude has a chat transport");
-        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-fonn".to_string());
+        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-globex".to_string());
 
         let scoped = probe_spec(claude, chat, Some(&home));
-        assert_eq!(scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/tori-homes/claude-fonn"));
+        assert_eq!(scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/tori-homes/claude-globex"));
         assert!(probe_spec(claude, chat, None).env.is_empty(), "the default account sets nothing");
     }
 

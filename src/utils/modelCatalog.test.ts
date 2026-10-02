@@ -237,9 +237,9 @@ describe("the shared store", () => {
   // different plans and offer different models, so the store is keyed on the
   // pair and a miss is a miss.
   describe("one answer per account", () => {
-    const fonn = (): ModelCatalog => ({
+    const globex = (): ModelCatalog => ({
       agentId: "claude",
-      profileId: "fonn",
+      profileId: "globex",
       state: "probed",
       catalogue: {
         // No version, so staleness cannot make this row due and what is
@@ -257,15 +257,15 @@ describe("the shared store", () => {
 
     beforeEach(() => {
       invoked.mockImplementation(async (cmd: string) => {
-        if (cmd === "model_catalogs") return [unasked(), fonn()];
-        if (cmd === "refresh_model_catalog") return fonn();
+        if (cmd === "model_catalogs") return [unasked(), globex()];
+        if (cmd === "refresh_model_catalog") return globex();
         return [];
       });
     });
 
     it("hands each account its own answer", async () => {
       await ensureModelCatalogsLoaded();
-      expect(cachedModels(catalogFor("claude", "fonn")).map((m) => m.value)).toEqual(["sonnet"]);
+      expect(cachedModels(catalogFor("claude", "globex")).map((m) => m.value)).toEqual(["sonnet"]);
       // **No fallback to the default account.** Offering its models here would
       // list rows this account may not have, which is the confusion the
       // per-account key exists to end.
@@ -274,8 +274,8 @@ describe("the shared store", () => {
     });
 
     it("asks about the account it was given, not the agent's default one", async () => {
-      await refreshCatalogIfDue("claude", "fonn");
-      // Fonn already answered about this binary, so nothing is due for it.
+      await refreshCatalogIfDue("claude", "globex");
+      // Globex already answered about this binary, so nothing is due for it.
       expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toHaveLength(0);
 
       await refreshCatalogIfDue("claude", null);

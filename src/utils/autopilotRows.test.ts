@@ -45,13 +45,13 @@ const reference = (key: number, project: string) => ({
 
 describe("ticket references", () => {
   const tori = row({ id: "a", reference: reference(212, "tori") });
-  const saga = row({ id: "b", project: "/code/saga", reference: reference(212, "saga") });
+  const initech = row({ id: "b", project: "/code/initech", reference: reference(212, "initech") });
 
   it("tells two items with the same number apart by where they are", () => {
-    const [one, two] = workerCards([tori, saga]).map((c) => c.ticket);
+    const [one, two] = workerCards([tori, initech]).map((c) => c.ticket);
     expect([one.label, two.label]).toEqual([n(212), n(212)]);
     expect(one.target).not.toEqual(two.target);
-    expect(two.place).toEqual(["personal", "saga", "y-test"]);
+    expect(two.place).toEqual(["personal", "initech", "y-test"]);
   });
 
   it("reads an item without a reference by its number alone", () => {

@@ -53,10 +53,10 @@ describe("SessionInfo", () => {
   // worth naming. It shows before the handshake has said anything, because it
   // is the one fact about the account that is known at spawn.
   it("names the account the session runs as, when there is more than one", () => {
-    const { container } = render(() => <SessionInfo {...props({ profileLabel: "Fonn" })} />);
+    const { container } = render(() => <SessionInfo {...props({ profileLabel: "Globex" })} />);
     open(container);
     expect(container.textContent).toContain("Account");
-    expect(container.textContent).toContain("Fonn");
+    expect(container.textContent).toContain("Globex");
   });
 
   // A single-account install has nothing to tell apart, so `profileLabel` comes
@@ -78,7 +78,7 @@ describe("SessionInfo", () => {
 
   it("reads the user-scope config from the session's own account", async () => {
     const { container } = render(() => (
-      <SessionInfo {...props({ cwd: "/repo", agentId: "claude", profile: "fonn" })} />
+      <SessionInfo {...props({ cwd: "/repo", agentId: "claude", profile: "globex" })} />
     ));
     open(container);
     // The profile id, not a resolved home: `.claude.json` lives inside an
@@ -87,7 +87,7 @@ describe("SessionInfo", () => {
       expect(invoked).toHaveBeenCalledWith("chat_mcp_list", {
         cwd: "/repo",
         agentId: "claude",
-        profile: "fonn",
+        profile: "globex",
       }),
     );
   });

@@ -71,7 +71,7 @@ const noneProbing = () => false;
 // there is nothing to tell apart, so the palette renders one plain row.
 const oneAccount = () => [];
 const DEFAULT = { id: "default", label: "Default" };
-const FONN = { id: "fonn", label: "Fonn" };
+const GLOBEX = { id: "globex", label: "Globex" };
 const onPlan = (c: ModelCatalog, subscriptionType: string): ModelCatalog => ({
   ...c,
   catalogue: { ...c.catalogue!, account: { subscriptionType, organization: "", apiProvider: "firstParty" } },
@@ -156,11 +156,11 @@ describe("paletteProviders", () => {
   // because fuzzy search over one merged list returns the same model name twice
   // with nothing to say which account it would run on.
   describe("an agent with two accounts", () => {
-    const twoAccounts = (id: string) => (id === "claude" ? [DEFAULT, FONN] : []);
+    const twoAccounts = (id: string) => (id === "claude" ? [DEFAULT, GLOBEX] : []);
     const both = [
       onPlan(catalog("claude", [model("opus", "claude-opus-5", "Opus")]), "Claude Max"),
       onPlan(
-        catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")], "fonn"),
+        catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")], "globex"),
         "Claude Team",
       ),
       catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")]),
@@ -177,8 +177,8 @@ describe("paletteProviders", () => {
 
     it("is one row per account, each named and keyed for itself", () => {
       const claude = rows().filter((r) => r.agentId === "claude");
-      expect(claude.map((r) => r.label)).toEqual(["Claude / Default", "Claude / Fonn"]);
-      expect(claude.map((r) => r.profile)).toEqual([null, "fonn"]);
+      expect(claude.map((r) => r.label)).toEqual(["Claude / Default", "Claude / Globex"]);
+      expect(claude.map((r) => r.profile)).toEqual([null, "globex"]);
       // `agentId` no longer tells the rows apart, so nothing may key on it.
       expect(new Set(claude.map((r) => r.key)).size).toBe(2);
     });
@@ -208,8 +208,8 @@ describe("paletteProviders", () => {
         adapters,
         catalogs: both,
         profilesFor: twoAccounts,
-        ready: (_id, profile) => profile !== "fonn",
-        signedOut: (_id, profile) => profile === "fonn",
+        ready: (_id, profile) => profile !== "globex",
+        signedOut: (_id, profile) => profile === "globex",
         probing: noneProbing,
       }).filter((r) => r.agentId === "claude");
 
@@ -230,9 +230,9 @@ describe("paletteProviders", () => {
         signedOut: noneSignedOut,
         probing: noneProbing,
       });
-      const fonn = rows.find((r) => r.profile === "fonn")!;
-      expect(fonn.models).toEqual([]);
-      expect(fonn.health).toEqual({ kind: "count", count: 0 });
+      const globex = rows.find((r) => r.profile === "globex")!;
+      expect(globex.models).toEqual([]);
+      expect(globex.health).toEqual({ kind: "count", count: 0 });
     });
 
     it("probes per account, so one row can be busy while the other is not", () => {
@@ -242,7 +242,7 @@ describe("paletteProviders", () => {
         profilesFor: twoAccounts,
         ready: allReady,
         signedOut: noneSignedOut,
-        probing: (_id, profile) => profile === "fonn",
+        probing: (_id, profile) => profile === "globex",
       }).filter((r) => r.agentId === "claude");
       expect(rows[0].health).toEqual({ kind: "count", count: 1 });
       expect(rows[1].health).toEqual({ kind: "probing" });

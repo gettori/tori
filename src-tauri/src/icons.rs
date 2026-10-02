@@ -463,7 +463,7 @@ fn from_generic(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
 }
 
 /// Icons that are named for the product rather than for the slot they fill -
-/// `blood-connect-icon.svg`, `saga-logo.png`. The fixed-name probes above
+/// `blood-connect-icon.svg`, `initech-logo.png`. The fixed-name probes above
 /// cannot express these, so this is the one resolver that LISTS a directory
 /// instead of asking about known names.
 ///
