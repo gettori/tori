@@ -149,4 +149,15 @@ a clean clone, and how to write an adapter are in
 
 ## License
 
-[Apache-2.0](LICENSE).
+[Apache-2.0](LICENSE). Third-party material is listed in [NOTICE](NOTICE).
+
+**What that means if the project stops.** One person maintains Tori and does
+not take outside code, so it is fair to ask what you are relying on. The answer
+is the licence, which cannot be withdrawn for anything already published: every
+released version stays Apache-2.0 for good, and anyone may keep using it, build
+it from source, or fork it and carry on. The worst case is a fork, not a loss.
+
+Nothing of yours is held inside Tori either. As the Privacy section says, your
+sessions are the agents' own transcripts and Tori's state is plain files under
+`~/.config/tori/`, so without Tori you lose a window onto your work and none
+of the work.
