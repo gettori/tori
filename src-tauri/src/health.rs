@@ -101,6 +101,14 @@ pub struct AgentHealth {
     /// `Some` means a subscription login is being overridden by an inherited
     /// key, which is a warning and never a block.
     pub api_key_source: Option<String>,
+    /// The program the chat surface runs through, when it is a different one
+    /// from `program` and it does not resolve on the login PATH.
+    ///
+    /// Its own axis rather than a fifth `BinaryStatus`, for the same reason
+    /// `sign_in` is: installed for the terminal and startable for chat are
+    /// independent facts. codex and pi run their chat through `npx`, so the
+    /// launch binary can be present while a chat cannot spawn.
+    pub chat_program_missing: Option<String>,
     /// Absolute path the binary resolved to, when found.
     pub path: Option<String>,
     /// Version parsed out of `--version`, when it was parseable.
@@ -208,12 +216,14 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         _ => crate::auth::Whoami::default(),
     };
     let profiles = profile_health(adapter, resolved.as_deref(), &account);
+    let chat_program_missing = chat_program_missing(adapter);
 
     AgentHealth {
         id: adapter.id.clone(),
         label: adapter.label.clone(),
         program: adapter.program.clone(),
         status,
+        chat_program_missing,
         sign_in: account.state,
         account: account.email,
         api_key_source: account.api_key_source,
@@ -227,6 +237,17 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         override_path: adapter.is_override().then(|| adapter.source.clone()),
         profiles,
     }
+}
+
+/// The chat program's name when it is not the launch binary and is not on the
+/// login PATH. Whether the package behind an `npx -y` is cached or fetchable
+/// is a network question a PATH lookup cannot answer, so it is not asked.
+fn chat_program_missing(adapter: &AgentAdapter) -> Option<String> {
+    let program = &adapter.chat.as_ref()?.program;
+    if *program == adapter.program || crate::env::resolve_binary(program).is_some() {
+        return None;
+    }
+    Some(program.clone())
 }
 
 /// One `whoami` per account, reusing the default's answer rather than asking
@@ -388,6 +409,7 @@ mod tests {
             label: id.into(),
             program: id.into(),
             status,
+            chat_program_missing: None,
             sign_in: SignIn::Unknown,
             account: None,
             api_key_source: None,
@@ -401,6 +423,25 @@ mod tests {
             override_path: None,
             profiles: Vec::new(),
         }]
+    }
+
+    /// The card said Ready for codex and pi with no `npx` on the machine: health
+    /// resolved only the launch binary, and chat runs through a different one.
+    #[test]
+    fn a_chat_program_that_is_not_the_launch_binary_is_resolved_too() {
+        let missing = agents::test_adapter_with_chat("sh", "tori-no-such-chat-program");
+        assert_eq!(
+            chat_program_missing(&missing).as_deref(),
+            Some("tori-no-such-chat-program")
+        );
+
+        let present = agents::test_adapter_with_chat("tori-no-such-launch", "sh");
+        assert_eq!(chat_program_missing(&present), None, "found on PATH is not missing");
+
+        let same = agents::test_adapter_with_chat("tori-no-such-launch", "tori-no-such-launch");
+        assert_eq!(chat_program_missing(&same), None, "the launch binary is `status`'s question");
+
+        assert_eq!(chat_program_missing(&agents::test_adapter("sh")), None, "no chat table");
     }
 
     /// The reason the cache exists at all: Settings must not re-probe every
