@@ -1,8 +1,8 @@
 ---
 summary: every socket event shares one envelope; each kind is published where Rust already sees it, pushed from the webview only where it owns the state
 status: current
-updated: 2026-09-26
-source: gettori/tori#199 on branch orchestrator; commits 25551855, 3a04d580, 52615c71; src-tauri/src/rpc/{events,states,quotas,mod}.rs; src-tauri/src/chat/host.rs (Lifecycle); src-tauri/src/forge/status.rs (Published); src/utils/sessionActivity.ts (socketReports); gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#212 commit a6de3348, src-tauri/src/rpc/dots.rs
+updated: 2026-10-03
+source: gettori/tori#199 on branch orchestrator; commits 25551855, 3a04d580, 52615c71; src-tauri/src/rpc/{events,states,quotas,mod}.rs; src-tauri/src/chat/host.rs (Lifecycle); src-tauri/src/forge/status.rs (Published); src/utils/sessionActivity.ts (socketReports); gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#212 commit a6de3348, src-tauri/src/rpc/dots.rs; branch topic-metadata, src-tauri/src/lib.rs (retell on session.compacted)
 ---
 
 # Socket event vocabulary
@@ -22,6 +22,7 @@ What the app socket ([[component_app_socket]]) says happened, for the watcher, t
 | `session.turn_ended` | `turn_id`, `outcome` | same | chat |
 | `session.question` | `tool_use_id` or `ask_id`, `questions` | `observe` on `QuestionRequest`; `ask.create` after its card shows | chat |
 | `session.permission` | `tool_use_id`, `tool_name`, `detail` | `observe` on `PermissionRequest` | chat |
+| `session.compacted` | `trigger` (`manual` or `auto`) | `observe` on a live `Compacted` | chat |
 | `session.checkpoint` | `turn`, `prompt_ts` | `checkpoint_snapshot_body`, only after `update-ref` | both |
 | `session.pr` | `branch`, `ids`, `pull_request`, `checks`, `review` (no single `id`) | `forge_unit_statuses` through `status::moved_since_published` | branch |
 | `account.quota` | `agent`, `account`, `windows` | `rpc_quota`, pushed by `recordReadings` | account |
@@ -30,6 +31,7 @@ What the app socket ([[component_app_socket]]) says happened, for the watcher, t
 - **`by`** is `"user"`, `{"session": id}`, `{"tab": id}`, `"local"`, `"agent"` or `"watcher"` (a wake the autopilot's watcher sent, [[component_autopilot_watcher]]). `deliver` records it before a send, only when the delivery starts a turn; the next `TurnStarted` consumes it and `TurnCompleted` clears it, so a steer into a running turn is never credited to the next one.
 - **`detail`** is one line from the tool input (command, file path, path, url or pattern, 200 chars), never the input: a Write carries the whole file.
 - **Place is resolved once per session.** `Place::of` reads the config and lists the discovery root, so `Lifecycle` resolves it at start and `SessionStates` caches it per id. Folders are compared with `events::same_folder`, never as strings ([[concept_one_directory_two_spellings]]).
+- **`session.compacted` has one consumer in Tori itself.** The publisher installed in `lib.rs` calls `rpc::retell_topic`, which tells a Topic home chat its Topic again ([[concept_topic_home_chat_note]]).
 - **Modules with no Tauri state** reach the hub through `rpc::publish_checkpoint` and `rpc::publish_pr`, which do nothing before the socket is up.
 
 ## Why it is this way
