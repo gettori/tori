@@ -4956,8 +4956,11 @@ diff --git a/f b/f
     /// line 19 edited in the worktree: far enough apart to stay two hunks at
     /// -U3, so "stage one of two" is meaningful.
     fn repo_with_two_hunks() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("tori_hunk_test_{n}"));
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("tori_hunk_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -5564,8 +5567,11 @@ diff --git a/f b/f
     /// edited: three hunks at default context, far enough apart that skipping
     /// the middle one exercises the offset accumulation.
     fn repo_with_three_hunks() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("tori_hunk3_test_{n}"));
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("tori_hunk3_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -6194,8 +6200,11 @@ diff --git a/f b/f
     fn log_of_a_repo_with_no_commits_is_empty_rather_than_an_error() {
         // What a fresh `bare_init` worktree looks like: a real repo on an
         // unborn branch, where `git log` itself exits non-zero.
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("tori_log_unborn_{n}"));
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("tori_log_unborn_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
 
@@ -6232,8 +6241,11 @@ diff --git a/f b/f
     /// A repo whose history holds the three shapes a commit view has to survive:
     /// a root commit, a merge, and a rename carrying an edit.
     fn repo_with_awkward_history() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("tori_commit_detail_{n}"));
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("tori_commit_detail_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q", "-b", "main"]);
         git(&dir, &["config", "user.email", "t@t"]);
