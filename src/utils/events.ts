@@ -562,6 +562,10 @@ export type OpenJob = {
    *  the agent's own first-run flag is set for that home, so its next
    *  interactive run does not open the wizard on an account already in. */
   completeSignInOnExit?: { agentId: string; profileId: string };
+  /** Offer "Relaunch" on the clean-exit toast. Set by the Homebrew update:
+   *  brew has replaced the bundle, but a chat may be mid-turn, so restarting
+   *  is the user's call. */
+  relaunchOnSuccess?: boolean;
 };
 
 // Start a debug run (F5). Fire-and-forget and payload-less on purpose: the
