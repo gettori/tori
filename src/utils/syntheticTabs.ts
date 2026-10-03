@@ -251,11 +251,11 @@ export function syntheticTabName(id: string): string {
   if (t.kind === "localhistory") return `Local: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "lsplog") return `Log: ${t.arg}`;
-  // The mode is in the label, not just the tooltip: a partially staged file has
-  // two of these open and the file name alone does not tell them apart.
+  // The mode is not in the label: the strip draws it as an icon after the
+  // status letter, which is what tells a partially staged file's two tabs apart.
   if (t.kind === "diff") {
-    const { file, staged } = parseDiffArg(t.arg);
-    return `${file.split("/").pop() || file} (${staged ? "Staged" : "Working tree"})`;
+    const { file } = parseDiffArg(t.arg);
+    return file.split("/").pop() || file;
   }
   // The number alone, because the title is not in the id and a tab that had to
   // wait for a read to be named would be blank on every restore. The strip

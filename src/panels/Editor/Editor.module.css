@@ -166,6 +166,37 @@
    attention colour, because that is what the panel's pending count uses and a
    draft review reads as one thing wherever it shows.
    Not nested under .editorTabs for the same portal reason as .tabTouched. */
+/* A tab's git status, the letter and colour the Changes list gives the same
+   file. Not nested under .editorTabs for the same portal reason as .tabTouched. */
+.tabStatus {
+  flex: none;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-sm);
+  line-height: 1;
+}
+.tabStatus.added {
+  color: var(--diff-added);
+}
+.tabStatus.modified {
+  color: var(--diff-modified);
+}
+.tabStatus.deleted {
+  color: var(--diff-deleted);
+}
+.tabStatus.untracked {
+  color: var(--fg-muted);
+}
+.tabStatus.conflicted {
+  color: var(--danger-fg);
+}
+
+/* A diff tab's mode icon, which stands where a file tab's icon does. */
+.tabMode {
+  display: inline-flex;
+  flex: none;
+  color: var(--fg-muted);
+}
+
 .tabPending {
   flex: none;
   color: var(--attention-fg);
