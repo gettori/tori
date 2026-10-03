@@ -349,6 +349,22 @@ async function renameEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
  *  several selected rows and watching the others survive is the kind of
  *  surprise that makes people stop trusting selection, so the menu acts on what
  *  is highlighted. */
+type MenuSlot = MenuItem | false | "" | undefined | null;
+
+/** A menu built in groups: what each group keeps, with a separator between
+ *  groups that kept something. */
+function grouped(heading: string | undefined, ...groups: MenuSlot[][]): MenuItem[] {
+  const items: MenuItem[] = heading ? [{ heading }] : [];
+  for (const rows of groups) {
+    const kept = rows.filter((r): r is MenuItem => !!r);
+    if (!kept.length) continue;
+    const last = items[items.length - 1];
+    if (last && !("heading" in last)) items.push({ separator: true });
+    items.push(...kept);
+  }
+  return items;
+}
+
 function targetsOf(entry: Entry, ctx?: EditCtx): string[] {
   const chosen = ctx?.selected();
   return chosen?.has(entry.path) ? [...chosen] : [entry.path];
@@ -619,82 +635,75 @@ function TreeNode(props: {
     const dir = e.is_dir ? e.path : parentOf(e.path);
     const rel = relTo(view.root, e.path);
     const repo = view.repoPath;
-    const items: MenuItem[] = [];
-    const group = (...rows: (MenuItem | false | "" | undefined | null)[]) => {
-      const kept = rows.filter((r): r is MenuItem => !!r);
-      if (!kept.length) return;
-      const last = items[items.length - 1];
-      if (last && !("heading" in last)) items.push({ separator: true });
-      items.push(...kept);
-    };
     const open = (extra: Partial<OpenInEditor>) => () =>
       emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: e.path, ...extra });
     // Two members hold the same `src/index.ts`, and a menu that opened over one
     // of them says nothing about which. First, so it reads before the actions
     // rather than as a footnote to them.
-    if (ctx?.member) items.push({ heading: ctx.member });
-    group(
-      ctx && e.is_dir && { label: "New File", onClick: () => newFileIn(ctx, e.path, reloadOpen) },
-      ctx && e.is_dir && { label: "New Folder", onClick: () => newFolderIn(ctx, e.path, reloadOpen) },
-    );
-    group(
-      !e.is_dir && { label: "Open to the Side", onClick: open({ side: true }) },
-      !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ rendered: true }) },
-      { label: "Reveal in Finder", onClick: () => revealPaths(targetsOf(e, ctx)) },
-      {
-        label: "Open in Integrated Terminal",
-        onClick: () => emitWith<OpenShellAt>(OPEN_SHELL_AT, { cwd: dir }),
-      },
-    );
-    group(
-      e.is_dir &&
-        repo && {
-          label: "Find in Folder...",
-          onClick: () => emitWith<SearchInFolder>(SEARCH_IN_FOLDER, { repoPath: repo, rel }),
+    return grouped(
+      ctx?.member,
+      [
+        ctx && e.is_dir && { label: "New File", onClick: () => newFileIn(ctx, e.path, reloadOpen) },
+        ctx && e.is_dir && { label: "New Folder", onClick: () => newFolderIn(ctx, e.path, reloadOpen) },
+      ],
+      [
+        !e.is_dir && { label: "Open to the Side", onClick: open({ side: true }) },
+        !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ rendered: true }) },
+        { label: "Reveal in Finder", onClick: () => revealPaths(targetsOf(e, ctx)) },
+        {
+          label: "Open in Integrated Terminal",
+          onClick: () => emitWith<OpenShellAt>(OPEN_SHELL_AT, { cwd: dir }),
         },
-    );
-    group(
-      ctx && { label: "Cut", onClick: () => setHeld({ paths: targetsOf(e, ctx), cut: true }) },
-      ctx && { label: "Copy", onClick: () => setHeld({ paths: targetsOf(e, ctx), cut: false }) },
-      ctx &&
-        held() && {
-          label: "Paste",
-          onClick: () => pasteInto(ctx, dir, e.is_dir ? reloadOpen : props.reloadParent),
+      ],
+      [
+        e.is_dir &&
+          repo && {
+            label: "Find in Folder...",
+            onClick: () => emitWith<SearchInFolder>(SEARCH_IN_FOLDER, { repoPath: repo, rel }),
+          },
+      ],
+      [
+        ctx && { label: "Cut", onClick: () => setHeld({ paths: targetsOf(e, ctx), cut: true }) },
+        ctx && { label: "Copy", onClick: () => setHeld({ paths: targetsOf(e, ctx), cut: false }) },
+        ctx &&
+          held() && {
+            label: "Paste",
+            onClick: () => pasteInto(ctx, dir, e.is_dir ? reloadOpen : props.reloadParent),
+          },
+        ctx && { label: "Duplicate", onClick: () => duplicateEntry(ctx, e, props.reloadParent) },
+      ],
+      [
+        { label: "Copy Path", onClick: () => copyPaths(targetsOf(e, ctx)) },
+        {
+          label: "Copy Relative Path",
+          onClick: () => copyPaths(targetsOf(e, ctx).map((p) => relTo(view.root, p))),
         },
-      ctx && { label: "Duplicate", onClick: () => duplicateEntry(ctx, e, props.reloadParent) },
+      ],
+      [
+        !e.is_dir &&
+          repo && {
+            label: "File History",
+            onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", view.root, rel) }),
+          },
+        !e.is_dir &&
+          repo && {
+            label: "Local History",
+            onClick: () =>
+              emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", view.root, rel) }),
+          },
+      ],
+      [
+        ctx &&
+          view.container && {
+            label: "Share with other worktrees…",
+            onClick: () => void shareEntry(ctx, view.container!, view.root, e, props.reloadParent),
+          },
+      ],
+      [
+        ctx && { label: "Rename", onClick: () => renameEntry(ctx, e, props.reloadParent) },
+        ctx && { label: "Delete", danger: true, onClick: () => deleteEntry(ctx, e, props.reloadParent) },
+      ],
     );
-    group(
-      { label: "Copy Path", onClick: () => copyPaths(targetsOf(e, ctx)) },
-      {
-        label: "Copy Relative Path",
-        onClick: () => copyPaths(targetsOf(e, ctx).map((p) => relTo(view.root, p))),
-      },
-    );
-    group(
-      !e.is_dir &&
-        repo && {
-          label: "File History",
-          onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", view.root, rel) }),
-        },
-      !e.is_dir &&
-        repo && {
-          label: "Local History",
-          onClick: () =>
-            emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", view.root, rel) }),
-        },
-    );
-    group(
-      ctx &&
-        view.container && {
-          label: "Share with other worktrees…",
-          onClick: () => void shareEntry(ctx, view.container!, view.root, e, props.reloadParent),
-        },
-    );
-    group(
-      ctx && { label: "Rename", onClick: () => renameEntry(ctx, e, props.reloadParent) },
-      ctx && { label: "Delete", danger: true, onClick: () => deleteEntry(ctx, e, props.reloadParent) },
-    );
-    return items;
   }
 
   return (
@@ -1176,9 +1185,35 @@ export default function FileTree(props: {
   onMount(() => props.onControls?.(controls));
   onCleanup(() => props.onControls?.(null));
 
+  // The row menu for the root itself, less what a root cannot be: it is the
+  // containment boundary, so it is never cut, renamed, deleted or shared.
+  function rootMenu(): MenuItem[] {
+    const root = props.root;
+    if (!root) return [];
+    const a = api();
+    const c = a?.ctx();
+    return grouped(
+      c?.member,
+      [
+        c && a && { label: "New File", onClick: () => newFileIn(c, root, a.reload) },
+        c && a && { label: "New Folder", onClick: () => newFolderIn(c, root, a.reload) },
+      ],
+      [
+        { label: "Reveal in Finder", onClick: () => revealPaths([root]) },
+        {
+          label: "Open in Integrated Terminal",
+          onClick: () => emitWith<OpenShellAt>(OPEN_SHELL_AT, { cwd: root }),
+        },
+      ],
+      [c && a && held() && { label: "Paste", onClick: () => pasteInto(c, root, a.reload) }],
+      [{ label: "Copy Path", onClick: () => copyPaths([root]) }],
+    );
+  }
+
   return (
     <OverlayScroll
       class={styles.fileTree}
+      contentClass={styles.treeContent}
       classList={{ [styles.dropInto]: dropRoot() }}
       // The whole panel background means the root, which is how a file dragged
       // into `src/` gets back out.
@@ -1289,6 +1324,9 @@ export default function FileTree(props: {
             }}
           />
         )}
+      </Show>
+      <Show when={props.root}>
+        <ContextMenu class={styles.rootSpace} items={rootMenu()} />
       </Show>
     </OverlayScroll>
   );
