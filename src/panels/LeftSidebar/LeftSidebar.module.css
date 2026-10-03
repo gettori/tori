@@ -306,6 +306,91 @@
   background: var(--border-default);
 }
 
+/* ---- The side rail: the same strip stood up along the left edge, for a set of
+   spaces too long for one row. It takes its width out of the tree rather than
+   growing the sidebar, so the width the user dragged to is still the width. ---- */
+.tree.railed {
+  --rail-w: calc(52px * var(--ui-scale));
+  position: relative;
+  padding-inline-start: var(--rail-w);
+}
+
+/* The sidebar hidden with the rail on: the rail stays and the tree goes.
+   Hidden rather than unmounted, so the tree's open rows and filter survive. */
+.tree.railOnly > :not(.spaceBar) {
+  display: none;
+}
+
+/* Nothing beside the rail to rule off: the work card sits flush against it. */
+.tree.railOnly .spaceBar.rail::before {
+  display: none;
+}
+
+/* Out of the column's flow, so the head, the tree and Topics keep the layout
+   they have with the strip at the bottom and only start further right. */
+.spaceBar.rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--rail-w);
+  height: auto;
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) 0 calc(16px * var(--ui-scale));
+}
+
+/* The bottom strip's rule, turned to run the rail's full height: the rail is a
+   column of its own, not a band inside the tree's. */
+.spaceBar.rail::before {
+  inset: 0 0 0 auto;
+  width: 1px;
+  height: auto;
+}
+
+.spaceBar.rail .stripNav {
+  flex-direction: column;
+  align-items: center;
+  min-width: auto;
+  min-height: 0;
+}
+
+/* Scrolls down instead of across. The bubble still hangs off the top right
+   corner, so the overhang padding is the same; it is only the axis that turns. */
+.spaceBar.rail .spaceScroll {
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  min-width: auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.spaceBar.rail .spaceDivider {
+  align-self: center;
+  width: calc(22px * var(--ui-scale));
+  height: 1px;
+  margin: calc(4px * var(--ui-scale)) 0;
+}
+
+/* Dashed, so it reads as a slot for a space rather than one more space. */
+.addSpaceBtn {
+  border-style: dashed;
+  border-color: var(--border-default);
+}
+
+.spaceBar.rail .dockBtn {
+  margin-top: auto;
+}
+
+/* The rail is a column of icons with the width to spare, so its buttons take
+   the tiles' larger square and the column reads as one size. */
+.spaceBar.rail .stripBtn {
+  width: calc(36px * var(--ui-scale));
+  height: calc(36px * var(--ui-scale));
+}
+
 /* ---- The space menu's heading: which space the four rows below act on.
    It sits inside <Menu>'s `.heading`, which supplies the inset and the muted
    voice; what is added here is the glyph and the name, because a heading that
