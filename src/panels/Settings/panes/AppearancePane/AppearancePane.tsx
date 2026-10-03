@@ -24,8 +24,8 @@ import Select, {
 import styles from "../../Settings.module.css";
 
 const SPACE_STRIPS: SelectOption[] = [
-  { value: "bottom", label: "Bottom strip" },
-  { value: "side", label: "Side rail" },
+  { value: "bottom", label: "Bottom" },
+  { value: "side", label: "Left" },
 ];
 
 /** A theme as a row: the id is what settings.json stores, the label is what the
