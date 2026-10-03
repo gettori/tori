@@ -59,6 +59,9 @@ export default function SpaceTile(props: {
   nameWidth?: string;
   /** Lit: the tree below is showing this space. */
   active?: boolean;
+  /** Stacked in the side rail: the head already names the lit space, so the
+   *  pill never opens, and a drop lands above or below rather than beside. */
+  rail?: boolean;
   dragging?: boolean;
   dropBefore?: boolean;
   dropAfter?: boolean;
@@ -70,7 +73,7 @@ export default function SpaceTile(props: {
   onDrop?: (e: DragEvent) => void;
   onDragEnd?: () => void;
 }) {
-  const titled = afterPaint(() => props.active);
+  const titled = afterPaint(() => props.active && !props.rail);
   return (
     <ContextMenu class={styles.spaceMenu} items={props.menu ?? []}>
       <Tooltip
@@ -84,11 +87,13 @@ export default function SpaceTile(props: {
         classList={{
           [styles.active]: props.active,
           [styles.titled]: titled(),
+          [styles.rail]: props.rail,
           [styles.dragging]: props.dragging,
           [styles.dropBefore]: props.dropBefore,
           [styles.dropAfter]: props.dropAfter,
         }}
         label={props.name}
+        placement={props.rail ? "right" : undefined}
         aria-label={props.name}
         aria-pressed={props.active}
         onClick={() => props.onClick?.()}
@@ -118,9 +123,10 @@ export function ModeTile(props: {
   glyph: LucideIcon;
   nameWidth?: string;
   active?: boolean;
+  rail?: boolean;
   onClick?: () => void;
 }) {
-  const titled = afterPaint(() => props.active);
+  const titled = afterPaint(() => props.active && !props.rail);
   return (
     <Tooltip
       as="button"
@@ -129,6 +135,7 @@ export function ModeTile(props: {
       style={{ "--name-w": props.nameWidth }}
       classList={{ [styles.active]: props.active, [styles.titled]: titled() }}
       label={props.label}
+      placement={props.rail ? "right" : undefined}
       aria-label={props.label}
       aria-pressed={props.active}
       onClick={() => props.onClick?.()}

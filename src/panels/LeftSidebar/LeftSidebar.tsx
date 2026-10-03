@@ -357,6 +357,8 @@ export default function LeftSidebar(props: {
   // Moves a Topic's active member; the selection itself stays a Topic.
   onActiveRoot?: (root: string | null) => void;
   liveTabs?: LiveTab[];
+  /** The sidebar is hidden but the space rail stays: draw the rail alone. */
+  railOnly?: boolean;
 }) {
   // Seeded from the last load so the tree paints at once: a cold `get_config`
   // probes every project with git. The side effects in `loadConfig` run only on
@@ -686,6 +688,8 @@ export default function LeftSidebar(props: {
   // would land before/after, for the insertion indicator.
   const [dragSpace, setDragSpace] = createSignal<string | null>(null);
   const [dropHint, setDropHint] = createSignal<{ name: string; after: boolean } | null>(null);
+
+  const railed = () => appSettings.appearance.spaceStrip === "side";
 
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "space" | "folder" | "project";
@@ -1468,7 +1472,8 @@ export default function LeftSidebar(props: {
     e.preventDefault(); // mark this tile a valid drop target
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setDropHint({ name: g.name, after: e.clientX > r.left + r.width / 2 });
+    const after = railed() ? e.clientY > r.top + r.height / 2 : e.clientX > r.left + r.width / 2;
+    setDropHint({ name: g.name, after });
   }
 
   async function onSpaceDrop(e: DragEvent, g: Space) {
@@ -3127,6 +3132,7 @@ export default function LeftSidebar(props: {
         color={g.color}
         nameWidth={nameTarget(g.name)}
         active={on()}
+        rail={railed()}
         dragging={dragSpace() === g.name}
         dropBefore={dropHint()?.name === g.name && !dropHint()!.after}
         dropAfter={dropHint()?.name === g.name && dropHint()!.after}
@@ -3156,6 +3162,7 @@ export default function LeftSidebar(props: {
       glyph={glyph}
       nameWidth={nameTarget(label)}
       active={mode() === m}
+      rail={railed()}
       onClick={() => switchMode(m)}
     />
   );
@@ -3181,7 +3188,10 @@ export default function LeftSidebar(props: {
   }
 
   return (
-    <div class={`${styles.tree} ${rows.rowScope}`}>
+    <div
+      class={`${styles.tree} ${rows.rowScope}`}
+      classList={{ [styles.railed]: railed(), [styles.railOnly]: railed() && props.railOnly }}
+    >
       <div
         class={styles.treeHead}
         // Focus gone from the head is the filter abandoned. Moving inside it
@@ -3451,7 +3461,7 @@ export default function LeftSidebar(props: {
           a configured root with nothing under it has nothing to draw, and that
           state sits behind the first-run modal regardless. */}
       <Show when={config() && hasSpaces()}>
-        <div class={styles.spaceBar}>
+        <div class={styles.spaceBar} classList={{ [styles.rail]: railed() }}>
           <TileProbe
             glyph={Tags}
             ref={(el) => (probeEl = el)}
@@ -3462,6 +3472,22 @@ export default function LeftSidebar(props: {
             <div class={styles.spaceScroll}>
               <For each={visibleSpaces()}>{(g) => spaceTile(g)}</For>
             </div>
+
+            {/* The rail has the height to spare that the strip never had, so
+                New space gets a tile there instead of hiding in a menu. */}
+            <Show when={railed()}>
+              <Tooltip
+                as="button"
+                type="button"
+                class={`${styles.stripBtn} ${styles.addSpaceBtn}`}
+                label="New space"
+                placement="right"
+                aria-label="New space"
+                onClick={() => addSpace()}
+              >
+                <Icon icon={Plus} />
+              </Tooltip>
+            </Show>
 
             {/* Topics, past a rule so the strip reads as spaces first. Outside
                 the scroller, so a long space list cannot carry off the way back
@@ -3478,6 +3504,7 @@ export default function LeftSidebar(props: {
             class={`${styles.stripBtn} ${styles.dockBtn}`}
             classList={{ [styles.active]: dockOpen() }}
             label={dockOpen() ? "Hide the dock (⌘⌃J)" : "Show the dock (⌘⌃J)"}
+            placement={railed() ? "right" : undefined}
             aria-label="Dock"
             aria-pressed={dockOpen()}
             onClick={() => emit(TOGGLE_DOCK)}
