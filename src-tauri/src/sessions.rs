@@ -106,20 +106,20 @@ fn epoch_secs(t: SystemTime) -> u64 {
 }
 
 /// Pull a human title from a user message's content (string or text blocks).
+// Past any note Tori sent ahead of what the user typed. A message that is only
+// notes reads as its first one, which `clean_title` unwraps.
 fn extract_text(content: &serde_json::Value) -> Option<String> {
-    if let Some(s) = content.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = content.as_array() {
-        for block in arr {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                    return Some(t.to_string());
-                }
-            }
-        }
-    }
-    None
+    let texts: Vec<&str> = match content {
+        serde_json::Value::String(s) => vec![s.as_str()],
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
+            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let typed = texts.iter().map(|t| crate::rpc::events::split_notes(t).1).find(|rest| !rest.is_empty());
+    typed.or(texts.first().copied()).map(str::to_string)
 }
 
 /// True only for a message a human actually typed: it has visible text (so
@@ -256,7 +256,10 @@ fn local_command_turn(text: &str, ts: u64) -> Option<TranscriptTurn> {
 }
 
 pub(crate) fn clean_title(raw: &str) -> String {
-    let raw = tori_body(raw).unwrap_or(raw);
+    let raw = match crate::rpc::events::split_notes(raw) {
+        (notes, "") if !notes.is_empty() => tori_body(notes[0]).unwrap_or(raw),
+        (_, typed) => typed,
+    };
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 90 {
         let truncated: String = one_line.chars().take(90).collect();
@@ -3314,6 +3317,17 @@ mod tests {
     /// said in it. It must stay untitled rather than surface a fragment of the
     /// envelope (`/model`, or worse `<command-name>`), which would read as if the
     /// user had typed it.
+    #[test]
+    fn a_note_sent_ahead_of_the_prompt_never_becomes_the_title() {
+        let note = crate::rpc::events::from_tori("topic", None, "# Auth\n\nBranch: `auth`");
+        let blocks = serde_json::json!([{ "type": "text", "text": note }, { "type": "text", "text": "fix the login" }]);
+        assert_eq!(extract_text(&blocks).as_deref(), Some("fix the login"));
+        let joined = serde_json::json!(format!("{note}\n\nfix the login"));
+        assert_eq!(extract_text(&joined).as_deref(), Some("fix the login"));
+        assert_eq!(clean_title(&format!("{note}\n\nfix the login")), "fix the login");
+        assert_eq!(clean_title(&note), "# Auth Branch: `auth`");
+    }
+
     #[test]
     fn claude_title_stays_empty_for_a_contentless_session() {
         assert_eq!(session_fixture("local-command-only").title, "(untitled session)");
