@@ -29,7 +29,7 @@ const USAGE: &str = "usage:
   tori checkpoints <id> [--json]
   tori checkpoint diff <id> <n> [<m>]
   tori checkpoint revert <id> <n> [--force]
-  tori spawn [--agent <id>] [--account <id>] [--model <id>] [--effort <level>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
+  tori spawn [--agent <id>] [--account <id>] [--model <id>] [--mode <id>] [--effort <level>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
              [--prompt <text>] [--attach <path>]... [--background] [--json]
   tori open <path> [--line <n>]
   tori budget [<id>] [--folder <path>] [--json]
@@ -566,7 +566,7 @@ fn checkpoint_revert(args: &[String]) -> Result<(), Failure> {
 }
 
 fn spawn(args: &[String]) -> Result<(), Failure> {
-    let valued = ["agent", "account", "model", "effort", "folder", "new-worktree", "project", "from", "prompt", "attach"];
+    let valued = ["agent", "account", "model", "mode", "effort", "folder", "new-worktree", "project", "from", "prompt", "attach"];
     let p = Parsed::new(args, &valued, &["background", "json"])?;
     if !p.positional.is_empty() {
         return Err(usage("spawn takes no positional arguments: pass the prompt with --prompt"));
@@ -580,6 +580,7 @@ fn spawn(args: &[String]) -> Result<(), Failure> {
         "agent": p.value("agent"),
         "account": p.value("account"),
         "model": p.value("model"),
+        "mode": p.value("mode"),
         "effort": p.value("effort"),
         "folder": path("folder")?,
         "new_worktree": p.value("new-worktree"),

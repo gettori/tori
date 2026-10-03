@@ -25,7 +25,7 @@ use super::table::CallerKind;
 use crate::autopilot::{AutopilotStore, Contract, Observed};
 use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
-use crate::chat::host::{ChatState, Waiting};
+use crate::chat::host::{ChatState, Levers, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock, PermissionMode};
 use crate::chat::ownership::Registry;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
@@ -359,11 +359,13 @@ struct Picks {
     agent: Option<String>,
     account: Option<String>,
     model: Option<String>,
+    mode: Option<String>,
 }
 
 // A contract's account and model belong to its agent, so they fill in only when
-// the session runs that agent, or the contract names none.
-fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity) -> Picks {
+// the session runs that agent, or the contract names none. The calling chat's
+// model and mode follow the same rule: mode names are each agent's own.
+fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity, caller: &Levers) -> Picks {
     let empty = Contract::default();
     let contract = contract.unwrap_or(&empty);
     let agent = given.agent.or_else(|| contract.agent.clone()).or_else(|| me.agent.clone());
@@ -372,16 +374,22 @@ fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity) -> Picks
         .account
         .or_else(|| contract_applies.then(|| contract.account.clone()).flatten())
         .or_else(|| if agent == me.agent { me.account.clone() } else { None });
-    let model = given.model.or_else(|| contract_applies.then(|| contract.model.clone()).flatten());
-    Picks { agent, account, model }
+    let same_agent = agent == me.agent;
+    let model = given
+        .model
+        .or_else(|| contract_applies.then(|| contract.model.clone()).flatten())
+        .or_else(|| same_agent.then(|| caller.model.clone()).flatten());
+    let mode = given.mode.or_else(|| same_agent.then(|| caller.mode.as_ref().map(|m| m.as_str().to_string())).flatten());
+    Picks { agent, account, model, mode }
 }
 
 // A phone opens a plain chat in a folder it names: an attachment would read any
-// file on the Mac, and a new worktree or a background run is the desktop's call.
+// file on the Mac, and a new worktree, a background run or a permission mode
+// (bypass among them) is the desktop's call.
 fn device_may_spawn(params: &SpawnParams, is_chat: impl Fn(&str) -> bool) -> Result<(), RpcError> {
     let attaches = params.attach.as_ref().is_some_and(|files| !files.is_empty());
-    if attaches || params.new_worktree.is_some() || params.background.unwrap_or(false) {
-        return Err(refused("a device spawns a plain chat: attach, new_worktree and background are the desktop's".into()));
+    if attaches || params.new_worktree.is_some() || params.background.unwrap_or(false) || params.mode.is_some() {
+        return Err(refused("a device spawns a plain chat: attach, new_worktree, background and mode are the desktop's".into()));
     }
     if params.folder.is_none() {
         return Err(RpcError::new(INVALID_PARAMS, "a device passes the folder to start in"));
@@ -985,14 +993,19 @@ impl Backend for TauriBackend {
         // Left out everywhere, the webview picks the folder's remembered agent and account.
         let project = params.project.or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
         let contract = project.and_then(|project| self.autopilot.contract(&project));
-        let given = Picks { agent: params.agent, account: params.account, model: params.model };
-        let Picks { agent, account, model } = fill_picks(given, contract.as_ref(), &me);
+        let caller = match principal {
+            Principal::Session(Caller::Chat(id)) => self.app.state::<ChatState>().0.levers(id),
+            _ => None,
+        };
+        let given = Picks { agent: params.agent, account: params.account, model: params.model, mode: params.mode };
+        let Picks { agent, account, model, mode } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
         let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
         let request = json!({
             "folder": folder,
             "agent": agent,
             "account": account,
             "model": model,
+            "mode": mode,
             "effort": params.effort,
             "prompt": params.prompt,
             "attach": attach,
@@ -1766,6 +1779,7 @@ mod tests {
             SpawnParams { attach: Some(vec!["/etc/hosts".into()]), ..plain() },
             SpawnParams { new_worktree: Some("b".into()), ..plain() },
             SpawnParams { background: Some(true), ..plain() },
+            SpawnParams { mode: Some("bypassPermissions".into()), ..plain() },
             SpawnParams { agent: Some("pty-only".into()), ..plain() },
             SpawnParams { agent: None, ..plain() },
         ];
@@ -1781,20 +1795,41 @@ mod tests {
         let me = Identity { agent: Some("claude".into()), account: Some("work".into()), cwd: None };
         let s = |v: &str| Some(v.to_string());
         let contract = Contract { agent: s("codex"), account: s("team"), model: s("gpt-5"), ..Default::default() };
+        let none = Levers::default();
 
-        let filled = fill_picks(Picks::default(), Some(&contract), &me);
-        assert_eq!(filled, Picks { agent: s("codex"), account: s("team"), model: s("gpt-5") });
+        let filled = fill_picks(Picks::default(), Some(&contract), &me, &none);
+        assert_eq!(filled, Picks { agent: s("codex"), account: s("team"), model: s("gpt-5"), mode: None });
 
-        let explicit = Picks { agent: None, account: None, model: s("gpt-5-mini") };
-        assert_eq!(fill_picks(explicit, Some(&contract), &me).model, s("gpt-5-mini"));
+        let explicit = Picks { model: s("gpt-5-mini"), ..Default::default() };
+        assert_eq!(fill_picks(explicit, Some(&contract), &me, &none).model, s("gpt-5-mini"));
 
         let other_agent = Picks { agent: s("claude"), ..Default::default() };
-        let filled = fill_picks(other_agent, Some(&contract), &me);
-        assert_eq!(filled, Picks { agent: s("claude"), account: s("work"), model: None }, "codex's model is not claude's");
+        let filled = fill_picks(other_agent, Some(&contract), &me, &none);
+        assert_eq!(filled, Picks { agent: s("claude"), account: s("work"), model: None, mode: None }, "codex's model is not claude's");
 
         let any_agent = Contract { model: s("opus"), ..Default::default() };
-        assert_eq!(fill_picks(Picks::default(), Some(&any_agent), &me).model, s("opus"));
+        assert_eq!(fill_picks(Picks::default(), Some(&any_agent), &me, &none).model, s("opus"));
 
-        assert_eq!(fill_picks(Picks::default(), None, &me), Picks { agent: s("claude"), account: s("work"), model: None });
+        assert_eq!(fill_picks(Picks::default(), None, &me, &none), Picks { agent: s("claude"), account: s("work"), model: None, mode: None });
+    }
+
+    #[test]
+    fn spawn_picks_inherit_the_calling_chats_model_and_mode_only_on_its_agent() {
+        let me = Identity { agent: Some("claude".into()), account: Some("work".into()), cwd: None };
+        let s = |v: &str| Some(v.to_string());
+        let caller = Levers { model: s("claude-opus-5-5"), mode: Some(PermissionMode::new("bypassPermissions")), ..Default::default() };
+
+        let filled = fill_picks(Picks::default(), None, &me, &caller);
+        assert_eq!((filled.model, filled.mode), (s("claude-opus-5-5"), s("bypassPermissions")));
+
+        let explicit = Picks { mode: s("plan"), ..Default::default() };
+        assert_eq!(fill_picks(explicit, None, &me, &caller).mode, s("plan"));
+
+        let contract = Contract { model: s("sonnet"), ..Default::default() };
+        assert_eq!(fill_picks(Picks::default(), Some(&contract), &me, &caller).model, s("sonnet"), "the contract outranks the caller");
+
+        let codex = Picks { agent: s("codex"), ..Default::default() };
+        let filled = fill_picks(codex, None, &me, &caller);
+        assert_eq!((filled.model, filled.mode), (None, None), "claude's mode names nothing on codex");
     }
 }
