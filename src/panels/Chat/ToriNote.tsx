@@ -23,6 +23,10 @@ export function toriLabel(note: ToriNote, sessionName: (id: string) => string | 
       const whats = note.body.split("\n").map(wakeWhat).filter((w): w is string => !!w);
       return whats.length ? `Tori: a worker reports ${whats.join("; ")}` : "Tori woke the autopilot";
     }
+    case "topic":
+      return "Tori told this chat about its Topic";
+    case "topic-changed":
+      return "Tori told this chat its Topic changed";
     case "steer":
       return `From ${(note.from && sessionName(note.from)) || "another session"}`;
     default:
