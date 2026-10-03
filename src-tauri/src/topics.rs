@@ -911,21 +911,21 @@ pub mod commands {
         let _ = app.emit("config://changed", ());
     }
 
-    fn roots_now(topic_id: &str) -> Vec<String> {
+    fn told_now(topic_id: &str) -> crate::topic_home::Told {
         super::load_topic(&Store::default_location(), topic_id)
-            .map(|t| crate::topic_home::roots_of(&t))
+            .map(|t| crate::topic_home::told(&t))
             .unwrap_or_default()
     }
 
-    /// Running chats in the Topic's home hear about roots they did not have.
-    fn tell_chats(app: &AppHandle, before: &[String], topic: &Topic) {
+    /// Running chats in the Topic's home hear how it stands now.
+    fn tell_chats(app: &AppHandle, before: &crate::topic_home::Told, topic: &Topic) {
         let host = &app.state::<crate::chat::host::ChatState>().0;
         crate::topic_home::tell_home_chats(
             before,
             topic,
             &host.live_sessions(),
             |session, dirs| host.grant_dirs(session, dirs),
-            |session, text| crate::rpc::tell_session(app, session, "topic", text),
+            |session, text| crate::rpc::tell_session(app, session, "topic-changed", text),
         );
     }
 
@@ -961,7 +961,7 @@ pub mod commands {
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("retry_member", move || {
-            let before = roots_now(&topic_id);
+            let before = told_now(&topic_id);
             let topic = super::retry_member(&Store::default_location(), &topic_id, &repo_path)?;
             settle(&app, &index, &topic);
             tell_chats(&app, &before, &topic);
@@ -982,7 +982,7 @@ pub mod commands {
         blocking("add_member", move || {
             let store = Store::default_location();
             let mode = mode.unwrap_or_default();
-            let before = roots_now(&topic_id);
+            let before = told_now(&topic_id);
             let topic = super::add_member_as(&store, &topic_id, &repo_path, mode, &step(&app))?;
             settle(&app, &index, &topic);
             tell_chats(&app, &before, &topic);
@@ -1005,7 +1005,7 @@ pub mod commands {
     /// Promote, then tell the rest of the app: the sidebar, and every chat in
     /// the Topic's home, which is granted the new worktree.
     pub(crate) fn promote_settled(app: &AppHandle, index: &ProjectIndex, topic_id: &str, repo: &str) -> Result<Topic, String> {
-        let before = roots_now(topic_id);
+        let before = told_now(topic_id);
         let topic = super::promote_member(&Store::default_location(), topic_id, repo)?;
         settle(app, index, &topic);
         tell_chats(app, &before, &topic);
@@ -1024,7 +1024,7 @@ pub mod commands {
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("demote_member", move || {
-            let before = roots_now(&topic_id);
+            let before = told_now(&topic_id);
             let topic = super::demote_member(&Store::default_location(), &topic_id, &repo_path, force)?;
             settle(&app, &index, &topic);
             tell_chats(&app, &before, &topic);
@@ -1047,7 +1047,7 @@ pub mod commands {
         let index = index.inner().clone();
         blocking("relocate_member", move || {
             index.evict(Path::new(&repo_path));
-            let before = roots_now(&topic_id);
+            let before = told_now(&topic_id);
             let topic =
                 super::relocate_member(&Store::default_location(), &topic_id, &repo_path, &new_repo_path)?;
             settle(&app, &index, &topic);
@@ -1072,11 +1072,24 @@ pub mod commands {
         Ok(topic)
     }
 
+    /// `announce`, and home chats hear how the Topic stands after it.
+    fn announce_and_tell(
+        app: &AppHandle,
+        store: &Store,
+        topic_id: &str,
+        run: impl FnOnce() -> Result<(), String>,
+    ) -> Result<Topic, String> {
+        let before = told_now(topic_id);
+        let topic = announce(app, store, topic_id, run)?;
+        tell_chats(app, &before, &topic);
+        Ok(topic)
+    }
+
     #[tauri::command]
     pub async fn remove_member(app: AppHandle, topic_id: String, repo_path: String) -> Result<Topic, String> {
         blocking("remove_member", move || {
             let store = Store::default_location();
-            announce(&app, &store, &topic_id, || {
+            announce_and_tell(&app, &store, &topic_id, || {
                 super::remove_member(&store, &topic_id, &repo_path)
             })
         })
@@ -1103,7 +1116,7 @@ pub mod commands {
     ) -> Result<Topic, String> {
         blocking("rename_member", move || {
             let store = Store::default_location();
-            announce(&app, &store, &topic_id, || {
+            announce_and_tell(&app, &store, &topic_id, || {
                 super::rename_member(&store, &topic_id, &repo_path, &display_name)
             })
         })
@@ -1114,7 +1127,7 @@ pub mod commands {
     pub async fn rename_topic(app: AppHandle, topic_id: String, name: String) -> Result<Topic, String> {
         blocking("rename_topic", move || {
             let store = Store::default_location();
-            announce(&app, &store, &topic_id, || super::rename_topic(&store, &topic_id, &name))
+            announce_and_tell(&app, &store, &topic_id, || super::rename_topic(&store, &topic_id, &name))
         })
         .await
     }
@@ -1123,7 +1136,7 @@ pub mod commands {
     pub async fn set_topic_promotion(app: AppHandle, topic_id: String, promotion: super::Promotion) -> Result<Topic, String> {
         blocking("set_topic_promotion", move || {
             let store = Store::default_location();
-            announce(&app, &store, &topic_id, || super::set_promotion(&store, &topic_id, promotion))
+            announce_and_tell(&app, &store, &topic_id, || super::set_promotion(&store, &topic_id, promotion))
         })
         .await
     }
@@ -1965,14 +1978,14 @@ mod tests {
     }
 
     #[test]
-    fn promote_grants_the_new_worktree_to_a_live_home_chat_and_says_so_once() {
+    fn a_live_home_chat_is_granted_a_new_worktree_and_told_every_change_once() {
         use std::cell::RefCell;
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
         let store = Store::at(tmp.join("topics.json"));
         let t = reference_topic(&store, &a);
         let home = t.home.clone().unwrap();
-        let before = crate::topic_home::roots_of(&load_topic(&store, &t.id).unwrap());
+        let before = crate::topic_home::told(&load_topic(&store, &t.id).unwrap());
 
         let topic = promote_member(&store, &t.id, &a).unwrap();
         let wt = topic.members[0].worktree_path.clone().unwrap();
@@ -1990,6 +2003,19 @@ mod tests {
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].0, "home-chat");
         assert!(notes[0].1.contains(&wt), "{}", notes[0].1);
+
+        let before = crate::topic_home::told(&topic);
+        let topic = demote_member(&store, &t.id, &a, false).unwrap();
+        let notes = RefCell::new(Vec::new());
+        crate::topic_home::tell_home_chats(&before, &topic, &live, |_, _| Ok(()), |s, text| Ok(notes.borrow_mut().push((s.to_string(), text.to_string()))));
+        let notes = notes.into_inner();
+        assert_eq!(notes.len(), 1, "a demote is told");
+        assert!(notes[0].1.contains(&format!("(reference, read only): `{a}`")) && !notes[0].1.contains(&wt), "{}", notes[0].1);
+
+        let before = crate::topic_home::told(&topic);
+        let told = RefCell::new(0);
+        crate::topic_home::tell_home_chats(&before, &topic, &live, |_, _| Ok(()), |_, _| Ok(*told.borrow_mut() += 1));
+        assert_eq!(told.into_inner(), 0, "nothing changed, nothing told");
         std::fs::remove_dir_all(&tmp).ok();
     }
 }
