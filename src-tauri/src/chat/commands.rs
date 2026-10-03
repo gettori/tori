@@ -485,6 +485,9 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     };
     host.set_visible(&session_id, visible);
     host.install_bridge(&session_id, SessionBridge::new(server, snapshots, &session_id));
+    if let Some(home) = home {
+        host.note_for_next_turn(&session_id, home.note);
+    }
 
     // Said only once the session is actually up, and only when the mode that
     // was asked for is not the mode it is running. Non-fatal on purpose: the
