@@ -230,9 +230,9 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/Settings/panes/AdvancedPane/AdvancedPane.tsx",
     {
-      count: 3,
+      count: 4,
       reason:
-        "two Settings `Group` section headings plus the `ConfirmDialog` heading the base-folder actions ask through, all rendered as visible text and none of them hover text",
+        "three Settings `Group` section headings plus the `ConfirmDialog` heading the base-folder actions ask through, all rendered as visible text and none of them hover text",
     },
   ],
   ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 1, reason: HEADING }],

@@ -110,9 +110,10 @@ It is not caused by your change.
 ## Reporting things
 
 Use the issue templates: bug reports want the macOS version, the Tori version
-(the app does not display it yet, so take it from the DMG filename or the
-release you downloaded), the agent CLI and its version, and what you expected
-instead. Adapter requests want a link to the agent's CLI and, if you can get
+(Settings > Advanced shows it), the agent CLI and its version, and what you
+expected instead. If Tori closed on its own, Settings > Advanced also has the
+crash file, and Report a bug there opens the form with it filled in. Adapter
+requests want a link to the agent's CLI and, if you can get
 one, a sample session transcript, which is what determines whether an existing
 parser kind fits.
 

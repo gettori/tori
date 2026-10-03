@@ -1,13 +1,15 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createResource, createSignal, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
-import { Folder } from "lucide-solid";
+import { FileWarning, Folder } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { firstRunConfig, forgetIntro } from "../../../../utils/firstRun";
 import { shortHome } from "../../../../utils/names";
+import { ago } from "../../../../utils/relativeTime";
+import type { CrashLogs } from "../../../../utils/crashReport";
 import { Group, idsIn, rowDomId, type PaneProps } from "../../components/paneKit";
 import styles from "../../Settings.module.css";
 
@@ -38,6 +40,21 @@ export default function AdvancedPane(props: PaneProps) {
   const [busy, setBusy] = createSignal(false);
 
   const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+  // Read on every pane open rather than cached: a crash file appears between
+  // launches, and the pane is where the user comes to find it.
+  const [crashes] = createResource(() => invoke<CrashLogs>("crash_logs").catch(() => null));
+  // Guarded like every IPC reply read in a pane: a shape that is not the one
+  // expected reads as "nothing answered", never as a thrown render.
+  const crashFiles = () => {
+    const files = crashes()?.files;
+    return Array.isArray(files) ? files : [];
+  };
+  const crashVersion = () => {
+    const v = crashes()?.version;
+    return typeof v === "string" ? v : null;
+  };
+  const newestCrash = () => crashFiles()[0] ?? null;
 
   function fail(e: unknown) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
@@ -125,6 +142,40 @@ export default function AdvancedPane(props: PaneProps) {
               </Show>
             </div>
           </div>
+        </div>
+      </Group>
+
+      <Group {...props} title="Crash logs" ids={idsIn("crashes")}>
+        <div id={rowDomId("crash-logs")} class={styles.connect}>
+          <div class={styles.connectGlyph} aria-hidden="true">
+            <Icon icon={FileWarning} size="calc(28px * var(--ui-scale))" />
+          </div>
+          <div class={styles.connectMain}>
+            <div class={styles.connectTitle}>
+              Tori <Show when={crashVersion()}>{(v) => v()}</Show>
+            </div>
+            <div class={styles.cardStatus}>
+              <Show
+                when={newestCrash()}
+                fallback="No crash files. If Tori ever closes on its own, the next launch says so and the file lands here."
+              >
+                {(f) => (
+                  <>
+                    {count(crashFiles().length, "crash file", "crash files")}, the newest{" "}
+                    {ago(f().at)} ago: <code>{f().headline}</code>. Nothing is sent anywhere
+                    until you report it.
+                  </>
+                )}
+              </Show>
+            </div>
+          </div>
+          <Button
+            disabled={!newestCrash()}
+            onClick={() => void invoke("reveal_in_finder", { path: newestCrash()!.path }).catch(fail)}
+          >
+            Reveal
+          </Button>
+          <Button onClick={() => void invoke("open_crash_issue").catch(fail)}>Report a bug</Button>
         </div>
       </Group>
 

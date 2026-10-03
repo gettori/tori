@@ -46,6 +46,7 @@ import Settings from './panels/Settings/Settings';
 import FirstRun from './panels/FirstRun/FirstRun';
 import { ensureFirstRunLoaded, firstRunOpen } from './utils/firstRun';
 import UpdatePill from './components/UpdatePill/UpdatePill';
+import { announceCrash } from './utils/crashReport';
 import UsageStrip from './components/UsageStrip/UsageStrip';
 import PhoneIndicator from './components/PhoneIndicator/PhoneIndicator';
 import DevBadge from './components/DevBadge/DevBadge';
@@ -537,6 +538,7 @@ function App() {
     // window from announcing it again.
     void loadUsageStore().then(watchQuotaNotifications);
     watchUsageProbe();
+    void announceCrash();
     unlistenConfig = await listen('config://changed', () => void resolveTopicSelection());
   });
   onCleanup(() => unlistenConfig?.());

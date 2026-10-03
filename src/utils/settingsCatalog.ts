@@ -46,6 +46,7 @@ export type SettingSection =
   | "panes"
   | "remote"
   | "root"
+  | "crashes"
   | "danger";
 
 /**
@@ -125,7 +126,7 @@ export const SETTING_TABS: SettingTabDef[] = [
   // Last in the rail because it is the only tab whose contents are not
   // settings: the base folder every space sits in, and the two actions that
   // replace or forget it.
-  { id: "advanced", label: "Advanced", group: "Application", icon: "folder-cog", sections: ["root", "danger"] },
+  { id: "advanced", label: "Advanced", group: "Application", icon: "folder-cog", sections: ["root", "crashes", "danger"] },
 ];
 
 /** Which tab a section is shown under. Derived from `SETTING_TABS` rather than
@@ -161,6 +162,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   panes: "Panes",
   remote: "Remote access",
   root: "Base folder",
+  crashes: "Crash logs",
   danger: "Danger zone",
 };
 
@@ -682,6 +684,12 @@ export const SETTINGS: SettingEntry[] = [
     section: "root",
     label: "Base folder",
     hint: "The one folder Tori keeps your work in. Every space is a folder inside it, and every project lives inside a space.",
+  },
+  {
+    id: "crash-logs",
+    section: "crashes",
+    label: "Crash logs",
+    hint: "The files Tori writes when it closes on its own, and the version you are running. Nothing is sent anywhere until you report it.",
   },
   {
     id: "change-base-folder",
