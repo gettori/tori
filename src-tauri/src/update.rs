@@ -4,7 +4,9 @@
 // would re-trigger quarantine and the user would have to walk the Gatekeeper
 // steps again anyway - an auto-updater would buy nothing and could leave a
 // half-replaced app. So this fetches a tag, compares it, and at most shows a
-// notice linking to the releases page.
+// notice linking to that release. When Homebrew owns the install the notice
+// also offers `brew upgrade --cask tori`, run in a terminal tab the user
+// watches; the cask clears quarantine, which is what makes that one safe.
 //
 // Three rules keep it from becoming a nuisance:
 //
@@ -15,12 +17,22 @@
 //    has nothing to act on.
 // 3. Never downgrades or nags sideways: only a strictly greater semver counts.
 
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-const RELEASES_API: &str = "https://api.github.com/repos/gettori/tori/releases/latest";
-const RELEASES_PAGE: &str = "https://github.com/gettori/tori/releases/latest";
+// The list rather than `/releases/latest`, which never returns a prerelease:
+// while every release is an alpha, that endpoint has nothing to say.
+const RELEASES_API: &str = "https://api.github.com/repos/gettori/tori/releases?per_page=10";
+const RELEASES_PAGE: &str = "https://github.com/gettori/tori/releases";
+
+/// Where the cask lives on Apple Silicon and on Intel.
+const CASKROOMS: [&str; 2] = ["/opt/homebrew/Caskroom/tori", "/usr/local/Caskroom/tori"];
+
+/// The tag the last successful check found, for the pill's click to open.
+static FOUND_TAG: Mutex<Option<String>> = Mutex::new(None);
 
 /// Gap after a check that actually reached GitHub.
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
@@ -39,16 +51,57 @@ const RETRY_INTERVAL_SECS: u64 = 60 * 60;
 pub struct UpdateInfo {
     /// The newer version, without the `v` prefix.
     pub version: String,
+    /// Homebrew owns this install, so `brew upgrade --cask tori` can update it.
+    pub brew: bool,
 }
 
-/// Open the releases page in the user's browser.
+/// Open the found release's page in the user's browser, or the releases list
+/// when no check in this process has found one.
 ///
-/// Deliberately not a general `open_url(url)` command: the destination is a
-/// constant here, so the frontend cannot be talked into opening something
-/// arbitrary. Matches `launch.rs`'s "spawn the real tool" convention.
+/// Deliberately not a general `open_url(url)` command: the frontend hands in
+/// no URL, the backend builds it from a tag GitHub returned, so the frontend
+/// cannot be talked into opening something arbitrary. Matches `launch.rs`'s
+/// "spawn the real tool" convention.
 #[tauri::command(async)]
 pub fn open_releases_page() -> Result<(), String> {
-    crate::exec::spawn_detached(std::process::Command::new("open").arg(RELEASES_PAGE)).map_err(|e| e.to_string())
+    let found = FOUND_TAG.lock().ok().and_then(|t| t.clone());
+    let url = found.map_or_else(|| RELEASES_PAGE.to_string(), |tag| format!("{RELEASES_PAGE}/tag/{tag}"));
+    crate::exec::spawn_detached(std::process::Command::new("open").arg(url)).map_err(|e| e.to_string())
+}
+
+/// Start this app's bundle again and quit this process.
+///
+/// The new instance is opened only once this pid is gone. `open -n` straight
+/// away would run two Tori processes over one config dir and RPC socket for
+/// as long as this one takes to shut down.
+#[tauri::command]
+pub fn relaunch(app: tauri::AppHandle) -> Result<(), String> {
+    let bundle = running_bundle().unwrap_or_else(|| PathBuf::from("/Applications/Tori.app"));
+    crate::exec::spawn_detached(
+        std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec open "$2""#)
+            .arg("sh")
+            .arg(std::process::id().to_string())
+            .arg(&bundle),
+    )
+    .map_err(|e| e.to_string())?;
+    app.exit(0);
+    Ok(())
+}
+
+/// The `.app` folder the running binary sits in, or `None` outside a bundle
+/// (a dev build runs from `target/`).
+fn running_bundle() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).map(Path::to_path_buf)
+}
+
+/// `brew` on the login PATH and a Caskroom folder for tori: the same rule
+/// agent health uses to call a tool installed, plus proof the cask is what
+/// put this copy here rather than a hand-dragged download.
+fn brew_owns_install() -> bool {
+    CASKROOMS.iter().any(|p| Path::new(p).is_dir()) && crate::env::resolve_binary("brew").is_some()
 }
 
 /// Parse a semver-ish string into comparable parts, tolerating a `v` prefix and
@@ -112,18 +165,35 @@ struct GithubRelease {
     prerelease: bool,
 }
 
-fn fetch_latest_tag() -> Option<String> {
+/// Does the running version carry a stage suffix (`26.1002.1-alpha`)?
+fn is_prerelease(version: &str) -> bool {
+    version.trim().trim_start_matches('v').split('+').next().is_some_and(|core| core.contains('-'))
+}
+
+/// The newest tag strictly newer than `current`, skipping drafts, and skipping
+/// prereleases unless `current` is one: an alpha hears about the next alpha, a
+/// stable build only about stable ones. On a tie the earlier entry wins, which
+/// is the more recently published one in GitHub's ordering.
+fn pick_update(releases: &[GithubRelease], current: &str) -> Option<String> {
+    let allow_pre = is_prerelease(current);
+    releases
+        .iter()
+        .filter(|r| !r.draft && (allow_pre || !r.prerelease) && is_newer(&r.tag_name, current))
+        .fold(None::<&GithubRelease>, |best, r| match best {
+            Some(b) if !is_newer(&r.tag_name, &b.tag_name) => Some(b),
+            _ => Some(r),
+        })
+        .map(|r| r.tag_name.clone())
+}
+
+fn fetch_releases() -> Option<Vec<GithubRelease>> {
     let response = ureq::get(RELEASES_API)
         .set("User-Agent", "tori-update-check")
         .set("Accept", "application/vnd.github+json")
         .timeout(std::time::Duration::from_secs(10))
         .call()
         .ok()?;
-    let release: GithubRelease = response.into_json().ok()?;
-    // `/releases/latest` already excludes drafts and prereleases, but the
-    // fields are cheap to honour and this stays correct if the endpoint ever
-    // changes underneath us.
-    (!release.draft && !release.prerelease).then_some(release.tag_name)
+    response.into_json().ok()
 }
 
 /// Check for a newer release, or return `None`.
@@ -150,11 +220,15 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     write_deadline(&path, RETRY_INTERVAL_SECS);
 
     let current = app.package_info().version.to_string();
-    let tag = fetch_latest_tag()?;
+    let releases = fetch_releases()?;
     write_deadline(&path, CHECK_INTERVAL_SECS);
 
-    is_newer(&tag, &current)
-        .then(|| UpdateInfo { version: tag.trim_start_matches('v').to_string() })
+    let tag = pick_update(&releases, &current)?;
+    let version = tag.trim_start_matches('v').to_string();
+    if let Ok(mut found) = FOUND_TAG.lock() {
+        *found = Some(tag);
+    }
+    Some(UpdateInfo { version, brew: brew_owns_install() })
 }
 
 /// Persist "do not check again until `now + interval`". Best-effort: an
@@ -216,6 +290,39 @@ mod tests {
         assert!(is_newer("v0.10.0", "0.9.0"));
         assert!(!is_newer("v0.9.0", "0.10.0"));
         assert!(is_newer("v1.0.0", "0.100.0"));
+    }
+
+    fn release(tag: &str, prerelease: bool) -> GithubRelease {
+        GithubRelease { tag_name: tag.to_string(), draft: false, prerelease }
+    }
+
+    #[test]
+    fn an_alpha_hears_of_the_next_alpha_and_a_stable_build_only_of_stable() {
+        let list = [
+            release("v26.1010.0-alpha", true),
+            release("v26.1005.0", false),
+            release("v26.1002.1-alpha", true),
+        ];
+        assert_eq!(pick_update(&list, "26.1002.1-alpha"), Some("v26.1010.0-alpha".into()));
+        assert_eq!(pick_update(&list, "26.1001.0"), Some("v26.1005.0".into()));
+        assert_eq!(pick_update(&list, "26.1005.0"), None);
+    }
+
+    #[test]
+    fn the_pick_skips_drafts_and_takes_the_highest_version_not_the_first() {
+        let mut draft = release("v27.0.0-alpha", true);
+        draft.draft = true;
+        let list = [draft, release("v26.1003.0-alpha", true), release("v26.1004.0-alpha", true)];
+        assert_eq!(pick_update(&list, "26.1002.1-alpha"), Some("v26.1004.0-alpha".into()));
+        assert_eq!(pick_update(&[], "26.1002.1-alpha"), None);
+    }
+
+    #[test]
+    fn a_build_suffix_alone_is_not_a_prerelease() {
+        assert!(is_prerelease("26.1002.1-alpha"));
+        assert!(is_prerelease("v1.0.0-rc.1+build7"));
+        assert!(!is_prerelease("27.101.0"));
+        assert!(!is_prerelease("1.0.0+build-7"));
     }
 
     #[test]
