@@ -222,20 +222,54 @@ pub fn recorded(store: &Store) -> Vec<Topic> {
 /// Every Topic, each member's `state` refreshed against git. Membership is
 /// never changed by a read.
 pub fn list_topics(store: &Store) -> Vec<Topic> {
+    reconcile(store, false).0
+}
+
+/// `list_topics`, also taking on a worktree made outside promote: a reference
+/// member whose repo already has one on the Topic branch becomes a worktree
+/// member, the same record promote writes, and the worktree becomes the
+/// Topic's to remove. Read from the listing the reconcile already made.
+pub fn list_and_adopt(store: &Store) -> (Vec<Topic>, Vec<Adopted>) {
+    reconcile(store, true)
+}
+
+/// A reference member taken on as a worktree member, and where its root moved.
+pub struct Adopted {
+    pub topic_id: String,
+    pub from: Option<String>,
+    pub to: String,
+}
+
+fn reconcile(store: &Store, adopt: bool) -> (Vec<Topic>, Vec<Adopted>) {
     let lock = named_lock("topics");
     let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut file = store.load();
     let mut changed = false;
+    let mut adopted = Vec::new();
     for topic in &mut file.topics {
         for member in &mut topic.members {
+            let was = member.mode;
             let (state, checkout) = match member.mode {
                 MemberMode::Worktree => (reconcile_member(member, &topic.branch), None),
-                MemberMode::Reference => match reference_checkout(&member.repo_path) {
-                    Ok(c) => (MemberState::Present, Some(c)),
-                    Err(state) => (state, None),
-                },
+                MemberMode::Reference => {
+                    let (found, listed) = reference_checkout(&member.repo_path);
+                    let made = listed
+                        .into_iter()
+                        .find(|w| w.branch == topic.branch && !w.is_main && !w.is_bare && Path::new(&w.path).is_dir());
+                    if let (true, Ok(c), Some(wt)) = (adopt, &found, made) {
+                        adopted.push(Adopted { topic_id: topic.id.clone(), from: Some(c.path.clone()), to: wt.path.clone() });
+                        member.mode = MemberMode::Worktree;
+                        member.worktree_path = Some(wt.path);
+                        (MemberState::Present, None)
+                    } else {
+                        match found {
+                            Ok(c) => (MemberState::Present, Some(c)),
+                            Err(state) => (state, None),
+                        }
+                    }
+                }
             };
-            if state != member.state || checkout != member.checkout {
+            if state != member.state || checkout != member.checkout || member.mode != was {
                 member.state = state;
                 member.checkout = checkout;
                 changed = true;
@@ -250,7 +284,7 @@ pub fn list_topics(store: &Store) -> Vec<Topic> {
     } else {
         crate::topic_home::sync(&store.path, &file.topics);
     }
-    file.topics.into_iter().map(|t| store.with_home(t)).collect()
+    (file.topics.into_iter().map(|t| store.with_home(t)).collect(), adopted)
 }
 
 /// Three checks, in order: the repo answers git at all, the recorded worktree
@@ -280,9 +314,10 @@ fn reconcile_member(member: &Member, branch: &str) -> MemberState {
     }
 }
 
-fn reference_checkout(repo: &str) -> Result<Checkout, MemberState> {
+/// The checkout a reference reads, and the repo's worktrees as git listed them.
+fn reference_checkout(repo: &str) -> (Result<Checkout, MemberState>, Vec<crate::worktree::Worktree>) {
     if !crate::worktree::repo_readable(repo) {
-        return Err(MemberState::RepoMissing);
+        return (Err(MemberState::RepoMissing), Vec::new());
     }
     let default_branch = crate::worktree::origin_default(repo);
     let worktrees = list_worktrees_body(repo.to_string()).unwrap_or_default();
@@ -292,17 +327,18 @@ fn reference_checkout(repo: &str) -> Result<Checkout, MemberState> {
             .find(|w| same_path(&w.path, repo))
             .map(|w| w.branch.clone())
             .filter(|b| !b.is_empty());
-        return Ok(Checkout { path: repo.to_string(), branch, default_branch });
+        return (Ok(Checkout { path: repo.to_string(), branch, default_branch }), worktrees);
     }
-    worktrees
-        .into_iter()
+    let found = worktrees
+        .iter()
         .filter(|w| !w.is_bare && Path::new(&w.path).is_dir())
         .find(|w| match &default_branch {
             Some(d) => &w.branch == d,
             None => w.branch == "main" || w.branch == "master",
         })
-        .map(|w| Checkout { path: w.path, branch: Some(w.branch), default_branch: default_branch.clone() })
-        .ok_or(MemberState::CheckoutMissing)
+        .map(|w| Checkout { path: w.path.clone(), branch: Some(w.branch.clone()), default_branch: default_branch.clone() })
+        .ok_or(MemberState::CheckoutMissing);
+    (found, worktrees)
 }
 
 fn topic_mut<'a>(file: &'a mut TopicFile, topic_id: &str) -> Result<&'a mut Topic, String> {
@@ -612,13 +648,13 @@ fn build(store: &Store, topic_id: &str, repo: &str, branch: &str, mode: MemberMo
 /// Attaching never writes git. Only the repair, which the user asks for by
 /// name, checks a container's default branch out when it has none.
 fn build_reference(store: &Store, topic_id: &str, repo: &str, repair: bool) -> Result<(), String> {
-    let resolved = match reference_checkout(repo) {
+    let resolved = match reference_checkout(repo).0 {
         Err(MemberState::CheckoutMissing) if repair => {
             let default = crate::worktree::origin_default(repo).unwrap_or_else(|| "main".into());
             let lock = repo_lock(repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             match create_worktree_in(repo, &default, Path::new(repo), None) {
-                Ok(_) => reference_checkout(repo),
+                Ok(_) => reference_checkout(repo).0,
                 Err(reason) => Err(MemberState::Failed { reason }),
             }
         }
@@ -929,9 +965,32 @@ pub mod commands {
         );
     }
 
+    /// The Topics as git has them now. Also where a change nobody made through
+    /// Tori is noticed: a worktree made outside promote is adopted, and a home
+    /// chat hears of whatever its note no longer matches.
     #[tauri::command]
-    pub async fn list_topics() -> Result<Vec<Topic>, String> {
-        blocking("list_topics", || Ok(super::list_topics(&Store::default_location()))).await
+    pub async fn list_topics(app: AppHandle, index: State<'_, ProjectIndex>) -> Result<Vec<Topic>, String> {
+        let index = index.inner().clone();
+        blocking("list_topics", move || {
+            // Several surfaces list at once; each change is told once.
+            let lock = crate::exec::named_lock("topics-told");
+            let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let store = Store::default_location();
+            let before: Vec<_> = super::recorded(&store).iter().map(|t| (t.id.clone(), crate::topic_home::told(t))).collect();
+            let (topics, adopted) = super::list_and_adopt(&store);
+            for topic in &topics {
+                if let Some((_, told)) = before.iter().find(|(id, _)| *id == topic.id) {
+                    tell_chats(&app, told, topic);
+                }
+            }
+            for a in &adopted {
+                let Some(topic) = topics.iter().find(|t| t.id == a.topic_id) else { continue };
+                settle(&app, &index, topic);
+                let _ = app.emit("topics://promoted", serde_json::json!({ "topic": topic, "from": a.from, "to": a.to }));
+            }
+            Ok(topics)
+        })
+        .await
     }
 
     #[tauri::command]
@@ -1943,6 +2002,28 @@ mod tests {
         let t = promote_member(&store, &t.id, &a).unwrap();
         let wt = t.members[0].worktree_path.clone().unwrap();
         assert_eq!(git_out(&wt, &["rev-parse", "HEAD"]), work);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_worktree_made_outside_promote_on_the_topic_branch_is_adopted_and_no_other_is() {
+        let tmp = unique_tmp();
+        let (_, a) = cloned(&tmp, "a");
+        let store = Store::at(tmp.join("topics.json"));
+        let t = reference_topic(&store, &a);
+        let other = tmp.join("other").to_string_lossy().into_owned();
+        git(Path::new(&a), &["worktree", "add", "-q", "-b", "feat/y", &other]);
+        assert!(list_and_adopt(&store).1.is_empty(), "another branch is not the Topic's");
+
+        let made = tmp.join("made").to_string_lossy().into_owned();
+        git(Path::new(&a), &["worktree", "add", "-q", "-b", "feat/x", &made]);
+        assert!(list_topics(&store).iter().all(|x| x.members[0].mode == MemberMode::Reference), "a plain read adopts nothing");
+        let (topics, adopted) = list_and_adopt(&store);
+        assert_eq!(adopted.len(), 1);
+        assert_eq!((adopted[0].from.as_deref(), adopted[0].to.as_str()), (Some(a.as_str()), made.as_str()));
+        let m = &topics.into_iter().find(|x| x.id == t.id).unwrap().members[0];
+        assert_eq!((m.mode, m.worktree_path.as_deref(), &m.state), (MemberMode::Worktree, Some(made.as_str()), &MemberState::Present));
+        assert!(list_and_adopt(&store).1.is_empty(), "adopted once");
         std::fs::remove_dir_all(&tmp).ok();
     }
 
