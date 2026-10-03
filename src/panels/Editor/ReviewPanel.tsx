@@ -13,6 +13,7 @@ import {
   type AgentFilesWritten,
   type ToastEvent,
   type FsChanged,
+  type OpenInEditor,
 } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import {
@@ -1125,7 +1126,8 @@ export default function ReviewPanel(props: {
         classList={{ [styles.active]: props.activePath === tab() }}
         // The two rows of a partially staged file open two tabs: they are
         // different comparisons, so one tab could only ever show one of them.
-        onClick={() => emitWith(OPEN_IN_EDITOR, { path: tab() })}
+        onClick={() => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: tab(), preview: true })}
+        onDblClick={() => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: tab() })}
         title={f.path}
       >
         <FileIcon name={baseName(f.path)} />
