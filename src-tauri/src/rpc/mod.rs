@@ -448,7 +448,12 @@ pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> R
         host.note_for_next_turn(session, text);
         return Ok(());
     }
-    host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], true, events::TurnBy::Local)
+    // An agent that cannot take a message mid-turn (ACP) still hears it, on the
+    // user's next one.
+    if host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text: text.clone() }], true, events::TurnBy::Local).is_err() {
+        host.note_for_next_turn(session, text);
+    }
+    Ok(())
 }
 
 fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {

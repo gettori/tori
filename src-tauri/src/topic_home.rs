@@ -285,40 +285,45 @@ pub fn roots_of(topic: &Topic) -> Vec<String> {
     members.into_iter().filter_map(|m| member_root(m).map(str::to_string)).collect()
 }
 
-/// After a member came or moved: every live chat running in the Topic's home
-/// gets the new roots granted, then one note naming them. A chat that cannot
-/// take the grant is not told about folders it would be asked about anyway.
+/// What a home chat was last told, taken before a change so the change can be
+/// measured against it.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Told {
+    pub roots: Vec<String>,
+    pub note: String,
+}
+
+pub fn told(topic: &Topic) -> Told {
+    Told { roots: roots_of(topic), note: note(topic) }
+}
+
+/// After the Topic changed in a way its note shows: every live chat running in
+/// its home gets any new root granted, then the whole note again. Told even
+/// when the grant fails, since the note states what is read only rather than
+/// promising access.
 pub fn tell_home_chats(
-    before: &[String],
+    before: &Told,
     topic: &Topic,
     live: &[(String, String)],
     grant: impl Fn(&str, &[String]) -> Result<(), String>,
     tell: impl Fn(&str, &str) -> Result<(), String>,
 ) {
     let Some(home) = topic.home.as_deref() else { return };
-    let added: Vec<String> = roots_of(topic).into_iter().filter(|r| !before.contains(r)).collect();
-    if added.is_empty() {
+    let now = note(topic);
+    if now == before.note {
         return;
     }
-    let lines: Vec<String> = topic
-        .members
-        .iter()
-        .filter_map(|m| member_root(m).filter(|r| added.iter().any(|a| a == r)).map(|r| (m, r)))
-        .map(|(m, r)| format!("- {} ({}): {r}", m.display_name, mode_word(m)))
-        .collect();
-    let text = format!(
-        "The Topic {} changed. You can now use these folders without asking:\n{}\n{NOTE} in this folder lists every member.",
-        topic.name,
-        lines.join("\n")
-    );
+    let added: Vec<String> = roots_of(topic).into_iter().filter(|r| !before.roots.contains(r)).collect();
+    let text = format!("The Topic {} changed. This is how it stands now.\n\n{now}", topic.name);
     let home = std::fs::canonicalize(home).unwrap_or_else(|_| PathBuf::from(home));
     for (session, cwd) in live {
         if std::fs::canonicalize(cwd).unwrap_or_else(|_| PathBuf::from(cwd)) != home {
             continue;
         }
-        if grant(session, &added).is_ok() {
-            let _ = tell(session, &text);
+        if !added.is_empty() {
+            let _ = grant(session, &added);
         }
+        let _ = tell(session, &text);
     }
 }
 
