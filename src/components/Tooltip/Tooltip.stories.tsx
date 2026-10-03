@@ -54,7 +54,7 @@ export const Placements: Story = {
 
 /** The delay, and the grouping that makes a row of them usable.
  *
- *  The first tooltip takes 500ms to appear. Move the pointer straight to the
+ *  The first tooltip takes 700ms to appear. Move the pointer straight to the
  *  next button and the next one appears instantly: within 300ms of one closing,
  *  the group is "warm" and the delay is skipped, so sweeping the row reads as
  *  one gesture rather than eight separate waits. Pause for a second between two
