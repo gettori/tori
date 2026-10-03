@@ -498,19 +498,30 @@ export default function MessageList(props: {
   // under the input box, and a tall row (a question card) can disappear behind
   // it whole. Nothing about the *content* changed, so the effect above never
   // ran.
+  //
+  // Every row is watched as well, for the growth the effect above has no key
+  // for: a question card or permission prompt filled into an item already
+  // shown, a finished reply's code blocks highlighting after its last delta.
   onMount(() => {
-    if (!scroller || typeof ResizeObserver === "undefined") return;
-    let height = scroller.clientHeight;
+    if (!scroller || typeof ResizeObserver === "undefined" || typeof MutationObserver === "undefined") return;
+    // Only while pinned: a reader who has scrolled up is holding a position on
+    // purpose, and a resize is not a reason to take it away from them.
     const ro = new ResizeObserver(() => {
-      const next = scroller?.clientHeight ?? 0;
-      if (next === height) return;
-      height = next;
-      // Only while pinned: a reader who has scrolled up is holding a position
-      // on purpose, and a resize is not a reason to take it away from them.
       if (stuck() && scroller) scroller.scrollTop = scroller.scrollHeight;
     });
     ro.observe(scroller);
-    onCleanup(() => ro.disconnect());
+    for (const row of scroller.children) ro.observe(row);
+    const rows = new MutationObserver((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => n instanceof Element && ro.observe(n));
+        r.removedNodes.forEach((n) => n instanceof Element && ro.unobserve(n));
+      }
+    });
+    rows.observe(scroller, { childList: true });
+    onCleanup(() => {
+      rows.disconnect();
+      ro.disconnect();
+    });
   });
 
   const Row = (p: { item: ChatItem; unanchored?: boolean }) => (
