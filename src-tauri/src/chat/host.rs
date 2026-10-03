@@ -152,6 +152,7 @@ impl Lifecycle {
                 lock(&self.origins).remove(id);
                 self.note(id, "session.turn_ended", serde_json::json!({ "turn_id": turn_id, "outcome": outcome }));
             }
+            ChatEvent::Compacted { trigger, .. } => self.note(id, "session.compacted", serde_json::json!({ "trigger": trigger })),
             ChatEvent::QuestionRequest { tool_use_id, request_id, questions, .. } => {
                 self.note(
                     id,
