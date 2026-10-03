@@ -216,7 +216,14 @@ pub fn run() {
             match rpc::start(app.handle().clone()) {
                 Ok(state) => {
                     let (hub, autopilot) = (state.hub.clone(), state.autopilot.clone());
-                    app.state::<ChatState>().0.set_publisher(Arc::new(move |id, data| rpc::publish_session(&hub, &autopilot, id, data)));
+                    let handle = app.handle().clone();
+                    app.state::<ChatState>().0.set_publisher(Arc::new(move |id, data| {
+                        let compacted = (data["kind"] == "session.compacted").then(|| data["trigger"] == "auto");
+                        rpc::publish_session(&hub, &autopilot, id, data);
+                        if let Some(mid_turn) = compacted {
+                            rpc::retell_topic(&handle, id, mid_turn);
+                        }
+                    }));
                     let runner = state.runner.clone();
                     app.manage(state);
                     runner.autostart();

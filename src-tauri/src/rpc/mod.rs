@@ -456,6 +456,30 @@ pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> R
     Ok(())
 }
 
+/// A Topic home chat just compacted, and the summary may have dropped what its
+/// Topic is. Told again from the record as it is now: into the running turn
+/// when the window filled mid-turn, on the next message after a `/compact`,
+/// whose turn ends at once and would take a steer as a turn of its own.
+pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
+    let host = &app.state::<crate::chat::host::ChatState>().0;
+    let Some((_, cwd)) = host.live_sessions().into_iter().find(|(id, _)| id == session) else { return };
+    // Canonical, as the spawn's own lookup is, so a cwd spelled another way
+    // still finds its Topic.
+    let real = |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
+    let topics = crate::unit_home::topics();
+    let Some(topic) = topics.iter().find(|t| t.home.as_deref().is_some_and(|h| real(h) == real(&cwd))) else { return };
+    let note = crate::topic_home::note(topic);
+    if !mid_turn {
+        host.note_for_next_turn(session, events::from_tori("topic", None, &note));
+        return;
+    }
+    // Off the publishing thread, which is the session's own event thread.
+    let (app, session) = (app.clone(), session.to_string());
+    std::thread::spawn(move || {
+        let _ = tell_session(&app, &session, "topic", &note);
+    });
+}
+
 fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
     let status = runner.clone();
     let (watcher, nudges) = Watcher::new(states.clone(), autopilot.clone(), Box::new(move || status.status()));
