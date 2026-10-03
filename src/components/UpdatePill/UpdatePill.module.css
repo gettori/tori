@@ -29,6 +29,10 @@
   .link:hover {
     color: var(--brand-strong);
   }
+  .link + .link {
+    padding-left: var(--tori-space-1);
+    border-left: var(--tori-border-thin) solid var(--border-default);
+  }
 
   .dismiss {
     display: flex;

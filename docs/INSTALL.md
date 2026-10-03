@@ -87,9 +87,11 @@ key and install over the top.
 ## Updating
 
 Tori checks for a newer release on launch (once a day at most) and shows a
-dismissible notice in the title bar when one exists. It never downloads or
-installs anything for you: run `brew upgrade --cask tori`, or click through to
-the Releases page and repeat the steps above. Replacing an unsigned app
+dismissible notice in the title bar when one exists. An alpha build hears of
+alphas, a stable build only of stable releases. It never downloads or installs
+anything by itself: on a Homebrew install the notice offers **Install**, which
+runs `brew upgrade --cask tori` in a terminal tab and offers to relaunch when it
+finishes; otherwise click through to the release and repeat the steps above. Replacing an unsigned app
 re-triggers quarantine anyway, so an in-place auto-update would not save you
 the **Open Anyway** step.
 

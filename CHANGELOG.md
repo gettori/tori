@@ -16,6 +16,11 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
   land in the same folder. Settings > Advanced lists the files and shows the
   version you are running. Nothing is sent anywhere without a click: Report
   opens the bug form in your browser, prefilled.
+- The "Update available" pill hears of a newer alpha while you run one. It only
+  ever looked at stable releases, and every release so far is an alpha, so it
+  never showed. Its click opens that exact release, and when Homebrew installed
+  Tori it offers Install, which runs `brew upgrade --cask tori` in a terminal
+  tab and offers to relaunch once it finishes.
 
 ## 26.1002.1-alpha
 

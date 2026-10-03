@@ -1196,6 +1196,7 @@ export default function Terminal(props: {
       ...(j.rediscoverOnExit ? { rediscoverOnExit: true } : {}),
       ...(j.recheckAgentsOnExit ? { recheckAgentsOnExit: true } : {}),
       ...(j.completeSignInOnExit ? { completeSignInOnExit: j.completeSignInOnExit } : {}),
+      ...(j.relaunchOnSuccess ? { relaunchOnSuccess: true } : {}),
       ...(j.interactive ? { interactive: true } : {}),
     };
     setOpen([...open(), tab]);
@@ -1259,7 +1260,9 @@ export default function Terminal(props: {
       kind: failed ? "error" : "info",
       ...(failed
         ? { action: { label: "Show", run: () => emitWith<RevealDock>(REVEAL_DOCK, { tabId: t.id }) } }
-        : {}),
+        : t.relaunchOnSuccess
+          ? { action: { label: "Relaunch", run: () => void invoke("relaunch").catch(() => {}) } }
+          : {}),
     });
     if (!failed) closeId(t.id);
   }

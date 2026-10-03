@@ -524,6 +524,7 @@ pub fn run() {
             scratch::scratch_remove,
             update::check_for_update,
             update::open_releases_page,
+            update::relaunch,
             crash::record_webview_error,
             crash::crash_logs,
             crash::open_crash_issue,
