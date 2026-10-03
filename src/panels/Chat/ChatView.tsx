@@ -112,6 +112,8 @@ import {
   EDITOR_FILE_SAVED,
   EDITOR_TAB_CLOSED,
   FOCUS_SESSION_TAB,
+  EDITOR_PROMPT_DONE,
+  type EditorPromptDone,
   REVEAL_TURN,
   REWIND_CHAT,
   TOAST,
@@ -382,9 +384,15 @@ export default function ChatView(props: {
   onMount(() => {
     const offSaved = onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => mirrorSaved(composerKey(), saved));
     const offClosed = onWith<EditorTabClosed>(EDITOR_TAB_CLOSED, (closed) => void scratchTabClosed(composerKey(), closed));
+    const offDone = onWith<EditorPromptDone>(EDITOR_PROMPT_DONE, ({ path }) => {
+      if (path !== linkedScratchFor(composerKey())) return;
+      void unlinkScratch(composerKey(), { closeTab: true });
+      emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: props.tabId });
+    });
     onCleanup(() => {
       offSaved();
       offClosed();
+      offDone();
     });
   });
   // This run's first turn boundary. The diff view's attribution spans from

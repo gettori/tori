@@ -18,6 +18,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const STEM: &str = "Untitled-";
+// A chat draft opened in the editor: named for what it is, so a tab strip with
+// a prompt and a Cmd+N scratch in it can tell the two apart.
+const PROMPT_STEM: &str = "prompt-";
 
 // A directory listing is a moment old by the time the file is created, so the
 // create is the real arbiter and this only bounds how many collisions we will
@@ -30,16 +33,16 @@ fn scratch_root() -> PathBuf {
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
 
-/// The lowest free `Untitled-N`, given the names already in the directory.
+/// The lowest free `<stem>N`, given the names already in the directory.
 ///
 /// Lowest rather than highest-plus-one: a scratch that was promoted or closed
 /// gives its number back, so a person who opens and abandons a dozen of them is
 /// not left typing into `Untitled-137`.
-fn next_name(taken: &BTreeSet<String>) -> String {
+fn next_name(taken: &BTreeSet<String>, stem: &str) -> String {
     (1u32..)
-        .map(|n| format!("{STEM}{n}"))
+        .map(|n| format!("{stem}{n}"))
         .find(|name| !taken.contains(name))
-        .unwrap_or_else(|| format!("{STEM}1"))
+        .unwrap_or_else(|| format!("{stem}1"))
 }
 
 fn names_in(dir: &Path) -> BTreeSet<String> {
@@ -57,11 +60,11 @@ fn names_in(dir: &Path) -> BTreeSet<String> {
 /// ago, and the one outcome worth ruling out is truncating a scratch somebody
 /// is still typing into. A name that lost the race is recorded and the walk
 /// continues.
-fn create_in(dir: &Path) -> Result<PathBuf, String> {
+fn create_in(dir: &Path, stem: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let mut taken = names_in(dir);
     for _ in 0..MAX_TRIES {
-        let name = next_name(&taken);
+        let name = next_name(&taken, stem);
         let path = dir.join(&name);
         match std::fs::OpenOptions::new()
             .write(true)
@@ -102,8 +105,9 @@ pub fn scratch_dir() -> String {
 }
 
 #[tauri::command(async)]
-pub fn scratch_new() -> Result<String, String> {
-    create_in(&scratch_root()).map(|p| p.to_string_lossy().into_owned())
+pub fn scratch_new(prompt: Option<bool>) -> Result<String, String> {
+    let stem = if prompt.unwrap_or(false) { PROMPT_STEM } else { STEM };
+    create_in(&scratch_root(), stem).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command(async)]
@@ -130,23 +134,23 @@ mod tests {
 
     #[test]
     fn starts_at_one_in_an_empty_directory() {
-        assert_eq!(next_name(&taken(&[])), "Untitled-1");
+        assert_eq!(next_name(&taken(&[]), STEM), "Untitled-1");
     }
 
     #[test]
     fn fills_the_lowest_gap() {
-        assert_eq!(next_name(&taken(&["Untitled-1", "Untitled-3"])), "Untitled-2");
+        assert_eq!(next_name(&taken(&["Untitled-1", "Untitled-3"]), STEM), "Untitled-2");
     }
 
     #[test]
     fn ignores_files_that_are_not_scratch_names() {
-        assert_eq!(next_name(&taken(&["notes.md", "Untitled"])), "Untitled-1");
+        assert_eq!(next_name(&taken(&["notes.md", "Untitled"]), STEM), "Untitled-1");
     }
 
     #[test]
     fn creates_the_directory_and_an_empty_file() {
         let dir = tmp_dir("create");
-        let path = create_in(&dir).unwrap();
+        let path = create_in(&dir, STEM).unwrap();
         assert_eq!(path, dir.join("Untitled-1"));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "");
         let _ = std::fs::remove_dir_all(&dir);
@@ -155,8 +159,8 @@ mod tests {
     #[test]
     fn never_hands_out_a_name_twice() {
         let dir = tmp_dir("twice");
-        let first = create_in(&dir).unwrap();
-        let second = create_in(&dir).unwrap();
+        let first = create_in(&dir, STEM).unwrap();
+        let second = create_in(&dir, STEM).unwrap();
         assert_ne!(first, second);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -164,7 +168,7 @@ mod tests {
     #[test]
     fn removes_a_scratch_it_made_and_nothing_else() {
         let dir = tmp_dir("remove");
-        let path = create_in(&dir).unwrap();
+        let path = create_in(&dir, STEM).unwrap();
         std::fs::write(&path, "a draft").unwrap();
         remove_in(&dir, &path).unwrap();
         assert!(!path.exists());
@@ -193,7 +197,7 @@ mod tests {
         let dir = tmp_dir("existing");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("Untitled-1"), "half a thought").unwrap();
-        let path = create_in(&dir).unwrap();
+        let path = create_in(&dir, STEM).unwrap();
         assert_eq!(path, dir.join("Untitled-2"));
         assert_eq!(
             std::fs::read_to_string(dir.join("Untitled-1")).unwrap(),
