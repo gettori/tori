@@ -71,10 +71,11 @@ export async function scratchDirPath(): Promise<string | null> {
   }
 }
 
-/** Create the next empty scratch file, or null when it could not be created. */
-export async function newScratchFile(): Promise<string | null> {
+/** Create the next empty scratch file, or null when it could not be created.
+ *  `prompt` names it `prompt-N` rather than `Untitled-N`. */
+export async function newScratchFile(opts: { prompt?: boolean } = {}): Promise<string | null> {
   try {
-    return await invoke<string>("scratch_new");
+    return await invoke<string>("scratch_new", { prompt: !!opts.prompt });
   } catch {
     return null;
   }

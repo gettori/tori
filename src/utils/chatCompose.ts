@@ -259,6 +259,11 @@ export function linkedScratchFor(key: ComposerKey): string | null {
   return linkedScratches()[key] ?? null;
 }
 
+/** Whether `path` is a chat draft open in the editor. */
+export function isLinkedScratch(path: string | null | undefined): boolean {
+  return !!path && Object.values(linkedScratches()).includes(path);
+}
+
 export function setLinkedScratch(key: ComposerKey, path: string | null) {
   setLinkedScratches((prev) => (path ? { ...prev, [key]: path } : dropKey(prev, key)));
 }
