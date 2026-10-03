@@ -3174,9 +3174,11 @@ export default function LeftSidebar(props: {
   // only a project the search filter hid entirely (never rendered, so no row
   // to bubble to) still needs to surface on the tile.
   function spaceRollup(g: Space) {
-    // "Active" here means its tree is on screen. In Topics nothing of it is
-    // rendered, so all of its sessions bubble to the tile.
-    const isActive = () => mode() === "spaces" && activeSpace()?.name === g.name;
+    // "Active" here means its tree is on screen. In Topics, or with the sidebar
+    // down to its rail, nothing of it is rendered, so all of its sessions
+    // bubble to the tile.
+    const isActive = () =>
+      mode() === "spaces" && !props.railOnly && activeSpace()?.name === g.name;
     return () =>
       isActive()
         ? bubbleFor((s) => {
