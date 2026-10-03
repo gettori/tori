@@ -8,6 +8,15 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- When Tori closes on its own, it writes a crash file under
+  `~/.config/tori/crashes/` (version, thread, message, backtrace) and the next
+  launch says so, with Reveal and Report buttons. Uncaught errors in the window
+  land in the same folder. Settings > Advanced lists the files and shows the
+  version you are running. Nothing is sent anywhere without a click: Report
+  opens the bug form in your browser, prefilled.
+
 ## 26.1002.1-alpha
 
 - Releases are published at github.com/gettori/tori/releases, beside the

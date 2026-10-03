@@ -15,6 +15,7 @@ mod cli;
 mod checkpoint;
 mod config;
 mod conflict;
+mod crash;
 mod credential;
 mod dap;
 mod dragboard;
@@ -165,6 +166,9 @@ pub fn run() {
     if chat::approval::is_helper() {
         std::process::exit(chat::approval::run_helper());
     }
+
+    // Before the builder, so a panic in setup is on disk too.
+    crash::install();
 
     // Before the builder: the invoke wrapper and `trace_config` both read the
     // flag, and the frontend asks for it on its first frame.
@@ -520,6 +524,9 @@ pub fn run() {
             scratch::scratch_remove,
             update::check_for_update,
             update::open_releases_page,
+            crash::record_webview_error,
+            crash::crash_logs,
+            crash::open_crash_issue,
             sessions::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,

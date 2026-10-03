@@ -3,9 +3,14 @@ import { render } from "solid-js/web";
 import App from "./App";
 import { applyCachedTheme } from "./theme";
 import { installTrace } from "./utils/perfTrace";
+import { installCrashReport } from "./utils/crashReport";
 
 // Paint with the last-known theme synchronously, before first render.
 applyCachedTheme();
+
+// Uncaught errors and rejections go to ~/.config/tori/crashes beside the
+// backend's panic files. Before render, so a throw in the first frame counts.
+installCrashReport();
 
 // Performance tracing, if the backend was launched with TORI_TRACE. Started
 // here rather than in a component so the IPC shim is installed as early as it
