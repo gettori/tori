@@ -18,11 +18,13 @@ import styles from "./Tooltip.module.css";
  *  `boundary.test.ts` would fail it for, this file included. */
 export type TooltipPlacement = "top" | "bottom" | "left" | "right";
 
-/** Slower than the 700ms Kobalte ships: 700 is what "the tooltips are slow to
- *  appear" means on a toolbar, and 500 still reads as deliberate rather than as
- *  a flicker while the pointer crosses a strip of icons. */
-const OPEN_DELAY = 500;
-const CLOSE_DELAY = 300;
+/** Radix's and Kobalte's default. At 500 a tooltip opened while the pointer was
+ *  only passing over its control on the way to a neighbour, and covered it. */
+const OPEN_DELAY = 700;
+/** Radix closes on leave with no delay too. A lingering tooltip sat over the
+ *  neighbouring control the pointer was heading for. Hovering into the content
+ *  still keeps it open: Kobalte's safe area cancels the close, not this timer. */
+const CLOSE_DELAY = 0;
 /** Kobalte's own default, restated because it is a design decision rather than
  *  an inherited one: within 300ms of one tooltip closing, the next opens with no
  *  delay at all, so sweeping a row of icon buttons reads as one gesture instead

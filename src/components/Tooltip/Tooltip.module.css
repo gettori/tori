@@ -56,7 +56,7 @@
    in review as motion that exists and is not. The reference agrees by omission:
    solid-ui's tooltip ships an enter animation and no exit.
 
-   Fast rather than medium: the open delay already made the user wait 500ms, and
+   Fast rather than medium: the open delay already made the user wait 700ms, and
    the animation is confirming a pointer that has already arrived. ---- */
 @keyframes tooltipContentIn {
   from {
