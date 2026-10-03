@@ -107,6 +107,7 @@ import {
   FileStack,
   Files,
   FolderSymlink,
+  Check,
   GitCommitHorizontal,
   GitCompare,
   GitGraph,
@@ -149,6 +150,8 @@ import {
   type TabJump,
   EDITOR_CLOSE_TAB,
   EDITOR_CLOSE_PATH,
+  EDITOR_PROMPT_DONE,
+  type EditorPromptDone,
   EDITOR_TAB_CLOSED,
   type EditorClosePath,
   type EditorTabClosed,
@@ -315,7 +318,7 @@ import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
 import { composeSelectionMention, requestSend, type SessionTarget } from "../../utils/safeSend";
-import { selectionBlocks } from "../../utils/chatCompose";
+import { isLinkedScratch, selectionBlocks } from "../../utils/chatCompose";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite, markSelfWrite } from "../../utils/selfWrites";
 import {
@@ -3001,7 +3004,18 @@ export default function Editor(props: {
               {/* Not for a `tori://` view: a graph has no working copy for
                   git to blame. Not for a PDF either: blame is per line, and a
                   PDF has none - it is not even read as text. */}
-              <Show when={filePath() && !isSyntheticId(filePath()!) && !pdfId()}>{blameBtn()}</Show>
+              {/* Nor for a chat draft, which lives outside any repo. */}
+              <Show when={filePath() && !isSyntheticId(filePath()!) && !pdfId() && !isLinkedScratch(filePath())}>
+                {blameBtn()}
+              </Show>
+              <Show when={isLinkedScratch(filePath())}>
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={Check} />}
+                  onClick={() => emitWith<EditorPromptDone>(EDITOR_PROMPT_DONE, { path: filePath()! })}
+                  tooltip="Done: put the prompt in the chat's input and close it here"
+                />
+              </Show>
             </>
           }
         />

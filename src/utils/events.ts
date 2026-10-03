@@ -244,6 +244,10 @@ export type EditorTabClosed = { path: string };
  *  changes confirm, for a caller that has already taken the buffer's text. */
 export const EDITOR_CLOSE_PATH = "tori:editor-close-path";
 export type EditorClosePath = { path: string; discard?: boolean };
+/** The editor is done with a chat draft: the composer linked to `path` takes the
+ *  text, closes the tab and brings its chat forward. */
+export const EDITOR_PROMPT_DONE = "tori:editor-prompt-done";
+export type EditorPromptDone = { path: string };
 
 // Back and forward through the jump list. Consumed by Editor.tsx, which is
 // where the list lives: it is bucketed by workspace exactly as the tab strip is,

@@ -18,7 +18,7 @@ import {
 /** Write the draft to a new scratch file, link it, and open it. Null when the
  *  backend could not make the file, and then nothing is linked. */
 export async function openDraftInEditor(key: ComposerKey): Promise<string | null> {
-  const path = await newScratchFile();
+  const path = await newScratchFile({ prompt: true });
   if (!path) return null;
   await invoke("fs_write_file", { path, contents: draftFor(key) });
   setLinkedScratch(key, path);
