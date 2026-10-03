@@ -516,6 +516,34 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     }
 }
 
+// The panel draws a note as Tori's row only when it stands alone in a message.
+fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
+    use crate::rpc::events::split_notes;
+    let ChatEvent::UserMessage { session_id, turn_id, blocks } = event else { return vec![event] };
+    let message = |blocks| ChatEvent::UserMessage { session_id: session_id.clone(), turn_id: turn_id.clone(), blocks };
+    let mut out = Vec::new();
+    let mut rest = blocks.into_iter().peekable();
+    while let Some(ContentBlock::Text { text }) = rest.peek() {
+        let (notes, after) = split_notes(text);
+        if notes.is_empty() {
+            break;
+        }
+        out.extend(notes.iter().map(|n| message(vec![ContentBlock::Text { text: n.to_string() }])));
+        let after = after.to_string();
+        rest.next();
+        if !after.is_empty() {
+            let tail: Vec<ContentBlock> = std::iter::once(ContentBlock::Text { text: after }).chain(rest).collect();
+            out.push(message(tail));
+            return out;
+        }
+    }
+    let tail: Vec<ContentBlock> = rest.collect();
+    if !tail.is_empty() || out.is_empty() {
+        out.push(message(tail));
+    }
+    out
+}
+
 /// Is this event the end of a session's life?
 ///
 /// A non-fatal `SessionError` is deliberately not: a single unparseable stdout
@@ -882,8 +910,9 @@ impl ChatHost {
         let outputs = self.outputs.clone();
         let waiting = self.waiting.clone();
         let lifecycle = self.lifecycle.clone();
+        let notes = self.notes.clone();
         let id = session_id.to_string();
-        Box::new(move |mut event| {
+        Box::new(move |event| for mut event in split_user_notes(event) {
             let fatal = ends_session(&event);
             // Two frames per session and one per turn, so the lock is taken
             // that often rather than once per event.
@@ -933,6 +962,7 @@ impl ChatHost {
                 // ones.
                 lock(&outputs).remove(&id);
                 lock(&waiting).remove(&id);
+                lock(&notes).remove(&id);
                 if let Some(bridge) = lock(&bridges).remove(&id) {
                     bridge.teardown();
                 }
@@ -1002,12 +1032,32 @@ impl ChatHost {
         let sent = self.dispatch(&ChatCommand::SendTurn { session_id: session_id.to_string(), blocks });
         if sent.is_err() && !notes.is_empty() {
             lock(&self.notes).entry(session_id.to_string()).or_default().splice(0..0, notes);
+        } else if !notes.is_empty() {
+            self.draw_notes(session_id, notes);
         }
         sent
     }
 
+    // The panel drew only what the user typed. A transport that echoes sent
+    // turns hands the notes back itself, and `wrap` splits them off there.
+    fn draw_notes(&self, session_id: &str, notes: Vec<ContentBlock>) {
+        let entry = lock(&self.sessions).get(session_id).map(|e| (e.sink.clone(), e.transport.clone()));
+        let Some((sink, transport)) = entry else { return };
+        if lock(&transport).echoes_sent_turns() {
+            return;
+        }
+        for note in notes {
+            emit(&sink, ChatEvent::UserMessage { session_id: session_id.to_string(), turn_id: String::new(), blocks: vec![note] });
+        }
+    }
+
     pub fn note_for_next_turn(&self, session_id: &str, text: String) {
-        lock(&self.notes).entry(session_id.to_string()).or_default().push(ContentBlock::Text { text });
+        let mut notes = lock(&self.notes);
+        let waiting = notes.entry(session_id.to_string()).or_default();
+        if crate::rpc::events::is_topic_note(&text) {
+            waiting.retain(|b| !matches!(b, ContentBlock::Text { text } if crate::rpc::events::is_topic_note(text)));
+        }
+        waiting.push(ContentBlock::Text { text });
     }
 
     pub fn steer(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
@@ -1086,6 +1136,7 @@ impl ChatHost {
         self.drop_bridge(session_id);
         let entry = lock(&self.sessions).remove(session_id);
         lock(&self.waiting).remove(session_id);
+        lock(&self.notes).remove(session_id);
         let Some(entry) = entry else { return Ok(()) };
         let result = lock(&entry.transport).close();
         self.registry.release(session_id, &entry.tab_id);
@@ -1335,6 +1386,27 @@ mod tests {
     /// created again on every remount: two handles on one file, and every turn
     /// from then on written twice. Owned by the entry and cloned into each new
     /// closure, two rewires and three turns are three turns and one handle.
+    #[test]
+    fn a_leading_note_is_split_off_into_its_own_message_however_it_arrives() {
+        let note = crate::rpc::events::from_tori("topic", None, "# Auth");
+        let text = |t: &str| ContentBlock::Text { text: t.to_string() };
+        let message = |blocks| ChatEvent::UserMessage { session_id: "s".into(), turn_id: "t".into(), blocks };
+        let bodies = |events: Vec<ChatEvent>| -> Vec<Vec<ContentBlock>> {
+            events.into_iter().map(|e| match e {
+                ChatEvent::UserMessage { blocks, .. } => blocks,
+                other => panic!("{other:?}"),
+            }).collect()
+        };
+
+        let as_blocks = split_user_notes(message(vec![text(&note), text("fix the login")]));
+        assert_eq!(bodies(as_blocks), vec![vec![text(&note)], vec![text("fix the login")]]);
+        let joined = split_user_notes(message(vec![text(&format!("{note}\n\nfix the login"))]));
+        assert_eq!(bodies(joined), vec![vec![text(&note)], vec![text("fix the login")]]);
+        assert_eq!(bodies(split_user_notes(message(vec![text(&note)]))), vec![vec![text(&note)]]);
+        let typed = split_user_notes(message(vec![text("about <tori kind=\"x\">")]));
+        assert_eq!(bodies(typed), vec![vec![text("about <tori kind=\"x\">")]]);
+    }
+
     #[test]
     fn a_rewired_session_keeps_writing_to_the_one_log_it_started_with() {
         use crate::chat::mirror::recorder::Handle;
