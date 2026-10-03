@@ -255,6 +255,20 @@ export function isConflicted(roots: readonly string[] | null | undefined, absPat
   return gitStateFor(root).files.some((f) => f.conflicted && f.path === rel);
 }
 
+/** Which half of a file's change a reader is looking at: the index, the
+ *  working tree, or whichever of the two differs from HEAD last. */
+export type StatusSide = "staged" | "unstaged" | "either";
+
+/** One letter for a changed file, VS Code's: `U` for untracked, `!` mid-conflict,
+ *  otherwise the porcelain column for `side`. Null when that side is clean. */
+export function statusLetter(f: FileStatus, side: StatusSide): string | null {
+  if (f.conflicted) return "!";
+  if (f.status === "??") return side === "staged" ? null : "U";
+  const [x = " ", y = " "] = f.status;
+  const letter = side === "staged" ? x : side === "unstaged" ? y : y !== " " ? y : x;
+  return letter === " " || letter === "." ? null : letter;
+}
+
 /** Can a push do anything? A branch with no upstream counts: the push sets it.
  *  A superseded one does not, since its commits are the upstream's replaced
  *  ones. Unknown (the probe failed, or nothing is selected) reads as no. Takes

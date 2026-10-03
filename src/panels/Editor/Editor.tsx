@@ -107,6 +107,7 @@ import {
   FileStack,
   Files,
   FolderSymlink,
+  GitCommitHorizontal,
   GitCompare,
   GitGraph,
   GitPullRequest,
@@ -227,6 +228,7 @@ import {
   setActiveRoot,
   gitStateFor,
   isConflicted,
+  statusLetter,
   stagedFiles,
   stage as stageFiles,
   unstage as unstageFiles,
@@ -410,16 +412,29 @@ function repoRelative(path: string, root: string): string | null {
 const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
   search: Search,
   graph: GitGraph,
-  diff: GitCompare,
   shared: FolderSymlink,
   pr: GitPullRequest,
   prall: FileStack,
   prs: GitPullRequestArrow,
 };
 
+const TAB_STATUS_TONE: Record<string, string> = { "!": "conflicted", U: "untracked", A: "added", D: "deleted" };
+
+/** Which side of the change a diff tab compares, in place of a file icon: the
+ *  label used to say "(Working tree)" or "(Staged)". */
+function diffModeIcon(arg: string) {
+  const label = parseDiffArg(arg).staged ? "Staged" : "Working tree";
+  return (
+    <span class={styles.tabMode} title={label} aria-label={label}>
+      <Icon icon={label === "Staged" ? GitCommitHorizontal : GitCompare} />
+    </span>
+  );
+}
+
 function tabIcon(t: FileTab) {
   if (!isSyntheticId(t.path)) return <FileIcon name={t.name} />;
   const parsed = parseSyntheticId(t.path);
+  if (parsed?.kind === "diff") return diffModeIcon(parsed.arg);
   // A commit's file is still a file: it keeps the icon its name earns, and
   // the strip tells its tabs apart by the sha in the label.
   if (parsed?.kind === "commitdiff") {
@@ -467,7 +482,7 @@ function prTabHasPending(id: string): boolean {
 function tabLabel(t: FileTab) {
   const name = tabName(t);
   const kind = parseSyntheticId(t.path)?.kind;
-  if (kind !== "diff" && kind !== "commitdiff" && kind !== "prdiff" && kind !== "checkpointdiff") return name;
+  if (kind !== "commitdiff" && kind !== "prdiff" && kind !== "checkpointdiff") return name;
   const at = name.lastIndexOf(" (");
   if (at < 0) return name;
   return (
@@ -2767,10 +2782,33 @@ export default function Editor(props: {
   // panel's dirty/touched state and close; the strip below renders through the
   // registry with no per-kind switches of its own.
   const asFile = (u: UnifiedTab) => (u as FileUnifiedTab).file;
+  /** The git status a tab's file carries, on the side a diff tab compares.
+   *  Null for every view that is not a file or a diff. */
+  const tabStatus = (path: string) => {
+    const parsed = parseSyntheticId(path);
+    const diff = parsed?.kind === "diff" ? parseDiffArg(parsed.arg) : null;
+    if (parsed && !diff) return null;
+    const root = diff ? parsed!.workspace : rootOf(path, watchRoots());
+    if (!root) return null;
+    const rel = diff ? diff.file : mentionPath(path, root);
+    const f = gitStateFor(root).files.find((x) => x.path === rel);
+    const letter = f && statusLetter(f, diff ? (diff.staged ? "staged" : "unstaged") : "either");
+    const tone = TAB_STATUS_TONE[letter ?? ""] ?? "modified";
+    return { letter, tone };
+  };
+
   const fileDots = (u: UnifiedTab) => {
     const t = asFile(u);
+    const status = () => tabStatus(t.path);
     return (
       <>
+        <Show when={status()?.letter}>
+          {(letter) => (
+            <span class={`${styles.tabStatus} ${styles[status()!.tone]}`} aria-hidden="true">
+              {letter()}
+            </span>
+          )}
+        </Show>
         {/* A pull request file whose draft holds a comment for it. The tab is
             the only thing on screen while another file is open, so without it
             a review written across four files has three invisible thirds. */}
