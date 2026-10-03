@@ -127,6 +127,8 @@ Not built: gettori/tori#203 plans a Tori level refusal for outward actions from 
 ## Related
 
 - [[component_app_socket]] - where the lifecycle events go, and the second reader of `read_history`
+- [[gotcha_a_queued_note_is_the_first_block_of_the_users_message]] - why `wrap` splits notes off a user message
+- [[concept_topic_home_chat_note]] - the note queued at spawn for a Topic home chat
 - [[concept_socket_event_vocabulary]] - the events `Lifecycle` publishes
 - [[gotcha_an_acp_load_hands_history_back_through_the_live_sink]] - why `observe` waits for `SessionStarted`
 - [[gotcha_a_turn_sent_from_outside_the_panel_draws_no_user_bubble]] - why `deliver` draws the user bubble itself
