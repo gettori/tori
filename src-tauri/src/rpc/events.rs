@@ -68,6 +68,39 @@ pub fn from_tori(kind: &str, from: Option<&str>, text: &str) -> String {
     format!("<tori kind=\"{kind}\"{from}>\n{text}\n</tori>")
 }
 
+/// The notes `text` opens with, and what follows them. A queued note travels
+/// on the user's own message, and an agent may hand that message back as one
+/// string rather than as the blocks it was sent as.
+pub fn split_notes(text: &str) -> (Vec<&str>, &str) {
+    const END: &str = "\n</tori>";
+    let mut notes = Vec::new();
+    let mut rest = text;
+    loop {
+        let t = rest.trim_start();
+        let Some(end) = t.starts_with("<tori kind=\"").then(|| t.find(END)).flatten() else { break };
+        notes.push(&t[..end + END.len()]);
+        rest = &t[end + END.len()..];
+    }
+    if notes.is_empty() {
+        return (notes, text);
+    }
+    (notes, rest.trim_start())
+}
+
+/// The `kind` of a note, when `text` is exactly one.
+pub fn note_kind(text: &str) -> Option<&str> {
+    match split_notes(text) {
+        (notes, "") if notes.len() == 1 => notes[0].strip_prefix("<tori kind=\"")?.split('"').next(),
+        _ => None,
+    }
+}
+
+/// The two kinds that state a Topic in full, so a newer one makes an older
+/// one still waiting worthless.
+pub fn is_topic_note(text: &str) -> bool {
+    matches!(note_kind(text), Some("topic" | "topic-changed"))
+}
+
 pub fn same_folder(a: &str, b: &str) -> bool {
     crate::sessions::cwd_matches(a, b) && crate::sessions::cwd_matches(b, a)
 }

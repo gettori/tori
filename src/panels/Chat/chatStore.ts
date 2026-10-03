@@ -52,6 +52,7 @@ import type {
   Usage,
 } from "../../utils/chatTypes";
 import { currentOf } from "../../utils/chatTypes";
+import { toriNote } from "../../utils/toriNote";
 import type { ChatTransport } from "../../utils/agents";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
 import { contextTokens, reportedWindows } from "../../utils/chatModels";
@@ -1291,6 +1292,13 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         last?.kind === "user" &&
         JSON.stringify(last.blocks) === JSON.stringify(ev.blocks);
       if (echo) return;
+      // A note Tori queued rode on the message this panel just drew, and the
+      // agent read it first. Only the last row moves, and it is a user row, so
+      // no index into `items` shifts.
+      if (s.awaitingTurn && last?.kind === "user" && !toriNote(last.blocks) && toriNote(ev.blocks)) {
+        s.items.splice(s.items.length - 1, 0, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false });
+        return;
+      }
       // A user turn the panel did not send. Deliberately does **not** touch the
       // turn or set `awaitingTurn` the way `pushUserTurn` does: replayed history
       // is finished, and marking it in flight would leave a reopened tab reading

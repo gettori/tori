@@ -96,8 +96,23 @@ pub fn events_and_prompts(
                 // that is how it comes back: the same labelled `FileRef` the
                 // live turn carried, and ordinary prose otherwise.
                 "text" if turn.role == "user" => {
-                    if let Some(text) = &block.text {
-                        user_blocks.push(ContentBlock::from_replayed_text(text));
+                    let Some(text) = &block.text else { continue };
+                    // A note queued for this turn was sent ahead of what the
+                    // user typed; it comes back as its own row, as it was drawn.
+                    let (notes, rest) = match user_blocks.is_empty() {
+                        true => crate::rpc::events::split_notes(text),
+                        false => (Vec::new(), text.as_str()),
+                    };
+                    let noted = !notes.is_empty();
+                    for note in notes {
+                        events.push(ChatEvent::UserMessage {
+                            session_id: session_id.to_string(),
+                            turn_id: turn_id.clone(),
+                            blocks: vec![ContentBlock::Text { text: note.to_string() }],
+                        });
+                    }
+                    if !noted || !rest.is_empty() {
+                        user_blocks.push(ContentBlock::from_replayed_text(rest));
                     }
                 }
                 // Without its bytes, which the transcript reader deliberately
