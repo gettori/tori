@@ -114,12 +114,28 @@ fn state_word(state: &MemberState) -> Option<String> {
 }
 
 pub fn topic_md(topic: &Topic) -> String {
+    format!(
+        "# {}\n\nTori writes this file from the Topic record and rewrites it on every change. Edits here are lost.\n\n{}",
+        topic.name,
+        body(topic)
+    )
+}
+
+/// What a chat in the Topic's home is told about it, at its start and after
+/// every change: the same facts `TOPIC.md` holds.
+pub fn note(topic: &Topic) -> String {
+    format!(
+        "# {}\n\nThis chat runs in the home folder of the Topic {}, which spans the members below.\n\n{}",
+        topic.name,
+        topic.name,
+        body(topic)
+    )
+}
+
+fn body(topic: &Topic) -> String {
     let mut members: Vec<&Member> = topic.members.iter().collect();
     members.sort_by_key(|m| m.order);
-    let mut out = format!(
-        "# {}\n\nTori writes this file from the Topic record and rewrites it on every change. Edits here are lost.\n\nBranch: `{}`\n\n## Members\n\n",
-        topic.name, topic.branch
-    );
+    let mut out = format!("Branch: `{}`\n\n## Members\n\n", topic.branch);
     let mut unavailable = Vec::new();
     for m in &members {
         let path = member_root(m).unwrap_or(&m.repo_path);
@@ -162,6 +178,7 @@ pub fn topic_md(topic: &Topic) -> String {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct HomeLaunch {
     pub roots: Vec<String>,
+    pub note: String,
     pub allow: Vec<String>,
     pub deny: Vec<String>,
     pub ask: Vec<String>,
@@ -180,7 +197,7 @@ pub fn launch_for(store: &crate::topics::Store, cwd: &str) -> Option<HomeLaunch>
     let topic = crate::topics::list_topics(store).into_iter().find(|t| {
         std::fs::canonicalize(home_dir(store.path(), &t.id)).ok().as_ref() == Some(&target)
     })?;
-    let mut out = HomeLaunch::default();
+    let mut out = HomeLaunch { note: crate::rpc::events::from_tori("topic", None, &note(&topic)), ..Default::default() };
     let mut members: Vec<&Member> = topic.members.iter().collect();
     members.sort_by_key(|m| m.order);
     for m in members {
