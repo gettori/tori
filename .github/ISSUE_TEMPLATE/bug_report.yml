@@ -26,10 +26,10 @@ body:
     attributes:
       label: Tori version
       description: >
-        Tori does not display its own version yet. Take it from the DMG
-        filename or the release you downloaded, or say "built from source" plus
-        the commit.
-      placeholder: "0.1.0"
+        Settings > Advanced shows it, under Crash logs. On a build older than
+        26.1003, take it from the DMG filename or the release you downloaded,
+        or say "built from source" plus the commit.
+      placeholder: "26.1002.1-alpha"
     validations:
       required: true
 
