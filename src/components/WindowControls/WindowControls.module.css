@@ -22,6 +22,17 @@
   align-items: center;
 }
 
+/* The toggle with the hidden sidebar's status beside it: one pill around both,
+   so the status reads as the toggle's and not as a third thing in the bar. The
+   margin hands the padding back, so the toggle stays where it sits alone. */
+.toggleSlot.joined {
+  gap: 2px;
+  padding: 2px;
+  margin: -2px;
+  background: var(--neutral-subtle);
+  border-radius: var(--tori-radius-md);
+}
+
 .navSlot {
   flex: 0 0 auto;
   margin-left: auto;

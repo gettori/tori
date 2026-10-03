@@ -1,0 +1,17 @@
+/* Bare, like the toggle beside it: the pill around the pair is what says the
+   two belong together (`.joined` in WindowControls.module.css). */
+.status {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height);
+  padding-inline: calc(6px * var(--ui-scale));
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--tori-radius-md);
+  cursor: pointer;
+  transition: border-color var(--tori-duration-fast) ease;
+}
+
+.status:hover {
+  border-color: var(--brand-default);
+}

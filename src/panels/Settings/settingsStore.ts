@@ -22,7 +22,10 @@ import {
 } from "./utils/workspaceSettings";
 import { DEFAULT_PIN_SIDES, type PinSide } from "../../layout/pinRules";
 
-export type Appearance = { theme: string };
+/** Where the sidebar's space tiles sit. Mirrors `SpaceStrip` in
+ *  src-tauri/src/settings.rs. */
+export type SpaceStrip = "bottom" | "side";
+export type Appearance = { theme: string; spaceStrip: SpaceStrip };
 export type Typography = {
   uiFontFamily: string;
   uiFontSize: number;
@@ -347,7 +350,7 @@ export type AutopilotSettings = {
 export type AgentRow = { agent: string; profile: string };
 
 export const DEFAULT_SETTINGS: Settings = {
-  appearance: { theme: "tori-dark" },
+  appearance: { theme: "tori-dark", spaceStrip: "bottom" },
   forge: { enabled: true, picks: {} },
   git: { fetchEveryMinutes: 10, showTopicWorktrees: false },
   notifications: { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: false } },

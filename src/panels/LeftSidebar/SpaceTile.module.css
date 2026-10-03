@@ -183,3 +183,16 @@
 .space.dropAfter {
   box-shadow: inset -2px 0 0 var(--brand-default);
 }
+/* A rail tile never opens, so it is a fixed square, and a larger one: the rail
+   has a column's worth of width where the strip had a row's worth of height. */
+.space.rail {
+  width: calc(36px * var(--ui-scale));
+  height: calc(36px * var(--ui-scale));
+  padding-inline: 0;
+}
+.space.rail.dropBefore {
+  box-shadow: inset 0 2px 0 var(--brand-default);
+}
+.space.rail.dropAfter {
+  box-shadow: inset 0 -2px 0 var(--brand-default);
+}

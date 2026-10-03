@@ -60,8 +60,10 @@
   padding: 1px calc(2px * var(--ui-scale));
 }
 
+/* The rollup counts' size, so the dock's corner reads at the same weight as
+   the space tiles' beside it. */
 .tileCount {
   color: var(--fg-muted);
-  font-size: var(--tori-text-2xs);
+  font-size: var(--tori-text-md);
   font-variant-numeric: tabular-nums;
 }

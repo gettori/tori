@@ -35,6 +35,18 @@ pub struct Appearance {
     /// existence, and nothing in the app can set it again.
     #[serde(rename = "importPath", default, skip_serializing)]
     pub legacy_import_path: Option<String>,
+    /// Where the sidebar's space tiles sit: a strip along the bottom, or a rail
+    /// down the left edge for when there are too many spaces for one row.
+    #[serde(default)]
+    pub space_strip: SpaceStrip,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SpaceStrip {
+    #[default]
+    Bottom,
+    Side,
 }
 
 impl Default for Appearance {
@@ -42,6 +54,7 @@ impl Default for Appearance {
         Self {
             theme: "tori-dark".into(),
             legacy_import_path: None,
+            space_strip: SpaceStrip::default(),
         }
     }
 }

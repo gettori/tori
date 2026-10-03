@@ -14,6 +14,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { forgetWorkspace as forgetLayout } from './layout/layoutStore';
 import { forgetWorkspace as forgetPlacement } from './layout/tabPlacement';
 import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
+import SidebarStatus from './panels/LeftSidebar/SidebarStatus';
 import {
   topicSelection,
   selectionRoot,
@@ -191,6 +192,9 @@ type Layout = {
 // that absorbs the slack would drop below its floor, so on a wide display every
 // pane can take almost the whole window.
 const SIDEBAR_MIN = 240;
+// The side rail's width, `--rail-w` in LeftSidebar.module.css. What a hidden
+// sidebar keeps on screen when the space tiles sit in the rail.
+const SPACE_RAIL = 52;
 const EDITOR_MIN = 180;
 const DOCK_MIN = 120;
 // What the work card keeps when the dock is dragged up into it.
@@ -286,6 +290,9 @@ function App() {
   const initial = loadLayout();
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
   const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
+  // Hiding the sidebar hides its tree. With the space tiles in the rail, the
+  // rail stays, since it is the way back to every space.
+  const railOnly = () => !showSidebar() && settings.appearance.spaceStrip === 'side';
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
   const [dock, setDock] = createSignal(initial.dock);
   resetDock(initial.showDock);
@@ -373,7 +380,7 @@ function App() {
   const shared = () =>
     bodyW() -
     px(WORKSPACE_PAD) -
-    px(showSidebar() ? GUTTER : WORKSPACE_PAD) -
+    (showSidebar() ? px(GUTTER) : railOnly() ? px(SPACE_RAIL) : px(WORKSPACE_PAD)) -
     (showTerminal() && showEditor() ? px(GUTTER) : 0);
   // The pane that absorbs the slack is chat, or the editor when chat is hidden
   // (`.pane.editor.fill`).
@@ -435,11 +442,6 @@ function App() {
   const renderedLayout = createMemo<PaneNode>((prev) =>
     reuseNode(prev, env().layout),
   );
-  // Width the topbar rail collapses to when the sidebar is hidden, so the
-  // breadcrumb never slides under the traffic lights. Measured from the real
-  // WindowControls cluster on mount (falls back to ~88px).
-  let railEl: HTMLDivElement | undefined;
-  const [railFallback, setRailFallback] = createSignal(88);
   // Live terminal tabs, surfaced from the terminal area so the sidebar's confirms
   // can count what is actually running in a folder.
   const [liveTabs, setLiveTabs] = createSignal<LiveTab[]>([]);
@@ -1016,22 +1018,6 @@ function App() {
         kind: 'info',
       });
     });
-    // Collapse the rail to the intrinsic width of the top-left cluster (lights
-    // + toggles), so a hidden sidebar still keeps the breadcrumb clear of them.
-    // The cluster fills the rail (flex:1) to right-align the toggles, so its own
-    // box width is the rail width; sum the children (plus gaps + padding) to get
-    // the content width the collapsed rail should reserve.
-    const wc = railEl?.firstElementChild as HTMLElement | null;
-    if (wc) {
-      const cs = getComputedStyle(wc);
-      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-      const gap = parseFloat(cs.columnGap) || 0;
-      const kids = Array.from(wc.children) as HTMLElement[];
-      const content =
-        kids.reduce((s, c) => s + c.offsetWidth, 0) +
-        gap * Math.max(0, kids.length - 1);
-      setRailFallback(Math.ceil(content + padX));
-    }
     initSettings();
     // Tori no longer imports VS Code themes. An install that had one has been
     // migrated to a bundled palette, so say so once, naming the file, rather
@@ -1101,10 +1087,12 @@ function App() {
       <header class="topbar" data-view={view()} onMouseDown={windowDragStart}>
         <div
           class="topbar-rail"
-          ref={railEl}
-          style={{ width: `${showSidebar() ? sidebarW() : railFallback()}px` }}
+          style={{ width: showSidebar() ? `${sidebarW()}px` : undefined }}
         >
-          <WindowControls showSidebar={showSidebar()} />
+          <WindowControls
+            showSidebar={showSidebar()}
+            status={showSidebar() || railOnly() ? undefined : <SidebarStatus />}
+          />
         </div>
         <Toolbar selected={selected()} />
         <Show when={settings.autopilot.available}>
@@ -1129,8 +1117,8 @@ function App() {
       <div class="body" ref={bodyEl}>
         <aside
           class="pane sidebar"
-          classList={{ hidden: !showSidebar() }}
-          style={{ width: `${sidebarW()}px` }}
+          classList={{ hidden: !showSidebar() && !railOnly() }}
+          style={{ width: `${railOnly() ? px(SPACE_RAIL) : sidebarW()}px` }}
           onMouseDown={windowDragStart}
         >
           <div class="pane-body tree-body">
@@ -1139,6 +1127,7 @@ function App() {
               onSelect={setSelected}
               onActiveRoot={setActiveRoot}
               liveTabs={liveTabs()}
+              railOnly={railOnly()}
             />
           </div>
         </aside>
@@ -1154,7 +1143,7 @@ function App() {
           />
         </Show>
 
-        <div class="workspace" classList={{ 'no-sidebar': !showSidebar() }}>
+        <div class="workspace" classList={{ 'no-sidebar': !showSidebar() && !railOnly() }}>
           <Terminal
             selected={selected()}
             onOpenChange={setLiveTabs}

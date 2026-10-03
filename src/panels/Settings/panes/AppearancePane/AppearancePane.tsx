@@ -13,7 +13,7 @@ import {
   withFallback,
   type PaneProps,
 } from "../../components/paneKit";
-import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../../settingsStore";
+import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN, type SpaceStrip } from "../../settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID, type ThemeChoice } from "../../../../theme";
 import { primaryFamily } from "../../../../utils/fontLoad";
 import Select, {
@@ -22,6 +22,11 @@ import Select, {
   type SelectTab,
 } from "../../../../components/Select/Select";
 import styles from "../../Settings.module.css";
+
+const SPACE_STRIPS: SelectOption[] = [
+  { value: "bottom", label: "Bottom strip" },
+  { value: "side", label: "Side rail" },
+];
 
 /** A theme as a row: the id is what settings.json stores, the label is what the
  *  user reads. */
@@ -105,6 +110,16 @@ export default function AppearancePane(props: PaneProps) {
             value={Math.round(zoom() * 100)}
             onChange={(v) => setZoom(v / 100)}
           />
+        </Row>
+        <Row {...props} id="space-strip" label="Space tiles">
+          <div class={styles.control}>
+            <Select
+              options={SPACE_STRIPS}
+              value={settings.appearance.spaceStrip}
+              onChange={(value) => setAppearance({ spaceStrip: value as SpaceStrip })}
+              aria-labelledby={rowLabelId("space-strip")}
+            />
+          </div>
         </Row>
       </Group>
 

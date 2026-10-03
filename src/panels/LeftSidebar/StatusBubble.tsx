@@ -19,10 +19,18 @@ import styles from "./StatusBubble.module.css";
  *
  * `tile` is the space tile's corner: a 30px square has room for one state, so it
  * shows the one that wins and leaves the rest to the title.
+ *
+ * `untitled` drops the per-state titles, for a bubble inside a control whose
+ * own tooltip already says what it holds.
  */
-export default function StatusBubble(props: { rollup: () => Rollup | null; tile?: boolean }) {
+export default function StatusBubble(props: {
+  rollup: () => Rollup | null;
+  tile?: boolean;
+  untitled?: boolean;
+}) {
   const r = createMemo(() => props.rollup());
   const tile = () => props.tile === true;
+  const quiet = () => tile() || props.untitled === true;
   const waiting = () => (r()?.waitingForApproval ?? 0) + (r()?.waitingForAnswer ?? 0);
   const executing = () => r()?.executing ?? 0;
   const idle = () => r()?.idle ?? 0;
@@ -48,25 +56,25 @@ export default function StatusBubble(props: { rollup: () => Rollup | null; tile?
         title={tile() ? tileTitle() : undefined}
       >
         <Show when={shown(0)}>
-          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={tile() ? undefined : waitingTitle()}>
+          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={quiet() ? undefined : waitingTitle()}>
             <QuestionMark animate />
             <Show when={waiting() > 1}>{waiting()}</Show>
           </span>
         </Show>
         <Show when={shown(1)}>
-          <span class={`${styles.statusBubbleItem} ${styles.executing}`} title={tile() ? undefined : "Executing"}>
+          <span class={`${styles.statusBubbleItem} ${styles.executing}`} title={quiet() ? undefined : "Executing"}>
             <WorkingMark animate />
             <Show when={executing() > 1}>{executing()}</Show>
           </span>
         </Show>
         <Show when={shown(2)}>
-          <span class={`${styles.statusBubbleItem} ${styles.idle}`} title={tile() ? undefined : "Idle"}>
+          <span class={`${styles.statusBubbleItem} ${styles.idle}`} title={quiet() ? undefined : "Idle"}>
             <CheckMark animate />
             <Show when={idle() > 1}>{idle()}</Show>
           </span>
         </Show>
         <Show when={shown(3)}>
-          <span class={`${styles.statusBubbleItem} ${styles.running}`} title={tile() ? undefined : "Running"}>
+          <span class={`${styles.statusBubbleItem} ${styles.running}`} title={quiet() ? undefined : "Running"}>
             <Icon icon={CircleDashed} />
             <Show when={running() > 1}>{running()}</Show>
           </span>

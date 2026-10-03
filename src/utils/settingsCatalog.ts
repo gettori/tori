@@ -331,6 +331,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Zoom",
     hint: "Scales the whole interface, on top of the font sizes below. ⌘= and ⌘- move it a step, ⌘0 resets it.",
   },
+  {
+    id: "space-strip",
+    section: "appearance",
+    label: "Space tiles",
+    hint: "A strip along the bottom of the sidebar, or a rail down its left edge that fits any number of spaces.",
+  },
 
   { id: "ui-font-family", section: "typography", label: "UI font family" },
   { id: "ui-font-size", section: "typography", label: "UI font size" },
