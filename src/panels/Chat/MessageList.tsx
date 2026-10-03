@@ -693,7 +693,7 @@ export default function MessageList(props: {
         <For each={held()}>{(m) => <TurnAnchor itemId={m.id} />}</For>
         <div class={styles.work}>
           <button type="button" class={styles.workToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
-            <Icon icon={open() ? ChevronDown : ChevronRight} size={14} aria-hidden="true" />
+            <Icon icon={open() ? ChevronDown : ChevronRight} size={14} class={styles.workChevron} aria-hidden="true" />
             <span class={styles.workText}>
               <span class={styles.workLabel} classList={{ [styles.thinkingLive]: label().live }}>
                 {label().text}
