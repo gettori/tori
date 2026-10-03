@@ -14,6 +14,20 @@
   user-select: none;
 }
 
+/* Fills the viewport, so `.rootSpace` can take whatever the rows leave. */
+.treeContent {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* The space below the last row, which right-clicks as the root. The floor keeps
+   a strip of it under a tree long enough to fill the panel. */
+.rootSpace {
+  flex: 1;
+  min-height: calc(24px * var(--ui-scale));
+}
+
 /* The tree's toolbar: the filter, then the actions as icon buttons. Sticks to
    the top so both stay reachable while the tree scrolls. */
 .treeActions {
