@@ -713,6 +713,10 @@
   cursor: pointer;
 }
 
+.workChevron {
+  flex: none;
+}
+
 .workToggle:hover {
   color: var(--fg-default);
 }
