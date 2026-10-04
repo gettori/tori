@@ -11,9 +11,12 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
 // Highlighting is lazy, asynchronous, and lands in place; nothing here asserts
 // colour. Stubbed so no card test pulls shiki into jsdom.
+const hl = vi.hoisted(() => ({
+  html: vi.fn<(code: string, lang: string, slot?: string) => string | null>(() => null),
+  lines: vi.fn<(code: string, lang: string, slot?: string) => string[] | null>(() => null),
+}));
 vi.mock("./highlight", () => ({
-  cappedHtml: vi.fn(() => null),
-  cappedLines: vi.fn(() => null),
+  createHighlight: () => hl,
   langOfPath: (p: string) => p.split(".").pop() ?? "",
 }));
 

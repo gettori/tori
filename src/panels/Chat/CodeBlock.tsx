@@ -2,7 +2,7 @@ import { Match, Show, Switch, createMemo, createSignal, onCleanup } from "solid-
 import { Check, Code, Copy, Eye } from "lucide-solid";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { copyText } from "../../utils/clipboard";
-import { cappedHtml } from "./highlight";
+import { createHighlight } from "./highlight";
 import { PROSE } from "./chatMarked";
 import Icon from "../../components/Icon/Icon";
 import Diagram from "../../components/Diagram/Diagram";
@@ -34,7 +34,8 @@ export default function CodeBlock(props: { lang: string; code: string }) {
     if (isMermaid()) return rendered() ? "Show diagram source" : "Draw diagram";
     return rendered() ? "Show markdown source" : "Preview markdown";
   };
-  const html = createMemo(() => cappedHtml(props.code, props.lang));
+  const hl = createHighlight();
+  const html = createMemo(() => hl.html(props.code, props.lang));
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(timer));

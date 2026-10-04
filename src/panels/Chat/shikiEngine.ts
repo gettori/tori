@@ -4,6 +4,7 @@
 import { createHighlighterCore, type HighlighterCore, type ThemeRegistration } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { bundledLanguages } from "shiki/langs";
+import { escapeHtml } from "./escapeHtml";
 
 const THEME = "tori-chat";
 
@@ -123,9 +124,6 @@ export function toHtml(code: string, name: string): string {
   return hl!.codeToHtml(code, { lang: name, theme: THEME, structure: "inline" });
 }
 
-const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-const escape = (text: string) => text.replace(/[&<>"]/g, (c) => ESCAPES[c]);
-
 /**
  * The same colours, one string of HTML per line.
  *
@@ -138,6 +136,6 @@ const escape = (text: string) => text.replace(/[&<>"]/g, (c) => ESCAPES[c]);
 export function toLines(code: string, name: string): string[] {
   const { tokens } = hl!.codeToTokens(code, { lang: name, theme: THEME });
   return tokens.map((line) =>
-    line.map((t) => `<span style="color:${t.color ?? "inherit"}">${escape(t.content)}</span>`).join(""),
+    line.map((t) => `<span style="color:${t.color ?? "inherit"}">${escapeHtml(t.content)}</span>`).join(""),
   );
 }

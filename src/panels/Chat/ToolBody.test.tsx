@@ -9,9 +9,12 @@ import type { ToolItem } from "./chatStore";
 // Highlighting is asynchronous and lands in place; every assertion here is
 // about what a body is made of, not what colour it ends up. Stubbed so no test
 // pulls shiki into jsdom.
+const hl = vi.hoisted(() => ({
+  html: vi.fn<(code: string, lang: string, slot?: string) => string | null>(() => null),
+  lines: vi.fn<(code: string, lang: string, slot?: string) => string[] | null>(() => null),
+}));
 vi.mock("./highlight", () => ({
-  cappedHtml: vi.fn(() => null),
-  cappedLines: vi.fn(() => null),
+  createHighlight: () => hl,
   langOfPath: (p: string) => p.split(".").pop() ?? "",
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
@@ -117,12 +120,11 @@ describe("what a closed card costs", () => {
   // exists while the card is open. A transcript of sixty collapsed calls is
   // sixty cards and no highlighting at all.
   it("highlights nothing until someone opens the card", async () => {
-    const { cappedHtml } = await import("./highlight");
     const { container } = renderCard(card({ output: "ls: no such file" }));
-    expect(vi.mocked(cappedHtml)).not.toHaveBeenCalled();
+    expect(hl.html).not.toHaveBeenCalled();
 
     fireEvent.click(container.querySelector("button") as HTMLButtonElement);
-    expect(vi.mocked(cappedHtml)).toHaveBeenCalled();
+    expect(hl.html).toHaveBeenCalled();
   });
 });
 
@@ -155,9 +157,8 @@ describe("a read body", () => {
   });
 
   it("paints the file with the grammar its own name implies", async () => {
-    const { cappedLines } = await import("./highlight");
     mountCard(read({ output: "     1\tfn main() {}\n" }));
-    expect(vi.mocked(cappedLines).mock.calls.map((c) => c[1])).toContain("rs");
+    expect(hl.lines.mock.calls.map((c) => c[1])).toContain("rs");
   });
 
   it("numbers a file that arrived with no gutter from where the summary says", () => {
@@ -234,9 +235,8 @@ describe("an edit body", () => {
   });
 
   it("paints the change with the grammar the file's own name implies", async () => {
-    const { cappedLines } = await import("./highlight");
     mountCard(edit());
-    expect(vi.mocked(cappedLines).mock.calls.map((c) => c[1])).toContain("rs");
+    expect(hl.lines.mock.calls.map((c) => c[1])).toContain("rs");
   });
 });
 
@@ -262,7 +262,6 @@ describe("an argument that is a program", () => {
   });
 
   it("paints the block with the language the call itself named", async () => {
-    const { cappedHtml } = await import("./highlight");
     render(() => (
       <ToolInput
         card={card({ toolKind: "other", input: { language: "python", code: "import os\nprint(1)" } })}
@@ -270,7 +269,7 @@ describe("an argument that is a program", () => {
         onOpen={() => {}}
       />
     ));
-    expect(vi.mocked(cappedHtml).mock.calls.map((c) => c[1])).toContain("python");
+    expect(hl.html.mock.calls.map((c) => c[1])).toContain("python");
   });
 });
 

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { cappedHtml, cappedLines, highlightedHtml, langOfPath, HIGHLIGHT_MAX } from "./highlight";
+import { createRoot } from "solid-js";
+import { createHighlight, langOfPath, HIGHLIGHT_MAX } from "./highlight";
 
 // The real engine is shiki, imported lazily and asynchronously. What is under
 // test here is the policy in front of it, so the engine is a stub that always
-// answers.
+// answers. Node has no Worker, so this is the main-thread path.
 vi.mock("./shikiEngine", () => ({
   init: async () => {},
   canHighlight: () => true,
@@ -13,23 +14,23 @@ vi.mock("./shikiEngine", () => ({
   toLines: (code: string) => code.split("\n").map((l) => `<span>${l}</span>`),
 }));
 
+const hl = createRoot(() => createHighlight());
+
 describe("the highlighting cap", () => {
   it("paints a block once the engine is in, and never one this big", async () => {
-    // The first call is what asks for the engine, so it answers plain.
-    expect(highlightedHtml("const x = 1;", "ts")).toBeNull();
-    await vi.waitFor(() => expect(highlightedHtml("const x = 1;", "ts")).not.toBeNull());
+    await vi.waitFor(() => expect(hl.html("const x = 1;", "ts")).not.toBeNull());
 
-    expect(cappedHtml("const x = 1;", "ts")).toBe("<span>const x = 1;</span>");
+    expect(hl.html("const x = 1;", "ts")).toBe("<span>const x = 1;</span>");
     // 200 KB of anything is pasted output, not code being read, and the pass
     // over it would be the one thing on this path worth feeling.
-    expect(cappedHtml("x".repeat(200_000), "ts")).toBeNull();
+    expect(hl.html("x".repeat(200_000), "ts")).toBeNull();
     expect(HIGHLIGHT_MAX).toBeLessThan(200_000);
   });
 
   it("caps the per-line form on the same terms", async () => {
-    await vi.waitFor(() => expect(cappedLines("a\nb", "ts")).not.toBeNull());
-    expect(cappedLines("a\nb", "ts")).toHaveLength(2);
-    expect(cappedLines("x".repeat(200_000), "ts")).toBeNull();
+    await vi.waitFor(() => expect(hl.lines("a\nb", "ts")).not.toBeNull());
+    expect(hl.lines("a\nb", "ts")).toHaveLength(2);
+    expect(hl.lines("x".repeat(200_000), "ts")).toBeNull();
   });
 });
 
