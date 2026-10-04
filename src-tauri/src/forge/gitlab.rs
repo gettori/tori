@@ -745,7 +745,7 @@ impl Forge for GitLabForge {
         body: &str,
         comments: &[DraftComment],
         head_sha: Option<&str>,
-    ) -> Result<(), ForgeError> {
+    ) -> Result<Option<String>, ForgeError> {
         self.require_token()?;
         if event == ReviewEvent::RequestChanges {
             return Err(ForgeError::Invalid {
@@ -840,7 +840,7 @@ impl Forge for GitLabForge {
                 }
             })?;
         }
-        Ok(())
+        Ok(None)
     }
 
     fn add_review_comment(

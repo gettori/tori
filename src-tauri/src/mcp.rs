@@ -87,7 +87,7 @@ fn tools_list(connect: &Connect) -> Result<Value, (i64, String)> {
     let kind = me["kind"].as_str().unwrap_or("local");
     let tools: Vec<Value> = table::METHODS
         .iter()
-        .filter(|m| m.callers.iter().any(|k| k.name() == kind))
+        .filter(|m| m.callers.iter().any(|k| k.name() == kind) && table::offered(m))
         .map(|m| {
             let mut schema = (m.params)().to_value();
             if let Some(schema) = schema.as_object_mut() {

@@ -428,6 +428,8 @@ export default function ForgeSection() {
 
   const setEnabled = (enabled: boolean) =>
     saveSettings({ ...settings, forge: { ...settings.forge, enabled } });
+  const setPrWatch = (prWatch: boolean) =>
+    saveSettings({ ...settings, forge: { ...settings.forge, prWatch } });
 
   return (
     <section class={styles.section}>
@@ -981,6 +983,20 @@ export default function ForgeSection() {
           <Show when={!connected()}>
             <div class={styles.hint}>Available once a host is connected.</div>
           </Show>
+        </div>
+        <div class={styles.row}>
+          <label class={styles.label}>Let a chat watch a pull request</label>
+          <div class={styles.control}>
+            <Switch
+              aria-label="Let a chat watch a pull request"
+              checked={settings.forge.prWatch}
+              disabled={loaded() && !connected()}
+              onChange={(v) => void setPrWatch(v)}
+            />
+          </div>
+          <div class={styles.hint}>
+            Tori wakes the chat when a check fails, someone comments or the branch conflicts. Each wake is a paid turn.
+          </div>
         </div>
       </div>
 

@@ -162,6 +162,7 @@ import TopicList from "./TopicList";
 import { noteTopics, topicKey, topicSelection, isShellsKey, isReference, tabUnderFolder, type Topic } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
 import BranchLine from "./BranchLine";
+import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
 import {
@@ -2378,6 +2379,25 @@ export default function LeftSidebar(props: {
     }
   };
 
+  const watchItems = (p: Project, u: BranchUnit): MenuItem[] => {
+    const pr = u.branch ? unitStatus(p.path, u.branch)?.pullRequest : null;
+    if (!appSettings.forge.prWatch || !pr || pr.state !== "open") return [];
+    const chats = liveTabsUnder(u.folderPath)
+      .filter((t) => t.kind === "chat" && t.sessionId)
+      .map((t) => {
+        const meta = findSession(t.sessionId!)?.session;
+        return { sessionId: t.sessionId!, name: meta?.name || meta?.title || "Untitled chat" };
+      });
+    const settle = (run: Promise<unknown>) => void run.then(readPrWatches, (e) => setError(String(e)));
+    return [
+      { separator: true },
+      ...prWatchMenu(chats, prWatches(), pr.url, {
+        watch: (session) => settle(invoke("pr_watch_start", { session, project: p.path, number: pr.number })),
+        unwatch: (session) => settle(invoke("pr_watch_stop", { session, url: pr.url })),
+      }),
+    ];
+  };
+
   const unitMenu = (g: Space, p: Project, u: BranchUnit): MenuItem[] => {
     // An incomplete stub (a .bare with no worktree): it can still spawn a worktree
     // (its branches live in .bare), so offer that as well as removal.
@@ -2402,6 +2422,7 @@ export default function LeftSidebar(props: {
         },
       });
     }
+    items.push(...watchItems(p, u));
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Remove worktree", warn: true, onClick: () => openRemoveWorktree(p, u) });
@@ -2714,7 +2735,13 @@ export default function LeftSidebar(props: {
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         meta={
           showPr() || (sync()?.base?.stat?.files ?? 0) > 0
-            ? <BranchLine status={showPr() ? status()! : null} base={sync()?.base} />
+            ? (
+              <BranchLine
+                status={showPr() ? status()! : null}
+                base={sync()?.base}
+                watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
+              />
+            )
             : undefined
         }
         end={
@@ -3011,11 +3038,17 @@ export default function LeftSidebar(props: {
   // slightly earlier than it deserves - not that anything goes unasked.
   // A watched pull request is polled even when its space is not the active one.
   const [prWatchPolled, setPrWatchPolled] = createSignal<readonly PrWatchPolled[]>([]);
-  const readPrWatches = () =>
+  const [prWatches, setPrWatches] = createSignal<readonly PrWatchRow[]>([]);
+  const readPrWatches = () => {
     void invoke<PrWatchPolled[] | null>("pr_watch_polled").then(
       (list) => setPrWatchPolled(list ?? []),
       () => setPrWatchPolled([]),
     );
+    void invoke<PrWatchRow[] | null>("pr_watch_list").then(
+      (list) => setPrWatches(list ?? []),
+      () => setPrWatches([]),
+    );
+  };
   createEffect(on(() => appSettings.forge.prWatch, readPrWatches));
 
   createEffect(() => {

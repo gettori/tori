@@ -938,7 +938,9 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("sessions-store");
     let guard = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    match agents::parser_kind_for(&agent) {
+    // Both stores name a session's file by its id.
+    let id = Path::new(&path).file_stem().map(|s| s.to_string_lossy().into_owned());
+    let deleted = match agents::parser_kind_for(&agent) {
         Some(agents::ParserKind::ClaudeJsonl) => {
             // What this session attached, asked while its transcript is still
             // there to ask. Swept after the delete, so the transcript being
@@ -952,7 +954,11 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
             Ok(())
         }
         None => crate::chat::acp_sessions::forget(Path::new(&path)),
+    };
+    if let (Ok(()), Some(id)) = (&deleted, id) {
+        crate::rpc::pr_watch::session_deleted(&id);
     }
+    deleted
 }
 
 /// Extended-regex pattern for `pgrep -f` (BSD pgrep treats the pattern as ERE

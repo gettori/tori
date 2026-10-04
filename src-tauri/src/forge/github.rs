@@ -1007,7 +1007,7 @@ mutation($threadId:ID!,$body:String!){
         body: &str,
         comments: &[DraftComment],
         head_sha: Option<&str>,
-    ) -> Result<(), ForgeError> {
+    ) -> Result<Option<String>, ForgeError> {
         self.require_token()?;
         // `line`/`side` and never `position`. `position` counts lines from the
         // top of a patch, so it means something different the moment the pull
@@ -1044,8 +1044,8 @@ mutation($threadId:ID!,$body:String!){
             payload["commit_id"] = serde_json::json!(sha);
         }
         let path = format!("/repos/{}/{}/pulls/{number}/reviews", repo.owner, repo.repo);
-        self.send(self.rest("POST", &path, Some(payload)))?;
-        Ok(())
+        let v = self.send(self.rest("POST", &path, Some(payload)))?;
+        Ok(opt_str(&v, "node_id"))
     }
 
     fn add_review_comment(

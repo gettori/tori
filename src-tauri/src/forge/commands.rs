@@ -1407,7 +1407,8 @@ pub fn forge_submit_review(
     body: String,
     comments: Vec<DraftComment>,
 ) -> Result<(), ForgeErrorDto> {
-    Ok(submit_review(&project_path, number, event, &body, &comments, None)?)
+    submit_review(&project_path, number, event, &body, &comments, None)?;
+    Ok(())
 }
 
 /// The review a socket caller submits, the same call the review panel makes,
@@ -1419,7 +1420,7 @@ pub fn submit_review(
     body: &str,
     comments: &[DraftComment],
     head_sha: Option<&str>,
-) -> Result<(), ForgeError> {
+) -> Result<Option<String>, ForgeError> {
     let c = gated_client(project_path)?;
     attempt(&c, |f| f.submit_review(&c.repo, number, event, body, comments, head_sha))
 }

@@ -305,6 +305,9 @@ pub trait Forge: Send + Sync {
     /// `head_sha`, when given, is the commit the comments were drawn against:
     /// the review is anchored to it, or refused where the host cannot anchor to
     /// a commit and its head has moved on.
+    ///
+    /// Answers the posted review's node id where the host gives one, so a
+    /// pull request watch can tell the poster's own review from news.
     fn submit_review(
         &self,
         repo: &RepoRef,
@@ -313,7 +316,7 @@ pub trait Forge: Send + Sync {
         body: &str,
         comments: &[DraftComment],
         head_sha: Option<&str>,
-    ) -> Result<(), ForgeError>;
+    ) -> Result<Option<String>, ForgeError>;
 
     /// Post one line comment on its own, outside any held review.
     ///
@@ -535,7 +538,7 @@ mod tests {
             _body: &str,
             _comments: &[DraftComment],
             _head_sha: Option<&str>,
-        ) -> Result<(), ForgeError> {
+        ) -> Result<Option<String>, ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
         fn add_review_comment(
