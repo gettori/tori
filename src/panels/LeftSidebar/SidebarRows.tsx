@@ -108,7 +108,7 @@ export function BranchRow(props: {
   lead?: JSX.Element;
   end?: JSX.Element;
   /** A second line under the name, for a branch whose pull request has more to
-   *  say than the end cluster has width for (`PrLine`). Absent leaves the row
+   *  say than the end cluster has width for (`BranchLine`). Absent leaves the row
    *  exactly the single-line shape it has always had, which is most rows. */
   meta?: JSX.Element;
   menu?: MenuItem[];

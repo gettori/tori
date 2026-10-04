@@ -18,7 +18,8 @@ import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
 import type { UnitStatus } from "../../utils/forgeTypes";
-import styles from "./PrLine.module.css";
+import type { BaseSync } from "../../utils/gitActions";
+import styles from "./BranchLine.module.css";
 
 // The same two families ForgeChip uses, for the same reason: checks and the
 // verdict can both be green at once, and two identical ticks say nothing about
@@ -33,6 +34,8 @@ const REVIEW_ICON: Record<BadgeTone, LucideIcon> = {
   bad: MessageSquareWarning,
   busy: CircleDotDashed,
 };
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 function prIcon(state: PrChipState): LucideIcon {
   switch (state) {
@@ -49,9 +52,10 @@ function prIcon(state: PrChipState): LucideIcon {
 
 /**
  * A branch row's second line: its pull request, in the words and numbers the
- * first line has never had the width for.
+ * first line has never had the width for, then the size of the branch's diff.
  *
- * **It draws only when there is a pull request**, and that is the whole design.
+ * **It draws only when there is a pull request or a diff**, and that is the
+ * whole design.
  * The chip on line one had to compress "is there a PR, what state, how are the
  * checks, what did review say" into three 13px glyphs, because three glyphs is
  * what a 260px rail leaves once the name has had its share. Given a line of its
@@ -64,10 +68,17 @@ function prIcon(state: PrChipState): LucideIcon {
  * what a failing check looks like. What this adds is the counts behind those
  * tones, which the tone alone throws away.
  */
-export default function PrLine(props: {
-  status: UnitStatus;
+export default function BranchLine(props: {
+  status: UnitStatus | null;
+  /** The base the branch is measured against, whose `stat` is the diff a pull
+   *  request of it shows. */
+  base?: BaseSync | null;
 }) {
-  const pr = () => props.status.pullRequest;
+  const pr = () => props.status?.pullRequest ?? null;
+  const stat = () => {
+    const s = props.base?.stat;
+    return s && s.files > 0 ? s : null;
+  };
   const badges = () => forgeBadges(props.status);
   // RFC 3339 on the wire, epoch seconds here, and nothing at all if the host
   // sent something unparseable: a row that prints `NaNd` is worse than a row
@@ -98,7 +109,7 @@ export default function PrLine(props: {
     if (!p) return "none";
     return p.state === "open" ? (p.isDraft ? "draft" : "open") : p.state;
   };
-  const checks = () => props.status.checks;
+  const checks = () => props.status!.checks;
   const passed = () => checks().total - checks().failing;
 
   // One hover target for the whole line rather than one per fact, the same
@@ -109,15 +120,21 @@ export default function PrLine(props: {
   // The title leads, because it is the one thing the line itself cannot show:
   // `#428` is on screen already and the sentence behind it is not. Everything
   // after it is the same facts the glyphs carry, spelled out.
+  const diffLine = () => {
+    const s = stat()!;
+    return `${plural(s.files, "file")} changed against ${props.base!.name}, +${s.insertions} -${s.deletions}`;
+  };
   const storyLead = () => {
     const p = pr();
-    return p ? [`#${p.number} ${p.title}`] : [];
+    if (p) return [`#${p.number} ${p.title}`];
+    return stat() ? [diffLine()] : [];
   };
   const storyRest = () => {
     const p = pr();
     if (!p) return [];
     const b = badges();
     return [
+      stat() ? diffLine() : "",
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       endedAt() !== null ? `${pr()!.state === "merged" ? "Merged" : "Closed"} ${compactAgo(endedAt()!)}` : "",
       b.review?.title,
@@ -163,9 +180,20 @@ export default function PrLine(props: {
     </>
   );
 
+  const diff = (s: () => NonNullable<BaseSync["stat"]>) => (
+    <>
+      <span class={styles.item} data-diff-files={s().files}>
+        {plural(s().files, "file")}
+      </span>
+      <span class={styles.item} data-diff-lines>
+        <span class={styles.good}>{`+${s().insertions}`}</span>/<span class={styles.bad}>{`-${s().deletions}`}</span>
+      </span>
+    </>
+  );
+
   return (
-    <Show when={pr()}>
-      {(p) => (
+    <Show when={pr() || stat()}>
+      {(
         // A span, not a button. The line reports; it is not a way in. The
         // Pull Requests panel is reached from the command palette and from
         // the editor's own right-panel tabs, so a control per branch row here
@@ -173,11 +201,12 @@ export default function PrLine(props: {
         // a list the keyboard cannot otherwise walk.
         <Tooltip<HTMLSpanElement>
           as="span"
-          class={styles.prLine}
-          data-pr-line
+          class={styles.line}
+          data-pr-line={pr() ? "" : undefined}
           label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
         >
-          {facts(p)}
+          <Show when={pr()}>{(p) => facts(p)}</Show>
+          <Show when={stat()}>{(s) => diff(s)}</Show>
         </Tooltip>
       )}
     </Show>

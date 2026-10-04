@@ -128,7 +128,7 @@ export function forgeChip(input: {
     // and a row that says otherwise is pointing at a button that would fail.
     const ready = (input.offBase ?? 0) > 0 && input.hasUpstream === true;
     // **Neither half draws.** A branch with a pull request grows a whole
-    // second line for it (`PrLine`), so the absence of one reports itself by
+    // second line for it (`BranchLine`), so the absence of one reports itself by
     // the absence of the line, and any marker here is a glyph on the majority
     // of rows in the column saying what the column already says.
     //

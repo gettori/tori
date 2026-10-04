@@ -79,6 +79,10 @@ export type BaseSync = {
   ahead: number;
   behind: number;
   conflicts: string[] | null;
+  /** The branch's own diff against the base, three dots: what a pull request
+   *  of it shows. Null when git would not answer. Optional only so a fixture
+   *  may omit it; the backend always sends it. */
+  stat?: { files: number; insertions: number; deletions: number } | null;
 };
 
 /** The last fetch that touched a root, from the `git://fetch-*` events.
