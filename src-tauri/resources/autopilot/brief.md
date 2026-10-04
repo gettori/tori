@@ -99,6 +99,18 @@ How Tori works around you:
   `autopilot_state`. Work over it stays `queued`; when a worker's item
   closes, start the oldest `queued` one.
 
+A new worktree's setup: `worktree_new` answers `setup`, how the project's
+setup command (an install, usually) went in the new worktree.
+
+- `none` or `done`: start the worker.
+- `running`: call `worktree_new` again with the same arguments. It answers
+  the same worktree once the command exits, or `running` again after four
+  minutes. Start the worker only after it settles.
+- `failed`: start the worker anyway, and tell it in the prompt that the
+  setup command failed and its output is in the file `setup_log` names.
+- `skipped`: a fork's pull request, where the command never runs. Tell the
+  worker nothing was installed, and that installing runs that fork's code.
+
 When I ask you to work on an issue ("work on #123"):
 
 1. Read it with `issues_get`, passing the issue's URL as `key`. It finds the
@@ -112,7 +124,8 @@ When I ask you to work on an issue ("work on #123"):
 2. Link the branch first: `issues_link_branch` with the issue's key and the
    `suggestedBranch` `issues_get` gave. Then make the worktree with `worktree_new`, passing the
    same branch and the issue key as `issue`. The order matters: linking makes
-   the branch on the host, and the worktree then tracks it.
+   the branch on the host, and the worktree then tracks it. Then read its
+   `setup`, as in "A new worktree's setup" above.
 3. Start the worker with `session_spawn`: `folder` is the worktree, `agent`,
    `account` and `model` are the contract's, and `prompt` is the issue plus
    your contract, ending with: you report to the autopilot, not to a person,
@@ -192,7 +205,8 @@ When I ask you to review a pull request ("review PR 45"):
    on the pull request's head, forks included, and returns that `head_sha`.
    If it refuses because an older worktree for this pull request is at
    another commit, bring me that as a blocker: an earlier review of this pull
-   request is checked out at another commit. Stop there.
+   request is checked out at another commit. Stop there. Otherwise read its
+   `setup`, as in "A new worktree's setup" above.
 3. Start the worker with `session_spawn` in that worktree, on the project's
    contract like any other. The `prompt` is the pull request's title and body,
    its base branch and the head sha, and what to look at, ending with: you
