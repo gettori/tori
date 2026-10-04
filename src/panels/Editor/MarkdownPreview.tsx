@@ -1,8 +1,9 @@
-import { For, createEffect, createMemo, createResource, Show } from "solid-js";
+import { For, createEffect, createResource, createSignal, on, onCleanup, Show } from "solid-js";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { marked, type Token } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceWork } from "../../utils/perfTrace";
+import { lexPreview } from "./previewLexer";
 import { bufferTextOf, handOff, takeHandOff, scrollFraction } from "../../utils/liveBuffer";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, type NavTarget, type OpenInEditor } from "../../utils/events";
 import { linkTarget } from "../Chat/links";
@@ -11,6 +12,13 @@ import PreviewCode from "./PreviewCode";
 import styles from "./MarkdownPreview.module.css";
 
 type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
+type Block = { kind: "prose"; tokens: Token[]; key: string } | { kind: "code"; lang: string; code: string; key: string };
+
+// Per frame, for turning blocks into DOM: a megabyte document is thousands of
+// blocks, and doing them all at once held the first paint for over 400ms. The
+// slice is sized from what the last one cost, DOM included.
+const SLICE_MS = 8;
+const FIRST_SLICE = 16;
 
 function dirOf(path: string): string {
   const i = path.lastIndexOf("/");
@@ -58,32 +66,124 @@ export default function MarkdownPreview(props: { path: string }) {
   );
   const text = () => live() ?? disk();
 
-  const segments = createMemo<Segment[]>(() => {
-    const t = text();
-    if (t === undefined) return [];
-    return traceWork("md-preview", () => segmentsOf(t));
-  });
+  // One lex at a time: while a large document is in the worker, only the
+  // newest text waits behind it, so typing does not stack up passes.
+  const [blocks, setBlocks] = createSignal<Block[] | undefined>();
+  let lexing = false;
+  let queued: string | undefined;
+  const lex = (t: string) => {
+    const tokens = lexPreview(t);
+    if (Array.isArray(tokens)) return setBlocks(blocksOf(tokens));
+    lexing = true;
+    void tokens.then((toks) => {
+      lexing = false;
+      if (queued === undefined) return setBlocks(blocksOf(toks));
+      const next = queued;
+      queued = undefined;
+      lex(next);
+    });
+  };
+  createEffect(
+    on(text, (t) => {
+      if (t === undefined) return setBlocks(undefined);
+      if (lexing) queued = t;
+      else lex(t);
+    }),
+  );
 
-  function segmentsOf(t: string): Segment[] {
-    const dir = dirOf(props.path);
-    const segs: Segment[] = [];
+  function blocksOf(tokens: Token[]): Block[] {
+    const out: Block[] = [];
+    // Two identical blocks need two segments, or `For` draws the object once.
+    const seen = new Map<string, number>();
+    const unique = (key: string) => {
+      const n = seen.get(key) ?? 0;
+      seen.set(key, n + 1);
+      return `${n}\0${key}`;
+    };
     let run: Token[] = [];
     const flush = () => {
       if (!run.length) return;
-      segs.push({ kind: "prose", html: resolveImages(sanitizeHtml(marked.parser(run)), dir) });
+      out.push({ kind: "prose", tokens: run, key: unique("p\0" + run.map((r) => r.raw).join("")) });
       run = [];
     };
-    for (const token of marked.lexer(t)) {
+    for (const token of tokens) {
       if (token.type === "code") {
         flush();
-        segs.push({ kind: "code", lang: (token.lang ?? "").trim().split(/\s+/)[0], code: token.text });
+        const lang = (token.lang ?? "").trim().split(/\s+/)[0];
+        out.push({ kind: "code", lang, code: token.text, key: unique(`c\0${lang}\0${token.text}`) });
       } else {
         run.push(token);
       }
     }
     flush();
-    return segs;
+    return out;
   }
+
+  // Segments keyed by their source, carried across renders: typing into a big
+  // document re-sanitizes only the blocks that changed, and `For` keeps the DOM
+  // of every block whose object comes back the same.
+  let made = new Map<string, Segment>();
+  const [segments, setSegments] = createSignal<Segment[]>([]);
+  const [renderedFor, setRenderedFor] = createSignal<string | null>(null);
+  let job: number | undefined;
+  onCleanup(() => job !== undefined && cancelAnimationFrame(job));
+
+  createEffect(
+    on(blocks, (all) => {
+      if (job !== undefined) cancelAnimationFrame(job);
+      job = undefined;
+      if (!all) return setSegments([]);
+      const path = props.path;
+      const dir = dirOf(path);
+      // A new document fills in from the top as it goes; an edit to the one on
+      // screen swaps in whole, so typing never blanks the text below the caret.
+      const fresh = renderedFor() !== path;
+      if (fresh) setSegments([]);
+      const next = new Map<string, Segment>();
+      const out: Segment[] = [];
+      let i = 0;
+      let count = FIRST_SLICE;
+      let last: number | undefined;
+      const step = (now?: number) => {
+        job = undefined;
+        // A frame that came late was spent laying out the last slice, which
+        // no timer in here can see, so the next slice shrinks to match.
+        if (now !== undefined && last !== undefined && now - last > 2 * SLICE_MS + 17) {
+          count = Math.max(1, Math.floor((count * 17) / (now - last)));
+        }
+        last = now;
+        const t0 = performance.now();
+        const stop = Math.min(all.length, i + count);
+        traceWork("md-preview-slice", () => {
+          for (; i < stop; i++) {
+            const b = all[i];
+            const seg =
+              made.get(b.key) ??
+              (b.kind === "prose"
+                ? { kind: "prose" as const, html: resolveImages(sanitizeHtml(marked.parser(b.tokens)), dir) }
+                : { kind: "code" as const, lang: b.lang, code: b.code });
+            next.set(b.key, seg);
+            out.push(seg);
+          }
+          if (fresh && i < all.length) setSegments(out.slice());
+        });
+        const perBlock = (performance.now() - t0) / Math.max(1, count);
+        count = Math.max(1, Math.min(count * 2, Math.floor(SLICE_MS / Math.max(perBlock, 0.01))));
+        if (i < all.length) {
+          job = requestAnimationFrame(step);
+          return;
+        }
+        made = next;
+        traceWork("md-preview-slice", () => setSegments(out));
+        setRenderedFor(path);
+      };
+      if (all.length) step();
+      else {
+        setSegments([]);
+        setRenderedFor(path);
+      }
+    }),
+  );
 
   let box!: HTMLDivElement;
   // The path this view has already positioned itself for. Per path rather than
@@ -92,12 +192,12 @@ export default function MarkdownPreview(props: { path: string }) {
   let placedFor: string | null = null;
 
   createEffect(() => {
-    if (text() === undefined || placedFor === props.path) return;
+    if (renderedFor() !== props.path || placedFor === props.path) return;
     placedFor = props.path;
     const fraction = takeHandOff(props.path, "preview");
     if (fraction === undefined) return;
-    // After the browser has laid the rendered HTML out: until it has, the box
-    // has no scrollable height for a fraction to point into.
+    // After the last slice is in and laid out: until then, the box has no
+    // scrollable height for a fraction to point into.
     requestAnimationFrame(() => {
       const max = box.scrollHeight - box.clientHeight;
       if (max <= 0) return;

@@ -4,16 +4,13 @@
 import { createSignal, onCleanup } from "solid-js";
 import { createQueue, type Answer, type Form, type Reply, type Request } from "./highlightQueue";
 import { escapeHtml } from "./escapeHtml";
+import { startWorker } from "../../utils/startWorker";
 
 type Engine = typeof import("./shikiEngine");
 
 // Above this a block is pasted output, not code being read, and a TextMate
 // pass over it would be the one thing on the streaming path worth feeling.
 export const HIGHLIGHT_MAX = 100_000;
-
-// Longer than a cold start of shiki's core on a slow machine, so only a worker
-// that is never coming answers to it.
-const READY_MS = 10_000;
 
 // `worker` covers one still starting: what is posted before it is up waits in
 // its message queue.
@@ -27,27 +24,15 @@ function start(): void {
   // No Worker at all is the test environment, not a failure worth a warning.
   if (typeof Worker === "undefined") return void setMode("main");
   setMode("worker");
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const fail = (why: unknown) => {
-    if (mode() === "main") return;
-    clearTimeout(timer);
-    worker?.terminate();
-    worker = null;
-    console.warn("[highlight] the syntax worker did not start; code will highlight on the main thread", why);
-    setMode("main");
-  };
-  try {
-    worker = new Worker(new URL("./shikiWorker.ts", import.meta.url), { type: "module" });
-  } catch (e) {
-    return fail(e);
-  }
-  timer = setTimeout(() => fail("no ready message"), READY_MS);
-  worker.addEventListener("error", (e) => fail(e.message || "error event"));
-  worker.addEventListener("message", ({ data }: MessageEvent) => {
-    if (data.ready) clearTimeout(timer);
-    else if (data.failed) fail(data.failed);
-    else queue.receive(data as Reply);
-  });
+  worker = startWorker(
+    () => new Worker(new URL("./shikiWorker.ts", import.meta.url), { type: "module" }),
+    (data) => queue.receive(data as Reply),
+    (why) => {
+      worker = null;
+      console.warn("[highlight] the syntax worker did not start; code will highlight on the main thread", why);
+      setMode("main");
+    },
+  );
 }
 
 const noGrammar = new Set<string>();
