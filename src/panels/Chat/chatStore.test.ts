@@ -17,6 +17,7 @@ import {
   hasEarlier,
   initialChat,
   isRunning,
+  limitStopOf,
   modePending,
   laneStrip,
   modeRefusal,
@@ -2611,5 +2612,57 @@ describe("subagent lanes", () => {
     expect(s.turns["t2"]!.agentInitiated).toBe(true);
     expect(s.turnsCompleted).toBe(2);
     expect(s.totalCostUsd).toBeCloseTo(0.02);
+  });
+});
+
+describe("a usage limit stop", () => {
+  const RESET = 1_788_779_400;
+  const rejected: ChatEvent = {
+    type: "rateLimit",
+    sessionId: "s1",
+    status: "rejected",
+    resetsAt: RESET,
+    limitType: "five_hour",
+    utilization: null,
+    windows: [],
+    overageStatus: "rejected",
+  };
+  afterEach(() => vi.useRealTimers());
+  const before = () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(RESET * 1000 - 60_000);
+  };
+
+  it("is recorded when an errored turn follows a rejected reading", () => {
+    before();
+    const s = replay([FIXTURE[0], turnStarted("t1"), rejected, turnDone("t1", "errored")]);
+    expect(s.limitStop).toEqual({ turnId: "t1", resetsAt: RESET });
+  });
+
+  it("is not a stop when the reset is already behind the turn's end", () => {
+    expect(limitStopOf(initialChat("s1").rateLimit, "t1", 0)).toBeNull();
+    const rl = { status: "rejected", resetsAt: RESET, limitType: null, utilization: null, windows: [], overageStatus: null };
+    expect(limitStopOf(rl, "t1", RESET * 1000)).toBeNull();
+    expect(limitStopOf(rl, "t1", RESET * 1000 - 1)).toEqual({ turnId: "t1", resetsAt: RESET });
+  });
+
+  it("clears once anything is sent again", () => {
+    before();
+    const s = replay([FIXTURE[0], turnStarted("t1"), rejected, turnDone("t1", "errored")]);
+    pushUserTurn(s, [{ type: "text", text: "go on" }]);
+    expect(s.limitStop).toBeNull();
+  });
+
+  it("releases what the limit held once the continue's turn completes", () => {
+    before();
+    const s = replay([FIXTURE[0], turnStarted("t1"), rejected]);
+    enqueue(s, "after the limit");
+    applyEvent(s, turnDone("t1", "errored"));
+    expect(pendingFlush(s)).toBeNull();
+    s.continuing = true;
+    pushUserTurn(s, [{ type: "text", text: "continue" }]);
+    applyEvent(s, turnStarted("t2"));
+    applyEvent(s, turnDone("t2", "completed"));
+    expect(pendingFlush(s)?.text).toBe("after the limit");
   });
 });
