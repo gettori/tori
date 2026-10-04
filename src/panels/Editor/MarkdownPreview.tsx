@@ -1,9 +1,9 @@
 import { For, createEffect, createResource, createSignal, on, onCleanup, Show } from "solid-js";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { marked, type Token } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
-import { traceWork } from "../../utils/perfTrace";
-import { lexPreview } from "./previewLexer";
+import { traceNote, traceWork } from "../../utils/perfTrace";
+import { lexInSteps, type PreviewBlock } from "./previewBlocks";
+import { marked } from "marked";
 import { bufferTextOf, handOff, takeHandOff, scrollFraction } from "../../utils/liveBuffer";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, type NavTarget, type OpenInEditor } from "../../utils/events";
 import { linkTarget } from "../Chat/links";
@@ -12,7 +12,6 @@ import PreviewCode from "./PreviewCode";
 import styles from "./MarkdownPreview.module.css";
 
 type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
-type Block = { kind: "prose"; tokens: Token[]; key: string } | { kind: "code"; lang: string; code: string; key: string };
 
 // Per frame, for turning blocks into DOM: a megabyte document is thousands of
 // blocks, and doing them all at once held the first paint for over 400ms. The
@@ -66,59 +65,6 @@ export default function MarkdownPreview(props: { path: string }) {
   );
   const text = () => live() ?? disk();
 
-  // One lex at a time: while a large document is in the worker, only the
-  // newest text waits behind it, so typing does not stack up passes.
-  const [blocks, setBlocks] = createSignal<Block[] | undefined>();
-  let lexing = false;
-  let queued: string | undefined;
-  const lex = (t: string) => {
-    const tokens = lexPreview(t);
-    if (Array.isArray(tokens)) return setBlocks(blocksOf(tokens));
-    lexing = true;
-    void tokens.then((toks) => {
-      lexing = false;
-      if (queued === undefined) return setBlocks(blocksOf(toks));
-      const next = queued;
-      queued = undefined;
-      lex(next);
-    });
-  };
-  createEffect(
-    on(text, (t) => {
-      if (t === undefined) return setBlocks(undefined);
-      if (lexing) queued = t;
-      else lex(t);
-    }),
-  );
-
-  function blocksOf(tokens: Token[]): Block[] {
-    const out: Block[] = [];
-    // Two identical blocks need two segments, or `For` draws the object once.
-    const seen = new Map<string, number>();
-    const unique = (key: string) => {
-      const n = seen.get(key) ?? 0;
-      seen.set(key, n + 1);
-      return `${n}\0${key}`;
-    };
-    let run: Token[] = [];
-    const flush = () => {
-      if (!run.length) return;
-      out.push({ kind: "prose", tokens: run, key: unique("p\0" + run.map((r) => r.raw).join("")) });
-      run = [];
-    };
-    for (const token of tokens) {
-      if (token.type === "code") {
-        flush();
-        const lang = (token.lang ?? "").trim().split(/\s+/)[0];
-        out.push({ kind: "code", lang, code: token.text, key: unique(`c\0${lang}\0${token.text}`) });
-      } else {
-        run.push(token);
-      }
-    }
-    flush();
-    return out;
-  }
-
   // Segments keyed by their source, carried across renders: typing into a big
   // document re-sanitizes only the blocks that changed, and `For` keeps the DOM
   // of every block whose object comes back the same.
@@ -129,34 +75,54 @@ export default function MarkdownPreview(props: { path: string }) {
   onCleanup(() => job !== undefined && cancelAnimationFrame(job));
 
   createEffect(
-    on(blocks, (all) => {
+    on(text, (t) => {
       if (job !== undefined) cancelAnimationFrame(job);
       job = undefined;
-      if (!all) return setSegments([]);
+      if (t === undefined) return setSegments([]);
       const path = props.path;
       const dir = dirOf(path);
       // A new document fills in from the top as it goes; an edit to the one on
       // screen swaps in whole, so typing never blanks the text below the caret.
       const fresh = renderedFor() !== path;
       if (fresh) setSegments([]);
+      // Lexed in steps first, inside the same slices: a megabyte in one pass
+      // held a frame for 90ms.
+      const lexing = lexInSteps(t);
+      let all: PreviewBlock[] | null = null;
       const next = new Map<string, Segment>();
       const out: Segment[] = [];
       let i = 0;
       let count = FIRST_SLICE;
       let last: number | undefined;
+      let slices = 0;
+      const began = performance.now();
       const step = (now?: number) => {
         job = undefined;
         // A frame that came late was spent laying out the last slice, which
         // no timer in here can see, so the next slice shrinks to match.
         if (now !== undefined && last !== undefined && now - last > 2 * SLICE_MS + 17) {
-          count = Math.max(1, Math.floor((count * 17) / (now - last)));
+          count = Math.max(1, Math.floor(count / 2));
         }
+        slices++;
         last = now;
+        if (!all) {
+          const end = performance.now() + SLICE_MS;
+          traceWork("md-preview-lex", () => {
+            let r = lexing.next();
+            while (!r.done && performance.now() < end) r = lexing.next();
+            if (r.done) all = r.value;
+          });
+          if (!all) {
+            job = requestAnimationFrame(step);
+            return;
+          }
+        }
+        const blocks = all;
         const t0 = performance.now();
-        const stop = Math.min(all.length, i + count);
+        const stop = Math.min(blocks.length, i + count);
         traceWork("md-preview-slice", () => {
           for (; i < stop; i++) {
-            const b = all[i];
+            const b = blocks[i];
             const seg =
               made.get(b.key) ??
               (b.kind === "prose"
@@ -165,23 +131,20 @@ export default function MarkdownPreview(props: { path: string }) {
             next.set(b.key, seg);
             out.push(seg);
           }
-          if (fresh && i < all.length) setSegments(out.slice());
+          if (fresh && i < blocks.length) setSegments(out.slice());
         });
         const perBlock = (performance.now() - t0) / Math.max(1, count);
         count = Math.max(1, Math.min(count * 2, Math.floor(SLICE_MS / Math.max(perBlock, 0.01))));
-        if (i < all.length) {
+        if (i < blocks.length) {
           job = requestAnimationFrame(step);
           return;
         }
         made = next;
         traceWork("md-preview-slice", () => setSegments(out));
         setRenderedFor(path);
+        traceNote("preview-render", { blocks: blocks.length, slices, ms: Math.round(performance.now() - began) });
       };
-      if (all.length) step();
-      else {
-        setSegments([]);
-        setRenderedFor(path);
-      }
+      step();
     }),
   );
 
