@@ -144,9 +144,22 @@ export async function installTrace(): Promise<void> {
     const span = current;
     return {
       args: tagged(args, id),
-      done: () => {
-        if (span) span.invokes.push({ id, name: cmd, call: round(call - span.start), dur: round(wall() - call) });
-        write(`{"t":"invoke","id":${id},"name":${JSON.stringify(cmd)},"call":${call},"done":${wall()}}`);
+      done: (result) => {
+        const answered = wall();
+        if (span) span.invokes.push({ id, name: cmd, call: round(call - span.start), dur: round(answered - call) });
+        // Sizing re-serializes the answer on the main thread, so its cost is
+        // written down and the report takes it back out of the frame.
+        const t0 = performance.now();
+        const size = result === undefined ? 0 : (JSON.stringify(result)?.length ?? 0);
+        const sizing = performance.now() - t0;
+        write(
+          `{"t":"invoke","id":${id},"name":${JSON.stringify(cmd)},"call":${call},"done":${answered},` +
+            `"size":${size},"sizing":${round(sizing)}}`,
+        );
+        if (size >= LARGE_INVOKE) {
+          noteWork(`invoke:${cmd}`, 0);
+          noteWork("trace-sizing", sizing);
+        }
       },
     };
   });
@@ -169,7 +182,9 @@ export async function installTrace(): Promise<void> {
 
   // Only when asked. An ordinary traced run measures what the user does; the
   // driver exists to make the degraded state reproducible without one.
-  if (config.recipe) {
+  if (config.recipe === "work") {
+    void import("./perfWorkRecipe").then((m) => m.startWorkRecipe());
+  } else if (config.recipe) {
     void import("./perfRecipe").then((m) => m.startRecipe(config.recipe as string));
   }
 }
@@ -341,6 +356,97 @@ export function traceChatOpen(session: string): { replied(): void; folded(): voi
       );
     },
   };
+}
+
+// The parse of an invoke's answer happens inside Tauri, before the promise
+// resolves, so it has no seam; an answer this big gets its frame bracketed.
+const LARGE_INVOKE = 64 * 1024;
+
+const frameWork = new Map<string, number>();
+let lastFrame: number | null = null;
+let looping = false;
+let held = false;
+let quiet = 0;
+let control: number[] = [];
+
+// Long enough that a burst of typing keeps one loop alive between keys.
+const QUIET_FRAMES = 120;
+
+function noteWork(name: string, ms: number): void {
+  frameWork.set(name, (frameWork.get(name) ?? 0) + ms);
+  startLoop();
+}
+
+function startLoop(): void {
+  if (looping) return;
+  looping = true;
+  lastFrame = null;
+  quiet = 0;
+  requestAnimationFrame(tick);
+}
+
+/** One line per frame that ran a seam: the gap from the frame before is the
+ *  time the main thread could not paint. A loop started by the seam itself has
+ *  no frame before, so that one is written `null`, never a guess. */
+function tick(now: number): void {
+  const gap = lastFrame === null ? null : round(now - lastFrame);
+  lastFrame = now;
+  if (frameWork.size) {
+    const seams = Object.fromEntries([...frameWork].map(([k, v]) => [k, round(v)]));
+    write(`{"t":"work","frame":${gap},"seams":${JSON.stringify(seams)}}`);
+    frameWork.clear();
+    quiet = 0;
+  } else {
+    if (gap !== null) control.push(gap);
+    quiet++;
+  }
+  if (!held && quiet > QUIET_FRAMES) {
+    looping = false;
+    traceFrameControl("idle");
+    return;
+  }
+  requestAnimationFrame(tick);
+}
+
+/** Time a piece of main-thread work by name. Outside a trace this is the call
+ *  itself and one comparison. */
+export function traceWork<T>(name: string, fn: () => T): T {
+  if (!on) return fn();
+  const t0 = performance.now();
+  try {
+    return fn();
+  } finally {
+    noteWork(name, performance.now() - t0);
+  }
+}
+
+/** The same for work that awaits: the seam reads wall time, and the frame line
+ *  is what says how much of it blocked. */
+export async function traceAsyncWork<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  if (!on) return fn();
+  const t0 = performance.now();
+  try {
+    return await fn();
+  } finally {
+    noteWork(name, performance.now() - t0);
+  }
+}
+
+/** Keep the frame loop running between seams, so a pass has a frame before its
+ *  first one and a control row of frames that ran nothing. */
+export function holdFrames(hold: boolean): void {
+  held = hold;
+  if (hold && on) startLoop();
+}
+
+/** Write the frames that ran no seam since the last call: the same-pass control
+ *  row a seam's frame is read against. */
+export function traceFrameControl(label: string): void {
+  if (!on || !control.length) return;
+  const v = control.sort((a, b) => a - b);
+  const at = (q: number) => v[Math.min(v.length - 1, Math.floor(v.length * q))];
+  write(`{"t":"frames","label":${JSON.stringify(label)},"n":${v.length},"median":${at(0.5)},"p90":${at(0.9)}}`);
+  control = [];
 }
 
 /** Drains the buffer, for a driver that is about to close the window. */

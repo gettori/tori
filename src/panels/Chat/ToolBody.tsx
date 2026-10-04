@@ -4,6 +4,7 @@ import { BODY_ROWS, hitRows, pathRows, prettyJson, readLines, stripAnsi } from "
 import { toolDiffBody, type DiffHunk, type DiffRow } from "./toolDiff";
 import { toolDigest, toolPaths, type ToolRenderer } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
+import { traceWork } from "../../utils/perfTrace";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import styles from "./Chat.module.css";
 
@@ -227,7 +228,9 @@ export function ToolDiff(props: { cards: ToolItem[]; onOpen: OpenPath }) {
   // writes to one file are three parts of one change, and giving each its own
   // block is the thing folding them was supposed to stop.
   const body = createMemo(() => {
-    const bodies = props.cards.map((c) => toolDiffBody(c.patch, c.input)).filter((b) => b !== null);
+    const bodies = traceWork("tool-diff", () =>
+      props.cards.map((c) => toolDiffBody(c.patch, c.input)).filter((b) => b !== null),
+    );
     if (!bodies.length) return null;
     return { hunks: bodies.flatMap((b) => b.hunks), computed: bodies.some((b) => b.computed) };
   });
