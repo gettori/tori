@@ -1,7 +1,7 @@
 ---
 summary: an axe baseline covers only the props and mode the fixture renders, and a fixture is usually richer than the caller
 status: current
-updated: 2026-08-12
+updated: 2026-10-04
 source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/tori, branch `100-migrate-seven-conplex-dialogs`, issue #100, part of #93); `src/components/Dialogs/SpaceDialog.test.tsx`, `PickerModal.test.tsx`; PR #125"
 ---
 
@@ -17,6 +17,8 @@ Seven dialogs got an axe assertion each, and the plan deliberately **measured** 
 
 Neither was caught by the gate. The first was caught by a later test that happened to render both modes; the second by a self-review question about which callers actually pass which props.
 
+The same shape turned up in the performance budgets ([[concept_perf_budgets]]), on a different axis. The `chat_history` bytes gate first called `read_history` and `cut_outputs` itself, so it pinned what those two functions return and would have stayed green had the command stopped calling the cut. It now measures `history_reply`, the function the command calls. And the warm sidebar git row sends the batch no rows because the webview only asks about rows it has not drawn: that rule is copied into the test, not measured, so a change to it would not move the row. A gate that rebuilds the caller's logic is measuring its own copy.
+
 ## Why
 
 A test does not sample a component, it *constructs* one. Every prop the fixture supplies is a choice, and the defaults a test picks are chosen for the test's convenience: something to type into, something with a visible name to assert on, the mode that needs least setup. Those are exactly the choices that make a component easiest to check, which is a different objective from the choices a caller makes.
@@ -30,6 +32,7 @@ This is the same failure as [[lesson_a_probe_that_measures_too_early_reports_no_
 - **Enumerate the callers before trusting a baseline.** Grep the call sites and compare the props they pass against the props the fixture passes. A prop that only ever appears in tests is the finding.
 - **Render every branch the component has, not the convenient one.** A `mode`, a `kind`, an empty-vs-populated collection: each is a separate baseline. One assertion per state is cheaper than one violation discovered at migration time and misattributed.
 - **Add the caller's own configuration as an explicit case,** named for what it is: `PickerModal.test.tsx` now has "has no accessibility violations as the callers actually render it", which is worth its awkward title because the title is the point.
+- **Measure through the function the caller calls,** not a reassembly of its parts. If the caller wraps state the test cannot build, extract the body into a function both call, as `history_reply` was.
 - **Mutate the fix and watch the named test die.** Both of these were confirmed by removing the `aria-label` fallback and checking that the caller-shaped assertion, and only it, went red. Same discipline as [[lesson_a_test_that_passes_against_the_broken_code]].
 
 ## Related
@@ -39,4 +42,5 @@ This is the same failure as [[lesson_a_probe_that_measures_too_early_reports_no_
 - [[lesson_a_probe_that_measures_too_early_reports_no_problem]] - the same failure on the time axis rather than the coverage axis
 - [[lesson_a_gate_that_cannot_fail_is_not_a_gate]] - the family both belong to
 - [[lesson_a_test_that_passes_against_the_broken_code]] - the mutation discipline that confirms a fix is actually pinned
+- [[concept_perf_budgets]] - the same failure in a byte and process count gate
 - [[component_picker_modal]] - the component whose green was measured on markup the app never renders

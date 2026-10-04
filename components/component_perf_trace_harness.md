@@ -22,8 +22,9 @@ shape.
   only when asked by env var.
 - Drive the app through a fixed sequence so the slow state is reproducible.
 - Report the rows the targets are read from.
-- It does **not** gate anything. There is no benchmark suite and no CI check;
-  this is a debugging tool that is run deliberately.
+- It does **not** gate anything; this is a debugging tool that is run
+  deliberately. Counts and bytes that should fail a change are gated in the
+  normal test suites instead, by [[concept_perf_budgets]].
 
 ## Key files & entry points
 
@@ -93,6 +94,7 @@ itself and exits on its own. `TORI_TRACE=1` alone traces manual clicking.
 ## Related
 
 - [[concept_release_profile_tracing]] - the mechanism
+- [[concept_perf_budgets]] - the gating sibling: counts and bytes held in `cargo test` and `pnpm test`
 - [[concept_switch_cost_anatomy]] - what it found, so it is not re-derived
 - [[lesson_a_same_state_control_row]] - why the control row is in the same run
 - [[lesson_a_redundant_write_was_load_bearing]] - the census beside the latency number earning its keep
