@@ -23,7 +23,17 @@ import { composerAttachments } from "./composerAttachments";
 import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
 import { paletteProviders } from "./agentPaletteData";
 import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
-import { dropPending, draftFor, draftOriginFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
+import {
+  dropPending,
+  draftFor,
+  draftOriginFor,
+  hasAutoSend,
+  historyFor,
+  markAutoSend,
+  pendingFor,
+  setDraft,
+} from "../../utils/chatCompose";
+import { discardEntry, loadStash, restoreEntry, stashDraft, stashEntries } from "./promptStash";
 import { invoke } from "@tauri-apps/api/core";
 import { draftPick, hasPick, resetDraftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
@@ -104,6 +114,7 @@ export default function ChatDraft(props: {
   onMount(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
+    void loadStash();
     // The cache, then one probe for the agent this draft would actually start.
     // Opening a chat on claude is already going to launch claude, so asking it
     // costs nothing new; asking every other agent on the machine would.
@@ -311,6 +322,13 @@ export default function ChatDraft(props: {
         onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onDropAttachment={(id) => dropPending(props.tabId, id)}
+        stash={stashEntries()}
+        onStash={() => void stashDraft(props.tabId)}
+        onRestoreStash={(id) =>
+          void restoreEntry(props.tabId, id, attachmentSources(tier(), catalog()?.catalogue?.capabilities))
+        }
+        onDiscardStash={(id) => void discardEntry(id)}
+        holding={hasAutoSend(props.tabId)}
         // A draft has no turn to interrupt and no queue to hold one: all three
         // are reachable only once something is running.
         onInterrupt={() => {}}
