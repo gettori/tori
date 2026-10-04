@@ -24,6 +24,7 @@ import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
 import { accountKey, recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
 import { toriText } from "../../utils/toriNote";
+import { traceChatOpen } from "../../utils/perfTrace";
 import {
   RESUME_ARMED,
   RESUME_BUSY,
@@ -603,6 +604,7 @@ export default function ChatView(props: {
     // turn containing one can only ever be a lower bound on what it wrote.
     const toolNames = new Map<string, string>();
 
+    const openTrace = traceChatOpen(props.sessionId);
     // Backfill from the transcript the agent itself wrote, which is the same
     // file whether the earlier turns happened in this panel, in a PTY agent tab
     // or in an outside terminal. A session with none yet replays nothing.
@@ -627,6 +629,7 @@ export default function ChatView(props: {
       upToPromptTs: props.forkFrom ? (props.rewindTo ?? null) : null,
     })
       .then((raw) => {
+        openTrace?.replied();
         // Replayed history is folded straight in rather than through
         // `handleLive`: it is finished work, so it must not re-snapshot
         // checkpoints or re-record attribution for turns that already ran.
@@ -654,6 +657,7 @@ export default function ChatView(props: {
           // history landing and the numbering being raised above it.
           seedLabels(composerKey(), labels);
         });
+        openTrace?.folded();
       })
       // History is an enhancement, not a precondition: a transcript that cannot
       // be read must not stop the live session from running. It must not fail

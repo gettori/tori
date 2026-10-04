@@ -1073,14 +1073,23 @@ pub async fn chat_history(
 ) -> Result<Vec<ChatEvent>, String> {
     let source = from_session_id.unwrap_or_else(|| session_id.clone());
     let id = session_id.clone();
+    let traced = crate::trace::enabled();
+    let enter = if traced { crate::trace::now_ms() } else { 0.0 };
     let mut events = crate::exec::blocking("chat_history", move || {
         read_history(&id, &history_source(&source, &agent_id), &agent_id, up_to_prompt_ts)
     })
     .await;
+    let read_ms = if traced { crate::trace::now_ms() - enter } else { 0.0 };
     // The cut a live event gets on its way through the sink wrapper. Applied
     // here because replay does not pass through it, and applied through the
     // same cache so a backfilled card can fetch its remainder too.
     state.0.cut_outputs(&session_id, &mut events);
+    if traced {
+        let start = crate::trace::now_ms();
+        let bytes = serde_json::to_vec(&events).map_or(0, |v| v.len());
+        let size_ms = crate::trace::now_ms() - start;
+        crate::trace::chat_open(&session_id, enter, events.len(), read_ms, bytes, size_ms);
+    }
     Ok(events)
 }
 

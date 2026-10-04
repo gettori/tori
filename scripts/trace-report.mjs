@@ -102,10 +102,34 @@ for (const r of front) {
   if (r.t === "note" && r.name === "pass") pass = r.data.name;
   if (r.t === "switch") switches.push({ ...r, pass });
 }
-const notes = front.filter((r) => r.t === "note");
+const notes = front.filter((r) => r.t === "note" && r.name !== "chat-open");
+
+// `size` is what counting `bytes` cost inside the round trip, so it comes out
+// of IPC. Joined by time, not order: autopilot reads a session's history too,
+// and its backend line has no frontend twin.
+const backOpens = back.filter((r) => r.t === "chat-open");
+const opens = front
+  .filter((r) => r.t === "note" && r.name === "chat-open")
+  .map((r) => {
+    const f = r.data;
+    const b = backOpens.find((o) => o.session === f.session && o.at >= f.start && o.at <= f.start + f.invoke);
+    const ipc = b ? f.invoke - b.read - b.size : null;
+    return { ...f, events: b?.events, bytes: b?.bytes, read: b?.read, ipc };
+  });
 
 console.log(`trace dir: ${dir}`);
 console.log(`switches: ${switches.length}   backend commands: ${spans.length}   overlapping pairs: ${overlaps}\n`);
+
+if (opens.length) {
+  console.log("chat opens");
+  for (const o of opens) {
+    const mb = o.bytes == null ? "     n/a" : `${(o.bytes / 1048576).toFixed(1)}MB`.padStart(8);
+    console.log(
+      `  ${o.session}  events ${String(o.events ?? "n/a").padStart(6)}  ${mb}  read ${ms(o.read)}  ipc ${ms(o.ipc)}  fold ${ms(o.fold)}  paint ${ms(o.paint)}`,
+    );
+  }
+  console.log("");
+}
 
 if (notes.length) {
   console.log("recipe");
