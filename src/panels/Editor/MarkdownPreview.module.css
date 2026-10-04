@@ -84,6 +84,16 @@
   display: contents;
 }
 
+/* Off-screen blocks skip layout and paint, which is most of what a large
+   document costs once it is in the DOM. Per block, not on the carrier: the
+   carrier has no box to contain, and that is what keeps margins collapsing
+   across a fence. `auto` remembers each block's real height once seen. */
+.prose > :global(*),
+.markdownBody > :global(*) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3em;
+}
+
 /* A fence, wrapped so the copy button has a box to hug. The <pre> inside keeps
    the frame `.markdownBody pre` already gives it, so the wrapper is invisible. */
 .codeBlock {

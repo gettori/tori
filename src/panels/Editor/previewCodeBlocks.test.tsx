@@ -55,10 +55,11 @@ beforeEach(() => {
   vi.mocked(draw).mockClear();
 });
 
-/** Mount the preview on a path and wait for the document to be on screen. */
+/** Mount the preview on a path and wait for the document to be on screen, to
+ *  its last block: a large one fills in over several frames. */
 async function showPreview(path = "/repo/doc.md") {
   const view = render(() => <MarkdownPreview path={path} />);
-  await waitFor(() => expect(view.container.querySelector("h1")).not.toBeNull());
+  await waitFor(() => expect(view.container.textContent).toContain("Closing prose."));
   return view;
 }
 
