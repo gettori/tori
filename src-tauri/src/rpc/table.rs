@@ -235,7 +235,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "worktree.new",
-        description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue. With pr, the worktree is on that pull request's head commit, forks included, on branch pr-<number>, and head_sha is returned.",
+        description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue. With pr, the worktree is on that pull request's head commit, forks included, on branch pr-<number>, and head_sha is returned. setup says how the project's setup command went in the new worktree: none (no command, or a worktree no setup ran in since Tori started), skipped (a fork's head, which never runs it), running, done or failed, with its output in setup_log. When the project waits on setup this answers once the command exits, or running after 240 s; call again with the same branch or pr to keep waiting.",
         params: schema::<WorktreeParams>,
         callers: ANYONE,
         refusal: None,
