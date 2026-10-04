@@ -2369,6 +2369,23 @@ mod tests {
         assert_eq!(completed, TurnOutcome::Completed);
     }
 
+    // Not a probe capture: no scenario can hit a usage limit on demand. Rebuilt
+    // from the limit record in a real sdk-cli transcript (2.1.261), whose
+    // `quotaLimits` is this frame's `rate_limit_info`.
+    #[test]
+    fn a_usage_limit_stop_is_a_rejected_reading_then_an_errored_turn() {
+        let events = run("usage-limit");
+        let rejected = events
+            .iter()
+            .position(|e| matches!(e, ChatEvent::RateLimit { status, resets_at: Some(1_788_779_400), .. } if status == "rejected"))
+            .expect("a rejected reading with its reset");
+        let completed = events
+            .iter()
+            .position(|e| matches!(e, ChatEvent::TurnCompleted { outcome: TurnOutcome::Errored, .. }))
+            .expect("an errored turn");
+        assert!(rejected < completed, "the reading has to land before the turn ends");
+    }
+
     #[test]
     fn a_bash_call_becomes_a_tool_card_with_parsed_input() {
         let events = run("bash-call");
