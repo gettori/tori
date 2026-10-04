@@ -19,6 +19,7 @@ pub mod frame;
 pub mod hub;
 pub mod methods;
 pub mod pairing;
+pub mod pr_watch;
 pub mod quotas;
 pub mod remote;
 pub mod runner;
