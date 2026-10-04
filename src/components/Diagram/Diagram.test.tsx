@@ -36,6 +36,7 @@ describe("a mermaid fence", () => {
     // diagram, and the half that has arrived is still worth reading.
     vi.mocked(draw).mockResolvedValue(null);
     const { container } = render(() => <Diagram code={"flowchart TD\n  a --"} />);
+    await waitFor(() => expect(vi.mocked(draw)).toHaveBeenCalled());
     await waitFor(() => expect(container.querySelector("pre")).not.toBeNull());
     expect(container.querySelector("pre")?.textContent).toBe("flowchart TD\n  a --");
   });
@@ -45,6 +46,7 @@ describe("a mermaid fence", () => {
     // fallback rendering anyway, so it is what a missing megabyte degrades to.
     vi.mocked(draw).mockRejectedValue(new Error("chunk load failed"));
     const { container } = render(() => <Diagram code={FLOW} />);
+    await waitFor(() => expect(vi.mocked(draw)).toHaveBeenCalled());
     await waitFor(() => expect(container.querySelector("pre")).not.toBeNull());
     expect(container.querySelector("pre")?.textContent).toBe(FLOW);
   });
@@ -65,5 +67,42 @@ describe("a mermaid fence", () => {
     const { container } = render(() => <Diagram code={FLOW} />);
     await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a mermaid fence off screen", () => {
+  // An observer the test drives: nothing is on screen until `show` says so.
+  const observed: { node: Element; cb: IntersectionObserverCallback }[] = [];
+  class FakeObserver {
+    constructor(private cb: IntersectionObserverCallback) {}
+    observe(node: Element) {
+      observed.push({ node, cb: this.cb });
+    }
+    disconnect() {}
+  }
+  const show = (at: number) =>
+    observed[at].cb([{ isIntersecting: true, target: observed[at].node } as IntersectionObserverEntry], {} as never);
+
+  beforeEach(() => {
+    observed.length = 0;
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    return () => vi.unstubAllGlobals();
+  });
+
+  it("draws nothing for ten diagrams out of view, and only the one scrolled to", async () => {
+    const { container } = render(() => (
+      <>
+        {Array.from({ length: 10 }, () => (
+          <Diagram code={FLOW} />
+        ))}
+      </>
+    ));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(vi.mocked(draw)).not.toHaveBeenCalled();
+    expect(container.querySelectorAll("pre")).toHaveLength(10);
+
+    show(3);
+    await waitFor(() => expect(container.querySelectorAll("svg")).toHaveLength(1));
+    expect(vi.mocked(draw)).toHaveBeenCalledTimes(1);
   });
 });

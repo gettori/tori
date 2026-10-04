@@ -18,3 +18,8 @@
   max-width: 100%;
   height: auto;
 }
+
+/* The source holding a diagram's place until the drawing lands. */
+.pending {
+  visibility: hidden;
+}
