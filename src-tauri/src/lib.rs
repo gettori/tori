@@ -50,6 +50,7 @@ mod scratch;
 mod search;
 mod sessions;
 mod settings;
+mod setup;
 mod shared;
 mod sound;
 mod workspace_settings;
@@ -210,6 +211,8 @@ pub fn run() {
                 }
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
             }
+
+            setup::set_publisher(app.handle().clone());
 
             // The app level socket the CLI and MCP fronts talk to. Fail-soft like
             // the askpass bridge: without it Tori runs, nothing outside can ask.
