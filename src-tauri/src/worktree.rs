@@ -8,7 +8,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 /// Directory under a bare container holding files shared into every worktree
-/// (symlinked at creation, managed from the Shared in worktrees page). A
+/// (symlinked at creation, managed from the Worktree settings page). A
 /// bare-container convention; absent until the first shared file is added.
 pub(crate) const SHARED_DIR: &str = ".shared";
 
@@ -302,9 +302,9 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
 /// it comes from the forge's PR ref, never from `origin/<head_ref>`. A worktree
 /// or branch already at another commit is refused rather than reset, since
 /// resetting would discard whatever was done in it.
-pub async fn create_pr_worktree(app: AppHandle, repo_path: String, number: u64, sha: String) -> Result<String, String> {
+pub async fn create_pr_worktree(app: AppHandle, repo_path: String, number: u64, sha: String, setup: bool) -> Result<String, String> {
     crate::exec::git_write("create_pr_worktree", repo_path.clone(), move || {
-        let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path))?;
+        let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path), setup)?;
         let target = target.to_string_lossy().into_owned();
         let _ = crate::sessions::adopt(&target);
         let _ = app.emit("config://changed", ());
@@ -313,7 +313,9 @@ pub async fn create_pr_worktree(app: AppHandle, repo_path: String, number: u64, 
     .await
 }
 
-pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, container: &Path) -> Result<PathBuf, String> {
+/// `setup` false for a fork's head: the setup command is the user's, but that
+/// tree is a stranger's, and its install scripts would run with nobody watching.
+pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, container: &Path, setup: bool) -> Result<PathBuf, String> {
     let branch = format!("pr-{number}");
     if branch_exists(repo, &branch) {
         let at = rev_parse(repo, &format!("refs/heads/{branch}"))?;
@@ -321,10 +323,13 @@ pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, containe
             return Err(format!("{branch} is at {at}, the pull request is at {sha}: remove its worktree and branch to review again"));
         }
     }
-    let path = create_worktree_in(repo, &branch, container, Some(sha))?;
+    let (path, created) = add_worktree_in(repo, &branch, container, Some(sha))?;
     let at = rev_parse(&path.to_string_lossy(), "HEAD")?;
     if at != sha {
         return Err(format!("the worktree at {} is at {at}, the pull request is at {sha}: remove it to review again", path.display()));
+    }
+    if created && setup {
+        crate::setup::on_created(repo, &path);
     }
     Ok(path)
 }
@@ -341,13 +346,22 @@ fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
 /// the bare container itself, or `<repo>/.tori/worktrees` for a plain repo. A
 /// branch that already has a worktree yields that worktree's path, except the
 /// main checkout of a plain repo, which is the user's own and never adopted.
-/// No adopt, no emit: the caller decides what the new folder means.
+/// No adopt, no emit: the caller decides what the new folder means. A folder
+/// it creates runs the project's setup command.
 pub(crate) fn create_worktree_in(
     repo: &str,
     branch: &str,
     container: &Path,
     base: Option<&str>,
 ) -> Result<PathBuf, String> {
+    let (target, created) = add_worktree_in(repo, branch, container, base)?;
+    if created {
+        crate::setup::on_created(repo, &target);
+    }
+    Ok(target)
+}
+
+fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str>) -> Result<(PathBuf, bool), String> {
     let branch = branch.trim();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
@@ -358,7 +372,7 @@ pub(crate) fn create_worktree_in(
         if existing.is_main && !existing.is_bare {
             return Err(format!("Branch \"{branch}\" is checked out in the repository itself; switch it away first."));
         }
-        return Ok(PathBuf::from(existing.path));
+        return Ok((PathBuf::from(existing.path), false));
     }
 
     let folder = pick_worktree_folder(container, branch)?;
@@ -398,7 +412,7 @@ pub(crate) fn create_worktree_in(
     }
 
     link_shared(container, &target);
-    Ok(target)
+    Ok((target, true))
 }
 
 /// Is the worktree dirty in a way that should block removal? Tracked
@@ -628,6 +642,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     if !force && tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
+    crate::setup::kill(Path::new(worktree_path));
     git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?;
     prune_worktrees(repo_path);
     Ok(())
@@ -908,9 +923,13 @@ mod tests {
         let first = fetch();
         assert!(!remote_branch_exists(repo, "fork"), "the head is on no origin branch");
 
-        let wt = create_pr_worktree_in(repo, 7, &first, &cont).unwrap();
+        let mut prefs = std::collections::HashMap::new();
+        prefs.insert(repo.to_string(), crate::settings::WorktreePrefs { setup_command: "true".into(), setup_wait: false });
+        crate::setup::seam(prefs, tmp.join("logs"));
+        let wt = create_pr_worktree_in(repo, 7, &first, &cont, false).unwrap();
+        assert!(crate::setup::status(&wt).is_none(), "a fork's head runs no setup");
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first);
-        let again = create_pr_worktree_in(repo, 7, &first, &cont).unwrap();
+        let again = create_pr_worktree_in(repo, 7, &first, &cont, true).unwrap();
         assert_eq!(again.canonicalize().unwrap(), wt.canonicalize().unwrap(), "the same head reuses it");
 
         std::fs::write(src.join("a.txt"), "pushed again").unwrap();
@@ -918,7 +937,7 @@ mod tests {
         git(&src, &["commit", "-qam", "more"]);
         git(&src, &["update-ref", "refs/pull/7/head", "HEAD"]);
         let moved = fetch();
-        let err = create_pr_worktree_in(repo, 7, &moved, &cont).unwrap_err();
+        let err = create_pr_worktree_in(repo, 7, &moved, &cont, true).unwrap_err();
         assert!(err.contains("pr-7 is at"), "{err}");
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first, "the worktree is left where it was");
 
@@ -1041,6 +1060,46 @@ mod tests {
         std::fs::remove_dir_all(&src).unwrap();
         assert!(!repo_readable(&src.to_string_lossy()), "a deleted dir is not a repo");
         assert!(list_worktrees_body(src.to_string_lossy().into_owned()).unwrap().is_empty(), "which list alone cannot tell from empty");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_created_worktree_runs_setup_once_and_removing_it_kills_the_run() {
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t.t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "init"]);
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        let repo_s = repo.to_string_lossy().into_owned();
+        let runs = tmp.join("runs");
+        let command = |then: &str| format!("echo \"$TORI_WORKTREE_PATH\" >> '{}'; {then}", runs.display());
+        let seam = |command: String| {
+            let mut prefs = std::collections::HashMap::new();
+            prefs.insert(repo_s.clone(), crate::settings::WorktreePrefs { setup_command: command, setup_wait: false });
+            crate::setup::seam(prefs, tmp.join("logs"));
+        };
+        let settle = |wt: &Path| crate::setup::wait(wt, std::time::Duration::from_secs(10)).unwrap();
+
+        seam(command("true"));
+        let wt = create_worktree_in(&repo_s, "a", &cont, None).unwrap();
+        assert_eq!(settle(&wt).state, crate::setup::State::Done);
+        assert_eq!(std::fs::read_to_string(&runs).unwrap().trim(), wt.to_string_lossy());
+        create_worktree_in(&repo_s, "a", &cont, None).unwrap();
+        assert_eq!(std::fs::read_to_string(&runs).unwrap().lines().count(), 1, "a reused worktree runs no second setup");
+
+        seam(command("sleep 30"));
+        let b = create_worktree_in(&repo_s, "b", &cont, None).unwrap();
+        assert_eq!(crate::setup::status(&b).unwrap().state, crate::setup::State::Running);
+        do_remove_worktree(&repo_s, &b.to_string_lossy(), true).unwrap();
+        assert_eq!(crate::setup::status(&b).unwrap().state, crate::setup::State::Failed);
+        assert!(!b.exists());
 
         std::fs::remove_dir_all(&tmp).ok();
     }

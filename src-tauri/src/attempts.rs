@@ -246,6 +246,7 @@ pub(crate) fn create_attempt_body(
     // `.shared/`, which keeps the convention available here without inventing a
     // second meaning for it.
     crate::worktree::link_shared(&container, &target);
+    crate::setup::on_created(&root, &target);
     // Tori created this folder: adopt it so a path that once held other sessions
     // does not surface them as this attempt's history.
     let _ = crate::sessions::adopt(&target_str);

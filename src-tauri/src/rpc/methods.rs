@@ -462,6 +462,35 @@ fn submit_pinned(
     Ok(json!({}))
 }
 
+// Past `cap` this says `running`, so a caller keeps waiting by asking again.
+// Never an error: a failed setup is reported, not refused.
+fn setup_fields(project: &str, worktree: &Path, skipped: bool, cap: std::time::Duration) -> Value {
+    let Some(prefs) = crate::setup::configured(project) else {
+        return json!({ "setup": "none", "setup_log": null });
+    };
+    if skipped {
+        return json!({ "setup": "skipped", "setup_log": null });
+    }
+    let report = if prefs.setup_wait { crate::setup::wait(worktree, cap) } else { crate::setup::status(worktree) };
+    match report {
+        Some(report) => json!({ "setup": report.state, "setup_log": report.log }),
+        None => json!({ "setup": "none", "setup_log": null }),
+    }
+}
+
+fn wait_for_setup(project: &str, folder: &Path, cap: std::time::Duration) {
+    if crate::setup::configured(project).is_some_and(|prefs| prefs.setup_wait) {
+        crate::setup::wait(folder, cap);
+    }
+}
+
+fn with_fields(mut reply: Value, fields: Value) -> Value {
+    if let (Some(reply), Value::Object(fields)) = (reply.as_object_mut(), fields) {
+        reply.extend(fields);
+    }
+    reply
+}
+
 fn to_json<T: Serialize>(value: T) -> Result<Value, RpcError> {
     serde_json::to_value(value).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
 }
@@ -920,9 +949,11 @@ impl Backend for TauriBackend {
                 // Best effort: a stale base only widens what the worker reads, and ask.create refuses any comment off the real diff.
                 let _ = crate::git::fetch_branch_quiet(&project, &pr.base_ref);
             }
-            let create = crate::worktree::create_pr_worktree(self.app.clone(), project, number, sha.clone());
+            let fork = !pr.head_repo_is_origin;
+            let create = crate::worktree::create_pr_worktree(self.app.clone(), project.clone(), number, sha.clone(), !fork);
             let path = tauri::async_runtime::block_on(create).map_err(refused)?;
-            return Ok(json!({ "path": path, "branch": branch, "head_sha": sha }));
+            let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
+            return Ok(with_fields(json!({ "path": path, "branch": branch, "head_sha": sha }), setup));
         }
         // Asked before the worktree exists, so a bad key leaves nothing behind.
         let issue = params.issue.map(|key| crate::issues::commands::get(&project, &key)).transpose().map_err(forge_refused)?;
@@ -932,7 +963,8 @@ impl Backend for TauriBackend {
         if let Some(issue) = issue {
             self.remember_issue(&project, &branch, &issue, &path)?;
         }
-        Ok(json!({ "path": path }))
+        let setup = setup_fields(&project, Path::new(&path), false, crate::setup::WAIT_CAP);
+        Ok(with_fields(json!({ "path": path }), setup))
     }
 
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError> {
@@ -992,6 +1024,9 @@ impl Backend for TauriBackend {
         };
         // Left out everywhere, the webview picks the folder's remembered agent and account.
         let project = params.project.or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
+        if let Some(project) = &project {
+            wait_for_setup(project, Path::new(&folder), crate::setup::WAIT_CAP);
+        }
         let contract = project.and_then(|project| self.autopilot.contract(&project));
         let caller = match principal {
             Principal::Session(Caller::Chat(id)) => self.app.state::<ChatState>().0.levers(id),
@@ -1292,6 +1327,58 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    #[test]
+    fn worktree_new_reports_setup_and_waits_only_when_the_project_asks() {
+        use std::time::{Duration, Instant};
+        let base = std::env::temp_dir().join(format!("tori-rpc-setup-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let project = base.to_string_lossy().into_owned();
+        let folder = |name: &str| {
+            let dir = base.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        };
+        let seam = |command: &str, wait: bool| {
+            let mut prefs = HashMap::new();
+            prefs.insert(project.clone(), crate::settings::WorktreePrefs { setup_command: command.into(), setup_wait: wait });
+            crate::setup::seam(prefs, base.join("logs"));
+        };
+        let long = Duration::from_secs(10);
+        let state = |reply: Value| reply["setup"].as_str().unwrap().to_string();
+
+        crate::setup::seam(HashMap::new(), base.join("logs"));
+        assert_eq!(state(setup_fields(&project, &folder("none"), false, long)), "none");
+
+        seam("true", false);
+        assert_eq!(state(setup_fields(&project, &folder("fork"), true, long)), "skipped");
+
+        seam("sleep 3", false);
+        let slow = folder("slow");
+        crate::setup::on_created(&project, &slow);
+        assert_eq!(state(setup_fields(&project, &slow, false, long)), "running", "no wait asked");
+
+        seam("sleep 3", true);
+        let capped = folder("capped");
+        crate::setup::on_created(&project, &capped);
+        assert_eq!(state(setup_fields(&project, &capped, false, Duration::from_millis(100))), "running", "past the cap");
+
+        seam("true", true);
+        let done = folder("done");
+        crate::setup::on_created(&project, &done);
+        let reply = setup_fields(&project, &done, false, long);
+        assert_eq!(state(reply.clone()), "done");
+        assert!(reply["setup_log"].as_str().is_some_and(|log| Path::new(log).is_file()));
+
+        seam("exit 4", true);
+        let failed = folder("failed");
+        crate::setup::on_created(&project, &failed);
+        assert_eq!(state(setup_fields(&project, &failed, false, long)), "failed");
+        let started = Instant::now();
+        wait_for_setup(&project, &failed, long);
+        assert!(started.elapsed() < Duration::from_secs(1), "a failed setup holds a spawn no longer, and refuses nothing");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
 
     fn page_back(prompts: &[(u64, usize)], total: usize, limit: usize) -> Vec<std::ops::Range<usize>> {
         let (mut pages, mut before) = (Vec::new(), None);

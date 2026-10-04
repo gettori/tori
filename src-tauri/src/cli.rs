@@ -500,6 +500,11 @@ fn worktree_new(args: &[String]) -> Result<(), Failure> {
     };
     let project = p.value("project").map(absolute).transpose()?;
     let made = connect()?.call("worktree.new", json!({ "branch": branch, "project": project, "from": p.value("from") }))?;
+    // On stderr, so a script reading the path from stdout reads only the path.
+    if let Some(setup) = made["setup"].as_str().filter(|s| *s != "none") {
+        let log = made["setup_log"].as_str().map(|log| format!(", log {log}")).unwrap_or_default();
+        writeln!(io::stderr().lock(), "setup {setup}{log}")?;
+    }
     Ok(writeln!(io::stdout().lock(), "{}", made["path"].as_str().unwrap_or(""))?)
 }
 
