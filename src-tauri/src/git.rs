@@ -1352,6 +1352,15 @@ pub fn git_diff_stat(project_path: String, staged: Option<bool>) -> Result<DiffS
     Ok(parse_numstat(&out))
 }
 
+/// Everything uncommitted against HEAD, staged or not, new files included: the
+/// Changes tab's total. Fails on an unborn branch, which has no HEAD to diff.
+#[tauri::command(async)]
+pub fn git_worktree_stat(project_path: String) -> Result<DiffStat, String> {
+    let mut stat = parse_numstat(&git_capture(&project_path, &["--no-optional-locks", "diff", "--numstat", "HEAD", "--"])?);
+    add_untracked(&project_path, &mut stat);
+    Ok(stat)
+}
+
 fn parse_numstat(text: &str) -> DiffStat {
     let mut stat = DiffStat::default();
     for line in text.lines() {

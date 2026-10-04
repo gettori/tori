@@ -437,6 +437,7 @@ pub fn run() {
             git::git_log,
             git::git_branch_paths,
             git::git_diff_stat,
+            git::git_worktree_stat,
             shared::shared_overview,
             shared::shared_drift,
             shared::shared_link,
