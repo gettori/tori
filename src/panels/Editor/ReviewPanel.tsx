@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, createResource, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -311,6 +311,20 @@ export default function ReviewPanel(props: {
    *  while the chips read `members`: a caller that passes one and not the other
    *  would otherwise blank the whole panel instead of showing one repo. */
   const viewedRoot = () => (headed() ? (viewed()?.key ?? props.root) : props.root);
+
+  // The tab's total, read again each time the status store answers for this
+  // member, which is what follows an edit landing on disk. `latest`, so a
+  // refetch keeps the old numbers up rather than blanking the line.
+  const [total] = createResource(
+    () => {
+      const root = viewedRoot();
+      return root ? { root, state: gitStateFor(root) } : null;
+    },
+    ({ root }) =>
+      invoke<{ files: number; insertions: number; deletions: number }>("git_worktree_stat", { projectPath: root }).catch(
+        () => null,
+      ),
+  );
   const viewedSection = () => sections().find((sec) => sec.root === viewedRoot());
   /** A reference member's checkout is the user's own: it can be fetched and
    *  pulled, never staged, committed, discarded or pushed from here. */
@@ -1415,7 +1429,16 @@ export default function ReviewPanel(props: {
         <MemberTabs members={props.members ?? []} activeKey={viewed()?.key ?? null} onPick={(m) => setPicked(m.key)} />
       </Show>
       <div class={styles.topBar}>
-        <span class={styles.title}>Source Control</span>
+        {/* The branch is the tab's title: it is what every answer below is
+            about. Detached, there is no branch to name. */}
+        <Show when={branch()} fallback={<span class={styles.title}>Source Control</span>}>
+          <span class={styles.branchTitle}>
+            <Icon icon={GitBranch} />
+            <span class={styles.branchName} title={branch() ?? ""}>
+              {branch()}
+            </span>
+          </span>
+        </Show>
         <span class={styles.spacer} />
         <IconButton
           size="sm"
@@ -1437,14 +1460,17 @@ export default function ReviewPanel(props: {
         </Dropdown>
       </div>
 
-      {/* Row two, the repo on screen: its branch, and what you do to it. Every
-          answer here is one repo's, and the chip above says which. */}
+      {/* Row two, the repo on screen: what is uncommitted in it, and what you
+          do to it. Here rather than over the file list, which is not drawn once
+          everything is committed. */}
       <div class={styles.branchBar}>
-        <Show when={branch()}>
-          <Icon icon={GitBranch} />
-          <span class={styles.branchName} title={branch() ?? ""}>
-            {branch()}
-          </span>
+        <Show when={total.latest?.files ? total.latest : null}>
+          {(t) => (
+            <span class={styles.changesTotal} data-changes-total>
+              {plural(t().files, "file")} · <span class={styles.added}>{`+${t().insertions}`}</span>/
+              <span class={styles.deleted}>{`-${t().deletions}`}</span>
+            </span>
+          )}
         </Show>
         <span class={styles.spacer} />
         <Show when={aheadBehind()}>
