@@ -19,6 +19,7 @@ pub mod frame;
 pub mod hub;
 pub mod methods;
 pub mod pairing;
+pub mod pr_wake;
 pub mod pr_watch;
 pub mod quotas;
 pub mod remote;
@@ -147,6 +148,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     pr_watch::on_polled_moved(Box::new(move || {
         let _ = tell.emit("pr_watch://changed", ());
     }));
+    start_pr_wake(&app, &states);
     start_composer(&app, &hub, &states, &autopilot);
     let server = Arc::new(Server {
         hub: hub.clone(),
@@ -485,6 +487,23 @@ pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
     });
 }
 
+// A chat stopped by its spend ceiling reports needs_you, so it is held here too.
+fn start_pr_wake(app: &AppHandle, states: &Arc<SessionStates>) {
+    let (app, states) = (app.clone(), states.clone());
+    let host = app.clone();
+    let ready = move |session: &str| {
+        crate::settings::pr_watch()
+            && states.snapshot().get(session) == Some(&states::SessionState::Idle)
+            && host.state::<crate::chat::host::ChatState>().0.is_live(session)
+    };
+    let deliver = move |session: &str, text: String| {
+        let host = &app.state::<crate::chat::host::ChatState>().0;
+        let text = events::from_tori("pr_watch", None, &text);
+        host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], false, events::TurnBy::Watcher)
+    };
+    pr_wake::start(ready, deliver);
+}
+
 fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
     let status = runner.clone();
     let (watcher, nudges) = Watcher::new(states.clone(), autopilot.clone(), Box::new(move || status.status()));
@@ -527,6 +546,7 @@ pub fn publish_session(hub: &Hub, autopilot: &AutopilotStore, id: &str, event: V
     if let Some(watcher) = WATCHER.get() {
         watcher.session_event(id, &event);
     }
+    pr_wake::session_event(id, &event);
     hub.publish_session(id, event);
     if ended {
         autopilot.session_ended(id);
