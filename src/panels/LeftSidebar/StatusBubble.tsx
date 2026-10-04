@@ -1,5 +1,5 @@
 import { createMemo, Show, type JSX } from "solid-js";
-import { CircleDashed } from "lucide-solid";
+import { CircleDashed, GitPullRequest } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { CheckMark, QuestionMark, WorkingMark } from "../../components/Icon/statusMarks";
 import type { Rollup } from "../../utils/sessionStatus";
@@ -32,6 +32,7 @@ export default function StatusBubble(props: {
   const tile = () => props.tile === true;
   const quiet = () => tile() || props.untitled === true;
   const waiting = () => (r()?.waitingForApproval ?? 0) + (r()?.waitingForAnswer ?? 0);
+  const pr = () => r()?.prAttention ?? 0;
   const executing = () => r()?.executing ?? 0;
   const idle = () => r()?.idle ?? 0;
   const running = () => r()?.running ?? 0;
@@ -41,10 +42,10 @@ export default function StatusBubble(props: {
       : r()?.waitingForApproval
         ? "Waiting for approval"
         : "Waiting for an answer";
-  const counts = () => [waiting(), executing(), idle(), running()];
+  const counts = () => [waiting(), pr(), executing(), idle(), running()];
   const shown = (at: number) => counts()[at] > 0 && !(tile() && counts().slice(0, at).some((n) => n > 0));
   const tileTitle = () =>
-    ["waiting for you", "executing", "idle", "running"]
+    ["waiting for you", "with a pull request to look at", "executing", "idle", "running"]
       .map((label, at) => (counts()[at] ? `${counts()[at]} ${label}` : ""))
       .filter(Boolean)
       .join(", ");
@@ -62,18 +63,24 @@ export default function StatusBubble(props: {
           </span>
         </Show>
         <Show when={shown(1)}>
+          <span class={`${styles.statusBubbleItem} ${styles.prAttention}`} title={quiet() ? undefined : "Pull request needs attention"}>
+            <Icon icon={GitPullRequest} />
+            <Show when={pr() > 1}>{pr()}</Show>
+          </span>
+        </Show>
+        <Show when={shown(2)}>
           <span class={`${styles.statusBubbleItem} ${styles.executing}`} title={quiet() ? undefined : "Executing"}>
             <WorkingMark animate />
             <Show when={executing() > 1}>{executing()}</Show>
           </span>
         </Show>
-        <Show when={shown(2)}>
+        <Show when={shown(3)}>
           <span class={`${styles.statusBubbleItem} ${styles.idle}`} title={quiet() ? undefined : "Idle"}>
             <CheckMark animate />
             <Show when={idle() > 1}>{idle()}</Show>
           </span>
         </Show>
-        <Show when={shown(3)}>
+        <Show when={shown(4)}>
           <span class={`${styles.statusBubbleItem} ${styles.running}`} title={quiet() ? undefined : "Running"}>
             <Icon icon={CircleDashed} />
             <Show when={running() > 1}>{running()}</Show>

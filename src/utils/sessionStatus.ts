@@ -38,6 +38,9 @@ export type SessionStatus =
    *  looking for a prompt that does not exist. Both map to the same dot, since
    *  both mean the same thing to the person deciding what to look at next. */
   | "budgetStopped"
+  /** Idle, but its branch's pull request has failed checks or changes
+   *  requested. Not a prompt: nothing in the session is waiting on an answer. */
+  | "prAttention"
   | "idle"
   | "running"
   | "none";
@@ -48,6 +51,7 @@ export const STATUS_LABEL: Record<Exclude<SessionStatus, "none">, string> = {
   waitingForApproval: "Waiting for approval",
   waitingForAnswer: "Waiting for an answer",
   budgetStopped: "Stopped: budget reached",
+  prAttention: "Pull request needs attention",
   idle: "Idle",
   running: "Running",
 };
@@ -113,7 +117,7 @@ export function isWorking(status: SessionStatus): boolean {
 export function socketState(status: SessionStatus): "working" | "needs_you" | "idle" | null {
   if (isWorking(status) || status === "running") return "working";
   if (blockedOnUser(status)) return "needs_you";
-  return status === "idle" ? "idle" : null;
+  return status === "idle" || status === "prAttention" ? "idle" : null;
 }
 
 /** Outstanding background work in the words a status line uses, e.g.
@@ -141,6 +145,7 @@ export type LiveSessionStatus = {
 export type Rollup = {
   waitingForApproval: number;
   waitingForAnswer: number;
+  prAttention: number;
   executing: number;
   idle: number;
   running: number;
@@ -150,10 +155,11 @@ export type Rollup = {
 // (a branch unit's, a project's, or a space's), for a collapsed/hidden ancestor
 // row's badge.
 export function rollupStatuses(sessions: { status: SessionStatus }[]): Rollup {
-  const r: Rollup = { waitingForApproval: 0, waitingForAnswer: 0, executing: 0, idle: 0, running: 0 };
+  const r: Rollup = { waitingForApproval: 0, waitingForAnswer: 0, prAttention: 0, executing: 0, idle: 0, running: 0 };
   for (const s of sessions) {
     if (s.status === "waitingForApproval") r.waitingForApproval++;
     else if (s.status === "waitingForAnswer") r.waitingForAnswer++;
+    else if (s.status === "prAttention") r.prAttention++;
     else if (isWorking(s.status)) r.executing++;
     else if (s.status === "idle") r.idle++;
     else if (s.status === "running") r.running++;

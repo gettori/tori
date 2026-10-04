@@ -53,7 +53,7 @@ const WEBHOOKS_PR: UnitStatus = {
 };
 
 function rollup(r: Partial<Rollup>): () => Rollup {
-  return () => ({ waitingForApproval: 0, waitingForAnswer: 0, executing: 0, idle: 0, running: 0, ...r });
+  return () => ({ waitingForApproval: 0, waitingForAnswer: 0, prAttention: 0, executing: 0, idle: 0, running: 0, ...r });
 }
 
 const bubble = (r: Partial<Rollup>) => <StatusBubble rollup={rollup(r)} />;
