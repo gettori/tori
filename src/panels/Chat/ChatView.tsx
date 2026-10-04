@@ -146,7 +146,9 @@ import {
   chatStatus,
   connectionHealth,
   clearAwaitingTurn,
+  beginSteer,
   discardQueue,
+  endSteer,
   enqueue,
   effortPending,
   filesWritten,
@@ -158,13 +160,16 @@ import {
   modelPending,
   pendingApprovals,
   pendingSwitchNotice,
+  oldestQueued,
   pendingFlush,
   prependHistory,
   promptsSent,
   pushSteer,
   pushUserTurn,
   releaseQueue,
+  queuedText,
   removeQueued,
+  reorderQueue,
   resolveApproval,
   revertEffortPick,
   revertModelPick,
@@ -1350,11 +1355,34 @@ export default function ChatView(props: {
     // Before the gate, not inside `write`: bailing after the gate has committed
     // would report "sent" for a message that was never composed.
     if (!text && !pendingFor(composerKey()).length) return;
+    if (await deliverSteer(text, () => draftBlocks(text))) return;
+    restoreDraft(composerKey(), text);
+  }
+
+  async function steerQueued(id?: string) {
+    const held = stopped();
+    if (held) {
+      sayHeld(held);
+      return;
+    }
+    if (!canSteer()) return;
+    const began: QueuedInput[] = [];
+    edit((s) => {
+      const target = id ?? oldestQueued(s)?.id;
+      const entry = target ? beginSteer(s, target) : null;
+      if (entry) began.push(entry);
+    });
+    const taken = began[0];
+    if (!taken) return;
+    const sent = await deliverSteer(queuedText(taken), () => taken.blocks);
+    edit((s) => endSteer(s, taken.id, sent));
+  }
+
+  async function deliverSteer(text: string, compose: () => ContentBlock[]): Promise<boolean> {
     const result = await sendWithProbeGate(text, {
       probe: async () => steerProbe(state),
-      write: async (t) => {
-        const attached = takePending(composerKey());
-        const blocks: ContentBlock[] = t ? [...attached, { type: "text", text: t }] : attached;
+      write: async () => {
+        const blocks = compose();
         // `chat_steer`, not `chat_send`: the latter also flushes a queued mode
         // or model switch, and a steer must leave that for the turn it was
         // promised to rather than spending it on one already running.
@@ -1371,9 +1399,8 @@ export default function ChatView(props: {
       edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: false }));
       return null;
     });
-    if (result?.kind === "sent") return;
-    restoreDraft(composerKey(), text);
     if (result?.kind === "blocked") emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
+    return result?.kind === "sent";
   }
 
   // Attachments ride the message they were attached to, whether it opens a
@@ -1383,7 +1410,7 @@ export default function ChatView(props: {
   const locked = () => isLocked(props.sessionId);
   const lockedItem = () => autopilotItems().find((i) => i.session === props.sessionId && !["done", "failed"].includes(i.state));
 
-  function onSend(text: string, command: "chat_send" | "chat_send_held" = "chat_send") {
+  function onSend(text: string, command: "chat_send" | "chat_send_held" = "chat_send", queue = false) {
     // A draft being edited in a scratch tab sends what the editor holds right
     // now, saved or not, and the tab and its file go with it.
     const scratch = linkedScratchFor(composerKey());
@@ -1418,14 +1445,11 @@ export default function ChatView(props: {
     const held = stopped();
     if (held) {
       enqueueDraft(text, command);
-      if (!heldSaid()) {
-        setHeldSaid(true);
-        edit((s) => pushNotice(s, heldNotice(held), "error"));
-      }
+      sayHeld(held);
       return;
     }
     if (running()) {
-      if (canSteer()) {
+      if (canSteer() && !queue) {
         void steer(text);
         return;
       }
@@ -1435,6 +1459,12 @@ export default function ChatView(props: {
     const blocks = draftBlocks(text);
     if (!blocks.length) return;
     void sendBlocks(blocks, command);
+  }
+
+  function sayHeld(held: BudgetBreach) {
+    if (heldSaid()) return;
+    setHeldSaid(true);
+    edit((s) => pushNotice(s, heldNotice(held), "error"));
   }
 
   function draftBlocks(text: string): ContentBlock[] {
@@ -2403,6 +2433,7 @@ export default function ChatView(props: {
           parked={state.queueParked}
           disabled={refused() || state.ended}
           onSend={onSend}
+          onQueue={(text) => onSend(text, "chat_send", true)}
           onAttachFile={attachments.onAttachFile}
           onAttachPaths={attachments.onAttachPaths}
           uploads={attachmentSources(tier(), state.capabilities).uploads}
@@ -2416,6 +2447,8 @@ export default function ChatView(props: {
           onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
           onInterrupt={onInterrupt}
           onDropQueued={(id) => edit((s) => removeQueued(s, id))}
+          onReorderQueued={(ids) => edit((s) => reorderQueue(s, ids))}
+          onSteerQueued={(id) => void steerQueued(id)}
           onDropAttachment={(id) => dropPending(composerKey(), id)}
           onSendQueued={() => edit((s) => releaseQueue(s))}
           onDiscardQueued={() => edit((s) => discardQueue(s))}

@@ -410,7 +410,9 @@ export function hookFailed(it: Pick<HookItem, "exitCode">): boolean {
 }
 
 // `held` marks a tab's first prompt, which the autopilot's lock lets through.
-export type QueuedInput = { id: string; blocks: ContentBlock[]; held?: true };
+// `steering` marks an entry whose steer is still in flight: it stays queued so a
+// refused steer loses nothing, and the flush and a second press skip it.
+export type QueuedInput = { id: string; blocks: ContentBlock[]; held?: true; steering?: true };
 
 export function queuedText(q: Pick<QueuedInput, "blocks">): string {
   return q.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
@@ -1971,7 +1973,11 @@ export function limitStopOf(rl: RateLimitState | null, turnId: string, endedAtMs
  *  typed. */
 export function pendingFlush(s: ChatState): QueuedInput | null {
   if (s.budgetStopped || s.queueParked || isRunning(s) || s.ended) return null;
-  return s.queue[0] ?? null;
+  return oldestQueued(s);
+}
+
+export function oldestQueued(s: ChatState): QueuedInput | null {
+  return s.queue.find((q) => !q.steering) ?? null;
 }
 
 /** Take the head of the queue for sending, in one step.
@@ -1983,7 +1989,7 @@ export function pendingFlush(s: ChatState): QueuedInput | null {
 export function takeForSend(s: ChatState): QueuedInput | null {
   const next = pendingFlush(s);
   if (!next) return null;
-  s.queue.shift();
+  s.queue = s.queue.filter((q) => q.id !== next.id);
   s.awaitingTurn = true;
   return next;
 }
@@ -2002,6 +2008,31 @@ export function discardQueue(s: ChatState) {
 export function removeQueued(s: ChatState, id: string) {
   s.queue = s.queue.filter((q) => q.id !== id);
   if (!s.queue.length) s.queueParked = false;
+}
+
+/** A new order from a drag or a keyboard move. Ignored when `ids` no longer
+ *  names exactly what is queued, since an entry may have flushed mid-drag. */
+export function reorderQueue(s: ChatState, ids: readonly string[]) {
+  const byId = new Map(s.queue.map((q) => [q.id, q]));
+  const next = ids.flatMap((id) => byId.get(id) ?? []);
+  if (next.length !== s.queue.length || new Set(ids).size !== ids.length) return;
+  s.queue = next;
+}
+
+export function beginSteer(s: ChatState, id: string): QueuedInput | null {
+  const entry = s.queue.find((q) => q.id === id);
+  if (!entry || entry.steering) return null;
+  entry.steering = true;
+  return entry;
+}
+
+export function endSteer(s: ChatState, id: string, sent: boolean) {
+  if (sent) {
+    removeQueued(s, id);
+    return;
+  }
+  const entry = s.queue.find((q) => q.id === id);
+  if (entry) delete entry.steering;
 }
 
 /** Clear a card's prompt once it has been answered, so the card stops rendering

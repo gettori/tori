@@ -287,6 +287,9 @@ describe("Composer keys", () => {
       "Steer this turn, picked up in 1.5-5.4s",
     );
     expect(setup({ running: true, steering: false }).input.placeholder).toBe("Type to queue for the next turn");
+    expect(setup({ running: true, steering: true, steerCost: null, onQueue: () => {} }).input.placeholder).toBe(
+      "Steer this turn, picked up at its next step. Option+Enter queues",
+    );
   });
 
   // The figure comes from the declared tier, so a agent measured differently
@@ -655,9 +658,63 @@ describe("a queued message", () => {
         },
       ],
     });
-    const row = getByRole("button", { name: "Remove from the queue: compare [Image 1]" });
-    expect(row.querySelector("img")?.getAttribute("src")).toBe("asset:///tmp/shot.png");
+    getByRole("button", { name: "Remove from the queue: compare [Image 1]" });
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///tmp/shot.png");
     expect(container.textContent).toContain("compare [Image 1]");
+  });
+
+  const two = [
+    { id: "q1", blocks: [{ type: "text" as const, text: "first" }] },
+    { id: "q2", blocks: [{ type: "text" as const, text: "second" }] },
+  ];
+
+  it("moves down on ArrowDown on its handle", () => {
+    const onReorderQueued = vi.fn();
+    const { getByRole } = setup({ running: true, queue: two, onReorderQueued });
+    fireEvent.keyDown(getByRole("button", { name: "Move in the queue: first" }), { key: "ArrowDown" });
+    expect(onReorderQueued).toHaveBeenCalledWith(["q2", "q1"]);
+  });
+
+  it("removes nothing when its text is clicked", () => {
+    const onDropQueued = vi.fn();
+    const { getByText } = setup({ running: true, queue: two, onDropQueued });
+    fireEvent.click(getByText("first"));
+    expect(onDropQueued).not.toHaveBeenCalled();
+  });
+});
+
+describe("queue keys", () => {
+  const one = [{ id: "q1", blocks: [{ type: "text" as const, text: "queued" }] }];
+
+  it("queues on Option+Enter while a turn runs, and steers on Enter", () => {
+    const onQueue = vi.fn();
+    const { input, onSend } = setup({ running: true, steering: true, onQueue });
+    fireEvent.input(input, { target: { value: "later" } });
+    fireEvent.keyDown(input, { key: "Enter", altKey: true });
+    expect(onQueue).toHaveBeenCalledWith("later");
+    expect(onSend).not.toHaveBeenCalled();
+    fireEvent.input(input, { target: { value: "now" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("now");
+  });
+
+  it("steers the oldest on Cmd+Shift+Enter and leaves the draft", () => {
+    const onSteerQueued = vi.fn();
+    const { input, onSend } = setup({ running: true, steering: true, queue: one, onSteerQueued });
+    fireEvent.input(input, { target: { value: "still typing" } });
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true, shiftKey: true });
+    expect(onSteerQueued).toHaveBeenCalledWith();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(input.value).toBe("still typing");
+  });
+
+  it("sends on Cmd+Shift+Enter when nothing is queued", () => {
+    const onSteerQueued = vi.fn();
+    const { input, onSend } = setup({ running: true, steering: true, onSteerQueued });
+    fireEvent.input(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true, shiftKey: true });
+    expect(onSend).toHaveBeenCalledWith("hello");
+    expect(onSteerQueued).not.toHaveBeenCalled();
   });
 });
 

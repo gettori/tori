@@ -57,6 +57,9 @@ import {
   steerProbe,
   takeForSend,
   queuedText,
+  reorderQueue,
+  beginSteer,
+  endSteer,
   visibleItems,
   windowed,
   type ChatItem,
@@ -876,6 +879,36 @@ describe("the composer queue", () => {
     expect(takeForSend(s)?.blocks).toEqual([image]);
     expect(s.awaitingTurn).toBe(true);
     expect(s.queue).toEqual([]);
+  });
+
+  it("reorders by id and ignores an order that no longer names the queue", () => {
+    const s = queued(3);
+    const [a, b, c] = s.queue.map((q) => q.id);
+    reorderQueue(s, [c, a, b]);
+    expect(s.queue.map(queuedText)).toEqual(["m2", "m0", "m1"]);
+    reorderQueue(s, [a, b]);
+    expect(s.queue.map(queuedText)).toEqual(["m2", "m0", "m1"]);
+  });
+
+  it("never hands out an entry whose steer is in flight", () => {
+    const s = queued(2);
+    const first = s.queue[0].id;
+    expect(beginSteer(s, first)).not.toBeNull();
+    expect(beginSteer(s, first)).toBeNull();
+    applyEvent(s, turnDone("t1", "completed"));
+    expect(takeForSend(s)?.blocks).toEqual([{ type: "text", text: "m1" }]);
+    expect(s.queue.map(queuedText)).toEqual(["m0"]);
+  });
+
+  it("keeps a refused steer queued and drops one that landed", () => {
+    const s = queued(2);
+    const [first, second] = s.queue.map((q) => q.id);
+    beginSteer(s, first);
+    endSteer(s, first, false);
+    expect(s.queue[0].steering).toBeUndefined();
+    beginSteer(s, second);
+    endSteer(s, second, true);
+    expect(s.queue.map(queuedText)).toEqual(["m0"]);
   });
 
   it("holds the queue on an errored turn too", () => {
