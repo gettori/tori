@@ -386,6 +386,9 @@ impl Composer {
                 .collect();
             (edges, quiet, presence.surface(&live))
         };
+        for id in &edges.cleared {
+            crate::presence::withdraw_notification(&self.app, id);
+        }
         if !edges.rose.is_empty() || !edges.finished.is_empty() {
             let alerts = crate::presence::decide(edges, &quiet, &crate::settings::get_settings().notifications);
             for l in live.iter().filter(|l| alerts.needs_you.contains(&l.id)) {

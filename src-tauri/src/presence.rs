@@ -11,6 +11,12 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::rpc::dots::Dot;
 
+// A click wait polls the whole delivered list on the main run loop every 0.5s
+// until its notification is clicked or gone, and an answer from the phone does
+// neither, so a session that stops needing you takes its notification down.
+#[cfg(target_os = "macos")]
+static NEEDS_YOU_NOTES: Mutex<Option<HashMap<String, [u8; 16]>>> = Mutex::new(None);
+
 pub struct TrayState(pub Mutex<TrayIcon>);
 
 /// One session a tab or a chat hosts, as the surfaces list it.
@@ -32,6 +38,7 @@ pub struct Live {
 pub struct Edges {
     pub rose: Vec<String>,
     pub finished: Vec<String>,
+    pub cleared: Vec<String>,
 }
 
 /// What one tick's edges come to under the user's switches: the sessions to
@@ -72,7 +79,8 @@ impl Presence {
     /// needs-you: the rising edge, so one still blocked from the last tick does
     /// not fire again, and one that moved in between does. And the chats whose
     /// turn just finished: idle after working, on a completion not yet
-    /// announced. Going idle and the completion can arrive a tick apart.
+    /// announced. Going idle and the completion can arrive a tick apart. And
+    /// the sessions that stopped needing you, by moving on or by going away.
     pub fn step(&mut self, live: &[Live]) -> Edges {
         let mut edges = Edges::default();
         for l in live {
@@ -80,6 +88,9 @@ impl Presence {
             if l.dot == Dot::NeedsYou && was != Some(Dot::NeedsYou) {
                 self.attended.insert(l.id.clone(), false);
                 edges.rose.push(l.id.clone());
+            }
+            if l.dot != Dot::NeedsYou && was == Some(Dot::NeedsYou) {
+                edges.cleared.push(l.id.clone());
             }
             match l.dot {
                 Dot::Working => {
@@ -99,6 +110,11 @@ impl Presence {
             }
         }
         let ids: HashSet<&str> = live.iter().map(|l| l.id.as_str()).collect();
+        for (id, dot) in &self.last {
+            if *dot == Dot::NeedsYou && !ids.contains(id.as_str()) {
+                edges.cleared.push(id.clone());
+            }
+        }
         self.last.retain(|id, _| ids.contains(id.as_str()));
         self.attended.retain(|id, _| ids.contains(id.as_str()));
         self.announced.retain(|id, _| ids.contains(id.as_str()));
@@ -240,36 +256,84 @@ pub fn finished_body(live: &Live) -> String {
 
 /// Shows a notification about a session. With `click`, a click brings the
 /// window forward and opens the session, at the cost of a thread parked until
-/// the notification is clicked or cleared. Elsewhere than macOS it is the
+/// the notification is clicked or gone; `withdraw_notification` takes it down
+/// once the session stops needing you. Elsewhere than macOS it is the
 /// plugin's, with no click.
 pub fn notify_session(app: AppHandle, live: &Live, body: String, click: bool) {
     let title = live.name.clone();
     let target = crate::autopilot::NavTarget { folder: Some(live.folder.clone()), session: Some(live.id.clone()) };
     #[cfg(target_os = "macos")]
-    std::thread::spawn(move || {
-        // An unbundled dev binary has no identifier of its own, so it borrows
-        // Terminal's, as the plugin does; the first call wins for both.
-        let bundle = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
-        let _ = mac_notification_sys::set_application(&bundle);
-        // With a click wait this blocks until the notification is clicked or
-        // dismissed, and without one only until it is delivered.
-        let answer = mac_notification_sys::Notification::new().title(&title).message(&body).wait_for_click(click).send();
-        if !click || !matches!(answer, Ok(mac_notification_sys::NotificationResponse::Click)) {
-            return;
+    {
+        let session = live.id.clone();
+        let id = uuid::Uuid::new_v4().into_bytes();
+        if click {
+            needs_you_notes(|notes| notes.insert(session.clone(), id));
         }
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-        let _ = app.emit("nav://open", target);
-    });
+        std::thread::spawn(move || {
+            // An unbundled dev binary has no identifier of its own, so it borrows
+            // Terminal's, as the plugin does; the first call wins for both.
+            let bundle = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
+            let _ = mac_notification_sys::set_application(&bundle);
+            // With a click wait this blocks until the notification is clicked or
+            // gone, and without one only until it is delivered.
+            let answer =
+                mac_notification_sys::Notification::new().title(&title).message(&body).identifier(id).wait_for_click(click).send();
+            if click {
+                needs_you_notes(|notes| {
+                    if notes.get(&session) == Some(&id) {
+                        notes.remove(&session);
+                    }
+                });
+            }
+            if !click || !matches!(answer, Ok(mac_notification_sys::NotificationResponse::Click)) {
+                return;
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            let _ = app.emit("nav://open", target);
+        });
+    }
     #[cfg(not(target_os = "macos"))]
     {
         use tauri_plugin_notification::NotificationExt;
         let _ = (target, click);
         let _ = app.notification().builder().title(title).body(body).show();
     }
+}
+
+#[cfg(target_os = "macos")]
+fn needs_you_notes<T>(f: impl FnOnce(&mut HashMap<String, [u8; 16]>) -> T) -> T {
+    let mut notes = NEEDS_YOU_NOTES.lock().unwrap_or_else(|e| e.into_inner());
+    f(notes.get_or_insert_with(HashMap::new))
+}
+
+/// Takes down the session's needs-you notification, if one is still up. Its
+/// click wait sees it gone on the next poll and lets its thread go.
+pub fn withdraw_notification(app: &AppHandle, session: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(id) = needs_you_notes(|notes| notes.remove(session)) else { return };
+        let identifier = uuid::Uuid::from_bytes(id).hyphenated().to_string();
+        let _ = app.run_on_main_thread(move || {
+            // NSUserNotification is the API mac-notification-sys sends with,
+            // so its delivered list is where the notification sits.
+            #[allow(deprecated)]
+            {
+                use objc2_foundation::NSUserNotificationCenter;
+                let center = NSUserNotificationCenter::defaultUserNotificationCenter();
+                for note in center.deliveredNotifications().iter() {
+                    if note.identifier().is_some_and(|i| i.to_string().eq_ignore_ascii_case(&identifier)) {
+                        center.removeDeliveredNotification(&note);
+                    }
+                }
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, session);
 }
 
 pub fn set_badge_count(app: &AppHandle, count: usize) -> Result<(), String> {
@@ -374,7 +438,7 @@ mod tests {
 
     fn edges(rose: &[&str], finished: &[&str]) -> Edges {
         let own = |ids: &[&str]| ids.iter().map(|id| id.to_string()).collect();
-        Edges { rose: own(rose), finished: own(finished) }
+        Edges { rose: own(rose), finished: own(finished), cleared: vec![] }
     }
 
     #[test]
