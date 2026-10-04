@@ -1,6 +1,6 @@
-/* A branch row's second line: what its pull request is doing. Only a row that
-   has one grows it, which is what pays for the height and what lets the
-   "no pull request" marker leave the first line entirely. */
+/* A branch row's second line: what its pull request is doing and how big the
+   change is. Only a row with one of those grows it, which is what pays for the
+   height and what lets the "no pull request" marker leave the first line. */
 .line {
   /* One step under whatever the label above is wearing. GitHub can run its
      meta line at `muted` because its title is `default`; a Tori branch label
@@ -23,8 +23,12 @@
      "unreadable". The tone carries the hierarchy here, not the size. */
   font-size: var(--tori-text-md);
   font-variant-numeric: tabular-nums;
-  /* The line is a run of facts, not a sentence, so it clips rather than wraps:
-     a third line would cost every PR row the height of a whole branch. */
+  /* One line tall, but wrapping: a fact that does not fit moves to a second
+     line nobody sees, so it drops whole instead of being cut mid-number. A
+     third line would cost every PR row the height of a whole branch. */
+  flex-wrap: wrap;
+  align-content: flex-start;
+  height: 1lh;
   overflow: hidden;
   white-space: nowrap;
 }
