@@ -15,6 +15,7 @@ import Combobox, {
 } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import { fuzzyScore } from "../../utils/fuzzy";
+import { traceWork } from "../../utils/perfTrace";
 import { ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { enabledAgents } from "../../utils/agentEnabled";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
@@ -422,13 +423,15 @@ export default function Omnibox(props: {
     // Scored against the label, so inside a Topic the repo name narrows the
     // list the same way a folder name does. One cap here: scores are comparable
     // across members, so the best 200 really are the best 200.
-    const scored: { f: ProjectFile; score: number }[] = [];
-    for (const f of all) {
-      const s = fuzzyScore(q, fileLabel(f));
-      if (s !== null) scored.push({ f, score: s });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, MAX_RESULTS).map((r) => fileRow(r.f));
+    return traceWork("fuzzy-omnibox", () => {
+      const scored: { f: ProjectFile; score: number }[] = [];
+      for (const f of all) {
+        const s = fuzzyScore(q, fileLabel(f));
+        if (s !== null) scored.push({ f, score: s });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, MAX_RESULTS).map((r) => fileRow(r.f));
+    });
   });
 
   const commandRows = createMemo((): Row[] => {

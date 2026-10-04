@@ -31,6 +31,7 @@ import { traceSettle } from "../../../utils/perfTrace";
 import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
+import { traceWork } from "../../../utils/perfTrace";
 import { copyPaths, revealPaths } from "../../../utils/pathActions";
 import { syntheticId } from "../../../utils/syntheticTabs";
 import { collapseDirs, isDirOpen, nextSessionKey, setDirOpen } from "../../../utils/treeExpanded";
@@ -1010,15 +1011,17 @@ function RootBody(props: {
     const q = props.filter().trim();
     const files = allFiles();
     if (!q || !files) return [];
-    return files
-      .map((rel) => ({ rel, score: fuzzyScore(q, rel) }))
-      .filter((m): m is { rel: string; score: number } => m.score !== null)
-      // Shorter wins a tie. `fuzzyScore` does not penalise length, so a deeply
-      // nested file scores the same as the one sitting at the root with the same
-      // name, and the ranked list would then just echo directory order. Broken
-      // here rather than in `fuzzyScore`, which the omnibox and the sidebar share.
-      .sort((a, b) => b.score - a.score || a.rel.length - b.rel.length)
-      .slice(0, 200);
+    return traceWork("fuzzy-tree", () =>
+      files
+        .map((rel) => ({ rel, score: fuzzyScore(q, rel) }))
+        .filter((m): m is { rel: string; score: number } => m.score !== null)
+        // Shorter wins a tie. `fuzzyScore` does not penalise length, so a deeply
+        // nested file scores the same as the one sitting at the root with the same
+        // name, and the ranked list would then just echo directory order. Broken
+        // here rather than in `fuzzyScore`, which the omnibox and the sidebar share.
+        .sort((a, b) => b.score - a.score || a.rel.length - b.rel.length)
+        .slice(0, 200),
+    );
   };
 
   return (

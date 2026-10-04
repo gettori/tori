@@ -2,6 +2,7 @@ import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
+import { traceWork } from "../../utils/perfTrace";
 import DiffRows, { diffRowClasses } from "../Editor/DiffRows";
 import { reasoningFor, type ChatItem } from "./chatStore";
 import { chatsInFolder } from "../../utils/chatSessions";
@@ -203,7 +204,7 @@ export default function SessionDiffView(props: {
                   {file.toolUseIds.length} {file.toolUseIds.length === 1 ? "edit" : "edits"}
                 </span>
               </div>
-              <For each={parseDiffHunks(file.diff)}>
+              <For each={traceWork("session-diff", () => parseDiffHunks(file.diff))}>
                 {(hunk, hi) => {
                   const key = () => `${file.path}:${hi()}`;
                   // The reasoning behind the call that produced these lines,
@@ -232,7 +233,7 @@ export default function SessionDiffView(props: {
                       <Show when={openHunks().has(key()) && why()}>
                         {(text) => <div class={styles.why}>{text()}</div>}
                       </Show>
-                      <DiffRows rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })} path={file.path} twoColumn={twoColumn()} />
+                      <DiffRows rows={traceWork("session-diff", () => buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }))} path={file.path} twoColumn={twoColumn()} />
                     </div>
                   );
                 }}

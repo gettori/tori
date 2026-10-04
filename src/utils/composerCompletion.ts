@@ -6,6 +6,7 @@
 // differ in what they produce, not in how they are recognised, so the
 // recognition lives here, pure, and each menu is a list plus a keydown.
 import { fuzzyScore } from "./fuzzy";
+import { traceWork } from "./perfTrace";
 
 /** How many candidates a menu shows. Enough to scroll, few enough to scan. */
 export const MAX_COMPLETIONS = 12;
@@ -56,13 +57,15 @@ export function activeToken(text: string, caret: number): CompletionToken | null
 export function rank<T>(items: readonly T[], query: string, textOf: (item: T) => string): T[] {
   const q = query.trim();
   if (!q) return items.slice(0, MAX_COMPLETIONS);
-  const scored: { item: T; score: number }[] = [];
-  for (const item of items) {
-    const s = fuzzyScore(q, textOf(item));
-    if (s !== null) scored.push({ item, score: s });
-  }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, MAX_COMPLETIONS).map((s) => s.item);
+  return traceWork("fuzzy-composer", () => {
+    const scored: { item: T; score: number }[] = [];
+    for (const item of items) {
+      const s = fuzzyScore(q, textOf(item));
+      if (s !== null) scored.push({ item, score: s });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, MAX_COMPLETIONS).map((s) => s.item);
+  });
 }
 
 /** Replace a token's span with `insert`, returning the new text and where the

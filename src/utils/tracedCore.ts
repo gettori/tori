@@ -15,7 +15,10 @@ import { invoke as realInvoke, type InvokeOptions } from "@tauri-apps/api/core";
 /** Given a call, returns the arguments to actually send (the correlation id is
  *  added there) and what to run once it answers. Returning nothing means "do
  *  not time this one", which is how the trace's own commands stay out. */
-export type InvokeRecorder = (cmd: string, args: unknown) => { args: unknown; done: () => void } | undefined;
+export type InvokeRecorder = (
+  cmd: string,
+  args: unknown,
+) => { args: unknown; done: (result?: unknown) => void } | undefined;
 
 let recorder: InvokeRecorder | null = null;
 
@@ -26,9 +29,11 @@ export function setInvokeRecorder(fn: InvokeRecorder | null): void {
 export async function invoke<T>(cmd: string, args?: unknown, options?: InvokeOptions): Promise<T> {
   const rec = recorder?.(cmd, args);
   if (!rec) return realInvoke<T>(cmd, args as never, options);
+  let result: T | undefined;
   try {
-    return await realInvoke<T>(cmd, rec.args as never, options);
+    result = await realInvoke<T>(cmd, rec.args as never, options);
+    return result;
   } finally {
-    rec.done();
+    rec.done(result);
   }
 }

@@ -2,6 +2,7 @@ import { For, createEffect, createMemo, createResource, Show } from "solid-js";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { marked, type Token } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
+import { traceWork } from "../../utils/perfTrace";
 import { bufferTextOf, handOff, takeHandOff, scrollFraction } from "../../utils/liveBuffer";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, type NavTarget, type OpenInEditor } from "../../utils/events";
 import { linkTarget } from "../Chat/links";
@@ -60,6 +61,10 @@ export default function MarkdownPreview(props: { path: string }) {
   const segments = createMemo<Segment[]>(() => {
     const t = text();
     if (t === undefined) return [];
+    return traceWork("md-preview", () => segmentsOf(t));
+  });
+
+  function segmentsOf(t: string): Segment[] {
     const dir = dirOf(props.path);
     const segs: Segment[] = [];
     let run: Token[] = [];
@@ -78,7 +83,7 @@ export default function MarkdownPreview(props: { path: string }) {
     }
     flush();
     return segs;
-  });
+  }
 
   let box!: HTMLDivElement;
   // The path this view has already positioned itself for. Per path rather than

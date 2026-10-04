@@ -693,7 +693,7 @@ function liveWebglContexts(): number {
   }).length;
 }
 
-async function quit(): Promise<void> {
+export async function quit(): Promise<void> {
   traceFlush();
   await sleep(400);
   // `destroy`, not `close`: close re-enters the editor's dirty-buffer confirm

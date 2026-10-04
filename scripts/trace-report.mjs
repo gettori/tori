@@ -228,3 +228,82 @@ const waits = [...backById.values()]
   .map((b) => (jsById.has(b.id) ? b.enter - jsById.get(b.id).call : null))
   .filter((n) => n != null);
 console.log(`  queue wait        ${stat(waits.map((w) => ({ w })), (x) => x.w)}`);
+
+// Main-thread work, from `TORI_RECIPE=work` or any traced run: one row per
+// seam. A task pushes the next paint out by about its own length, so a frame
+// that dropped (its gap at least 1.5x the pass's control median) is charged its
+// whole gap, less what sizing an invoke answer cost the trace; a sync seam is
+// never charged less than its own time. A gap over a second is an occluded
+// window, not work.
+const GATE_MS = 16;
+const UNMEASURED_MS = 1000;
+const works = [];
+const controls = new Map();
+let workPass = "adhoc";
+for (const r of front) {
+  if (r.t === "note" && r.name === "pass") workPass = r.data.name;
+  if (r.t === "frames") {
+    const name = r.label.replace(/^before-/, "");
+    if (!controls.has(name)) controls.set(name, []);
+    controls.get(name).push(r.median);
+  }
+  if (r.t === "work") works.push({ ...r, pass: workPass });
+}
+if (works.length) {
+  const allControls = [...controls.values()].flat().sort((a, b) => a - b);
+  const fallback = allControls.length ? allControls[Math.floor(allControls.length / 2)] : 1000 / 60;
+  const controlOf = (p) => {
+    const v = (controls.get(p) ?? []).slice().sort((a, b) => a - b);
+    return v.length ? v[Math.floor(v.length / 2)] : fallback;
+  };
+  const bySeam = new Map();
+  for (const w of works) {
+    const sizing = w.seams["trace-sizing"] ?? 0;
+    const measured = w.frame != null && w.frame <= UNMEASURED_MS;
+    const dropped = measured && w.frame >= 1.5 * controlOf(w.pass) ? w.frame - sizing : 0;
+    // Seams sharing a frame split its block by their own time, so a cheap one
+    // beside an expensive one is not charged for it.
+    const own = Object.entries(w.seams).filter(([name]) => name !== "trace-sizing");
+    const total = own.reduce((n, [, ms]) => n + ms, 0);
+    for (const [name, ms] of own) {
+      if (!bySeam.has(name)) bySeam.set(name, { seam: [], block: [], unmeasured: 0 });
+      const row = bySeam.get(name);
+      row.seam.push(ms);
+      if (!measured) {
+        row.unmeasured++;
+        continue;
+      }
+      const share = own.length === 1 ? dropped : total > 0 ? (dropped * ms) / total : dropped / own.length;
+      // A seam longer than its own frame was awaiting, not blocking.
+      row.block.push(Math.max(ms <= w.frame ? ms : 0, share));
+    }
+  }
+  const pct = (v, q) => (v.length ? v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * q))] : null);
+  console.log(`\nmain-thread work (block = a dropped frame's gap, or the seam itself; gate ${GATE_MS}ms)`);
+  for (const [p, v] of controls) console.log(`  control ${p.padEnd(14)} median frame ${pct(v, 0.5).toFixed(1)}ms`);
+  for (const [name, r] of [...bySeam].sort()) {
+    const worst = r.block.length ? Math.max(...r.block) : null;
+    const verdict =
+      name === "calibrate" ? "calibration" : worst == null ? "unmeasured" : worst > GATE_MS ? "BUILD" : "drop";
+    console.log(
+      `  ${name.padEnd(26)} n=${String(r.seam.length).padEnd(5)} seam p50 ${ms(pct(r.seam, 0.5))} max ${ms(Math.max(...r.seam))}` +
+        `  block p50 ${ms(pct(r.block, 0.5))} p90 ${ms(pct(r.block, 0.9))} max ${ms(worst)}` +
+        `  unmeasured ${r.unmeasured}  ${verdict}`,
+    );
+  }
+}
+
+const sized = front.filter((r) => r.t === "invoke" && r.size != null);
+if (sized.length) {
+  const byCmd = new Map();
+  for (const r of sized) {
+    const c = byCmd.get(r.name) ?? { n: 0, max: 0 };
+    c.n++;
+    c.max = Math.max(c.max, r.size);
+    byCmd.set(r.name, c);
+  }
+  console.log("\nlargest invoke answers (serialized size)");
+  for (const [name, c] of [...byCmd].sort((a, b) => b[1].max - a[1].max).slice(0, 10)) {
+    console.log(`  ${name.padEnd(28)} n=${String(c.n).padEnd(5)} max ${(c.max / 1024).toFixed(1)} KB`);
+  }
+}
