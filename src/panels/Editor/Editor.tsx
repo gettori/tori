@@ -428,7 +428,7 @@ const TAB_STATUS_TONE: Record<string, string> = { "!": "conflicted", U: "untrack
 function diffModeIcon(arg: string) {
   const label = parseDiffArg(arg).staged ? "Staged" : "Working tree";
   return (
-    <span class={styles.tabMode} title={label} aria-label={label}>
+    <span class={styles.tabMode} aria-label={label}>
       <Icon icon={label === "Staged" ? GitCommitHorizontal : GitCompare} />
     </span>
   );
@@ -504,7 +504,10 @@ function tabLabel(t: FileTab) {
 function tabTitle(t: FileTab): string {
   const roots = searchBufferRoots(t.path);
   if (roots?.length) return roots.join("\n");
-  return parseSyntheticId(t.path)?.workspace ?? t.path;
+  const parsed = parseSyntheticId(t.path);
+  // A diff tab's mode is only an icon on the tab, so the tooltip names it.
+  if (parsed?.kind === "diff") return `${parseDiffArg(parsed.arg).staged ? "Staged" : "Working tree"}\n${parsed.workspace}`;
+  return parsed?.workspace ?? t.path;
 }
 
 const LS_RIGHT_W = "tori.editor.rightw.v1";
