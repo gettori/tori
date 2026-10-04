@@ -5,6 +5,8 @@ export type ToriNote = { kind: string; from: string | null; body: string };
 
 const MARK = /^<tori kind="([^"]+)"(?: from="([^"]*)")?>\n([\s\S]*)\n<\/tori>$/;
 
+export const toriText = (kind: string, body: string) => `<tori kind="${kind}">\n${body}\n</tori>`;
+
 export function toriNote(blocks: ContentBlock[]): ToriNote | null {
   const [only] = blocks;
   if (blocks.length !== 1 || only.type !== "text") return null;
