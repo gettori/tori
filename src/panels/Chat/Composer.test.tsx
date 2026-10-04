@@ -40,7 +40,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
       draft={draft()}
       onDraftChange={setDraftValue}
       history={[]}
-      held={false}
+      parked={false}
       disabled={false}
       onSend={onSend}
       onInterrupt={onInterrupt}
@@ -641,6 +641,26 @@ describe("attachment limits, applied where a thing is offered", () => {
   });
 });
 
+describe("a queued message", () => {
+  it("shows its image beside its text", () => {
+    const { container, getByRole } = setup({
+      running: true,
+      queue: [
+        {
+          id: "q1",
+          blocks: [
+            { type: "fileRef", path: "/tmp/shot.png", startLine: null, endLine: null, text: null, label: "Image 1" },
+            { type: "text", text: "compare [Image 1]" },
+          ],
+        },
+      ],
+    });
+    const row = getByRole("button", { name: "Remove from the queue: compare [Image 1]" });
+    expect(row.querySelector("img")?.getAttribute("src")).toBe("asset:///tmp/shot.png");
+    expect(container.textContent).toContain("compare [Image 1]");
+  });
+});
+
 describe("an attachment chip", () => {
   const shot: PendingBlock[] = [
     {
@@ -969,7 +989,7 @@ describe("draft and history", () => {
         draft={draft()}
         onDraftChange={setDraft}
         history={[]}
-        held={false}
+        parked={false}
         disabled={false}
         onSend={() => {}}
         onInterrupt={() => {}}
@@ -1003,7 +1023,7 @@ describe("draft and history", () => {
         draft={draft()}
         onDraftChange={setDraft}
         history={[]}
-        held={false}
+        parked={false}
         disabled={false}
         onSend={() => {}}
         onInterrupt={() => {}}

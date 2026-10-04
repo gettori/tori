@@ -1311,7 +1311,7 @@ export default function ChatView(props: {
           const t = takeForSend(s);
           if (t) taken.push(t);
         });
-        if (taken.length) void sendBlocks([{ type: "text", text: taken[0].text }], taken[0].held ? "chat_send_held" : "chat_send");
+        if (taken.length) void sendBlocks(taken[0].blocks, taken[0].held ? "chat_send_held" : "chat_send");
       },
     ),
   );
@@ -1376,11 +1376,9 @@ export default function ChatView(props: {
     if (result?.kind === "blocked") emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
   }
 
-  // Attachments ride the message that is actually sent, whether it opens a turn
-  // or steers one. Only the pre-acknowledgement window still queues, and there
-  // the chips stay put and visible: a queued message is sent later, and silently
-  // emptying the composer now would leave the user unable to see what the next
-  // turn is going to carry.
+  // Attachments ride the message they were attached to, whether it opens a
+  // turn, steers one or is queued. A queued entry takes its chips with it, so
+  // two queued messages can never disagree about which one carries a file.
   // The autopilot drives this session: no composer, and its questions are the autopilot's to answer.
   const locked = () => isLocked(props.sessionId);
   const lockedItem = () => autopilotItems().find((i) => i.session === props.sessionId && !["done", "failed"].includes(i.state));
@@ -1419,7 +1417,7 @@ export default function ChatView(props: {
     cancelResume(props.sessionId);
     const held = stopped();
     if (held) {
-      if (text) edit((s) => enqueue(s, text, command === "chat_send_held"));
+      enqueueDraft(text, command);
       if (!heldSaid()) {
         setHeldSaid(true);
         edit((s) => pushNotice(s, heldNotice(held), "error"));
@@ -1431,16 +1429,22 @@ export default function ChatView(props: {
         void steer(text);
         return;
       }
-      // Attachment-only is a valid thing to send but not a valid thing to
-      // queue: the queue carries text, so an empty entry would flush as an
-      // empty turn once the running one ends.
-      if (text) edit((s) => enqueue(s, text, command === "chat_send_held"));
+      enqueueDraft(text, command);
       return;
     }
-    const attached = takePending(composerKey());
-    const blocks: ContentBlock[] = text ? [...attached, { type: "text", text }] : attached;
+    const blocks = draftBlocks(text);
     if (!blocks.length) return;
     void sendBlocks(blocks, command);
+  }
+
+  function draftBlocks(text: string): ContentBlock[] {
+    const attached = takePending(composerKey());
+    return text ? [...attached, { type: "text", text }] : attached;
+  }
+
+  function enqueueDraft(text: string, command: "chat_send" | "chat_send_held") {
+    const blocks = draftBlocks(text);
+    if (blocks.length) edit((s) => enqueue(s, blocks, command === "chat_send_held"));
   }
 
   function onAnswer(card: ToolItem, answer: Answer) {
@@ -2396,7 +2400,7 @@ export default function ChatView(props: {
           // spoken, it is the only authority on what it takes.
           commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, resolvedProfile()))}
           loadFiles={attachments.loadProjectFiles}
-          held={state.queueHeld}
+          parked={state.queueParked}
           disabled={refused() || state.ended}
           onSend={onSend}
           onAttachFile={attachments.onAttachFile}

@@ -301,7 +301,7 @@ export default function ChatDraft(props: {
         // is unsent. The model picker faced the same argument and answered it
         // the other way; this follows it. See `cachedCommands`.
         commands={cachedCommands(catalog())}
-        held={false}
+        parked={false}
         disabled={starting() || blocked() !== null}
         loadFiles={attachments.loadProjectFiles}
         onSend={onSend}

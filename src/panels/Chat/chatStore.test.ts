@@ -56,6 +56,7 @@ import {
   steerable,
   steerProbe,
   takeForSend,
+  queuedText,
   visibleItems,
   windowed,
   type ChatItem,
@@ -684,7 +685,7 @@ describe("ordering tolerance", () => {
   it("absorbs a repeated turnStarted and a repeated turnCompleted", () => {
     const s = replay([turnStarted("t1"), turnStarted("t1"), turnDone("t1", "completed"), turnDone("t1", "cancelled")]);
     expect(s.turns.t1.completed).toBe(true);
-    expect(s.queueHeld).toBe(false);
+    expect(s.queueParked).toBe(false);
   });
 });
 
@@ -818,7 +819,7 @@ describe("status", () => {
 describe("the composer queue", () => {
   function queued(n: number): ChatState {
     const s = replay([FIXTURE[0], turnStarted("t1")]);
-    for (let i = 0; i < n; i++) enqueue(s, `m${i}`);
+    for (let i = 0; i < n; i++) enqueue(s, [{ type: "text", text: `m${i}` }]);
     return s;
   }
 
@@ -835,7 +836,7 @@ describe("the composer queue", () => {
     for (let turn = 2; turn < 9; turn++) {
       const next = takeForSend(s);
       if (!next) break;
-      sent.push(next.text);
+      sent.push(queuedText(next));
       // Taking one message must close the window until that turn is done: the
       // whole backlog going out at once is the failure this guards.
       expect(takeForSend(s)).toBeNull();
@@ -848,12 +849,12 @@ describe("the composer queue", () => {
   it("holds the queue for the round trip before the child acknowledges a turn", () => {
     const s = queued(2);
     applyEvent(s, turnDone("t1", "completed"));
-    expect(takeForSend(s)?.text).toBe("m0");
+    expect(takeForSend(s)?.blocks).toEqual([{ type: "text", text: "m0" }]);
     expect(isRunning(s)).toBe(true);
     expect(chatStatus(s)).toBe("executing");
     expect(pendingFlush(s)).toBeNull();
     clearAwaitingTurn(s);
-    expect(pendingFlush(s)?.text).toBe("m1");
+    expect(pendingFlush(s)?.blocks).toEqual([{ type: "text", text: "m1" }]);
   });
 
   it("sends nothing on a cancelled turn and keeps every message actionable", () => {
@@ -863,8 +864,18 @@ describe("the composer queue", () => {
     applyEvent(s, turnDone("t1", "cancelled"));
     expect(pendingFlush(s)).toBeNull();
     expect(takeForSend(s)).toBeNull();
-    expect(s.queueHeld).toBe(true);
-    expect(s.queue.map((q) => q.text)).toEqual(["m0", "m1", "m2"]);
+    expect(s.queueParked).toBe(true);
+    expect(s.queue.map(queuedText)).toEqual(["m0", "m1", "m2"]);
+  });
+
+  it("queues an attachment on its own and flushes it as one turn carrying the file", () => {
+    const s = replay([FIXTURE[0], turnStarted("t1")]);
+    const image = { type: "fileRef", path: "/tmp/a.png", startLine: null, endLine: null, text: null, label: "Image 1" } as const;
+    enqueue(s, [image]);
+    applyEvent(s, turnDone("t1", "completed"));
+    expect(takeForSend(s)?.blocks).toEqual([image]);
+    expect(s.awaitingTurn).toBe(true);
+    expect(s.queue).toEqual([]);
   });
 
   it("holds the queue on an errored turn too", () => {
@@ -877,7 +888,7 @@ describe("the composer queue", () => {
     const s = queued(2);
     applyEvent(s, turnDone("t1", "cancelled"));
     releaseQueue(s);
-    expect(pendingFlush(s)?.text).toBe("m0");
+    expect(pendingFlush(s)?.blocks).toEqual([{ type: "text", text: "m0" }]);
   });
 
   it("discards the held queue on an explicit discard", () => {
@@ -892,10 +903,10 @@ describe("the composer queue", () => {
     const s = queued(2);
     applyEvent(s, turnDone("t1", "cancelled"));
     removeQueued(s, s.queue[0].id);
-    expect(s.queue.map((q) => q.text)).toEqual(["m1"]);
-    expect(s.queueHeld).toBe(true);
+    expect(s.queue.map(queuedText)).toEqual(["m1"]);
+    expect(s.queueParked).toBe(true);
     removeQueued(s, s.queue[0].id);
-    expect(s.queueHeld).toBe(false);
+    expect(s.queueParked).toBe(false);
   });
 
   // The ceiling used to be a tool-call denial the agent's own hook enforced.
@@ -910,7 +921,16 @@ describe("the composer queue", () => {
     expect(takeForSend(s)).toBeNull();
     // Held, not dropped: raising the limit sends what was typed rather than
     // asking for it again.
-    expect(s.queue.map((q) => q.text)).toEqual(["m0", "m1"]);
+    expect(s.queue.map(queuedText)).toEqual(["m0", "m1"]);
+  });
+
+  it("never flushes a queued attachment under a spend ceiling either", () => {
+    const s = replay([FIXTURE[0], turnStarted("t1")]);
+    enqueue(s, [{ type: "fileRef", path: "/tmp/a.pdf", startLine: null, endLine: null, text: null, label: "PDF 1" }]);
+    applyEvent(s, turnDone("t1", "completed"));
+    s.budgetStopped = true;
+    expect(takeForSend(s)).toBeNull();
+    expect(s.queue).toHaveLength(1);
   });
 
   // "Send now" is a button, and a ceiling a button can lift is not a ceiling.
@@ -932,7 +952,7 @@ describe("the composer queue", () => {
     s.budgetStopped = true;
     expect(pendingFlush(s)).toBeNull();
     s.budgetStopped = false;
-    expect(pendingFlush(s)?.text).toBe("m0");
+    expect(pendingFlush(s)?.blocks).toEqual([{ type: "text", text: "m0" }]);
   });
 
   it("never flushes into a dead session", () => {
@@ -2656,13 +2676,13 @@ describe("a usage limit stop", () => {
   it("releases what the limit held once the continue's turn completes", () => {
     before();
     const s = replay([FIXTURE[0], turnStarted("t1"), rejected]);
-    enqueue(s, "after the limit");
+    enqueue(s, [{ type: "text", text: "after the limit" }]);
     applyEvent(s, turnDone("t1", "errored"));
     expect(pendingFlush(s)).toBeNull();
     s.continuing = true;
     pushUserTurn(s, [{ type: "text", text: "continue" }]);
     applyEvent(s, turnStarted("t2"));
     applyEvent(s, turnDone("t2", "completed"));
-    expect(pendingFlush(s)?.text).toBe("after the limit");
+    expect(pendingFlush(s)?.blocks).toEqual([{ type: "text", text: "after the limit" }]);
   });
 });

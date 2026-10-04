@@ -2841,7 +2841,7 @@ button.attachmentBody:hover {
 
 /* Held after a stopped turn: the queue is waiting on a decision, not on a
    turn, and must not look like ordinary pending work. */
-.queueHeld .queueLabel {
+.queueParked .queueLabel {
   color: var(--attention-fg);
 }
 
@@ -2857,6 +2857,18 @@ button.attachmentBody:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
+}
+
+.queueThumb {
+  height: calc(16px * var(--ui-scale));
+  margin-right: calc(4px * var(--ui-scale));
+  border-radius: var(--tori-radius-sm);
+  vertical-align: middle;
+}
+
+.queueRef {
+  margin-right: calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
 }
 
 .queueItem:hover {

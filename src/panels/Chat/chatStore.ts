@@ -410,7 +410,11 @@ export function hookFailed(it: Pick<HookItem, "exitCode">): boolean {
 }
 
 // `held` marks a tab's first prompt, which the autopilot's lock lets through.
-export type QueuedInput = { id: string; text: string; held?: true };
+export type QueuedInput = { id: string; blocks: ContentBlock[]; held?: true };
+
+export function queuedText(q: Pick<QueuedInput, "blocks">): string {
+  return q.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
+}
 
 /** `model` is the resolved id `turnStarted` reported for this turn, or null
  *  for a turn that never named one (replayed history has no turn frames). The
@@ -480,7 +484,7 @@ export type ChatState = {
   /** A cancelled turn parks the queue instead of flushing it: an interrupt
    *  reports as a completion, and flushing on it would send exactly the
    *  messages the user pressed stop to prevent. */
-  queueHeld: boolean;
+  queueParked: boolean;
   /** Set when a spend ceiling stopped this chat. Held in the store rather than
    *  in the panel so `chatStatus` can report it, which is what puts a stopped
    *  session on the same needs-you edge as one blocked on a permission prompt. */
@@ -634,7 +638,7 @@ export type ChatState = {
    *  force. Null once anything is sent again. */
   limitStop: LimitStop | null;
   /** The continue sent at a reset is in flight. Its turn completing releases
-   *  what the limit held in the queue, which no one pressed "send now" for. */
+   *  what the limit parked in the queue, which no one pressed "send now" for. */
   continuing: boolean;
   /** Monotonic id source, so replaying the same events twice yields the same
    *  item ids and tests can assert on them. */
@@ -664,7 +668,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     ended: false,
     awaitingTurn: false,
     queue: [],
-    queueHeld: false,
+    queueParked: false,
     budgetStopped: false,
     model: null,
     modelValue: null,
@@ -1603,7 +1607,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.limitStop = ev.outcome === "errored" ? limitStopOf(s.rateLimit, ev.turnId, Date.now()) : null;
       if (s.continuing) {
         s.continuing = false;
-        if (ev.outcome === "completed") s.queueHeld = false;
+        if (ev.outcome === "completed") s.queueParked = false;
       }
       // The load-bearing distinction: an interrupt is a completion on the wire
       // but the opposite of one in intent.
@@ -1612,7 +1616,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         // child and every subagent with it. `errored` is a turn that failed
         // with the child still alive, where a backgrounded lane keeps running.
         if (ev.outcome === "cancelled") settleLanes(s, ev.outcome);
-        if (s.queue.length) s.queueHeld = true;
+        if (s.queue.length) s.queueParked = true;
       }
       return;
     }
@@ -1623,7 +1627,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         s.activeTurnId = null;
         s.awaitingTurn = false;
         settleLanes(s, "errored");
-        if (s.queue.length) s.queueHeld = true;
+        if (s.queue.length) s.queueParked = true;
       }
       return;
     }
@@ -1632,7 +1636,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.activeTurnId = null;
       s.awaitingTurn = false;
       settleLanes(s, "cancelled");
-      if (s.queue.length) s.queueHeld = true;
+      if (s.queue.length) s.queueParked = true;
       push(s, {
         kind: "notice",
         id: nextId(s, "note"),
@@ -1938,8 +1942,8 @@ export function replayFold(ev: ChatEvent, replaying: boolean): ReplayFold {
 
 /** Input typed before the sent turn was acknowledged. Queued, never dropped,
  *  and never sent from here: the flush driver decides. */
-export function enqueue(s: ChatState, text: string, held = false): QueuedInput {
-  const item: QueuedInput = held ? { id: nextId(s, "q"), text, held: true } : { id: nextId(s, "q"), text };
+export function enqueue(s: ChatState, blocks: ContentBlock[], held = false): QueuedInput {
+  const item: QueuedInput = held ? { id: nextId(s, "q"), blocks, held: true } : { id: nextId(s, "q"), blocks };
   s.queue.push(item);
   return item;
 }
@@ -1956,7 +1960,7 @@ export function limitStopOf(rl: RateLimitState | null, turnId: string, endedAtMs
 }
 
 /** The next queued message that may be sent right now, or null. Null while a
- *  turn is running, null while the queue is held after a cancelled turn - which
+ *  turn is running, null while the queue is parked after a cancelled turn - which
  *  is what stops "stop" from firing the very messages it prevented - and null
  *  under a spend ceiling.
  *
@@ -1966,7 +1970,7 @@ export function limitStopOf(rl: RateLimitState | null, turnId: string, endedAtMs
  *  queue rather than refused, so raising the limit sends what was already
  *  typed. */
 export function pendingFlush(s: ChatState): QueuedInput | null {
-  if (s.budgetStopped || s.queueHeld || isRunning(s) || s.ended) return null;
+  if (s.budgetStopped || s.queueParked || isRunning(s) || s.ended) return null;
   return s.queue[0] ?? null;
 }
 
@@ -1984,20 +1988,20 @@ export function takeForSend(s: ChatState): QueuedInput | null {
   return next;
 }
 
-/** "Send now" on a held queue: the user has looked at what was parked and wants
+/** "Send now" on a parked queue: the user has looked at what was parked and wants
  *  it after all. */
 export function releaseQueue(s: ChatState) {
-  s.queueHeld = false;
+  s.queueParked = false;
 }
 
 export function discardQueue(s: ChatState) {
   s.queue = [];
-  s.queueHeld = false;
+  s.queueParked = false;
 }
 
 export function removeQueued(s: ChatState, id: string) {
   s.queue = s.queue.filter((q) => q.id !== id);
-  if (!s.queue.length) s.queueHeld = false;
+  if (!s.queue.length) s.queueParked = false;
 }
 
 /** Clear a card's prompt once it has been answered, so the card stops rendering
@@ -2251,7 +2255,7 @@ export function sendCapable(s: ChatState, transport: ChatTransport | undefined):
  *
  * The item list is deliberately untouched. The reconnect resumes the same
  * session, so its transcript is still the truth; clearing it would throw away
- * the conversation to reflect a dropped pipe. The queue is likewise kept, held
+ * the conversation to reflect a dropped pipe. The queue is likewise kept, parked
  * flag and all: whatever the user typed during the outage is still what they
  * wanted to send.
  */
