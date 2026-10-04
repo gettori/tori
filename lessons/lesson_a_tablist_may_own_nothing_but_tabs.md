@@ -1,7 +1,7 @@
 ---
 summary: every shape making a tab close button legal and reachable trips another axe rule, so only the keyboard path stays live
 status: current
-updated: 2026-08-16
+updated: 2026-10-05
 source: "Plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111, fixing #115); `src/components/Tab/Tab.tsx`, `src/components/Tab/Tab.test.tsx`"
 ---
 
@@ -21,7 +21,7 @@ What cleared the scan was `aria-hidden` on the sibling button, plus `tabindex="-
 
 ## The rule under it
 
-An interactive control that is not a `tab` has nowhere legal to live inside a tablist. Nesting it breaks the widget; placing it beside the tab breaks the ownership; hiding it removes it. Composite widget roles with required children (`tablist`/`tab`, `list`/`listitem`, `menu`/`menuitem`, `tree`/`treeitem`) all behave this way, so a per-item action button is a general problem, not a tabs problem.
+An interactive control that is not a `tab` has nowhere legal to live inside a tablist. Nesting it breaks the widget; placing it beside the tab breaks the ownership; hiding it removes it. Composite widget roles with required children (`tablist`/`tab`, `listbox`/`option`, `list`/`listitem`, `menu`/`menuitem`, `tree`/`treeitem`) all behave this way, so a per-item action button is a general problem, not a tabs problem. The composer's stash menu hit it again: a discard button beside each `option` failed `aria-required-children` on the listbox, and it shipped as an `aria-hidden` x inside the option with Backspace as the keyboard discard ([[concept_prompt_stash]]).
 
 ## What to do instead
 
@@ -41,3 +41,4 @@ Every one of the three shapes above looked plausible on paper. The answer came f
 - [[component_tab]] - where this landed.
 - [[component_overflow_tab_bar]] - the strip, and the second use of the sibling placement.
 - [[concept_axe_accessibility_gate]] - what found #115 and what settled the argument.
+- [[concept_prompt_stash]] - the same trap in a listbox, solved the same way.
