@@ -1074,25 +1074,37 @@ pub async fn chat_history(
     up_to_prompt_ts: Option<u64>,
 ) -> Result<HistoryTail, String> {
     let source = from_session_id.unwrap_or_else(|| session_id.clone());
+    let agent = agent_id.clone();
+    let from = move || history_source(&source, &agent);
+    Ok(history_reply(&state.0, session_id, from, agent_id, up_to_prompt_ts).await)
+}
+
+/// What `chat_history` sends back, apart from Tauri state so the perf budgets
+/// measure the reply the panel actually gets.
+pub(crate) async fn history_reply(
+    host: &ChatHost,
+    session_id: String,
+    from: impl FnOnce() -> HistorySource + Send + 'static,
+    agent_id: String,
+    up_to_prompt_ts: Option<u64>,
+) -> HistoryTail {
     let id = session_id.clone();
     let traced = crate::trace::enabled();
     let enter = if traced { crate::trace::now_ms() } else { 0.0 };
-    let mut tail = crate::exec::blocking("chat_history", move || {
-        read_tail(&id, &history_source(&source, &agent_id), &agent_id, up_to_prompt_ts)
-    })
-    .await;
+    let mut tail =
+        crate::exec::blocking("chat_history", move || read_tail(&id, &from(), &agent_id, up_to_prompt_ts)).await;
     let read_ms = if traced { crate::trace::now_ms() - enter } else { 0.0 };
     // The cut a live event gets on its way through the sink wrapper. Applied
     // here because replay does not pass through it, and applied through the
     // same cache so a backfilled card can fetch its remainder too.
-    state.0.cut_outputs(&session_id, &mut tail.events);
+    host.cut_outputs(&session_id, &mut tail.events);
     if traced {
         let start = crate::trace::now_ms();
         let bytes = serde_json::to_vec(&tail).map_or(0, |v| v.len());
         let size_ms = crate::trace::now_ms() - start;
         crate::trace::chat_open(&session_id, enter, tail.events.len(), read_ms, bytes, size_ms);
     }
-    Ok(tail)
+    tail
 }
 
 /// The page of history before `cursor`, for "load earlier". Takes the same

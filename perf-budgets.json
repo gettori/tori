@@ -1,0 +1,23 @@
+[
+  {
+    "name": "chat_history.bytes.small",
+    "runtime": "rust",
+    "unit": "bytes",
+    "budget": 2343,
+    "reason": "three turns of prompt, one Bash call and a reply: the per event overhead a short chat pays on open, plus the tail's summary"
+  },
+  {
+    "name": "chat_history.bytes.2000_turns",
+    "runtime": "rust",
+    "unit": "bytes",
+    "budget": 13978,
+    "reason": "two thousand turns, but a chat opens on its tail and pages the rest in on load earlier, so this stays near the tail's size rather than growing with the conversation"
+  },
+  {
+    "name": "chat_history.bytes.5mb_tool_output",
+    "runtime": "rust",
+    "unit": "bytes",
+    "budget": 66426,
+    "reason": "one 5 MB tool output: cut_outputs caps it at TOOL_OUTPUT_CAP, so the reply stays near 64 KB rather than carrying the whole body"
+  }
+]
