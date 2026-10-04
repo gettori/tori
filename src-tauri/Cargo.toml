@@ -73,8 +73,10 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 # The notification plugin's desktop send never reports a click, so a needs-you
 # notification goes out here, waiting for one. Already in the lock file through
-# the plugin's notify-rust.
+# the plugin's notify-rust. Patched below so a needs-you notification carries
+# an id Tori chose, to take it back down once the session no longer needs you.
 mac-notification-sys = "0.6"
+uuid = { version = "1", features = ["v4"] }
 # `keychain` is the login keychain (the one a desktop app shares with every
 # other credential the user has); `protected` is the data-protection keychain,
 # which needs an app-group entitlement Tori does not have.
@@ -91,10 +93,13 @@ sha1 = "0.10"
 xattr = "1"
 # NSUserDefaults for WebKit's text-checking switches (spell check on, smart
 # substitutions off). Already in the tree under tauri; only the features are new.
-objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", "NSData", "NSArray"] }
+objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", "NSData", "NSArray", "NSUserNotification"] }
 # NSApplication.setApplicationIconImage for the Dock icon, and NSSound for the
 # sounds a session state plays. Both already in the tree under tauri; only the
 # features are new.
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSPasteboard", "NSSound"] }
 
+# 0.6.15 plus an `identifier` builder option; drop this once upstream has one.
+[patch.crates-io]
+mac-notification-sys = { path = "vendor/mac-notification-sys" }
