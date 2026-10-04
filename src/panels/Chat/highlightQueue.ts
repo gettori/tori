@@ -8,7 +8,7 @@ export type Answer = string | string[];
 export type Request = { id: number; code: string; lang: string; form: Form };
 
 // `none`: the language has no grammar. `error`: loading or running it failed.
-export type Reply = { id: number; value?: Answer; none?: true; error?: string };
+export type Reply = { id: number; value?: Answer; none?: true; error?: string; ms?: number };
 
 export type Done = (req: Request, reply: Reply) => void;
 

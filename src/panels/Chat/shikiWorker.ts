@@ -17,6 +17,7 @@ ready.then(
 
 scope.onmessage = async ({ data: { id, code, lang, form } }) => {
   let reply: Reply;
+  const t0 = performance.now();
   try {
     await ready;
     if (!canHighlight(lang)) {
@@ -28,5 +29,5 @@ scope.onmessage = async ({ data: { id, code, lang, form } }) => {
   } catch (e) {
     reply = { id, error: String(e) };
   }
-  scope.postMessage(reply);
+  scope.postMessage({ ...reply, ms: performance.now() - t0 });
 };
