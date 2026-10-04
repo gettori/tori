@@ -242,6 +242,18 @@ pub trait Forge: Send + Sync {
         branches: &[String],
     ) -> Result<Vec<UnitStatus>, ForgeError>;
 
+    /// [`Forge::unit_statuses`] plus a read of each watched pull request by
+    /// number, in the same request. A number the host does not answer for reads
+    /// as `None`. A host with no such read answers the statuses alone.
+    fn unit_statuses_watching(
+        &self,
+        repo: &RepoRef,
+        branches: &[String],
+        _watched: &[u64],
+    ) -> Result<(Vec<UnitStatus>, Vec<(u64, Option<crate::rpc::pr_watch::Snapshot>)>), ForgeError> {
+        Ok((self.unit_statuses(repo, branches)?, Vec::new()))
+    }
+
     /// Whether each of these pull requests is open, closed or merged, in one
     /// request. A number the host does not answer for is left out.
     fn pull_request_states(&self, repo: &RepoRef, numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError>;

@@ -544,6 +544,111 @@ const PR_FIELDS: &str = concat!(
 "#
 );
 
+// `isRequired` takes the pull request's number.
+fn watched_fields(number: u64) -> String {
+    format!(
+        r#"
+  state headRefOid mergeable
+  comments(last: 20) {{ nodes {{ id createdAt body author {{ login }} }} }}
+  reviews(last: 20) {{ nodes {{ id submittedAt state body author {{ login }} comments(first: 1) {{ nodes {{ body }} }} }} }}
+  commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ contexts(first: 100) {{ nodes {{
+    __typename
+    ... on CheckRun {{ databaseId name status conclusion detailsUrl isRequired(pullRequestNumber: {number}) }}
+    ... on StatusContext {{ id context state targetUrl isRequired(pullRequestNumber: {number}) }}
+  }} }} }} }} }} }}
+"#
+    )
+}
+
+fn watched_from_graphql(v: &Value) -> crate::rpc::pr_watch::Snapshot {
+    use crate::rpc::pr_watch::{Check, Mergeable, PrState as WatchState, Remark, Snapshot};
+    let nodes = |v: Option<&Value>| v.and_then(|c| c.get("nodes")).and_then(|n| n.as_array()).cloned();
+    let checks = nodes(
+        v.get("commits")
+            .and_then(|c| c.get("nodes"))
+            .and_then(|n| n.as_array())
+            .and_then(|n| n.first())
+            .and_then(|n| n.get("commit"))
+            .and_then(|c| c.get("statusCheckRollup"))
+            .and_then(|r| r.get("contexts")),
+    )
+    .map(|list| {
+        list.iter()
+            .map(|node| {
+                let context = context_from(node);
+                let run = node.get("databaseId").and_then(|d| d.as_u64()).map(|d| d.to_string());
+                Check {
+                    run_id: run.unwrap_or_else(|| str_at(node, "id")),
+                    name: context.name,
+                    done: context.state != CheckState::Pending,
+                    failed: context.state == CheckState::Failure,
+                    required: node.get("isRequired").and_then(|r| r.as_bool()).unwrap_or(false),
+                    url: context.url,
+                }
+            })
+            .collect()
+    });
+    let author = |n: &Value| n.get("author").map(|a| str_at(a, "login")).unwrap_or_default();
+    let at = |n: &Value, key: &str| n.get(key).and_then(|t| t.as_str()).and_then(crate::chat::acp_sessions::epoch_from_iso8601).map(|s| s * 1000);
+    let comments = nodes(v.get("comments")).map(|list| {
+        list.iter()
+            .filter_map(|n| Some(Remark { id: str_at(n, "id"), author: author(n), at_ms: at(n, "createdAt")?, body: str_at(n, "body"), review: None }))
+            .collect::<Vec<_>>()
+    });
+    let reviews = nodes(v.get("reviews")).map(|list| {
+        list.iter()
+            .filter_map(|n| {
+                // A pending review is the viewer's own draft; it has no submittedAt.
+                let at_ms = at(n, "submittedAt")?;
+                let state = str_at(n, "state").to_ascii_lowercase();
+                let first = nodes(n.get("comments")).and_then(|c| c.first().map(|c| str_at(c, "body"))).unwrap_or_default();
+                let body = Some(str_at(n, "body")).filter(|b| !b.trim().is_empty()).unwrap_or(first);
+                // A thread reply arrives as a bare commented review, and an empty one says nothing.
+                if state == "commented" && body.trim().is_empty() {
+                    return None;
+                }
+                Some(Remark { id: str_at(n, "id"), author: author(n), at_ms, body, review: Some(state) })
+            })
+            .collect::<Vec<_>>()
+    });
+    let remarks = match (comments, reviews) {
+        (Some(mut c), Some(r)) => {
+            c.extend(r);
+            Some(c)
+        }
+        _ => None,
+    };
+    Snapshot {
+        state: match v.get("state").and_then(|s| s.as_str()) {
+            Some("MERGED") => WatchState::Merged,
+            Some("CLOSED") => WatchState::Closed,
+            _ => WatchState::Open,
+        },
+        head_sha: str_at(v, "headRefOid"),
+        mergeable: match v.get("mergeable").and_then(|m| m.as_str()) {
+            Some("MERGEABLE") => Mergeable::Mergeable,
+            Some("CONFLICTING") => Mergeable::Conflicting,
+            _ => Mergeable::Unknown,
+        },
+        checks,
+        remarks,
+    }
+}
+
+// A number the repo does not have fails its own alias only, and the rest still
+// answer in `data`: one stale number must not blind the lot.
+fn data_past_alias_errors(resp: &super::http::HttpResponse) -> Result<Value, ForgeError> {
+    match graphql_data(resp) {
+        Ok(data) => Ok(data),
+        Err(e @ ForgeError::Api { status: 200, .. }) => serde_json::from_str::<Value>(&resp.body)
+            .ok()
+            .and_then(|v| v.get("data").cloned())
+            .filter(|d| d.get("repository").is_some_and(|r| !r.is_null()))
+            .ok_or(e),
+        Err(e) => Err(e),
+    }
+}
+
 const THREADS_QUERY: &str = r#"
 query($owner:String!,$repo:String!,$number:Int!,$after:String){
   repository(owner:$owner,name:$repo){
@@ -655,17 +760,7 @@ impl Forge for GitHubForge {
         let selections = numbers.iter().map(|n| format!("p{n}: pullRequest(number:{n}) {{ state }}")).collect::<Vec<_>>().join("\n");
         let query = format!("query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}");
         let resp = self.graphql_response(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
-        // A number the repo does not have fails its own alias only, and the
-        // rest still answer in `data`: one stale number must not blind the lot.
-        let data = match graphql_data(&resp) {
-            Ok(data) => data,
-            Err(e @ ForgeError::Api { status: 200, .. }) => serde_json::from_str::<Value>(&resp.body)
-                .ok()
-                .and_then(|v| v.get("data").cloned())
-                .filter(|d| d.get("repository").is_some_and(|r| !r.is_null()))
-                .ok_or(e)?,
-            Err(e) => return Err(e),
-        };
+        let data = data_past_alias_errors(&resp)?;
         let repository = data.get("repository").ok_or_else(|| ForgeError::Malformed { message: "no repository in response".into() })?;
         Ok(numbers
             .iter()
@@ -737,9 +832,18 @@ impl Forge for GitHubForge {
         repo: &RepoRef,
         branches: &[String],
     ) -> Result<Vec<UnitStatus>, ForgeError> {
+        self.unit_statuses_watching(repo, branches, &[]).map(|(statuses, _)| statuses)
+    }
+
+    fn unit_statuses_watching(
+        &self,
+        repo: &RepoRef,
+        branches: &[String],
+        watched: &[u64],
+    ) -> Result<(Vec<UnitStatus>, Vec<(u64, Option<crate::rpc::pr_watch::Snapshot>)>), ForgeError> {
         self.require_token()?;
-        if branches.is_empty() {
-            return Ok(vec![]);
+        if branches.is_empty() && watched.is_empty() {
+            return Ok((vec![], vec![]));
         }
         // One aliased selection per branch, all in a single request. The whole
         // point: the rate budget scales with unit count, so per-unit requests
@@ -755,18 +859,25 @@ impl Forge for GitHubForge {
                      orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS} }} }}"
                 )
             })
+            .chain(watched.iter().map(|n| format!("w{n}: pullRequest(number:{n}) {{ {} }}", watched_fields(*n))))
             .collect::<Vec<_>>()
             .join("\n");
         let query = format!(
             "query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}"
         );
-        let data = self
-            .graphql(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
+        let resp = self.graphql_response(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
+        // Only a watched number can be one the repo lacks, so the branch-only
+        // query keeps failing whole as it always did.
+        let data = if watched.is_empty() { graphql_data(&resp)? } else { data_past_alias_errors(&resp)? };
         let repository = data.get("repository").ok_or_else(|| ForgeError::Malformed {
             message: "no repository in response".into(),
         })?;
+        let reads = watched
+            .iter()
+            .map(|n| (*n, repository.get(format!("w{n}")).filter(|v| !v.is_null()).map(watched_from_graphql)))
+            .collect();
 
-        Ok(branches
+        let statuses = branches
             .iter()
             .enumerate()
             .map(|(i, branch)| {
@@ -805,7 +916,8 @@ impl Forge for GitHubForge {
                     },
                 }
             })
-            .collect())
+            .collect();
+        Ok((statuses, reads))
     }
 
     fn review_threads(
@@ -1290,6 +1402,65 @@ mod tests {
         assert!(query.contains("states:[MERGED, CLOSED]"));
         assert!(query.contains("orderBy:{field:CREATED_AT, direction:DESC}"));
     }
+
+    #[test]
+    fn watched_pull_requests_ride_the_same_request_read_by_number() {
+        // Two fork PRs from branches both named `fix`: by number, each reads as itself.
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{
+                "u0":{"nodes":[]},"e0":{"nodes":[]},
+                "w7":{"state":"OPEN","headRefOid":"h7","mergeable":"CONFLICTING",
+                      "comments":{"nodes":[{"id":"c1","createdAt":"2026-10-04T10:00:00Z","body":"please rebase","author":{"login":"amy"}}]},
+                      "reviews":{"nodes":[
+                        {"id":"r1","submittedAt":"2026-10-04T10:05:00Z","state":"CHANGES_REQUESTED","body":"","author":{"login":"bob"},"comments":{"nodes":[{"body":"off by one here"}]}},
+                        {"id":"r2","submittedAt":"2026-10-04T10:06:00Z","state":"COMMENTED","body":"","author":{"login":"bob"},"comments":{"nodes":[]}},
+                        {"id":"r3","submittedAt":null,"state":"PENDING","body":"draft","author":{"login":"me"},"comments":{"nodes":[]}}
+                      ]},
+                      "commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[
+                        {"__typename":"CheckRun","databaseId":501,"name":"build","conclusion":"FAILURE","detailsUrl":"https://ci.test/501","isRequired":true},
+                        {"__typename":"StatusContext","id":"SC_1","context":"deploy","state":"PENDING","targetUrl":"","isRequired":false}
+                      ]}}}}]}},
+                "w9":{"state":"MERGED","headRefOid":"h9","mergeable":"UNKNOWN",
+                      "comments":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}},
+                "w11":null
+            }},"errors":[{"message":"Could not resolve to a PullRequest with the number of 11."}]}"#,
+        )]);
+        let (statuses, reads) = f.unit_statuses_watching(&repo(), &["a".to_string()], &[7, 9, 11]).unwrap();
+
+        assert_eq!(stub.request_count(), 1, "one request for the branches and every watch");
+        let query = &stub.bodies()[0];
+        assert!(query.contains("w7: pullRequest(number:7)") && query.contains("w9: pullRequest(number:9)"));
+        assert!(query.contains("isRequired(pullRequestNumber: 7)") && query.contains("isRequired(pullRequestNumber: 9)"));
+        let branch_part = &query[query.find("u0:").unwrap()..query.find("w7:").unwrap()];
+        assert!(!branch_part.contains("isRequired") && !branch_part.contains("reviews(last"), "the branch aliases stay narrow");
+        assert_eq!(query.matches("pullRequest(number:").count(), 3, "one alias per watched number");
+        assert_eq!(statuses.len(), 1);
+
+        let read = |n: u64| reads.iter().find(|(m, _)| *m == n).and_then(|(_, s)| s.clone());
+        let seven = read(7).expect("7 answered");
+        assert_eq!(seven.head_sha, "h7");
+        assert_eq!(seven.mergeable, crate::rpc::pr_watch::Mergeable::Conflicting);
+        let checks = seven.checks.unwrap();
+        assert_eq!((checks[0].run_id.as_str(), checks[0].failed, checks[0].required, checks[0].done), ("501", true, true, true));
+        assert_eq!((checks[1].run_id.as_str(), checks[1].done), ("SC_1", false));
+        let remarks = seven.remarks.unwrap();
+        let bodies: Vec<&str> = remarks.iter().map(|r| r.body.as_str()).collect();
+        assert_eq!(bodies, vec!["please rebase", "off by one here"], "empty and pending reviews say nothing");
+        assert_eq!(remarks[0].at_ms, crate::chat::acp_sessions::epoch_from_iso8601("2026-10-04T10:00:00Z").unwrap() * 1000);
+        assert_eq!(remarks[1].review.as_deref(), Some("changes_requested"));
+
+        let nine = read(9).expect("9 answered");
+        assert_eq!(nine.state, crate::rpc::pr_watch::PrState::Merged);
+        assert_eq!(nine.head_sha, "h9");
+        assert!(nine.checks.is_none());
+        assert!(read(11).is_none(), "a number the repo lacks reads as None, the rest still answer");
+
+        let (f, stub) = forge(vec![StubTransport::json(200, r#"{"data":{"repository":{"u0":{"nodes":[]},"e0":{"nodes":[]}}}}"#)]);
+        f.unit_statuses(&repo(), &["a".to_string()]).unwrap();
+        assert!(!stub.bodies()[0].contains("pullRequest(number:"), "nothing watched, no watched alias");
+    }
+
 
     #[test]
     fn many_branches_cost_one_request_not_one_each() {

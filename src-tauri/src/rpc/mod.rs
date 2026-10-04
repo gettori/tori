@@ -143,6 +143,10 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         crate::autopilot::dir(),
     ));
     start_watcher(&app, &states, &autopilot, &runner);
+    let tell = app.clone();
+    pr_watch::on_polled_moved(Box::new(move || {
+        let _ = tell.emit("pr_watch://changed", ());
+    }));
     start_composer(&app, &hub, &states, &autopilot);
     let server = Arc::new(Server {
         hub: hub.clone(),

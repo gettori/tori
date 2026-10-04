@@ -63,6 +63,14 @@ export function topicProjects(
   );
 }
 
+/** What a live pull request watch adds to the poll: its project, asked about the
+ *  pull request's head branch, whichever space is active. Mirrors `Polled` in
+ *  src-tauri/src/rpc/pr_watch.rs. */
+export type PrWatchPolled = { project: string; branch: string };
+export function prWatchProjects(polled: readonly PrWatchPolled[]): WatchedProject[] {
+  return polled.map((p) => ({ path: p.project, units: [{ branch: p.branch, visible: false }] }));
+}
+
 /** One entry per project, its branches unioned; a branch any list shows is
  *  shown. */
 export function mergeWatched(lists: readonly (readonly WatchedProject[])[]): WatchedProject[] {

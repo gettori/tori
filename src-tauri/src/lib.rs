@@ -657,6 +657,7 @@ pub fn run() {
             forge::commands::forge_create_pr,
             forge::commands::forge_push_and_create_pr,
             forge::commands::forge_unit_statuses,
+            forge::commands::pr_watch_polled,
             forge::commands::forge_list_prs,
             forge::commands::forge_pr_files,
             forge::commands::forge_review_threads,

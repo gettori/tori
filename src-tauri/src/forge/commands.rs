@@ -24,6 +24,7 @@ use super::{
     MergeMethod,
 };
 use crate::credential::Reach;
+use crate::rpc::pr_watch;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -1224,15 +1225,33 @@ pub fn forge_unit_statuses(
     refresh: bool,
 ) -> Result<StatusReport, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
+    let watched = pr_watch::watched_numbers(&c.repo.owner, &c.repo.repo);
+    // Set only when this call made the request: a cache hit or a coalesced
+    // flight read nothing, which is neither seen nor unseen.
+    let mut reads = None;
     let out = status::cached_tick(&c.repo, &branches, refresh, |ask| {
         // The snapshot is read whether the call succeeded or not, but only a
         // success carries it out of here: an error path returns the error, and
         // the scheduler backs off on that instead.
-        attempt(&c, |f| f.unit_statuses(&c.repo, ask))
-            .map(|statuses| (statuses, c.forge.rate_snapshot()))
-    })?;
+        let fetched = attempt(&c, |f| f.unit_statuses_watching(&c.repo, ask, &watched));
+        reads = Some(match &fetched {
+            Ok((_, read)) => pr_watch::Read::Fetched(read.clone()),
+            Err(_) => pr_watch::Read::Failed,
+        });
+        fetched.map(|(statuses, _)| (statuses, c.forge.rate_snapshot()))
+    });
+    if let Some(read) = reads.filter(|_| !watched.is_empty()) {
+        pr_watch::fold(&c.repo.owner, &c.repo.repo, read);
+    }
+    let out = out?;
     publish_moved(&project_path, &out.statuses);
     Ok(out)
+}
+
+/// The projects and head branches a live pull request watch needs polled.
+#[tauri::command]
+pub fn pr_watch_polled() -> Vec<pr_watch::Polled> {
+    pr_watch::polled()
 }
 
 fn publish_moved(project_path: &str, statuses: &[UnitStatus]) {

@@ -74,6 +74,7 @@ import {
   forgeViewer,
   noteForgeCliInstalled,
   mergeWatched,
+  prWatchProjects,
   topicProjects,
   type WatchedProject,
 } from "./forgeStatus";
@@ -280,6 +281,16 @@ describe("a Topic's members", () => {
     expect(asked["/api"]).toEqual(["main", "auth"]);
     expect(asked["/docs"]).toEqual(["auth"]);
     expect(asked["/web"]).toBeUndefined();
+  });
+});
+
+describe("a watched pull request", () => {
+  it("is polled on its head branch even when its project is in no active space", async () => {
+    signedInWith(mergeWatched([[project("/api", ["main"])], prWatchProjects([{ project: "/lib", branch: "fix" }])]));
+    await pollNow("interval", NOW);
+    const asked = Object.fromEntries(asks.map((a) => [a.projectPath, a.branches]));
+    expect(asked["/api"]).toEqual(["main"]);
+    expect(asked["/lib"]).toEqual(["fix"]);
   });
 });
 
