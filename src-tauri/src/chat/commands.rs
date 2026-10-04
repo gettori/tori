@@ -553,6 +553,16 @@ pub async fn chat_steer(
     state.0.steer(&session_id, blocks)
 }
 
+#[tauri::command(async)]
+pub fn chat_queue_load(session_id: String) -> Vec<serde_json::Value> {
+    super::queue_store::load(&session_id)
+}
+
+#[tauri::command(async)]
+pub fn chat_queue_save(session_id: String, queue: Vec<serde_json::Value>) -> Result<(), String> {
+    super::queue_store::save(&session_id, &queue)
+}
+
 /// A Topic member came or moved while this chat runs.
 #[tauri::command]
 pub async fn chat_grant_dirs(

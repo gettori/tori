@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
-import { offerToComposer } from "../../utils/chatCompose";
+import { clearComposer, nextLabel, offerToComposer } from "../../utils/chatCompose";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -19,6 +19,7 @@ let channel: { onmessage?: (raw: unknown) => void } | null = null;
 let recorded = { tokens: 0, costUsd: 0, turns: 0 };
 let budgetSettings: unknown = null;
 let steerReply: () => Promise<unknown> = () => Promise.resolve(null);
+let queueLoadReply: () => Promise<unknown> = () => Promise.resolve([]);
 
 vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {
@@ -34,6 +35,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(wholeHistory([]));
       case "chat_steer":
         return steerReply();
+      case "chat_queue_load":
+        return queueLoadReply();
       case "chat_record_usage":
         return Promise.resolve({ session: recorded, project: recorded });
       case "get_settings":
@@ -115,6 +118,8 @@ beforeEach(async () => {
   channel = null;
   recorded = { tokens: 0, costUsd: 0, turns: 0 };
   steerReply = () => Promise.resolve(null);
+  queueLoadReply = () => Promise.resolve([]);
+  clearComposer(TAB);
   budgetSettings = {
     ...DEFAULT_SETTINGS,
     budgets: { sessionUsd: 1, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
@@ -292,5 +297,66 @@ describe("editing a queued message", () => {
     fireEvent.keyDown(input(), { key: "ArrowUp", altKey: true });
     await screen.findByText("Editing a queued message");
     expect(input().value).toBe("later");
+  });
+});
+
+const queueSaves = () => invokes.filter((i) => i.cmd === "chat_queue_save");
+
+function goLive() {
+  channel!.onmessage!({
+    type: "sessionReady",
+    sessionId: SESSION,
+    slashCommands: [],
+    models: [],
+    modes: [],
+    account: null,
+    capabilities: null,
+  });
+}
+
+function deferredLoad(): (entries: unknown[]) => void {
+  let answer!: (entries: unknown[]) => void;
+  queueLoadReply = () => new Promise((r) => (answer = r));
+  return (entries) => answer(entries);
+}
+
+describe("a queue saved by an earlier run", () => {
+  it("writes nothing before the saved queue is in, then comes back parked", async () => {
+    const answer = deferredLoad();
+    mount();
+    await waitFor(() => expect(channel).not.toBeNull());
+    goLive();
+    await waitFor(() => expect(invokes.some((i) => i.cmd === "chat_queue_load")).toBe(true));
+    expect(queueSaves()).toHaveLength(0);
+    answer([{ id: "q1", blocks: [{ type: "text", text: "saved" }] }]);
+    await screen.findByRole("button", { name: "Remove from the queue: saved" });
+    expect(screen.getByText("1 message held: saved from last time")).toBeTruthy();
+    expect(sends()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Remove from the queue: saved" }));
+    await waitFor(() => expect(queueSaves().map((c) => c.args.queue)).toEqual([[]]));
+  });
+
+  it("holds a send until the saved queue is in, even after history", async () => {
+    const answer = deferredLoad();
+    mount();
+    await waitFor(() => expect(channel).not.toBeNull());
+    goLive();
+    fireEvent.input(input(), { target: { value: "hi" } });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    await Promise.resolve();
+    expect(sends()).toHaveLength(0);
+    expect(invokes.some((i) => i.cmd === "chat_send_held")).toBe(false);
+    answer([]);
+    await waitFor(() => expect(invokes.some((i) => i.cmd === "chat_send_held")).toBe(true));
+  });
+
+  it("counts a saved entry's labels as spent", async () => {
+    queueLoadReply = () =>
+      Promise.resolve([
+        { id: "q1", blocks: [{ type: "fileRef", path: "/tmp/c.pdf", startLine: null, endLine: null, text: null, label: "[PDF 3]" }] },
+      ]);
+    mount();
+    await screen.findByRole("button", { name: "Remove from the queue: [PDF 3]" });
+    expect(nextLabel(TAB, "pdf")).toBe("[PDF 4]");
   });
 });

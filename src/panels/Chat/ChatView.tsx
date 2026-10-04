@@ -67,6 +67,7 @@ import {
   restoreDraft,
   seedForSend,
   seedLabels,
+  raiseLabels,
   pushHistory,
   setDraft,
   takeAutoSend,
@@ -176,6 +177,7 @@ import {
   removeQueued,
   reorderQueue,
   replaceQueued,
+  restoreQueue,
   resolveApproval,
   revertEffortPick,
   revertModelPick,
@@ -212,6 +214,7 @@ import {
   type QuestionItem,
   type ToolItem,
 } from "./chatStore";
+import { loadQueue, saveQueue } from "./queuePersist";
 import {
   refusalMessage,
   refusalOf,
@@ -1141,7 +1144,7 @@ export default function ChatView(props: {
   createEffect(() => {
     // And the label seed: a held `[Image 1]` may still be renamed by the
     // transcript, and it has to go out under the name it ends up with.
-    if (!canSend() || !pickApplied() || !labelsSeeded(composerKey())) return;
+    if (!canSend() || !pickApplied() || !numberingSettled()) return;
     // Only readiness is tracked. `onSend` reads half the store on its way
     // through, and tracking that would re-run this on every turn boundary for
     // the rest of the session.
@@ -1308,6 +1311,22 @@ export default function ChatView(props: {
     if (state.ended) cancelResume(props.sessionId);
   });
 
+  // Until the saved queue is in, nothing is written back (the first write would
+  // be an empty queue over the saved one) and nothing is sent, since a saved
+  // entry's labels are not yet counted as spent.
+  const [queueLoaded, setQueueLoaded] = createSignal(false);
+  onMount(() => {
+    void loadQueue(props.sessionId).then((entries) => {
+      edit((s) => restoreQueue(s, entries));
+      raiseLabels(composerKey(), entries.flatMap((e) => labelsOf(e.blocks)));
+      setQueueLoaded(true);
+    });
+  });
+  createEffect(() => {
+    if (queueLoaded()) void saveQueue(props.sessionId, state.queue);
+  });
+  const numberingSettled = () => labelsSeeded(composerKey()) && queueLoaded();
+
   // The flush driver. `takeForSend` is atomic precisely because this re-runs the
   // instant the state it reads changes: taking the message and marking the turn
   // in flight separately would let it observe the gap and flush the whole
@@ -1438,7 +1457,7 @@ export default function ChatView(props: {
     // The transcript is still being read, so an attachment numbered now may
     // yet be renamed. Held the same way, and sent by the same effect, once
     // the numbering is settled.
-    if (!labelsSeeded(composerKey())) {
+    if (!numberingSettled()) {
       if (!text && !pendingFor(composerKey()).length) return;
       markAutoSend(composerKey(), text);
       return;
@@ -2483,6 +2502,7 @@ export default function ChatView(props: {
           commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, resolvedProfile()))}
           loadFiles={attachments.loadProjectFiles}
           parked={state.queueParked}
+          restored={state.queueRestored}
           disabled={refused() || state.ended}
           onSend={onSend}
           onQueue={(text) => onSend(text, "chat_send", true)}

@@ -519,6 +519,11 @@ export function relabel(key: ComposerKey, from: string, to: string) {
  *  holds. A chip minted before the transcript was read may now collide; it is
  *  renamed above the mark rather than sent as a second `[Image 2]`. */
 export function seedLabels(key: ComposerKey, labels: readonly string[]) {
+  raiseLabels(key, labels);
+  setSeeded((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+}
+
+export function raiseLabels(key: ComposerKey, labels: readonly string[]) {
   const mark: Partial<Record<AttachmentKind, number>> = {};
   for (const label of labels) {
     const parsed = parseLabel(label);
@@ -537,7 +542,6 @@ export function seedLabels(key: ComposerKey, labels: readonly string[]) {
     const parsed = parseLabel(block.label);
     if (parsed && parsed.n <= (mark[parsed.kind] ?? 0)) relabel(key, block.label, nextLabel(key, parsed.kind));
   }
-  setSeeded((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
 }
 
 export function labelsSeeded(key: ComposerKey): boolean {

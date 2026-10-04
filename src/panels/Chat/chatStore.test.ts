@@ -58,6 +58,7 @@ import {
   takeForSend,
   queuedText,
   reorderQueue,
+  restoreQueue,
   beginSteer,
   endSteer,
   visibleItems,
@@ -909,6 +910,19 @@ describe("the composer queue", () => {
     beginSteer(s, second);
     endSteer(s, second, true);
     expect(s.queue.map(queuedText)).toEqual(["m0"]);
+  });
+
+  it("brings a saved queue back parked, with ids of its own, until send now", () => {
+    const s = queued(1);
+    applyEvent(s, turnDone("t1", "completed"));
+    takeForSend(s);
+    clearAwaitingTurn(s);
+    restoreQueue(s, [{ id: "q1", blocks: [{ type: "text", text: "saved" }] }]);
+    expect(s.queueParked).toBe(true);
+    expect(pendingFlush(s)).toBeNull();
+    expect(new Set(s.queue.map((q) => q.id)).size).toBe(s.queue.length);
+    releaseQueue(s);
+    expect(pendingFlush(s)?.blocks).toEqual([{ type: "text", text: "saved" }]);
   });
 
   it("holds the queue on an errored turn too", () => {

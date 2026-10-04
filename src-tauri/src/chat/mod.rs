@@ -13,6 +13,7 @@
 //! | [`acp_sessions`] | session ids and one JSON file per ACP session |
 //! | [`acp_transport`] | the seam, plus `acp`'s process and its locators |
 //! | [`ownership`] | session ids and the process table |
+//! | [`queue_store`] | session ids and one JSON file per queued composer |
 //! | [`mirror`] | the model, plus the pacer's stream identity |
 //! | [`pacing`] | the model, plus the seam's sink |
 //! | [`host`] | the seam, plus ownership and pacing |
@@ -39,6 +40,7 @@ pub mod mirror;
 pub mod model;
 pub mod ownership;
 pub mod pacing;
+pub mod queue_store;
 pub mod retired;
 pub mod snapshot;
 pub mod tail;

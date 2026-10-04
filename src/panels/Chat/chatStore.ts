@@ -487,6 +487,8 @@ export type ChatState = {
    *  reports as a completion, and flushing on it would send exactly the
    *  messages the user pressed stop to prevent. */
   queueParked: boolean;
+  /** Parked because it came back from disk rather than behind a stop. */
+  queueRestored: boolean;
   /** Set when a spend ceiling stopped this chat. Held in the store rather than
    *  in the panel so `chatStatus` can report it, which is what puts a stopped
    *  session on the same needs-you edge as one blocked on a permission prompt. */
@@ -671,6 +673,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     awaitingTurn: false,
     queue: [],
     queueParked: false,
+    queueRestored: false,
     budgetStopped: false,
     model: null,
     modelValue: null,
@@ -1618,7 +1621,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         // child and every subagent with it. `errored` is a turn that failed
         // with the child still alive, where a backgrounded lane keeps running.
         if (ev.outcome === "cancelled") settleLanes(s, ev.outcome);
-        if (s.queue.length) s.queueParked = true;
+        if (s.queue.length) parkQueue(s);
       }
       return;
     }
@@ -1629,7 +1632,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         s.activeTurnId = null;
         s.awaitingTurn = false;
         settleLanes(s, "errored");
-        if (s.queue.length) s.queueParked = true;
+        if (s.queue.length) parkQueue(s);
       }
       return;
     }
@@ -1638,7 +1641,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.activeTurnId = null;
       s.awaitingTurn = false;
       settleLanes(s, "cancelled");
-      if (s.queue.length) s.queueParked = true;
+      if (s.queue.length) parkQueue(s);
       push(s, {
         kind: "notice",
         id: nextId(s, "note"),
@@ -2008,6 +2011,21 @@ export function discardQueue(s: ChatState) {
 export function removeQueued(s: ChatState, id: string) {
   s.queue = s.queue.filter((q) => q.id !== id);
   if (!s.queue.length) s.queueParked = false;
+}
+
+/** A queue saved by an earlier run. It comes back parked, the same rule a
+ *  stopped turn follows, and with fresh ids: this run mints its own from the
+ *  same counter, and an old id could collide with one. */
+export function restoreQueue(s: ChatState, entries: readonly QueuedInput[]) {
+  if (!entries.length) return;
+  s.queue = [...entries.map((e) => ({ ...e, id: nextId(s, "q") })), ...s.queue];
+  s.queueParked = true;
+  s.queueRestored = true;
+}
+
+function parkQueue(s: ChatState) {
+  s.queueParked = true;
+  s.queueRestored = false;
 }
 
 export function replaceQueued(s: ChatState, id: string, blocks: ContentBlock[]) {
