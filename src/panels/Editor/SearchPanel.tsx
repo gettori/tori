@@ -15,15 +15,14 @@ import {
   CaseUpper,
   ChevronsDownUp,
   ChevronsUpDown,
-  Ellipsis,
   FilePlus2,
   List,
   ListTree,
-  ListX,
   Pencil,
   RefreshCw,
   Replace,
   ReplaceAll,
+  SlidersHorizontal,
   Star,
   Trash2,
   X,
@@ -744,16 +743,6 @@ export default function SearchPanel(props: {
     }
   }
 
-  function clearAll() {
-    debouncedSearch.cancel();
-    setQuery("");
-    setReplacement("");
-    setOutcome(null);
-    setCursor(DRAFT);
-    void runSearch("");
-    inputEl?.focus();
-  }
-
   const openMatch = (root: string, path: string, line: number) =>
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
 
@@ -1141,16 +1130,6 @@ export default function SearchPanel(props: {
           disabled={!hitCount()}
           onClick={collapseOrExpandAll}
         />
-        <IconButton
-          size="sm"
-          icon={<Icon icon={Ellipsis} />}
-          class={styles.pressable}
-          aria-pressed={showGlobs()}
-          tooltip="Toggle Search Details"
-          aria-expanded={showGlobs()}
-          aria-controls={GLOBS_ID}
-          onClick={() => setShowGlobs((v) => !v)}
-        />
       </div>
       <div class={styles.form}>
         <div class={styles.queryRow}>
@@ -1180,11 +1159,15 @@ export default function SearchPanel(props: {
               onToggle={toggleOption}
             />
           </Field>
+          {/* Beside the box it opens the include and exclude fields under. */}
           <IconButton
-            icon={<Icon icon={ListX} />}
-            tooltip="Clear Search Results"
-            disabled={!query() && !replacement()}
-            onClick={clearAll}
+            icon={<Icon icon={SlidersHorizontal} />}
+            class={styles.pressable}
+            aria-pressed={showGlobs()}
+            tooltip="Toggle Search Details"
+            aria-expanded={showGlobs()}
+            aria-controls={GLOBS_ID}
+            onClick={() => setShowGlobs((v) => !v)}
           />
         </div>
         <span id={QUERY_HINT_ID} class={styles.srOnly}>
