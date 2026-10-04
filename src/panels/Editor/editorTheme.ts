@@ -145,9 +145,13 @@ export const toriTheme = EditorView.theme(
     ".cm-tooltip.cm-completionInfo": { padding: "var(--tori-space-3) var(--tori-space-4)" },
     ".cm-completionInfo .cm-lsp-documentation": { padding: "0" },
 
-    // The strips above and below the code: find and replace, the rename prompt,
-    // a server's message, the reference list and vim's status line. The border
-    // is the container's so a panel added later cannot forget it.
+    // CodeMirror's own pair is a fixed cyan and magenta, whatever the palette.
+    ".cm-searchMatch": { backgroundColor: "var(--brand-subtle)", borderRadius: "var(--tori-radius-sm)" },
+    ".cm-searchMatch-selected": { outline: "1px solid var(--brand-default)" },
+
+    // The strips above and below the code: the rename prompt, a server's
+    // message, the reference list and vim's status line. The border is the
+    // container's so a panel added later cannot forget it.
     ".cm-panels": {
       backgroundColor: "var(--canvas-head)",
       color: "var(--fg-default)",
@@ -156,12 +160,6 @@ export const toriTheme = EditorView.theme(
     },
     ".cm-panels-top": { borderBottom: "1px solid var(--border-default)" },
     ".cm-panels-bottom": { borderTop: "1px solid var(--border-default)" },
-    ".cm-panel.cm-search": {
-      padding: "var(--tori-space-2) var(--tori-space-3)",
-      "& input, & button, & label": { margin: "var(--tori-space-1) var(--tori-space-3) var(--tori-space-1) 0" },
-      "& label": { color: "var(--fg-muted)", fontSize: "var(--tori-text-sm)" },
-      "& input[type=checkbox]": { marginRight: "var(--tori-space-2)", accentColor: "var(--brand-default)" },
-    },
     ".cm-dialog": {
       // The right inset is room for the close button CodeMirror pins there.
       padding: "var(--tori-space-2) var(--tori-space-7) var(--tori-space-2) var(--tori-space-3)",
@@ -198,7 +196,7 @@ export const toriTheme = EditorView.theme(
       "&:active": { backgroundImage: "none" },
       "&:focus-visible": { outline: "none", borderColor: "var(--brand-default)", boxShadow: "0 0 0 3px var(--brand-ring)" },
     },
-    ".cm-dialog-close, .cm-panel.cm-search [name=close]": {
+    ".cm-dialog-close": {
       color: "var(--fg-muted)",
       cursor: "pointer",
       "&:hover": { color: "var(--fg-default)" },
