@@ -1,4 +1,4 @@
-/* The Shared in worktrees page: a rail of entries beside the worktrees one
+/* The Worktree settings page: the setup command, then a rail of entries beside the worktrees one
    entry did and did not reach. Two panes because the two questions are
    different, and the second only matters for the entry in hand. */
 .page {
@@ -50,6 +50,40 @@
 
 .spacer {
   flex: 1;
+}
+
+.setup {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.setupHead {
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+}
+
+/* Settings.module.css's `.input` and `.text`, the field every setting uses. */
+.setupInput {
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--tori-space-4);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+  transition: border-color var(--tori-duration-fast) ease;
+}
+
+.setupInput:focus {
+  outline: none;
+  border-color: var(--brand-default);
 }
 
 .error {
