@@ -10,6 +10,9 @@ import styles from "./Chat.module.css";
 
 // A wake line is `item <id>: <what>, session <sid>` or `session <sid>: <what>`.
 const wakeWhat = (line: string) => /^item [^:]+: (.+), session \S+$/.exec(line)?.[1] ?? /^session [^:]+: (.+)$/.exec(line)?.[1];
+// Each watched pull request opens its block with `pull request <url>:`.
+const watchedPrs = (body: string) =>
+  body.split("\n").flatMap((line) => /^pull request \S+\/pull\/(\d+):$/.exec(line)?.[1] ?? []);
 
 export function toriLabel(note: ToriNote, sessionName: (id: string) => string | null): string {
   switch (note.kind) {
@@ -22,6 +25,10 @@ export function toriLabel(note: ToriNote, sessionName: (id: string) => string | 
     case "wake": {
       const whats = note.body.split("\n").map(wakeWhat).filter((w): w is string => !!w);
       return whats.length ? `Tori: a worker reports ${whats.join("; ")}` : "Tori woke the autopilot";
+    }
+    case "pr_watch": {
+      const prs = watchedPrs(note.body);
+      return prs.length === 1 ? `Tori: news on pull request #${prs[0]}` : "Tori: news on the pull requests you watch";
     }
     case "topic":
       return "Tori told this chat about its Topic";
