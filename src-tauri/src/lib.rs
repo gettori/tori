@@ -366,6 +366,7 @@ pub fn run() {
             chat::commands::chat_prompt_count,
             chat::commands::chat_session_detail,
             chat::commands::chat_history,
+            chat::commands::chat_history_page,
             chat::commands::chat_mark_turn,
             chat::commands::chat_take_interrupted_turn,
             chat::commands::chat_orphans,

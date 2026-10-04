@@ -2,6 +2,10 @@
 //! the webview's main thread stalls the open. The cut is a [`HistoryCursor`],
 //! never an index: a growing transcript and late placed subagents move indices.
 
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+
 use serde::{Deserialize, Serialize};
 
 use super::model::{cap_output, ChatEvent, ContentBlock};
@@ -161,12 +165,85 @@ fn cursor_at(prompts: &[(u64, usize)], at: usize) -> HistoryCursor {
 }
 
 /// The index a cursor names in a fresh parse, or `None` when its prompt is gone.
-#[allow(dead_code)] // the paging command is not wired yet
 pub fn resolve(cursor: &HistoryCursor, prompts: &[(u64, usize)]) -> Option<usize> {
     match cursor.prompt_ts {
         None => Some(cursor.offset),
         Some(ts) => prompts.iter().find(|&&(t, _)| t == ts).map(|&(_, start)| start + cursor.offset),
     }
+}
+
+/// One page of older history, and where the page before it starts.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryPage {
+    pub events: Vec<ChatEvent>,
+    pub cursor: Option<HistoryCursor>,
+}
+
+/// A whole parse, kept so paging back through a session reads its file once.
+pub struct Parsed {
+    pub events: Vec<ChatEvent>,
+    pub prompts: Vec<(u64, usize)>,
+}
+
+/// The page that ends where `cursor` starts. `None` when the cursor's prompt is
+/// no longer in the file.
+pub fn page_before(parsed: &Parsed, cursor: &HistoryCursor) -> Option<HistoryPage> {
+    let end = resolve(cursor, &parsed.prompts).filter(|&end| end <= parsed.events.len())?;
+    let tail = tail_of(&parsed.events, &parsed.prompts, end);
+    Some(HistoryPage { events: tail.events, cursor: tail.cursor })
+}
+
+/// What a cached parse was read from: the file's modification time and length,
+/// either of which moves when claude appends a turn.
+pub type Stamp = (SystemTime, u64);
+
+/// The last few sessions paged through, most recent first. Bounded, because a
+/// reload reattaches every chat tab and a parse per tab would hold every
+/// history in memory again, just on this side.
+pub struct PageCache {
+    cap: usize,
+    entries: VecDeque<(String, Stamp, Arc<Parsed>)>,
+}
+
+impl PageCache {
+    pub const fn new(cap: usize) -> Self {
+        Self { cap, entries: VecDeque::new() }
+    }
+
+    fn take(&mut self, key: &str, stamp: Stamp) -> Option<Arc<Parsed>> {
+        let at = self.entries.iter().position(|(k, s, _)| k == key && *s == stamp)?;
+        let entry = self.entries.remove(at)?;
+        let parsed = entry.2.clone();
+        self.entries.push_front(entry);
+        Some(parsed)
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn put(&mut self, key: &str, stamp: Stamp, parsed: Arc<Parsed>) {
+        self.entries.retain(|(k, _, _)| k != key);
+        self.entries.push_front((key.to_string(), stamp, parsed));
+        self.entries.truncate(self.cap);
+    }
+}
+
+/// The parse for `key` at `stamp`, from the cache or from `parse`. The parse
+/// runs outside the lock, so one slow session does not hold up another's page.
+pub fn cached(cache: &Mutex<PageCache>, key: &str, stamp: Stamp, parse: impl FnOnce() -> Parsed) -> Arc<Parsed> {
+    if let Some(hit) = lock(cache).take(key, stamp) {
+        return hit;
+    }
+    let parsed = Arc::new(parse());
+    lock(cache).put(key, stamp, parsed.clone());
+    parsed
+}
+
+fn lock(cache: &Mutex<PageCache>) -> std::sync::MutexGuard<'_, PageCache> {
+    cache.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]
@@ -313,7 +390,7 @@ mod tests {
     fn rich_history() -> (Vec<ChatEvent>, Vec<(u64, usize)>) {
         let mut events = Vec::new();
         let mut prompts = Vec::new();
-        for t in 0..24 {
+        for t in 0..40 {
             prompts.push((1000 + t as u64, events.len()));
             let label = match t {
                 2 => Some("[Image 1]"),
@@ -321,7 +398,7 @@ mod tests {
                 _ => None,
             };
             events.push(user(t, label));
-            if t == 3 || t == 9 || t == 20 {
+            if t == 3 || t == 9 || t == 20 || t == 36 {
                 events.push(from(serde_json::json!({
                     "type": "compacted", "sessionId": "s", "turnId": format!("t{t}"),
                     "trigger": "auto", "preTokens": 150_000 + t, "postTokens": 20_000 + t,
@@ -383,9 +460,9 @@ mod tests {
         (events, vec![(1000, 0)])
     }
 
-    /// The webview folds `full` and `summary` plus `events` and compares them
-    /// (`historyTail.test.ts`), so the two sides are checked against one file.
-    /// `TORI_BLESS=1` rewrites it.
+    /// The webview folds `full`, and the tail with each page merged in front,
+    /// and compares them (`historyTail.test.ts`), so the two sides are checked
+    /// against one file. `TORI_BLESS=1` rewrites it.
     #[test]
     fn reproduces_the_tail_golden() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -397,11 +474,22 @@ mod tests {
             assert!(tail.cursor.is_some(), "{name} is long enough to cut");
             let start = events.len() - tail.events.len();
             assert_eq!(tail.events[..], events[start..]);
+            // Each page as the range of `full` it covers, newest first.
+            let all = Parsed { events: events.clone(), prompts: prompts.clone() };
+            let mut pages = Vec::new();
+            let (mut end, mut cursor) = (start, tail.cursor);
+            while let Some(c) = cursor {
+                let page = page_before(&all, &c).expect("the cursor resolves");
+                pages.push(format!("[{},{end}]", end - page.events.len()));
+                end -= page.events.len();
+                cursor = page.cursor;
+            }
             let lines: Vec<String> = events.iter().map(|e| format!("    {}", serde_json::to_string(e).unwrap())).collect();
             fresh += &format!(
-                "{}{{\"name\":{:?},\"start\":{start},\"cursor\":{},\"summary\":{},\"full\":[\n{}\n]}}",
+                "{}{{\"name\":{:?},\"start\":{start},\"pages\":[{}],\"cursor\":{},\"summary\":{},\"full\":[\n{}\n]}}",
                 if i == 0 { "" } else { ",\n" },
                 name,
+                pages.join(","),
                 serde_json::to_string(&tail.cursor).unwrap(),
                 serde_json::to_string(&tail.summary).unwrap(),
                 lines.join(",\n"),
@@ -422,6 +510,75 @@ mod tests {
         let tail = tail_of(&events, &prompts, events.len());
         let ChatEvent::TextDelta { .. } = &tail.events[0] else { panic!("cut at a text row") };
         assert!(matches!(tail.events[1], ChatEvent::ToolCallCompleted { .. }));
+    }
+
+    fn parsed(turns: usize) -> Parsed {
+        let (events, prompts) = history(turns, 9);
+        Parsed { events, prompts }
+    }
+
+    fn stamp(len: u64) -> Stamp {
+        (SystemTime::UNIX_EPOCH, len)
+    }
+
+    #[test]
+    fn paging_back_walks_to_the_first_prompt_with_nothing_twice() {
+        let all = parsed(100);
+        let open = tail_of(&all.events, &all.prompts, all.events.len());
+        let mut seen = open.events.len();
+        let mut cursor = open.cursor;
+        let mut pages = 0;
+        while let Some(c) = cursor {
+            let page = page_before(&all, &c).expect("the cursor resolves");
+            assert!(!page.events.is_empty());
+            seen += page.events.len();
+            cursor = page.cursor;
+            pages += 1;
+        }
+        assert_eq!(seen, all.events.len());
+        assert!(pages > 1);
+    }
+
+    #[test]
+    fn a_page_still_lands_after_the_file_grows() {
+        let before = parsed(100);
+        let open = tail_of(&before.events, &before.prompts, before.events.len());
+        let cursor = open.cursor.expect("history remains before the tail");
+        let grown = parsed(110);
+        let a = page_before(&before, &cursor).unwrap();
+        let b = page_before(&grown, &cursor).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn a_second_page_reuses_the_parse() {
+        let cache = Mutex::new(PageCache::new(3));
+        let mut parses = 0;
+        cached(&cache, "a", stamp(1), || { parses += 1; parsed(5) });
+        cached(&cache, "a", stamp(1), || { parses += 1; parsed(5) });
+        assert_eq!(parses, 1);
+    }
+
+    #[test]
+    fn a_changed_file_is_parsed_again() {
+        let cache = Mutex::new(PageCache::new(3));
+        let mut parses = 0;
+        cached(&cache, "a", stamp(1), || { parses += 1; parsed(5) });
+        cached(&cache, "a", stamp(2), || { parses += 1; parsed(6) });
+        assert_eq!(parses, 2);
+        assert_eq!(cache.lock().unwrap().entries.len(), 1, "the stale parse is replaced, not kept beside");
+    }
+
+    #[test]
+    fn a_fourth_session_evicts_the_least_recent() {
+        let cache = Mutex::new(PageCache::new(3));
+        for key in ["a", "b", "c"] {
+            cached(&cache, key, stamp(1), || parsed(2));
+        }
+        cached(&cache, "a", stamp(1), || panic!("a is still cached"));
+        cached(&cache, "d", stamp(1), || parsed(2));
+        let keys: Vec<_> = cache.lock().unwrap().entries.iter().map(|(k, _, _)| k.clone()).collect();
+        assert_eq!(keys, ["d", "a", "c"]);
     }
 
     #[test]

@@ -281,6 +281,22 @@ export default function MessageList(props: {
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
+  // Rows added above push everything down, so the reader is held where they
+  // were measured from the bottom. Only while the old first row is still shown:
+  // a first row that changed some other way (a lane switch) is not rows above.
+  let keep: { first: string | undefined; fromBottom: number } | null = null;
+  createEffect(
+    on(
+      () => shown()[0]?.id,
+      (first) => {
+        if (!keep || !scroller || first === keep.first) return;
+        const was = keep.first;
+        if (shown().some((it) => it.id === was)) scroller.scrollTop = scroller.scrollHeight - keep.fromBottom;
+        keep = null;
+      },
+      { defer: true },
+    ),
+  );
   // Three cards saying `Edit MessageList.tsx` in a row are three copies of one
   // answer. Folded at render time rather than in the store, because what folded
   // is still its own call: its own approval, its own revert, its own id.
@@ -738,6 +754,7 @@ export default function MessageList(props: {
           <Button
             size="sm"
             onClick={() => {
+              if (scroller) keep = { first: shown()[0]?.id, fromBottom: scroller.scrollHeight - scroller.scrollTop };
               if (!hasEarlier(props.items, limit())) props.onFetchEarlier?.();
               setLimit(limit() + WINDOW_STEP);
             }}

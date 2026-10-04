@@ -935,6 +935,9 @@ export type HistorySummary = {
 /// parsed on fold like every other frame.
 export type HistoryTail = { summary: HistorySummary; events: unknown[]; cursor: HistoryCursor | null };
 
+/// What `chat_history_page` answers: the page before a cursor, and the next one.
+export type HistoryPage = { events: unknown[]; cursor: HistoryCursor | null };
+
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
