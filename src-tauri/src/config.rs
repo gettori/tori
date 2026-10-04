@@ -811,6 +811,14 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     }
 }
 
+// Takes the root rather than reading `tori.toml`, so a test never resolves the
+// developer's own config.
+#[cfg(test)]
+pub(crate) fn resolve_root(root: &Path, index: &ProjectIndex) -> ResolvedConfig {
+    let discovery = RawDiscovery { roots: vec![root.to_string_lossy().into_owned()], ignore: Vec::new() };
+    resolve(RawConfig { discovery, ..Default::default() }, index)
+}
+
 #[tauri::command]
 pub async fn get_config(index: State<'_, ProjectIndex>) -> Result<ResolvedConfig, String> {
     let index = index.inner().clone();
