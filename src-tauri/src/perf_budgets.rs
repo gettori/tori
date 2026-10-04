@@ -2,11 +2,15 @@
 //! across runs is machine noise, and a gate that flakes gets ignored.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::chat::commands::{history_reply, HistorySource};
 use crate::chat::host::ChatHost;
+use crate::config::{resolve_root, ProjectIndex, ProjectKind};
+use crate::exec::git_spawns_under;
+use crate::git::{git_branch_sync_many, SyncUnit};
 
 const TABLE: &str = include_str!("../../perf-budgets.json");
 
@@ -115,10 +119,76 @@ fn history_bytes(name: &str, body: &str) -> u64 {
     serde_json::to_vec(&reply).unwrap().len() as u64
 }
 
+fn git(dir: &Path, args: &[&str]) {
+    let out = crate::exec::git_in(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@t.test")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@t.test")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+}
+
+// A worktree container and a plain repo: the two shapes the sidebar probes
+// differently.
+fn sidebar_fixture() -> PathBuf {
+    let root = std::env::temp_dir().join(format!("tori-perf-sidebar-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("space")).unwrap();
+    let root = root.canonicalize().unwrap();
+
+    let plain = root.join("space/plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    git(&plain, &["init", "-q", "-b", "main"]);
+    std::fs::write(plain.join("README.md"), "hi").unwrap();
+    git(&plain, &["add", "."]);
+    git(&plain, &["commit", "-q", "-m", "init"]);
+    git(&plain, &["branch", "feat"]);
+
+    let cont = root.join("space/cont");
+    std::fs::create_dir_all(&cont).unwrap();
+    git(&root, &["init", "-q", "--bare", cont.join(".bare").to_str().unwrap()]);
+    std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+    git(&plain, &["push", "-q", cont.join(".bare").to_str().unwrap(), "main", "feat"]);
+    git(&cont, &["worktree", "add", "-q", "main"]);
+    git(&cont, &["worktree", "add", "-q", "feat"]);
+    root
+}
+
+// The warm refresh sends the batch no rows because `branchSync.ts` only asks
+// about rows it has not drawn. That rule lives in the webview, so this cannot
+// see it change.
+fn sidebar_spawns() -> (u64, u64) {
+    let root = sidebar_fixture();
+    let built = git_spawns_under(&root);
+    let index = ProjectIndex::default();
+    let config = resolve_root(&root, &index);
+    let units: Vec<SyncUnit> = config
+        .spaces
+        .iter()
+        .flat_map(|g| &g.projects)
+        .flat_map(|p| &p.branch_units)
+        .filter(|u| matches!(u.kind, ProjectKind::Worktree | ProjectKind::Plain))
+        .map(|u| SyncUnit { path: u.folder_path.clone(), branch: u.branch.clone().unwrap_or_default() })
+        .collect();
+    assert_eq!(units.len(), 3, "two worktrees, and the plain repo's checked out branch");
+    git_branch_sync_many(units).unwrap();
+    let cold = git_spawns_under(&root) - built;
+    resolve_root(&root, &index);
+    let warm = git_spawns_under(&root) - built - cold;
+    let _ = std::fs::remove_dir_all(&root);
+    (cold as u64, warm as u64)
+}
+
 fn measure() -> BTreeMap<String, u64> {
     let short = |i: usize| format!("{} passed", i + 1);
     let big = |_: usize| "x".repeat(5 * 1024 * 1024);
+    let (cold, warm) = sidebar_spawns();
     BTreeMap::from([
+        ("git.spawns.sidebar.cold".into(), cold),
+        ("git.spawns.sidebar.warm".into(), warm),
         ("chat_history.bytes.small".into(), history_bytes("small", &transcript(3, short))),
         ("chat_history.bytes.2000_turns".into(), history_bytes("2000_turns", &transcript(2000, short))),
         ("chat_history.bytes.5mb_tool_output".into(), history_bytes("5mb_tool_output", &transcript(1, big))),

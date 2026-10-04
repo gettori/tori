@@ -21,6 +21,20 @@
     "reason": "one 5 MB tool output: cut_outputs caps it at TOOL_OUTPUT_CAP, so the reply stays near 64 KB rather than carrying the whole body"
   },
   {
+    "name": "git.spawns.sidebar.cold",
+    "runtime": "rust",
+    "unit": "count",
+    "budget": 35,
+    "reason": "a first sidebar load of one worktree container (two worktrees) and one plain repo: 5 for get_config's project probe, 30 for git_branch_sync_many over the three rows it drew, about 10 per row"
+  },
+  {
+    "name": "git.spawns.sidebar.warm",
+    "runtime": "rust",
+    "unit": "count",
+    "budget": 0,
+    "reason": "the same refresh again with nothing touched: every probe hits the dir mtime and HEAD cache. The batch gets no rows because branchSync.ts only asks about rows it has not drawn, and that rule is not measured here"
+  },
+  {
     "name": "invokes.switch.worktree",
     "runtime": "webview",
     "unit": "count",
