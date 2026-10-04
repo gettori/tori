@@ -45,8 +45,9 @@ export type PanePins = { terminal: PinSide; chat: PinSide; file: PinSide };
 /** The forge integration's kill switch. Separate from signing out on purpose:
  *  signing out also stops the traffic but costs the credential, so quieting a
  *  misbehaving poller would disable PR creation and the review surface too. */
-/** The forge kill switch, and the account each repo picked (written by Rust). */
-export type ForgeSettings = { enabled: boolean; picks: Record<string, string> };
+/** The forge kill switch, the account each repo picked (written by Rust), and
+ *  whether a session may watch a pull request. */
+export type ForgeSettings = { enabled: boolean; picks: Record<string, string>; prWatch: boolean };
 
 /** Git behaviour Tori decides, as opposed to git's own config. Mirrors `Git` in
  *  src-tauri/src/settings.rs. `fetchEveryMinutes: 0` is off, and off stops the
@@ -360,7 +361,7 @@ export type AgentRow = { agent: string; profile: string };
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark", spaceStrip: "bottom" },
-  forge: { enabled: true, picks: {} },
+  forge: { enabled: true, picks: {}, prWatch: false },
   git: { fetchEveryMinutes: 10, showTopicWorktrees: false },
   notifications: { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: false } },
   typography: {
