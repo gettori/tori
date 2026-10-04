@@ -198,8 +198,8 @@ const stickyTheme = EditorView.baseTheme({
   // Absolutely positioned inside `view.dom`, which CodeMirror's own base theme
   // pins `position: relative`. That element does not scroll (the scroller inside
   // it does), so `top: 0` is what makes the overlay stay put. It would sit over
-  // a *top* panel if one were ever added; this editor's only panel is vim's
-  // status line, which is a bottom one.
+  // a *top* panel that took height; the find widget is a top panel that takes
+  // none and floats above this, and vim's status line is a bottom one.
   [`.${STICKY_CLASS}`]: {
     position: "absolute",
     top: 0,
