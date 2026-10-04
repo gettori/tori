@@ -474,6 +474,88 @@ pub fn fold(owner: &str, repo: &str, read: Read) {
     }
 }
 
+pub fn start(session: &str, url: &str, project: &str, branch: &str) -> Result<Watch, String> {
+    if let Some(held) = store().get(session, url) {
+        return Ok(held);
+    }
+    let watch = Watch::new(session, url, project, branch, crate::owned_state::now_ms());
+    store().put(watch.clone())?;
+    polled_moved();
+    Ok(watch)
+}
+
+pub const OFF: &str = "pull request watches are off; the user turns them on under Settings, Hosts";
+
+// Each refusal says what is missing, so the agent does not retry a policy as if it were a fault.
+pub fn admit(on: bool, autopilot_item: bool, polled: Result<(), String>) -> Result<(), String> {
+    if !on {
+        return Err(OFF.to_string());
+    }
+    if autopilot_item {
+        return Err("the autopilot already hears this pull request's news and steers you; finish your turn".to_string());
+    }
+    polled.map_err(|e| format!("Tori cannot poll this project's forge right now ({e}), so a watch would never hear anything"))
+}
+
+pub fn watchable(number: u64, url: &str, open: bool) -> Result<(), String> {
+    if parse_url(url).is_none() {
+        return Err(format!("{url} is not a GitHub pull request, and only those can be watched"));
+    }
+    if !open {
+        return Err(format!("#{number} is no longer open, so there is nothing to watch"));
+    }
+    Ok(())
+}
+
+pub fn watch(session: &str, project: &str, number: u64, autopilot_item: bool) -> Result<Watch, String> {
+    let polled = crate::forge::commands::gated_client(project).map(|_| ()).map_err(|e| e.to_string());
+    admit(crate::settings::pr_watch(), autopilot_item, polled)?;
+    let pr = crate::forge::commands::pull_request(project, number).map_err(|e| e.to_string())?;
+    watchable(number, &pr.url, pr.state == crate::forge::model::PrState::Open)?;
+    start(session, &pr.url, project, &pr.head_ref)
+}
+
+pub fn stop(session: &str, url: &str) -> Result<bool, String> {
+    let gone = store().remove(session, url)?;
+    if gone {
+        polled_moved();
+    }
+    Ok(gone)
+}
+
+pub fn session_deleted(session: &str) {
+    match store().remove_session(session) {
+        Ok(true) => polled_moved(),
+        Ok(false) => {}
+        Err(e) => eprintln!("tori: pull request watches of a deleted session not dropped: {e}"),
+    }
+}
+
+// One project spelled two ways (a symlink, a trailing slash) is still one project.
+pub fn same_folder(a: &str, b: &str) -> bool {
+    a == b || matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+pub fn posted_into(watches: &[Watch], session: &str, project: &str, number: u64, id: &str) -> Vec<Watch> {
+    watches
+        .iter()
+        .filter(|w| w.session == session && same_folder(&w.project, project) && parse_url(&w.url).is_some_and(|(_, _, n)| n == number))
+        .map(|w| {
+            let mut next = w.clone();
+            next.tori_posted.insert(id.to_string());
+            next
+        })
+        .collect()
+}
+
+// What the session posted itself is not news to it.
+pub fn tori_posted(session: &str, project: &str, number: u64, id: &str) {
+    let saved = store().update(|watches| posted_into(watches, session, project, number, id));
+    if let Err(e) = saved {
+        eprintln!("tori: a posted review was not recorded on its watch: {e}");
+    }
+}
+
 static POLLED_MOVED: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
 
 // Set once at startup to tell the webview, since the store has no app handle.
@@ -788,4 +870,33 @@ mod tests {
         assert_eq!(changed[0].pending, vec![News::Remark { author: "amy".into(), body: "rebase?".into(), review: None }]);
     }
 
+    #[test]
+    fn each_watch_refusal_names_what_is_missing() {
+        assert_eq!(admit(false, false, Ok(())).unwrap_err(), OFF);
+        assert!(admit(true, true, Ok(())).unwrap_err().contains("autopilot already hears"));
+        assert!(admit(true, false, Err("signed out".into())).unwrap_err().contains("cannot poll this project's forge right now (signed out)"));
+        assert!(admit(true, false, Ok(())).is_ok());
+        assert!(watchable(3, "https://gitlab.com/o/r/-/merge_requests/3", true).unwrap_err().contains("only those can be watched"));
+        assert!(watchable(3, "https://github.com/o/r/pull/3", false).unwrap_err().contains("no longer open"));
+        assert!(watchable(3, "https://github.com/o/r/pull/3", true).is_ok());
+    }
+
+    #[test]
+    fn a_review_the_session_posted_does_not_wake_it_but_the_users_reply_does() {
+        let url = "https://github.com/o/r/pull/1";
+        let mine = Watch::new("s1", url, "/p", "fix", T0);
+        let theirs = Watch::new("s2", url, "/p", "fix", T0);
+        let marked = posted_into(&[mine, theirs.clone()], "s1", "/p", 1, "review-1");
+        assert_eq!(marked.len(), 1, "only the posting session's watch");
+        let mut mine = marked[0].clone();
+        let remarks = Snapshot {
+            remarks: Some(vec![remark("review-1", "arif", T0 + 1, "lgtm"), remark("reply-9", "arif", T0 + 2, "one more thing")]),
+            ..snap("a", None)
+        };
+        mine.compare(&remarks);
+        assert_eq!(mine.pending, vec![News::Remark { author: "arif".into(), body: "one more thing".into(), review: None }]);
+        let mut theirs = theirs;
+        theirs.compare(&remarks);
+        assert_eq!(theirs.pending.len(), 2, "another session watching the same pull request hears both");
+    }
 }

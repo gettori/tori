@@ -253,6 +253,15 @@ describe("the forge accounts settings section", () => {
     expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(false);
   });
 
+  it("names the pull request watch switch, off by default", async () => {
+    hosts = [hostOf("github.com", [on("octocat")])];
+    render(() => <ForgeSection />);
+    await screen.findByTestId("forge-host");
+    const watch = screen.getByLabelText("Let a chat watch a pull request") as HTMLInputElement;
+    expect(watch.checked).toBe(false);
+    expect(watch.disabled).toBe(false);
+  });
+
   it("lists two accounts under github.com and one under gitlab.com, each card tagged by family", async () => {
     hosts = [
       hostOf("github.com", [on("octocat"), on("octocat-review")], { gitCredentials: true, defaultAccount: "github-com-octocat" }),

@@ -786,6 +786,35 @@ pub fn refuse_locked(app: &AppHandle, session: &str) -> Result<(), String> {
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct WatchRow {
+    session: String,
+    url: String,
+    project: String,
+    branch: String,
+}
+
+#[tauri::command]
+pub fn pr_watch_list() -> Vec<WatchRow> {
+    pr_watch::store()
+        .list()
+        .into_iter()
+        .filter(|w| !w.ended)
+        .map(|w| WatchRow { session: w.session, url: w.url, project: w.project, branch: w.branch })
+        .collect()
+}
+
+#[tauri::command(async)]
+pub fn pr_watch_start(rpc: tauri::State<RpcState>, session: String, project: String, number: u64) -> Result<String, String> {
+    let item = rpc.autopilot.item_for_session(&session).is_some();
+    pr_watch::watch(&session, &project, number, item).map(|w| w.url)
+}
+
+#[tauri::command]
+pub fn pr_watch_stop(session: String, url: String) -> Result<bool, String> {
+    pr_watch::stop(&session, &url)
+}
+
 #[tauri::command]
 pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<String>, readings: Vec<quotas::Reading>) {
     if let Some(windows) = rpc.quotas.record(&agent, profile.as_deref(), readings) {
