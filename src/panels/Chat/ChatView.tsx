@@ -79,6 +79,7 @@ import {
   type ComposerStash,
 } from "../../utils/chatCompose";
 import { attachmentsDir, composerAttachments } from "./composerAttachments";
+import { discardEntry, loadStash, restoreEntry, stashDraft, stashEntries } from "./promptStash";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import {
@@ -436,6 +437,7 @@ export default function ChatView(props: {
   // and the close, and this composer answers only for its own linked path.
   const linkedName = () => linkedScratchFor(composerKey())?.split("/").pop() ?? null;
   onMount(() => {
+    void loadStash();
     const offSaved = onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => mirrorSaved(composerKey(), saved));
     const offClosed = onWith<EditorTabClosed>(EDITOR_TAB_CLOSED, (closed) => void scratchTabClosed(composerKey(), closed));
     const offDone = onWith<EditorPromptDone>(EDITOR_PROMPT_DONE, ({ path }) => {
@@ -2517,6 +2519,11 @@ export default function ChatView(props: {
           onUnlink={() => void unlinkScratch(composerKey(), { closeTab: true })}
           onAttachUploads={attachments.onAttachUploads}
           onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
+          stash={stashEntries()}
+          onStash={() => void stashDraft(composerKey())}
+          onRestoreStash={(id) => void restoreEntry(composerKey(), id, attachmentSources(tier(), state.capabilities))}
+          onDiscardStash={(id) => void discardEntry(id)}
+          holding={hasAutoSend(composerKey())}
           onInterrupt={onInterrupt}
           onDropQueued={(id) => edit((s) => removeQueued(s, id))}
           onReorderQueued={(ids) => edit((s) => reorderQueue(s, ids))}

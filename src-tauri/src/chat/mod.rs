@@ -43,6 +43,7 @@ pub mod pacing;
 pub mod queue_store;
 pub mod retired;
 pub mod snapshot;
+pub mod stash_store;
 pub mod tail;
 pub mod transport;
 pub mod usage;

@@ -950,7 +950,7 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
             // The sweep reads every transcript under every root, and the store
             // this lock serialises is already done with: the session is gone.
             drop(guard);
-            crate::attachments::drop_unreferenced(&attached, &watch_dirs());
+            crate::attachments::drop_unreferenced(&attached, &watch_dirs(), &[crate::chat::stash_store::path()]);
             Ok(())
         }
         None => crate::chat::acp_sessions::forget(Path::new(&path)),
@@ -1681,7 +1681,7 @@ pub fn session_editing_now(
 ///
 /// An adapter with no discovery contributes no directory: its sessions change
 /// when its protocol says so, which no filesystem watcher sees.
-fn watch_dirs() -> Vec<PathBuf> {
+pub(crate) fn watch_dirs() -> Vec<PathBuf> {
     let accounts = crate::accounts::load();
     discovery_roots(&accounts).into_iter().map(|r| r.dir).collect()
 }
