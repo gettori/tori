@@ -1,5 +1,6 @@
 import { Match, Switch, createResource, createSignal, onCleanup } from "solid-js";
 import { on as onEvent, THEME_APPLIED } from "../../utils/events";
+import { traceAsyncWork } from "../../utils/perfTrace";
 import styles from "./Diagram.module.css";
 
 type Engine = typeof import("../../utils/mermaidEngine");
@@ -32,7 +33,7 @@ export default function Diagram(props: { code: string }) {
       try {
         const m = await loadEngine();
         m.configure();
-        return await m.render(code);
+        return await traceAsyncWork("mermaid", () => m.render(code));
       } catch {
         // A failed chunk load is answered the same way an unparseable fence is:
         // the source stands in, and nothing retries because nothing would change.

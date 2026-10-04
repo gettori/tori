@@ -2,6 +2,7 @@ import { Index, Match, Switch, createEffect, createMemo, createSignal, on, onCle
 import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
+import { traceWork } from "../../utils/perfTrace";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, TOAST, type NavTarget, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { linkTarget } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
@@ -73,7 +74,7 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     // the lexer decides whether one becomes a break token, the parser decides
     // whether it renders.
     const md = props.breaks === true ? LINEWISE : PROSE;
-    const tokens = md.lexer(text());
+    const tokens = traceWork("md-lex", () => md.lexer(text()));
     const next = new Map<string, string>();
     const segs: Segment[] = [];
     let run: Token[] = [];
