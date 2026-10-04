@@ -1,7 +1,7 @@
 /* A branch row's second line: what its pull request is doing. Only a row that
    has one grows it, which is what pays for the height and what lets the
    "no pull request" marker leave the first line entirely. */
-.prLine {
+.line {
   /* One step under whatever the label above is wearing. GitHub can run its
      meta line at `muted` because its title is `default`; a Tori branch label
      is already `muted` when the row is not selected, so the same tone here

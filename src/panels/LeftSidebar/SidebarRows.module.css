@@ -150,11 +150,11 @@
 }
 
 /* ---- The two-line branch row ----
-   Only a branch with a pull request grows one (see `PrLine`). A row without
-   one renders none of these elements at all, so the single-line row keeps the
-   exact metrics it has always had rather than being restored to them by an
-   override. The row carries `data-two-line` for anything that needs to tell
-   the two apart. */
+   Only a branch with a pull request or a diff of its own grows one (see
+   `BranchLine`). A row without one renders none of these elements at all, so
+   the single-line row keeps the exact metrics it has always had rather than
+   being restored to them by an override. The row carries `data-two-line` for
+   anything that needs to tell the two apart. */
 
 /* The stack takes the whole row, glyph included, so that `.rowTop` below is
    the single-line row exactly - same children, same gap, same centring - and
@@ -190,7 +190,7 @@
 
 /* The selected row raises its label to `--fg-default`, so the line under it
    goes up a step too and the gap between them stays one step rather than two.
-   Set as a variable because `PrLine` owns its own stylesheet and a descendant
+   Set as a variable because `BranchLine` owns its own stylesheet and a descendant
    selector cannot cross the two. */
 .row.branch.sel .rowStack {
   --pr-line-fg: var(--fg-muted);

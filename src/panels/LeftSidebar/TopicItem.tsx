@@ -16,7 +16,7 @@ import type { BranchSync } from "../../utils/gitActions";
 import { createDragReorder } from "../../utils/dragReorder";
 import type { Rollup } from "../../utils/sessionStatus";
 import StatusBubble from "./StatusBubble";
-import PrLine from "./PrLine";
+import BranchLine from "./BranchLine";
 import type { UnitStatus } from "../../utils/forgeTypes";
 import { BranchRow, IconChevron } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
@@ -270,7 +270,7 @@ export default function TopicItem(props: {
                     <Show when={prOf(m.member)?.pullRequest ? prOf(m.member) : null}>
                       {(status) => (
                         <span data-member-pr>
-                          <PrLine status={status()} />
+                          <BranchLine status={status()} />
                         </span>
                       )}
                     </Show>

@@ -9,7 +9,7 @@ import type {
   ReviewDecision,
   UnitStatus,
 } from "../../utils/forgeTypes";
-import PrLine from "./PrLine";
+import BranchLine from "./BranchLine";
 import { BranchRow, ProjectRow } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 
@@ -83,11 +83,11 @@ function Tree(props: { children: JSX.Element }) {
 }
 
 const meta = {
-  title: "Panels/LeftSidebar/PrLine",
-  component: PrLine,
+  title: "Panels/LeftSidebar/BranchLine",
+  component: BranchLine,
   args: { status: status({ number: 7875, comments: 2 }) },
   decorators: [(Story) => <Tree><Story /></Tree>],
-} satisfies Meta<typeof PrLine>;
+} satisfies Meta<typeof BranchLine>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -110,13 +110,13 @@ export const States: Story = {
     () => (
       <Tree>
         <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
-          <PrLine status={status({ number: 7875, review: "approved", comments: 2 })} />
-          <PrLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })} />
-          <PrLine status={status({ number: 7864, checks: "pending", total: 4, openedHoursAgo: 48 })} />
-          <PrLine status={status({ number: 7862, review: "changesRequested", checks: "failure", total: 5, failing: 1, comments: 19, openedHoursAgo: 72 })} />
-          <PrLine status={status({ number: 7861, isDraft: true, checks: "none", openedHoursAgo: 72 })} />
-          <PrLine status={status({ number: 7860, state: "merged", review: "approved", comments: 14, openedHoursAgo: 24 * 8 })} />
-          <PrLine status={status({ number: 7859, state: "closed", checks: "none", openedHoursAgo: 24 * 15 })} />
+          <BranchLine status={status({ number: 7875, review: "approved", comments: 2 })} />
+          <BranchLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })} />
+          <BranchLine status={status({ number: 7864, checks: "pending", total: 4, openedHoursAgo: 48 })} />
+          <BranchLine status={status({ number: 7862, review: "changesRequested", checks: "failure", total: 5, failing: 1, comments: 19, openedHoursAgo: 72 })} />
+          <BranchLine status={status({ number: 7861, isDraft: true, checks: "none", openedHoursAgo: 72 })} />
+          <BranchLine status={status({ number: 7860, state: "merged", review: "approved", comments: 14, openedHoursAgo: 24 * 8 })} />
+          <BranchLine status={status({ number: 7859, state: "closed", checks: "none", openedHoursAgo: 24 * 15 })} />
         </div>
       </Tree>
     ),
@@ -138,7 +138,7 @@ export const InTheColumn: Story = {
             icon={<WorktreeMark active />}
             menu={MENU}
             end={<SyncMarks marks={[{ kind: "push", count: 3, tone: "muted", title: "3 commits to push" }]} label="3 commits to push" />}
-            meta={<PrLine status={status({ number: 7875, review: "approved", comments: 2 })} />}
+            meta={<BranchLine status={status({ number: 7875, review: "approved", comments: 2 })} />}
           />
           <BranchRow label="chore/bump-deps" icon={<WorktreeMark active={false} />} menu={MENU} />
           <BranchRow
@@ -146,7 +146,7 @@ export const InTheColumn: Story = {
             icon={<WorktreeMark active={false} />}
             selected
             menu={MENU}
-            meta={<PrLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })} />}
+            meta={<BranchLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })} />}
           />
           <BranchRow label="spike/whatever" icon={<WorktreeMark active={false} />} menu={MENU} />
         </ProjectRow>
@@ -170,7 +170,7 @@ export const GlyphAlignment: Story = {
             label="two-line"
             icon={<WorktreeMark active={false} />}
             menu={MENU}
-            meta={<PrLine status={status({ number: 7875, review: "approved", comments: 2 })} />}
+            meta={<BranchLine status={status({ number: 7875, review: "approved", comments: 2 })} />}
           />
           <BranchRow label="one-line-between" icon={<WorktreeMark active={false} />} menu={MENU} />
           <BranchRow
@@ -178,7 +178,7 @@ export const GlyphAlignment: Story = {
             icon={<WorktreeMark active={false} />}
             selected
             menu={MENU}
-            meta={<PrLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3 })} />}
+            meta={<BranchLine status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3 })} />}
           />
           <BranchRow label="one-line-below" icon={<WorktreeMark active={false} />} menu={MENU} />
         </ProjectRow>

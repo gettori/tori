@@ -212,7 +212,7 @@ describe("the forge chip on a branch row", () => {
 
   it("draws each PR state the poller can report, on the row's second line", async () => {
     // A branch with a pull request reports it under its name rather than in
-    // the end cluster beside it, so these assertions read `data-pr-*` (PrLine)
+    // the end cluster beside it, so these assertions read `data-pr-*` (BranchLine)
     // where they used to read `data-forge-*` (ForgeChipView). The chip itself
     // is unchanged and still drawn by the Pull Requests panel.
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);

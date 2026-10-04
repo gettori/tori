@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@solidjs/testing-library";
-import PrLine from "./PrLine";
+import BranchLine from "./BranchLine";
 import type { PullRequest, UnitStatus } from "../../utils/forgeTypes";
 
 const HOUR = 3600_000;
@@ -33,18 +33,18 @@ const status = (over: Partial<PullRequest>): UnitStatus => ({
 
 describe("a pull request's line", () => {
   it("dates an open pull request by when it opened", () => {
-    render(() => <PrLine status={status({})} />);
+    render(() => <BranchLine status={status({})} />);
     expect(screen.getByText("3d")).toBeTruthy();
   });
 
   it("dates a merged or closed one by when it finished", () => {
-    render(() => <PrLine status={status({ state: "merged", mergedAt: iso(2), closedAt: iso(2) })} />);
+    render(() => <BranchLine status={status({ state: "merged", mergedAt: iso(2), closedAt: iso(2) })} />);
     expect(screen.getByText("merged 2h")).toBeTruthy();
     expect(screen.queryByText("3d")).toBeNull();
   });
 
   it("says closed for one that closed without merging", () => {
-    render(() => <PrLine status={status({ state: "closed", closedAt: iso(5) })} />);
+    render(() => <BranchLine status={status({ state: "closed", closedAt: iso(5) })} />);
     expect(screen.getByText("closed 5h")).toBeTruthy();
   });
 });

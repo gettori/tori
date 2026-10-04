@@ -159,7 +159,7 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
 import { noteTopics, topicKey, topicSelection, isShellsKey, isReference, tabUnderFolder, type Topic } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
-import PrLine from "./PrLine";
+import BranchLine from "./BranchLine";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
 import {
@@ -2711,8 +2711,8 @@ export default function LeftSidebar(props: {
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         meta={
-          showPr()
-            ? <PrLine status={status()!} />
+          showPr() || (sync()?.base?.stat?.files ?? 0) > 0
+            ? <BranchLine status={showPr() ? status()! : null} base={sync()?.base} />
             : undefined
         }
         end={

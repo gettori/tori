@@ -1318,7 +1318,7 @@ pub fn git_log(
 }
 
 /// `git diff --numstat`, summed. Binary files count as a file and no lines.
-#[derive(Serialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Debug, PartialEq, Default, Clone)]
 pub struct DiffStat {
     pub files: u32,
     pub insertions: u32,
@@ -2488,6 +2488,9 @@ pub struct BaseSync {
     ahead: u32,
     behind: u32,
     conflicts: Option<Vec<String>>,
+    /// The branch's own diff, what a pull request of it shows. `None` when git
+    /// would not answer, which the row draws as nothing rather than as zero.
+    stat: Option<DiffStat>,
 }
 
 /// One branch's whole standing, against both the thing it pushes to and the
@@ -2865,7 +2868,40 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>)
     let mut counts = counts.split_whitespace();
     let ahead = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
     let behind = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
-    Some(BaseSync { name: base, ahead, conflicts: base_conflicts(repo, &base_ref, tip, behind), behind })
+    Some(BaseSync {
+        name: base,
+        ahead,
+        conflicts: base_conflicts(repo, &base_ref, tip, behind),
+        stat: base_stat(repo, &base_ref, tip, ahead),
+        behind,
+    })
+}
+
+static STATS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<ConflictKey, DiffStat>>> =
+    std::sync::OnceLock::new();
+
+/// Three dots, the diff GitHub shows for a pull request: from where the branch
+/// left the base, so what the base gained since is not counted. Cached on the
+/// same two shas as the conflict check, since nothing else moves it.
+fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32) -> Option<DiffStat> {
+    if ahead == 0 {
+        return Some(DiffStat::default());
+    }
+    let key = conflict_key(repo, base_ref, tip);
+    let cache = STATS.get_or_init(Default::default);
+    if let Some(hit) = key.as_ref().and_then(|k| cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(k).cloned()) {
+        return Some(hit);
+    }
+    let range = format!("refs/remotes/{base_ref}...{tip}");
+    let stat = parse_numstat(&git_capture(repo, &["--no-optional-locks", "diff", "--numstat", &range, "--"]).ok()?);
+    if let Some(key) = key {
+        let mut map = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if map.len() >= CONFLICT_CACHE_MAX {
+            map.clear();
+        }
+        map.insert(key, stat.clone());
+    }
+    Some(stat)
 }
 
 /// Everything a merge's outcome turns on and nothing else, so a row redrawn on
@@ -4020,7 +4056,7 @@ diff --git a/f b/f
         // "level with main" from "there is no main".
         assert_eq!(
             sync.base,
-            Some(BaseSync { name: "main".into(), ahead: 0, behind: 0, conflicts: Some(vec![]) })
+            Some(BaseSync { name: "main".into(), ahead: 0, behind: 0, conflicts: Some(vec![]), stat: Some(DiffStat::default()) })
         );
         scrub(&[&local, &remote]);
     }
