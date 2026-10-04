@@ -3,7 +3,7 @@ import { ChevronLeft, Folder, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
 import SyncMarks from "../../src/components/SyncMarks/SyncMarks";
-import PrLine from "../../src/panels/LeftSidebar/PrLine";
+import BranchLine from "../../src/panels/LeftSidebar/BranchLine";
 import { syncMarks } from "../../src/utils/branchSync";
 import type { UnitStatus } from "../../src/utils/forgeTypes";
 import type { BranchSync } from "../../src/utils/gitActions";
@@ -174,7 +174,7 @@ function WorktreeCard(props: {
         </span>
         <span class={styles.cardMeta}>
           <Show when={props.pr} fallback={<span>{meta()}</span>}>
-            {(pr) => <PrLine status={pr()} />}
+            {(pr) => <BranchLine status={pr()} />}
           </Show>
           <GitCounts git={props.git} />
         </span>

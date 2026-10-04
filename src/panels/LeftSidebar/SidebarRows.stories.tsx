@@ -157,7 +157,7 @@ export const Drifted: Story = {
  *
  *  Nothing about the forge is here any more, and nothing about the current
  *  checkout: a branch with a pull request reports it on a second line
- *  (`PrLine`), and HEAD is drawn in the row's own glyph (see `Current`), so
+ *  (`BranchLine`), and HEAD is drawn in the row's own glyph (see `Current`), so
  *  the cluster is back to what the branch itself is doing. */
 export const TheEndCluster: Story = {
   decorators: [

@@ -16,7 +16,7 @@ import Composer from "../../../Chat/Composer";
 import MessageList from "../../../Chat/MessageList";
 import type { ChatItem, ToolItem } from "../../../Chat/chatStore";
 import chat from "../../../Chat/Chat.module.css";
-import PrLine from "../../../LeftSidebar/PrLine";
+import BranchLine from "../../../LeftSidebar/BranchLine";
 import { BranchRow, ProjectRow } from "../../../LeftSidebar/SidebarRows";
 import SpaceTile, { ModeTile } from "../../../LeftSidebar/SpaceTile";
 import StatusBubble from "../../../LeftSidebar/StatusBubble";
@@ -129,7 +129,7 @@ function Sidebar() {
           <BranchRow
             label="feat/webhooks"
             icon={<WorktreeMark active={false} />}
-            meta={<PrLine status={WEBHOOKS_PR} />}
+            meta={<BranchLine status={WEBHOOKS_PR} />}
             end={
               <>
                 <IconButton size="xs" class={rows.topicChip} icon={<Icon icon={Tag} />} aria-label="Open Topic Webhooks" />
