@@ -101,7 +101,7 @@ function busy(ms: number): void {
 
 function mount(view: () => JSX.Element): () => void {
   const el = document.createElement("div");
-  el.style.cssText = "position:fixed;inset:48px;z-index:2147483647;overflow:auto;background:var(--bg-default)";
+  el.style.cssText = "position:fixed;inset:48px;z-index:2147483647;overflow:auto;background:var(--canvas-default)";
   document.body.append(el);
   const dispose = render(view, el);
   return () => {
