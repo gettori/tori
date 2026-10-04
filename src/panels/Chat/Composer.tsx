@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
-import { ArrowUp, CornerDownRight, GripVertical, Plus, Square, SquarePen, X } from "lucide-solid";
+import { ArrowUp, Check, CornerDownRight, GripVertical, Pencil, Plus, Square, SquarePen, X } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -189,6 +189,10 @@ export default function Composer(props: {
   onDropQueued: (id: string) => void;
   onReorderQueued?: (ids: string[]) => void;
   onSteerQueued?: (idOrOldest?: string) => void;
+  editing?: string | null;
+  onEditQueued?: (id: string) => void;
+  onSaveEdit?: (text: string) => void;
+  onCancelEdit?: () => void;
   onDropAttachment: (id: string) => void;
   /** A completed `@` mention, as the path relative to the project root. The
    *  caller resolves it and makes the chip, so path policy stays in one place,
@@ -540,10 +544,34 @@ export default function Composer(props: {
   function submit(queue = false) {
     const value = text().trim();
     if (!hasContent() || props.disabled) return;
+    if (props.editing) {
+      props.onSaveEdit?.(value);
+      return;
+    }
     if (queue && props.onQueue) props.onQueue(value);
     else props.onSend(value);
     clearDraft();
   }
+
+  // Entering or leaving an edit replaces the whole draft from outside, which no
+  // keystroke measured, so the box is refitted and the caret put at the end.
+  createEffect(
+    on(
+      () => props.editing,
+      () => {
+        setHistoryIndex(-1);
+        queueMicrotask(() => {
+          if (!input) return;
+          const end = input.value.length;
+          input.setSelectionRange(end, end);
+          setCaret(end);
+          fit();
+          input.focus();
+        });
+      },
+      { defer: true },
+    ),
+  );
 
   let queueStrip: HTMLDivElement | undefined;
   const drag = createDragReorder({
@@ -582,6 +610,10 @@ export default function Composer(props: {
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    if (props.editing && e.key === "Enter" && (e.altKey || (e.shiftKey && (e.metaKey || e.ctrlKey)))) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault();
       closeMenu();
@@ -604,6 +636,14 @@ export default function Composer(props: {
     if (e.key === "c" && e.ctrlKey && !e.metaKey && !e.altKey && !props.linked && text()) {
       e.preventDefault();
       clearDraft();
+      return;
+    }
+    if (!menuOpen() && e.key === "ArrowUp" && e.altKey && !e.metaKey && !e.ctrlKey) {
+      const last = [...props.queue].reverse().find((q) => !q.steering);
+      const atStart = (input?.selectionStart ?? 0) === 0 && (input?.selectionEnd ?? 0) === 0;
+      if (props.editing || !last || !atStart || !props.onEditQueued) return;
+      e.preventDefault();
+      props.onEditQueued(last.id);
       return;
     }
     if (!menuOpen() && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -642,6 +682,11 @@ export default function Composer(props: {
       if (input && insideFence(input.value, input.selectionStart ?? input.value.length)) return;
       e.preventDefault();
       submit(e.altKey && props.running);
+      return;
+    }
+    if (e.key === "Escape" && props.editing) {
+      e.preventDefault();
+      props.onCancelEdit?.();
       return;
     }
     if (e.key === "Escape" && props.running) {
@@ -689,6 +734,7 @@ export default function Composer(props: {
                 <div
                   class={styles.queueItem}
                   classList={{
+                    [styles.queueItemEditing]: props.editing === q.id,
                     [styles.queueItemDragging]: drag.dragging() === q.id,
                     [styles.queueItemOver]: drag.over() === q.id,
                   }}
@@ -726,7 +772,19 @@ export default function Composer(props: {
                     </For>
                     {text()}
                   </span>
-                  <Show when={props.steering && props.onSteerQueued}>
+                  <Show when={props.onEditQueued && !q.steering && props.editing !== q.id}>
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.queueAction}
+                      label="Edit in the composer"
+                      aria-label={`Edit: ${named()}`}
+                      onClick={() => props.onEditQueued?.(q.id)}
+                    >
+                      <Icon icon={Pencil} size={12} aria-hidden="true" />
+                    </Tooltip>
+                  </Show>
+                  <Show when={props.steering && props.onSteerQueued && props.editing !== q.id}>
                     <Tooltip
                       as="button"
                       type="button"
@@ -763,6 +821,19 @@ export default function Composer(props: {
               </Button>
             </div>
           </Show>
+        </div>
+      </Show>
+      <Show when={props.editing}>
+        <div class={`${styles.queue} ${styles.queueEditBar}`}>
+          <span class={styles.queueLabel}>Editing a queued message</span>
+          <div class={styles.queueActions}>
+            <Button size="sm" variant="primary" disabled={!hasContent()} onClick={() => submit()}>
+              <Icon icon={Check} size={12} aria-hidden="true" /> Save
+            </Button>
+            <Button size="sm" onClick={() => props.onCancelEdit?.()}>
+              Cancel
+            </Button>
+          </div>
         </div>
       </Show>
       {/* One menu, two sources. Above the input rather than below it: the

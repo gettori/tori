@@ -2858,6 +2858,15 @@ button.attachmentBody:hover {
   font-size: var(--tori-text-md);
 }
 
+.queueItemEditing {
+  border-color: var(--accent-fg);
+  background: var(--accent-subtle);
+}
+
+.queueEditBar .queueLabel {
+  color: var(--accent-fg);
+}
+
 .queueItemDragging {
   opacity: 0.5;
 }

@@ -71,6 +71,11 @@ import {
   setDraft,
   takeAutoSend,
   takePending,
+  clearPending,
+  offerToComposer,
+  stashComposer,
+  unstashComposer,
+  type ComposerStash,
 } from "../../utils/chatCompose";
 import { attachmentsDir, composerAttachments } from "./composerAttachments";
 import { folderActors } from "../../utils/folderActors";
@@ -170,6 +175,7 @@ import {
   queuedText,
   removeQueued,
   reorderQueue,
+  replaceQueued,
   resolveApproval,
   revertEffortPick,
   revertModelPick,
@@ -1461,6 +1467,52 @@ export default function ChatView(props: {
     void sendBlocks(blocks, command);
   }
 
+  const [queueEdit, setQueueEdit] = createSignal<{ id: string; stash: ComposerStash; original: string } | null>(null);
+  const composerSnapshot = () =>
+    JSON.stringify([draftFor(composerKey()), pendingFor(composerKey()).map((p) => p.block)]);
+
+  function startQueueEdit(id: string) {
+    if (linkedScratchFor(composerKey())) return;
+    const entry = state.queue.find((q) => q.id === id);
+    if (!entry || entry.steering || queueEdit()?.id === id) return;
+    cancelQueueEdit();
+    const stash = stashComposer(composerKey());
+    setDraft(composerKey(), queuedText(entry));
+    offerToComposer(composerKey(), entry.blocks.filter((b) => b.type !== "text"));
+    setQueueEdit({ id, stash, original: composerSnapshot() });
+  }
+
+  function cancelQueueEdit() {
+    const current = queueEdit();
+    if (!current) return;
+    setQueueEdit(null);
+    clearPending(composerKey());
+    unstashComposer(composerKey(), current.stash);
+  }
+
+  function saveQueueEdit(text: string) {
+    const current = queueEdit();
+    if (!current) return;
+    const blocks = draftBlocks(text);
+    edit((s) => replaceQueued(s, current.id, blocks));
+    setQueueEdit(null);
+    unstashComposer(composerKey(), current.stash);
+  }
+
+  // Words typed into an edit are never thrown away just because the entry left.
+  createEffect(() => {
+    const current = queueEdit();
+    if (!current || state.queue.some((q) => q.id === current.id)) return;
+    untrack(() => {
+      setQueueEdit(null);
+      const changed = composerSnapshot() !== current.original;
+      if (changed && !current.stash.draft.trim() && !current.stash.chips.length) return;
+      if (changed) pushHistory(composerKey(), draftFor(composerKey()));
+      clearPending(composerKey());
+      unstashComposer(composerKey(), current.stash);
+    });
+  });
+
   function sayHeld(held: BudgetBreach) {
     if (heldSaid()) return;
     setHeldSaid(true);
@@ -2449,6 +2501,10 @@ export default function ChatView(props: {
           onDropQueued={(id) => edit((s) => removeQueued(s, id))}
           onReorderQueued={(ids) => edit((s) => reorderQueue(s, ids))}
           onSteerQueued={(id) => void steerQueued(id)}
+          editing={queueEdit()?.id ?? null}
+          onEditQueued={startQueueEdit}
+          onSaveEdit={saveQueueEdit}
+          onCancelEdit={cancelQueueEdit}
           onDropAttachment={(id) => dropPending(composerKey(), id)}
           onSendQueued={() => edit((s) => releaseQueue(s))}
           onDiscardQueued={() => edit((s) => discardQueue(s))}

@@ -2010,6 +2010,11 @@ export function removeQueued(s: ChatState, id: string) {
   if (!s.queue.length) s.queueParked = false;
 }
 
+export function replaceQueued(s: ChatState, id: string, blocks: ContentBlock[]) {
+  const entry = s.queue.find((q) => q.id === id);
+  if (entry) entry.blocks = blocks;
+}
+
 /** A new order from a drag or a keyboard move. Ignored when `ids` no longer
  *  names exactly what is queued, since an entry may have flushed mid-drag. */
 export function reorderQueue(s: ChatState, ids: readonly string[]) {
