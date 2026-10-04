@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
-import { ArrowUp, Plus, Square, SquarePen, X } from "lucide-solid";
+import { ArrowUp, CornerDownRight, GripVertical, Plus, Square, SquarePen, X } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -32,6 +32,7 @@ import {
   type CompletionToken,
 } from "../../utils/composerCompletion";
 import { insideFence } from "../../utils/composerFence";
+import { createDragReorder, moveKey } from "../../utils/dragReorder";
 import { fmtTokens } from "../../utils/chatUsage";
 import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
@@ -183,8 +184,11 @@ export default function Composer(props: {
    *  that never mentions a file should not pay for the walk. */
   loadFiles: () => Promise<string[]>;
   onSend: (text: string) => void;
+  onQueue?: (text: string) => void;
   onInterrupt: () => void;
   onDropQueued: (id: string) => void;
+  onReorderQueued?: (ids: string[]) => void;
+  onSteerQueued?: (idOrOldest?: string) => void;
   onDropAttachment: (id: string) => void;
   /** A completed `@` mention, as the path relative to the project root. The
    *  caller resolves it and makes the chip, so path policy stays in one place,
@@ -533,11 +537,28 @@ export default function Composer(props: {
     if (input) input.rows = MIN_ROWS;
   }
 
-  function submit() {
+  function submit(queue = false) {
     const value = text().trim();
     if (!hasContent() || props.disabled) return;
-    props.onSend(value);
+    if (queue && props.onQueue) props.onQueue(value);
+    else props.onSend(value);
     clearDraft();
+  }
+
+  let queueStrip: HTMLDivElement | undefined;
+  const drag = createDragReorder({
+    keys: () => props.queue.map((q) => q.id),
+    onCommit: (ids) => props.onReorderQueued?.(ids),
+  });
+
+  function moveQueued(id: string, delta: number) {
+    const keys = props.queue.map((q) => q.id);
+    const target = keys[keys.indexOf(id) + delta];
+    if (!target) return;
+    props.onReorderQueued?.(moveKey(keys, id, target));
+    // Moving a row re-inserts its node, which drops focus off the handle and
+    // would end a keyboard move after one step.
+    queueMicrotask(() => queueStrip?.querySelector<HTMLElement>(`[data-queue-handle="${id}"]`)?.focus());
   }
 
   // Up at the very start of the input walks back through what was sent, the
@@ -561,6 +582,13 @@ export default function Composer(props: {
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+      e.preventDefault();
+      closeMenu();
+      if (!props.queue.length) submit();
+      else if (props.steering) props.onSteerQueued?.();
+      return;
+    }
     // The one key that always sends: over an open menu, inside a fence, from
     // anywhere. So nobody is ever stuck behind a fence they did not mean to open.
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -613,7 +641,7 @@ export default function Composer(props: {
       // Inside an open fence the newline is the point; the textarea inserts it.
       if (input && insideFence(input.value, input.selectionStart ?? input.value.length)) return;
       e.preventDefault();
-      submit();
+      submit(e.altKey && props.running);
       return;
     }
     if (e.key === "Escape" && props.running) {
@@ -645,7 +673,7 @@ export default function Composer(props: {
       onDrop={onDrop}
     >
       <Show when={props.queue.length}>
-        <div class={`${styles.queue} ${props.parked ? styles.queueParked : ""}`}>
+        <div ref={queueStrip} class={`${styles.queue} ${props.parked ? styles.queueParked : ""}`}>
           <span class={styles.queueLabel}>
             {props.parked
               ? `${props.queue.length} message${props.queue.length > 1 ? "s" : ""} held: the turn was stopped`
@@ -653,32 +681,75 @@ export default function Composer(props: {
           </span>
           <For each={props.queue}>
             {(q) => {
-              const text = queuedText(q);
-              const attached = q.blocks.filter((b) => b.type !== "text");
-              const named = text || attached.map((b) => tokenOf(b) ?? tileName(b)).join(" ");
+              const text = () => queuedText(q);
+              const attached = () => q.blocks.filter((b) => b.type !== "text");
+              const named = () => text() || attached().map((b) => tokenOf(b) ?? tileName(b)).join(" ");
+              const row = drag.rowProps(q.id);
               return (
-                // The visible text is the queued message, so the name has to say
-                // what the button *does* to it - and name each row apart.
-                <Tooltip
-                  as="button"
-                  type="button"
+                <div
                   class={styles.queueItem}
-                  label="Remove from the queue"
-                  aria-label={`Remove from the queue: ${named}`}
-                  onClick={() => props.onDropQueued(q.id)}
+                  classList={{
+                    [styles.queueItemDragging]: drag.dragging() === q.id,
+                    [styles.queueItemOver]: drag.over() === q.id,
+                  }}
+                  onDragOver={row.onDragOver}
+                  onDrop={row.onDrop}
                 >
-                  <For each={attached}>
-                    {(b) => {
-                      const src = thumbSrc(b);
-                      return src ? (
-                        <img class={styles.queueThumb} src={src} alt="" />
-                      ) : (
-                        <span class={styles.queueRef}>{tokenOf(b) ?? tileName(b)}</span>
-                      );
-                    }}
-                  </For>
-                  {text}
-                </Tooltip>
+                  <Show when={props.onReorderQueued && props.queue.length > 1}>
+                    <button
+                      type="button"
+                      class={styles.queueHandle}
+                      draggable={true}
+                      data-queue-handle={q.id}
+                      aria-label={`Move in the queue: ${named()}`}
+                      onDragStart={row.onDragStart}
+                      onDragEnd={row.onDragEnd}
+                      onKeyDown={(e) => {
+                        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                        e.preventDefault();
+                        moveQueued(q.id, e.key === "ArrowUp" ? -1 : 1);
+                      }}
+                    >
+                      <Icon icon={GripVertical} size={12} aria-hidden="true" />
+                    </button>
+                  </Show>
+                  <span class={styles.queueText}>
+                    <For each={attached()}>
+                      {(b) => {
+                        const src = thumbSrc(b);
+                        return src ? (
+                          <img class={styles.queueThumb} src={src} alt="" />
+                        ) : (
+                          <span class={styles.queueRef}>{tokenOf(b) ?? tileName(b)}</span>
+                        );
+                      }}
+                    </For>
+                    {text()}
+                  </span>
+                  <Show when={props.steering && props.onSteerQueued}>
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.queueAction}
+                      label="Steer this turn with it now"
+                      aria-label={`Steer now: ${named()}`}
+                      disabled={!!q.steering}
+                      onClick={() => props.onSteerQueued?.(q.id)}
+                    >
+                      <Icon icon={CornerDownRight} size={12} aria-hidden="true" />
+                    </Tooltip>
+                  </Show>
+                  <Tooltip
+                    as="button"
+                    type="button"
+                    class={`${styles.queueAction} ${styles.queueRemove}`}
+                    label="Remove from the queue"
+                    aria-label={`Remove from the queue: ${named()}`}
+                    onClick={() => props.onDropQueued(q.id)}
+                  >
+                    <Icon icon={X} size={12} aria-hidden="true" />
+                  </Tooltip>
+                </div>
               );
             }}
           </For>
@@ -877,9 +948,9 @@ export default function Composer(props: {
                 `Watching ${props.watching}. What you type goes to the main agent`
               : props.running
                 ? props.steering
-                  ? props.steerCost
-                    ? `Steer this turn, picked up in ${props.steerCost}`
-                    : "Steer this turn, picked up at its next step"
+                  ? (props.steerCost
+                      ? `Steer this turn, picked up in ${props.steerCost}`
+                      : "Steer this turn, picked up at its next step") + (props.onQueue ? ". Option+Enter queues" : "")
                   : "Type to queue for the next turn"
                 : "Reply, or @ a file · / for commands"
           }

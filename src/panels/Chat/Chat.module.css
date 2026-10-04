@@ -2846,17 +2846,31 @@ button.attachmentBody:hover {
 }
 
 .queueItem {
-  max-width: calc(220px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  max-width: calc(260px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-pill);
-  padding: calc(3px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale));
   background: var(--canvas-input);
   color: var(--fg-muted);
   font-size: var(--tori-text-md);
+}
+
+.queueItemDragging {
+  opacity: 0.5;
+}
+
+.queueItemOver {
+  border-color: var(--accent-fg);
+}
+
+.queueText {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
 }
 
 .queueThumb {
@@ -2871,9 +2885,36 @@ button.attachmentBody:hover {
   color: var(--fg-subtle);
 }
 
-.queueItem:hover {
-  border-color: var(--danger-emphasis);
+.queueHandle,
+.queueAction {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border: 0;
+  border-radius: var(--tori-radius-pill);
+  padding: calc(2px * var(--ui-scale));
+  background: none;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.queueHandle {
+  margin-left: calc(-6px * var(--ui-scale));
+  cursor: grab;
+}
+
+.queueAction:hover,
+.queueHandle:hover {
+  color: var(--fg-default);
+}
+
+.queueRemove:hover {
   color: var(--danger-fg);
+}
+
+.queueAction:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .queueActions {
