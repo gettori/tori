@@ -18,6 +18,7 @@ import Markdown from "../panels/Chat/Markdown";
 import { ToolDiff } from "../panels/Chat/ToolBody";
 import MarkdownPreview from "../panels/Editor/MarkdownPreview";
 import { rank } from "./composerCompletion";
+import { takeHighlightTimes } from "../panels/Chat/highlight";
 import { dropLiveBuffer, publishBufferText } from "./liveBuffer";
 import { bigEdit, bigMarkdown, diagrams, projectPaths, streamedAnswer } from "./perfFixtures";
 import { holdFrames, traceFrameControl, traceNote, traceWork } from "./perfTrace";
@@ -33,6 +34,7 @@ const GAP_MS = 1500;
 const DELTA_CHARS = 100;
 const DELTA_MS = 25;
 const SESSION = "tori-perf";
+const PREVIEW_MAX_MS = 30_000;
 
 let started = false;
 
@@ -59,9 +61,15 @@ export async function startWorkRecipe(): Promise<void> {
   });
   await pass("md-preview", async () => {
     const path = "/tori-perf/large.md";
-    publishBufferText(path, bigMarkdown());
-    const unmount = mount(() => <MarkdownPreview path={path} />);
-    await sleep(5000);
+    const END = "End of the large fixture.";
+    publishBufferText(path, `${bigMarkdown()}\n\n${END}\n`);
+    let host: HTMLElement | undefined;
+    const unmount = mount(() => <div ref={(el) => (host = el)}><MarkdownPreview path={path} /></div>);
+    // Until the last block is in, so a slow lex is measured rather than cut off.
+    const began = performance.now();
+    while (!host?.textContent?.includes(END) && performance.now() - began < PREVIEW_MAX_MS) await sleep(200);
+    traceNote("md-preview", { done: !!host?.textContent?.includes(END), ms: Math.round(performance.now() - began) });
+    await sleep(1000);
     unmount();
     dropLiveBuffer(path);
   });
@@ -130,6 +138,7 @@ async function stream(): Promise<void> {
   }
   traceNote("stream", { deltas, chars: text.length });
   await sleep(1000);
+  traceNote("highlight-worker", takeHighlightTimes());
   unmount();
 }
 

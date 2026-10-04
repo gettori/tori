@@ -78,6 +78,15 @@ function extend(last: Answer, tail: string): Answer {
 
 let blocks = 0;
 
+const workerMs: number[] = [];
+
+/** How long the worker spent per block since the last call, for the trace
+ *  recipe: a slow worker shows up as colours that lag, never as a frame. */
+export function takeHighlightTimes(): { n: number; p50: number | null; max: number | null } {
+  const v = workerMs.splice(0).sort((a, b) => a - b);
+  return { n: v.length, p50: v.length ? Math.round(v[v.length >> 1]) : null, max: v.length ? Math.round(v[v.length - 1]) : null };
+}
+
 /**
  * The colours for one block, or several blocks one component owns (`slot`
  * tells them apart). Call it in a component: it lives as long as the owner.
@@ -98,6 +107,7 @@ export function createHighlight() {
   onCleanup(() => asked.forEach(queue.cancel));
 
   const done = (slot: string) => (req: Request, reply: Reply) => {
+    if (reply.ms !== undefined) workerMs.push(reply.ms);
     if (reply.value !== undefined) {
       remember(cacheKey(req.form, req.lang, req.code), reply.value);
       last.set(slot, { code: req.code, lang: req.lang, value: reply.value });
