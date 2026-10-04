@@ -1,8 +1,8 @@
 ---
 summary: rpc/runner.rs owns the autopilot session: resumes it unless it died, one restart only on a death, status from turn events
 status: current
-updated: 2026-09-25
-source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205; commits eff34ef6, 4b309f03, 7dfdc1a9; src-tauri/src/rpc/runner.rs, src-tauri/src/rpc/mod.rs, src-tauri/src/settings.rs, src-tauri/resources/autopilot/brief.md; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; plan "Autopilot brief: liaison rule, outcomes in my nouns (#211)" on branch orchestrator, issue gettori/tori#211
+updated: 2026-10-04
+source: plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205; commits eff34ef6, 4b309f03, 7dfdc1a9; src-tauri/src/rpc/runner.rs, src-tauri/src/rpc/mod.rs, src-tauri/src/settings.rs, src-tauri/resources/autopilot/brief.md; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; plan "Autopilot brief: liaison rule, outcomes in my nouns (#211)" on branch orchestrator, issue gettori/tori#211; plan "Run a setup command when a worktree is created" on branch setup-command, ticket gettori/tickets#2
 ---
 
 # Autopilot runner
@@ -20,6 +20,8 @@ It owns the one autopilot session: spawning it, knowing its state, and handing i
 - **Restart** happens only on a `died` end, and only once; a second death sets `error {title, detail}` and keeps the dead session id so its transcript can be read. `closed` and `killed` never restart, so app shutdown neither restarts nor touches `enabled`. A manual start resets the count.
 - **Autostart** at launch when `enabled` is set and the feature is on (`settings.autopilot.available`, the Settings switch), called from `lib.rs` after the state is managed.
 - **The picks** live in `settings.autopilot` (`agent`, `profile`, `model`, `effort`). `agent` is a `String` whose serde default, `null` and `""` all read as claude, so the default lives in Rust alone. `profile` is in the tab spelling (`null` is the default account), which is what `chat_spawn` takes.
+
+- **A worker's install.** The brief's "A new worktree's setup" section has the autopilot read `setup` off `worktree_new`: call again while `running`, and tell the worker in its prompt when the setup `failed` (with the log) or was `skipped` for a fork ([[component_worktree_setup]]).
 
 ## The lock
 
@@ -51,3 +53,4 @@ Status goes out twice: as the socket kind `autopilot.status` on the `autopilot` 
 - [[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]]: why the view attaches late
 - [[gotcha_a_frontend_settings_key_with_no_rust_field_is_dropped_on_save]]: why `autopilot` exists on both sides
 - [[component_autopilot_watcher]]: follows the status; every `set` nudges it
+- [[component_worktree_setup]]: the setup status a worker's worktree reports
