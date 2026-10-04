@@ -94,7 +94,7 @@ describe("DiffBufferView", () => {
     expect(view.state.selection.main.head).toBe(1);
 
     expect(runScopeHandlers(view, new KeyboardEvent("keydown", { key: "f", ctrlKey: true }), "editor")).toBe(true);
-    expect(container.querySelector(".cm-search")).not.toBeNull();
+    expect(container.querySelector(".cm-tori-find")).not.toBeNull();
     view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: "v3" })) });
     expect(container.querySelectorAll(".cm-searchMatch").length).toBeGreaterThan(0);
 

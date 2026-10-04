@@ -14,6 +14,7 @@ import { toriHighlight } from "./syntaxStyle";
 import { foldingExtension } from "./folding";
 import { extensionCrashSink } from "./extensionCrash";
 import { toriTheme } from "./editorTheme";
+import { findWidget } from "./FindWidget";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
@@ -1166,6 +1167,7 @@ export default function CodeEditor(props: {
     highlightSpecialChars(),
     ...(plain ? [] : [foldingExtension()]),
     highlightSelectionMatches(),
+    findWidget(),
     diffGutterExtension(),
     // The view rather than a path, because one buffer's extensions outlive a
     // rename and the path is only right at the moment of the click.

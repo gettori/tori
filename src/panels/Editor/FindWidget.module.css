@@ -1,0 +1,77 @@
+/* The editor's find widget, in the dress of the terminal's find bar. */
+.widget {
+  display: flex;
+  align-items: stretch;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  background: var(--canvas-head);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--fg-default);
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-md);
+}
+
+.expand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(18px * var(--ui-scale));
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.expand:hover {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.expand:focus-visible {
+  outline: 1px solid var(--brand-default);
+}
+
+.rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  min-width: 0;
+}
+
+/* Both fields at one width, so the replace field sits under the find field
+   whatever stands to the right of each. */
+.input {
+  display: flex;
+  flex: 0 1 calc(260px * var(--ui-scale));
+  min-width: calc(90px * var(--ui-scale));
+  margin-right: calc(4px * var(--ui-scale));
+  background: var(--canvas-input);
+  border-radius: var(--tori-radius-md);
+}
+
+.status {
+  flex: none;
+  min-width: calc(76px * var(--ui-scale));
+  padding-right: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status.miss {
+  color: var(--danger-fg);
+}

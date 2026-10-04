@@ -31,6 +31,7 @@ import {
   type HunkAction,
 } from "./diffBuffer";
 import { toriTheme } from "./editorTheme";
+import { findWidget } from "./FindWidget";
 import { languageForPath } from "./languages";
 import { syntaxFor } from "./syntaxStyle";
 import { vimExtension } from "./vimMode";
@@ -98,6 +99,7 @@ export default function DiffBufferView(props: {
           EditorState.allowMultipleSelections.of(true),
           EditorState.readOnly.of(true),
           highlightSelectionMatches(),
+          findWidget(),
           syntaxConf.of([]),
           toriTheme,
           diffOverviewRuler(),
