@@ -1,7 +1,7 @@
 ---
 summary: every chat attachment becomes a token like Image 1 the sentence names, sent as a block the parser reads back exactly
 status: current
-updated: 2026-09-04
+updated: 2026-10-05
 source: plan "Labelled path attachments in the chat composer" (personal/tori, branch `bugfix-260903`, commits `39ff592`, `51a8e81`, `be14911`), `src/utils/chatCompose.ts:117,211,432,452,468`, `src-tauri/src/chat/model.rs:798`, `src-tauri/src/chat/claude_transport.rs:377`, `src/panels/Chat/Composer.tsx`, `src/panels/Chat/MessageList.tsx`
 ---
 
@@ -17,7 +17,7 @@ Every attachment in a chat is a token the prose can name. Paste a screenshot, dr
 
 **Numbering is per tab and never reused.** `nextLabel(key, kind)` (`:432`) counts per `ComposerKey`, which is the tab id rather than the session id: a draft tab attaches before any session exists. `relabel(key, from, to)` (`:452`) is the single primitive every collision goes through, and it rewrites the chip, the draft text and any held auto-send text in one step, because the message being renamed may be the very one waiting to go out.
 
-**A reopened chat raises its numbering before it can send.** `seedLabels(key, labels)` (`:468`) folds the labels a transcript already spent into the counters, relabels any chip that collides, and marks the key seeded. It runs inside the same `edit` that applies `chat_history`, and both send paths wait on `labelsSeeded`, holding through the existing `markAutoSend` route. Without the hold, a chip minted while history was still loading would put a number the transcript already holds on the wire twice.
+**A reopened chat raises its numbering before it can send.** `seedLabels(key, labels)` (`:468`) folds the labels a transcript already spent into the counters, relabels any chip that collides, and marks the key seeded. It runs inside the same `edit` that applies `chat_history`, and both send paths wait on `labelsSeeded`, holding through the existing `markAutoSend` route. Without the hold, a chip minted while history was still loading would put a number the transcript already holds on the wire twice. A queued message carries its labelled refs with it, and a queue restored from disk holds labels no transcript has seen yet, so its labels are folded in with `raiseLabels` (`seedLabels` without marking the key seeded) and sends wait on the queue load as well as the transcript, see [[concept_composer_queue]].
 
 **The wire form is a text block, and the parse is its exact inverse.** `turn_frame` (`claude_transport.rs:377`) and `prompt_blocks` (`acp.rs:1038`) render a labelled ref as `[Image 1]: @/abs/path`. `ContentBlock::from_replayed_text` (`model.rs:798`) reads it back, and both replays use it: `history.rs` for the transcript claude writes, and `acp.rs`'s `UserMessageChunk` for the live channel an ACP agent replays over, which is the only place that transport can learn which labels are spent. The grammar is strict (a known kind, digits, then an absolute one line path) so a user who types `[Image 1]` in a sentence keeps their words, and the `#L2-4` tail is read back as a range rather than left buried inside a path. **Case is not part of it.** A label is minted capitalised (`Image`, `PDF`, `File`, matching how Claude Code spells its own) and read case-insensitively on every path, because the first day's transcripts spell the kinds in lower case and those turns still name real attachments. A replayed turn keeps its own spelling, since that is what its sentence says.
 
@@ -37,6 +37,7 @@ Every attachment in a chat is a token the prose can name. Paste a screenshot, dr
 
 - [[adr_attachments_are_labelled_paths]] - the decision, its rejected options and its consequences
 - [[component_attachment_store]] - where uploaded bytes live and how they are swept
+- [[concept_composer_queue]]: queued entries that carry labels across a relaunch
 - [[component_chat_panel]] - the composer strip and the prompt bubble that draw all this
 - [[concept_harness_capability_tiers]] - why the kinds are two keys per transport
 - [[concept_transport_neutral_event_model]] - the `ContentBlock` the label rides on
