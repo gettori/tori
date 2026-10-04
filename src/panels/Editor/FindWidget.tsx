@@ -16,7 +16,7 @@ import {
   setSearchQuery,
 } from "@codemirror/search";
 import { ArrowDown, ArrowUp, CaseSensitive, ChevronDown, ChevronRight, Regex, Replace, ReplaceAll, WholeWord, X } from "lucide-solid";
-import { Field, InlineToggle } from "./SearchFields";
+import { InlineToggle } from "./SearchFields";
 import styles from "./FindWidget.module.css";
 
 // A literal class, as the minimap's is: the element lives in CodeMirror's DOM
@@ -89,12 +89,11 @@ function createFindPanel(view: EditorView): Panel {
   const status = () => {
     const q = query();
     if (!q.search) return "";
-    if (!q.valid) return "Invalid pattern";
+    if (!q.valid) return "Invalid";
     const { ranges, capped } = matches();
     if (ranges.length === 0) return "No results";
     const total = `${ranges.length}${capped ? "+" : ""}`;
-    if (current() >= 0) return `${current() + 1} of ${total}`;
-    return `${total} ${ranges.length === 1 ? "result" : "results"}`;
+    return current() >= 0 ? `${current() + 1}/${total}` : total;
   };
 
   function commit(patch: QueryPatch) {
@@ -157,52 +156,62 @@ function createFindPanel(view: EditorView): Panel {
         </Show>
         <div class={styles.rows}>
           <div class={styles.row}>
-            <div class={styles.input}>
-              <Field
+            <div class={styles.field} classList={{ [styles.miss]: !!query().search && none() }}>
+              <input
                 ref={(el) => {
                   // What `openSearchPanel` looks for when Mod-f is pressed again.
                   el.setAttribute("main-field", "true");
                   findInput = el;
                 }}
-                value={query().search}
-                label="Find"
+                class={styles.text}
+                type="text"
+                spellcheck={false}
                 placeholder="Find"
-                onInput={(v) => commit({ search: v })}
-              >
-                <InlineToggle
-                  icon={CaseSensitive}
-                  label="Match Case"
-                  active={query().caseSensitive}
-                  onClick={() => commit({ caseSensitive: !query().caseSensitive })}
-                />
-                <InlineToggle
-                  icon={WholeWord}
-                  label="Match Whole Word"
-                  active={query().wholeWord}
-                  onClick={() => commit({ wholeWord: !query().wholeWord })}
-                />
-                <InlineToggle
-                  icon={Regex}
-                  label="Use Regular Expression"
-                  active={query().regexp}
-                  onClick={() => commit({ regexp: !query().regexp })}
-                />
-              </Field>
+                aria-label="Find"
+                value={query().search}
+                onInput={(e) => commit({ search: e.currentTarget.value })}
+              />
+              <span class={styles.status} aria-live="polite">
+                {status()}
+              </span>
+              <InlineToggle
+                icon={CaseSensitive}
+                label="Match Case"
+                active={query().caseSensitive}
+                onClick={() => commit({ caseSensitive: !query().caseSensitive })}
+              />
+              <InlineToggle
+                icon={WholeWord}
+                label="Match Whole Word"
+                active={query().wholeWord}
+                onClick={() => commit({ wholeWord: !query().wholeWord })}
+              />
+              <InlineToggle
+                icon={Regex}
+                label="Use Regular Expression"
+                active={query().regexp}
+                onClick={() => commit({ regexp: !query().regexp })}
+              />
             </div>
-            <span class={styles.status} classList={{ [styles.miss]: !!query().search && none() }} aria-live="polite">
-              {status()}
-            </span>
             <InlineToggle icon={ArrowUp} label="Previous Match (Shift+Enter)" disabled={none()} onClick={() => findPrevious(view)} />
             <InlineToggle icon={ArrowDown} label="Next Match (Enter)" disabled={none()} onClick={() => findNext(view)} />
             <InlineToggle icon={X} label="Close (Escape)" onClick={() => closeSearchPanel(view)} />
           </div>
           <Show when={replaceOpen() && !readOnly()}>
             <div class={styles.row}>
-              <div class={styles.input}>
-                <Field value={query().replace} label="Replace" placeholder="Replace" onInput={(v) => commit({ replace: v })} />
+              <div class={`${styles.field} ${styles.wide}`}>
+                <input
+                  class={styles.text}
+                  type="text"
+                  spellcheck={false}
+                  placeholder="Replace"
+                  aria-label="Replace"
+                  value={query().replace}
+                  onInput={(e) => commit({ replace: e.currentTarget.value })}
+                />
+                <InlineToggle icon={Replace} label="Replace (Enter)" disabled={none()} onClick={() => replaceNext(view)} />
+                <InlineToggle icon={ReplaceAll} label="Replace All (Cmd+Enter)" disabled={none()} onClick={() => replaceAll(view)} />
               </div>
-              <InlineToggle icon={Replace} label="Replace (Enter)" disabled={none()} onClick={() => replaceNext(view)} />
-              <InlineToggle icon={ReplaceAll} label="Replace All (Cmd+Enter)" disabled={none()} onClick={() => replaceAll(view)} />
             </div>
           </Show>
         </div>

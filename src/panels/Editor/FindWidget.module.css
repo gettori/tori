@@ -3,9 +3,10 @@
   display: flex;
   align-items: stretch;
   gap: calc(2px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale));
+  padding-left: calc(2px * var(--ui-scale));
   background: var(--canvas-head);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-strong);
   border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
   color: var(--fg-default);
@@ -38,7 +39,6 @@
 
 .rows {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: calc(4px * var(--ui-scale));
   min-width: 0;
@@ -51,27 +51,75 @@
   min-width: 0;
 }
 
-/* Both fields at one width, so the replace field sits under the find field
-   whatever stands to the right of each. */
-.input {
+/* A stated width rather than a flex basis: WebKit sizes the widget from the
+   input's own default width otherwise, and leaves the difference as dead space
+   on the right. */
+.field {
   display: flex;
-  flex: 0 1 calc(260px * var(--ui-scale));
+  flex: 0 1 auto;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(232px * var(--ui-scale));
   min-width: calc(90px * var(--ui-scale));
-  margin-right: calc(4px * var(--ui-scale));
+  height: calc(26px * var(--ui-scale));
+  padding-right: calc(1px * var(--ui-scale));
   background: var(--canvas-input);
-  border-radius: var(--tori-radius-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-sm);
+  transition: border-color var(--tori-duration-fast) ease;
 }
 
+.field:focus-within {
+  border-color: var(--brand-default);
+}
+
+/* Runs under the arrows and close as well, so the second row has no gap on
+   its right. A zero basis keeps it from widening the widget: the find row sets
+   the width and this fills it. */
+.wide {
+  flex: 1 1 0;
+  width: 0;
+}
+
+.text {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0 calc(6px * var(--ui-scale));
+  background: transparent;
+  border: none;
+  color: var(--fg-default);
+  caret-color: var(--brand-default);
+  font-family: inherit;
+  font-size: var(--tori-text-md);
+  outline: none;
+}
+
+.text::placeholder {
+  color: var(--fg-watermark);
+  opacity: 1;
+}
+
+/* Inside the field, so it takes room only while there is something to count. */
 .status {
   flex: none;
-  min-width: calc(76px * var(--ui-scale));
-  padding-right: calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
   font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.status.miss {
+.status:empty {
+  display: none;
+}
+
+.field.miss,
+.field.miss:focus-within {
+  border-color: var(--danger-fg);
+}
+
+.field.miss .status {
   color: var(--danger-fg);
 }
