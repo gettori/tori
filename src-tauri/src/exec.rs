@@ -41,6 +41,8 @@ pub fn git_in(repo: impl AsRef<std::ffi::OsStr>) -> Command {
 }
 
 fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
+    #[cfg(test)]
+    count_git(repo);
     if !allowed {
         let mut refused = Command::new("/bin/sh");
         refused.args(["-c", REFUSE, "git"]);
@@ -49,6 +51,26 @@ fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo);
     cmd
+}
+
+// Keyed by repo path rather than thread local: the sidebar probe and the
+// batched sync spawn git on worker threads, and parallel tests each read only
+// the paths under their own tempdir.
+#[cfg(test)]
+static GIT_SPAWNS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
+
+#[cfg(test)]
+fn count_git(repo: &std::ffi::OsStr) {
+    let spawns = GIT_SPAWNS.get_or_init(Default::default);
+    *spawns.lock().unwrap_or_else(PoisonError::into_inner).entry(PathBuf::from(repo)).or_default() += 1;
+}
+
+/// Every git process built for a repo under `dir` so far.
+#[cfg(test)]
+pub(crate) fn git_spawns_under(dir: &std::path::Path) -> usize {
+    let spawns = GIT_SPAWNS.get_or_init(Default::default);
+    let spawns = spawns.lock().unwrap_or_else(PoisonError::into_inner);
+    spawns.iter().filter(|(repo, _)| repo.starts_with(dir)).map(|(_, n)| n).sum()
 }
 
 /// `git` for a subcommand that opens no repository, so there is no config of
@@ -355,5 +377,21 @@ mod tests {
         for h in handles {
             h.join().expect("a stress thread panicked");
         }
+    }
+
+    #[test]
+    fn counts_git_spawns_from_any_thread_by_repo_path() {
+        let dir = std::env::temp_dir().join(format!("tori-git-spawns-{}", std::process::id()));
+        let other = std::env::temp_dir().join(format!("tori-git-spawns-other-{}", std::process::id()));
+        let paths = [dir.join("proj/main"), dir.join("proj/.bare"), dir.join("proj/feature")];
+        let handles: Vec<_> = paths
+            .into_iter()
+            .map(|p| std::thread::spawn(move || drop(git_in(&p))))
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(git_spawns_under(&dir), 3);
+        assert_eq!(git_spawns_under(&other), 0);
     }
 }
