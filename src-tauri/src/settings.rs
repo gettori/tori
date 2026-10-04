@@ -190,11 +190,15 @@ pub struct Forge {
     /// more than one account.
     #[serde(default)]
     pub picks: std::collections::BTreeMap<String, String>,
+    /// Whether a session may watch a pull request and be woken on changes.
+    /// Off by default: every wake is a paid turn.
+    #[serde(default)]
+    pub pr_watch: bool,
 }
 
 impl Default for Forge {
     fn default() -> Self {
-        Self { enabled: true, picks: Default::default() }
+        Self { enabled: true, picks: Default::default(), pr_watch: false }
     }
 }
 
@@ -1147,6 +1151,10 @@ pub fn autopilot() -> Autopilot {
     load_from(&settings_path()).autopilot
 }
 
+pub fn pr_watch() -> bool {
+    load_from(&settings_path()).forge.pr_watch
+}
+
 pub fn autopilot_worker_cap() -> u32 {
     let settings = load_from(&settings_path());
     worker_cap(settings.autopilot.max_workers, settings.chat_defaults.max_concurrent_chats)
@@ -1273,6 +1281,19 @@ mod tests {
 
         std::fs::write(&p, r#"{"github":{"enabled":false}}"#).unwrap();
         assert!(!load_from(&p).forge.enabled, "the old github key still switches it off");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn pr_watch_defaults_off_and_survives_a_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"forge":{"enabled":true}}"#).unwrap();
+        assert!(!load_from(&p).forge.pr_watch, "a file written before the field is off");
+
+        let mut s = load_from(&p);
+        s.forge.pr_watch = true;
+        save_to(&p, &s).unwrap();
+        assert!(load_from(&p).forge.pr_watch);
         let _ = std::fs::remove_file(&p);
     }
 

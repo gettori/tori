@@ -356,7 +356,7 @@ beforeEach(async () => {
   // that object in place. A test that switches the integration off leaves
   // `DEFAULT_SETTINGS.github.enabled === false` behind it, and a reset that
   // spreads the same object would faithfully restore the wrong value.
-  await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: true, picks: {} } });
+  await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: true, picks: {}, prWatch: false } });
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -1290,7 +1290,7 @@ describe("Open PR", () => {
     // only one of them costs the credential. Both stop the API being used.
     originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
-    await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: false, picks: {} } });
+    await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: false, picks: {}, prWatch: false } });
     const opened: string[] = [];
     const open = vi.spyOn(window, "open").mockImplementation((url) => {
       opened.push(String(url));
