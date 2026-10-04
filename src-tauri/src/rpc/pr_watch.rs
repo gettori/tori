@@ -241,9 +241,9 @@ impl Watch {
         }
     }
 
-    // Only a delivered wake counts toward the comment-only run.
-    pub fn delivered(&mut self) {
-        let news = std::mem::take(&mut self.pending);
+    // Only what was rendered is cleared: news folded in meanwhile waits for the next wake.
+    pub fn delivered(&mut self, told: usize) {
+        let news: Vec<News> = self.pending.drain(..told.min(self.pending.len())).collect();
         if news.is_empty() {
             return;
         }
@@ -468,6 +468,7 @@ pub fn fold(owner: &str, repo: &str, read: Read) {
     if let Err(e) = store().update(|watches| fold_into(watches, owner, repo, &read, now)) {
         eprintln!("tori: pull request watch not saved: {e}");
     }
+    super::pr_wake::nudge();
     if polled() != before {
         polled_moved();
     }
@@ -649,7 +650,7 @@ mod tests {
             w.compare(&Snapshot { state, ..snap("a", None) });
             w.compare(&Snapshot { state, ..snap("a", None) });
             assert_eq!(w.pending, vec![News::Ended { why: why.into() }]);
-            w.delivered();
+            w.delivered(w.pending.len());
             assert!(w.finished());
         }
     }
@@ -660,7 +661,7 @@ mod tests {
         for i in 0..COMMENT_ONLY_WAKES as u64 {
             w.compare(&Snapshot { remarks: Some(vec![remark(&format!("c{i}"), "bot", T0 + 1 + i, "hi")]), ..snap("a", None) });
             assert!(!w.ended, "ended before wake {i}");
-            w.delivered();
+            w.delivered(w.pending.len());
         }
         assert!(w.ended);
         assert_eq!(w.pending, vec![News::Ended { why: "10 wakes in a row brought only comments".into() }]);
@@ -671,7 +672,7 @@ mod tests {
         let mut w = watch();
         w.wakes = COMMENT_ONLY_WAKES - 1;
         w.pending = vec![News::Remark { author: "bot".into(), body: "hi".into(), review: None }, News::Conflicting];
-        w.delivered();
+        w.delivered(w.pending.len());
         assert_eq!(w.wakes, 0);
         assert!(!w.ended);
     }
@@ -763,7 +764,7 @@ mod tests {
         w.compare(&Snapshot { state: PrState::Merged, ..snap("a", None) });
         store.put(w.clone()).unwrap();
         assert!(store.get(&w.session, &w.url).is_some(), "kept until the last line is delivered");
-        w.delivered();
+        w.delivered(w.pending.len());
         store.put(w.clone()).unwrap();
         assert!(store.get(&w.session, &w.url).is_none());
         let _ = std::fs::remove_dir_all(&dir);
