@@ -338,13 +338,14 @@ export function answerable(item: QuestionItem): boolean {
  * transcript records it as one.
  *
  * Nothing is ever dropped from `items` (the render window is a view, not
- * storage), so this is a total rather than a count of what is on screen.
+ * storage), and what was never loaded is in `unloaded`, so this is a total
+ * rather than a count of what is on screen.
  *
  * Unscoped by lane, unlike `toolCallsSeen`: nothing can talk to a subagent, so
  * a `user` row is the main agent's by construction.
  */
 export function promptsSent(s: ChatState): number {
-  return s.items.reduce((n, it) => n + (it.kind === "user" ? 1 : 0), 0);
+  return s.unloaded.prompts + s.items.reduce((n, it) => n + (it.kind === "user" ? 1 : 0), 0);
 }
 
 /**
@@ -358,7 +359,7 @@ export function promptsSent(s: ChatState): number {
  * is one call the session made, and the strip pairs this with the prompt count.
  */
 export function toolCallsSeen(s: ChatState): number {
-  return s.items.reduce((n, it) => n + (it.kind === "tool" && laneOf(it) === null ? 1 : 0), 0);
+  return s.unloaded.toolCalls + s.items.reduce((n, it) => n + (it.kind === "tool" && laneOf(it) === null ? 1 : 0), 0);
 }
 
 /**
@@ -638,6 +639,9 @@ export type ChatState = {
   /** Monotonic id source, so replaying the same events twice yields the same
    *  item ids and tests can assert on them. */
   seq: number;
+  /** What the rows not loaded yet would count, from the history summary. A
+   *  page merged in front moves its share from here into `items`. */
+  unloaded: { prompts: number; toolCalls: number; touched: string[] };
 };
 
 export function initialChat(sessionId: string, answerQuestionsInline = true): ChatState {
@@ -700,6 +704,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     limitStop: null,
     continuing: false,
     seq: 0,
+    unloaded: { prompts: 0, toolCalls: 0, touched: [] },
   };
 }
 
@@ -1765,6 +1770,12 @@ export function foldHistory(s: ChatState, tail: HistoryTail): string[] {
   s.compactions += tail.summary.compactions;
   s.compactionReclaimed += tail.summary.compactionReclaimed;
   if (tail.summary.contextTokens !== null) s.contextTokens = tail.summary.contextTokens;
+  s.unloaded = {
+    prompts: tail.summary.prompts,
+    // An ask is a question row when answered inline and a tool card otherwise.
+    toolCalls: tail.summary.toolCalls + (s.answerQuestionsInline ? 0 : tail.summary.askCalls),
+    touched: tail.summary.touched,
+  };
   const labels = [...tail.summary.labels];
   for (const raw of [...tail.summary.laneEvents, ...tail.events]) {
     const ev = parseChatEvent(raw);
@@ -1784,6 +1795,8 @@ export function foldHistory(s: ChatState, tail: HistoryTail): string[] {
  *  the declaration, as a whole fold would have drawn it. Figures and lanes are
  *  left alone: the summary already counted everything before the tail. */
 export function prependHistory(s: ChatState, events: readonly unknown[]) {
+  const prompts = promptsSent(s);
+  const toolCalls = toolCallsSeen(s);
   const page = initialChat(s.sessionId, s.answerQuestionsInline);
   for (const raw of events) {
     const ev = parseChatEvent(raw);
@@ -1835,6 +1848,9 @@ export function prependHistory(s: ChatState, events: readonly unknown[]) {
   s.items = [...page.items, ...kept];
   s.turns = { ...page.turns, ...s.turns };
   s.laneOfCall = { ...page.laneOfCall, ...s.laneOfCall };
+  // The totals stand; only where they are counted from moved.
+  s.unloaded.prompts += prompts - promptsSent(s);
+  s.unloaded.toolCalls += toolCalls - toolCallsSeen(s);
 }
 
 /**
@@ -1887,6 +1903,7 @@ export function resetTranscript(s: ChatState) {
   s.compactions = 0;
   s.compactionReclaimed = 0;
   s.compactingItemId = null;
+  s.unloaded = { prompts: 0, toolCalls: 0, touched: [] };
 }
 
 /** How a frame arriving on the live channel should actually be folded. */
