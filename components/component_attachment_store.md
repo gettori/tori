@@ -1,8 +1,8 @@
 ---
-summary: attachment store writes pasted or dropped files under ~/.config/tori/attachments as raw bytes, not base64 JSON
+summary: attachment store writes pasted or dropped files under ~/.config/tori/attachments as raw bytes, swept when nothing names them
 status: current
-updated: 2026-09-04
-source: not recorded; imported from grimoire docs/personal/tori; `src-tauri/src/attachments.rs`, `src-tauri/src/sessions.rs:870`, `src/panels/Chat/composerAttachments.ts`
+updated: 2026-10-05
+source: not recorded; imported from grimoire docs/personal/tori; `src-tauri/src/attachments.rs`, `src-tauri/src/sessions.rs:953`, `src/panels/Chat/composerAttachments.ts`; referrers added by plan "Prompt stash" (branch `prompt-stash`, ticket gettori/tickets#9), `attachments.rs:80,98`
 ---
 
 # Attachment store
@@ -24,7 +24,7 @@ Where a pasted or dropped chat attachment goes so that it can be a path instead 
 - `store_attachment:26` - takes the file as a raw body (`tauri::ipc::Request`, `InvokeBody::Raw`) with the filename percent encoded in an `x-tori-attachment-name` header. A 32MB PDF as base64 in JSON would be a 40MB string parsed twice on the way in.
 - `store_in:46` - writes `<id>/<safe name>`, where the id (nanos plus an atomic counter, no uuid crate in the tree) is a **directory** rather than a prefix on the name. Two pastes of `shot.png` stay apart while the file keeps the name the user gave it, which is the name the chip shows and the name the agent reads in the path.
 - `safe_name:58` - last path component only, control characters dropped, capped at 120 characters, falling back to `attachment`. A name says what a file is, never where it goes.
-- `holders_named_by:75` / `drop_unreferenced:91` - the delete sweep, below.
+- `holders_named_by:75` / `holders_named_in:80` / `drop_unreferenced:98` - the sweep, below. `holders_named_in` asks the same question of bytes that are not a file, such as the stash entries just removed.
 
 ## The delete sweep
 
@@ -32,6 +32,7 @@ Where a pasted or dropped chat attachment goes so that it can be a path instead 
 
 - **The question is "which stored file does this text name", never "which paths does this text contain".** The candidates are the holder directories under the attachments dir, matched as a fixed byte string of holder path plus separator. The holder id is Tori's own and always plain, so a filename carrying a quote or a backslash cannot slip past JSON escaping, and the trailing separator stops `<id>/` matching `<id>0/`.
 - **A file lives while any transcript under any `watch_dirs()` root names it.** A fork copies the conversation and a moved chip crosses tabs, so the owner of an attachment is a set of transcripts, not one session. Profile homes are separate roots and count the same ([[adr_credential_custody]]).
+- **Tori's own stores count as holders too.** `drop_unreferenced` takes `referrers`, files that keep a path outside any transcript, read before the roots. Today that is `stash.json`, passed by `delete_session` and by the stash's own sweep ([[concept_prompt_stash]]). A referrer that does not exist names nothing; one that cannot be read keeps everything, like a transcript.
 - **Anything unreadable keeps everything.** An unreadable transcript, project folder or root stops the sweep and deletes nothing. A directory that does not exist is a different answer and names no file, so a configured but empty profile home does not freeze the sweep forever.
 - **The whole holder goes**, not just the file, since storage is a directory per attachment.
 
@@ -56,3 +57,4 @@ a bare `**` does not match a path component that starts with a dot. See
 - [[component_chat_host]] - where `extraDirs` becomes `--add-dir` on the spawn
 - [[adr_credential_custody]] - why the transcript roots are plural
 - [[component_session_scanner]] - the same root walk, read for a different question
+- [[concept_prompt_stash]] - a holder outside any transcript, and a second caller of the sweep

@@ -15,7 +15,7 @@ What a chat holds for its next turn. While a turn runs, Enter steers it when the
 
 **A queued steer stays queued until it lands.** `beginSteer` (`:2045`) marks the entry `steering`, `steerQueued` (`ChatView.tsx:1387`) sends its blocks through the same probe gate and `chat_steer` as a typed steer, and `endSteer` removes it only on `sent`. While marked, `oldestQueued` (`:1982`), and so `pendingFlush`, Cmd+Shift+Enter, steer-now and edit, all skip it. A refused steer clears the mark and loses nothing, and a turn ending mid-steer cannot flush the same message as a new turn. `steerQueued` checks `stopped()` itself, see [[gotcha_sendblocks_does_not_check_the_spend_ceiling]].
 
-**Editing borrows the composer.** `startQueueEdit` (`ChatView.tsx:1493`) moves the draft and chips aside with `stashComposer` (`chatCompose.ts:232`), loads the entry's text and its refs back as chips (labels kept), and the Composer routes submit to a save while `editing` is set. Save and cancel both put the stash back. If the entry leaves the queue mid-edit, what was typed is kept: as the draft when the stash was empty, in recall history otherwise.
+**Editing borrows the composer.** `startQueueEdit` (`ChatView.tsx:1493`) moves the draft and chips aside with `stashComposer` (`chatCompose.ts:232`, a temporary aside, not the [[concept_prompt_stash]]), loads the entry's text and its refs back as chips (labels kept), and the Composer routes submit to a save while `editing` is set. Save and cancel both put the stash back. If the entry leaves the queue mid-edit, what was typed is kept: as the draft when the stash was empty, in recall history otherwise.
 
 **Persistence is one file per session.** `chat_queue_load`/`chat_queue_save` keep `chat-queues/<session>.json` under the config dir (`queue_store.rs`, atomic writes, ids limited to a bare file name). `queuePersist.ts` runs every write for a session through one promise chain, never writes `steering`, and skips a queue identical to the last one written. ChatView writes nothing until its load resolves ([[gotcha_a_persist_effect_derived_from_live_state_erases_everything_not_currently_live]]). A restored queue is parked and re-ided ([[gotcha_a_restored_queue_entry_needs_a_fresh_id_since_nextid_restarts_each_run]]). Closing the tab drops the file, as does `delete_session`.
 
@@ -33,6 +33,7 @@ What a chat holds for its next turn. While a turn runs, Enter steers it when the
 
 - [[concept_mid_turn_steer]]: the steer path a row reuses
 - [[concept_labelled_attachments]]: the labels an entry carries
+- [[concept_prompt_stash]]: the global parked-draft store, which Cmd+S leaves alone while a queued entry is edited
 - [[concept_spend_ceilings]]: why the flush and every steer check the ceiling
 - [[gotcha_a_restored_queue_entry_needs_a_fresh_id_since_nextid_restarts_each_run]]
 - [[gotcha_a_persist_effect_derived_from_live_state_erases_everything_not_currently_live]]
