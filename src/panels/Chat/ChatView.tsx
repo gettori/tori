@@ -520,7 +520,7 @@ export default function ChatView(props: {
   // The strip's three numbers. Derived from the transcript rather than kept as
   // counters, so a replayed history and a live session count the same way.
   const touchedFiles = createMemo(() => {
-    const paths = new Set<string>();
+    const paths = new Set<string>(state.unloaded.touched);
     for (const it of state.items) {
       if (it.kind !== "tool") continue;
       for (const f of it.files) paths.add(f);

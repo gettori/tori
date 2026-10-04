@@ -10,7 +10,9 @@ import {
   initialChat,
   labelsOf,
   prependHistory,
+  promptsSent,
   settleBackfill,
+  toolCallsSeen,
   type ChatItem,
   type ChatState,
   type ToolItem,
@@ -27,8 +29,8 @@ type Case = {
   full: unknown[];
 };
 
-function whole(full: unknown[]): { s: ChatState; labels: string[] } {
-  const s = initialChat("s");
+function whole(full: unknown[], inline = true): { s: ChatState; labels: string[] } {
+  const s = initialChat("s", inline);
   const labels: string[] = [];
   for (const raw of full) {
     const ev = parseChatEvent(raw);
@@ -40,17 +42,28 @@ function whole(full: unknown[]): { s: ChatState; labels: string[] } {
   return { s, labels };
 }
 
-function tailed(c: Case): { s: ChatState; labels: string[] } {
-  const s = initialChat("s");
+function tailed(c: Case, inline = true): { s: ChatState; labels: string[] } {
+  const s = initialChat("s", inline);
   const labels = foldHistory(s, { summary: c.summary, events: c.full.slice(c.start), cursor: c.cursor });
   return { s, labels };
 }
 
 /** The tail, then every page merged in front of it, newest first. */
-function paged(c: Case): ChatState {
-  const { s } = tailed(c);
+function paged(c: Case, inline = true): ChatState {
+  const { s } = tailed(c, inline);
   for (const [from, to] of c.pages) prependHistory(s, c.full.slice(from, to));
   return s;
+}
+
+/** The panel's touched-files figure, the way `ChatView` derives it. */
+function touched(s: ChatState): number {
+  const paths = new Set<string>(s.unloaded.touched);
+  for (const it of s.items) {
+    if (it.kind !== "tool") continue;
+    for (const f of it.files) paths.add(f);
+    for (const e of it.edits) paths.add(e.path);
+  }
+  return paths.size;
 }
 
 const withoutIds = (items: ChatItem[]) => items.map(({ id: _, ...rest }) => rest);
@@ -120,5 +133,14 @@ describe.each(golden as Case[])("the $name history", (c) => {
     } as never);
     expect(s.items.length).toBe(count);
     expect((s.items[at] as ToolItem).output).toBe("again");
+  });
+
+  test.each([true, false])("counts the same figures off rows it never loaded (questions inline: %s)", (inline) => {
+    const a = whole(c.full, inline).s;
+    for (const b of [tailed(c, inline).s, paged(c, inline)]) {
+      expect(promptsSent(b)).toBe(promptsSent(a));
+      expect(toolCallsSeen(b)).toBe(toolCallsSeen(a));
+      expect(touched(b)).toBe(touched(a));
+    }
   });
 });
