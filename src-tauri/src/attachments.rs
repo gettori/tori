@@ -74,25 +74,32 @@ fn safe_name(name: &str) -> String {
 /// scan. The trailing separator keeps `<id>/` from matching `<id>0/`.
 pub(crate) fn holders_named_by(transcript: &Path, dir: &Path) -> Vec<PathBuf> {
     let Ok(text) = std::fs::read(transcript) else { return Vec::new() };
+    holders_named_in(&text, dir)
+}
+
+pub(crate) fn holders_named_in(text: &[u8], dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
     entries
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.is_dir() && contains(&text, needle(p).as_bytes()))
+        .filter(|p| p.is_dir() && contains(text, needle(p).as_bytes()))
         .collect()
 }
 
-/// Remove each holder no transcript under `roots` still names.
+/// Remove each holder that no transcript under `roots` and no file in
+/// `referrers` still names.
 ///
 /// The lifetime rule the plan settled on: a file lives while any transcript
 /// names it, because a fork and a chip moved to another tab both leave two
-/// turns pointing at one file. Anything that cannot be read cannot be spoken
-/// for, so a single unreadable transcript or folder keeps every candidate.
-pub(crate) fn drop_unreferenced(holders: &[PathBuf], roots: &[PathBuf]) {
+/// turns pointing at one file. `referrers` are Tori's own stores that keep a
+/// path outside any transcript, the prompt stash. Anything that cannot be read
+/// cannot be spoken for, so a single unreadable file or folder keeps every
+/// candidate.
+pub(crate) fn drop_unreferenced(holders: &[PathBuf], roots: &[PathBuf], referrers: &[PathBuf]) {
     if holders.is_empty() {
         return;
     }
-    let Ok(orphans) = unreferenced(holders, roots) else { return };
+    let Ok(orphans) = unreferenced(holders, roots, referrers) else { return };
     for holder in orphans {
         let _ = std::fs::remove_dir_all(holder);
     }
@@ -101,8 +108,20 @@ pub(crate) fn drop_unreferenced(holders: &[PathBuf], roots: &[PathBuf]) {
 /// Which of `holders` no transcript names, or the error that stopped the sweep
 /// before it could say. `<root>/<project>/<file>`, the layout the session index
 /// reads these roots by.
-fn unreferenced<'a>(holders: &'a [PathBuf], roots: &[PathBuf]) -> std::io::Result<Vec<&'a PathBuf>> {
+fn unreferenced<'a>(
+    holders: &'a [PathBuf],
+    roots: &[PathBuf],
+    referrers: &[PathBuf],
+) -> std::io::Result<Vec<&'a PathBuf>> {
     let mut orphans: Vec<&PathBuf> = holders.iter().collect();
+    for file in referrers {
+        let text = match std::fs::read(file) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        };
+        orphans.retain(|h| !contains(&text, needle(h).as_bytes()));
+    }
     for root in roots {
         for project in entries(root)?.into_iter().filter(|p| p.is_dir()) {
             for file in entries(&project)?.into_iter().filter(|f| f.is_file()) {
@@ -218,13 +237,13 @@ mod tests {
         let named = holders_named_by(&original, &dir);
         assert_eq!(named.len(), 2, "{named:?}");
         std::fs::remove_file(&original).expect("delete");
-        drop_unreferenced(&named, &roots);
+        drop_unreferenced(&named, &roots, &[]);
         assert!(Path::new(&shared).exists(), "the fork still names it");
         assert!(!holder_of(&mine).exists(), "the holder goes, not just the file");
 
         let named = holders_named_by(&fork, &dir);
         std::fs::remove_file(&fork).expect("delete");
-        drop_unreferenced(&named, &roots);
+        drop_unreferenced(&named, &roots, &[]);
         assert!(!holder_of(&shared).exists(), "nothing names it now");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -242,8 +261,31 @@ mod tests {
 
         let named = holders_named_by(&mine, &dir);
         std::fs::remove_file(&mine).expect("delete");
-        drop_unreferenced(&named, &roots);
+        drop_unreferenced(&named, &roots, &[]);
         assert!(Path::new(&shared).exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A stashed draft holds its upload outside any transcript, so deleting the
+    /// session it was pasted in must leave the file for the stash.
+    #[test]
+    fn an_attachment_only_a_referrer_names_is_kept() {
+        let base = scratch();
+        let dir = base.join("attachments");
+        let roots = vec![base.join("root")];
+        let stashed = store_in(&dir, "shot.png", b"a").expect("stored");
+        let sent = transcript(&roots[0], "s.jsonl", &[&stashed]);
+        let stash = base.join("stash.json");
+        std::fs::write(&stash, format!("[{{\"chips\":[{{\"path\":\"{stashed}\"}}]}}]")).expect("stash");
+
+        let named = holders_named_by(&sent, &dir);
+        std::fs::remove_file(&sent).expect("delete");
+        drop_unreferenced(&named, &roots, &[base.join("missing.json"), stash.clone()]);
+        assert!(Path::new(&stashed).exists(), "the stash still names it");
+
+        std::fs::write(&stash, "[]").expect("emptied");
+        drop_unreferenced(&named, &roots, &[stash]);
+        assert!(!holder_of(&stashed).exists(), "nothing names it now");
         let _ = std::fs::remove_dir_all(&base);
     }
 

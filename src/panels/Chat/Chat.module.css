@@ -2638,6 +2638,11 @@ button.diffHunkHeader:hover {
   text-overflow: ellipsis;
 }
 
+.stashDiscard {
+  margin-left: auto;
+  align-self: center;
+}
+
 /* What the next turn will carry besides what is typed: a selection, a hunk
    comment, a diagnostic. Removable, and never sent on its own. */
 .attachments {

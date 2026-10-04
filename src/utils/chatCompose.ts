@@ -403,17 +403,9 @@ export function seedForSend(fromKey: ComposerKey, toKey: ComposerKey) {
     return false;
   }
   // Numbered again by the destination: `[Image 1]` may already be taken there.
-  const renames = new Map<string, string>();
-  const moved = blocks.map((block) => {
-    if (block.type !== "fileRef" || !block.label) return block;
-    const parsed = parseLabel(block.label);
-    if (!parsed) return block;
-    const label = nextLabel(toKey, parsed.kind);
-    renames.set(block.label, label);
-    return { ...block, label };
-  });
-  text = renameTokens(text, renames);
-  offerToComposer(toKey, moved);
+  const moved = relabelInto(toKey, text, blocks);
+  text = moved.text;
+  offerToComposer(toKey, moved.blocks);
   // Shown as well as held, so the destination reads as the place that message
   // went even in the window before its session can take it.
   setDraft(toKey, text);
@@ -488,6 +480,25 @@ export function nextLabel(key: ComposerKey, kind: AttachmentKind): string {
   return attachmentLabel(kind, n);
 }
 
+/** Give `blocks` fresh labels from `key`'s numbering and rename their tokens
+ *  in `text` to match, for blocks moving into another composer. */
+export function relabelInto(
+  key: ComposerKey,
+  text: string,
+  blocks: readonly ContentBlock[],
+): { text: string; blocks: ContentBlock[] } {
+  const renames = new Map<string, string>();
+  const moved = blocks.map((block) => {
+    if (block.type !== "fileRef" || !block.label) return block;
+    const parsed = parseLabel(block.label);
+    if (!parsed) return block;
+    const label = nextLabel(key, parsed.kind);
+    renames.set(block.label, label);
+    return { ...block, label };
+  });
+  return { text: renameTokens(text, renames), blocks: moved };
+}
+
 function renameTokens(text: string, renames: ReadonlyMap<string, string>): string {
   if (!renames.size) return text;
   return text.replace(LABEL_TOKENS, (token) => renames.get(token) ?? token);
@@ -495,7 +506,7 @@ function renameTokens(text: string, renames: ReadonlyMap<string, string>): strin
 
 /** Cut a token out of a sentence and close the gap, so removing the chip from
  *  "look at [Image 1] again" does not leave two spaces behind. */
-function stripToken(text: string, token: string): string {
+export function stripToken(text: string, token: string): string {
   return text.split(token).join("").replace(/ {2,}/g, " ").replace(/[ \t]+$/gm, "");
 }
 

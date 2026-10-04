@@ -563,6 +563,29 @@ pub fn chat_queue_save(session_id: String, queue: Vec<serde_json::Value>) -> Res
     super::queue_store::save(&session_id, &queue)
 }
 
+// Async: a push past the cap and a discard sweep attachments, which reads
+// every transcript.
+#[tauri::command(async)]
+pub fn stash_list() -> Vec<serde_json::Value> {
+    super::stash_store::list()
+}
+
+#[tauri::command(async)]
+pub fn stash_push(entry: serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+    super::stash_store::push(entry)
+}
+
+#[tauri::command(async)]
+pub fn stash_take(id: String) -> Result<serde_json::Value, String> {
+    let (entry, stash) = super::stash_store::take(&id)?;
+    Ok(serde_json::json!({ "entry": entry, "stash": stash }))
+}
+
+#[tauri::command(async)]
+pub fn stash_discard(id: String) -> Result<Vec<serde_json::Value>, String> {
+    super::stash_store::discard(&id)
+}
+
 /// A Topic member came or moved while this chat runs.
 #[tauri::command]
 pub async fn chat_grant_dirs(

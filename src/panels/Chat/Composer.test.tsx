@@ -1191,3 +1191,72 @@ describe("reading a subagent's lane", () => {
     expect(input.placeholder).toBe("Steer this turn, picked up in 1.5-5.4s");
   });
 });
+
+describe("the prompt stash", () => {
+  const entry = (id: string, text: string, at = 0) => ({ id, text, chips: [], at });
+
+  it("stashes a non-empty draft on Cmd+S", () => {
+    const onStash = vi.fn();
+    const { input } = setup({ onStash, stash: [] });
+    fireEvent.input(input, { target: { value: "half a thought" } });
+    expect(fireEvent.keyDown(input, { key: "s", metaKey: true })).toBe(false);
+    expect(onStash).toHaveBeenCalledOnce();
+  });
+
+  it("restores the only entry into an empty composer", () => {
+    const onRestoreStash = vi.fn();
+    const { input, container } = setup({ onStash: vi.fn(), onRestoreStash, stash: [entry("a", "parked")] });
+    fireEvent.keyDown(input, { key: "s", metaKey: true });
+    expect(onRestoreStash).toHaveBeenCalledWith("a");
+    expect(container.querySelector('[aria-label="Stashed drafts"]')).toBeNull();
+  });
+
+  it.each([
+    ["editing a queued entry", { editing: "q1" }],
+    ["linked to a scratch tab", { linked: "scratch.md" }],
+    ["holding a first send", { holding: true }],
+  ])("does nothing while %s", (_why, over) => {
+    const onStash = vi.fn();
+    const onRestoreStash = vi.fn();
+    const { input } = setup({ onStash, onRestoreStash, stash: [entry("a", "parked")], ...over });
+    fireEvent.keyDown(input, { key: "s", metaKey: true });
+    fireEvent.input(input, { target: { value: "typed" } });
+    fireEvent.keyDown(input, { key: "s", metaKey: true });
+    expect(onStash).not.toHaveBeenCalled();
+    expect(onRestoreStash).not.toHaveBeenCalled();
+  });
+
+  it("opens a menu over several entries, newest first, and restores the picked one", async () => {
+    const onRestoreStash = vi.fn();
+    const { input, container } = setup({
+      onStash: vi.fn(),
+      onRestoreStash,
+      stash: [entry("old", "first parked"), entry("new", "second parked\nmore")],
+    });
+    fireEvent.keyDown(input, { key: "s", metaKey: true });
+    const rows = [...container.querySelectorAll('[aria-label="Stashed drafts"] [role="option"]')];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("second parked"),
+      expect.stringContaining("first parked"),
+    ]);
+    await expectNoAxeViolations(container);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onRestoreStash).toHaveBeenCalledWith("old");
+    expect(container.querySelector('[aria-label="Stashed drafts"]')).toBeNull();
+  });
+
+  it("discards the selected entry on Backspace and closes on Escape", () => {
+    const onDiscardStash = vi.fn();
+    const { input, container } = setup({
+      onStash: vi.fn(),
+      onDiscardStash,
+      stash: [entry("old", "first"), entry("new", "second")],
+    });
+    fireEvent.keyDown(input, { key: "s", metaKey: true });
+    expect(fireEvent.keyDown(input, { key: "Backspace" })).toBe(false);
+    expect(onDiscardStash).toHaveBeenCalledWith("new");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(container.querySelector('[aria-label="Stashed drafts"]')).toBeNull();
+  });
+});

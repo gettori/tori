@@ -13,6 +13,8 @@ import {
   type PendingBlock,
 } from "../../utils/chatCompose";
 import type { UploadFile } from "./composerAttachments";
+import type { StashEntry } from "./promptStash";
+import { ago } from "../../utils/relativeTime";
 import FileIcon from "../../seti/FileIcon";
 import {
   DRAG_ABS_PATH_MIME,
@@ -247,6 +249,15 @@ export default function Composer(props: {
    *  the input. Slotted rather than owned: their state and wiring belong to
    *  `ChatView`, and this component only decides where they sit. */
   controls?: JSX.Element;
+  /** The prompt stash, oldest first. Without `onStash` Cmd+S is not bound
+   *  here at all. */
+  stash?: readonly StashEntry[];
+  onStash?: () => void;
+  onRestoreStash?: (id: string) => void;
+  onDiscardStash?: (id: string) => void;
+  /** A first message is held for a session still opening. The draft on show
+   *  is that message, so it cannot be stashed out from under the send. */
+  holding?: boolean;
   /** The subagent lane being read, by name, or null on the main transcript.
    *  Only the placeholder changes: Tori has no channel to a subagent, so what
    *  is typed goes to the main agent from every lane. */
@@ -353,6 +364,14 @@ export default function Composer(props: {
     return t?.kind === "command" ? rank(props.commands, t.query, (c) => c.name) : [];
   });
   const menuLength = () => fileHits().length + commandHits().length;
+  const [stashOpen, setStashOpen] = createSignal(false);
+  const [stashIndex, setStashIndex] = createSignal(0);
+  const stashRows = createMemo(() => [...(props.stash ?? [])].reverse());
+  createEffect(() => {
+    const n = stashRows().length;
+    if (!n) setStashOpen(false);
+    else if (stashIndex() >= n) setStashIndex(n - 1);
+  });
   const menuOpen = () => menuLength() > 0;
 
   function closeMenu() {
@@ -611,6 +630,43 @@ export default function Composer(props: {
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    if (stashOpen()) {
+      const row = stashRows()[stashIndex()];
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setStashIndex((i) => moveIndex(i, e.key === "ArrowDown" ? 1 : -1, stashRows().length));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Backspace") {
+        e.preventDefault();
+        if (row && e.key === "Enter") {
+          setStashOpen(false);
+          props.onRestoreStash?.(row.id);
+        } else if (row) {
+          props.onDiscardStash?.(row.id);
+        }
+        return;
+      }
+      setStashOpen(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        return;
+      }
+    }
+    if (e.key === "s" && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && props.onStash) {
+      e.preventDefault();
+      if (props.editing || props.linked || props.holding) return;
+      if (hasContent()) {
+        closeMenu();
+        props.onStash();
+      } else if (stashRows().length === 1) {
+        props.onRestoreStash?.(stashRows()[0].id);
+      } else if (stashRows().length) {
+        setStashIndex(0);
+        setStashOpen(true);
+      }
+      return;
+    }
     if (props.editing && e.key === "Enter" && (e.altKey || (e.shiftKey && (e.metaKey || e.ctrlKey)))) {
       e.preventDefault();
       return;
@@ -835,6 +891,46 @@ export default function Composer(props: {
               Cancel
             </Button>
           </div>
+        </div>
+      </Show>
+      <Show when={stashOpen()}>
+        <div class={styles.completions} role="listbox" aria-label="Stashed drafts">
+          <For each={stashRows()}>
+            {(entry, i) => (
+              <button
+                type="button"
+                class={styles.completion}
+                classList={{ [styles.completionActive]: i() === stashIndex() }}
+                role="option"
+                aria-selected={i() === stashIndex()}
+                onMouseEnter={() => setStashIndex(i())}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setStashOpen(false);
+                  props.onRestoreStash?.(entry.id);
+                }}
+              >
+                <span class={styles.completionDesc}>{entry.text.split("\n")[0].trim() || "(attachments only)"}</span>
+                <Show when={entry.chips.length}>
+                  {(n) => <span class={styles.completionHint}>{n() === 1 ? "1 attachment" : `${n()} attachments`}</span>}
+                </Show>
+                <span class={styles.completionHint}>{ago(Math.floor(entry.at / 1000))}</span>
+                {/* Pointer only: an option may hold no control of its own, and
+                    Backspace is the keyboard's discard. */}
+                <span
+                  class={`${styles.queueAction} ${styles.queueRemove} ${styles.stashDiscard}`}
+                  aria-hidden="true"
+                  title="Discard"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onDiscardStash?.(entry.id);
+                  }}
+                >
+                  <Icon icon={X} size={12} aria-hidden="true" />
+                </span>
+              </button>
+            )}
+          </For>
         </div>
       </Show>
       {/* One menu, two sources. Above the input rather than below it: the
