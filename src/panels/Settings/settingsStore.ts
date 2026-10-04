@@ -326,7 +326,13 @@ export type Settings = {
   /** Mirrors `Remote` in src-tauri/src/settings.rs. Written only by `remote_set`;
    *  a save from here keeps whatever the file says. */
   remote: { enabled: boolean; address: string | null; port: number };
+  /** Mirrors `WorktreePrefs` in src-tauri/src/settings.rs, keyed by project path. */
+  worktree: Record<string, WorktreePrefs>;
 };
+
+/** What a project runs in a worktree Tori has just created. An empty command
+ *  runs nothing; `setupWait` holds `worktree.new` and `session.spawn` until it exits. */
+export type WorktreePrefs = { setupCommand: string; setupWait: boolean };
 
 /** `available` is the feature: off, there is no cockpit. `enabled` is whether it
  *  was running, written only by `autopilot.start` and `autopilot.stop`; a save
@@ -427,6 +433,7 @@ export const DEFAULT_SETTINGS: Settings = {
   format: { byExtension: {}, disabled: [] },
   autopilot: { available: false, enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20, compactAt: null, maxWorkers: 2 },
   remote: { enabled: false, address: null, port: 47821 },
+  worktree: {},
 };
 
 /**
@@ -817,6 +824,23 @@ export function rememberFormatOnSave(projectPath: string, on: boolean | null): v
     },
   };
   void saveSettings(next).catch(() => {});
+}
+
+const NO_SETUP: WorktreePrefs = { setupCommand: "", setupWait: false };
+
+/** What this project runs in a new worktree; nothing for one never set up. */
+export function worktreePrefs(projectPath: string): WorktreePrefs {
+  return { ...NO_SETUP, ...settings.worktree?.[projectPath] };
+}
+
+/** Change this project's worktree setup, leaving the other field alone. Not
+ *  swallowed like a chat pick: a setup command that silently failed to save
+ *  would leave the next worktree without its install. */
+export function rememberWorktreePrefs(projectPath: string, patch: Partial<WorktreePrefs>): Promise<void> {
+  return saveSettings({
+    ...settings,
+    worktree: { ...settings.worktree, [projectPath]: { ...worktreePrefs(projectPath), ...patch } },
+  });
 }
 
 /** Re-read the themes folder, then re-apply the active theme so an edit to the
