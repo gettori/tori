@@ -1776,6 +1776,67 @@ export function foldHistory(s: ChatState, tail: HistoryTail): string[] {
   return labels;
 }
 
+/** Merge a page of older history in front of what is loaded.
+ *
+ *  `applyEvent` only appends, so the page is folded on its own and spliced
+ *  ahead. A call can be declared in the page and completed in what is loaded,
+ *  where the completion alone made a nameless card; the two become one card at
+ *  the declaration, as a whole fold would have drawn it. Figures and lanes are
+ *  left alone: the summary already counted everything before the tail. */
+export function prependHistory(s: ChatState, events: readonly unknown[]) {
+  const page = initialChat(s.sessionId, s.answerQuestionsInline);
+  for (const raw of events) {
+    const ev = parseChatEvent(raw);
+    if (ev) applyEvent(page, ev);
+  }
+  settleBackfill(page);
+
+  const dropped = new Set<number>();
+  for (const [id, at] of Object.entries(page.toolIndex)) {
+    const live = s.toolIndex[id];
+    if (live === undefined) continue;
+    const declared = page.items[at] as ToolItem;
+    const completed = s.items[live] as ToolItem;
+    page.items[at] = {
+      ...completed,
+      id: declared.id,
+      name: declared.name ?? completed.name,
+      title: declared.title ?? completed.title,
+      toolKind: declared.toolKind,
+      locations: declared.locations.length ? declared.locations : completed.locations,
+      input: declared.input ?? completed.input,
+    };
+    dropped.add(live);
+  }
+  for (const [id, at] of Object.entries(page.questionIndex)) {
+    const live = s.toolIndex[id];
+    if (live === undefined) continue;
+    (page.items[at] as QuestionItem).result = (s.items[live] as ToolItem).output;
+    dropped.add(live);
+  }
+  // Fresh ids from the live counter: the page minted its own from zero.
+  for (const item of page.items) item.id = nextId(s, item.id.replace(/\d+$/, ""));
+
+  const moved = new Map<number, number>();
+  const kept: ChatItem[] = [];
+  s.items.forEach((item, i) => {
+    if (dropped.has(i)) return;
+    moved.set(i, page.items.length + kept.length);
+    kept.push(item);
+  });
+  const shift = (index: Record<string, number>) =>
+    Object.fromEntries(
+      Object.entries(index).flatMap(([k, i]) => (moved.has(i) ? [[k, moved.get(i) as number]] : [])),
+    );
+  s.toolIndex = { ...shift(s.toolIndex), ...page.toolIndex };
+  s.questionIndex = { ...shift(s.questionIndex), ...page.questionIndex };
+  s.openText = shift(s.openText);
+  s.openThinking = shift(s.openThinking);
+  s.items = [...page.items, ...kept];
+  s.turns = { ...page.turns, ...s.turns };
+  s.laneOfCall = { ...page.laneOfCall, ...s.laneOfCall };
+}
+
 /**
  * Settle a replayed backfill: everything read off disk is finished work.
  *

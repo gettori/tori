@@ -23,7 +23,7 @@ use super::host::{ChatHost, ChatState, SessionBridge, Spawned};
 use super::mirror::Mirror;
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
-use super::tail::HistoryTail;
+use super::tail::{page_before, HistoryCursor, HistoryPage, HistoryTail, PageCache, Parsed};
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
     QuestionAnswer,
@@ -1095,6 +1095,52 @@ pub async fn chat_history(
     Ok(tail)
 }
 
+/// The page of history before `cursor`, for "load earlier". Takes the same
+/// source arguments as [`chat_history`], so a fork pages the session it forked
+/// from rather than its own file.
+#[tauri::command]
+pub async fn chat_history_page(
+    state: State<'_, ChatState>,
+    session_id: String,
+    from_session_id: Option<String>,
+    agent_id: String,
+    cursor: HistoryCursor,
+) -> Result<HistoryPage, String> {
+    let source = from_session_id.unwrap_or_else(|| session_id.clone());
+    let id = session_id.clone();
+    let mut page = crate::exec::blocking("chat_history_page", move || {
+        read_page(&id, &history_source(&source, &agent_id), &agent_id, &cursor, &PAGES)
+    })
+    .await
+    .ok_or("this session's earlier history moved; reopen the chat to read it")?;
+    state.0.cut_outputs(&session_id, &mut page.events);
+    Ok(page)
+}
+
+static PAGES: Mutex<PageCache> = Mutex::new(PageCache::new(3));
+
+/// A page off a cached parse of the transcript. Keyed by the session reading it
+/// as well as the file, because the events are stamped with the reader's id.
+/// `None` for a history with no transcript, or a cursor whose prompt is gone.
+pub(crate) fn read_page(
+    session_id: &str,
+    from: &HistorySource,
+    agent_id: &str,
+    cursor: &HistoryCursor,
+    cache: &Mutex<PageCache>,
+) -> Option<HistoryPage> {
+    let HistorySource::Transcript(path) = from else { return None };
+    let meta = std::fs::metadata(path).ok()?;
+    let stamp = (meta.modified().ok()?, meta.len());
+    let parsed = super::tail::cached(cache, &format!("{session_id}\n{path}"), stamp, || {
+        let turns = crate::sessions::transcript_turns(path, agent_id);
+        let subagents = crate::sessions::subagent_transcripts(path, agent_id);
+        let (events, prompts) = super::history::events_and_prompts(session_id, &turns, &subagents);
+        Parsed { events, prompts }
+    });
+    page_before(&parsed, cursor)
+}
+
 /// Where a session's conversation lives, resolved apart from the read so a test
 /// can point the read at a fixture.
 pub(crate) enum HistorySource {
@@ -1801,8 +1847,8 @@ mod tests {
 mod tail_tests {
     use super::*;
 
-    fn transcript(turns: usize) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("tori-tail-{}-{turns}.jsonl", std::process::id()));
+    fn transcript(name: &str, turns: usize) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("tori-tail-{}-{name}.jsonl", std::process::id()));
         let mut out = String::new();
         for i in 0..turns {
             for (role, text, at) in [("user", format!("p {i}"), 2 * i), ("assistant", format!("r {i}"), 2 * i + 1)] {
@@ -1829,7 +1875,7 @@ mod tail_tests {
 
     #[test]
     fn a_rewound_tail_ends_at_the_rewind_point() {
-        let path = transcript(100);
+        let path = transcript("rewound", 100);
         let from = HistorySource::Transcript(path.to_str().unwrap().to_string());
         let whole = read_tail("s", &from, "claude", None);
         assert_eq!(last_text(&whole.events), Some("r 99"));
@@ -1840,6 +1886,27 @@ mod tail_tests {
         assert_eq!(last_text(&rewound.events), Some("r 79"));
         assert!(rewound.cursor.is_some(), "the rewound history is still long enough to cut");
         assert!(rewound.events.len() <= super::super::tail::TAIL_ROWS);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn a_fork_pages_the_transcript_it_forked_from() {
+        let path = transcript("fork", 100);
+        let from = HistorySource::Transcript(path.to_str().unwrap().to_string());
+        let cache = Mutex::new(PageCache::new(3));
+        let open = read_tail("fork", &from, "claude", None);
+        let page = read_page("fork", &from, "claude", &open.cursor.unwrap(), &cache).expect("a page");
+        assert!(page.events.iter().all(|e| serde_json::to_value(e).unwrap()["sessionId"] == "fork"));
+        assert_eq!(last_text(&page.events).map(|t| t.to_string()), Some(format!("r {}", 100 - 1 - open.events.len() / 2)));
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn opening_a_chat_caches_nothing() {
+        let path = transcript("open", 100);
+        let from = HistorySource::Transcript(path.to_str().unwrap().to_string());
+        read_tail("s", &from, "claude", None);
+        assert_eq!(PAGES.lock().unwrap().len(), 0);
         std::fs::remove_file(path).ok();
     }
 

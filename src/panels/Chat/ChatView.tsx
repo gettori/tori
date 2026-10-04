@@ -83,6 +83,8 @@ import {
   type ChatConfigOption,
   type ChatEvent,
   type ContentBlock,
+  type HistoryCursor,
+  type HistoryPage,
   type HistoryTail,
   type PermissionMode,
   type QuestionAnswer,
@@ -157,6 +159,7 @@ import {
   pendingApprovals,
   pendingSwitchNotice,
   pendingFlush,
+  prependHistory,
   promptsSent,
   pushSteer,
   pushUserTurn,
@@ -383,6 +386,33 @@ export default function ChatView(props: {
   // across the switch: coming back to the bottom of a long session would lose
   // the place they left, which is the whole reason to look at the diff.
   const [showDiff, setShowDiff] = createSignal(false);
+  // Where the history not yet loaded ends, or null once it is all here.
+  const [earlier, setEarlier] = createSignal<HistoryCursor | null>(null);
+  let paging = false;
+  function fetchEarlier() {
+    const cursor = earlier();
+    if (paging || !cursor) return;
+    paging = true;
+    void invoke<HistoryPage>("chat_history_page", {
+      sessionId: props.sessionId,
+      fromSessionId: props.forkFrom ?? null,
+      agentId: props.agentId,
+      cursor,
+    })
+      .then((page) => {
+        // Stale if the cursor moved while this was in flight.
+        if (earlier() !== cursor) return;
+        edit((s) => prependHistory(s, page.events));
+        setEarlier(page.cursor);
+      })
+      .catch((err) => {
+        setEarlier(null);
+        emitWith<ToastEvent>(TOAST, { message: `Could not load earlier turns: ${String(err)}`, kind: "error" });
+      })
+      .finally(() => {
+        paging = false;
+      });
+  }
   const [anchorTurn, setAnchorTurn] = createSignal<string | null>(null);
   // The transcript's scrolling root and the composer's insert handle, for the
   // Quote button that carries a selection from the one into the other.
@@ -633,6 +663,7 @@ export default function ChatView(props: {
         // checkpoints or re-record attribution for turns that already ran.
         edit((s) => {
           const labels = foldHistory(s, tail);
+          setEarlier(tail.cursor);
           // A restored tab for an agent that keeps its own conversation, with
           // nothing saved yet. Blank is the one thing this must not be: an
           // inert tab does not spawn ([[adr_lazy_tab_attachment]]), so there is
@@ -2277,6 +2308,7 @@ export default function ChatView(props: {
       <MessageList
         ref={(el) => (transcriptEl = el)}
         items={shownItems()}
+        onFetchEarlier={earlier() ? fetchEarlier : undefined}
         streaming={running()}
         sessionId={props.sessionId}
         cwd={props.cwd}
