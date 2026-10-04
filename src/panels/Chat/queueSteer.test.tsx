@@ -1,10 +1,11 @@
-// Steering a queued message from its row or with Cmd+Shift+Enter. The entry
-// stays queued until the steer lands, so these run the real panel: the flush
-// driver and the ceiling live in `ChatView`, not in the store.
+// Steering and editing a queued message. These run the real panel: the flush
+// driver, the ceiling and the composer swap during an edit live in `ChatView`,
+// not in the store.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
+import { offerToComposer } from "../../utils/chatCompose";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -208,5 +209,88 @@ describe("steering a queued message", () => {
     steerOldest();
     await Promise.resolve();
     expect(steers()).toHaveLength(0);
+  });
+});
+
+const row = (text: string) => screen.getByRole("button", { name: `Remove from the queue: ${text}` }).closest("div")!;
+
+async function editing(text: string, draft = "") {
+  await runningWithQueued(text);
+  fireEvent.input(input(), { target: { value: draft } });
+  fireEvent.click(screen.getByRole("button", { name: `Edit: ${text}` }));
+  await waitFor(() => expect(input().value).toBe(text));
+}
+
+describe("editing a queued message", () => {
+  it("opens the entry in the composer and marks its row", async () => {
+    const { default: styles } = await import("./Chat.module.css");
+    await editing("later", "half a draft");
+    expect(row("later").className).toContain(styles.queueItemEditing);
+  });
+
+  it("saves in place on Enter and brings the draft back", async () => {
+    await editing("later", "half a draft");
+    fireEvent.input(input(), { target: { value: "sooner" } });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    await screen.findByRole("button", { name: "Remove from the queue: sooner" });
+    expect(input().value).toBe("half a draft");
+    expect(steers()).toHaveLength(0);
+  });
+
+  it("leaves the row unchanged on Escape and brings the draft back", async () => {
+    await editing("later", "half a draft");
+    fireEvent.input(input(), { target: { value: "sooner" } });
+    fireEvent.keyDown(input(), { key: "Escape" });
+    await waitFor(() => expect(input().value).toBe("half a draft"));
+    expect(screen.getByRole("button", { name: "Remove from the queue: later" })).toBeTruthy();
+  });
+
+  it("saves a chip added during the edit into the entry", async () => {
+    await editing("later");
+    offerToComposer(TAB, [{ type: "fileRef", path: "/work/repo/a.ts", startLine: null, endLine: null, text: null, label: "File 1" }]);
+    fireEvent.keyDown(input(), { key: "Enter" });
+    await waitFor(() => expect(row("later").textContent).toContain("File 1"));
+  });
+
+  it("saves on Cmd+Enter without sending, and ignores Option+Enter", async () => {
+    await editing("later");
+    fireEvent.input(input(), { target: { value: "sooner" } });
+    fireEvent.keyDown(input(), { key: "Enter", altKey: true });
+    expect(input().value).toBe("sooner");
+    fireEvent.keyDown(input(), { key: "Enter", metaKey: true });
+    await screen.findByRole("button", { name: "Remove from the queue: sooner" });
+    expect(screen.getAllByRole("button", { name: /^Remove from the queue/ })).toHaveLength(1);
+    expect(steers()).toHaveLength(0);
+    expect(sends()).toHaveLength(0);
+  });
+
+  it("keeps the changed text as the draft when the entry goes and nothing was stashed", async () => {
+    await editing("later");
+    fireEvent.input(input(), { target: { value: "sooner" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove from the queue: later" }));
+    await waitFor(() => expect(screen.queryByText("Editing a queued message")).toBeNull());
+    expect(input().value).toBe("sooner");
+  });
+
+  it("brings the stash back and files the changed text in recall when the entry goes", async () => {
+    await editing("later", "half a draft");
+    fireEvent.input(input(), { target: { value: "sooner" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove from the queue: later" }));
+    await waitFor(() => expect(input().value).toBe("half a draft"));
+    expect(screen.queryByText("Editing a queued message")).toBeNull();
+    fireEvent.input(input(), { target: { value: "" } });
+    fireEvent.keyDown(input(), { key: "ArrowUp" });
+    expect(input().value).toBe("sooner");
+  });
+
+  it("edits the last entry on Option+Up and recalls on plain Up", async () => {
+    await runningWithQueued("later");
+    fireEvent.keyDown(input(), { key: "ArrowUp" });
+    expect(input().value).toBe("later");
+    expect(screen.queryByText("Editing a queued message")).toBeNull();
+    fireEvent.input(input(), { target: { value: "" } });
+    fireEvent.keyDown(input(), { key: "ArrowUp", altKey: true });
+    await screen.findByText("Editing a queued message");
+    expect(input().value).toBe("later");
   });
 });

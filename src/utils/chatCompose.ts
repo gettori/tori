@@ -225,6 +225,22 @@ export function takePending(key: ComposerKey): ContentBlock[] {
   return held.map((p) => p.block);
 }
 
+export type ComposerStash = { draft: string; chips: PendingBlock[] };
+
+/** Set the draft and chips aside, leaving the composer empty, so it can hold
+ *  something else for a while and get them back with `unstashComposer`. */
+export function stashComposer(key: ComposerKey): ComposerStash {
+  const stash = { draft: draftFor(key), chips: pendingFor(key) };
+  setDraft(key, "");
+  clearPending(key);
+  return stash;
+}
+
+export function unstashComposer(key: ComposerKey, stash: ComposerStash) {
+  setDraft(key, stash.draft);
+  setPending((prev) => (stash.chips.length ? { ...prev, [key]: stash.chips } : dropKey(prev, key)));
+}
+
 export function clearPending(key: ComposerKey) {
   setPending((prev) => {
     if (!(key in prev)) return prev;
