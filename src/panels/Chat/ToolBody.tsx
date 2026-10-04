@@ -1,5 +1,5 @@
 import { For, Show, Switch, Match, createMemo, createSignal, type JSX } from "solid-js";
-import { cappedHtml, cappedLines, langOfPath } from "./highlight";
+import { createHighlight, langOfPath } from "./highlight";
 import { BODY_ROWS, hitRows, pathRows, prettyJson, readLines, stripAnsi } from "./toolOutput";
 import { toolDiffBody, type DiffHunk, type DiffRow } from "./toolDiff";
 import { toolDigest, toolPaths, type ToolRenderer } from "./toolRenderers";
@@ -18,10 +18,13 @@ import styles from "./Chat.module.css";
  *  because the workspace check and the event belong to the card. */
 type OpenPath = (path: string, line?: number) => void;
 
+type Highlight = ReturnType<typeof createHighlight>;
+
 /** A block that paints plain now and colorizes in place once shiki and the
  *  grammar are in, or stays plain forever when it is too big to be worth it. */
 function Highlighted(props: { code: string; lang: string }) {
-  const html = createMemo(() => cappedHtml(props.code, props.lang));
+  const hl = createHighlight();
+  const html = createMemo(() => hl.html(props.code, props.lang));
   return (
     <Show when={html()} fallback={<code>{props.code}</code>}>
       {(h) => <code innerHTML={h()} />}
@@ -72,10 +75,11 @@ function Rows<T>(props: { rows: T[]; class?: string; children: (row: T, index: (
  */
 function CodeLines(props: { text: string; from: number; path: string | null; onOpen: OpenPath }) {
   const rows = createMemo(() => readLines(props.text, props.from));
+  const hl = createHighlight();
   // One pass over the whole body rather than one per line, so a comment or a
   // string spanning several lines is coloured as the one thing it is.
   const painted = createMemo(() =>
-    cappedLines(
+    hl.lines(
       rows()
         .map((r) => r.text)
         .join("\n"),
@@ -112,14 +116,14 @@ function CodeLines(props: { text: string; from: number; path: string | null; onO
  * removed lines and the added lines are each a coherent fragment, and the
  * mixture of them is neither and tokenizes as neither.
  */
-function paint(rows: DiffRow[], lang: string): (string | null)[] {
+function paint(rows: DiffRow[], lang: string, hl: Highlight, hunk: number): (string | null)[] {
   const text = (drop: DiffRow["kind"]) =>
     rows
       .filter((r) => r.kind !== drop)
       .map((r) => r.text)
       .join("\n");
-  const before = cappedLines(text("add"), lang);
-  const after = cappedLines(text("del"), lang);
+  const before = hl.lines(text("add"), lang, `${hunk}:old`);
+  const after = hl.lines(text("del"), lang, `${hunk}:new`);
   // Walked rather than indexed: a row's place in its own side is not its place
   // in the hunk, and a changed row exists on only one of the two.
   let oldAt = 0;
@@ -149,11 +153,12 @@ export function DiffView(props: {
   onOpen: OpenPath;
   action?: (hunk: DiffHunk, index: number) => JSX.Element;
 }) {
+  const hl = createHighlight();
   const lines = createMemo(() => {
     const out: DiffLine[] = [];
     props.hunks.forEach((hunk, at) => {
       if (hunk.header) out.push({ header: hunk.header, hunk: at });
-      const painted = paint(hunk.rows, props.lang);
+      const painted = paint(hunk.rows, props.lang, hl, at);
       hunk.rows.forEach((row, i) => out.push({ row, html: painted[i], hunk: at }));
     });
     return out;
