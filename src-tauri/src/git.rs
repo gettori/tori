@@ -2488,8 +2488,9 @@ pub struct BaseSync {
     ahead: u32,
     behind: u32,
     conflicts: Option<Vec<String>>,
-    /// The branch's own diff, what a pull request of it shows. `None` when git
-    /// would not answer, which the row draws as nothing rather than as zero.
+    /// The branch's own diff, what a pull request of it shows once its work is
+    /// committed and pushed. `None` when git would not answer, which the row
+    /// draws as nothing rather than as zero.
     stat: Option<DiffStat>,
 }
 
@@ -2565,7 +2566,7 @@ fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
             (None, Some(name)) => UpstreamSync { gone: upstream_gone(repo, name), ..UpstreamSync::default() },
             (None, None) => UpstreamSync::default(),
         },
-        base: base_sync(repo, &tip, branch.as_deref(), tracked.as_deref()),
+        base: base_sync(repo, &tip, branch.as_deref(), tracked.as_deref(), sync.dirty),
         ..sync
     };
     (true, answered)
@@ -2845,7 +2846,7 @@ fn only_old_upstream(repo: &str, tracked: &str, tip: &str) -> bool {
 /// same reach as `REFLOG_DEPTH`, in lines rather than entries.
 const REFLOG_LINES: usize = 200;
 
-fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>) -> Option<BaseSync> {
+fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>, dirty: bool) -> Option<BaseSync> {
     let base = git_default_base_branch(repo.to_string()).ok().flatten()?;
     // Two ways the base is already the question the upstream answers: standing
     // on it, or tracking it from somewhere else. Either way a second count of
@@ -2872,7 +2873,7 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>)
         name: base,
         ahead,
         conflicts: base_conflicts(repo, &base_ref, tip, behind),
-        stat: base_stat(repo, &base_ref, tip, ahead),
+        stat: base_stat(repo, &base_ref, tip, ahead, dirty),
         behind,
     })
 }
@@ -2880,20 +2881,31 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>)
 static STATS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<ConflictKey, DiffStat>>> =
     std::sync::OnceLock::new();
 
-/// Three dots, the diff GitHub shows for a pull request: from where the branch
-/// left the base, so what the base gained since is not counted. Cached on the
-/// same two shas as the conflict check, since nothing else moves it.
-fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32) -> Option<DiffStat> {
-    if ahead == 0 {
+/// What a pull request of this branch would show: from where it left the base
+/// (so what the base gained since is not counted) to the working tree, new
+/// files included, since nobody here commits before they look. Cached on the
+/// two shas only while the checkout is clean, because an edit moves neither.
+fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32, dirty: bool) -> Option<DiffStat> {
+    if ahead == 0 && !dirty {
         return Some(DiffStat::default());
     }
-    let key = conflict_key(repo, base_ref, tip);
+    let key = if dirty { None } else { conflict_key(repo, base_ref, tip) };
     let cache = STATS.get_or_init(Default::default);
     if let Some(hit) = key.as_ref().and_then(|k| cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(k).cloned()) {
         return Some(hit);
     }
-    let range = format!("refs/remotes/{base_ref}...{tip}");
-    let stat = parse_numstat(&git_capture(repo, &["--no-optional-locks", "diff", "--numstat", &range, "--"]).ok()?);
+    let fork = git_capture(repo, &["merge-base", &format!("refs/remotes/{base_ref}"), tip]).ok()?;
+    // Against the working tree only where it is this branch's: a branch asked
+    // about from somebody else's checkout has nothing uncommitted.
+    let mut args = vec!["--no-optional-locks", "diff", "--numstat", fork.as_str()];
+    if !dirty {
+        args.push(tip);
+    }
+    args.push("--");
+    let mut stat = parse_numstat(&git_capture(repo, &args).ok()?);
+    if dirty {
+        add_untracked(repo, &mut stat);
+    }
     if let Some(key) = key {
         let mut map = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if map.len() >= CONFLICT_CACHE_MAX {
@@ -2902,6 +2914,32 @@ fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32) -> Option<DiffSt
         map.insert(key, stat.clone());
     }
     Some(stat)
+}
+
+/// Past this a new file counts as a file and no lines: a row's count is not
+/// worth reading a generated blob for.
+const UNTRACKED_READ_MAX: u64 = 1 << 20;
+
+/// New files, which `git diff` leaves out until they are added. Counted the way
+/// numstat would count them once added: every line an insertion, a binary file
+/// a file with none.
+fn add_untracked(repo: &str, stat: &mut DiffStat) {
+    let Ok(out) = git_capture(repo, &["--no-optional-locks", "ls-files", "--others", "--exclude-standard", "-z"]) else {
+        return;
+    };
+    for rel in out.split('\0').filter(|p| !p.is_empty()) {
+        stat.files += 1;
+        let path = Path::new(repo).join(rel);
+        if std::fs::metadata(&path).map_or(true, |m| m.len() > UNTRACKED_READ_MAX) {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&path) else { continue };
+        if bytes.iter().take(8000).any(|&b| b == 0) {
+            continue;
+        }
+        let lines = bytes.iter().filter(|&&b| b == b'\n').count() + usize::from(bytes.last().is_some_and(|&b| b != b'\n'));
+        stat.insertions += lines as u32;
+    }
 }
 
 /// Everything a merge's outcome turns on and nothing else, so a row redrawn on
