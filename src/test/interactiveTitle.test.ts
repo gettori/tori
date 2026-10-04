@@ -359,7 +359,7 @@ const KEPT = new Map<string, Kept>([
  *  the orange stripe, saying the same thing twice; the stripe stayed and the
  *  chip went, and its `title` with it.
  *
- *  **Up one** with the Shared in worktrees page, whose bar carries the
+ *  **Up one** with the Worktree settings page, whose bar carries the
  *  path, truncated from the left.
  *
  *  **Up two**: the graph page's two rows, the diff tab's path and an agent

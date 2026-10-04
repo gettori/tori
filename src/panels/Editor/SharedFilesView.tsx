@@ -12,10 +12,12 @@ import {
 } from "lucide-solid";
 
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../Settings/settingsStore";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import Switch from "../../components/Switch/Switch";
 import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
 import FileIcon from "../../seti/FileIcon";
 import styles from "./SharedFilesView.module.css";
@@ -56,7 +58,8 @@ const STATE_WORD: Record<LinkState, string> = {
 };
 
 /**
- * The files every worktree of a container gets, as a page rather than a tree.
+ * What every new worktree of a container gets: the setup command it runs, and
+ * the files shared into it, as a page rather than a tree.
  *
  * The folder is a tree, but the thing worth seeing is not its contents: it is
  * where each entry did and did not land. Linking runs once, when a worktree is
@@ -94,6 +97,11 @@ export default function SharedFilesView(props: { workspace: string }) {
 
   function toast(message: string, kind?: ToastEvent["kind"]) {
     emitWith<ToastEvent>(TOAST, { message, kind });
+  }
+
+  const setup = () => worktreePrefs(props.workspace);
+  function saveSetup(patch: Partial<WorktreePrefs>) {
+    rememberWorktreePrefs(props.workspace, patch).catch((e) => toast(String(e), "error"));
   }
 
   /** Every mutation reloads: each one changes what the other rows may do, and
@@ -207,7 +215,7 @@ export default function SharedFilesView(props: { workspace: string }) {
     <div class={styles.page}>
       <div class={styles.topBar}>
         <Icon icon={FolderSymlink} />
-        <span class={styles.title}>Shared in worktrees</span>
+        <span class={styles.title}>Worktree settings</span>
         <span class={styles.dir} title={data()?.dir ?? props.workspace}>
           {data()?.dir ?? props.workspace}
         </span>
@@ -219,6 +227,28 @@ export default function SharedFilesView(props: { workspace: string }) {
           onClick={() => void load()}
         />
       </div>
+
+      <section class={styles.setup}>
+        <span class={styles.setupHead}>Setup command</span>
+        <input
+          type="text"
+          class={styles.setupInput}
+          aria-label="Setup command"
+          value={setup().setupCommand}
+          placeholder="pnpm install --frozen-lockfile --prefer-offline"
+          onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
+        />
+        <Switch
+          checked={setup().setupWait}
+          onChange={(on) => saveSetup({ setupWait: on })}
+          label="Agents started over the socket wait for it"
+        />
+        <p class={styles.lede}>
+          Runs with <code>sh -c</code> in each worktree Tori creates here, with{" "}
+          <code>TORI_PROJECT_ROOT</code> and <code>TORI_WORKTREE_PATH</code> set. A fork's pull
+          request never runs it.
+        </p>
+      </section>
 
       <Show when={error()}>
         <div class={styles.error}>{error()}</div>
