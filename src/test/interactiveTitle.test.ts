@@ -155,6 +155,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Chat/restoredAcpChat.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/confirmedPick.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/openingOptions.test.tsx", { count: 1, reason: FIXTURE }],
+  ["panels/Chat/pagedHistory.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/quotaSurfaces.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/resumeAtReset.chat.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/resumedPick.test.tsx", { count: 1, reason: FIXTURE }],
