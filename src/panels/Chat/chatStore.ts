@@ -51,7 +51,7 @@ import type {
   ToolSummary,
   Usage,
 } from "../../utils/chatTypes";
-import { currentOf } from "../../utils/chatTypes";
+import { currentOf, parseChatEvent, type HistoryTail } from "../../utils/chatTypes";
 import { toriNote } from "../../utils/toriNote";
 import type { ChatTransport } from "../../utils/agents";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
@@ -1749,6 +1749,31 @@ export function turnModel(s: ChatState, turnId: string): string | null {
  *  child's acknowledgement, so the stop button is live for the round trip too. */
 export function isRunning(s: ChatState): boolean {
   return s.activeTurnId !== null || s.awaitingTurn;
+}
+
+/** The attachment labels a replayed turn has already spent. */
+export function labelsOf(blocks: readonly ContentBlock[]): string[] {
+  return blocks.flatMap((b) => (b.type === "fileRef" && b.label ? [b.label] : []));
+}
+
+/** Fold the tail a chat opens with: the summary first, so a compaction inside
+ *  the tail adds to the ones before it, then the tail's own events. Answers
+ *  every attachment label the history used, for the composer's seed.
+ *
+ *  The summary's lane frames make no rows, so they fold like any other. */
+export function foldHistory(s: ChatState, tail: HistoryTail): string[] {
+  s.compactions += tail.summary.compactions;
+  s.compactionReclaimed += tail.summary.compactionReclaimed;
+  if (tail.summary.contextTokens !== null) s.contextTokens = tail.summary.contextTokens;
+  const labels = [...tail.summary.labels];
+  for (const raw of [...tail.summary.laneEvents, ...tail.events]) {
+    const ev = parseChatEvent(raw);
+    if (!ev) continue;
+    applyEvent(s, ev);
+    if (ev.type === "userMessage") labels.push(...labelsOf(ev.blocks));
+  }
+  settleBackfill(s);
+  return labels;
 }
 
 /**
