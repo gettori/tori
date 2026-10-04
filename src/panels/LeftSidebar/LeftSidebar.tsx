@@ -117,6 +117,8 @@ import {
   noteForgeEnabled,
   pickForgeAccount,
   mergeWatched,
+  prWatchProjects,
+  type PrWatchPolled,
   noteWatchedProjects,
   pollNow,
   topicProjects,
@@ -2854,6 +2856,7 @@ export default function LeftSidebar(props: {
   let unlistenTrayFocus: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenTopics: UnlistenFn | undefined;
+  let unlistenPrWatches: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
@@ -2869,6 +2872,7 @@ export default function LeftSidebar(props: {
       void loadTopics();
     });
     unlistenTopics = await listen<Topic>("topics://changed", (e) => applyTopic(e.payload));
+    unlistenPrWatches = await listen("pr_watch://changed", readPrWatches);
     unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
       // store as well as on liveTabs, so a refresh that changed something
@@ -2943,6 +2947,7 @@ export default function LeftSidebar(props: {
   onCleanup(() => {
     unlistenConfig?.();
     unlistenTopics?.();
+    unlistenPrWatches?.();
     unlistenSessions?.();
     unlistenTrayFocus?.();
     unlistenNavOpen?.();
@@ -3004,6 +3009,15 @@ export default function LeftSidebar(props: {
   // orders the ask (the per-tick cap falls on the tail), so the cost of being
   // approximate is that a branch hidden behind "N more branches" is asked about
   // slightly earlier than it deserves - not that anything goes unasked.
+  // A watched pull request is polled even when its space is not the active one.
+  const [prWatchPolled, setPrWatchPolled] = createSignal<readonly PrWatchPolled[]>([]);
+  const readPrWatches = () =>
+    void invoke<PrWatchPolled[] | null>("pr_watch_polled").then(
+      (list) => setPrWatchPolled(list ?? []),
+      () => setPrWatchPolled([]),
+    );
+  createEffect(on(() => appSettings.forge.prWatch, readPrWatches));
+
   createEffect(() => {
     const g = activeSpace();
     const seen = origins();
@@ -3024,6 +3038,7 @@ export default function LeftSidebar(props: {
       topicProjects(watchedTopics(), (repo, branch) => !!topicBranches()[`${repo}\n${branch}`]).filter((p) =>
         apiCanServe(seen[p.path] ?? null, hosts),
       ),
+      prWatchProjects(prWatchPolled()),
     ]);
     noteWatchedProjects(watched);
     // The opening tick. `startForgePolling` deliberately does not fire one at

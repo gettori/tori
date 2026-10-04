@@ -87,6 +87,12 @@ impl News {
 pub struct Watch {
     pub session: String,
     pub url: String,
+    // The project folder that polls this pull request, and its head branch,
+    // which is what the poll asks about.
+    #[serde(default)]
+    pub project: String,
+    #[serde(default)]
+    pub branch: String,
     pub started_at: u64,
     #[serde(default)]
     pub head_sha: Option<String>,
@@ -120,10 +126,12 @@ pub struct Watch {
 }
 
 impl Watch {
-    pub fn new(session: &str, url: &str, now: u64) -> Self {
+    pub fn new(session: &str, url: &str, project: &str, branch: &str, now: u64) -> Self {
         Self {
             session: session.to_string(),
             url: url.to_string(),
+            project: project.to_string(),
+            branch: branch.to_string(),
             started_at: now,
             head_sha: None,
             failed_checks: BTreeSet::new(),
@@ -352,13 +360,24 @@ impl PrWatches {
         self.lock().iter().find(|w| w.session == session && w.url == url).cloned()
     }
 
-    // A finished watch is dropped here, after its last line was delivered.
     pub fn put(&self, watch: Watch) -> Result<(), String> {
+        self.update(|_| vec![watch])
+    }
+
+    // Read and written under one lock, so a watch started meanwhile is not lost.
+    pub fn update(&self, change: impl FnOnce(&[Watch]) -> Vec<Watch>) -> Result<(), String> {
         let mut held = self.lock();
+        let changed = change(&held);
+        if changed.is_empty() {
+            return Ok(());
+        }
         let mut next = held.clone();
-        next.retain(|w| !(w.session == watch.session && w.url == watch.url));
-        if !watch.finished() {
-            next.push(watch);
+        for watch in changed {
+            next.retain(|w| !(w.session == watch.session && w.url == watch.url));
+            // A finished watch goes here, after its last line was delivered.
+            if !watch.finished() {
+                next.push(watch);
+            }
         }
         self.save(&next)?;
         *held = next;
@@ -385,6 +404,103 @@ impl PrWatches {
     }
 }
 
+pub enum Read {
+    // By number; `None` for a number the host did not answer for.
+    Fetched(Vec<(u64, Option<Snapshot>)>),
+    Failed,
+}
+
+pub fn parse_url(url: &str) -> Option<(String, String, u64)> {
+    let rest = url.strip_prefix("https://github.com/")?;
+    let mut parts = rest.trim_end_matches('/').split('/');
+    let (owner, repo, pull, number) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+    if pull != "pull" || parts.next().is_some() {
+        return None;
+    }
+    Some((owner.to_string(), repo.to_string(), number.parse().ok()?))
+}
+
+fn on_repo(watch: &Watch, owner: &str, repo: &str) -> Option<u64> {
+    let (o, r, number) = parse_url(&watch.url)?;
+    (o.eq_ignore_ascii_case(owner) && r.eq_ignore_ascii_case(repo)).then_some(number)
+}
+
+pub fn numbers_on(watches: &[Watch], owner: &str, repo: &str) -> Vec<u64> {
+    let numbers: BTreeSet<u64> = watches.iter().filter(|w| !w.ended).filter_map(|w| on_repo(w, owner, repo)).collect();
+    numbers.into_iter().collect()
+}
+
+pub fn fold_into(watches: &[Watch], owner: &str, repo: &str, read: &Read, now: u64) -> Vec<Watch> {
+    watches
+        .iter()
+        .filter(|w| !w.ended)
+        .filter_map(|w| Some((w, on_repo(w, owner, repo)?)))
+        .map(|(w, number)| {
+            let mut next = w.clone();
+            match read {
+                Read::Failed => next.failed_read(now),
+                Read::Fetched(reads) => match reads.iter().find(|(n, _)| *n == number) {
+                    Some((_, Some(snapshot))) => next.compare(snapshot),
+                    _ => next.unseen(),
+                },
+            }
+            next
+        })
+        .filter(|next| watches.iter().all(|w| w != next))
+        .collect()
+}
+
+pub fn store() -> &'static PrWatches {
+    static STORE: std::sync::OnceLock<PrWatches> = std::sync::OnceLock::new();
+    STORE.get_or_init(|| PrWatches::open(&crate::owned_state::config_dir()))
+}
+
+pub fn watched_numbers(owner: &str, repo: &str) -> Vec<u64> {
+    if !crate::settings::pr_watch() {
+        return Vec::new();
+    }
+    numbers_on(&store().list(), owner, repo)
+}
+
+pub fn fold(owner: &str, repo: &str, read: Read) {
+    let before = polled();
+    let now = crate::owned_state::now_ms();
+    if let Err(e) = store().update(|watches| fold_into(watches, owner, repo, &read, now)) {
+        eprintln!("tori: pull request watch not saved: {e}");
+    }
+    if polled() != before {
+        polled_moved();
+    }
+}
+
+static POLLED_MOVED: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+// Set once at startup to tell the webview, since the store has no app handle.
+pub fn on_polled_moved(tell: Box<dyn Fn() + Send + Sync>) {
+    let _ = POLLED_MOVED.set(tell);
+}
+
+pub fn polled_moved() {
+    if let Some(tell) = POLLED_MOVED.get() {
+        tell();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Polled {
+    pub project: String,
+    pub branch: String,
+}
+
+pub fn polled() -> Vec<Polled> {
+    if !crate::settings::pr_watch() {
+        return Vec::new();
+    }
+    let all: BTreeSet<(String, String)> =
+        store().list().into_iter().filter(|w| !w.ended && !w.project.is_empty()).map(|w| (w.project, w.branch)).collect();
+    all.into_iter().map(|(project, branch)| Polled { project, branch }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,7 +520,7 @@ mod tests {
     }
 
     fn watch() -> Watch {
-        Watch::new("s1", "https://github.com/o/r/pull/1", T0)
+        Watch::new("s1", "https://github.com/o/r/pull/1", "/p", "fix", T0)
     }
 
     fn failed_names(w: &Watch) -> Vec<String> {
@@ -626,10 +742,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tori-pr-watch-two-{}", crate::owned_state::now_ms()));
         let store = PrWatches::open(&dir);
         let url = "https://github.com/o/r/pull/1";
-        let mut a = Watch::new("a", url, T0);
+        let mut a = Watch::new("a", url, "/p", "fix", T0);
         a.passed = true;
         store.put(a).unwrap();
-        store.put(Watch::new("b", url, T0)).unwrap();
+        store.put(Watch::new("b", url, "/p", "fix", T0)).unwrap();
 
         let reopened = PrWatches::open(&dir);
         assert!(reopened.get("a", url).unwrap().passed);
@@ -652,4 +768,23 @@ mod tests {
         assert!(store.get(&w.session, &w.url).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    fn on(url: &str) -> Watch {
+        Watch::new("s1", url, "/p", "fix", T0)
+    }
+
+    #[test]
+    fn a_new_comment_reaches_the_watch_even_when_nothing_else_moved() {
+        let w = on("https://github.com/O/R/pull/7");
+        let quiet = Snapshot { remarks: Some(vec![]), ..snap("a", Some(vec![check("r1", "build", false, false, false)])) };
+        let watches = fold_into(&[w], "o", "r", &Read::Fetched(vec![(7, Some(quiet.clone()))]), T0);
+        assert_eq!(watches.len(), 1, "the first read records the head");
+        let after_first = watches[0].clone();
+        assert!(fold_into(&[after_first.clone()], "o", "r", &Read::Fetched(vec![(7, Some(quiet.clone()))]), T0).is_empty());
+
+        let talked = Snapshot { remarks: Some(vec![remark("c1", "amy", T0 + 1, "rebase?")]), ..quiet };
+        let changed = fold_into(&[after_first], "o", "r", &Read::Fetched(vec![(7, Some(talked))]), T0);
+        assert_eq!(changed[0].pending, vec![News::Remark { author: "amy".into(), body: "rebase?".into(), review: None }]);
+    }
+
 }
