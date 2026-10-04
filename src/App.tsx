@@ -48,6 +48,7 @@ import FirstRun from './panels/FirstRun/FirstRun';
 import { ensureFirstRunLoaded, firstRunOpen } from './utils/firstRun';
 import UpdatePill from './components/UpdatePill/UpdatePill';
 import { announceCrash } from './utils/crashReport';
+import { watchSetup } from './utils/setupToasts';
 import UsageStrip from './components/UsageStrip/UsageStrip';
 import PhoneIndicator from './components/PhoneIndicator/PhoneIndicator';
 import DevBadge from './components/DevBadge/DevBadge';
@@ -532,6 +533,7 @@ function App() {
     setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
   }
   let unlistenConfig: UnlistenFn | undefined;
+  let unlistenSetup: UnlistenFn | undefined;
   onMount(async () => {
     void resolveTopicSelection();
     // The quota windows the last run knew, so the strip opens with them rather
@@ -542,8 +544,12 @@ function App() {
     watchUsageProbe();
     void announceCrash();
     unlistenConfig = await listen('config://changed', () => void resolveTopicSelection());
+    unlistenSetup = await watchSetup();
   });
-  onCleanup(() => unlistenConfig?.());
+  onCleanup(() => {
+    unlistenConfig?.();
+    unlistenSetup?.();
+  });
 
   // A deleted Topic: its pane tree and placements go, and if it was what
   // the shell showed, nothing is selected now.
