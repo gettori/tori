@@ -929,6 +929,10 @@ export type HistorySummary = {
   contextTokens: number | null;
   labels: string[];
   laneEvents: unknown[];
+  prompts: number;
+  toolCalls: number;
+  askCalls: number;
+  touched: string[];
 };
 
 /// What `chat_history` answers: the tail a chat opens with. Events are raw,

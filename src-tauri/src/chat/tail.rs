@@ -2,7 +2,7 @@
 //! the webview's main thread stalls the open. The cut is a [`HistoryCursor`],
 //! never an index: a growing transcript and late placed subagents move indices.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
@@ -41,6 +41,14 @@ pub struct HistorySummary {
     pub labels: Vec<String>,
     /// The subagent frames, which make no rows and are folded as they are.
     pub lane_events: Vec<ChatEvent>,
+    /// What the panel counts off its rows, for the rows not sent. A call the
+    /// tail also touches is the tail's to count.
+    pub prompts: u32,
+    pub tool_calls: u32,
+    /// Main agent `AskUserQuestion` calls, kept apart because the panel draws
+    /// them as question rows or tool cards depending on a setting.
+    pub ask_calls: u32,
+    pub touched: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -76,7 +84,7 @@ fn is_row(ev: &ChatEvent) -> bool {
 pub fn tail_of(events: &[ChatEvent], prompts: &[(u64, usize)], end: usize) -> HistoryTail {
     let start = cut(&events[..end], prompts);
     HistoryTail {
-        summary: summarize(&events[..start]),
+        summary: summarize(&events[..start], &events[start..end]),
         events: events[start..end].to_vec(),
         cursor: (start > 0).then(|| cursor_at(prompts, start)),
     }
@@ -128,8 +136,19 @@ fn wire_bytes(ev: &ChatEvent) -> usize {
     size(ev)
 }
 
-fn summarize(events: &[ChatEvent]) -> HistorySummary {
+fn summarize(events: &[ChatEvent], tail: &[ChatEvent]) -> HistorySummary {
     let mut s = HistorySummary::default();
+    let in_tail: HashSet<&str> = tail.iter().filter_map(tool_use_id).collect();
+    let laned: HashSet<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            ChatEvent::SubagentCall { tool_use_id, .. } => Some(tool_use_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let mut calls = HashSet::new();
+    let mut asks = HashSet::new();
+    let mut touched = BTreeSet::new();
     for ev in events {
         match ev {
             ChatEvent::Compacted { pre_tokens, post_tokens, .. } => {
@@ -142,6 +161,7 @@ fn summarize(events: &[ChatEvent]) -> HistorySummary {
                 }
             }
             ChatEvent::UserMessage { blocks, .. } => {
+                s.prompts += 1;
                 for b in blocks {
                     if let ContentBlock::FileRef { label: Some(label), .. } = b {
                         s.labels.push(label.clone());
@@ -151,10 +171,51 @@ fn summarize(events: &[ChatEvent]) -> HistorySummary {
             ChatEvent::SubagentStarted { .. } | ChatEvent::SubagentCall { .. } | ChatEvent::SubagentUpdate { .. } => {
                 s.lane_events.push(ev.clone());
             }
+            ChatEvent::ToolCallCompleted { files, .. } => touched.extend(files.iter().cloned()),
             _ => {}
         }
+        if let Some(id) = tool_use_id(ev) {
+            if in_tail.contains(id) || laned.contains(id) {
+                continue;
+            }
+            match ev {
+                ChatEvent::ToolCallStarted { name, input, .. } if name == "AskUserQuestion" && asks_questions(input) => {
+                    calls.remove(id);
+                    asks.insert(id);
+                }
+                _ if !asks.contains(id) => {
+                    calls.insert(id);
+                }
+                _ => {}
+            }
+        }
     }
+    s.tool_calls = calls.len() as u32;
+    s.ask_calls = asks.len() as u32;
+    s.touched = touched.into_iter().collect();
     s
+}
+
+fn tool_use_id(ev: &ChatEvent) -> Option<&str> {
+    match ev {
+        ChatEvent::ToolCallStarted { tool_use_id, .. } | ChatEvent::ToolCallCompleted { tool_use_id, .. } => {
+            Some(tool_use_id)
+        }
+        _ => None,
+    }
+}
+
+/// The panel's `parseQuestions` test: an input it cannot read as questions is
+/// drawn as an ordinary tool card instead.
+fn asks_questions(input: &serde_json::Value) -> bool {
+    let Some(questions) = input.get("questions").and_then(|q| q.as_array()) else { return false };
+    !questions.is_empty()
+        && questions.iter().all(|q| {
+            q.get("question").is_some_and(|t| t.is_string())
+                && q.get("options").and_then(|o| o.as_array()).is_some_and(|o| {
+                    !o.is_empty() && o.iter().all(|o| o.get("label").is_some_and(|l| l.is_string()))
+                })
+        })
 }
 
 fn cursor_at(prompts: &[(u64, usize)], at: usize) -> HistoryCursor {
@@ -417,8 +478,28 @@ mod tests {
                     "type": "subagentCall", "sessionId": "s", "agentId": "a1", "toolUseId": "inner-call",
                 })));
                 events.push(from(serde_json::json!({
+                    "type": "toolCallStarted", "sessionId": "s", "turnId": "t4", "toolUseId": "inner-call",
+                    "name": "Write", "input": {"path": "sub.txt"},
+                })));
+                events.push(from(serde_json::json!({
+                    "type": "toolCallCompleted", "sessionId": "s", "turnId": "t4", "toolUseId": "inner-call",
+                    "status": "ok", "output": "ok", "files": ["sub.txt"],
+                })));
+                events.push(from(serde_json::json!({
                     "type": "subagentUpdate", "sessionId": "s", "agentId": "a1", "status": "completed",
                     "summary": "looked",
+                })));
+            }
+            if t == 6 || t == 30 {
+                let id = format!("ask-{t}");
+                events.push(from(serde_json::json!({
+                    "type": "toolCallStarted", "sessionId": "s", "turnId": format!("t{t}"), "toolUseId": id,
+                    "name": "AskUserQuestion",
+                    "input": {"questions": [{"question": "Which?", "header": "Pick", "options": [{"label": "A"}, {"label": "B"}]}]},
+                })));
+                events.push(from(serde_json::json!({
+                    "type": "toolCallCompleted", "sessionId": "s", "turnId": format!("t{t}"), "toolUseId": id,
+                    "status": "ok", "output": "A",
                 })));
             }
             for r in 0..3 {
@@ -431,6 +512,7 @@ mod tests {
             events.push(from(serde_json::json!({
                 "type": "toolCallCompleted", "sessionId": "s", "turnId": format!("t{t}"),
                 "toolUseId": format!("call-{t}"), "status": "ok", "output": "fn a() {}",
+                "files": [format!("src/f{}.rs", t % 7)],
             })));
         }
         (events, prompts)
