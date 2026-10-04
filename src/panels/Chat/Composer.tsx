@@ -920,7 +920,6 @@ export default function Composer(props: {
                 <span
                   class={`${styles.queueAction} ${styles.queueRemove} ${styles.stashDiscard}`}
                   aria-hidden="true"
-                  title="Discard"
                   onClick={(e) => {
                     e.stopPropagation();
                     props.onDiscardStash?.(entry.id);
