@@ -343,6 +343,8 @@ pub fn run() {
             topics::commands::probe_topic_branch,
             chat::commands::chat_send,
             chat::commands::chat_steer,
+            chat::commands::chat_queue_load,
+            chat::commands::chat_queue_save,
             chat::commands::chat_grant_dirs,
             chat::commands::chat_interrupt,
             chat::commands::chat_send_held,

@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
+import { dropQueue } from "../Chat/queuePersist";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
@@ -2118,6 +2119,7 @@ export default function Terminal(props: {
     // clearing there would throw away the message those two are carrying.
     if (t?.kind === "chat") {
       clearComposer(id);
+      if (t.sessionId) void dropQueue(t.sessionId);
       clearDraftError(id);
       clearDraftPick(id);
     }
