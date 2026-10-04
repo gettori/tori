@@ -41,7 +41,17 @@
   padding: 0 calc(8px * var(--ui-scale)) 0 calc(12px * var(--ui-scale));
 }
 
-.branchBar > svg {
+/* Row one's title when there is a branch: its glyph and name, sized as the
+   other tabs' titles are. */
+.branchTitle {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  padding-left: calc(4px * var(--ui-scale));
+}
+
+.branchTitle > svg {
   flex: none;
   width: var(--control-icon);
   height: var(--control-icon);
@@ -77,11 +87,11 @@
   color: var(--fg-muted);
 }
 
-/* The branch the repo on screen is on: the panel's title, in effect. */
+/* The branch the repo on screen is on: the panel's title. */
 .branchName {
   overflow: hidden;
   color: var(--fg-default);
-  font-size: var(--tori-text-xl);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -338,6 +348,21 @@
 
 /* Conflicts / Staged / Changes inside one member. Quieter than a section
    header, which is the thing above them. */
+/* Everything uncommitted, summed, at the size the file rows use. */
+.changesTotal {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-md);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.changesTotal .added {
+  color: var(--diff-added);
+}
+.changesTotal .deleted {
+  color: var(--diff-deleted);
+}
+
 .groupHeader {
   margin: calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
