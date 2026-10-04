@@ -43,6 +43,8 @@ mod onboarding;
 mod owned_state;
 pub mod palette;
 mod patch;
+#[cfg(test)]
+mod perf_budgets;
 mod presence;
 mod pty;
 mod rpc;
