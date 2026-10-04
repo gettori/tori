@@ -177,6 +177,7 @@ export default function Composer(props: {
   queue: readonly QueuedInput[];
   attachments: readonly PendingBlock[];
   parked: boolean;
+  restored?: boolean;
   disabled: boolean;
   /** This session's real command catalogue, from the `initialize` handshake. */
   commands: readonly SlashCommand[];
@@ -721,7 +722,7 @@ export default function Composer(props: {
         <div ref={queueStrip} class={`${styles.queue} ${props.parked ? styles.queueParked : ""}`}>
           <span class={styles.queueLabel}>
             {props.parked
-              ? `${props.queue.length} message${props.queue.length > 1 ? "s" : ""} held: the turn was stopped`
+              ? `${props.queue.length} message${props.queue.length > 1 ? "s" : ""} held: ${props.restored ? "saved from last time" : "the turn was stopped"}`
               : `Queued for the next turn`}
           </span>
           <For each={props.queue}>
