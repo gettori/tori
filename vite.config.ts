@@ -99,6 +99,10 @@ const traceCoreImports = () => ({
 export default defineConfig(async ({ command }) => ({
   plugins: [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])],
 
+  // The syntax worker loads each grammar by dynamic import, and an iife worker
+  // cannot split chunks.
+  worker: { format: "es" as const },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

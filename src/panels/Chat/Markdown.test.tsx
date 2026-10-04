@@ -5,7 +5,8 @@ import { expectNoAxeViolations } from "../../test/axe";
 import Markdown from "./Markdown";
 
 vi.mock("../../utils/clipboard", () => ({ copyText: vi.fn(async () => true) }));
-vi.mock("./highlight", () => ({ cappedHtml: vi.fn(() => null) }));
+const hl = vi.hoisted(() => ({ html: vi.fn<(code: string, lang: string, slot?: string) => string | null>(() => null), lines: vi.fn(() => null) }));
+vi.mock("./highlight", () => ({ createHighlight: () => hl }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 // The real engine measures text through `getBBox`, which jsdom does not have.
 // What it answers is `Diagram.test.tsx`'s subject; here it only has to answer.
@@ -14,7 +15,6 @@ vi.mock("../../utils/mermaidEngine", () => ({
   render: vi.fn(async () => '<svg role="img" aria-label="a flowchart"><g></g></svg>'),
 }));
 import { copyText } from "../../utils/clipboard";
-import { cappedHtml } from "./highlight";
 import { invoke } from "@tauri-apps/api/core";
 import { onWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 
@@ -22,8 +22,8 @@ const FENCED = "intro paragraph\n\n```ts\nconst x = 1;\n```\n\noutro paragraph";
 
 beforeEach(() => {
   vi.mocked(copyText).mockClear();
-  vi.mocked(cappedHtml).mockReset();
-  vi.mocked(cappedHtml).mockReturnValue(null);
+  hl.html.mockReset();
+  hl.html.mockReturnValue(null);
 });
 
 describe("Markdown block splitting", () => {
@@ -69,9 +69,9 @@ describe("Markdown block splitting", () => {
 
 describe("code block highlighting", () => {
   it("paints shiki's spans when the highlighter answers", () => {
-    vi.mocked(cappedHtml).mockReturnValue('<span style="color:var(--syntax-keyword)">const</span> x = 1;');
+    hl.html.mockReturnValue('<span style="color:var(--syntax-keyword)">const</span> x = 1;');
     const { container } = render(() => <Markdown text={FENCED} cwd="/repo" />);
-    expect(cappedHtml).toHaveBeenCalledWith("const x = 1;", "ts");
+    expect(hl.html).toHaveBeenCalledWith("const x = 1;", "ts");
     expect(container.querySelector("pre code span")?.textContent).toBe("const");
   });
 
