@@ -19,5 +19,19 @@
     "unit": "bytes",
     "budget": 66426,
     "reason": "one 5 MB tool output: cut_outputs caps it at TOOL_OUTPUT_CAP, so the reply stays near 64 KB rather than carrying the whole body"
+  },
+  {
+    "name": "invokes.switch.worktree",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 14,
+    "reason": "a warm switch between two visited worktrees: file tree (fs_read_dir, two fs_read_dir_compact, list_project_files, fs_watch_start), git (git_status, list_branches, git_ahead_behind, git_head_sha, git_branch_sync), get_workspace_settings, list_sessions, rpc_attention, dap_stop_all"
+  },
+  {
+    "name": "invokes.switch.tab",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 7,
+    "reason": "a switch between two shell tabs of one worktree: fs_read_dir, two fs_read_dir_compact, list_project_files, get_workspace_settings, list_sessions, rpc_attention"
   }
 ]
