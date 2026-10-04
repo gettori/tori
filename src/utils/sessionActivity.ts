@@ -87,7 +87,14 @@ const [probes, setProbes] = createSignal<Record<string, { agent: string; running
 
 // What Rust last composed per session: the dot, how it knows it, and the unit
 // row the session sits under.
-export type RustDot = { id: string; dot: SessionDot; certainty: StatusCertainty; home: SessionHome | null };
+export type RustDot = {
+  id: string;
+  dot: SessionDot;
+  certainty: StatusCertainty;
+  /** `needsYou` came from the branch's pull request rather than the agent. */
+  raised?: boolean;
+  home: SessionHome | null;
+};
 const [rustDots, setRustDots] = createSignal<Record<string, RustDot>>({});
 
 export function noteDots(changes: readonly RustDot[] | undefined) {
@@ -214,12 +221,13 @@ export function sessionCertainty(id: string): StatusCertainty {
 // does not exist, and would lag the turn the revert guard must see at once.
 function chatStatus(c: LiveChat): SessionStatus {
   const raised = (c.status === "idle" || c.status === "running") && sessionDot(c.sessionId) === "needsYou";
-  return raised ? "waitingForApproval" : c.status;
+  return raised ? "prAttention" : c.status;
 }
 
 export function sessionStatus(id: string): SessionStatus {
   const chat = liveChats().find((c) => c.sessionId === id);
-  return chat ? chatStatus(chat) : statusFromDot(sessionDot(id));
+  if (chat) return chatStatus(chat);
+  return rustDots()[id]?.raised ? "prAttention" : statusFromDot(sessionDot(id));
 }
 
 const homeOf = (id: string, meta: SessionMeta | undefined) => rustDots()[id]?.home ?? meta?.home ?? null;

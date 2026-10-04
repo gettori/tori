@@ -96,6 +96,9 @@ pub struct Composed {
     pub state: Option<SessionState>,
     pub dot: Dot,
     pub certainty: Certainty,
+    /// The dot is `NeedsYou` because of the pull request, not the agent, so the
+    /// webview can draw it as the PR rather than as a question.
+    pub raised: bool,
 }
 
 pub fn compose(input: &Inputs) -> Composed {
@@ -109,7 +112,7 @@ pub fn compose(input: &Inputs) -> Composed {
     let raised = input.forge_attention && matches!(tier, Dot::Solid | Dot::Hollow);
     let dot = if raised { Dot::NeedsYou } else { tier };
     let certainty = if input.chat_status.is_some() { Certainty::Exact } else { Certainty::Inferred };
-    Composed { state, dot, certainty }
+    Composed { state, dot, certainty, raised }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -206,6 +209,7 @@ pub struct Change {
     pub id: String,
     pub dot: Dot,
     pub certainty: Certainty,
+    pub raised: bool,
     pub home: Option<Home>,
     #[serde(skip)]
     pub folder: String,
@@ -355,7 +359,8 @@ impl Dots {
                 forge_attention: forge_attention(&facts.forge, &folder, branch),
             };
             let composed = compose(&input);
-            let change = Change { id: id.to_string(), dot: composed.dot, certainty: composed.certainty, home, folder };
+            let change =
+                Change { id: id.to_string(), dot: composed.dot, certainty: composed.certainty, raised: composed.raised, home, folder };
             dots.insert(id.to_string(), change);
             let Some(state) = composed.state else { continue };
             if let Some(chat) = chat {
@@ -370,7 +375,14 @@ impl Dots {
 
         let mut changes: Vec<Change> = dots.iter().filter(|(id, c)| inner.dots.get(*id) != Some(*c)).map(|(_, c)| c.clone()).collect();
         for (id, _) in inner.dots.iter().filter(|(id, c)| !dots.contains_key(*id) && c.dot != Dot::None) {
-            changes.push(Change { id: id.clone(), dot: Dot::None, certainty: Certainty::Inferred, home: None, folder: String::new() });
+            changes.push(Change {
+                id: id.clone(),
+                dot: Dot::None,
+                certainty: Certainty::Inferred,
+                raised: false,
+                home: None,
+                folder: String::new(),
+            });
         }
         inner.dots = dots;
         (reports, changes)

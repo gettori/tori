@@ -317,7 +317,7 @@ describe("a member's pull request", () => {
 
 describe("a Topic's chat status", () => {
   it("lights the title line when one of its chats waits on you", () => {
-    const none = { waitingForApproval: 0, waitingForAnswer: 0, executing: 0, idle: 0, running: 0 };
+    const none = { waitingForApproval: 0, waitingForAnswer: 0, prAttention: 0, executing: 0, idle: 0, running: 0 };
     const [status, setStatus] = createSignal<Rollup>(none);
     const { container } = mount(topic([member("/w/api", 0)]), () => {}, { status });
     const head = container.querySelector(`.${rows.project}`)!;

@@ -16,6 +16,7 @@ function rollup(r: Partial<Rollup>) {
   return () => ({
     waitingForApproval: 0,
     waitingForAnswer: 0,
+    prAttention: 0,
     executing: 0,
     idle: 0,
     running: 0,

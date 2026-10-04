@@ -299,8 +299,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/LeftSidebar/StatusBubble.tsx",
     {
-      count: 5,
-      reason: `${TRUNCATION} - the rollup badge's four state chips name their state, and on a space tile, where only the winning state is drawn, the badge itself names all of them. Extracted from LeftSidebar.tsx, which held these five before the component existed`,
+      count: 6,
+      reason: `${TRUNCATION} - the rollup badge's five state chips name their state, and on a space tile, where only the winning state is drawn, the badge itself names all of them. Extracted from LeftSidebar.tsx, which held these five before the component existed`,
     },
   ],
   [
@@ -376,7 +376,7 @@ const KEPT = new Map<string, Kept>([
  *  **Down four**: the checkpoint timeline became a list with a detail view.
  *  Its rows are buttons that describe themselves through `Tooltip`, and a
  *  file's name and folder each get a line of their own. */
-const RAW_ELEMENT_TITLES = 71;
+const RAW_ELEMENT_TITLES = 72;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -517,7 +517,7 @@ describe("the title= guard", () => {
       p: 1,
       // Down one span: the pull request detail view went, and the branch line
       // it truncated is drawn once now, in the panel that replaced it.
-      span: 55,
+      span: 56,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
