@@ -612,6 +612,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Attach long pastes as files",
     hint: "A paste over 30 lines or 3000 characters becomes a file chip. Off keeps every paste in the box.",
   },
+  {
+    id: "resume-at-reset",
+    section: "chat",
+    label: "Resume at reset",
+    hint: "A claude chat that stopped on a usage limit continues by itself once the limit resets.",
+  },
 
   {
     id: "autopilot-on",
