@@ -105,6 +105,9 @@ export type ChatDefaults = {
   /** A paste over 30 lines or 3000 characters becomes a `pasted.txt` chip
    *  rather than text in the box. Off keeps every paste inline. */
   attachLongPastes: boolean;
+  /** Send a continue by itself once the usage limit a chat stopped on resets.
+   *  Off by default; the limit banner can still arm a single chat. */
+  resumeAtReset: boolean;
   /** How many live chats before Tori says the cost is adding up. **Zero means
    *  no cap.** It warns rather than refusing: several chats at once is the
    *  point of the surface, and how many is too many is a property of the
@@ -385,6 +388,7 @@ export const DEFAULT_SETTINGS: Settings = {
     collapseWork: false,
     answerQuestionsInline: true,
     attachLongPastes: true,
+    resumeAtReset: false,
     maxConcurrentChats: 4,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
