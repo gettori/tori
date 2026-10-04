@@ -1,8 +1,8 @@
 ---
 summary: a release build trace rig with marks and a mismatch pass control row, run deliberately and never gating anything
 status: current
-updated: 2026-08-20
-source: "Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phases 1 and 7, commits 4b8287f, 267fc4a; The reveal path: verify the mismatch switch, then decide what it costs (same branch), Phases 1 to 4, commits 6b0867b, be27425, dab0114, c2b6526"
+updated: 2026-10-05
+source: "Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phases 1 and 7, commits 4b8287f, 267fc4a; The reveal path: verify the mismatch switch, then decide what it costs (same branch), Phases 1 to 4, commits 6b0867b, be27425, dab0114, c2b6526; plan \"Move syntax highlighting off the main thread\" (branch `off-the-main-thread`, gettori/tickets#7), work recipe, commit 5f652e30"
 ---
 
 # Performance trace harness
@@ -69,6 +69,17 @@ shape.
   its number is the handler plus two frames, and reading it as one number hides
   which half moved.
 
+## The work recipe (2026-10-05)
+
+`TORI_RECIPE=work` runs `src/utils/perfWorkRecipe.tsx` instead of the switch recipe: it mounts the real components over generated fixtures (`src/utils/perfFixtures.ts`, deterministic) and drives one pass per candidate, closing each with a control row of empty frames.
+
+- **Seams.** `traceWork(name, fn)` and `traceAsyncWork` time main-thread work and cost one comparison outside a trace. Placed at the streaming lex (`md-lex`), the three fuzzy matchers, the tool diff, the session diff view, the preview's lex and slices, and mermaid.
+- **Frames.** A rAF loop writes one `work` line per frame that ran a seam, with the gap from the frame before (`null` when there was none, never a guess), and a `frames` control line per pass.
+- **Invoke sizes.** `tracedCore` hands each answer to the recorder, which writes `size` and what sizing cost (`sizing`); an answer of 64 KB or more gets its frame bracketed and the report takes the sizing back out.
+- **Passes.** calibrate (a 30ms busy loop), stream (803 deltas into a `MessageList` over its own store), fuzzy (50k paths), tool-diff (a 5k line Edit), md-preview (1 MB, waits for the last block up to 30s), mermaid (ten diagrams), invokes.
+- **The report's rule.** A dropped frame (gap at least 1.5x control) is charged its whole gap, a sync seam never less than its own time, seams sharing a frame split its block by their own time, and calibrate gets no verdict. See [[lesson_frame_gap_minus_a_normal_frame_undercounts_a_task]] and [[lesson_a_dropped_frame_belongs_to_whatever_ran_in_it]].
+- Workers note their own timings (`highlight-worker`, and the preview's `preview-render`), which is how [[gotcha_marked_lexes_sixty_times_slower_in_a_wkwebview_worker]] was found.
+
 ## How to run it
 
 ```
@@ -79,7 +90,7 @@ TORI_TRACE=1 TORI_RECIPE=6x4x3 \
 node scripts/trace-report.mjs
 ```
 
-`TORI_RECIPE` is `<worktrees>x<terminals-each>x<ab-rounds>`. The app drives
+`TORI_RECIPE` is `<worktrees>x<terminals-each>x<ab-rounds>`, or `work` for the work recipe. The app drives
 itself and exits on its own. `TORI_TRACE=1` alone traces manual clicking.
 
 **Keep the window frontmost for the whole run.** See
