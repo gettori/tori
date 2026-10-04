@@ -10,6 +10,7 @@
 // the event to the account store to the surface *is* the thing being asserted.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@solidjs/testing-library";
+import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -35,7 +36,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "chat_spawn":
         return Promise.resolve({ ownership: { type: "granted", contested: false }, spawned: "started", profileId: "default" });
       case "chat_history":
-        return Promise.resolve([]);
+        return Promise.resolve(wholeHistory([]));
       case "list_agents":
         return Promise.resolve(ADAPTERS);
       case "model_catalogs":

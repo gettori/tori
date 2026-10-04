@@ -83,6 +83,7 @@ import {
   type ChatConfigOption,
   type ChatEvent,
   type ContentBlock,
+  type HistoryTail,
   type PermissionMode,
   type QuestionAnswer,
 } from "../../utils/chatTypes";
@@ -147,7 +148,9 @@ import {
   enqueue,
   effortPending,
   filesWritten,
+  foldHistory,
   initialChat,
+  labelsOf,
   isRunning,
   modePending,
   modelPending,
@@ -233,11 +236,6 @@ type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boo
  * own, would otherwise wait on forever with the user's message inside it.
  */
 const FIRST_SEND_DEADLINE_MS = 60_000;
-
-/** The attachment labels a replayed turn has already spent. */
-function labelsOf(blocks: readonly ContentBlock[]): string[] {
-  return blocks.flatMap((b) => (b.type === "fileRef" && b.label ? [b.label] : []));
-}
 
 /**
  * One chat session: the transport's events folded into `chatStore`, rendered,
@@ -612,7 +610,7 @@ export default function ChatView(props: {
     // A fork reads the session it forked *from*: its own file does not exist
     // until the CLI writes it, and what the user expects to see is the history
     // up to the fork point.
-    void invoke<unknown[]>("chat_history", {
+    void invoke<HistoryTail>("chat_history", {
       sessionId: props.sessionId,
       fromSessionId: props.forkFrom ?? null,
       agentId: props.agentId,
@@ -628,23 +626,13 @@ export default function ChatView(props: {
       // persisted); the cut deliberately does not.
       upToPromptTs: props.forkFrom ? (props.rewindTo ?? null) : null,
     })
-      .then((raw) => {
+      .then((tail) => {
         openTrace?.replied();
         // Replayed history is folded straight in rather than through
         // `handleLive`: it is finished work, so it must not re-snapshot
         // checkpoints or re-record attribution for turns that already ran.
         edit((s) => {
-          const labels: string[] = [];
-          for (const item of raw) {
-            const ev = parseChatEvent(item);
-            if (!ev) continue;
-            applyEvent(s, ev);
-            if (ev.type === "userMessage") labels.push(...labelsOf(ev.blocks));
-          }
-          // The transcript carries no turn boundaries, so without this the
-          // last replayed turn stays "active" and the whole panel reads as
-          // working on a turn that finished before the tab existed.
-          settleBackfill(s);
+          const labels = foldHistory(s, tail);
           // A restored tab for an agent that keeps its own conversation, with
           // nothing saved yet. Blank is the one thing this must not be: an
           // inert tab does not spawn ([[adr_lazy_tab_attachment]]), so there is

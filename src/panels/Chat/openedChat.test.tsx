@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -33,7 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         channel = args.onEvent as { onmessage?: (raw: unknown) => void };
         return Promise.resolve({ ownership: claim });
       case "chat_history":
-        return historyFails ? Promise.reject(historyFails) : Promise.resolve(history);
+        return historyFails ? Promise.reject(historyFails) : Promise.resolve(wholeHistory(history));
       case "list_agents":
         return Promise.resolve(ADAPTERS);
       case "model_catalogs":

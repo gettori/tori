@@ -41,6 +41,7 @@ pub mod ownership;
 pub mod pacing;
 pub mod retired;
 pub mod snapshot;
+pub mod tail;
 pub mod transport;
 pub mod usage;
 

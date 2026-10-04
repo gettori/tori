@@ -23,6 +23,7 @@ use super::host::{ChatHost, ChatState, SessionBridge, Spawned};
 use super::mirror::Mirror;
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
+use super::tail::HistoryTail;
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
     QuestionAnswer,
@@ -1037,7 +1038,8 @@ pub async fn chat_close(
     state.0.close(&session_id, reason.unwrap_or(crate::rpc::events::EndReason::Closed))
 }
 
-/// Replay a session's transcript as the events that rebuild it.
+/// Replay a session's transcript as the events that rebuild it, bounded to
+/// the tail [`read_tail`] cuts.
 ///
 /// **Pulled by the panel rather than pushed through the live channel.** Backfill
 /// has to land before the first live event or the transcript renders out of
@@ -1070,27 +1072,27 @@ pub async fn chat_history(
     from_session_id: Option<String>,
     agent_id: String,
     up_to_prompt_ts: Option<u64>,
-) -> Result<Vec<ChatEvent>, String> {
+) -> Result<HistoryTail, String> {
     let source = from_session_id.unwrap_or_else(|| session_id.clone());
     let id = session_id.clone();
     let traced = crate::trace::enabled();
     let enter = if traced { crate::trace::now_ms() } else { 0.0 };
-    let mut events = crate::exec::blocking("chat_history", move || {
-        read_history(&id, &history_source(&source, &agent_id), &agent_id, up_to_prompt_ts)
+    let mut tail = crate::exec::blocking("chat_history", move || {
+        read_tail(&id, &history_source(&source, &agent_id), &agent_id, up_to_prompt_ts)
     })
     .await;
     let read_ms = if traced { crate::trace::now_ms() - enter } else { 0.0 };
     // The cut a live event gets on its way through the sink wrapper. Applied
     // here because replay does not pass through it, and applied through the
     // same cache so a backfilled card can fetch its remainder too.
-    state.0.cut_outputs(&session_id, &mut events);
+    state.0.cut_outputs(&session_id, &mut tail.events);
     if traced {
         let start = crate::trace::now_ms();
-        let bytes = serde_json::to_vec(&events).map_or(0, |v| v.len());
+        let bytes = serde_json::to_vec(&tail).map_or(0, |v| v.len());
         let size_ms = crate::trace::now_ms() - start;
-        crate::trace::chat_open(&session_id, enter, events.len(), read_ms, bytes, size_ms);
+        crate::trace::chat_open(&session_id, enter, tail.events.len(), read_ms, bytes, size_ms);
     }
-    Ok(events)
+    Ok(tail)
 }
 
 /// Where a session's conversation lives, resolved apart from the read so a test
@@ -1111,8 +1113,31 @@ pub(crate) fn history_source(source: &str, agent_id: &str) -> HistorySource {
     crate::sessions::transcript_path(source, agent_id).map_or(HistorySource::Missing, HistorySource::Transcript)
 }
 
-/// A session's conversation as events stamped with `session_id`, uncut. Shared
-/// by `chat_history` and the app socket's `session.tail`.
+/// The tail a chat opens with: [`read_history`] cut by [`super::tail::tail_of`].
+/// A mirror log has no prompts to page by, so it comes back whole.
+pub(crate) fn read_tail(
+    session_id: &str,
+    from: &HistorySource,
+    agent_id: &str,
+    up_to_prompt_ts: Option<u64>,
+) -> HistoryTail {
+    let path = match from {
+        HistorySource::Transcript(path) => path,
+        HistorySource::Log(path) => return HistoryTail::whole(history_from_log(session_id, path)),
+        HistorySource::Missing => return HistoryTail::whole(Vec::new()),
+    };
+    let turns = crate::sessions::transcript_turns(path, agent_id);
+    let shown = match up_to_prompt_ts.and_then(|ts| super::history::prompt_boundary(&turns, ts)) {
+        Some(at) => &turns[..at],
+        None => &turns[..],
+    };
+    let subagents = crate::sessions::subagent_transcripts(path, agent_id);
+    let (events, prompts) = super::history::events_and_prompts(session_id, shown, &subagents);
+    super::tail::tail_of(&events, &prompts, events.len())
+}
+
+/// A session's conversation as events stamped with `session_id`, uncut. Read
+/// whole by the app socket's methods.
 ///
 /// `up_to_prompt_ts` is honoured for a transcript only. Rewind is out of scope
 /// for an ACP session, and the panel gates it on the tier, so honouring a cut
@@ -1769,5 +1794,59 @@ mod tests {
             false,
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
+    }
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use super::*;
+
+    fn transcript(turns: usize) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("tori-tail-{}-{turns}.jsonl", std::process::id()));
+        let mut out = String::new();
+        for i in 0..turns {
+            for (role, text, at) in [("user", format!("p {i}"), 2 * i), ("assistant", format!("r {i}"), 2 * i + 1)] {
+                out += &serde_json::json!({
+                    "type": role,
+                    "uuid": format!("00000000-0000-4000-8000-{:012}", 2 * i + usize::from(role == "assistant")),
+                    "timestamp": format!("2026-01-01T{:02}:{:02}:{:02}.000Z", at / 3600, at / 60 % 60, at % 60),
+                    "message": { "role": role, "content": [{ "type": "text", "text": text }] },
+                })
+                .to_string();
+                out.push('\n');
+            }
+        }
+        std::fs::write(&path, out).unwrap();
+        path
+    }
+
+    fn last_text(events: &[ChatEvent]) -> Option<&str> {
+        events.iter().rev().find_map(|e| match e {
+            ChatEvent::TextDelta { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_rewound_tail_ends_at_the_rewind_point() {
+        let path = transcript(100);
+        let from = HistorySource::Transcript(path.to_str().unwrap().to_string());
+        let whole = read_tail("s", &from, "claude", None);
+        assert_eq!(last_text(&whole.events), Some("r 99"));
+
+        let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
+        let turn_80 = turns[160].ts;
+        let rewound = read_tail("s", &from, "claude", Some(turn_80));
+        assert_eq!(last_text(&rewound.events), Some("r 79"));
+        assert!(rewound.cursor.is_some(), "the rewound history is still long enough to cut");
+        assert!(rewound.events.len() <= super::super::tail::TAIL_ROWS);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn a_session_with_no_transcript_yet_opens_empty() {
+        let tail = read_tail("s", &HistorySource::Missing, "claude", None);
+        assert!(tail.events.is_empty());
+        assert_eq!(tail.cursor, None);
     }
 }

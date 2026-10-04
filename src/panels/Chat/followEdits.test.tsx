@@ -5,6 +5,7 @@
 // because where the control sits in that bar is the whole of what is under test.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@solidjs/testing-library";
+import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -18,7 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
   invoke: (cmd: string) => {
     if (cmd === "chat_spawn") return Promise.resolve({ ownership: { type: "granted", contested: false } });
-    if (cmd === "chat_history") return Promise.resolve([]);
+    if (cmd === "chat_history") return Promise.resolve(wholeHistory([]));
     if (cmd === "list_agents") return Promise.resolve(ADAPTERS);
     if (cmd === "model_catalogs") return Promise.resolve([]);
     return Promise.resolve(null);

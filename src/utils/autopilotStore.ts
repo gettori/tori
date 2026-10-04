@@ -9,7 +9,7 @@ import type {
   DecisionAction,
   ThreadMessage,
 } from "../components/Autopilot/autopilot";
-import type { ChatEvent } from "./chatTypes";
+import type { ChatEvent, HistoryTail } from "./chatTypes";
 import { pushToast } from "../components/Toasts/Toasts";
 import { NAVIGATE, on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
 import { allAsks, answerAsk } from "./socketAsks";
@@ -79,13 +79,13 @@ export { thread };
 export async function loadThread() {
   const s = runner();
   if (!s.session || !s.agent) return setThread([]);
-  const events = await invoke<ChatEvent[]>("chat_history", {
+  const tail = await invoke<HistoryTail>("chat_history", {
     sessionId: s.session,
     fromSessionId: null,
     agentId: s.agent,
     upToPromptTs: null,
-  }).catch(() => []);
-  setThread(threadFrom(events));
+  }).catch(() => null);
+  setThread(threadFrom((tail?.events ?? []) as ChatEvent[]));
 }
 
 /** Say something to the autopilot from outside its chat view; into the running turn if there is one. */

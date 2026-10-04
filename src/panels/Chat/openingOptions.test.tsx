@@ -3,6 +3,7 @@
 // *when* the apply fires rather than what it sends.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor } from "@solidjs/testing-library";
+import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -27,7 +28,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "chat_set_config_option":
         return refuseSet ? Promise.reject("no such option") : Promise.resolve(null);
       case "chat_history":
-        return Promise.resolve([]);
+        return Promise.resolve(wholeHistory([]));
       case "list_agents":
         return Promise.resolve(ADAPTERS);
       case "model_catalogs":
