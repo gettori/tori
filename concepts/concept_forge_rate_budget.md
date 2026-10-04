@@ -1,8 +1,8 @@
 ---
 summary: GitHub's 5000 requests an hour means Tori batches one GraphQL call per project per tick, never one per branch unit
 status: current
-updated: 2026-09-27
-source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 5; commit 8aedaed; `src/utils/forgePoll.ts`, `src/utils/forgeStatus.ts`, `src-tauri/src/forge/status.rs:63`; gettori/tori#202 commit f8a61936, `src-tauri/src/issues/gate.rs`; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; plan "Show merged and closed PR status on worktree rows" (personal/tori, branch `misc-20260927`), commits 6cfe26b5, 2d139c7e, 4d8a5c5d, `src-tauri/src/forge/github.rs:780`, `src-tauri/src/forge/gitlab.rs:448`"
+updated: 2026-10-04
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 5; commit 8aedaed; `src/utils/forgePoll.ts`, `src/utils/forgeStatus.ts`, `src-tauri/src/forge/status.rs:63`; gettori/tori#202 commit f8a61936, `src-tauri/src/issues/gate.rs`; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; plan "Show merged and closed PR status on worktree rows" (personal/tori, branch `misc-20260927`), commits 6cfe26b5, 2d139c7e, 4d8a5c5d, `src-tauri/src/forge/github.rs:780`, `src-tauri/src/forge/gitlab.rs:448`; plan \"Let a session watch a pull request and wake on changes\" (branch watch-pull-request, gettori/tickets#4), `src-tauri/src/forge/github.rs:838` (unit_statuses_watching)"
 ---
 
 # The forge rate budget (why a tick asks about a project)
@@ -18,6 +18,7 @@ GitHub allows 5,000 requests an hour per account. Tori watches N branch-units ac
 - **Caches and single-flight sit in Rust** (`status.rs:198` `SingleFlight`, `status.rs:78` `StatusCache`, `prs.rs:37` `PrCache`), so two triggers landing together (a focus event and an interval) make one request, and a panic inside a flight does not strand the callers waiting on it.
 - **Landing a pull request invalidates the whole repo.** `landing()` (`commands.rs`) drops both caches for that repo, and only on success. A merge changes every branch's answer, not just its own.
 - **Finished pull requests ride the same batch.** Each branch gets a second alias in the one GraphQL query for its newest merged or closed PR, without the check rollup, so GitHub pays nothing extra. GitLab lists by page, so it reads one extra `state=all` page only when some branch has no open MR, cached per project for 300s (`gitlab.rs:448`) and reread early only when a branch newly lost its open MR, because the base branch never has one and would otherwise cost a request every tick. See [[concept_a_finished_pull_request_is_kept_by_relation]].
+- **Watched pull requests ride the same batch.** A PR a chat watches is a `w{n}: pullRequest(number:n)` alias in its project's query, with comments, reviews, run ids and `isRequired` asked for that alias only, so a watch costs points but no request. With any watched alias the answer is read past alias errors, so a number the repo lacks fails only its own alias; the branch-only query still fails whole. A project with a watch is polled outside the active space. See [[component_pr_watch]].
 - **Issue calls carry their own gate, in Rust.** The backoff above lives in the webview, and a socket caller (the autopilot, the CLI) never passes through it. So every issue call goes through a per-account gate that closes on a `RateLimited` answer until the host's own deadline and refuses locally until then; an offline failure says nothing about the budget and leaves it alone. The assigned list sits behind a `FRESH_FOR` cache and a `SingleFlight`. See [[component_issue_source]].
 - **Assigned pickup rides the tick.** `pollProject` invokes `autopilot_pickup` once `mayPoll` passes, so the autopilot's intake shares this interval, focus trigger, pause, backoff and the `forge.enabled` kill switch, and adds no clock of its own. Its failure is caught apart, so it never feeds the status backoff. See [[adr_assigned_pickup_rides_the_forge_poll_tick]].
 
@@ -34,3 +35,4 @@ The plan named the rate budget the binding constraint before any code was writte
 - [[lesson_never_hold_a_cache_lock_across_a_network_call]] - the bug this layer's cache hit
 - [[component_issue_source]] - the on-demand caller that needed a gate of its own
 - [[concept_a_finished_pull_request_is_kept_by_relation]] - what the finished-PR aliases feed
+- [[component_pr_watch]] - the watched aliases and what reads them
