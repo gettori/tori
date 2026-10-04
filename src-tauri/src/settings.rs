@@ -927,6 +927,21 @@ pub struct Settings {
     pub autopilot: Autopilot,
     #[serde(default)]
     pub remote: Remote,
+    /// Keyed by project path, same shape and same reason as `chat`.
+    #[serde(default)]
+    pub worktree: std::collections::HashMap<String, WorktreePrefs>,
+}
+
+/// What a project does to a worktree Tori has just created for it.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreePrefs {
+    /// Run with `sh -c` in the new worktree. Empty runs nothing.
+    #[serde(default)]
+    pub setup_command: String,
+    /// Whether `worktree.new` and `session.spawn` wait for the command to exit.
+    #[serde(default)]
+    pub setup_wait: bool,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -2112,6 +2127,20 @@ mod tests {
     fn checkpoints_default_to_enabled() {
         assert!(Settings::default().checkpoints.enabled);
         assert!(Checkpoints::default().enabled);
+    }
+
+    #[test]
+    fn the_worktree_block_round_trips_and_a_file_without_it_runs_nothing() {
+        let p = tmp_file();
+        std::fs::write(&p, "{}").unwrap();
+        assert!(load_from(&p).worktree.is_empty());
+
+        let mut s = Settings::default();
+        s.worktree.insert("/p".into(), WorktreePrefs { setup_command: "pnpm install".into(), setup_wait: true });
+        save_to(&p, &s).unwrap();
+        assert!(std::fs::read_to_string(&p).unwrap().contains("\"setupCommand\""));
+        assert_eq!(load_from(&p).worktree, s.worktree);
+        std::fs::remove_file(&p).ok();
     }
 
     #[test]
