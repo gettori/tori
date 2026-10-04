@@ -226,7 +226,7 @@ fn entry_names(shared: &Path) -> Vec<(String, bool)> {
     out
 }
 
-/// What the Shared in worktrees page draws: the entries, and where each one
+/// What the Worktree settings page draws: the entries, and where each one
 /// did not land.
 #[tauri::command(async)]
 pub fn shared_overview(container: String) -> Result<SharedOverview, String> {

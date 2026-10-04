@@ -1845,7 +1845,7 @@ export default function LeftSidebar(props: {
     setBranchReq((r) => (r ? { ...r, locals, deleting: null } : r));
   }
 
-  /** The container's Shared in worktrees page, as an editor tab. The container
+  /** The container's Worktree settings page, as an editor tab. The container
    *  the tab's id, so the page reads the right one wherever the tab lands. */
   function openSharedFiles(p: Project) {
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("shared", p.path) });
@@ -2326,7 +2326,7 @@ export default function LeftSidebar(props: {
             { label: "Fan out", onClick: () => fanOut(p) },
             // Beside Add worktree on purpose: the menu that makes worktrees is
             // where you say what they are made with.
-            { label: "Shared in worktrees", onClick: () => openSharedFiles(p) },
+            { label: "Worktree settings", onClick: () => openSharedFiles(p) },
             { label: "Prune worktrees", onClick: () => void pruneWorktrees(p) },
           ],
           remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
@@ -2359,7 +2359,7 @@ export default function LeftSidebar(props: {
         return {
           rows: [
             { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
-            { label: "Shared in worktrees", onClick: () => openSharedFiles(p) },
+            { label: "Worktree settings", onClick: () => openSharedFiles(p) },
             { label: "Prune worktrees", onClick: () => void pruneWorktrees(p) },
           ],
           remove: {
