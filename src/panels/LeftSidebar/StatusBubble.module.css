@@ -13,7 +13,8 @@
 
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
    space's nearest rendered ancestor. Shows all four states, each with its own
-   glyph + hue, in priority order: waiting, executing, idle, running. */
+   glyph + hue, in priority order: waiting, pull request, executing, idle,
+   running. */
 .statusBubble {
   display: inline-flex;
   align-items: center;
@@ -32,6 +33,9 @@
 }
 .statusBubbleItem.waitingForApproval {
   color: var(--status-needs-you);
+}
+.statusBubbleItem.prAttention {
+  color: var(--attention-fg);
 }
 .statusBubbleItem.executing {
   color: var(--status-progress);
