@@ -7,6 +7,7 @@ import {
   CircleCheck,
   CircleDotDashed,
   CircleX,
+  FileDiff,
   MessageSquare,
   MessageSquareCheck,
   MessageSquareWarning,
@@ -143,14 +144,15 @@ export default function BranchLine(props: {
     ].filter((line): line is string => Boolean(line));
   };
 
-  const facts = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
+  // Ordered by what a reader most wants, because a fact that does not fit is
+  // dropped whole from the end (see `.line`): the number and its standing, the
+  // size of the change, and last the age and the comment count.
+  const standing = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
     <>
       <span class={`${styles.item} ${styles[`pr_${state()}`]}`} data-pr-state={state()}>
         <Icon icon={prIcon(state())} />
         {`#${p().number}`}
       </span>
-
-      <Show when={ended() ?? age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
 
       <Show when={badges().review}>
         {(r) => (
@@ -170,6 +172,24 @@ export default function BranchLine(props: {
           </span>
         )}
       </Show>
+    </>
+  );
+
+  const size = (s: () => NonNullable<BaseSync["stat"]>) => (
+    <>
+      <span class={styles.item} data-diff-lines>
+        <span class={styles.good}>{`+${s().insertions}`}</span>/<span class={styles.bad}>{`-${s().deletions}`}</span>
+      </span>
+      <span class={styles.item} data-diff-files={s().files}>
+        <Icon icon={FileDiff} />
+        {s().files}
+      </span>
+    </>
+  );
+
+  const history = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
+    <>
+      <Show when={ended() ?? age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
 
       <Show when={p().comments > 0}>
         <span class={styles.item} data-pr-comments={p().comments}>
@@ -177,17 +197,6 @@ export default function BranchLine(props: {
           {p().comments}
         </span>
       </Show>
-    </>
-  );
-
-  const diff = (s: () => NonNullable<BaseSync["stat"]>) => (
-    <>
-      <span class={styles.item} data-diff-files={s().files}>
-        {plural(s().files, "file")}
-      </span>
-      <span class={styles.item} data-diff-lines>
-        <span class={styles.good}>{`+${s().insertions}`}</span>/<span class={styles.bad}>{`-${s().deletions}`}</span>
-      </span>
     </>
   );
 
@@ -205,8 +214,9 @@ export default function BranchLine(props: {
           data-pr-line={pr() ? "" : undefined}
           label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
         >
-          <Show when={pr()}>{(p) => facts(p)}</Show>
-          <Show when={stat()}>{(s) => diff(s)}</Show>
+          <Show when={pr()}>{(p) => standing(p)}</Show>
+          <Show when={stat()}>{(s) => size(s)}</Show>
+          <Show when={pr()}>{(p) => history(p)}</Show>
         </Tooltip>
       )}
     </Show>
