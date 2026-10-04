@@ -123,6 +123,19 @@ pub fn body_span(name: &str, enter: f64, ret: f64) {
     );
 }
 
+/// The backend half of a chat open, joined to the frontend's `chat-open` note
+/// on `session` and `at`. `size_ms` is what counting `bytes` cost, so the report
+/// can take it back out of the round trip it inflated.
+pub fn chat_open(session: &str, at: f64, events: usize, read_ms: f64, bytes: usize, size_ms: f64) {
+    append(
+        &BACKEND,
+        &format!(
+            r#"{{"t":"chat-open","session":{},"at":{at:.1},"events":{events},"read":{read_ms:.1},"bytes":{bytes},"size":{size_ms:.1}}}"#,
+            json_string(session),
+        ),
+    );
+}
+
 /// Minimal JSON string escaping. Command and thread names are ASCII
 /// identifiers in practice; this exists so a stray quote cannot corrupt a line.
 fn json_string(s: &str) -> String {

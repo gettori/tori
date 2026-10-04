@@ -316,6 +316,33 @@ export function traceNote(name: string, data: Record<string, unknown>): void {
   flush();
 }
 
+/** The frontend half of a chat open, joined to the backend's `chat-open` line
+ *  on `session`. Null when tracing is off, so the open path pays one check.
+ *  `invoke` is the `chat_history` round trip, `fold` the history `edit`, and
+ *  `paint` runs from the invoke to two frames after the fold. */
+export function traceChatOpen(session: string): { replied(): void; folded(): void } | null {
+  if (!on) return null;
+  const start = wall();
+  let replied = 0;
+  return {
+    replied() {
+      replied = wall();
+    },
+    folded() {
+      const folded = wall();
+      afterPaint(() =>
+        traceNote("chat-open", {
+          session,
+          start: round(start),
+          invoke: round(replied - start),
+          fold: round(folded - replied),
+          paint: round(wall() - start),
+        }),
+      );
+    },
+  };
+}
+
 /** Drains the buffer, for a driver that is about to close the window. */
 export function traceFlush(): void {
   flush();
