@@ -315,7 +315,7 @@ export const SETTINGS: SettingEntry[] = [
     label: "Hosts",
     // The product names stay in the hint: the filter is fuzzy over both fields,
     // so "github" has to keep finding this section after the rename.
-    hint: "Accounts on GitHub, GitLab and self-hosted instances of either, signing in and out, and the integration's kill switch.",
+    hint: "Accounts on GitHub, GitLab and self-hosted instances of either, signing in and out, the integration's kill switch, and letting a chat watch a pull request.",
   },
 
   { id: "theme", section: "appearance", label: "Theme" },

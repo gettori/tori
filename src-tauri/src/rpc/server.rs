@@ -255,6 +255,15 @@ pub struct IssueGetParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct PrWatchParams {
+    /// The pull request's number, or its URL.
+    pub key: String,
+    /// The project folder. Left out, a URL key names the local project whose origin is that repo, else the
+    /// caller's own project.
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct PrGetParams {
     /// The pull request's number, or its URL.
     pub key: String,
@@ -641,6 +650,8 @@ pub trait Backend: Send + Sync {
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError>;
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
+    fn pr_watch(&self, principal: &Principal, params: PrWatchParams) -> Result<Value, RpcError>;
+    fn pr_unwatch(&self, principal: &Principal, params: PrWatchParams) -> Result<Value, RpcError>;
     fn autopilot_state(&self) -> Result<Value, RpcError>;
     fn autopilot_log(&self, params: LogParams) -> Result<Value, RpcError>;
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
@@ -991,6 +1002,12 @@ pub mod tests {
         fn pr_merge(&self, _: &Principal, p: PrMergeParams) -> Result<Value, RpcError> {
             Ok(json!({ "number": p.number }))
         }
+        fn pr_watch(&self, _: &Principal, p: PrWatchParams) -> Result<Value, RpcError> {
+            Ok(json!({ "key": p.key }))
+        }
+        fn pr_unwatch(&self, _: &Principal, p: PrWatchParams) -> Result<Value, RpcError> {
+            Ok(json!({ "key": p.key }))
+        }
         fn autopilot_state(&self) -> Result<Value, RpcError> {
             match &self.autopilot {
                 Some(store) => {
@@ -1233,6 +1250,23 @@ pub mod tests {
         assert!(err.message.contains("terminal") && err.message.contains("ask.create"), "{}", err.message);
         let chat = Principal::Session(Caller::Chat("s1".into()));
         assert!(server.dispatch(0, &chat, &request("ask.create", json!({"question": "q"}))).is_ok());
+    }
+
+    #[test]
+    fn only_a_chat_session_may_watch_a_pull_request() {
+        let server = stub_server();
+        let worker = Principal::Session(Caller::Chat(WORKER.into()));
+        for method in ["pr.watch", "pr.unwatch"] {
+            for caller in [Principal::Local, Principal::Session(Caller::Terminal("t1".into())), worker.clone()] {
+                let err = server.dispatch(0, &caller, &request(method, json!({"key": "1"}))).unwrap_err();
+                assert_eq!(err.code, REFUSED, "{method} {caller:?}");
+            }
+            let tab = Principal::Session(Caller::Terminal("t1".into()));
+            let err = server.dispatch(0, &tab, &request(method, json!({"key": "1"}))).unwrap_err();
+            assert!(err.message.contains("only a chat you drive can hold one"), "{}", err.message);
+            let chat = Principal::Session(Caller::Chat("s1".into()));
+            assert!(server.dispatch(0, &chat, &request(method, json!({"key": "1"}))).is_ok(), "{method}");
+        }
     }
 
     #[test]

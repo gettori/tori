@@ -16,7 +16,7 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, TopicPromoteParams, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, SessionAnswerParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, TopicPromoteParams, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, PrWatchParams, SessionAnswerParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
     SteerParams, TailParams, WaitParams, WorktreeParams,
 };
@@ -452,14 +452,13 @@ fn submit_pinned(
     number: u64,
     head_sha: &str,
     read_head: impl FnOnce() -> Result<String, crate::forge::ForgeError>,
-    submit: impl FnOnce() -> Result<(), crate::forge::ForgeError>,
-) -> Result<Value, RpcError> {
+    submit: impl FnOnce() -> Result<Option<String>, crate::forge::ForgeError>,
+) -> Result<Option<String>, RpcError> {
     let now = read_head().map_err(forge_refused)?;
     if now != head_sha {
         return Err(refused(format!("#{number} moved past {head_sha} to {now}, ask again")));
     }
-    submit().map_err(forge_refused)?;
-    Ok(json!({}))
+    submit().map_err(forge_refused)
 }
 
 // Past `cap` this says `running`, so a caller keeps waiting by asking again.
@@ -646,6 +645,19 @@ impl TauriBackend {
     ) -> Result<Value, RpcError> {
         let wanted = Approval { project: self.project(principal, project)?, draft };
         gated_by_approval(&self.asks.approvals, self.background_session(principal), &wanted, approval_id, || call(&wanted.project))
+    }
+
+    fn pr_target(&self, principal: &Principal, key: String, project: Option<String>) -> Result<(String, u64), RpcError> {
+        let (project, number) = match (project, pr_ref(&key)) {
+            (Some(project), named) => (project, named.map_or(key, |(_, n)| n)),
+            (None, Some((repo, n))) => {
+                let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
+                (project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?, n)
+            }
+            (None, None) => (self.project(principal, None)?, key),
+        };
+        let number = number.trim().trim_start_matches('#').parse::<u64>().map_err(|_| RpcError::new(INVALID_PARAMS, format!("{number} is not a pull request number or URL")))?;
+        Ok((project, number))
     }
 
     fn live_chat(&self, principal: &Principal, id: &str) -> Result<&crate::chat::host::ChatHost, RpcError> {
@@ -1199,15 +1211,7 @@ impl Backend for TauriBackend {
     }
 
     fn pr_get(&self, principal: &Principal, params: PrGetParams) -> Result<Value, RpcError> {
-        let (project, number) = match (params.project, pr_ref(&params.key)) {
-            (Some(project), named) => (project, named.map_or(params.key, |(_, n)| n)),
-            (None, Some((repo, n))) => {
-                let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
-                (project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?, n)
-            }
-            (None, None) => (self.project(principal, None)?, params.key),
-        };
-        let number = number.trim().trim_start_matches('#').parse::<u64>().map_err(|_| RpcError::new(INVALID_PARAMS, format!("{number} is not a pull request number or URL")))?;
+        let (project, number) = self.pr_target(principal, params.key, params.project)?;
         let mut pr = to_json(crate::forge::commands::pr_view(&project, number).map_err(forge_refused)?)?;
         pr["project"] = json!(project);
         Ok(pr)
@@ -1219,6 +1223,31 @@ impl Backend for TauriBackend {
         let outcome = crate::issues::commands::link(&project, &params.key, branch, params.base.as_deref())
             .map_err(forge_refused)?;
         Ok(json!({ "branch": branch, "outcome": outcome }))
+    }
+
+    fn pr_watch(&self, principal: &Principal, params: PrWatchParams) -> Result<Value, RpcError> {
+        let Principal::Session(Caller::Chat(session)) = principal else {
+            return Err(refused("only a chat session can hold a watch".into()));
+        };
+        let (project, number) = self.pr_target(principal, params.key, params.project)?;
+        let item = self.autopilot.item_for_session(session).is_some();
+        let watch = super::pr_watch::watch(session, &project, number, item).map_err(refused)?;
+        Ok(json!({ "url": watch.url, "watching": true, "next": "end your turn; Tori wakes you with news" }))
+    }
+
+    fn pr_unwatch(&self, principal: &Principal, params: PrWatchParams) -> Result<Value, RpcError> {
+        let Principal::Session(Caller::Chat(session)) = principal else {
+            return Err(refused("only a chat session can hold a watch".into()));
+        };
+        let (project, number) = self.pr_target(principal, params.key, params.project)?;
+        let held = super::pr_watch::store().list().into_iter().find(|w| {
+            &w.session == session && super::pr_watch::same_folder(&w.project, &project) && super::pr_watch::parse_url(&w.url).is_some_and(|(_, _, n)| n == number)
+        });
+        let stopped = match held {
+            Some(watch) => super::pr_watch::stop(session, &watch.url).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?,
+            None => false,
+        };
+        Ok(json!({ "stopped": stopped }))
     }
 
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError> {
@@ -1247,12 +1276,16 @@ impl Backend for TauriBackend {
         let draft = params.draft();
         let comments = params.comments.unwrap_or_default();
         self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
-            submit_pinned(
+            let posted = submit_pinned(
                 params.number,
                 &params.head_sha,
                 || crate::forge::commands::pull_request(project, params.number).map(|pr| pr.head_sha),
                 || crate::forge::commands::submit_review(project, params.number, params.event, &params.body, &comments, Some(&params.head_sha)),
-            )
+            )?;
+            if let (Some(id), Principal::Session(Caller::Chat(session))) = (posted, principal) {
+                super::pr_watch::tori_posted(session, project, params.number, &id);
+            }
+            Ok(json!({}))
         })
     }
 
@@ -1601,8 +1634,9 @@ mod tests {
             gated_by_approval(&approvals, Some("s1"), &review, Some(&id), || {
                 submit_pinned(45, "abc", || Ok(head.to_string()), || {
                     posts.set(posts.get() + 1);
-                    Ok(())
+                    Ok(None)
                 })
+                .map(|_| json!({}))
             })
         };
         let moved = attempt("def").unwrap_err();

@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
+    HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PrWatchParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
     SpawnParams, SteerParams, TailParams, TopicPromoteParams, WaitParams, WorktreeParams,
 };
 
@@ -53,6 +53,9 @@ const ANYONE_AND_DEVICES: &[CallerKind] =
 const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Device];
 // What a phone's screens read and switch, kept off every agent's tool list.
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
+const CHATS: &[CallerKind] = &[CallerKind::Chat];
+const WATCH_REFUSAL: &str =
+    "a watch wakes its chat with a new turn, so only a chat you drive can hold one; an autopilot worker's pull request already reaches the autopilot";
 
 /// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
 pub const WORKER_REFUSAL: &str = "a worker never spawns or steers; finish your turn and your spawner reads it";
@@ -408,6 +411,24 @@ pub static METHODS: &[Method] = &[
         call: |b, p, v| b.pr_merge(p, params(v)?),
     },
     Method {
+        name: "pr.watch",
+        description: "Watch one of your pull requests and be woken with its news: a check that failed, the checks passing, a comment or review from someone else, the branch starting to conflict, or the watch ending. Call it once, then end your turn; never poll or sleep for it. The news arrives as a new turn once you are idle. A wake is news, not a decision to merge.",
+        params: schema::<PrWatchParams>,
+        callers: CHATS,
+        refusal: Some(WATCH_REFUSAL),
+        outward: false,
+        call: |b, p, v| b.pr_watch(p, params(v)?),
+    },
+    Method {
+        name: "pr.unwatch",
+        description: "Stop watching a pull request this session watches.",
+        params: schema::<PrWatchParams>,
+        callers: CHATS,
+        refusal: Some(WATCH_REFUSAL),
+        outward: false,
+        call: |b, p, v| b.pr_unwatch(p, params(v)?),
+    },
+    Method {
         name: "projects.list",
         description: "The tree the sidebar draws, in its order: spaces with their projects and branch units (each with its issue key), then topics by name with their members.",
         params: no_params,
@@ -499,6 +520,33 @@ pub static METHODS: &[Method] = &[
     },
 ];
 
+// A row behind a setting is left off every tool list while the setting is off.
+pub fn offered(method: &Method) -> bool {
+    offered_with(method, crate::settings::pr_watch())
+}
+
+fn offered_with(method: &Method, pr_watch: bool) -> bool {
+    match method.name {
+        "pr.watch" | "pr.unwatch" => pr_watch,
+        _ => true,
+    }
+}
+
 pub fn find(name: &str) -> Option<&'static Method> {
     METHODS.iter().find(|m| m.name == name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_watch_tools_are_offered_only_while_the_setting_is_on() {
+        for name in ["pr.watch", "pr.unwatch"] {
+            let row = find(name).unwrap();
+            assert!(!offered_with(row, false), "{name} off");
+            assert!(offered_with(row, true), "{name} on");
+        }
+        assert!(offered_with(find("pr.get").unwrap(), false), "other rows ignore the setting");
+    }
 }

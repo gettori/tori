@@ -11,6 +11,7 @@ import {
   MessageSquare,
   MessageSquareCheck,
   MessageSquareWarning,
+  Eye,
   type LucideIcon,
 } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
@@ -74,6 +75,7 @@ export default function BranchLine(props: {
   /** The base the branch is measured against, whose `stat` is the diff a pull
    *  request of it shows. */
   base?: BaseSync | null;
+  watched?: boolean;
 }) {
   const pr = () => props.status?.pullRequest ?? null;
   const stat = () => {
@@ -141,6 +143,7 @@ export default function BranchLine(props: {
       b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
+      props.watched ? "A chat is watching it" : "",
     ].filter((line): line is string => Boolean(line));
   };
 
@@ -153,6 +156,12 @@ export default function BranchLine(props: {
         <Icon icon={prIcon(state())} />
         {`#${p().number}`}
       </span>
+
+      <Show when={props.watched}>
+        <span class={styles.item} data-pr-watched>
+          <Icon icon={Eye} />
+        </span>
+      </Show>
 
       <Show when={badges().review}>
         {(r) => (
