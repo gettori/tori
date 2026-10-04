@@ -1,7 +1,7 @@
 ---
 summary: steering a running turn needed its own transport verb, since reusing send would consume a switch queued for next turn
 status: current
-updated: 2026-07-29
+updated: 2026-10-05
 source: Chat surface plan, phase 8 (branch `chat`); `src-tauri/src/chat/` (`AgentTransport::steer`, `ChatCommand::Steer`, `chat_steer`); `src/panels/Chat/chatStore.ts` (`steerable`); commit "Steer a running turn instead of queuing behind it"
 ---
 
@@ -39,6 +39,8 @@ keeps its one byline. A replayed `userMessage` is never marked as a steer, since
 the wire frame carries no such distinction and guessing would label a message
 nothing recorded.
 
+**Option+Enter queues instead.** With a steerable agent Enter always steers, so the composer has one explicit key to queue for the next turn regardless. A queued message can still be steered later from its row or with Cmd+Shift+Enter; that goes through the same probe gate and `chat_steer`, but the entry stays queued until the steer lands, see [[concept_composer_queue]].
+
 ## Why it's this way
 
 **What could be verified offline, and what could not.** A spike established that
@@ -61,6 +63,7 @@ save the older.
 ## Related
 
 - [[component_chat_host]] - where the transport verb lives
+- [[concept_composer_queue]]: the queue a steer bypasses, and the steer a queued row makes
 - [[component_chat_panel]] - the composer, the indented steer row, the draft restore
 - [[concept_transport_neutral_event_model]] - why a new verb needed a neutrality check
 - [[concept_harness_capability_tiers]] - `canSteer` also requires the measured value
