@@ -629,6 +629,12 @@ export type ChatState = {
    *  This session's own record of the frame; what any surface *shows* is decided
    *  from `usageStore`, which merges every chat on the account. */
   rateLimit: RateLimitState | null;
+  /** The usage limit this session's last turn stopped on, while it is still in
+   *  force. Null once anything is sent again. */
+  limitStop: LimitStop | null;
+  /** The continue sent at a reset is in flight. Its turn completing releases
+   *  what the limit held in the queue, which no one pressed "send now" for. */
+  continuing: boolean;
   /** Monotonic id source, so replaying the same events twice yields the same
    *  item ids and tests can assert on them. */
   seq: number;
@@ -691,6 +697,8 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     totalCostUsd: null,
     turnsCompleted: 0,
     rateLimit: null,
+    limitStop: null,
+    continuing: false,
     seq: 0,
   };
 }
@@ -1587,6 +1595,11 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       addUsage(s.totalUsage, ev.usage);
       s.turnsCompleted += 1;
       if (ev.costUsd !== null) s.totalCostUsd = (s.totalCostUsd ?? 0) + ev.costUsd;
+      s.limitStop = ev.outcome === "errored" ? limitStopOf(s.rateLimit, ev.turnId, Date.now()) : null;
+      if (s.continuing) {
+        s.continuing = false;
+        if (ev.outcome === "completed") s.queueHeld = false;
+      }
       // The load-bearing distinction: an interrupt is a completion on the wire
       // but the opposite of one in intent.
       if (ev.outcome !== "completed") {
@@ -1667,6 +1680,7 @@ export function pushNotice(s: ChatState, text: string, level: NoticeItem["level"
 export function pushUserTurn(s: ChatState, blocks: ContentBlock[]) {
   push(s, { kind: "user", id: nextId(s, "user"), blocks, steer: false });
   s.awaitingTurn = true;
+  s.limitStop = null;
   // Stamped here as well as in `applyEvent`: this is the frame that starts the
   // model thinking, and it is one the transport never sends back.
   s.lastFrameAt = Date.now();
@@ -1825,6 +1839,17 @@ export function enqueue(s: ChatState, text: string, held = false): QueuedInput {
   const item: QueuedInput = held ? { id: nextId(s, "q"), text, held: true } : { id: nextId(s, "q"), text };
   s.queue.push(item);
   return item;
+}
+
+export type LimitStop = { turnId: string; resetsAt: number };
+
+/** A turn stopped by a usage limit: claude sends a `rejected` reading, then ends
+ *  the turn errored (`dev/fixtures/claude/usage-limit.jsonl`). A reset no later
+ *  than the turn's end is a window already gone, and arming on it would retry
+ *  into a loop. */
+export function limitStopOf(rl: RateLimitState | null, turnId: string, endedAtMs: number): LimitStop | null {
+  if (rl?.status !== "rejected" || rl.resetsAt === null || rl.resetsAt * 1000 <= endedAtMs) return null;
+  return { turnId, resetsAt: rl.resetsAt };
 }
 
 /** The next queued message that may be sent right now, or null. Null while a

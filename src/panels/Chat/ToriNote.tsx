@@ -27,6 +27,8 @@ export function toriLabel(note: ToriNote, sessionName: (id: string) => string | 
       return "Tori told this chat about its Topic";
     case "topic-changed":
       return "Tori told this chat its Topic changed";
+    case "limit-reset":
+      return "Tori continued after the usage limit reset";
     case "steer":
       return `From ${(note.from && sessionName(note.from)) || "another session"}`;
     default:

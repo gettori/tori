@@ -22,7 +22,18 @@ import LockedBar from "../../components/Autopilot/LockedBar";
 import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
-import { recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
+import { accountKey, recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
+import { toriText } from "../../utils/toriNote";
+import {
+  RESUME_ARMED,
+  RESUME_BUSY,
+  RESUME_STOPPED,
+  RESUME_TEXT,
+  arm,
+  armedFor,
+  cancel as cancelResume,
+  register as registerResume,
+} from "./resumeAtReset";
 import { askToTrust, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
 import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import {
@@ -1225,13 +1236,43 @@ export default function ChatView(props: {
     edit((s) => pushUserTurn(s, blocks));
     try {
       await invoke(command, { sessionId: props.sessionId, blocks });
+      return true;
     } catch (e) {
       edit((s) => {
         clearAwaitingTurn(s);
         applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: false });
       });
+      return false;
     }
   }
+
+  // The ceiling is checked here because `sendBlocks` does not: `onSend` and
+  // `pendingFlush` are where it lives, and this send goes through neither.
+  onCleanup(
+    registerResume(props.sessionId, async () => {
+      if (state.ended) return;
+      if (running()) {
+        edit((s) => pushNotice(s, RESUME_BUSY, "attention"));
+        return;
+      }
+      if (stopped()) {
+        edit((s) => pushNotice(s, RESUME_STOPPED, "error"));
+        return;
+      }
+      edit((s) => {
+        s.continuing = true;
+      });
+      const sent = await sendBlocks([{ type: "text", text: toriText("limit-reset", RESUME_TEXT) }]);
+      if (!sent) {
+        edit((s) => {
+          s.continuing = false;
+        });
+      }
+    }),
+  );
+  createEffect(() => {
+    if (state.ended) cancelResume(props.sessionId);
+  });
 
   // The flush driver. `takeForSend` is atomic precisely because this re-runs the
   // instant the state it reads changes: taking the message and marking the turn
@@ -1352,6 +1393,7 @@ export default function ChatView(props: {
     // message is queued rather than refused, so raising the limit sends what was
     // already typed instead of asking for it again - and it is *said*, because a
     // send that silently did nothing is the worst of the three outcomes.
+    cancelResume(props.sessionId);
     const held = stopped();
     if (held) {
       if (text) edit((s) => enqueue(s, text, command === "chat_send_held"));
@@ -1511,6 +1553,28 @@ export default function ChatView(props: {
    * account, which is how a banner stops being read.
    */
   const quotaBanner = () => quotaWindows().find((w) => w.state === "reached")?.sentence() ?? null;
+
+  // Off this session's own stop, never the account's banner: a sibling chat on
+  // the same login has nothing to continue.
+  const canResume = () =>
+    !!state.limitStop && findAdapter(props.agentId).chat?.transport === "claude_stream_json" && !props.cockpit && !locked();
+  const armResume = (byHand = false) => {
+    const stop = state.limitStop;
+    if (!stop || !canResume()) return;
+    arm({ sessionId: props.sessionId, accountKey: accountKey(props.agentId, resolvedProfile()), ...stop, byHand });
+  };
+  createEffect(() => {
+    if (settings.chatDefaults.resumeAtReset) armResume();
+  });
+  createEffect(
+    on(
+      () => settings.chatDefaults.resumeAtReset,
+      (enabled) => {
+        if (!enabled && armedFor(props.sessionId)?.byHand === false) cancelResume(props.sessionId);
+      },
+      { defer: true },
+    ),
+  );
 
   /** The windows this chat has already spoken about, keyed the way the store
    *  keys a transition. Per chat rather than shared: the news belongs in every
@@ -2058,7 +2122,24 @@ export default function ChatView(props: {
       <Show when={quotaBanner()}>
         {(message) => (
           <div class={`${styles.banner} ${styles.bannerReached}`}>
-            <span class={styles.bannerText}>{message()}</span>
+            <span class={styles.bannerText}>
+              {message()}
+              <Show when={canResume() && armedFor(props.sessionId)}> {RESUME_ARMED}</Show>
+            </span>
+            <Show when={canResume()}>
+              <Show
+                when={armedFor(props.sessionId)}
+                fallback={
+                  <Button size="sm" onClick={() => armResume(true)}>
+                    Resume at reset
+                  </Button>
+                }
+              >
+                <Button size="sm" onClick={() => cancelResume(props.sessionId)}>
+                  Cancel
+                </Button>
+              </Show>
+            </Show>
           </div>
         )}
       </Show>
