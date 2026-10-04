@@ -45,6 +45,7 @@ const SESSIONS = [
   "collapse-work",
   "answer-questions",
   "attach-long-pastes",
+  "resume-at-reset",
 ];
 
 /** The two option lists, module-level so they are not rebuilt per render. The
@@ -192,6 +193,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.chatDefaults.attachLongPastes}
             onChange={(attachLongPastes) => setChatDefaults({ attachLongPastes })}
             aria-label="Attach long pastes as files"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="resume-at-reset"
+          label="Resume at reset"
+          hint="On, a claude chat that stopped on a usage limit gets one message from Tori asking it to continue, shortly after the limit resets. Off, the limit banner can still do this for one chat."
+        >
+          <Switch
+            checked={settings.chatDefaults.resumeAtReset}
+            onChange={(resumeAtReset) => setChatDefaults({ resumeAtReset })}
+            aria-label="Resume at reset"
           />
         </Row>
       </Group>

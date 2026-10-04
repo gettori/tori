@@ -305,6 +305,9 @@ pub struct ChatDefaults {
     /// bare default so a file predating the switch does not read as off.
     #[serde(default = "yes")]
     pub attach_long_pastes: bool,
+    /// Read by the webview only, kept here so a save does not drop it.
+    #[serde(default)]
+    pub resume_at_reset: bool,
     /// How many live chats before Tori says the cost is adding up. **Zero means
     /// no cap.**
     ///
@@ -353,6 +356,7 @@ impl Default for ChatDefaults {
             collapse_work: false,
             answer_questions_inline: true,
             attach_long_pastes: true,
+            resume_at_reset: false,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
     }
@@ -1293,6 +1297,7 @@ mod tests {
                 collapse_work: true,
                 answer_questions_inline: false,
                 attach_long_pastes: false,
+                resume_at_reset: true,
                 max_concurrent_chats: 9,
             },
             agent: Agent {
@@ -1338,6 +1343,7 @@ mod tests {
         // Same trap for the paste switch: absent is on, not off.
         assert!(load_from(&p).chat_defaults.attach_long_pastes, "absent means on");
         assert!(!load_from(&p).chat_defaults.collapse_work, "absent means off");
+        assert!(!load_from(&p).chat_defaults.resume_at_reset, "absent means off");
         let _ = std::fs::remove_file(&p);
     }
 
