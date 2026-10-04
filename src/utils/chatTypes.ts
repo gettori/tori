@@ -918,6 +918,23 @@ export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; op
   close: { required: ["sessionId"] },
 };
 
+/// Where a page of history starts: the prompt whose turn it falls in, by its
+/// transcript timestamp, and how many events into that turn.
+export type HistoryCursor = { promptTs: number | null; offset: number };
+
+/// What the history before the tail leaves behind in the panel's state.
+export type HistorySummary = {
+  compactions: number;
+  compactionReclaimed: number;
+  contextTokens: number | null;
+  labels: string[];
+  laneEvents: unknown[];
+};
+
+/// What `chat_history` answers: the tail a chat opens with. Events are raw,
+/// parsed on fold like every other frame.
+export type HistoryTail = { summary: HistorySummary; events: unknown[]; cursor: HistoryCursor | null };
+
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------

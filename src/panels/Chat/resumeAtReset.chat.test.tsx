@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -26,7 +27,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "chat_spawn":
         return Promise.resolve({ ownership: { type: "granted", contested: false }, spawned: "started", profileId: "default" });
       case "chat_history":
-        return Promise.resolve([]);
+        return Promise.resolve(wholeHistory([]));
       case "chat_record_usage":
         return Promise.resolve({ session: recorded, project: recorded });
       case "chat_send":
