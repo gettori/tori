@@ -1,7 +1,7 @@
 ---
 summary: text Tori writes into a chat is wrapped in <tori kind="...">, drawn as a centred Tori row with an info card, never as the user's
 status: current
-updated: 2026-10-03
+updated: 2026-10-04
 source: branch orchestrator for gettori/tori#207, commits e44ef711, 290849c4, c6b82754; src-tauri/src/rpc/events.rs (from_tori); src/utils/toriNote.ts; src/panels/Chat/ToriNote.tsx; src/panels/Chat/MessageList.tsx; branch topic-metadata, src-tauri/src/rpc/events.rs (split_notes), src-tauri/src/chat/host.rs (note_for_next_turn, split_user_notes)
 ---
 
@@ -12,6 +12,7 @@ Tori puts text into chats it does not own a side of: the autopilot's brief, the 
 ## How it works
 
 - `events::from_tori(kind, from, text)` wraps it as `<tori kind="..." from="...">`, the text on its own lines, `</tori>`. Kinds today are `brief` (`runner.rs`), `wake` (the watcher in `rpc/mod.rs`), `resume` (`runner.rs`), and `steer` from a chat caller, with `from` naming the sender.
+- `limit-reset` is the one kind written by the chat panel rather than by Rust: `toriText` in `src/utils/toriNote.ts` builds it and `sendBlocks` sends it, once a usage limit has reset ([[concept_resume_at_reset]]). Its row reads "Tori continued after the usage limit reset".
 - Kinds added for Topics: `topic` (the Topic's note, at spawn, resume and after a compaction) and `topic-changed` (after a Topic change), plus `compacted` from the runner.
 - A note can also wait: `ChatHost::note_for_next_turn` queues it and `send` puts it ahead of the user's next message, so it never starts a turn of its own. A newer `topic` or `topic-changed` replaces an older one still waiting, and the queue dies with the session.
 - A queued note travels inside the user's message, so it is split off wherever that message is read: `split_user_notes` in `ChatHost::wrap` (live, the ACP echo and the mirror log), `history.rs` (replay) and `extract_text` and `clean_title` in `sessions.rs` (titles). All go through `events::split_notes`, which also peels a note joined into one string ([[gotcha_a_queued_note_is_the_first_block_of_the_users_message]]).
@@ -32,3 +33,4 @@ A marker in the text rather than a new event kind: the agent has to read it too,
 - [[component_autopilot_runner]]: the brief and the resume
 - [[concept_topic_home_chat_note]]: the `topic` notes
 - [[gotcha_a_queued_note_is_the_first_block_of_the_users_message]]: why every reader splits notes off
+- [[concept_resume_at_reset]]: the `limit-reset` note

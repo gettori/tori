@@ -46,3 +46,5 @@ Not built: gettori/tori#203 plans a refusal point for outward actions from a ses
 - [[gotcha_a_frontend_settings_key_with_no_rust_field_is_dropped_on_save]]
 - [[concept_quota_is_an_account_fact]] - the harness's own limits, which share this vocabulary and come from the account rather than from Tori.
 - [[adr_a_background_session_needs_a_tori_gate]] - the new refusal point, and why ceilings deliberately do not use it
+- [[concept_resume_at_reset]] - a send Tori starts by itself at a limit reset, which has to check the ceiling on its own
+- [[gotcha_sendblocks_does_not_check_the_spend_ceiling]] - why that check is needed
