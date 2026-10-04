@@ -41,3 +41,4 @@ It runs on its own thread, never inside a publish callback. The thread sleeps un
 - [[adr_a_workers_questions_bubble_up_to_its_spawner]]: why the autopilot no longer waits on workers
 - [[concept_tori_notes]]: how a wake is marked and drawn
 - [[adr_assigned_pickup_rides_the_forge_poll_tick]]: the pickup the item wakes come from
+- [[component_pr_watch]]: a sibling that copies these delivery rules for any chat watching a pull request

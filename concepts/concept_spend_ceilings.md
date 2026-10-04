@@ -1,8 +1,8 @@
 ---
 summary: chatBudget.ts enforces spend ceilings at the turn boundary, refusing the next turn, so a running turn always finishes
 status: current
-updated: 2026-08-14
-source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase 2, branch `chat-fix`); originally Chat surface plan, phase 7 (branch `chat`); `src/utils/chatBudget.ts`; `src/panels/Chat/chatStore.ts` (`pendingFlush`)"
+updated: 2026-10-04
+source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase 2, branch `chat-fix`); originally Chat surface plan, phase 7 (branch `chat`); `src/utils/chatBudget.ts`; `src/panels/Chat/chatStore.ts` (`pendingFlush`); plan \"Let a session watch a pull request and wake on changes\" (branch watch-pull-request, gettori/tickets#4), `src-tauri/src/rpc/mod.rs:491` (start_pr_wake)"
 ---
 
 # Spend ceilings
@@ -37,6 +37,10 @@ A chat stops when it reaches a cost or context ceiling. The enforcement point is
 
 Not built: gettori/tori#203 plans a refusal point for outward actions from a session flagged `background`, which undoes the premise above that with no gate there is no call to refuse. Ceilings stay at the turn boundary anyway, since widening that gate to cost would grow it back into the general permission layer [[adr_harness_breadth]] retired. See [[adr_a_background_session_needs_a_tori_gate]].
 
+## A turn Rust sends reads the ceiling off the reported state (2026-10-04)
+
+A pull request watch's wake is sent by Rust, so it never passes `pendingFlush`. It is held instead by sending only to a chat `SessionStates` reports `idle`: `applyBudget` sets `budgetStopped` right after the crossing turn ends, and `socketState` (`src/utils/sessionStatus.ts:113`) reports a stopped chat as `needs_you`. The 10 s idle debounce covers the moment between the turn ending and the stop landing. The autopilot's own wake does not do this yet. See [[adr_a_pr_watch_rides_the_poll_and_wakes_only_an_idle_chat]].
+
 ## Related
 
 - [[concept_harness_capability_tiers]] - where a harness's ability to carry one is published, and why ACP cannot
@@ -48,3 +52,4 @@ Not built: gettori/tori#203 plans a refusal point for outward actions from a ses
 - [[adr_a_background_session_needs_a_tori_gate]] - the new refusal point, and why ceilings deliberately do not use it
 - [[concept_resume_at_reset]] - a send Tori starts by itself at a limit reset, which has to check the ceiling on its own
 - [[gotcha_sendblocks_does_not_check_the_spend_ceiling]] - why that check is needed
+- [[component_pr_watch]] - a Rust-sent turn that gates on the reported state
