@@ -3,7 +3,7 @@ import { ArrowUp, Plus, Square, SquarePen, X } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
-import type { QueuedInput } from "./chatStore";
+import { queuedText, type QueuedInput } from "./chatStore";
 import {
   attachmentKind,
   checkAttachment,
@@ -147,7 +147,7 @@ function pickerAccept(uploads: AttachmentSource): string | undefined {
  * message *steers* it: sent straight away, picked up at the agent's next step.
  * Before that acknowledgement there is no turn to steer, so it queues, visibly.
  * The strip below the input is the queue, and every entry in it is removable.
- * When the turn was *cancelled* the queue is held rather than flushed (see
+ * When the turn was *cancelled* the queue is parked rather than flushed (see
  * `pendingFlush`), and the strip grows send-now and discard actions, because a
  * turn the user stopped must not fire the messages they stopped it to prevent.
  *
@@ -175,7 +175,7 @@ export default function Composer(props: {
   steerCost: string | null;
   queue: readonly QueuedInput[];
   attachments: readonly PendingBlock[];
-  held: boolean;
+  parked: boolean;
   disabled: boolean;
   /** This session's real command catalogue, from the `initialize` handshake. */
   commands: readonly SlashCommand[];
@@ -645,29 +645,44 @@ export default function Composer(props: {
       onDrop={onDrop}
     >
       <Show when={props.queue.length}>
-        <div class={`${styles.queue} ${props.held ? styles.queueHeld : ""}`}>
+        <div class={`${styles.queue} ${props.parked ? styles.queueParked : ""}`}>
           <span class={styles.queueLabel}>
-            {props.held
+            {props.parked
               ? `${props.queue.length} message${props.queue.length > 1 ? "s" : ""} held: the turn was stopped`
               : `Queued for the next turn`}
           </span>
           <For each={props.queue}>
-            {(q) => (
-              // The visible text is the queued message, so the name has to say
-              // what the button *does* to it - and name each row apart.
-              <Tooltip
-                as="button"
-                type="button"
-                class={styles.queueItem}
-                label="Remove from the queue"
-                aria-label={`Remove from the queue: ${q.text}`}
-                onClick={() => props.onDropQueued(q.id)}
-              >
-                {q.text}
-              </Tooltip>
-            )}
+            {(q) => {
+              const text = queuedText(q);
+              const attached = q.blocks.filter((b) => b.type !== "text");
+              const named = text || attached.map((b) => tokenOf(b) ?? tileName(b)).join(" ");
+              return (
+                // The visible text is the queued message, so the name has to say
+                // what the button *does* to it - and name each row apart.
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={styles.queueItem}
+                  label="Remove from the queue"
+                  aria-label={`Remove from the queue: ${named}`}
+                  onClick={() => props.onDropQueued(q.id)}
+                >
+                  <For each={attached}>
+                    {(b) => {
+                      const src = thumbSrc(b);
+                      return src ? (
+                        <img class={styles.queueThumb} src={src} alt="" />
+                      ) : (
+                        <span class={styles.queueRef}>{tokenOf(b) ?? tileName(b)}</span>
+                      );
+                    }}
+                  </For>
+                  {text}
+                </Tooltip>
+              );
+            }}
           </For>
-          <Show when={props.held}>
+          <Show when={props.parked}>
             <div class={styles.queueActions}>
               <Button size="sm" variant="primary" onClick={() => props.onSendQueued()}>
                 Send now

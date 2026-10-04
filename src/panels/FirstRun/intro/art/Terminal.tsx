@@ -138,7 +138,7 @@ function Session() {
         steerCost={null}
         queue={[]}
         attachments={[]}
-        held={false}
+        parked={false}
         disabled={false}
         commands={[]}
         loadFiles={async () => []}

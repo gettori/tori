@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyEvent, beginReconnect, chatStatus, connectionHealth, enqueue, initialChat } from "../panels/Chat/chatStore";
+import { applyEvent, beginReconnect, chatStatus, connectionHealth, enqueue, initialChat, queuedText } from "../panels/Chat/chatStore";
 import type { ChatEvent } from "./chatTypes";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
@@ -104,14 +104,14 @@ describe("beginReconnect", () => {
     applyEvent(s, started);
     applyEvent(s, turn("t1"));
     applyEvent(s, { type: "textDelta", sessionId: SESSION, turnId: "t1", text: "half an answer", agentId: null });
-    enqueue(s, "the thing I typed during the outage");
+    enqueue(s, [{ type: "text", text: "the thing I typed during the outage" }]);
     applyEvent(s, childDied);
 
     const itemsBefore = s.items.length;
     beginReconnect(s);
     expect(s.items.length).toBe(itemsBefore);
     expect(s.items.some((i) => i.kind === "text" && i.text === "half an answer")).toBe(true);
-    expect(s.queue.map((q) => q.text)).toEqual(["the thing I typed during the outage"]);
+    expect(s.queue.map(queuedText)).toEqual(["the thing I typed during the outage"]);
   });
 
   // The turn that was in flight died with the child. Leaving it marked running
