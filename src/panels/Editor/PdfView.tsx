@@ -499,7 +499,7 @@ function PdfDocumentView(props: {
     // which is why the text the button already read is re-read here rather than
     // trusted, and kept only as the fallback if the selection has since gone.
     if (streaming.size) {
-      await Promise.all([...streaming]);
+      await Promise.all(streaming);
       text = document.getSelection()?.toString() || text;
     }
     props.onQuote?.(text, s.first + 1, s.last);

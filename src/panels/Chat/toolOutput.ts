@@ -13,6 +13,7 @@ export const BODY_ROWS = 200;
 // shapes: an OSC string (a window title, say) running to its terminator, and
 // the CSI colours and cursor moves, which end at their final byte.
 const ANSI =
+  // oxlint-disable-next-line no-control-regex -- ESC and CSI are what an ANSI sequence is made of
   /\u001B\][\s\S]*?(?:\u0007|\u001B\\)|[\u001B\u009B][[()#;?]*(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]/g;
 
 export function stripAnsi(text: string): string {

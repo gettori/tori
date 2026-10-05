@@ -115,6 +115,19 @@ export default defineConfig(async ({ command }) => ({
     ],
   },
 
+  lint: {
+    rules: {
+      // Every hit is a Solid `let el!: T` handed to `ref={el}`, which the Solid
+      // compiler assigns; the linter only sees a variable nothing writes.
+      "no-unassigned-vars": "off",
+      // `for (const l of [...listeners])` is a snapshot: a listener that
+      // unsubscribes mid-loop would otherwise make the loop skip the next one.
+      "unicorn/no-useless-spread": "off",
+      // A leading underscore marks a binding left unused on purpose.
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true }],
+    },
+  },
+
   plugins: lazyPlugins(() => [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])]),
 
   // The syntax worker loads each grammar by dynamic import, and an iife worker

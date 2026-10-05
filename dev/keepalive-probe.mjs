@@ -95,7 +95,8 @@ class Cdp {
       if (msg.id && this.pending.has(msg.id)) {
         const { resolve, reject } = this.pending.get(msg.id);
         this.pending.delete(msg.id);
-        msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
+        if (msg.error) reject(new Error(msg.error.message));
+        else resolve(msg.result);
       }
     });
   }

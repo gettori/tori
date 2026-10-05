@@ -286,7 +286,10 @@ function FileRow(props: {
                   onInput={(ev) => setName(ev.currentTarget.value)}
                   onKeyDown={(ev) => {
                     if (ev.key === "Enter") void create();
-                    if (ev.key === "Escape") (setNaming(false), setError(null));
+                    if (ev.key === "Escape") {
+                      setNaming(false);
+                      setError(null);
+                    }
                   }}
                 />
                 <Button size="sm" disabled={busy()} onClick={() => void create()}>

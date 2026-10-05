@@ -78,7 +78,7 @@ function refusalAt(folder: string | null | undefined, agentId: string, profile: 
 
 /** Replace the rows one project allows. None removes the rule. */
 export function setProjectRows(projectPath: string, rows: AgentRow[]): Promise<void> {
-  const next = { ...(settings.projectAgents ?? {}) };
+  const next = { ...settings.projectAgents };
   if (rows.length) next[projectPath] = rows;
   else delete next[projectPath];
   return saveSettings({ ...settings, projectAgents: next });

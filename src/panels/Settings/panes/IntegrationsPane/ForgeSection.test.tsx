@@ -123,7 +123,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       }
       case "forge_set_app_id": {
         const url = args?.baseUrl as string;
-        const id = (args?.appId as string).trim();
+        const id = (args!.appId as string).trim();
         const host = new URL(url).host;
         if (id) appIds[host] = id;
         else delete appIds[host];

@@ -213,7 +213,6 @@ vi.mock("@tauri-apps/api/core", () => ({
       // measures the answer's length rather than try/catching it, so `null`
       // would be a crash rather than an empty timeline.
       case "checkpoint_list":
-      case "backstop_list":
         return Promise.resolve([]);
       // checkpoint_turn_files / git_ahead_behind / git_origin /
       case "git_fetch_quiet":

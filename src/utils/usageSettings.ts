@@ -164,9 +164,9 @@ export function usageNotify(agentId: string, profile: string | null): boolean {
  */
 function patchAccount(agentId: string, profile: string | null, patch: Partial<AccountUsage>): Promise<void> {
   const id = asProfileId(profile);
-  const usage = { ...(settings.agent?.usage ?? {}) };
+  const usage = { ...settings.agent?.usage };
   const forAgent = usage[agentId] ?? {};
-  const accounts = { ...(forAgent.accounts ?? {}) };
+  const accounts = { ...forAgent.accounts };
   accounts[id] = { ...accounts[id], ...patch };
   usage[agentId] = { ...forAgent, accounts };
   return saveSettings({ ...settings, agent: { ...settings.agent, usage } });

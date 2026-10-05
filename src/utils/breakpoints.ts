@@ -49,7 +49,7 @@ export function setFileBreakpoints(
   const next = [...new Set(lines)].sort(ascending);
   const before = breakpointsFor(store, ws, path);
   if (before.length === next.length && before.every((line, i) => line === next[i])) return store;
-  const files = { ...(store[ws] ?? {}) };
+  const files = { ...store[ws] };
   if (next.length) files[path] = next;
   else delete files[path];
   const out = { ...store };

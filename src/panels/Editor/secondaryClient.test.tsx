@@ -96,7 +96,7 @@ describe("SecondaryClient", () => {
       "textDocument/didChange",
       "textDocument/didChange",
     ]);
-    expect(frames.map((f) => (f.params?.textDocument as { version: number }).version)).toEqual([0, 1, 2]);
+    expect(frames.map((f) => (f.params!.textDocument as { version: number }).version)).toEqual([0, 1, 2]);
     expect(frames[2].params?.contentChanges).toEqual([
       { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 5 } }, text: "let" },
     ]);
