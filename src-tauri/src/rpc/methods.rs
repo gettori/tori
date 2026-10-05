@@ -137,8 +137,8 @@ type Read = Arc<(Vec<ChatEvent>, Vec<(u64, usize)>)>;
 
 // A client pages one session back a page at a time, so its last read is kept
 // until the file under it changes rather than mapped again for every page.
-static LAST_READ: std::sync::Mutex<Option<(String, Option<(std::time::SystemTime, u64)>, Read)>> =
-    std::sync::Mutex::new(None);
+type LastRead = Option<(String, Option<(std::time::SystemTime, u64)>, Read)>;
+static LAST_READ: std::sync::Mutex<LastRead> = std::sync::Mutex::new(None);
 
 fn read_cached(id: &str, from: &HistorySource, agent: &str) -> Read {
     let path = match from {

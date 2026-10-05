@@ -160,6 +160,7 @@ fn fast_mode_note(reason: Option<&str>) -> String {
 ///
 /// Kept here with its test so the measurement outlives the control it did not
 /// justify. Whatever surface eventually offers launch flags is where it belongs.
+#[cfg(test)]
 const THINKING_MODES: [&str; 3] = ["enabled", "adaptive", "disabled"];
 
 /// The levers claude has for one model, in the shape the mirror renders.
@@ -1890,7 +1891,7 @@ mod tests {
                 ChatEvent::SubagentUpdate { status: Some(s), .. } => Some(s.as_str()),
                 _ => None,
             })
-            .last();
+            .next_back();
         assert_eq!(terminal, Some("completed"), "the subagent's last reported status");
     }
 

@@ -452,6 +452,10 @@ pub struct PtySpawnResult {
 // check-then-insert below is only safe single-threaded), and the body is an
 // openpty plus a posix_spawn, a few milliseconds at worst.
 #[tauri::command]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a Tauri command: the arguments are the fields of the IPC payload"
+)]
 pub fn pty_spawn(
     app: AppHandle,
     state: State<PtyState>,
@@ -636,7 +640,7 @@ pub fn pty_spawn(
                     .map(|g| g.contains_key(&seed_id))
                     .unwrap_or(false)
             };
-            match seeder.run(&live, &SEED_TIMINGS) {
+            match seeder.run(live, &SEED_TIMINGS) {
                 Seeded::Refused(foreground) => {
                     seed_busy.store(false, Ordering::Relaxed);
                     let _ = seed_app.emit(
@@ -647,7 +651,7 @@ pub fn pty_spawn(
                         },
                     );
                 }
-                Seeded::Typed if track_busy => seeder.watch_busy(&live, &seed_busy, |busy| {
+                Seeded::Typed if track_busy => seeder.watch_busy(live, &seed_busy, |busy| {
                     let _ = seed_app.emit(
                         "pty://busy",
                         BusyEvent {

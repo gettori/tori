@@ -4,6 +4,11 @@
 //! repo's account pick, renewal on a rejected token) and then goes through the
 //! rate [`gate`](super::gate).
 
+#![allow(
+    clippy::result_large_err,
+    reason = "a Tauri command result, serialized to the webview once per call; boxing the error saves a copy nothing pays for"
+)]
+
 use super::gate::gate;
 use super::store::{self, UnitIssue};
 use super::{offers_issues, Issue, IssueRef, IssueSource, LinkOutcome};

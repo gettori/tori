@@ -285,6 +285,8 @@ fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<CaptureAck
 // Server (hosted by the app)
 // ---------------------------------------------------------------------------
 
+type Guard = Box<dyn Fn(&HookRequest) -> Option<String> + Send + Sync>;
+
 /// The live capture server.
 pub struct CaptureServer {
     token: String,
@@ -299,7 +301,7 @@ pub struct CaptureServer {
     /// about to be written is captured *on the way past*.
     observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
     /// Asked first; a reason refuses the write, which then has nothing to capture.
-    guard: Box<dyn Fn(&HookRequest) -> Option<String> + Send + Sync>,
+    guard: Guard,
 }
 
 impl Drop for CaptureServer {
@@ -351,7 +353,7 @@ impl CaptureServer {
 /// request payload, where it costs nothing.
 pub fn start_guarded(
     observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
-    guard: Box<dyn Fn(&HookRequest) -> Option<String> + Send + Sync>,
+    guard: Guard,
 ) -> std::io::Result<Arc<CaptureServer>> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
@@ -968,7 +970,7 @@ mod tests {
     /// rather than one Tori can explain.
     #[test]
     fn toris_deadline_is_strictly_inside_the_one_the_cli_is_told() {
-        assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS);
+        const { assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS) };
         let settings: Value = serde_json::from_str(&settings_json(
             Path::new("/bin/tori"),
             Path::new("/tmp/s"),

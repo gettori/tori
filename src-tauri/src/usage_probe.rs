@@ -198,7 +198,7 @@ fn exchange(mut stdin: impl Write, stdout: impl BufRead, methods: &[&str]) -> Re
         send: &mut impl FnMut(Value) -> Result<(), String>,
         id: u64,
     ) -> Result<Value, String> {
-        while let Some(line) = lines.next() {
+        for line in lines.by_ref() {
             let line = line.map_err(|e| format!("codex app-server went away: {e}"))?;
             let Ok(msg) = serde_json::from_str::<Value>(&line) else {
                 continue;

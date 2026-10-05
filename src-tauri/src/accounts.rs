@@ -156,7 +156,7 @@ impl Default for AccountsFile {
 /// Every profile for `adapter_id`, default first when [`default_present`] says
 /// it exists.
 pub fn profiles_for(file: &AccountsFile, adapter_id: &str) -> Vec<Profile> {
-    let present = crate::agents::find(adapter_id).map_or(true, default_present);
+    let present = crate::agents::find(adapter_id).is_none_or(default_present);
     profiles_for_with(file, adapter_id, present)
 }
 
@@ -1314,7 +1314,7 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         let counts = account_counts(&file);
-        let claude_default = crate::agents::find("claude").map_or(true, default_present) as usize;
+        let claude_default = crate::agents::find("claude").is_none_or(default_present) as usize;
         assert_eq!(
             counts.get("claude"),
             Some(&(claude_default + 1)),

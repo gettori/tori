@@ -255,7 +255,7 @@ impl Hub {
 
     pub fn publish(&self, channel: &Channel, data: Value) {
         let line = event_line(channel, data);
-        let mut inner = self.lock();
+        let inner = self.lock();
         if let Channel::Chat(session) = channel {
             for conn in inner.conns.values().filter(|c| c.channels.contains(channel)) {
                 conn.chat.push(session, line.clone());

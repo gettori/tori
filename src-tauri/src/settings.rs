@@ -928,8 +928,8 @@ pub struct Settings {
     #[serde(default)]
     pub editor_defaults: EditorDefaults,
     /// Read from `harness` too, because that is what this block was called on
-    /// disk until the vocabulary was unified. Dropping the alias would not error
-    /// - it would silently read the default and lose a user's binary override,
+    /// disk until the vocabulary was unified. Dropping the alias would not error,
+    /// it would silently read the default and lose a user's binary override,
     /// which is exactly the kind of loss nobody reports as a bug.
     #[serde(default, alias = "harness")]
     pub agent: Agent,
@@ -2281,11 +2281,13 @@ mod tests {
         assert_eq!(load_from(&p).remote, Remote::default());
         assert!(!Remote::default().enabled);
 
-        let mut s = Settings::default();
-        s.remote = Remote {
-            enabled: true,
-            address: Some("100.64.1.2".into()),
-            port: 9000,
+        let s = Settings {
+            remote: Remote {
+                enabled: true,
+                address: Some("100.64.1.2".into()),
+                port: 9000,
+            },
+            ..Settings::default()
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p).remote, s.remote);

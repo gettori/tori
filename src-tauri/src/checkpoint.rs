@@ -731,9 +731,7 @@ pub struct CheckpointFile {
 pub(crate) fn parse_name_status(text: &str) -> Vec<CheckpointFile> {
     text.lines()
         .filter_map(|line| {
-            let mut parts = line.splitn(2, '\t');
-            let code = parts.next()?;
-            let path = parts.next()?;
+            let (code, path) = line.split_once('\t')?;
             let status = match code.chars().next()? {
                 'A' => "added",
                 'D' => "deleted",

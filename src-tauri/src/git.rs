@@ -978,7 +978,9 @@ pub fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
     )?;
     let fields: Vec<&str> = out.split('\0').collect();
     Ok(fields
-        .chunks_exact(5)
+        .as_chunks::<5>()
+        .0
+        .iter()
         .map(|c| {
             let (branch, message) = split_stash_subject(c[2]);
             StashEntry {
@@ -1112,7 +1114,7 @@ pub(crate) fn git_stash_apply_body(
     let fields: Vec<&str> = names.split('\0').collect();
     let mut restored = Vec::new();
     let mut deleted = Vec::new();
-    for pair in fields.chunks_exact(2) {
+    for pair in fields.as_chunks::<2>().0 {
         // A stash can record a deletion, so applying one removes a file.
         if pair[0].starts_with('D') {
             deleted.push(pair[1].to_string());
@@ -1262,7 +1264,9 @@ fn parse_log(
 ) -> Vec<LogEntry> {
     let fields: Vec<&str> = text.split('\0').collect();
     fields
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|c| LogEntry {
             sha: c[0].to_string(),
             short: c[1].to_string(),
@@ -1561,7 +1565,7 @@ fn parse_commit_files(text: &str) -> Vec<CommitFile> {
 
 fn parse_commit_meta(text: &str, files: Vec<CommitFile>) -> Option<CommitDetail> {
     let fields: Vec<&str> = text.split('\0').collect();
-    let c = fields.chunks_exact(9).next()?;
+    let c = fields.as_chunks::<9>().0.first()?;
     Some(CommitDetail {
         sha: c[0].to_string(),
         short: c[1].to_string(),
@@ -2079,7 +2083,7 @@ fn next_op_id() -> String {
 /// Build a `git -C <repo>` command wired to the askpass credential bridge:
 /// `GIT_ASKPASS`/`SSH_ASKPASS` point at Tori's own binary (re-exec'd as the
 /// helper), `SSH_ASKPASS_REQUIRE=force` makes ssh use it without a TTY (OpenSSH
-/// >= 8.4), `GIT_TERMINAL_PROMPT=0` forbids any terminal fallback (fail closed),
+/// 8.4 or later), `GIT_TERMINAL_PROMPT=0` forbids any terminal fallback (fail closed),
 /// `LC_ALL=C` keeps prompt wording stable for `kind` parsing, and
 /// `StrictHostKeyChecking=accept-new` handles first-contact SSH host keys (TOFU:
 /// auto-add an unknown host, still reject a *changed* key). The op id and socket

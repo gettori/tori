@@ -652,12 +652,6 @@ mod tests {
         assert!(logout(std::path::Path::new("/bin/sh"), &cfg, None).is_ok());
     }
 
-    /// The custody boundary, where Phase 0 measured the secrets actually are.
-    ///
-    /// On darwin `claude` keeps its tokens in the login Keychain under
-    /// `"Claude Code-credentials-" + sha256($CLAUDE_CONFIG_DIR)[:8]`, so
-    /// inspecting a profile home proves nothing: it holds no credentials to find.
-    /// What can be asserted is that Tori never goes near the place that does.
     // --- the login ladder ---
 
     fn bundled(id: &str) -> crate::agents::AgentAdapter {
@@ -752,6 +746,13 @@ mod tests {
         }
     }
 
+    /// The custody boundary, where Phase 0 measured the secrets actually are.
+    ///
+    /// On darwin `claude` keeps its tokens in the login Keychain under
+    /// `"Claude Code-credentials-" + sha256($CLAUDE_CONFIG_DIR)[:8]`, so
+    /// inspecting a profile home proves nothing: it holds no credentials to find.
+    /// What can be asserted is that Tori never goes near the place that does.
+    ///
     /// Source text rather than behaviour, because the claim is "no code path
     /// does this", which no single run can demonstrate.
     ///

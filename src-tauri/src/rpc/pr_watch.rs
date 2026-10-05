@@ -27,6 +27,10 @@ pub enum PrState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "mirrors GitHub's MERGEABLE state; Clean would read as its CLEAN merge status"
+)]
 pub enum Mergeable {
     Mergeable,
     Conflicting,
@@ -1050,7 +1054,7 @@ mod tests {
         assert_eq!(watches.len(), 1, "the first read records the head");
         let after_first = watches[0].clone();
         assert!(fold_into(
-            &[after_first.clone()],
+            std::slice::from_ref(&after_first),
             "o",
             "r",
             &Read::Fetched(vec![(7, Some(quiet.clone()))]),
