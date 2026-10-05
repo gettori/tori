@@ -16,7 +16,8 @@
     "test": "node scripts/check-tokens.mjs && vp test run",
     "check:tokens": "node scripts/check-tokens.mjs",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "prepare": "vp config --no-agent"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

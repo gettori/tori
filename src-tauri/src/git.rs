@@ -1170,6 +1170,14 @@ pub async fn git_commit(
     .await
 }
 
+/// Every commit and push Tori makes passes this. A repo's hooks are written for
+/// a terminal: inside the app they would block the UI for a whole pre-push
+/// build, or fail on tools that are not on the app's PATH. CI is the backstop.
+const SKIP_HOOKS: &str = "--no-verify";
+
+/// The same, for `--continue`, which commits without taking `--no-verify`.
+const HOOKS_OFF: [&str; 2] = ["-c", "core.hooksPath=/dev/null"];
+
 pub(crate) fn git_commit_body(
     project_path: String,
     message: String,
@@ -1180,7 +1188,7 @@ pub(crate) fn git_commit_body(
     if message.is_empty() {
         return Err("Commit message is empty".into());
     }
-    let mut args = vec!["commit"];
+    let mut args = vec!["commit", SKIP_HOOKS];
     if amend.unwrap_or(false) {
         args.push("--amend");
     }
@@ -2467,7 +2475,7 @@ pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &
     let set_upstream = !has_upstream(repo, branch);
     let mut cmd = git_command(repo, &op_id, sock, token);
     let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);
-    cmd.arg("push");
+    cmd.arg("push").arg(SKIP_HOOKS);
     if set_upstream {
         cmd.arg("--set-upstream");
     }
@@ -2502,7 +2510,7 @@ pub fn push_sha(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Path, 
     let op_id = next_op_id();
     let mut cmd = git_command(repo, &op_id, sock, token);
     let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);
-    cmd.args(["push", remote, &format!("{sha}:refs/heads/{branch}")]);
+    cmd.args(["push", SKIP_HOOKS, remote, &format!("{sha}:refs/heads/{branch}")]);
     match crate::git_health::run(&mut cmd) {
         Ok(o) if o.status.success() => Ok(()),
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
@@ -3507,7 +3515,7 @@ fn integrate(repo: &str, args: &[&str]) -> Result<IntegrateOutcome, String> {
 pub async fn git_merge(project_path: String, branch: String, no_ff: Option<bool>) -> Result<IntegrateOutcome, String> {
     crate::exec::git_write("git_merge", project_path.clone(), move || {
         not_an_option(&branch)?;
-        let mut args = vec!["merge"];
+        let mut args = vec!["merge", SKIP_HOOKS];
         if no_ff.unwrap_or(false) {
             args.push("--no-ff");
         }
@@ -3563,14 +3571,14 @@ pub async fn git_continue(project_path: String) -> Result<IntegrateOutcome, Stri
             return Err("Resolve the conflicted files first.".into());
         }
         let op = crate::conflict::git_conflict_op(project_path.clone())?;
-        let args: &[&str] = match op {
+        let op_args: &[&str] = match op {
             crate::conflict::ConflictOp::Merge => &["merge", "--continue"],
             crate::conflict::ConflictOp::Rebase => &["rebase", "--continue"],
             crate::conflict::ConflictOp::CherryPick => &["cherry-pick", "--continue"],
             crate::conflict::ConflictOp::Revert => &["revert", "--continue"],
             crate::conflict::ConflictOp::None => return Err("Nothing to continue".into()),
         };
-        integrate_edited(&project_path, args, None)
+        integrate_edited(&project_path, &[&HOOKS_OFF[..], op_args].concat(), None)
     })
     .await
 }
@@ -4269,6 +4277,43 @@ diff --git a/f b/f
             err.contains("rejected") || err.contains("non-fast-forward"),
             "never forced: {err}"
         );
+        std::fs::remove_dir_all(&local).ok();
+        std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn toris_commits_and_pushes_skip_the_repos_hooks() {
+        let (local, remote) = repo_with_remote();
+        let (p, r) = (
+            local.to_string_lossy().into_owned(),
+            remote.to_string_lossy().into_owned(),
+        );
+        // Local hooksPath wins over any global one, so the hooks are live here.
+        let hooks = local.join("refusing-hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        for name in ["pre-commit", "pre-push"] {
+            let hook = hooks.join(name);
+            std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+            std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        }
+        git(&local, &["config", "core.hooksPath", &hooks.to_string_lossy()]);
+        git(&local, &["config", "user.name", "t"]);
+        git(&local, &["config", "user.email", "t@t.test"]);
+        std::fs::write(local.join("f.txt"), "v2").unwrap();
+        git(&local, &["add", "f.txt"]);
+        let refused = crate::exec::git_in(&p).args(["commit", "-m", "x"]).output().unwrap();
+        assert!(!refused.status.success(), "the hook is live");
+
+        git_commit_body(p.clone(), "through the hook".into(), None, None).unwrap();
+        let sock = Path::new("/tmp/tori-skip-hooks-test/s");
+        push_branch(&p, "origin", "main", sock, "tok").unwrap();
+        assert_eq!(
+            git_capture(&r, &["rev-parse", "refs/heads/main"]).unwrap(),
+            git_capture(&p, &["rev-parse", "main"]).unwrap()
+        );
+        let feature = git_capture(&p, &["rev-parse", "feature"]).unwrap();
+        push_sha(&p, "origin", "feature", &feature, sock, "tok").unwrap();
+        assert_eq!(git_capture(&r, &["rev-parse", "refs/heads/feature"]).unwrap(), feature);
         std::fs::remove_dir_all(&local).ok();
         std::fs::remove_dir_all(&remote).ok();
     }
