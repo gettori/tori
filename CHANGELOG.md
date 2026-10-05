@@ -21,6 +21,57 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
   never showed. Its click opens that exact release, and when Homebrew installed
   Tori it offers Install, which runs `brew upgrade --cask tori` in a terminal
   tab and offers to relaunch once it finishes.
+- The chat queue does more. Option+Enter queues for the next turn even when
+  the agent can steer, and Enter still steers. A queued message keeps its
+  attachments, and each row has a drag handle, Steer now, Edit and Remove.
+  Edit opens it in the composer and sets your draft aside until you save or
+  cancel; Option+Up edits the latest one. Cmd+Shift+Enter steers the oldest
+  queued message. The queue survives a reload or relaunch and comes back
+  parked, so nothing goes out until Send now.
+- Cmd+S in the chat composer stashes the draft with its attachments and
+  empties the box. In an empty box Cmd+S brings it back, or opens a menu when
+  more than one is stashed. Up to 20 are kept, across chats and relaunches.
+- A chat can watch a pull request. Turn on "Let a chat watch a pull request"
+  under Settings > Hosts, then start a watch from the branch row's pull
+  request menu or let the agent call it through Tori's MCP tools. Tori wakes
+  the chat once it is idle when a check fails, the checks pass, the branch
+  conflicts, or someone else comments or reviews. Each wake is a paid turn, so
+  wakes are at most one per five minutes.
+- Resume at reset: a Claude chat that stopped on a usage limit continues by
+  itself shortly after the limit resets. Off by default, under Settings >
+  Chat, or for one chat from the limit banner. The queue and the spend ceiling
+  still apply.
+- A project can have a worktree setup command, set on the Worktree settings
+  page (it was Shared in worktrees). It runs in every worktree Tori creates,
+  never on reuse and never on a fork's pull request, and a toast says when it
+  finishes or fails, with the log one click away. With "wait" on, the
+  autopilot and spawned sessions wait for it before starting.
+- Space tiles can sit in a rail down the sidebar's left edge (Settings >
+  Appearance > Space tiles: Left). The rail scrolls, has a New space tile and
+  stays on screen when the sidebar is hidden. With the bottom strip, hiding
+  the sidebar leaves a status chip, so a session waiting on you still shows.
+- Find and replace in the editor floats over its top right corner: inline
+  toggles, a match count inside the field, search as you type, and replace
+  behind a chevron.
+- A branch row shows its diff size and uncommitted work on its second line,
+  and a pull request needing attention gets its own mark. The Changes tab is
+  titled with its branch.
+- A changed file's diff opens as a preview tab, pinned on double click. Tabs
+  show their git status letter, and a diff tab's icon shows its mode.
+- A chat draft opened in the editor is a prompt-N tab with a check to send it
+  back.
+- Tooltips open after 700ms and close as soon as you leave.
+- A session spawned from a chat starts in that chat's mode and model.
+- A Topic chat is told its Topic with its first message, again after a
+  compaction, and on every change to the Topic, not only a new folder. A
+  worktree made outside Tori on the Topic branch is adopted as a member.
+- Long chats open faster: Tori loads the tail of the history and pages older
+  rows in as you scroll up. Code highlighting runs off the main thread, so a
+  streaming reply no longer stutters, mermaid diagrams draw only once on
+  screen, and a large markdown preview renders in slices instead of freezing
+  the window.
+- Tori grew sluggish after hours of "needs you" notifications answered from
+  the phone. A notification is now taken down once its session moves on.
 
 ## 26.1002.1-alpha
 
