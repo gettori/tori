@@ -1,0 +1,6 @@
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
+# Both halves of the universal macOS bundle release.yml builds. The Android
+# targets stay with scripts/release.sh, which adds them before its APK build.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

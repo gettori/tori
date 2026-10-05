@@ -1,4 +1,6 @@
-# The gate: type-check, the vitest suite and the Rust tests, on every push and PR.
+# The gate: type-check, the vitest suite, both vite builds and the Rust tests,
+# on every push and PR. Each job runs one target of scripts/check.sh, so the
+# list of checks lives there and a local `scripts/check.sh all` is this run.
 #
 # It exists because a guard nothing runs is only a suggestion. `src/lib/` holds
 # the whole of Tori's contact surface with its headless-primitives library, and
@@ -34,35 +36,26 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
-
-      - name: Type-check
-        run: pnpm exec tsc --noEmit
-
-      # Runs check-tokens.mjs first, then both vitest projects.
-      - name: Test
-        run: pnpm test
+      - run: scripts/check.sh ts
 
   rust:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The version rust-toolchain.toml pins, so a new stable release cannot
+      # turn this red without a commit.
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             src-tauri
             mobile/src-tauri
 
-      - name: Test the desktop crate
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-
-      - name: Check the mobile crate
-        run: cargo check --manifest-path mobile/src-tauri/Cargo.toml
+      - run: scripts/check.sh rust
 
   # Its own job, so an advisory published overnight reads as an advisory and
   # not as a broken test run.
@@ -74,17 +67,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - name: Audit npm dependencies
-        run: pnpm audit --prod
+          node-version-file: .nvmrc
 
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
 
-      - name: Audit desktop crates
-        run: cargo audit --file src-tauri/Cargo.lock
-
-      - name: Audit mobile crates
-        run: cargo audit --file mobile/src-tauri/Cargo.lock
+      - run: scripts/check.sh audit
