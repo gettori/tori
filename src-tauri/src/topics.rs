@@ -1708,7 +1708,7 @@ mod tests {
         let a = tmp.join("a");
         let a_s = repo(&a);
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", "feat/x", &[a_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", std::slice::from_ref(&a_s), &|_| {}).unwrap();
         let wt = f.members[0].worktree_path.clone().unwrap();
 
         std::fs::remove_dir_all(&wt).unwrap();
@@ -1843,7 +1843,7 @@ mod tests {
         let old = tmp.join("api");
         let old_s = repo(&old);
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", "feat/x", &[old_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", std::slice::from_ref(&old_s), &|_| {}).unwrap();
         let old_wt = f.members[0].worktree_path.clone().unwrap();
         assert!(old_wt.starts_with(&old_s), "the plain layout puts it inside the repo");
 
@@ -1874,7 +1874,7 @@ mod tests {
         let wt_s = wt.to_string_lossy().into_owned();
         git(&old, &["worktree", "add", "-q", "-b", "feat/x", &wt_s]);
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", "feat/x", &[old_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", std::slice::from_ref(&old_s), &|_| {}).unwrap();
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "adopted");
 
         let new = tmp.join("moved-api");
@@ -2319,8 +2319,14 @@ mod tests {
             &before,
             &topic,
             &live,
-            |s, dirs| Ok(grants.borrow_mut().push((s.to_string(), dirs.to_vec()))),
-            |s, text| Ok(notes.borrow_mut().push((s.to_string(), text.to_string()))),
+            |s, dirs| {
+                grants.borrow_mut().push((s.to_string(), dirs.to_vec()));
+                Ok(())
+            },
+            |s, text| {
+                notes.borrow_mut().push((s.to_string(), text.to_string()));
+                Ok(())
+            },
         );
         assert_eq!(grants.into_inner(), vec![("home-chat".to_string(), vec![wt.clone()])]);
         let notes = notes.into_inner();
@@ -2336,7 +2342,10 @@ mod tests {
             &topic,
             &live,
             |_, _| Ok(()),
-            |s, text| Ok(notes.borrow_mut().push((s.to_string(), text.to_string()))),
+            |s, text| {
+                notes.borrow_mut().push((s.to_string(), text.to_string()));
+                Ok(())
+            },
         );
         let notes = notes.into_inner();
         assert_eq!(notes.len(), 1, "a demote is told");
@@ -2353,7 +2362,10 @@ mod tests {
             &topic,
             &live,
             |_, _| Ok(()),
-            |_, _| Ok(*told.borrow_mut() += 1),
+            |_, _| {
+                *told.borrow_mut() += 1;
+                Ok(())
+            },
         );
         assert_eq!(told.into_inner(), 0, "nothing changed, nothing told");
         std::fs::remove_dir_all(&tmp).ok();

@@ -190,6 +190,8 @@ pub enum MergeMethod {
     Rebase,
 }
 
+pub type WatchedSnapshots = Vec<(u64, Option<crate::rpc::pr_watch::Snapshot>)>;
+
 /// A forge provider.
 ///
 /// Every method is intent-shaped. Nothing here names a URL, an HTTP verb, or a
@@ -260,7 +262,7 @@ pub trait Forge: Send + Sync {
         repo: &RepoRef,
         branches: &[String],
         _watched: &[u64],
-    ) -> Result<(Vec<UnitStatus>, Vec<(u64, Option<crate::rpc::pr_watch::Snapshot>)>), ForgeError> {
+    ) -> Result<(Vec<UnitStatus>, WatchedSnapshots), ForgeError> {
         Ok((self.unit_statuses(repo, branches)?, Vec::new()))
     }
 

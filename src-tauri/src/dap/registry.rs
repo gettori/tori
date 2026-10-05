@@ -589,13 +589,6 @@ uninstall = "rm \"$(go env GOPATH)/bin/dlv\""
         }
     }
 
-    /// The extension -> adapter mapping these two tests covered went with
-    /// `adapter_for_path`, the unused path-to-adapter lookup: nothing asked the
-    /// registry which adapter claims a file, so there was no behaviour left for
-    /// them to describe. The `languages` map they read is still exercised through
-    /// the manifest test above. Restore both alongside the caller, if a
-    /// debug-this-file entry point ever needs the lookup back.
-
     /// The monorepo case this function exists for.
     #[test]
     fn a_package_resolves_to_its_own_root_not_the_workspace_root() {

@@ -8,6 +8,11 @@
 //! to the frontend, because a `device_code` is a secret: whoever holds one can
 //! complete the exchange. The frontend gets a user code and a URL.
 
+#![allow(
+    clippy::result_large_err,
+    reason = "a Tauri command result, serialized to the webview once per call; boxing the error saves a copy nothing pays for"
+)]
+
 use super::accounts::{self, AccountView, AccountsFile, HostView, Provider, Resolution, SignInRoutes, Source};
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
@@ -630,6 +635,10 @@ fn ask_viewer(
     })
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "two sign-in routes, each passing its own facts; a struct would only rename the list"
+)]
 fn store_signed_in(
     provider: Provider,
     base_url: &str,
@@ -1200,9 +1209,11 @@ pub fn forge_create_pr(project_path: String, new_pr: NewPr) -> Result<PullReques
     Ok(pr)
 }
 
+type PrStates = Vec<((String, u64), PrState)>;
+
 /// Each pull request's state, keyed by the `owner/name` it was asked of, through
 /// the gated client since nothing on screen asked.
-pub fn pull_request_states(project_path: &str, numbers: &[u64]) -> Result<Vec<((String, u64), PrState)>, ForgeError> {
+pub fn pull_request_states(project_path: &str, numbers: &[u64]) -> Result<PrStates, ForgeError> {
     let c = gated_client(project_path)?;
     let repo = format!("{}/{}", c.repo.owner, c.repo.repo).to_lowercase();
     let states = attempt(&c, |f| f.pull_request_states(&c.repo, numbers))?;

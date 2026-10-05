@@ -145,10 +145,10 @@ fn section_regex(glob: &str) -> Option<Regex> {
                 depth -= 1;
             }
             // A backslash is the escape, so the character after it is itself.
-            '\\' => match chars.next() {
-                Some(c) => re.push_str(&regex::escape(&c.to_string())),
-                None => return None,
-            },
+            '\\' => {
+                let c = chars.next()?;
+                re.push_str(&regex::escape(&c.to_string()))
+            }
             _ => re.push_str(&regex::escape(&c.to_string())),
         }
     }

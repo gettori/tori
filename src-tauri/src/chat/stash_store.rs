@@ -210,7 +210,7 @@ mod tests {
 
         for id in ["a", "b", "c"] {
             let (gone, _) = remove_in(&f, id).unwrap();
-            sweep_in(gone.as_slice(), &dir, &[root.clone()], &f);
+            sweep_in(gone.as_slice(), &dir, std::slice::from_ref(&root), &f);
         }
         assert!(!dir.join("h1").exists(), "nothing else named it");
         assert!(Path::new(&sent).exists(), "a transcript names it");

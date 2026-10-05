@@ -1261,8 +1261,10 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
 /// because that is what the file is keyed on: an agent-wide lock would make a
 /// Globex re-check wait out a 45-second default-account timeout for nothing. The
 /// map only ever grows by the number of accounts, so nothing prunes it.
+type AgentLocks = HashMap<(String, String), Arc<Mutex<()>>>;
+
 fn agent_lock(agent_id: &str, profile_id: &str) -> Arc<Mutex<()>> {
-    static LOCKS: OnceLock<Mutex<HashMap<(String, String), Arc<Mutex<()>>>>> = OnceLock::new();
+    static LOCKS: OnceLock<Mutex<AgentLocks>> = OnceLock::new();
     let mut map = LOCKS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
