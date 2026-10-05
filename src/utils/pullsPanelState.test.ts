@@ -18,9 +18,7 @@ import type { KnownHosts } from "./prUrl";
 //      would spin against a pull request the API answers for at once.
 
 const GH = "git@github.com:skarif2/tori.git";
-const HOSTS: KnownHosts = new Map([
-  ["github.com", { provider: "github", baseUrl: "https://github.com" }],
-]);
+const HOSTS: KnownHosts = new Map([["github.com", { provider: "github", baseUrl: "https://github.com" }]]);
 
 const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
   number: 412,
@@ -95,9 +93,7 @@ const PAUSES: PauseReason[] = ["disabled", "signedOut", "suspect", "pickAccount"
 /// Keyed by the name a failure should print, which is the kind plus the pause
 /// reason where one kind covers four.
 const EVERY: Record<string, PullsPanelState> = {
-  ...Object.fromEntries(
-    PAUSES.map((why) => [`paused:${why}`, state({ paused: why, chipOver: { paused: why } })]),
-  ),
+  ...Object.fromEntries(PAUSES.map((why) => [`paused:${why}`, state({ paused: why, chipOver: { paused: why } })])),
   noBranch: state({ branch: null, chipOver: { branch: null } }),
   noRemote: state({ origin: null, chipOver: { origin: null } }),
   inert: state({
@@ -112,7 +108,9 @@ const EVERY: Record<string, PullsPanelState> = {
   noPrUnpushed: state({
     status: noPrStatus,
     chipOver: { status: noPrStatus },
-    sync: sync({ upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false } }),
+    sync: sync({
+      upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false },
+    }),
   }),
   noPrPushed: state({ status: noPrStatus, chipOver: { status: noPrStatus } }),
   error: state({
@@ -183,8 +181,7 @@ describe("what the pull requests panel is showing", () => {
 });
 
 describe("a branch no poll tick has reached", () => {
-  const uncovered = (direct: DirectRead) =>
-    state({ status: null, chipOver: { status: null }, direct });
+  const uncovered = (direct: DirectRead) => state({ status: null, chipOver: { status: null }, direct });
 
   it("resolves through the direct read rather than loading forever", () => {
     // The poll has a per-tick cap, and a unit past it sits in `unknown` until

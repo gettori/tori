@@ -112,8 +112,7 @@ const unitSel = {
 
 // The right pane is portalled out of the render container, so the sections are
 // found on the document rather than on what `render` hands back.
-const sectionRoots = () =>
-  Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
+const sectionRoots = () => Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
 
 const memberChips = () =>
   Array.from(document.querySelectorAll<HTMLElement>('[aria-label="Topic members"] [data-member]'));
@@ -182,13 +181,21 @@ describe("the editor inside a Topic", () => {
     await waitFor(() => expect(watchSets()).toEqual([[A, B]]));
 
     setSel(topicSel(A, [A, B, C]));
-    await waitFor(() => expect(watchSets()).toEqual([[A, B], [A, B, C]]));
+    await waitFor(() =>
+      expect(watchSets()).toEqual([
+        [A, B],
+        [A, B, C],
+      ]),
+    );
     // And the newcomer gets a slot of its own rather than joining muted.
     await waitFor(() => expect(rootsOf("git_status")).toContain(C));
 
     setSel(unitSel as never);
     await waitFor(() => expect(rootsOf("fs_watch_start")).toEqual(["/r/a"]));
-    expect(watchSets()).toEqual([[A, B], [A, B, C]]);
+    expect(watchSets()).toEqual([
+      [A, B],
+      [A, B, C],
+    ]);
   });
 
   it("opens a Topic with no present member as the empty state, pointing nothing at an empty root", async () => {

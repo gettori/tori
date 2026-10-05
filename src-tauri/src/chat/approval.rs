@@ -201,7 +201,11 @@ pub fn run_helper() -> i32 {
     let mut deny = None;
     if std::io::stdin().read_to_string(&mut payload).is_ok() {
         let sock = std::env::var(ENV_SOCK).unwrap_or_default();
-        deny = helper_capture(&payload, Path::new(&sock), &std::env::var(ENV_TOKEN).unwrap_or_default());
+        deny = helper_capture(
+            &payload,
+            Path::new(&sock),
+            &std::env::var(ENV_TOKEN).unwrap_or_default(),
+        );
     }
     emit(&deny.map_or_else(hook_output, |reason| hook_denial(&reason)))
 }
@@ -213,7 +217,12 @@ pub fn run_helper() -> i32 {
 /// environment.
 fn helper_capture(payload: &str, sock: &Path, token: &str) -> Option<String> {
     let parsed: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
-    let HookInputs { tool_name, tool_input, session_id, tool_use_id } = hook_inputs(&parsed);
+    let HookInputs {
+        tool_name,
+        tool_input,
+        session_id,
+        tool_use_id,
+    } = hook_inputs(&parsed);
 
     // The matcher should already have kept this tool away from us, but the
     // matcher is claude's and this is the claim Tori can keep on its own:
@@ -221,7 +230,13 @@ fn helper_capture(payload: &str, sock: &Path, token: &str) -> Option<String> {
     if super::snapshot::write_targets(&tool_name, &tool_input).is_empty() {
         return None;
     }
-    let req = HookRequest { token: token.to_string(), session_id, tool_use_id, tool_name, tool_input };
+    let req = HookRequest {
+        token: token.to_string(),
+        session_id,
+        tool_use_id,
+        tool_name,
+        tool_input,
+    };
     // Fail-open: whatever went wrong, the agent is still going to ask, and
     // refusing here would be Tori gating again by the back door. The round trip
     // is still synchronous, because a before-state captured after the write is
@@ -258,10 +273,12 @@ fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<CaptureAck
     // app quit mid-call). The capture is lost either way; saying so is only for
     // a caller that wants to log it.
     if line.trim().is_empty() {
-        return Ok(CaptureAck { captured: false, deny: None });
+        return Ok(CaptureAck {
+            captured: false,
+            deny: None,
+        });
     }
-    serde_json::from_str(line.trim_end())
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    serde_json::from_str(line.trim_end()).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +411,10 @@ fn handle_conn(server: &Arc<CaptureServer>, stream: UnixStream) {
     // A failure inside still gets an answer rather than a dropped connection:
     // the helper is blocking on this line and the write it belongs to is waiting
     // on the helper, so silence would cost more than a `captured: false` does.
-    let ack = handle_request(server, &stream).unwrap_or(CaptureAck { captured: false, deny: None });
+    let ack = handle_request(server, &stream).unwrap_or(CaptureAck {
+        captured: false,
+        deny: None,
+    });
     let _ = write_response(&stream, &ack);
 }
 
@@ -409,12 +429,18 @@ fn handle_request(server: &Arc<CaptureServer>, stream: &UnixStream) -> Option<Ca
     }
 
     if let Some(reason) = (server.guard)(&req) {
-        return Some(CaptureAck { captured: false, deny: Some(reason) });
+        return Some(CaptureAck {
+            captured: false,
+            deny: Some(reason),
+        });
     }
     // The file is about to be written, and a before-state captured after the
     // fact is not a before-state. This is the whole errand.
     (server.observe)(&req);
-    Some(CaptureAck { captured: true, deny: None })
+    Some(CaptureAck {
+        captured: true,
+        deny: None,
+    })
 }
 
 fn write_response(mut stream: &UnixStream, ack: &CaptureAck) -> std::io::Result<()> {
@@ -489,8 +515,14 @@ pub fn settings_json_with(
             if rules.is_empty() {
                 continue;
             }
-            let list = permissions.as_object_mut().unwrap().entry(key).or_insert_with(|| json!([]));
-            list.as_array_mut().unwrap().extend(rules.iter().cloned().map(Value::String));
+            let list = permissions
+                .as_object_mut()
+                .unwrap()
+                .entry(key)
+                .or_insert_with(|| json!([]));
+            list.as_array_mut()
+                .unwrap()
+                .extend(rules.iter().cloned().map(Value::String));
         }
     }
     json!({
@@ -545,9 +577,17 @@ pub fn settings_args(
 pub fn settings_path(session_id: &str) -> PathBuf {
     let safe: String = session_id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    crate::owned_state::config_dir().join("chat-settings").join(format!("{safe}.json"))
+    crate::owned_state::config_dir()
+        .join("chat-settings")
+        .join(format!("{safe}.json"))
 }
 
 #[cfg(test)]
@@ -592,12 +632,19 @@ mod tests {
     #[test]
     fn a_write_is_captured_before_the_helper_is_released() {
         let (server, observed) = observing_server();
-        let ack = helper_exchange(server.sock_path(), &request(server.token(), "Edit", json!({"file_path": "/proj/a.rs"})))
-            .unwrap();
+        let ack = helper_exchange(
+            server.sock_path(),
+            &request(server.token(), "Edit", json!({"file_path": "/proj/a.rs"})),
+        )
+        .unwrap();
 
         assert!(ack.captured, "the server should say it took the before-state");
         let seen = observed.lock().unwrap();
-        assert_eq!(seen.len(), 1, "an Edit that captures nothing leaves its tool card with no diff");
+        assert_eq!(
+            seen.len(),
+            1,
+            "an Edit that captures nothing leaves its tool card with no diff"
+        );
         assert_eq!(seen[0].tool_name, "Edit");
         assert!(!super::super::snapshot::write_targets(&seen[0].tool_name, &seen[0].tool_input).is_empty());
     }
@@ -607,7 +654,11 @@ mod tests {
     #[test]
     fn an_unauthenticated_call_is_never_observed() {
         let (server, observed) = observing_server();
-        let ack = helper_exchange(server.sock_path(), &request("wrong-token", "Edit", json!({"file_path": "/a"}))).unwrap();
+        let ack = helper_exchange(
+            server.sock_path(),
+            &request("wrong-token", "Edit", json!({"file_path": "/a"})),
+        )
+        .unwrap();
         assert!(!ack.captured, "a wrong token must not be answered as a capture");
         assert!(observed.lock().unwrap().is_empty());
     }
@@ -625,7 +676,10 @@ mod tests {
         // Either the connect fails outright or the answer is a non-capture; what
         // must never happen is the helper sitting there.
         let _ = helper_exchange(&sock, &request(&token, "Write", json!({"file_path": "/a"})));
-        assert!(started.elapsed() < Duration::from_secs(5), "a dead server must not hold a write open");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "a dead server must not hold a write open"
+        );
     }
 
     /// `shutdown` really winds the accept loop down, so the thread and the
@@ -668,7 +722,11 @@ mod tests {
         assert!(len < 104, "{} is {len} bytes", server.sock_path().display());
 
         let (other, _observed2) = observing_server();
-        assert_eq!(other.sock_path().as_os_str().len(), len, "the socket path is fixed-width by construction");
+        assert_eq!(
+            other.sock_path().as_os_str().len(),
+            len,
+            "the socket path is fixed-width by construction"
+        );
     }
 
     /// Two writes in flight must both be captured and both released.
@@ -683,7 +741,9 @@ mod tests {
                 let s = sock.clone();
                 let t = server.token().to_string();
                 let tool = tool.to_string();
-                thread::spawn(move || helper_exchange(&s, &request(&t, &tool, json!({"file_path": "/proj/a.rs"}))).unwrap())
+                thread::spawn(move || {
+                    helper_exchange(&s, &request(&t, &tool, json!({"file_path": "/proj/a.rs"}))).unwrap()
+                })
             })
             .collect();
 
@@ -706,16 +766,31 @@ mod tests {
     fn the_helper_prints_the_marker_and_no_decision() {
         let out: Value = serde_json::from_str(&hook_output()).unwrap();
         assert_eq!(out[TORI_HOOK_MARKER], true);
-        assert_eq!(out.as_object().unwrap().len(), 1, "the marker is the whole output: {out}");
-        assert!(out.get("hookSpecificOutput").is_none(), "a decision here would short-circuit the agent");
+        assert_eq!(
+            out.as_object().unwrap().len(),
+            1,
+            "the marker is the whole output: {out}"
+        );
+        assert!(
+            out.get("hookSpecificOutput").is_none(),
+            "a decision here would short-circuit the agent"
+        );
     }
 
     /// The capture happens, and it happens without the helper deciding anything.
     #[test]
     fn the_helper_captures_a_write_and_decides_nothing() {
         let (server, observed) = observing_server();
-        helper_capture(&payload("Edit", json!({"file_path": "/proj/a.rs"})), server.sock_path(), server.token());
-        assert_eq!(observed.lock().unwrap().len(), 1, "the before-state must have been captured");
+        helper_capture(
+            &payload("Edit", json!({"file_path": "/proj/a.rs"})),
+            server.sock_path(),
+            server.token(),
+        );
+        assert_eq!(
+            observed.lock().unwrap().len(),
+            1,
+            "the before-state must have been captured"
+        );
     }
 
     /// Fail-open. A capture that cannot reach Tori has lost a diff; refusing
@@ -724,27 +799,50 @@ mod tests {
     #[test]
     fn a_capture_that_cannot_reach_tori_is_not_a_refusal() {
         // No panic, no error propagated, nothing printed but the marker.
-        helper_capture(&payload("Write", json!({"file_path": "/proj/new.rs"})), Path::new("/nonexistent/socket"), "tok");
+        helper_capture(
+            &payload("Write", json!({"file_path": "/proj/new.rs"})),
+            Path::new("/nonexistent/socket"),
+            "tok",
+        );
         let out: Value = serde_json::from_str(&hook_output()).unwrap();
-        assert!(out.get("hookSpecificOutput").is_none(), "an unreachable Tori must not become a denial");
+        assert!(
+            out.get("hookSpecificOutput").is_none(),
+            "an unreachable Tori must not become a denial"
+        );
     }
 
     #[test]
     fn a_refused_write_is_denied_with_its_reason_and_an_unreachable_tori_denies_nothing() {
-        let server = start_guarded(Box::new(|_| {}), Box::new(|req| {
-            let target = req.tool_input["file_path"].as_str().unwrap_or_default();
-            target.starts_with("/p/web/").then(|| "web is a reference".to_string())
-        }))
+        let server = start_guarded(
+            Box::new(|_| {}),
+            Box::new(|req| {
+                let target = req.tool_input["file_path"].as_str().unwrap_or_default();
+                target.starts_with("/p/web/").then(|| "web is a reference".to_string())
+            }),
+        )
         .unwrap();
-        let call = |path: &str| helper_capture(&payload("Edit", json!({"file_path": path})), server.sock_path(), server.token());
+        let call = |path: &str| {
+            helper_capture(
+                &payload("Edit", json!({"file_path": path})),
+                server.sock_path(),
+                server.token(),
+            )
+        };
 
         let reason = call("/p/web/app.ts").expect("a write under a reference is refused");
         let out: Value = serde_json::from_str(&hook_denial(&reason)).unwrap();
         assert_eq!(out["hookSpecificOutput"]["permissionDecision"], "deny");
-        assert_eq!(out["hookSpecificOutput"]["permissionDecisionReason"], "web is a reference");
+        assert_eq!(
+            out["hookSpecificOutput"]["permissionDecisionReason"],
+            "web is a reference"
+        );
         assert_eq!(out[TORI_HOOK_MARKER], true);
         assert_eq!(call("/p/api/.tori/worktrees/auth/lib.rs"), None);
-        let unreachable = helper_capture(&payload("Edit", json!({"file_path": "/p/web/app.ts"})), Path::new("/nonexistent/socket"), "tok");
+        let unreachable = helper_capture(
+            &payload("Edit", json!({"file_path": "/p/web/app.ts"})),
+            Path::new("/nonexistent/socket"),
+            "tok",
+        );
         assert_eq!(unreachable, None, "an unreachable Tori must not become a denial");
     }
 
@@ -754,7 +852,11 @@ mod tests {
         let (server, observed) = observing_server();
         helper_capture("not json", server.sock_path(), server.token());
         assert!(observed.lock().unwrap().is_empty());
-        assert_eq!(server.connections(), 0, "there is nothing to capture, so nothing to connect for");
+        assert_eq!(
+            server.connections(),
+            0,
+            "there is nothing to capture, so nothing to connect for"
+        );
     }
 
     /// A read-heavy turn must cost nothing. The matcher is the first line of
@@ -764,9 +866,17 @@ mod tests {
     fn fifty_reads_open_no_sockets() {
         let (server, observed) = observing_server();
         for _ in 0..50 {
-            helper_capture(&payload("Read", json!({"file_path": "/proj/a.rs"})), server.sock_path(), server.token());
+            helper_capture(
+                &payload("Read", json!({"file_path": "/proj/a.rs"})),
+                server.sock_path(),
+                server.token(),
+            );
         }
-        assert_eq!(server.connections(), 0, "a read has no before-state, so it must not cost a round trip");
+        assert_eq!(
+            server.connections(),
+            0,
+            "a read has no before-state, so it must not cost a round trip"
+        );
         assert!(observed.lock().unwrap().is_empty());
     }
 
@@ -788,7 +898,10 @@ mod tests {
         }
         samples.sort();
         let median = samples[samples.len() / 2];
-        assert!(median < Duration::from_millis(15), "median capture round trip was {median:?}, over the 15ms budget");
+        assert!(
+            median < Duration::from_millis(15),
+            "median capture round trip was {median:?}, over the 15ms budget"
+        );
         // Printed so the number on this machine is visible in the run and can be
         // recorded, making a later regression legible rather than just a failure.
         eprintln!("capture round-trip median: {median:?}");
@@ -827,13 +940,19 @@ mod tests {
 
             let printed: Value = serde_json::from_slice(&out.stdout).expect("the hook should print its marker");
             assert_eq!(printed[TORI_HOOK_MARKER], true);
-            assert!(printed.get("hookSpecificOutput").is_none(), "the shipped helper must never print a decision");
+            assert!(
+                printed.get("hookSpecificOutput").is_none(),
+                "the shipped helper must never print a decision"
+            );
         }
         assert_eq!(observed.lock().unwrap().len(), 20, "every run should have captured");
         samples.sort();
         let median = samples[samples.len() / 2];
         eprintln!("end-to-end hook median (debug binary): {median:?}");
-        assert!(median < Duration::from_millis(15), "median end-to-end hook cost was {median:?}, over the 15ms budget");
+        assert!(
+            median < Duration::from_millis(15),
+            "median end-to-end hook cost was {median:?}, over the 15ms budget"
+        );
     }
 
     /// The helper is selected by an env marker the app's own process never has.
@@ -850,9 +969,17 @@ mod tests {
     #[test]
     fn toris_deadline_is_strictly_inside_the_one_the_cli_is_told() {
         assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS);
-        let settings: Value =
-            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false)).unwrap();
-        assert_eq!(settings["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"], HOOK_TIMEOUT_SECS);
+        let settings: Value = serde_json::from_str(&settings_json(
+            Path::new("/bin/tori"),
+            Path::new("/tmp/s"),
+            "tok",
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            settings["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"],
+            HOOK_TIMEOUT_SECS
+        );
     }
 
     /// The user's own hooks must still load and fire. `--setting-sources ''`
@@ -860,14 +987,28 @@ mod tests {
     #[test]
     fn the_settings_payload_never_disables_the_users_own_sources() {
         let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false);
-        assert!(!text.contains("setting-sources"), "the payload must not touch setting sources");
+        assert!(
+            !text.contains("setting-sources"),
+            "the payload must not touch setting sources"
+        );
         let parsed: Value = serde_json::from_str(&text).unwrap();
         // Hooks, and an allow for Tori's own tools only: anything else would be
         // layering over settings the user owns.
-        assert_eq!(parsed.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["permissions", "hooks"]);
+        assert_eq!(
+            parsed.as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["permissions", "hooks"]
+        );
         let allowed = parsed["permissions"]["allow"].as_array().unwrap();
-        assert!(allowed.iter().all(|rule| rule.as_str().is_some_and(|r| r.starts_with("mcp__tori__"))), "only Tori's own tools");
-        assert_eq!(parsed["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["PreToolUse"]);
+        assert!(
+            allowed
+                .iter()
+                .all(|rule| rule.as_str().is_some_and(|r| r.starts_with("mcp__tori__"))),
+            "only Tori's own tools"
+        );
+        assert_eq!(
+            parsed["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["PreToolUse"]
+        );
     }
 
     /// The hook is handed exactly the tools whose before-state is worth keeping,
@@ -875,9 +1016,17 @@ mod tests {
     /// would lose its diff silently, which is why both read one list.
     #[test]
     fn the_hook_matches_the_write_tools_and_only_those() {
-        let parsed: Value =
-            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false)).unwrap();
-        let matcher = parsed["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap().to_string();
+        let parsed: Value = serde_json::from_str(&settings_json(
+            Path::new("/bin/tori"),
+            Path::new("/tmp/s"),
+            "tok",
+            false,
+        ))
+        .unwrap();
+        let matcher = parsed["hooks"]["PreToolUse"][0]["matcher"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let named: Vec<&str> = matcher.split('|').collect();
         assert_eq!(named, super::super::snapshot::WRITE_TOOLS.to_vec());
         for tool in named {
@@ -887,13 +1036,20 @@ mod tests {
             );
         }
         assert!(!matcher.contains("Read"), "a read must never reach the hook");
-        assert_ne!(matcher, "*", "matching every tool is what the gate did, and there is no gate");
+        assert_ne!(
+            matcher, "*",
+            "matching every tool is what the gate did, and there is no gate"
+        );
     }
 
     /// Paths with spaces survive the shell that runs the hook command.
     #[test]
     fn the_hook_command_quotes_paths_so_a_space_cannot_split_it() {
-        let cmd = hook_command(Path::new("/Applications/My App/tori"), Path::new("/tmp/dir with space/s"), "tok");
+        let cmd = hook_command(
+            Path::new("/Applications/My App/tori"),
+            Path::new("/tmp/dir with space/s"),
+            "tok",
+        );
         assert!(cmd.contains("'/Applications/My App/tori'"), "got {cmd}");
         assert!(cmd.contains("'/tmp/dir with space/s'"), "got {cmd}");
         assert!(cmd.starts_with(ENV_SOCK));
@@ -911,10 +1067,21 @@ mod tests {
         let before = std::fs::read(&user_settings).ok();
 
         let session = format!("settings-guard-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false, None).unwrap();
+        let args = settings_args(
+            &session,
+            Path::new("/tmp/s"),
+            "tok",
+            ChatTransport::ClaudeStreamJson,
+            false,
+            None,
+        )
+        .unwrap();
 
         let after = std::fs::read(&user_settings).ok();
-        assert_eq!(before, after, "~/.claude/settings.json must be byte-identical before and after");
+        assert_eq!(
+            before, after,
+            "~/.claude/settings.json must be byte-identical before and after"
+        );
 
         // And Tori's own settings file, which claude *is* pointed at, layers only
         // hooks on top - it is a separate file entirely.
@@ -937,7 +1104,14 @@ mod tests {
         assert_eq!(parsed.as_object().unwrap().len(), 2);
         assert_eq!(parsed["permissions"], json!({ "allow": crate::rpc::mcp_allow(false) }));
         assert_eq!(parsed["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
-        for forbidden in ["setting-sources", "settingSources", "deny", "defaultMode", "env", "model"] {
+        for forbidden in [
+            "setting-sources",
+            "settingSources",
+            "deny",
+            "defaultMode",
+            "env",
+            "model",
+        ] {
             assert!(!text.contains(forbidden), "the payload must not carry {forbidden}");
         }
     }
@@ -947,10 +1121,23 @@ mod tests {
     #[test]
     fn the_settings_file_is_a_private_path_not_an_argv_blob() {
         let session = format!("perm-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "super-secret-token", ChatTransport::ClaudeStreamJson, false, None).unwrap();
-        let [.., flag, file] = args.as_slice() else { panic!("no --settings in {args:?}") };
+        let args = settings_args(
+            &session,
+            Path::new("/tmp/s"),
+            "super-secret-token",
+            ChatTransport::ClaudeStreamJson,
+            false,
+            None,
+        )
+        .unwrap();
+        let [.., flag, file] = args.as_slice() else {
+            panic!("no --settings in {args:?}")
+        };
         assert_eq!(flag, "--settings");
-        assert!(!file.trim_start().starts_with('{'), "a token in argv is visible in `ps`");
+        assert!(
+            !file.trim_start().starts_with('{'),
+            "a token in argv is visible in `ps`"
+        );
         assert!(!args.iter().any(|a| a.contains("super-secret-token")));
 
         let mode = std::fs::metadata(file).unwrap().permissions().mode() & 0o777;
@@ -961,11 +1148,22 @@ mod tests {
     #[test]
     fn a_claude_session_gets_the_mcp_config_right_before_its_settings() {
         let session = format!("mcp-{}", std::process::id());
-        let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, false, None).unwrap();
+        let args = settings_args(
+            &session,
+            Path::new("/tmp/s"),
+            "tok",
+            ChatTransport::ClaudeStreamJson,
+            false,
+            None,
+        )
+        .unwrap();
         assert_eq!(args.len(), 4, "{args:?}");
         assert_eq!((args[0].as_str(), args[2].as_str()), ("--mcp-config", "--settings"));
         let config: Value = serde_json::from_str(&std::fs::read_to_string(&args[1]).unwrap()).unwrap();
-        assert_eq!(config["mcpServers"]["tori"], json!({ "command": "tori", "args": ["mcp"] }));
+        assert_eq!(
+            config["mcpServers"]["tori"],
+            json!({ "command": "tori", "args": ["mcp"] })
+        );
 
         let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp, false, None).unwrap();
         assert_eq!(acp[0], "--settings");
@@ -976,17 +1174,41 @@ mod tests {
     fn only_a_background_session_pre_allows_the_outward_tools() {
         let allowed = |background| {
             let session = format!("allow-{background}-{}", std::process::id());
-            let args = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::ClaudeStreamJson, background, None).unwrap();
+            let args = settings_args(
+                &session,
+                Path::new("/tmp/s"),
+                "tok",
+                ChatTransport::ClaudeStreamJson,
+                background,
+                None,
+            )
+            .unwrap();
             let settings: Value = serde_json::from_str(&std::fs::read_to_string(&args[3]).unwrap()).unwrap();
             let _ = std::fs::remove_file(settings_path(&session));
             settings["permissions"]["allow"].clone()
         };
         assert_eq!(allowed(true), json!(["mcp__tori__*"]));
         let foreground = allowed(false);
-        let rules: Vec<&str> = foreground.as_array().unwrap().iter().filter_map(Value::as_str).collect();
-        assert!(rules.contains(&"mcp__tori__sessions_list") && rules.contains(&"mcp__tori__ask_create"), "{rules:?}");
-        for outward in ["mcp__tori__pr_create", "mcp__tori__review_submit", "mcp__tori__pr_merge", "mcp__tori__*"] {
-            assert!(!rules.contains(&outward), "{outward} must be left to the harness prompt");
+        let rules: Vec<&str> = foreground
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(
+            rules.contains(&"mcp__tori__sessions_list") && rules.contains(&"mcp__tori__ask_create"),
+            "{rules:?}"
+        );
+        for outward in [
+            "mcp__tori__pr_create",
+            "mcp__tori__review_submit",
+            "mcp__tori__pr_merge",
+            "mcp__tori__*",
+        ] {
+            assert!(
+                !rules.contains(&outward),
+                "{outward} must be left to the harness prompt"
+            );
         }
     }
 
@@ -1039,20 +1261,16 @@ mod tests {
         let session = crate::chat::claude_transport::tests::uuid_like();
         let (server, observed) = observing_server();
         let settings_file = cwd.join("tori-settings.json");
-        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token(), false)).unwrap();
+        std::fs::write(
+            &settings_file,
+            settings_json(&exe, server.sock_path(), server.token(), false),
+        )
+        .unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();
-        let mut args = crate::chat::commands::build_args(
-            chat,
-            &session,
-            false,
-            None,
-            None,
-            Some("bypassPermissions"),
-            None,
-            &[],
-        );
+        let mut args =
+            crate::chat::commands::build_args(chat, &session, false, None, None, Some("bypassPermissions"), None, &[]);
         args.push("--settings".to_string());
         args.push(settings_file.to_string_lossy().into_owned());
 
@@ -1100,7 +1318,10 @@ mod tests {
         let _ = stderr.read_to_string(&mut err);
 
         assert!(saw_result, "the turn should have completed; stderr: {err}");
-        assert!(marker.exists(), "the user's own PreToolUse hook must still fire alongside Tori's");
+        assert!(
+            marker.exists(),
+            "the user's own PreToolUse hook must still fire alongside Tori's"
+        );
         // Tori's fired too, and this is the honest form of that claim: the
         // capture really landed on our socket.
         assert!(
@@ -1135,12 +1356,15 @@ mod tests {
         let session = crate::chat::claude_transport::tests::uuid_like();
         let (server, observed) = observing_server();
         let settings_file = cwd.join("tori-settings.json");
-        std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token(), false)).unwrap();
+        std::fs::write(
+            &settings_file,
+            settings_json(&exe, server.sock_path(), server.token(), false),
+        )
+        .unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
         let chat = adapter.chat.as_ref().unwrap();
-        let mut args =
-            crate::chat::commands::build_args(chat, &session, false, None, None, Some("default"), None, &[]);
+        let mut args = crate::chat::commands::build_args(chat, &session, false, None, None, Some("default"), None, &[]);
         args.push("--settings".to_string());
         args.push(settings_file.to_string_lossy().into_owned());
 
@@ -1176,7 +1400,9 @@ mod tests {
                 break;
             }
             let Ok(line) = line else { break };
-            let Ok(frame) = serde_json::from_str::<Value>(&line) else { continue };
+            let Ok(frame) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
             if frame["type"] == "control_request" && frame["request"]["subtype"] == "can_use_tool" {
                 asked.push(frame["request"]["tool_name"].as_str().unwrap_or_default().to_string());
                 // Allowed so the turn can finish; *that* it was asked is the
@@ -1205,7 +1431,10 @@ mod tests {
         let _ = stderr.read_to_string(&mut err);
 
         assert!(saw_result, "the turn should have completed; stderr: {err}");
-        assert!(asked.iter().any(|t| t == "Write"), "a write must still be asked about; asked: {asked:?}");
+        assert!(
+            asked.iter().any(|t| t == "Write"),
+            "a write must still be asked about; asked: {asked:?}"
+        );
         for quiet in ["Read", "Grep", "Glob"] {
             assert!(
                 !asked.iter().any(|t| t == quiet),
@@ -1222,7 +1451,9 @@ mod tests {
             seen.iter().map(|r| r.tool_name.as_str()).collect::<Vec<_>>()
         );
         assert!(
-            !seen.iter().any(|r| matches!(r.tool_name.as_str(), "Read" | "Grep" | "Glob")),
+            !seen
+                .iter()
+                .any(|r| matches!(r.tool_name.as_str(), "Read" | "Grep" | "Glob")),
             "a read-shaped tool reached the hook, so the matcher is not narrowing"
         );
 

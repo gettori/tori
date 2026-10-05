@@ -62,7 +62,14 @@ import { sendBlockedReason } from "../../utils/sendTarget";
 import { connectHost } from "../../utils/createPr";
 import { createPrFlow } from "../../utils/prCreateFlow";
 import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
-import { forgeHosts, forgeRepo, pickForgeAccount, pollNow, resolveForgeRepo, unitStatus } from "../../utils/forgeStatus";
+import {
+  forgeHosts,
+  forgeRepo,
+  pickForgeAccount,
+  pollNow,
+  resolveForgeRepo,
+  unitStatus,
+} from "../../utils/forgeStatus";
 import { projectPathFor } from "../../utils/sessionActivity";
 import { prRelation } from "../../utils/prRelation";
 import { chromeScale, settings } from "../Settings/settingsStore";
@@ -291,7 +298,12 @@ export default function ReviewPanel(props: {
    *  front, else the first. */
   const viewed = () =>
     memberOf(picked()) ??
-    memberOf(rootOf(props.activePath, (props.members ?? []).map((m) => m.key))) ??
+    memberOf(
+      rootOf(
+        props.activePath,
+        (props.members ?? []).map((m) => m.key),
+      ),
+    ) ??
     props.members?.[0];
   // The member picked in the sidebar is a press too, made somewhere else: it
   // seeds the chip when the panel opens and moves it whenever it changes.
@@ -321,9 +333,9 @@ export default function ReviewPanel(props: {
       return root ? { root, state: gitStateFor(root) } : null;
     },
     ({ root }) =>
-      invoke<{ files: number; insertions: number; deletions: number }>("git_worktree_stat", { projectPath: root }).catch(
-        () => null,
-      ),
+      invoke<{ files: number; insertions: number; deletions: number }>("git_worktree_stat", {
+        projectPath: root,
+      }).catch(() => null),
   );
   const viewedSection = () => sections().find((sec) => sec.root === viewedRoot());
   /** A reference member's checkout is the user's own: it can be fetched and
@@ -374,7 +386,10 @@ export default function ReviewPanel(props: {
    *  of choices, so a member that stages something later joins the commit
    *  instead of being silently left out of one made before it had changes. */
   const [unticked, setUnticked] = createSignal<ReadonlySet<string>>(new Set());
-  const memberRoots = () => sections().filter((s) => !s.readOnly).map((s) => s.root);
+  const memberRoots = () =>
+    sections()
+      .filter((s) => !s.readOnly)
+      .map((s) => s.root);
   const stagedRoots = () => memberRoots().filter((r) => stagedFiles(r).length);
 
   /**
@@ -990,7 +1005,10 @@ export default function ReviewPanel(props: {
   // member joining is a real one.
   createEffect(
     on(
-      () => sections().map((s) => s.root).join("\n"),
+      () =>
+        sections()
+          .map((s) => s.root)
+          .join("\n"),
       () => {
         setCommitTarget(null);
         refreshAll();
@@ -1004,8 +1022,7 @@ export default function ReviewPanel(props: {
     baseBranch,
     ask: {
       selected: () => props.selected ?? null,
-      paths: () =>
-        [...stagedFiles(viewedRoot()), ...changedFiles(viewedRoot())].map((f) => f.path),
+      paths: () => [...stagedFiles(viewedRoot()), ...changedFiles(viewedRoot())].map((f) => f.path),
     },
   });
 
@@ -1210,9 +1227,7 @@ export default function ReviewPanel(props: {
             />
           </Show>
         </span>
-        <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>
-          {f.status.trim() || "?"}
-        </span>
+        <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>{f.status.trim() || "?"}</span>
       </div>
     );
   }
@@ -1264,8 +1279,7 @@ export default function ReviewPanel(props: {
     const line = parseFloat(style.lineHeight);
     const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
     if (!Number.isFinite(line) || line <= 0) return;
-    const wanted = () =>
-      Math.min(MSG_MAX_ROWS, Math.max(1, Math.round((el.scrollHeight - pad) / line)));
+    const wanted = () => Math.min(MSG_MAX_ROWS, Math.max(1, Math.round((el.scrollHeight - pad) / line)));
     if (el.scrollHeight > el.clientHeight) {
       el.rows = wanted();
       return;
@@ -1349,24 +1363,17 @@ export default function ReviewPanel(props: {
         </MenuRow>
         <MenuSub label="Rebase" disabled={applying() || op() !== "none"}>
           <Show when={baseBranch() && baseBranch() !== branch()}>
-            <MenuRow
-              onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}
-            >
+            <MenuRow onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}>
               Onto origin/{baseBranch()}
             </MenuRow>
           </Show>
           <MenuRow onClick={() => void pickOnto(menuRoot())}>Onto Branch...</MenuRow>
           <MenuSeparator />
           <MenuRow onClick={() => void openRebase(menuRoot())}>Interactive...</MenuRow>
-          <MenuRow onClick={() => rewrite("Autosquash", menuRoot(), rebaseAutosquash)}>
-            Autosquash Fixups
-          </MenuRow>
+          <MenuRow onClick={() => rewrite("Autosquash", menuRoot(), rebaseAutosquash)}>Autosquash Fixups</MenuRow>
         </MenuSub>
         <MenuSeparator />
-        <MenuRow
-          disabled={applying() || conflictedFiles(menuRoot()).length > 0}
-          onClick={() => void stashAll()}
-        >
+        <MenuRow disabled={applying() || conflictedFiles(menuRoot()).length > 0} onClick={() => void stashAll()}>
           Stash All Changes
         </MenuRow>
       </Show>
@@ -1452,11 +1459,7 @@ export default function ReviewPanel(props: {
           }}
         />
         <Dropdown as="span" wrapper menu={gitMenu()} placement="bottom-end">
-          <IconButton
-            size="sm"
-            tooltip="More Actions"
-            icon={<Icon icon={Ellipsis} />}
-          />
+          <IconButton size="sm" tooltip="More Actions" icon={<Icon icon={Ellipsis} />} />
         </Dropdown>
       </div>
 
@@ -1579,9 +1582,7 @@ export default function ReviewPanel(props: {
         <div class={styles.opBar}>
           <span class={styles.opName}>
             {OP_WORD[op()]} in progress
-            <Show when={conflictedFiles(viewedRoot()).length}>
-              {(n) => ` (${plural(n(), "conflict")})`}
-            </Show>
+            <Show when={conflictedFiles(viewedRoot()).length}>{(n) => ` (${plural(n(), "conflict")})`}</Show>
           </span>
           <span class={styles.spacer} />
           <Button
@@ -1625,114 +1626,110 @@ export default function ReviewPanel(props: {
           hold and the buttons that make it, so the numbers sit beside the
           verb they qualify. */}
       <Show when={commitBoxShown() && !viewedReadOnly()}>
-      <div class={styles.commitCard}>
-        <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
-          <div class={styles.commitTarget}>
-            <For each={amend() ? memberRoots() : stagedRoots()}>
-              {(root) => {
-                const sec = () => sections().find((x) => x.root === root);
-                const on = () => (amend() ? targetMember() === root : !unticked().has(root));
-                const action = () =>
-                  amend()
-                    ? `Amend the last commit in ${sec()?.label}`
-                    : on()
-                      ? `Leave ${sec()?.label} out of this commit`
-                      : `Include ${sec()?.label} in this commit`;
-                return (
-                  <Tooltip
-                    as="button"
-                    type="button"
-                    class={styles.chip}
-                    aria-pressed={on()}
-                    aria-label={action()}
-                    label={action()}
-                    onClick={() => {
-                      // Amend is one member, so a chip picks rather than toggles.
-                      if (amend()) {
-                        setCommitTarget(root);
-                        return;
-                      }
-                      setUnticked((prev) => {
-                        const next = new Set(prev);
-                        if (!next.delete(root)) next.add(root);
-                        return next;
-                      });
-                    }}
-                  >
-                    <MemberChip
-                      icon={sec()?.icon ?? { seed: root }}
-                      tint={sec()?.tint}
-                      decorative
-                    />
-                  </Tooltip>
-                );
-              }}
-            </For>
-          </div>
-        </Show>
-        <textarea
-          ref={(el) => {
-            msgRef = el;
-            // Remounted with a draft still in the signal, at one row.
-            queueMicrotask(fitMessage);
-          }}
-          class={styles.commitInput}
-          rows={1}
-          placeholder="Message"
-          value={commitText()}
-          onInput={(e) => {
-            setCommitText(e.currentTarget.value);
-            fitMessage();
-          }}
-          onKeyDown={(e) => {
-            // Enter still commits, as it did from the subject field, and
-            // Shift+Enter is the newline - the chat composer's bargain, so one
-            // key does not mean two things in one app.
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void commit();
-            }
-          }}
-        />
-        <div class={styles.commitFooter}>
-          <span class={styles.commitStats}>{statsLabel()}</span>
-          <div class={styles.commitActions}>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
-              tooltipWhenDisabled
-              tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
-              onClick={askAgentToDraft}
-            >
-              AI Draft
-            </Button>
-            {/* A split button: the verb on the left, its variants behind the
+        <div class={styles.commitCard}>
+          <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
+            <div class={styles.commitTarget}>
+              <For each={amend() ? memberRoots() : stagedRoots()}>
+                {(root) => {
+                  const sec = () => sections().find((x) => x.root === root);
+                  const on = () => (amend() ? targetMember() === root : !unticked().has(root));
+                  const action = () =>
+                    amend()
+                      ? `Amend the last commit in ${sec()?.label}`
+                      : on()
+                        ? `Leave ${sec()?.label} out of this commit`
+                        : `Include ${sec()?.label} in this commit`;
+                  return (
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.chip}
+                      aria-pressed={on()}
+                      aria-label={action()}
+                      label={action()}
+                      onClick={() => {
+                        // Amend is one member, so a chip picks rather than toggles.
+                        if (amend()) {
+                          setCommitTarget(root);
+                          return;
+                        }
+                        setUnticked((prev) => {
+                          const next = new Set(prev);
+                          if (!next.delete(root)) next.add(root);
+                          return next;
+                        });
+                      }}
+                    >
+                      <MemberChip icon={sec()?.icon ?? { seed: root }} tint={sec()?.tint} decorative />
+                    </Tooltip>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+          <textarea
+            ref={(el) => {
+              msgRef = el;
+              // Remounted with a draft still in the signal, at one row.
+              queueMicrotask(fitMessage);
+            }}
+            class={styles.commitInput}
+            rows={1}
+            placeholder="Message"
+            value={commitText()}
+            onInput={(e) => {
+              setCommitText(e.currentTarget.value);
+              fitMessage();
+            }}
+            onKeyDown={(e) => {
+              // Enter still commits, as it did from the subject field, and
+              // Shift+Enter is the newline - the chat composer's bargain, so one
+              // key does not mean two things in one app.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void commit();
+              }
+            }}
+          />
+          <div class={styles.commitFooter}>
+            <span class={styles.commitStats}>{statsLabel()}</span>
+            <div class={styles.commitActions}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
+                tooltipWhenDisabled
+                tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
+                onClick={askAgentToDraft}
+              >
+                AI Draft
+              </Button>
+              {/* A split button: the verb on the left, its variants behind the
                 chevron, so Amend and Commit & Push cost one click each without
                 standing on the row as three primary buttons. */}
-            <span class={styles.splitButton}>
-              <Button
-                variant="primary"
-                size="sm"
-                class={styles.commitButton}
-                disabled={committing()}
-                tooltip={amend() ? "Amend the last commit" : commitLabelHint()}
-                onClick={() => void commit()}
-              >
-                {commitLabel()}
-              </Button>
-              <Dropdown as="span" wrapper menu={commitMenu()} placement="top-end">
-                <IconButton
+              <span class={styles.splitButton}>
+                <Button
+                  variant="primary"
                   size="sm"
-                  class={styles.splitMore}
-                  tooltip="More commit actions"
-                  icon={<Icon icon={ChevronDown} />}
-                />
-              </Dropdown>
-            </span>
+                  class={styles.commitButton}
+                  disabled={committing()}
+                  tooltip={amend() ? "Amend the last commit" : commitLabelHint()}
+                  onClick={() => void commit()}
+                >
+                  {commitLabel()}
+                </Button>
+                <Dropdown as="span" wrapper menu={commitMenu()} placement="top-end">
+                  <IconButton
+                    size="sm"
+                    class={styles.splitMore}
+                    tooltip="More commit actions"
+                    icon={<Icon icon={ChevronDown} />}
+                  />
+                </Dropdown>
+              </span>
+            </div>
           </div>
         </div>
-      </div>
       </Show>
 
       <div class={styles.stack} ref={stackEl}>
@@ -1810,9 +1807,7 @@ export default function ReviewPanel(props: {
               activeId={tab() ?? null}
               idOf={(t) => t.id}
               onActivate={(id) => showHistory(id as HistoryTab)}
-              onReorder={(next) =>
-                setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])
-              }
+              onReorder={(next) => setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])}
               renderTab={(t) => (
                 <Tab
                   quiet
@@ -1853,9 +1848,7 @@ export default function ReviewPanel(props: {
                   <Show when={aheadBehind()}>
                     {(ab) => (
                       <span class={styles.stripMeta}>
-                        {ab().has_upstream
-                          ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
-                          : "Unpushed"}
+                        {ab().has_upstream ? `${UP}${ab().ahead} ${DOWN}${ab().behind}` : "Unpushed"}
                       </span>
                     )}
                   </Show>
@@ -1891,8 +1884,7 @@ export default function ReviewPanel(props: {
                     label="untracked"
                   />
                   <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
-                    Also stash files git has never seen, which usually means build output and local
-                    scratch
+                    Also stash files git has never seen, which usually means build output and local scratch
                   </span>
                   {/* Off while anything is unmerged: `git stash` refuses such a
                       tree outright, so the button would only ever produce git's
@@ -1933,81 +1925,78 @@ export default function ReviewPanel(props: {
                 class={styles.tabPanel}
                 hidden={tab() !== "stashes"}
               >
-              <Show
-                when={stashes().length}
-                fallback={<div class="tree-empty">Nothing stashed.</div>}
-              >
-                <OverlayScroll class={styles.sectionScroll}>
-                  <For each={stashes()}>
-                    {(st) => (
-                      <>
-                        <div
-                          class={styles.stashRow}
-                          classList={{ [styles.active]: openStashes().has(st.sha) }}
-                          title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
-                          onClick={() => toggleStash(st.sha)}
-                        >
-                          <span class={styles.stashIcon} aria-hidden="true">
-                            <Icon icon={Archive} />
-                          </span>
-                          <span class={styles.reviewName}>{st.message}</span>
-                          <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
-                          <span class={styles.rowEnd}>
-                            {/* A stash is a commit, so the commit view shows what
+                <Show when={stashes().length} fallback={<div class="tree-empty">Nothing stashed.</div>}>
+                  <OverlayScroll class={styles.sectionScroll}>
+                    <For each={stashes()}>
+                      {(st) => (
+                        <>
+                          <div
+                            class={styles.stashRow}
+                            classList={{ [styles.active]: openStashes().has(st.sha) }}
+                            title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
+                            onClick={() => toggleStash(st.sha)}
+                          >
+                            <span class={styles.stashIcon} aria-hidden="true">
+                              <Icon icon={Archive} />
+                            </span>
+                            <span class={styles.reviewName}>{st.message}</span>
+                            <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
+                            <span class={styles.rowEnd}>
+                              {/* A stash is a commit, so the commit view shows what
                                 it holds; nothing here has to know how to diff one. */}
-                            <IconButton
-                              size="xs"
-                              icon={<Icon icon={GitCommitHorizontal} />}
-                              aria-label="Open stash"
-                              tooltip="Open this stash as a commit"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
-                              }}
-                            />
-                            <IconButton
-                              size="xs"
-                              icon={<Icon icon={ArchiveRestore} />}
-                              disabled={applying()}
-                              aria-label="Apply stash"
-                              tooltip="Lay this stash back down and keep it in the list"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void applyStash(st, false);
-                              }}
-                            />
-                            <IconButton
-                              size="xs"
-                              icon={<Icon icon={ArchiveX} />}
-                              disabled={applying()}
-                              aria-label="Pop stash"
-                              tooltip="Lay this stash back down and remove it from the list"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void applyStash(st, true);
-                              }}
-                            />
-                            <IconButton
-                              size="xs"
-                              icon={<Icon icon={Trash2} />}
-                              disabled={applying()}
-                              aria-label="Drop stash"
-                              tooltip="Delete this stash without applying it"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void dropStash(st);
-                              }}
-                            />
-                          </span>
-                        </div>
-                        <Show when={openStashes().has(st.sha)}>
-                          <CommitFiles root={viewedRoot()!} sha={st.sha} />
-                        </Show>
-                      </>
-                    )}
-                  </For>
-                </OverlayScroll>
-              </Show>
+                              <IconButton
+                                size="xs"
+                                icon={<Icon icon={GitCommitHorizontal} />}
+                                aria-label="Open stash"
+                                tooltip="Open this stash as a commit"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
+                                }}
+                              />
+                              <IconButton
+                                size="xs"
+                                icon={<Icon icon={ArchiveRestore} />}
+                                disabled={applying()}
+                                aria-label="Apply stash"
+                                tooltip="Lay this stash back down and keep it in the list"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void applyStash(st, false);
+                                }}
+                              />
+                              <IconButton
+                                size="xs"
+                                icon={<Icon icon={ArchiveX} />}
+                                disabled={applying()}
+                                aria-label="Pop stash"
+                                tooltip="Lay this stash back down and remove it from the list"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void applyStash(st, true);
+                                }}
+                              />
+                              <IconButton
+                                size="xs"
+                                icon={<Icon icon={Trash2} />}
+                                disabled={applying()}
+                                aria-label="Drop stash"
+                                tooltip="Delete this stash without applying it"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void dropStash(st);
+                                }}
+                              />
+                            </span>
+                          </div>
+                          <Show when={openStashes().has(st.sha)}>
+                            <CommitFiles root={viewedRoot()!} sha={st.sha} />
+                          </Show>
+                        </>
+                      )}
+                    </For>
+                  </OverlayScroll>
+                </Show>
               </div>
               <div
                 id="review-panel-checkpoints"
@@ -2036,12 +2025,7 @@ export default function ReviewPanel(props: {
       </div>
       <Show when={rebaseReq()}>
         {(req) => (
-          <RebaseDialog
-            plan={req().plan}
-            busy={applying()}
-            onRun={runRebase}
-            onCancel={() => setRebaseReq(null)}
-          />
+          <RebaseDialog plan={req().plan} busy={applying()} onRun={runRebase} onCancel={() => setRebaseReq(null)} />
         )}
       </Show>
       <Show when={ontoPick()}>

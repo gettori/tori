@@ -69,8 +69,7 @@ const box = (label: string) => screen.getByRole("checkbox", { name: label }) as 
 const worktree = (label: string) =>
   within(screen.getByRole("group", { name: `Mode for ${label}` })).getByRole("button", { name: "Worktree" });
 // The branch is its own `<code>`, so the sentence is only whole on its parent.
-const sentence = (text: string) => (_: string, el: Element | null) =>
-  el?.tagName === "SPAN" && el.textContent === text;
+const sentence = (text: string) => (_: string, el: Element | null) => el?.tagName === "SPAN" && el.textContent === text;
 // Check a repo and ask for a worktree in it, the only rows with a branch to probe.
 const pickWithWorktree = (label: string) => {
   fireEvent.click(box(label));
@@ -85,9 +84,7 @@ const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 function open(over: Partial<Parameters<typeof NewTopicDialog>[0]> = {}) {
   const onDone = vi.fn();
   const onCancel = vi.fn();
-  render(() => (
-    <NewTopicDialog spaces={SPACES} topics={[EXISTING]} onDone={onDone} onCancel={onCancel} {...over} />
-  ));
+  render(() => <NewTopicDialog spaces={SPACES} topics={[EXISTING]} onDone={onDone} onCancel={onCancel} {...over} />);
   return { onDone, onCancel };
 }
 

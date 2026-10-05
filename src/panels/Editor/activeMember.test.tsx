@@ -74,9 +74,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     calls.push({ cmd, args: a });
     switch (cmd) {
       case "list_topics":
-        return Promise.resolve([
-          { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: TOPIC_MEMBERS },
-        ]);
+        return Promise.resolve([{ id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: TOPIC_MEMBERS }]);
       case "get_config":
         return Promise.resolve({ spaces: SPACES });
       case "file_exists": {
@@ -90,9 +88,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(answer);
       }
       case "fs_read_dir":
-        return Promise.resolve(
-          scripts[a.path as string] ? [{ name: "package.json" }] : [],
-        );
+        return Promise.resolve(scripts[a.path as string] ? [{ name: "package.json" }] : []);
       case "fs_read_file": {
         const root = String(a.path).replace(/\/package\.json$/, "");
         return Promise.resolve(JSON.stringify({ scripts: scripts[root] ?? {} }));
@@ -161,12 +157,7 @@ const topicSel = (activeRoot: string) => ({
 async function mountEditor(initial = API) {
   for (const bump of topicHandlers) bump();
   const [sel, set] = createSignal<unknown>(topicSel(initial));
-  render(() => (
-    <Editor
-      selected={sel() as never}
-      onActiveRoot={(root) => set(topicSel(root))}
-    />
-  ));
+  render(() => <Editor selected={sel() as never} onActiveRoot={(root) => set(topicSel(root))} />);
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 
@@ -246,8 +237,7 @@ describe("the member tabs", () => {
 });
 
 describe("a Topic with many members", () => {
-  const many = (n: number) =>
-    Array.from({ length: n }, (_, i) => member(`/w/r${i}`, `r${i}`, `/w/r${i}/auth`, i));
+  const many = (n: number) => Array.from({ length: n }, (_, i) => member(`/w/r${i}`, `r${i}`, `/w/r${i}/auth`, i));
 
   it("gives every member a tab in Files, however many, and switches to the last", async () => {
     TOPIC_MEMBERS = many(8);

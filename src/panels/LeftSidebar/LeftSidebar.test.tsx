@@ -175,9 +175,7 @@ describe("fan-out groups in the tree", () => {
     // The second question is the whole rest of the decision.
     fireEvent.click(await screen.findByText("3"));
 
-    await waitFor(() =>
-      expect(bridge.calls.filter((c) => c.cmd === "create_attempt")).toHaveLength(3),
-    );
+    await waitFor(() => expect(bridge.calls.filter((c) => c.cmd === "create_attempt")).toHaveLength(3));
     const made = bridge.calls.filter((c) => c.cmd === "create_attempt").map((c) => c.args);
     // One group, one goal, three branches off one stem: the group is what makes
     // three worktrees read as three answers to one question.

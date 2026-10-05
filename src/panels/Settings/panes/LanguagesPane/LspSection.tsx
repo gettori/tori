@@ -107,8 +107,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
   const off = () => turnedOff() ?? s().disabled;
   // Nothing to switch off. A per-project server can still be in the project,
   // and one already off keeps its switch so it can be turned back on.
-  const switchable = () =>
-    off() || s().status !== "notFound" || s().installedVersion !== null || s().runsPerProject;
+  const switchable = () => off() || s().status !== "notFound" || s().installedVersion !== null || s().runsPerProject;
 
   const use = (on: boolean) => {
     setTurnedOff(!on);
@@ -148,7 +147,9 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
           <Match when={s().disabledByWorkspace}>
             Disabled by <code>lsp.disabled</code> in this project's <code>.tori/settings.json</code>.
           </Match>
-          <Match when={off()}>Disabled by <code>lsp.disabled</code> in settings.</Match>
+          <Match when={off()}>
+            Disabled by <code>lsp.disabled</code> in settings.
+          </Match>
           {/* Settings has no project to look in, so a probe here cannot say
               whether such a server would be found where it actually starts. */}
           <Match when={s().activationMarkers.length > 0}>
@@ -178,15 +179,13 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
             Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
           </Match>
           <Match when={s().status === "versionMatch"}>Installed, version {s().version}.</Match>
-          <Match when={s().status === "versionUnknown" && s().version}>
-            Installed, version {s().version}.
-          </Match>
+          <Match when={s().status === "versionUnknown" && s().version}>Installed, version {s().version}.</Match>
           <Match when={s().status === "versionUnknown"}>
             Installed. It does not report a version, so Tori cannot check it.
           </Match>
           <Match when={s().status === "versionDrift"}>
-            Installed, version {s().version}. Tori's config was built against {s().verifiedAgainst},
-            so some behaviour may differ.
+            Installed, version {s().version}. Tori's config was built against {s().verifiedAgainst}, so some behaviour
+            may differ.
           </Match>
         </Switch>
       </div>
@@ -197,9 +196,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
         <For each={s().extensions}>{(ext) => <span>.{ext}</span>}</For>
       </div>
 
-      <Show when={s().overridePath}>
-        {(path) => <div class={styles.toolMeta}>Overridden by {path()}</div>}
-      </Show>
+      <Show when={s().overridePath}>{(path) => <div class={styles.toolMeta}>Overridden by {path()}</div>}</Show>
 
       <actions.Confirm />
     </div>
@@ -280,9 +277,8 @@ export default function LspSection() {
             </div>
           </Show>
           <div class={styles.note}>
-            A language with no server still opens and edits normally, it just has no completion or
-            diagnostics. Add one with a TOML file in <code>~/.config/tori/lsp/</code>; see
-            LSP-SERVERS.md.
+            A language with no server still opens and edits normally, it just has no completion or diagnostics. Add one
+            with a TOML file in <code>~/.config/tori/lsp/</code>; see LSP-SERVERS.md.
           </div>
         </Match>
       </Switch>

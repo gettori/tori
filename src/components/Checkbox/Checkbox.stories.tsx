@@ -47,16 +47,8 @@ export const Group: Story = {
     const [remote, setRemote] = createSignal(false);
     return (
       <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-3)" }}>
-        <Checkbox
-          checked={local()}
-          onChange={setLocal}
-          label="Delete local branch (git branch -D)"
-        />
-        <Checkbox
-          checked={remote()}
-          onChange={setRemote}
-          label="Delete remote branch (git push --delete)"
-        />
+        <Checkbox checked={local()} onChange={setLocal} label="Delete local branch (git branch -D)" />
+        <Checkbox checked={remote()} onChange={setRemote} label="Delete remote branch (git push --delete)" />
       </div>
     );
   },

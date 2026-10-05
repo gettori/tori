@@ -6,7 +6,21 @@ import StatusBubble from "../../src/panels/LeftSidebar/StatusBubble";
 import { fallbackColor, rgbTriple } from "../../src/utils/spaceTint";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
-import { inUnit, matches, unitCounts, projectRows, rollupOf, sessionLabel, type Phase, type Project, type SessionRow, type Space, type Topic, type Tree, type Unit } from "./tree";
+import {
+  inUnit,
+  matches,
+  unitCounts,
+  projectRows,
+  rollupOf,
+  sessionLabel,
+  type Phase,
+  type Project,
+  type SessionRow,
+  type Space,
+  type Topic,
+  type Tree,
+  type Unit,
+} from "./tree";
 import styles from "./shell.module.css";
 
 export type RootTab = "projects" | "topics";
@@ -105,7 +119,9 @@ function Results(props: {
   const found = () => projects().filter((p) => matches(p.name, props.query));
   const units = () =>
     projects().flatMap((project) =>
-      project.units.filter((u) => matches(u.label, props.query) || matches(u.branch, props.query)).map((unit) => ({ project, unit })),
+      project.units
+        .filter((u) => matches(u.label, props.query) || matches(u.branch, props.query))
+        .map((unit) => ({ project, unit })),
     );
   const sessions = () => props.live.filter((row) => matches(sessionLabel(row), props.query));
   const nothing = () => found().length + units().length + sessions().length === 0;
@@ -114,7 +130,16 @@ function Results(props: {
       <Show when={found().length > 0}>
         <h2 class={styles.label}>Projects</h2>
         <ul class={styles.group}>
-          <For each={found()}>{(project) => <ProjectItem client={props.client} project={project} live={props.live} onOpen={() => props.onProject(project)} />}</For>
+          <For each={found()}>
+            {(project) => (
+              <ProjectItem
+                client={props.client}
+                project={project}
+                live={props.live}
+                onOpen={() => props.onProject(project)}
+              />
+            )}
+          </For>
         </ul>
       </Show>
       <Show when={units().length > 0}>
@@ -140,7 +165,9 @@ function Results(props: {
         <h2 class={styles.label}>Sessions</h2>
         <ul class={styles.group}>
           <For each={sessions()}>
-            {(row) => <SessionItem row={row} meta={row.home?.branch ?? row.cwd ?? ""} onOpen={() => props.onSession(row)} />}
+            {(row) => (
+              <SessionItem row={row} meta={row.home?.branch ?? row.cwd ?? ""} onOpen={() => props.onSession(row)} />
+            )}
           </For>
         </ul>
       </Show>
@@ -214,31 +241,58 @@ export default function Root(props: {
             <Switch>
               <Match when={searching() && query().trim()}>
                 {(q) => (
-                  <Results client={props.client} tree={tree()} live={props.live()} query={q()} onProject={props.onProject} onUnit={props.onUnit} onSession={props.onSession} />
+                  <Results
+                    client={props.client}
+                    tree={tree()}
+                    live={props.live()}
+                    query={q()}
+                    onProject={props.onProject}
+                    onUnit={props.onUnit}
+                    onSession={props.onSession}
+                  />
                 )}
               </Match>
               <Match when={props.tab === "projects"}>
-                <h2 class={styles.label}>Projects {DOT} {props.space?.projects.length ?? 0}</h2>
+                <h2 class={styles.label}>
+                  Projects {DOT} {props.space?.projects.length ?? 0}
+                </h2>
                 <ul class={styles.group}>
-                  <For each={props.space?.projects ?? []} fallback={<li class={styles.empty}>No projects in this space</li>}>
-                    {(project) => <ProjectItem client={props.client} project={project} live={props.live()} onOpen={() => props.onProject(project)} />}
+                  <For
+                    each={props.space?.projects ?? []}
+                    fallback={<li class={styles.empty}>No projects in this space</li>}
+                  >
+                    {(project) => (
+                      <ProjectItem
+                        client={props.client}
+                        project={project}
+                        live={props.live()}
+                        onOpen={() => props.onProject(project)}
+                      />
+                    )}
                   </For>
                 </ul>
                 <Show when={homeless().length > 0}>
                   <h2 class={styles.label}>Elsewhere</h2>
                   <ul class={styles.group}>
-                    <For each={homeless()}>{(row) => <SessionItem row={row} meta={row.cwd ?? ""} onOpen={() => props.onSession(row)} />}</For>
+                    <For each={homeless()}>
+                      {(row) => <SessionItem row={row} meta={row.cwd ?? ""} onOpen={() => props.onSession(row)} />}
+                    </For>
                   </ul>
                 </Show>
               </Match>
               <Match when={props.tab === "topics"}>
-                <h2 class={styles.label}>Topics {DOT} {topics().length}</h2>
+                <h2 class={styles.label}>
+                  Topics {DOT} {topics().length}
+                </h2>
                 <ul class={styles.group}>
                   <For each={topics()} fallback={<li class={styles.empty}>No topics yet</li>}>
                     {(topic) => (
                       <li>
                         <button class={styles.item} onClick={() => props.onTopic(topic)}>
-                          <span class={`${styles.tile} ${styles.tagTile}`} style={{ "--tint": rgbTriple(fallbackColor(topic.name)) }}>
+                          <span
+                            class={`${styles.tile} ${styles.tagTile}`}
+                            style={{ "--tint": rgbTriple(fallbackColor(topic.name)) }}
+                          >
                             <Icon icon={Tag} size={16} strokeWidth={2} />
                           </span>
                           <span class={styles.text}>

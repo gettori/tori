@@ -236,10 +236,7 @@ fn ensure_config() -> Result<String, String> {
 // --- git probing ---
 
 fn run_git(path: &Path, args: &[&str]) -> Option<String> {
-    let out = crate::exec::git_in(path)
-        .args(args)
-        .output()
-        .ok()?;
+    let out = crate::exec::git_in(path).args(args).output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -249,9 +246,7 @@ fn run_git(path: &Path, args: &[&str]) -> Option<String> {
 /// The repo's default branch (e.g. `main`), via origin/HEAD. None if unset.
 fn default_branch(path: &Path) -> Option<String> {
     let text = run_git(path, &["symbolic-ref", "refs/remotes/origin/HEAD"])?;
-    text.trim()
-        .strip_prefix("refs/remotes/origin/")
-        .map(|s| s.to_string())
+    text.trim().strip_prefix("refs/remotes/origin/").map(|s| s.to_string())
 }
 
 struct WtEntry {
@@ -370,9 +365,7 @@ fn current_branch(path: &Path) -> Option<String> {
 /// Refuse an op targeting the current checkout (detach/delete would orphan it).
 fn refuse_if_current(path: &Path, branch: &str) -> Result<(), String> {
     if current_branch(path).as_deref() == Some(branch) {
-        return Err(format!(
-            "\"{branch}\" is the current checkout; switch away first."
-        ));
+        return Err(format!("\"{branch}\" is the current checkout; switch away first."));
     }
     Ok(())
 }
@@ -455,10 +448,7 @@ fn secondary_worktree_units(real: &[WtEntry], plain: &[BranchUnit]) -> Vec<Branc
         .filter(|w| w.path.starts_with(&inside))
         .filter(|w| w.branch.as_deref().map(|b| !taken.contains(b)).unwrap_or(true))
         .map(|w| BranchUnit {
-            label: w
-                .branch
-                .clone()
-                .unwrap_or_else(|| basename(Path::new(&w.path))),
+            label: w.branch.clone().unwrap_or_else(|| basename(Path::new(&w.path))),
             folder_path: w.path.clone(),
             branch: w.branch.clone(),
             kind: ProjectKind::Worktree,
@@ -530,10 +520,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     let mut units: Vec<BranchUnit> = real
         .into_iter()
         .map(|w| BranchUnit {
-            label: w
-                .branch
-                .clone()
-                .unwrap_or_else(|| basename(Path::new(&w.path))),
+            label: w.branch.clone().unwrap_or_else(|| basename(Path::new(&w.path))),
             folder_path: w.path,
             branch: w.branch,
             kind: ProjectKind::Worktree,
@@ -677,7 +664,11 @@ fn read_raw_config() -> RawConfig {
 }
 
 pub(crate) fn discovery_root() -> Option<PathBuf> {
-    read_raw_config().discovery.roots.first().map(|r| PathBuf::from(expand_tilde(r)))
+    read_raw_config()
+        .discovery
+        .roots
+        .first()
+        .map(|r| PathBuf::from(expand_tilde(r)))
 }
 
 pub(crate) fn discovered_project_dirs() -> Vec<PathBuf> {
@@ -776,7 +767,12 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
                 continue; // an entry for a project that is no longer discovered
             };
             let p = &mut spaces[gi].projects[pi];
-            p.icon = meta.icon.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+            p.icon = meta
+                .icon
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
             // Only report a file that is still there: an icon deleted out from
             // under the config degrades to the favicon (or the derived glyph),
             // never to a broken image in the tree.
@@ -791,7 +787,8 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     }
 
     for g in &mut spaces {
-        g.projects.sort_by_cached_key(|p| (p.name.to_lowercase(), p.name.clone()));
+        g.projects
+            .sort_by_cached_key(|p| (p.name.to_lowercase(), p.name.clone()));
     }
 
     // Apply the user's space order (stable): a listed space sorts by its index in
@@ -815,8 +812,17 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 // developer's own config.
 #[cfg(test)]
 pub(crate) fn resolve_root(root: &Path, index: &ProjectIndex) -> ResolvedConfig {
-    let discovery = RawDiscovery { roots: vec![root.to_string_lossy().into_owned()], ignore: Vec::new() };
-    resolve(RawConfig { discovery, ..Default::default() }, index)
+    let discovery = RawDiscovery {
+        roots: vec![root.to_string_lossy().into_owned()],
+        ignore: Vec::new(),
+    };
+    resolve(
+        RawConfig {
+            discovery,
+            ..Default::default()
+        },
+        index,
+    )
 }
 
 #[tauri::command]
@@ -903,12 +909,7 @@ pub fn repo_default_branch(repo: String) -> Result<Option<String>, String> {
 /// repo, and never against an empty repo (the flag stays unset so a later probe
 /// still seeds). Returns whether the state changed (so the caller persists). Pure,
 /// so it is unit-tested directly. Mirrors `do_seed` (sessions.rs).
-fn do_seed_attached(
-    state: &mut AttachedState,
-    key: &str,
-    locals: &HashSet<String>,
-    seed: Option<&str>,
-) -> bool {
+fn do_seed_attached(state: &mut AttachedState, key: &str, locals: &HashSet<String>, seed: Option<&str>) -> bool {
     if state.0.get(key).map(|r| r.seeded).unwrap_or(false) || locals.is_empty() {
         return false;
     }
@@ -945,12 +946,7 @@ pub fn seed_attached(repo: String) -> Result<(), String> {
 /// Attach an existing local `branch` to `repo`'s visible set.
 /// Order: write store → evict cache → emit `config://changed`.
 #[tauri::command(async)]
-pub fn attach_branch(
-    app: AppHandle,
-    index: State<ProjectIndex>,
-    repo: String,
-    branch: String,
-) -> Result<(), String> {
+pub fn attach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("config");
@@ -1035,12 +1031,7 @@ pub fn new_branch(
 /// Refuses the current checkout (it must stay reachable).
 /// Order: write store → evict cache → emit.
 #[tauri::command(async)]
-pub fn detach_branch(
-    app: AppHandle,
-    index: State<ProjectIndex>,
-    repo: String,
-    branch: String,
-) -> Result<(), String> {
+pub fn detach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("config");
@@ -1064,12 +1055,7 @@ pub fn detach_branch(
 /// Delete `branch` from `repo` (`git branch -D`) and prune the store entry.
 /// Refuses the current checkout. Order: delete → write store → evict cache → emit.
 #[tauri::command(async)]
-pub fn delete_branch(
-    app: AppHandle,
-    index: State<ProjectIndex>,
-    repo: String,
-    branch: String,
-) -> Result<(), String> {
+pub fn delete_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("config");
@@ -1214,9 +1200,7 @@ fn replace_root(text: &str, path: &str) -> Result<String, String> {
     let discovery = doc
         .entry("discovery")
         .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    let dt = discovery
-        .as_table_mut()
-        .ok_or("`discovery` is not a table")?;
+    let dt = discovery.as_table_mut().ok_or("`discovery` is not a table")?;
     dt.insert(
         "roots".into(),
         toml::Value::Array(vec![toml::Value::String(path.to_string())]),
@@ -1286,12 +1270,7 @@ fn valid_name(name: &str) -> Result<String, String> {
 /// value behind; an entry with nothing left in it is pruned, and an emptied
 /// array-of-tables is dropped entirely. Pure over the config text so it can be
 /// unit-tested without touching the real config.
-fn upsert_space_meta(
-    text: &str,
-    name: &str,
-    icon: Option<&str>,
-    color: Option<&str>,
-) -> Result<String, String> {
+fn upsert_space_meta(text: &str, name: &str, icon: Option<&str>, color: Option<&str>) -> Result<String, String> {
     use toml_edit::{value, ArrayOfTables, Document, Item, Table};
     let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
 
@@ -1348,12 +1327,7 @@ fn upsert_space_meta(
 /// image (or vice versa). Both `None` prunes the whole entry, which is what
 /// "back to automatic" means. Pure over the config text, so it unit-tests
 /// without touching the real config.
-fn upsert_project_meta(
-    text: &str,
-    path: &str,
-    icon: Option<&str>,
-    icon_file: Option<&str>,
-) -> Result<String, String> {
+fn upsert_project_meta(text: &str, path: &str, icon: Option<&str>, icon_file: Option<&str>) -> Result<String, String> {
     use toml_edit::{value, ArrayOfTables, Document, Item, Table};
     let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
 
@@ -1397,7 +1371,11 @@ fn upsert_project_meta(
     }
 
     // Drop an emptied `[[project_meta]]` so the file has no dangling array key.
-    if doc["project_meta"].as_array_of_tables().map(|t| t.is_empty()).unwrap_or(false) {
+    if doc["project_meta"]
+        .as_array_of_tables()
+        .map(|t| t.is_empty())
+        .unwrap_or(false)
+    {
         doc.remove("project_meta");
     }
     Ok(doc.to_string())
@@ -1503,12 +1481,7 @@ pub fn add_space(
 /// Write store → emit `config://changed` (the sidebar's listener drives the
 /// reload).
 #[tauri::command(async)]
-pub fn set_space_meta(
-    app: AppHandle,
-    name: String,
-    icon: Option<String>,
-    color: Option<String>,
-) -> Result<(), String> {
+pub fn set_space_meta(app: AppHandle, name: String, icon: Option<String>, color: Option<String>) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("config");
@@ -1607,10 +1580,8 @@ pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
 /// a symlinked space resolving outside the root is refused, never followed.
 fn do_delete_space(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     let root = root.ok_or("No base folder configured")?;
-    let root_c = std::fs::canonicalize(expand_tilde(root))
-        .map_err(|_| "Base folder does not exist".to_string())?;
-    let dir_c =
-        std::fs::canonicalize(path).map_err(|_| "Space folder does not exist".to_string())?;
+    let root_c = std::fs::canonicalize(expand_tilde(root)).map_err(|_| "Base folder does not exist".to_string())?;
+    let dir_c = std::fs::canonicalize(path).map_err(|_| "Space folder does not exist".to_string())?;
     if dir_c == root_c {
         return Err("Refusing to delete the base folder itself".into());
     }
@@ -1651,8 +1622,7 @@ pub fn delete_space(app: AppHandle, path: String) -> Result<(), String> {
 /// checked by the caller (probe), not here.
 fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     let root = root.ok_or("No base folder configured")?;
-    let root_c = std::fs::canonicalize(expand_tilde(root))
-        .map_err(|_| "Base folder does not exist".to_string())?;
+    let root_c = std::fs::canonicalize(expand_tilde(root)).map_err(|_| "Base folder does not exist".to_string())?;
     let dir_c = std::fs::canonicalize(path).map_err(|_| "Folder does not exist".to_string())?;
     if dir_c == root_c {
         return Err("Refusing to delete the base folder itself".into());
@@ -1760,14 +1730,11 @@ fn dir_size(path: &Path) -> u64 {
 /// unpublished work and commits on worktree-less branches both surface).
 fn repo_status(path: &Path) -> Option<(bool, bool)> {
     let text = run_git(path, &["worktree", "list", "--porcelain"])?;
-    let dirty = parse_worktrees(&text)
-        .into_iter()
-        .filter(|e| !e.bare)
-        .any(|e| {
-            run_git(Path::new(&e.path), &["status", "--porcelain"])
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false)
-        });
+    let dirty = parse_worktrees(&text).into_iter().filter(|e| !e.bare).any(|e| {
+        run_git(Path::new(&e.path), &["status", "--porcelain"])
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+    });
     let unpushed = match run_git(
         path,
         &["for-each-ref", "--format=%(upstream)\t%(upstream:track)", "refs/heads"],
@@ -1796,16 +1763,34 @@ pub fn space_delete_preview(path: String) -> Result<SpacePreview, String> {
         let name = basename(&p);
         let entry = if p.is_dir() {
             match repo_status(&p) {
-                Some((dirty, unpushed)) => PreviewEntry { name, kind: "repo".into(), dirty, unpushed },
-                None => PreviewEntry { name, kind: "folder".into(), dirty: false, unpushed: false },
+                Some((dirty, unpushed)) => PreviewEntry {
+                    name,
+                    kind: "repo".into(),
+                    dirty,
+                    unpushed,
+                },
+                None => PreviewEntry {
+                    name,
+                    kind: "folder".into(),
+                    dirty: false,
+                    unpushed: false,
+                },
             }
         } else {
-            PreviewEntry { name, kind: "file".into(), dirty: false, unpushed: false }
+            PreviewEntry {
+                name,
+                kind: "file".into(),
+                dirty: false,
+                unpushed: false,
+            }
         };
         entries.push(entry);
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(SpacePreview { size_bytes: dir_size(&dir), entries })
+    Ok(SpacePreview {
+        size_bytes: dir_size(&dir),
+        entries,
+    })
 }
 
 /// Delete preview for a git *project* folder (plain repo or worktree container).
@@ -1843,18 +1828,36 @@ pub fn project_delete_preview(path: String) -> Result<SpacePreview, String> {
                 let dirty = run_git(&p, &["status", "--porcelain"])
                     .map(|s| !s.trim().is_empty())
                     .unwrap_or(false);
-                PreviewEntry { name, kind: "repo".into(), dirty, unpushed: false }
+                PreviewEntry {
+                    name,
+                    kind: "repo".into(),
+                    dirty,
+                    unpushed: false,
+                }
             } else {
-                PreviewEntry { name, kind: "folder".into(), dirty: false, unpushed: false }
+                PreviewEntry {
+                    name,
+                    kind: "folder".into(),
+                    dirty: false,
+                    unpushed: false,
+                }
             }
         } else {
-            PreviewEntry { name, kind: "file".into(), dirty: false, unpushed: false }
+            PreviewEntry {
+                name,
+                kind: "file".into(),
+                dirty: false,
+                unpushed: false,
+            }
         };
         children.push(entry);
     }
     children.sort_by(|a, b| a.name.cmp(&b.name));
     entries.extend(children);
-    Ok(SpacePreview { size_bytes: dir_size(&dir), entries })
+    Ok(SpacePreview {
+        size_bytes: dir_size(&dir),
+        entries,
+    })
 }
 
 #[derive(Default)]
@@ -1865,11 +1868,7 @@ pub struct RootWatch(pub Mutex<Option<RecommendedWatcher>>);
 /// watcher only sees the toml itself, never filesystem creates under the roots.
 /// Deliberately non-recursive (one extra level) to avoid watching deep trees.
 #[tauri::command(async)]
-pub fn roots_watch_start(
-    app: AppHandle,
-    state: State<RootWatch>,
-    roots: Vec<String>,
-) -> Result<(), String> {
+pub fn roots_watch_start(app: AppHandle, state: State<RootWatch>, roots: Vec<String>) -> Result<(), String> {
     let app_handle = app.clone();
     let last = Arc::new(Mutex::new(Instant::now()));
     let debounce = last.clone();
@@ -1914,10 +1913,7 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     fn unique_tmp() -> PathBuf {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let p = std::env::temp_dir().join(format!("tori_cfg_test_{n}"));
         std::fs::create_dir_all(&p).unwrap();
         p
@@ -2011,7 +2007,10 @@ mod tests {
         // Fabricate remote-tracking refs (no real remote needed) + the origin/HEAD symref.
         git(&dir, &["update-ref", "refs/remotes/origin/foo", &head]);
         git(&dir, &["update-ref", "refs/remotes/origin/feature/x", &head]);
-        git(&dir, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/foo"]);
+        git(
+            &dir,
+            &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/foo"],
+        );
 
         let mut got = list_remote_branches(dir.to_string_lossy().into_owned()).unwrap();
         got.sort();
@@ -2144,9 +2143,7 @@ mod tests {
             .unwrap();
         assert!(feat.is_current);
         assert!(
-            pr.branch_units
-                .iter()
-                .all(|u| u.branch.as_deref() != Some("main")),
+            pr.branch_units.iter().all(|u| u.branch.as_deref() != Some("main")),
             "unattached main must not surface as a unit"
         );
 
@@ -2194,10 +2191,7 @@ mod tests {
         // A store entry for a nonexistent branch yields no unit (only current shows).
         let ghost = HashSet::from(["nope".to_string()]);
         let ghost_units = plain_branch_units(&repo, &ghost);
-        let names2: HashSet<&str> = ghost_units
-            .iter()
-            .filter_map(|u| u.branch.as_deref())
-            .collect();
+        let names2: HashSet<&str> = ghost_units.iter().filter_map(|u| u.branch.as_deref()).collect();
         assert_eq!(names2, HashSet::from(["main"]));
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -2212,13 +2206,15 @@ mod tests {
         let repo = tmp.join("repo");
         init_repo(&repo, "main");
         let wt = repo.join(".tori/worktrees/x");
-        git(
-            &repo,
-            &["worktree", "add", "-q", "-b", "feat/x", wt.to_str().unwrap()],
-        );
+        git(&repo, &["worktree", "add", "-q", "-b", "feat/x", wt.to_str().unwrap()]);
 
         let units = probe_project(&repo);
-        assert_eq!(units.len(), 2, "{:?}", units.iter().map(|u| &u.label).collect::<Vec<_>>());
+        assert_eq!(
+            units.len(),
+            2,
+            "{:?}",
+            units.iter().map(|u| &u.label).collect::<Vec<_>>()
+        );
         let main = units.iter().find(|u| u.label == "main").unwrap();
         assert_eq!(main.kind, ProjectKind::Plain);
         assert_eq!(main.folder_path, repo.to_string_lossy());
@@ -2327,7 +2323,10 @@ mod tests {
 
         // Clone it so origin/* tracking refs exist (simulates a prior fetch).
         let clone = tmp.join("clone");
-        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), clone.to_str().unwrap()]);
+        git(
+            &tmp,
+            &["clone", "-q", remote.to_str().unwrap(), clone.to_str().unwrap()],
+        );
 
         // A fetched remote branch is created as a local tracking branch.
         assert!(ensure_local_tracking(&clone, "feature").is_ok());
@@ -2538,7 +2537,13 @@ mod tests {
         assert!(!none.contains("[[project_meta]]"));
 
         // Comments and unrelated keys survive (the toml_edit win).
-        let out = upsert_project_meta("# my config\n[discovery]\nroots = [\"/r\"]\n", "/p/x", Some("Box"), None).unwrap();
+        let out = upsert_project_meta(
+            "# my config\n[discovery]\nroots = [\"/r\"]\n",
+            "/p/x",
+            Some("Box"),
+            None,
+        )
+        .unwrap();
         assert!(out.contains("# my config") && out.contains("roots"));
     }
 
@@ -2713,10 +2718,7 @@ mod tests {
         init_repo(&root_b.join("gb/pb"), "main");
 
         let index = ProjectIndex::default();
-        let cfg = resolve(
-            raw(&[root_a.to_str().unwrap(), root_b.to_str().unwrap()], &[]),
-            &index,
-        );
+        let cfg = resolve(raw(&[root_a.to_str().unwrap(), root_b.to_str().unwrap()], &[]), &index);
 
         // Only the first root is scanned: its space present, the second's absent.
         assert_eq!(cfg.roots.len(), 1);
@@ -2793,10 +2795,16 @@ mod tests {
 
         // pushed: clean clone, main tracks origin/main up to date.
         let pushed = grp.join("pushed");
-        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), pushed.to_str().unwrap()]);
+        git(
+            &tmp,
+            &["clone", "-q", remote.to_str().unwrap(), pushed.to_str().unwrap()],
+        );
         // dirty: clone with an uncommitted change to a tracked file.
         let dirty = grp.join("dirty");
-        git(&tmp, &["clone", "-q", remote.to_str().unwrap(), dirty.to_str().unwrap()]);
+        git(
+            &tmp,
+            &["clone", "-q", remote.to_str().unwrap(), dirty.to_str().unwrap()],
+        );
         std::fs::write(dirty.join("README.md"), "changed").unwrap();
         // unpushed: a fresh local repo whose branch has no upstream.
         let unpushed = grp.join("unpushed");

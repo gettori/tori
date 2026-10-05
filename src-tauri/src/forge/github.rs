@@ -25,14 +25,13 @@
 //! takes the id the caller already has.
 
 use super::http::{
-    classify, graphql_data, paginate_graphql, paginate_rest, ConnectionSpec, GraphqlEndpoint,
-    HttpRequest, HttpResponse, NestedSpec, Recording, Transport, PAGE_CAP,
+    classify, graphql_data, paginate_graphql, paginate_rest, ConnectionSpec, GraphqlEndpoint, HttpRequest,
+    HttpResponse, NestedSpec, Recording, Transport, PAGE_CAP,
 };
 use super::model::{
-    AuthState, Capabilities, CheckContext, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
-    Grant, MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrState, PrSummary,
-    PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread,
-    UnitStatus, Viewer,
+    AuthState, Capabilities, CheckContext, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
+    MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrState, PrSummary, PullRequest, RateSnapshot,
+    RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -73,12 +72,7 @@ pub struct GitHubForge {
 }
 
 impl GitHubForge {
-    pub fn new(
-        transport: Box<dyn Transport>,
-        base_url: &str,
-        token: Option<String>,
-        login: Option<String>,
-    ) -> Self {
+    pub fn new(transport: Box<dyn Transport>, base_url: &str, token: Option<String>, login: Option<String>) -> Self {
         let base = base_url.trim_end_matches('/');
         let versioned = base.eq_ignore_ascii_case(GITHUB_WEB);
         let (api_base, graphql_url) = if versioned {
@@ -142,8 +136,7 @@ impl GitHubForge {
         if resp.body.trim().is_empty() {
             return Ok(Value::Null);
         }
-        serde_json::from_str(&resp.body)
-            .map_err(|e| ForgeError::Malformed { message: e.to_string() })
+        serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed { message: e.to_string() })
     }
 
     fn rest(&self, method: &'static str, path: &str, body: Option<Value>) -> HttpRequest {
@@ -195,7 +188,9 @@ fn pr_from_rest(v: &Value) -> Result<PullRequest, ForgeError> {
     let number = v
         .get("number")
         .and_then(|n| n.as_u64())
-        .ok_or_else(|| ForgeError::Malformed { message: "pull request has no number".into() })?;
+        .ok_or_else(|| ForgeError::Malformed {
+            message: "pull request has no number".into(),
+        })?;
     let state = if v.get("merged_at").map(|m| !m.is_null()).unwrap_or(false) {
         PrState::Merged
     } else if str_at(v, "state") == "closed" {
@@ -238,7 +233,9 @@ fn file_from_rest(v: &Value) -> Result<PrFile, ForgeError> {
     let path = v
         .get("filename")
         .and_then(|f| f.as_str())
-        .ok_or_else(|| ForgeError::Malformed { message: "changed file has no filename".into() })?;
+        .ok_or_else(|| ForgeError::Malformed {
+            message: "changed file has no filename".into(),
+        })?;
     let status = match v.get("status").and_then(|s| s.as_str()) {
         Some("added") => FileStatus::Added,
         Some("removed") => FileStatus::Removed,
@@ -296,8 +293,7 @@ fn review_counts(rows: &[Value]) -> PrReviewCounts {
     // Insertion-ordered by reviewer is not needed, only the last word per
     // reviewer, so a plain map over the rows in the order the API sends them
     // (oldest first) is enough.
-    let mut standing: std::collections::HashMap<String, Option<bool>> =
-        std::collections::HashMap::new();
+    let mut standing: std::collections::HashMap<String, Option<bool>> = std::collections::HashMap::new();
     for row in rows {
         let login = row.get("user").map(|u| str_at(u, "login")).unwrap_or_default();
         if login.is_empty() {
@@ -350,8 +346,11 @@ fn context_from(node: &Value) -> CheckContext {
             name: str_at(node, "name"),
             state: match node.get("conclusion").and_then(|c| c.as_str()) {
                 None => CheckState::Pending,
-                Some("FAILURE") | Some("TIMED_OUT") | Some("CANCELLED")
-                | Some("ACTION_REQUIRED") | Some("STARTUP_FAILURE") => CheckState::Failure,
+                Some("FAILURE")
+                | Some("TIMED_OUT")
+                | Some("CANCELLED")
+                | Some("ACTION_REQUIRED")
+                | Some("STARTUP_FAILURE") => CheckState::Failure,
                 _ => CheckState::Success,
             },
             url: url_at(node, "detailsUrl"),
@@ -405,7 +404,12 @@ fn checks_from_rollup(rollup: Option<&Value>) -> CheckRollup {
     // nodes: a row the panel prints in red and a count that disagrees with it
     // are one read answered twice.
     let failing = contexts.iter().filter(|c| c.state == CheckState::Failure).count() as u32;
-    CheckRollup { state, total, failing, contexts }
+    CheckRollup {
+        state,
+        total,
+        failing,
+        contexts,
+    }
 }
 
 fn review_decision_from(v: Option<&str>) -> ReviewDecision {
@@ -589,10 +593,23 @@ fn watched_from_graphql(v: &Value) -> crate::rpc::pr_watch::Snapshot {
             .collect()
     });
     let author = |n: &Value| n.get("author").map(|a| str_at(a, "login")).unwrap_or_default();
-    let at = |n: &Value, key: &str| n.get(key).and_then(|t| t.as_str()).and_then(crate::chat::acp_sessions::epoch_from_iso8601).map(|s| s * 1000);
+    let at = |n: &Value, key: &str| {
+        n.get(key)
+            .and_then(|t| t.as_str())
+            .and_then(crate::chat::acp_sessions::epoch_from_iso8601)
+            .map(|s| s * 1000)
+    };
     let comments = nodes(v.get("comments")).map(|list| {
         list.iter()
-            .filter_map(|n| Some(Remark { id: str_at(n, "id"), author: author(n), at_ms: at(n, "createdAt")?, body: str_at(n, "body"), review: None }))
+            .filter_map(|n| {
+                Some(Remark {
+                    id: str_at(n, "id"),
+                    author: author(n),
+                    at_ms: at(n, "createdAt")?,
+                    body: str_at(n, "body"),
+                    review: None,
+                })
+            })
             .collect::<Vec<_>>()
     });
     let reviews = nodes(v.get("reviews")).map(|list| {
@@ -601,13 +618,23 @@ fn watched_from_graphql(v: &Value) -> crate::rpc::pr_watch::Snapshot {
                 // A pending review is the viewer's own draft; it has no submittedAt.
                 let at_ms = at(n, "submittedAt")?;
                 let state = str_at(n, "state").to_ascii_lowercase();
-                let first = nodes(n.get("comments")).and_then(|c| c.first().map(|c| str_at(c, "body"))).unwrap_or_default();
-                let body = Some(str_at(n, "body")).filter(|b| !b.trim().is_empty()).unwrap_or(first);
+                let first = nodes(n.get("comments"))
+                    .and_then(|c| c.first().map(|c| str_at(c, "body")))
+                    .unwrap_or_default();
+                let body = Some(str_at(n, "body"))
+                    .filter(|b| !b.trim().is_empty())
+                    .unwrap_or(first);
                 // A thread reply arrives as a bare commented review, and an empty one says nothing.
                 if state == "commented" && body.trim().is_empty() {
                     return None;
                 }
-                Some(Remark { id: str_at(n, "id"), author: author(n), at_ms, body, review: Some(state) })
+                Some(Remark {
+                    id: str_at(n, "id"),
+                    author: author(n),
+                    at_ms,
+                    body,
+                    review: Some(state),
+                })
             })
             .collect::<Vec<_>>()
     });
@@ -717,10 +744,12 @@ impl Forge for GitHubForge {
     fn auth_state(&self) -> AuthState {
         match (&self.token, self.transport.suspect()) {
             (None, _) => AuthState::SignedOut,
-            (Some(_), true) => AuthState::Suspect { login: self.login.clone() },
-            (Some(_), false) => {
-                AuthState::SignedIn { login: self.login.clone().unwrap_or_default() }
-            }
+            (Some(_), true) => AuthState::Suspect {
+                login: self.login.clone(),
+            },
+            (Some(_), false) => AuthState::SignedIn {
+                login: self.login.clone().unwrap_or_default(),
+            },
         }
     }
 
@@ -733,11 +762,7 @@ impl Forge for GitHubForge {
         })
     }
 
-    fn pull_request_for_branch(
-        &self,
-        repo: &RepoRef,
-        branch: &str,
-    ) -> Result<Option<PullRequest>, ForgeError> {
+    fn pull_request_for_branch(&self, repo: &RepoRef, branch: &str) -> Result<Option<PullRequest>, ForgeError> {
         self.require_token()?;
         // Scoped by `head=owner:branch`, so two projects with a branch of the
         // same name cannot collide: the qualifier is remote-scoped.
@@ -757,11 +782,18 @@ impl Forge for GitHubForge {
         if numbers.is_empty() {
             return Ok(vec![]);
         }
-        let selections = numbers.iter().map(|n| format!("p{n}: pullRequest(number:{n}) {{ state }}")).collect::<Vec<_>>().join("\n");
-        let query = format!("query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}");
+        let selections = numbers
+            .iter()
+            .map(|n| format!("p{n}: pullRequest(number:{n}) {{ state }}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let query =
+            format!("query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}");
         let resp = self.graphql_response(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
         let data = data_past_alias_errors(&resp)?;
-        let repository = data.get("repository").ok_or_else(|| ForgeError::Malformed { message: "no repository in response".into() })?;
+        let repository = data.get("repository").ok_or_else(|| ForgeError::Malformed {
+            message: "no repository in response".into(),
+        })?;
         Ok(numbers
             .iter()
             .filter_map(|n| {
@@ -784,36 +816,23 @@ impl Forge for GitHubForge {
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
         self.require_token()?;
         let path = format!("/repos/{}/{}/pulls?state=open&per_page=100", repo.owner, repo.repo);
-        let (items, truncated) =
-            paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        let (items, truncated) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
         let items = items.iter().map(pr_from_rest).collect::<Result<Vec<_>, _>>()?;
         Ok(Paged { items, truncated })
     }
 
-    fn pull_request_files(
-        &self,
-        repo: &RepoRef,
-        number: u64,
-    ) -> Result<Paged<PrFile>, ForgeError> {
+    fn pull_request_files(&self, repo: &RepoRef, number: u64) -> Result<Paged<PrFile>, ForgeError> {
         self.require_token()?;
         let path = format!(
             "/repos/{}/{}/pulls/{number}/files?per_page={PR_FILES_PER_PAGE}",
             repo.owner, repo.repo
         );
-        let (items, truncated) = paginate_rest(
-            self.transport.as_ref(),
-            self.rest("GET", &path, None),
-            PR_FILE_PAGES,
-        )?;
+        let (items, truncated) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PR_FILE_PAGES)?;
         let items = items.iter().map(file_from_rest).collect::<Result<Vec<_>, _>>()?;
         Ok(Paged { items, truncated })
     }
 
-    fn create_pull_request(
-        &self,
-        repo: &RepoRef,
-        req: &CreatePr,
-    ) -> Result<PullRequest, ForgeError> {
+    fn create_pull_request(&self, repo: &RepoRef, req: &CreatePr) -> Result<PullRequest, ForgeError> {
         self.require_token()?;
         let body = serde_json::json!({
             "title": req.title,
@@ -827,12 +846,9 @@ impl Forge for GitHubForge {
         pr_from_rest(&v)
     }
 
-    fn unit_statuses(
-        &self,
-        repo: &RepoRef,
-        branches: &[String],
-    ) -> Result<Vec<UnitStatus>, ForgeError> {
-        self.unit_statuses_watching(repo, branches, &[]).map(|(statuses, _)| statuses)
+    fn unit_statuses(&self, repo: &RepoRef, branches: &[String]) -> Result<Vec<UnitStatus>, ForgeError> {
+        self.unit_statuses_watching(repo, branches, &[])
+            .map(|(statuses, _)| statuses)
     }
 
     fn unit_statuses_watching(
@@ -859,22 +875,37 @@ impl Forge for GitHubForge {
                      orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS} }} }}"
                 )
             })
-            .chain(watched.iter().map(|n| format!("w{n}: pullRequest(number:{n}) {{ {} }}", watched_fields(*n))))
+            .chain(
+                watched
+                    .iter()
+                    .map(|n| format!("w{n}: pullRequest(number:{n}) {{ {} }}", watched_fields(*n))),
+            )
             .collect::<Vec<_>>()
             .join("\n");
-        let query = format!(
-            "query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}"
-        );
+        let query =
+            format!("query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}");
         let resp = self.graphql_response(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
         // Only a watched number can be one the repo lacks, so the branch-only
         // query keeps failing whole as it always did.
-        let data = if watched.is_empty() { graphql_data(&resp)? } else { data_past_alias_errors(&resp)? };
+        let data = if watched.is_empty() {
+            graphql_data(&resp)?
+        } else {
+            data_past_alias_errors(&resp)?
+        };
         let repository = data.get("repository").ok_or_else(|| ForgeError::Malformed {
             message: "no repository in response".into(),
         })?;
         let reads = watched
             .iter()
-            .map(|n| (*n, repository.get(format!("w{n}")).filter(|v| !v.is_null()).map(watched_from_graphql)))
+            .map(|n| {
+                (
+                    *n,
+                    repository
+                        .get(format!("w{n}"))
+                        .filter(|v| !v.is_null())
+                        .map(watched_from_graphql),
+                )
+            })
             .collect();
 
         let statuses = branches
@@ -882,7 +913,10 @@ impl Forge for GitHubForge {
             .enumerate()
             .map(|(i, branch)| {
                 let nodes = |alias: String| {
-                    repository.get(alias).and_then(|c| c.get("nodes")).and_then(|n| n.as_array())
+                    repository
+                        .get(alias)
+                        .and_then(|c| c.get("nodes"))
+                        .and_then(|n| n.as_array())
                 };
                 let open = nodes(format!("u{i}")).and_then(|n| n.first());
                 let ended = open.is_none();
@@ -920,11 +954,7 @@ impl Forge for GitHubForge {
         Ok((statuses, reads))
     }
 
-    fn review_threads(
-        &self,
-        repo: &RepoRef,
-        number: u64,
-    ) -> Result<Paged<ReviewThread>, ForgeError> {
+    fn review_threads(&self, repo: &RepoRef, number: u64) -> Result<Paged<ReviewThread>, ForgeError> {
         self.require_token()?;
         let nested = NestedSpec {
             key: "comments".into(),
@@ -949,15 +979,13 @@ impl Forge for GitHubForge {
             Some(&nested),
             PAGE_CAP,
         )?;
-        Ok(Paged { items: nodes.iter().map(thread_from_graphql).collect(), truncated })
+        Ok(Paged {
+            items: nodes.iter().map(thread_from_graphql).collect(),
+            truncated,
+        })
     }
 
-    fn reply_to_thread(
-        &self,
-        _repo: &RepoRef,
-        thread_id: &str,
-        body: &str,
-    ) -> Result<ReviewComment, ForgeError> {
+    fn reply_to_thread(&self, _repo: &RepoRef, thread_id: &str, body: &str) -> Result<ReviewComment, ForgeError> {
         self.require_token()?;
         // GraphQL, despite replies being a REST-friendly operation: the caller
         // holds a thread node id, and the REST reply endpoint keys off a numeric
@@ -972,12 +1000,13 @@ mutation($threadId:ID!,$body:String!){
     comment { id body createdAt author{ login } }
   }
 }"#;
-        let data =
-            self.graphql(query, serde_json::json!({ "threadId": thread_id, "body": body }))?;
+        let data = self.graphql(query, serde_json::json!({ "threadId": thread_id, "body": body }))?;
         let c = data
             .get("addPullRequestReviewThreadReply")
             .and_then(|r| r.get("comment"))
-            .ok_or_else(|| ForgeError::Malformed { message: "reply returned no comment".into() })?;
+            .ok_or_else(|| ForgeError::Malformed {
+                message: "reply returned no comment".into(),
+            })?;
         Ok(ReviewComment {
             id: str_at(c, "id"),
             author: c.get("author").map(|a| str_at(a, "login")).unwrap_or_default(),
@@ -1099,11 +1128,7 @@ mutation($threadId:ID!,$body:String!){
         // what keeps the counts right: the rows come back oldest first, so a
         // first-page-only read on a heavily reviewed pull request would report
         // verdicts that have since been replaced.
-        let (rows, truncated) = paginate_rest(
-            self.transport.as_ref(),
-            self.rest("GET", &path, None),
-            REVIEW_PAGES,
-        )?;
+        let (rows, truncated) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), REVIEW_PAGES)?;
 
         Ok(PrSummary {
             mergeable_state: mergeable_from_rest(&v),
@@ -1122,7 +1147,13 @@ mutation($threadId:ID!,$body:String!){
         })
     }
 
-    fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod, expected_head: Option<&str>) -> Result<(), ForgeError> {
+    fn merge(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        method: MergeMethod,
+        expected_head: Option<&str>,
+    ) -> Result<(), ForgeError> {
         self.require_token()?;
         let method = match method {
             MergeMethod::Merge => "merge",
@@ -1167,14 +1198,15 @@ mod tests {
     use super::*;
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "skarif2".into(), repo: "tori".into() }
+        RepoRef {
+            owner: "skarif2".into(),
+            repo: "tori".into(),
+        }
     }
 
     /// A signed-in client over a scripted transport, plus a handle on that
     /// transport so a test can read back what was actually sent.
-    fn forge(
-        responses: Vec<super::super::http::HttpResponse>,
-    ) -> (GitHubForge, std::sync::Arc<StubTransport>) {
+    fn forge(responses: Vec<super::super::http::HttpResponse>) -> (GitHubForge, std::sync::Arc<StubTransport>) {
         let stub = std::sync::Arc::new(StubTransport::new(responses));
         let f = GitHubForge::new(Box::new(stub.clone()), GITHUB_WEB, Some("gho_test".into()), None)
             .with_base("https://api.test");
@@ -1185,12 +1217,22 @@ mod tests {
     fn a_canned_rate_limit_response_surfaces_as_a_rate_limit_through_the_client() {
         let (f, _stub) = forge(vec![StubTransport::with_headers(
             403,
-            &[("X-RateLimit-Remaining", "0"), ("X-RateLimit-Limit", "5000"), ("X-RateLimit-Reset", "1780000000")],
+            &[
+                ("X-RateLimit-Remaining", "0"),
+                ("X-RateLimit-Limit", "5000"),
+                ("X-RateLimit-Reset", "1780000000"),
+            ],
             r#"{"message":"API rate limit exceeded"}"#,
         )]);
         let err = f.pull_request_for_branch(&repo(), "wave-3").unwrap_err();
         assert!(
-            matches!(err, ForgeError::RateLimited { kind: super::super::RateLimitKind::Primary, .. }),
+            matches!(
+                err,
+                ForgeError::RateLimited {
+                    kind: super::super::RateLimitKind::Primary,
+                    ..
+                }
+            ),
             "got {err:?}"
         );
         // The headers are captured even on the refusal, which is what lets the
@@ -1258,7 +1300,10 @@ mod tests {
                 r#"{"message":"Bad credentials"}"#,
             ),
         ]);
-        assert_eq!(f.list_pull_requests(&repo()).unwrap_err(), ForgeError::CredentialSuspect);
+        assert_eq!(
+            f.list_pull_requests(&repo()).unwrap_err(),
+            ForgeError::CredentialSuspect
+        );
         assert_eq!(f.auth_state(), AuthState::Suspect { login: None });
         // And the rate headers from the paged responses landed too.
         assert_eq!(f.rate_snapshot().remaining, Some(3999));
@@ -1394,7 +1439,11 @@ mod tests {
         assert_eq!(merged.body.as_deref(), Some("Why it exists"));
         assert_eq!(merged.merged_at.as_deref(), Some("2026-09-26T10:00:00Z"));
         assert!(merged.head_repo_is_origin);
-        assert_eq!(statuses[1].review_decision, ReviewDecision::None, "a finished verdict is history");
+        assert_eq!(
+            statuses[1].review_decision,
+            ReviewDecision::None,
+            "a finished verdict is history"
+        );
         assert_eq!(statuses[1].checks.state, CheckState::None);
 
         // Which finished PR is the newest is the server's ordering to apply.
@@ -1426,15 +1475,26 @@ mod tests {
                 "w11":null
             }},"errors":[{"message":"Could not resolve to a PullRequest with the number of 11."}]}"#,
         )]);
-        let (statuses, reads) = f.unit_statuses_watching(&repo(), &["a".to_string()], &[7, 9, 11]).unwrap();
+        let (statuses, reads) = f
+            .unit_statuses_watching(&repo(), &["a".to_string()], &[7, 9, 11])
+            .unwrap();
 
         assert_eq!(stub.request_count(), 1, "one request for the branches and every watch");
         let query = &stub.bodies()[0];
         assert!(query.contains("w7: pullRequest(number:7)") && query.contains("w9: pullRequest(number:9)"));
-        assert!(query.contains("isRequired(pullRequestNumber: 7)") && query.contains("isRequired(pullRequestNumber: 9)"));
+        assert!(
+            query.contains("isRequired(pullRequestNumber: 7)") && query.contains("isRequired(pullRequestNumber: 9)")
+        );
         let branch_part = &query[query.find("u0:").unwrap()..query.find("w7:").unwrap()];
-        assert!(!branch_part.contains("isRequired") && !branch_part.contains("reviews(last"), "the branch aliases stay narrow");
-        assert_eq!(query.matches("pullRequest(number:").count(), 3, "one alias per watched number");
+        assert!(
+            !branch_part.contains("isRequired") && !branch_part.contains("reviews(last"),
+            "the branch aliases stay narrow"
+        );
+        assert_eq!(
+            query.matches("pullRequest(number:").count(),
+            3,
+            "one alias per watched number"
+        );
         assert_eq!(statuses.len(), 1);
 
         let read = |n: u64| reads.iter().find(|(m, _)| *m == n).and_then(|(_, s)| s.clone());
@@ -1442,25 +1502,48 @@ mod tests {
         assert_eq!(seven.head_sha, "h7");
         assert_eq!(seven.mergeable, crate::rpc::pr_watch::Mergeable::Conflicting);
         let checks = seven.checks.unwrap();
-        assert_eq!((checks[0].run_id.as_str(), checks[0].failed, checks[0].required, checks[0].done), ("501", true, true, true));
+        assert_eq!(
+            (
+                checks[0].run_id.as_str(),
+                checks[0].failed,
+                checks[0].required,
+                checks[0].done
+            ),
+            ("501", true, true, true)
+        );
         assert_eq!((checks[1].run_id.as_str(), checks[1].done), ("SC_1", false));
         let remarks = seven.remarks.unwrap();
         let bodies: Vec<&str> = remarks.iter().map(|r| r.body.as_str()).collect();
-        assert_eq!(bodies, vec!["please rebase", "off by one here"], "empty and pending reviews say nothing");
-        assert_eq!(remarks[0].at_ms, crate::chat::acp_sessions::epoch_from_iso8601("2026-10-04T10:00:00Z").unwrap() * 1000);
+        assert_eq!(
+            bodies,
+            vec!["please rebase", "off by one here"],
+            "empty and pending reviews say nothing"
+        );
+        assert_eq!(
+            remarks[0].at_ms,
+            crate::chat::acp_sessions::epoch_from_iso8601("2026-10-04T10:00:00Z").unwrap() * 1000
+        );
         assert_eq!(remarks[1].review.as_deref(), Some("changes_requested"));
 
         let nine = read(9).expect("9 answered");
         assert_eq!(nine.state, crate::rpc::pr_watch::PrState::Merged);
         assert_eq!(nine.head_sha, "h9");
         assert!(nine.checks.is_none());
-        assert!(read(11).is_none(), "a number the repo lacks reads as None, the rest still answer");
+        assert!(
+            read(11).is_none(),
+            "a number the repo lacks reads as None, the rest still answer"
+        );
 
-        let (f, stub) = forge(vec![StubTransport::json(200, r#"{"data":{"repository":{"u0":{"nodes":[]},"e0":{"nodes":[]}}}}"#)]);
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{"u0":{"nodes":[]},"e0":{"nodes":[]}}}}"#,
+        )]);
         f.unit_statuses(&repo(), &["a".to_string()]).unwrap();
-        assert!(!stub.bodies()[0].contains("pullRequest(number:"), "nothing watched, no watched alias");
+        assert!(
+            !stub.bodies()[0].contains("pullRequest(number:"),
+            "nothing watched, no watched alias"
+        );
     }
-
 
     #[test]
     fn many_branches_cost_one_request_not_one_each() {
@@ -1655,7 +1738,9 @@ mod tests {
                 "createdAt":"2026-08-03T09:12:00Z","author":{"login":"skarif2"}}}}}"#,
         )]);
 
-        let c = f.reply_to_thread(&repo(), "PRRT_kwDOABCD123", "fixed in 4d95fc3").unwrap();
+        let c = f
+            .reply_to_thread(&repo(), "PRRT_kwDOABCD123", "fixed in 4d95fc3")
+            .unwrap();
         assert_eq!(c.id, "PRRC_kwDOABCD456");
         assert_eq!(c.author, "skarif2");
         assert_eq!(c.created_at, "2026-08-03T09:12:00Z");
@@ -1668,8 +1753,10 @@ mod tests {
     fn a_reply_whose_response_carries_no_comment_is_malformed_not_a_blank() {
         // A blank comment appended to the thread would look like a reply that
         // posted and lost its text.
-        let (f, _stub) =
-            forge(vec![StubTransport::json(200, r#"{"data":{"addPullRequestReviewThreadReply":{}}}"#)]);
+        let (f, _stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"addPullRequestReviewThreadReply":{}}}"#,
+        )]);
         assert!(matches!(
             f.reply_to_thread(&repo(), "PRRT_1", "hi").unwrap_err(),
             ForgeError::Malformed { .. }
@@ -1727,7 +1814,8 @@ mod tests {
             },
         ];
 
-        f.submit_review(&repo(), 42, ReviewEvent::Comment, "looks close", &comments, None).unwrap();
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "looks close", &comments, None)
+            .unwrap();
 
         let sent: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
         assert_eq!(sent["event"], "COMMENT");
@@ -1739,8 +1827,15 @@ mod tests {
         assert_eq!(sent["comments"][1]["side"], "LEFT");
         // A single-line comment omits the range fields rather than sending them
         // null, which GitHub rejects.
-        assert!(sent["comments"][1].get("start_line").is_none(), "got {}", sent["comments"][1]);
-        assert!(!stub.bodies()[0].contains("position"), "position is deprecated and drifts");
+        assert!(
+            sent["comments"][1].get("start_line").is_none(),
+            "got {}",
+            sent["comments"][1]
+        );
+        assert!(
+            !stub.bodies()[0].contains("position"),
+            "position is deprecated and drifts"
+        );
     }
 
     #[test]
@@ -1750,8 +1845,10 @@ mod tests {
             StubTransport::json(200, r#"{"id":2,"state":"COMMENTED"}"#),
         ]);
         let sha = "9f1c2a3b4d5e6f708192a3b4c5d6e7f809a1b2c3";
-        f.submit_review(&repo(), 42, ReviewEvent::Comment, "b", &[], Some(sha)).unwrap();
-        f.submit_review(&repo(), 42, ReviewEvent::Comment, "b", &[], None).unwrap();
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "b", &[], Some(sha))
+            .unwrap();
+        f.submit_review(&repo(), 42, ReviewEvent::Comment, "b", &[], None)
+            .unwrap();
         let pinned: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
         let loose: Value = serde_json::from_str(&stub.bodies()[1]).unwrap();
         assert_eq!(pinned["commit_id"], sha);
@@ -1791,7 +1888,10 @@ mod tests {
         assert_eq!(sent["start_line"], 45);
         assert_eq!(sent["start_side"], "RIGHT");
         assert_eq!(sent["body"], "this range");
-        assert!(!stub.bodies()[0].contains("position"), "position is deprecated and drifts");
+        assert!(
+            !stub.bodies()[0].contains("position"),
+            "position is deprecated and drifts"
+        );
     }
 
     #[test]
@@ -1831,7 +1931,12 @@ mod tests {
         let events: Vec<String> = stub
             .bodies()
             .iter()
-            .map(|b| serde_json::from_str::<Value>(b).unwrap()["event"].as_str().unwrap().to_string())
+            .map(|b| {
+                serde_json::from_str::<Value>(b).unwrap()["event"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
             .collect();
         assert_eq!(events, vec!["APPROVE", "COMMENT", "REQUEST_CHANGES"]);
     }
@@ -1845,8 +1950,13 @@ mod tests {
             422,
             r#"{"message":"Validation Failed","errors":[{"message":"Can not approve your own pull request"}]}"#,
         )]);
-        let err = f.submit_review(&repo(), 42, ReviewEvent::Approve, "", &[], None).unwrap_err();
-        assert!(format!("{err}").contains("Can not approve your own pull request"), "got {err}");
+        let err = f
+            .submit_review(&repo(), 42, ReviewEvent::Approve, "", &[], None)
+            .unwrap_err();
+        assert!(
+            format!("{err}").contains("Can not approve your own pull request"),
+            "got {err}"
+        );
     }
 
     #[test]
@@ -1861,8 +1971,7 @@ mod tests {
         assert_eq!(
             err,
             ForgeError::NotMergeable {
-                message: "At least 1 approving review is required by reviewers with write access."
-                    .into()
+                message: "At least 1 approving review is required by reviewers with write access.".into()
             }
         );
     }
@@ -1872,11 +1981,18 @@ mod tests {
         // 202 Accepted: the merge of base into head is queued, not done. It has
         // to read as success, because treating "accepted" as a failure would put
         // an error on the one control that actually worked.
-        let (f, stub) = forge(vec![StubTransport::json(202, r#"{"message":"Updating pull request branch."}"#)]);
+        let (f, stub) = forge(vec![StubTransport::json(
+            202,
+            r#"{"message":"Updating pull request branch."}"#,
+        )]);
         f.update_branch(&repo(), 42).unwrap();
         let sent = stub.requests();
         assert_eq!(sent[0].method, "PUT");
-        assert!(sent[0].url.ends_with("/repos/skarif2/tori/pulls/42/update-branch"), "got {}", sent[0].url);
+        assert!(
+            sent[0].url.ends_with("/repos/skarif2/tori/pulls/42/update-branch"),
+            "got {}",
+            sent[0].url
+        );
     }
 
     #[test]
@@ -1888,7 +2004,10 @@ mod tests {
             r#"{"message":"Validation Failed","errors":[{"message":"merge conflict between base and head"}]}"#,
         )]);
         let err = f.update_branch(&repo(), 42).unwrap_err();
-        assert!(format!("{err}").contains("merge conflict between base and head"), "got {err}");
+        assert!(
+            format!("{err}").contains("merge conflict between base and head"),
+            "got {err}"
+        );
     }
 
     #[test]
@@ -1903,11 +2022,21 @@ mod tests {
         f.reopen(&repo(), 42).unwrap();
         let sent = stub.requests();
         assert_eq!(sent[0].method, "PATCH");
-        assert!(sent[0].url.ends_with("/repos/skarif2/tori/pulls/42"), "got {}", sent[0].url);
-        assert_eq!(serde_json::from_str::<Value>(sent[0].body.as_deref().unwrap()).unwrap()["state"], "open");
+        assert!(
+            sent[0].url.ends_with("/repos/skarif2/tori/pulls/42"),
+            "got {}",
+            sent[0].url
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(sent[0].body.as_deref().unwrap()).unwrap()["state"],
+            "open"
+        );
 
         let err = f.reopen(&repo(), 42).unwrap_err();
-        assert!(format!("{err}").contains("The wave-3 branch has been deleted"), "got {err}");
+        assert!(
+            format!("{err}").contains("The wave-3 branch has been deleted"),
+            "got {err}"
+        );
     }
 
     /// The detail response, then the reviews page `pr_summary` reads after it.
@@ -1920,10 +2049,16 @@ mod tests {
         let (f, _stub) = forge(summary_stubs(r#"{"mergeable":null,"mergeable_state":"unknown"}"#));
         // `null` means "still computing", which must read as Unknown (ask
         // again), never as a green light.
-        assert_eq!(f.pr_summary(&repo(), 1).unwrap().mergeable_state, MergeableState::Unknown);
+        assert_eq!(
+            f.pr_summary(&repo(), 1).unwrap().mergeable_state,
+            MergeableState::Unknown
+        );
 
         let (f, _stub) = forge(summary_stubs(r#"{"mergeable":true,"mergeable_state":"behind"}"#));
-        assert_eq!(f.pr_summary(&repo(), 1).unwrap().mergeable_state, MergeableState::Behind);
+        assert_eq!(
+            f.pr_summary(&repo(), 1).unwrap().mergeable_state,
+            MergeableState::Behind
+        );
     }
 
     #[test]
@@ -1947,7 +2082,11 @@ mod tests {
         ]);
         let counts = f.pr_summary(&repo(), 1).unwrap().counts.unwrap();
         assert_eq!(counts.commits, 7);
-        assert_eq!(counts.reviews.unwrap().approved, 1, "ana approved last; bo was dismissed");
+        assert_eq!(
+            counts.reviews.unwrap().approved,
+            1,
+            "ana approved last; bo was dismissed"
+        );
         assert_eq!(counts.reviews.unwrap().changes_requested, 1, "only cy still blocks");
     }
 
@@ -1955,7 +2094,10 @@ mod tests {
     fn an_unrecognised_mergeable_state_is_unknown_not_clean() {
         // A state string GitHub adds later must not read as a green light.
         let (f, _stub) = forge(summary_stubs(r#"{"mergeable_state":"something_new"}"#));
-        assert_eq!(f.pr_summary(&repo(), 1).unwrap().mergeable_state, MergeableState::Unknown);
+        assert_eq!(
+            f.pr_summary(&repo(), 1).unwrap().mergeable_state,
+            MergeableState::Unknown
+        );
     }
 
     #[test]
@@ -2020,9 +2162,7 @@ mod tests {
             let items: Vec<String> = (from..from + 100).map(file).collect();
             format!("[{}]", items.join(","))
         };
-        let next = |p: u32| {
-            format!("<https://api.test/repos/skarif2/tori/pulls/1/files?page={p}>; rel=\"next\"")
-        };
+        let next = |p: u32| format!("<https://api.test/repos/skarif2/tori/pulls/1/files?page={p}>; rel=\"next\"");
         let (f, stub) = forge(vec![
             StubTransport::with_headers(200, &[("Link", &next(2))], &page(0)),
             StubTransport::with_headers(200, &[("Link", &next(3))], &page(100)),
@@ -2042,8 +2182,13 @@ mod tests {
         let (f, stub) = forge(vec![StubTransport::json(200, "[]")]);
         f.pull_request_for_branch(&repo(), "wave-3").unwrap();
         let seen = stub.requests()[0].headers.clone();
-        assert!(seen.iter().any(|(k, _)| k == "User-Agent"), "GitHub rejects a call with none");
-        assert!(seen.iter().any(|(k, v)| k == "Authorization" && v.starts_with("Bearer ")));
+        assert!(
+            seen.iter().any(|(k, _)| k == "User-Agent"),
+            "GitHub rejects a call with none"
+        );
+        assert!(seen
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v.starts_with("Bearer ")));
         assert!(seen.iter().any(|(k, _)| k == "X-GitHub-Api-Version"));
     }
 
@@ -2055,7 +2200,12 @@ mod tests {
             StubTransport::json(200, "[]"),
             StubTransport::json(200, r#"{"data":{"repository":{"u0":{"nodes":[]}}}}"#),
         ]));
-        let f = GitHubForge::new(Box::new(stub.clone()), "https://ghe.acme.test/", Some("ghp_pasted".into()), None);
+        let f = GitHubForge::new(
+            Box::new(stub.clone()),
+            "https://ghe.acme.test/",
+            Some("ghp_pasted".into()),
+            None,
+        );
 
         assert_eq!(f.viewer().unwrap().login, "arif");
         f.pull_request_for_branch(&remote.repo, "wave-3").unwrap();
@@ -2063,11 +2213,20 @@ mod tests {
 
         let sent = stub.requests();
         assert_eq!(sent[0].url, "https://ghe.acme.test/api/v3/user");
-        assert!(sent[1].url.starts_with("https://ghe.acme.test/api/v3/repos/acme/widgets/pulls?"), "got {}", sent[1].url);
+        assert!(
+            sent[1]
+                .url
+                .starts_with("https://ghe.acme.test/api/v3/repos/acme/widgets/pulls?"),
+            "got {}",
+            sent[1].url
+        );
         assert_eq!(sent[2].url, "https://ghe.acme.test/api/graphql");
         for req in &sent {
-            assert!(!req.headers.iter().any(|(k, _)| k == "X-GitHub-Api-Version"), "{} sent the version header", req.url);
+            assert!(
+                !req.headers.iter().any(|(k, _)| k == "X-GitHub-Api-Version"),
+                "{} sent the version header",
+                req.url
+            );
         }
     }
-
 }

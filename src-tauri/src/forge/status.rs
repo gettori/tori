@@ -71,7 +71,10 @@ pub fn plan_tick(branches: &[String], cap: usize) -> TickPlan {
     }
     let distinct = ask.len();
     ask.truncate(cap);
-    TickPlan { uncovered: distinct - ask.len(), ask }
+    TickPlan {
+        uncovered: distinct - ask.len(),
+        ask,
+    }
 }
 
 #[derive(Debug, Default)]
@@ -84,13 +87,7 @@ impl StatusCache {
         (repo.owner.clone(), repo.repo.clone(), branch.to_string())
     }
 
-    pub fn get_fresh(
-        &self,
-        repo: &RepoRef,
-        branch: &str,
-        now: Instant,
-        ttl: Duration,
-    ) -> Option<UnitStatus> {
+    pub fn get_fresh(&self, repo: &RepoRef, branch: &str, now: Instant, ttl: Duration) -> Option<UnitStatus> {
         let (at, status) = self.entries.get(&Self::key(repo, branch))?;
         // `checked_duration_since` rather than subtraction: `Instant` arithmetic
         // panics on a negative interval, and a `now` older than the entry is
@@ -105,13 +102,15 @@ impl StatusCache {
     /// whatever the caller asked about. The two disagree the moment a branch is
     /// renamed mid-flight, and the server's answer is the authority.
     pub fn put(&mut self, repo: &RepoRef, status: &UnitStatus, now: Instant) {
-        self.entries.insert(Self::key(repo, &status.head_ref), (now, status.clone()));
+        self.entries
+            .insert(Self::key(repo, &status.head_ref), (now, status.clone()));
     }
 
     /// Drops every branch of one repo. What a merge or a close needs: both can
     /// change the answer for branches other than their own.
     pub fn invalidate_repo(&mut self, repo: &RepoRef) {
-        self.entries.retain(|(owner, name, _), _| owner != &repo.owner || name != &repo.repo);
+        self.entries
+            .retain(|(owner, name, _), _| owner != &repo.owner || name != &repo.repo);
     }
 
     #[cfg(test)]
@@ -125,12 +124,7 @@ impl StatusCache {
 /// All-or-nothing because the fetch is batched: covering a partial hit still
 /// costs exactly one request, so serving three of five branches from memory and
 /// asking for the other two saves nothing and returns a mixed-age answer.
-pub fn cached_report(
-    cache: &StatusCache,
-    repo: &RepoRef,
-    ask: &[String],
-    now: Instant,
-) -> Option<Vec<UnitStatus>> {
+pub fn cached_report(cache: &StatusCache, repo: &RepoRef, ask: &[String], now: Instant) -> Option<Vec<UnitStatus>> {
     let mut out = Vec::with_capacity(ask.len());
     for branch in ask {
         out.push(cache.get_fresh(repo, branch, now, FRESH_FOR)?);
@@ -181,7 +175,11 @@ where
     for s in &statuses {
         cache.put(repo, s, now);
     }
-    Ok(StatusReport { statuses, uncovered: plan.uncovered, rate })
+    Ok(StatusReport {
+        statuses,
+        uncovered: plan.uncovered,
+        rate,
+    })
 }
 
 /// Collapses concurrent identical requests into one.
@@ -200,7 +198,9 @@ pub struct SingleFlight<T = Fetched> {
 
 impl<T> Default for SingleFlight<T> {
     fn default() -> Self {
-        Self { in_flight: Mutex::new(HashMap::new()) }
+        Self {
+            in_flight: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -235,7 +235,12 @@ impl<T: Clone> SingleFlight<T> {
         // The publish lives in a `Drop` so a panicking fetch cannot leave
         // followers waiting on a result that will never arrive. A hung sidebar
         // is a far worse failure than the error they get instead.
-        let mut lead = Leader { flight: self, key, shared, answer: None };
+        let mut lead = Leader {
+            flight: self,
+            key,
+            shared,
+            answer: None,
+        };
         let out = fetch();
         lead.answer = Some(out.clone());
         out
@@ -303,7 +308,12 @@ static PUBLISHED: Mutex<Option<Published>> = Mutex::new(None);
 
 pub fn moved_since_published(project: &str, statuses: &[UnitStatus]) -> Vec<UnitStatus> {
     let mut guard = PUBLISHED.lock().unwrap_or_else(|e| e.into_inner());
-    guard.get_or_insert_with(Published::default).moved(project, statuses).into_iter().cloned().collect()
+    guard
+        .get_or_insert_with(Published::default)
+        .moved(project, statuses)
+        .into_iter()
+        .cloned()
+        .collect()
 }
 
 // --- thin global wrapper ---
@@ -333,12 +343,7 @@ fn flight_key(repo: &RepoRef, ask: &[String]) -> String {
 /// same reason as `prs::cached_lookup`: one global mutex held across the network
 /// would make a single stalled request freeze every other project's status. The
 /// coalescer, not the lock, is what stops the duplicate call.
-pub fn cached_tick<F>(
-    repo: &RepoRef,
-    branches: &[String],
-    refresh: bool,
-    fetch: F,
-) -> Result<StatusReport, ForgeError>
+pub fn cached_tick<F>(repo: &RepoRef, branches: &[String], refresh: bool, fetch: F) -> Result<StatusReport, ForgeError>
 where
     F: FnOnce(&[String]) -> Result<Fetched, ForgeError>,
 {
@@ -366,7 +371,11 @@ where
             c.put(repo, s, now);
         }
     });
-    Ok(StatusReport { statuses, uncovered: plan.uncovered, rate })
+    Ok(StatusReport {
+        statuses,
+        uncovered: plan.uncovered,
+        rate,
+    })
 }
 
 /// Whether the global cache is currently unlocked. Only used to prove that a
@@ -388,7 +397,10 @@ mod tests {
     use std::cell::Cell;
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "skarif2".into(), repo: "tori".into() }
+        RepoRef {
+            owner: "skarif2".into(),
+            repo: "tori".into(),
+        }
     }
 
     fn status(head: &str) -> UnitStatus {
@@ -544,7 +556,10 @@ mod tests {
 
     #[test]
     fn two_repos_with_the_same_branch_name_never_collide() {
-        let other = RepoRef { owner: "skarif2".into(), repo: "grimoire".into() };
+        let other = RepoRef {
+            owner: "skarif2".into(),
+            repo: "grimoire".into(),
+        };
         let mut c = StatusCache::default();
         let now = Instant::now();
         c.put(&repo(), &status("main"), now);
@@ -606,7 +621,11 @@ mod tests {
         });
 
         assert_eq!(calls.load(Ordering::SeqCst), 1, "the second tick spent its own request");
-        assert_eq!(follower.unwrap().0[0].head_ref, "main", "the follower got the real answer");
+        assert_eq!(
+            follower.unwrap().0[0].head_ref,
+            "main",
+            "the follower got the real answer"
+        );
         assert_eq!(leader.join().unwrap().unwrap().0.len(), 1);
     }
 
@@ -633,9 +652,7 @@ mod tests {
         // would not crash, it would simply stop answering.
         let flight = Arc::new(SingleFlight::default());
         let f = flight.clone();
-        let panicked = std::thread::spawn(move || {
-            f.run("k".into(), || -> Answer { panic!("the transport blew up") })
-        });
+        let panicked = std::thread::spawn(move || f.run("k".into(), || -> Answer { panic!("the transport blew up") }));
         assert!(panicked.join().is_err(), "the panic still propagates to its own caller");
 
         // And the key is free again, so the next tick starts a fresh flight.
@@ -649,7 +666,10 @@ mod tests {
         // status behind the slowest single request. Nothing about that is
         // visible from a passing tick, which is why it is asserted.
         let unlocked = Cell::new(false);
-        let probe = RepoRef { owner: "skarif2".into(), repo: "lock-probe".into() };
+        let probe = RepoRef {
+            owner: "skarif2".into(),
+            repo: "lock-probe".into(),
+        };
         cached_tick(&probe, &branches(&["main"]), true, |ask| {
             unlocked.set(lock_is_free());
             answered(ask)
@@ -671,8 +691,13 @@ mod tests {
             StubTransport::json(200, body),
             StubTransport::json(200, body),
         ]));
-        let client = GitHubForge::new(Box::new(stub.clone()), "https://github.com", Some("gho_test".into()), None)
-            .with_base("https://api.test");
+        let client = GitHubForge::new(
+            Box::new(stub.clone()),
+            "https://github.com",
+            Some("gho_test".into()),
+            None,
+        )
+        .with_base("https://api.test");
 
         let three = branches(&["a", "b", "c"]);
         let twenty: Vec<String> = (0..20).map(|i| format!("u{i}")).collect();
@@ -704,13 +729,25 @@ mod tests {
             s.checks.state = CheckState::Failure;
             s
         };
-        assert!(published.moved("/p", &[status("main"), status("feat")]).is_empty(), "first tick seeds");
-        invalidate_repo(&RepoRef { owner: "o".into(), repo: "r".into() });
-        assert!(published.moved("/p", &[status("main"), status("feat")]).is_empty(), "a refetch that says the same");
+        assert!(
+            published.moved("/p", &[status("main"), status("feat")]).is_empty(),
+            "first tick seeds"
+        );
+        invalidate_repo(&RepoRef {
+            owner: "o".into(),
+            repo: "r".into(),
+        });
+        assert!(
+            published.moved("/p", &[status("main"), status("feat")]).is_empty(),
+            "a refetch that says the same"
+        );
         let flipped = [status("main"), failing("feat")];
         let moved = published.moved("/p", &flipped);
         assert_eq!(moved.iter().map(|s| s.head_ref.as_str()).collect::<Vec<_>>(), ["feat"]);
         assert!(published.moved("/p", &flipped).is_empty(), "and once only");
-        assert!(published.moved("/other", &flipped).is_empty(), "another project seeds on its own");
+        assert!(
+            published.moved("/other", &flipped).is_empty(),
+            "another project seeds on its own"
+        );
     }
 }

@@ -1,12 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
-import {
-  callKey,
-  callRootsFor,
-  fetchCallLevel,
-  type CallDirection,
-  type CallItem,
-} from "../../utils/callHierarchy";
+import { callKey, callRootsFor, fetchCallLevel, type CallDirection, type CallItem } from "../../utils/callHierarchy";
 import SymbolIcon from "../../components/SymbolIcon/SymbolIcon";
 import styles from "./CallsPanel.module.css";
 

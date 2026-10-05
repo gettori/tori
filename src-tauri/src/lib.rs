@@ -1,18 +1,19 @@
 mod accounts;
 mod agent_config;
-mod agent_plugins;
 mod agent_lines;
+mod agent_plugins;
 mod agents;
 mod askpass;
 mod attachments;
 mod attempts;
-mod autopilot;
 mod auth;
+mod autopilot;
 mod backstop;
 mod blame;
+mod catalog_probe;
 mod chat;
-mod cli;
 mod checkpoint;
+mod cli;
 mod config;
 mod conflict;
 mod crash;
@@ -27,13 +28,12 @@ mod format;
 mod fs;
 mod git;
 mod git_health;
-mod catalog_probe;
 mod health;
 mod hooks;
 mod hot_exit;
-mod issues;
 mod icons;
 mod install;
+mod issues;
 mod launch;
 mod local_history;
 mod lsp;
@@ -55,7 +55,6 @@ mod settings;
 mod setup;
 mod shared;
 mod sound;
-mod workspace_settings;
 mod themes;
 mod topic_home;
 mod topics;
@@ -64,19 +63,20 @@ mod trust;
 mod unit_home;
 mod update;
 mod usage_probe;
-mod usage_token;
 mod usage_snapshot;
+mod usage_token;
+mod workspace_settings;
 mod worktree;
 
 use chat::host::ChatState;
 use config::{ConfigWatch, ProjectIndex, RootWatch};
-use fs::FsWatch;
-use settings::SettingsWatch;
 use dap::DapState;
+use fs::FsWatch;
 use lsp::LspState;
 use presence::TrayState;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch, TouchedIndex};
+use settings::SettingsWatch;
 use std::sync::{Arc, Mutex};
 use tauri::menu::Menu;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
@@ -271,7 +271,8 @@ pub fn run() {
             // an event here would reach no listener and the orphan would block
             // its session id with nothing on screen saying why. The frontend
             // pulls them with `chat_orphans` once it is ready.
-            app.state::<chat::ownership::Orphans>().set(chat::ownership::reap_on_startup());
+            app.state::<chat::ownership::Orphans>()
+                .set(chat::ownership::reap_on_startup());
 
             // A command tab takes its PATH from this without waiting, so the
             // probe has to have started before the first one opens.

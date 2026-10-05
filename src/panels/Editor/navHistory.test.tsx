@@ -92,11 +92,11 @@ async function mountEditor(folderPath = REPO) {
   const [selected, setter] = createSignal<unknown>(selectionFor(folderPath));
   setSelected = setter;
   mounted = render(() => (
-      <>
-        <Editor selected={selected() as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selected() as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 

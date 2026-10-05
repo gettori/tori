@@ -5,17 +5,14 @@ import type { SessionStatus } from "../../utils/sessionStatus";
 
 /** The mark's own element, which carries the state classes. */
 function mark(status: SessionStatus | null, certainty?: "exact" | "inferred") {
-  const { container } = render(() => (
-    <TabMark agentId="claude" status={status} certainty={certainty} />
-  ));
+  const { container } = render(() => <TabMark agentId="claude" status={status} certainty={certainty} />);
   return container.firstElementChild as HTMLElement;
 }
 
 /** CSS modules hash class names, so the states are compared by *difference*
  *  rather than by literal name: what matters is that two states do not render
  *  identically, not what the generated string is. */
-const classes = (status: SessionStatus | null, certainty?: "exact" | "inferred") =>
-  mark(status, certainty).className;
+const classes = (status: SessionStatus | null, certainty?: "exact" | "inferred") => mark(status, certainty).className;
 
 describe("a chat tab's provider mark", () => {
   it("keeps one glyph across idle and working, and changes only its treatment", () => {
@@ -59,8 +56,7 @@ describe("a chat tab's provider mark", () => {
   // and the mark would breathe in grey. That is what the strip did for two days
   // after the tint moved into `agentMarks`.
   it("takes off the rest tone while working, so the tint has nothing to lose to", () => {
-    const rest = (status: SessionStatus) =>
-      Array.from(mark(status).classList).filter((c) => c.includes("rest"));
+    const rest = (status: SessionStatus) => Array.from(mark(status).classList).filter((c) => c.includes("rest"));
     expect(rest("idle").length).toBe(1);
     expect(rest("executing").length).toBe(0);
     expect(rest("waitingForApproval").length).toBe(0);

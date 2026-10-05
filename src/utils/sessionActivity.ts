@@ -110,9 +110,7 @@ export function noteDots(changes: readonly RustDot[] | undefined) {
  *  the ones that came back absent, so a session that has since exited flips to
  *  false rather than keeping its last answer. */
 export async function probeBatch(want: readonly { id: string; agent: string }[]) {
-  const running = new Set(
-    await invoke<string[]>("sessions_running", { sessions: want }).catch(() => [] as string[]),
-  );
+  const running = new Set(await invoke<string[]>("sessions_running", { sessions: want }).catch(() => [] as string[]));
   setProbes((m) => {
     const next = { ...m };
     for (const w of want) next[w.id] = { agent: w.agent, running: running.has(w.id) };
@@ -157,10 +155,7 @@ export function probeActive() {
 /// as a project nothing has ever polled.
 export function projectPathFor(root: string): string | null {
   const all = forgeUnits();
-  return (
-    all.find((u) => u.folderPath === root)?.projectPath ??
-    (all.some((u) => u.projectPath === root) ? root : null)
-  );
+  return all.find((u) => u.folderPath === root)?.projectPath ?? (all.some((u) => u.projectPath === root) ? root : null);
 }
 
 /// The branch-unit of `root`'s project that carries `branch`, or null.
@@ -202,7 +197,10 @@ export function branchOwner(root: string, branch: string): BranchOwner | null {
 }
 
 /** Whether a session whose unit row is `home` sits under `unit`. */
-export function inUnit(home: SessionHome | null | undefined, unit: { folderPath: string; branch: string | null }): boolean {
+export function inUnit(
+  home: SessionHome | null | undefined,
+  unit: { folderPath: string; branch: string | null },
+): boolean {
   return !!home && home.folder === unit.folderPath && (home.branch ?? null) === (unit.branch ?? null);
 }
 

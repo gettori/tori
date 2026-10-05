@@ -27,6 +27,8 @@ export function shortHome(path: string, home: string): string {
  *  wears `A` rather than a dash. A name with no alphanumerics at all falls back
  *  to `?`. */
 export function spaceInitials(name: string): string {
-  const [first] = String(name ?? "").split(/[^a-z0-9]+/i).filter(Boolean);
+  const [first] = String(name ?? "")
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean);
   return first ? first[0].toUpperCase() : "?";
 }

@@ -36,10 +36,9 @@ use std::time::Duration;
 use agent_client_protocol::schema::v1::{
     AuthMethod, CancelNotification, EnvVariable, InitializeRequest, InitializeResponse, ListSessionsRequest,
     LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
-    SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId,
-    SessionModeId, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
-    SetSessionModeRequest,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionConfigId,
+    SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId, SessionId, SessionModeId, SessionNotification,
+    SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode, Responder};
@@ -49,8 +48,8 @@ use futures::StreamExt;
 use super::acp::{self, AcpOverrides};
 use super::acp_sessions::{self, AcpSession, ListedSession};
 use super::model::{
-    ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision,
-    PermissionMode, PermissionScope, QuestionAnswer,
+    ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
+    QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -116,7 +115,9 @@ enum ConfigOption {
     /// the agent's own id because neither the noun nor the readback can be
     /// derived from a selector Tori knows nothing about: the three above are
     /// found by category, and this one is exactly the option no category claims.
-    Mirrored { id: String },
+    Mirrored {
+        id: String,
+    },
 }
 
 impl ConfigOption {
@@ -138,13 +139,15 @@ impl ConfigOption {
             // Read back through the same mapping the mirror renders, so the
             // check compares what the user will see rather than a second
             // reading of the wire that could disagree with it.
-            Self::Mirrored { id } => acp::config_options(options)
-                .into_iter()
-                .find(|o| &o.id == id)
-                .map(|o| match o.kind {
-                    ChatConfigKind::Select { current, .. } => current,
-                    ChatConfigKind::Boolean { value } => value.to_string(),
-                }),
+            Self::Mirrored { id } => {
+                acp::config_options(options)
+                    .into_iter()
+                    .find(|o| &o.id == id)
+                    .map(|o| match o.kind {
+                        ChatConfigKind::Select { current, .. } => current,
+                        ChatConfigKind::Boolean { value } => value.to_string(),
+                    })
+            }
         }
     }
 }
@@ -157,9 +160,9 @@ impl ConfigOption {
 /// that mapping is a test rather than a line inside an async loop.
 fn option_value(value: &ChatConfigValue) -> SessionConfigOptionValue {
     match value {
-        ChatConfigValue::Value(id) => {
-            SessionConfigOptionValue::ValueId { value: SessionConfigValueId::new(id.as_str()) }
-        }
+        ChatConfigValue::Value(id) => SessionConfigOptionValue::ValueId {
+            value: SessionConfigValueId::new(id.as_str()),
+        },
         ChatConfigValue::Flag(on) => SessionConfigOptionValue::Boolean { value: *on },
     }
 }
@@ -259,12 +262,7 @@ impl Shared {
     /// Neither is an error: the first is how the host learns to try the
     /// `PreToolUse` bridge instead, and the second is a user clicking as the
     /// deadline fires - a race they should never be shown.
-    fn answer(
-        &self,
-        request_id: &str,
-        decision: PermissionDecision,
-        reason: Option<&str>,
-    ) -> Result<bool, String> {
+    fn answer(&self, request_id: &str, decision: PermissionDecision, reason: Option<&str>) -> Result<bool, String> {
         let Some(parked) = self.claim(request_id) else {
             return Ok(false);
         };
@@ -295,10 +293,7 @@ impl Shared {
 
     /// The turn id to stamp on updates arriving right now.
     fn turn(&self) -> String {
-        self.current_turn
-            .lock()
-            .map(|t| t.clone())
-            .unwrap_or_default()
+        self.current_turn.lock().map(|t| t.clone()).unwrap_or_default()
     }
 
     /// Remember that this turn's user message is already in the stream.
@@ -335,9 +330,7 @@ impl Shared {
         for parked in outstanding {
             let _ = parked
                 .responder
-                .respond(RequestPermissionResponse::new(
-                    RequestPermissionOutcome::Cancelled,
-                ));
+                .respond(RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled));
         }
     }
 }
@@ -372,9 +365,7 @@ fn outcome_for(
 
 /// Sort an agent's offered options into the two directions Tori's UI can
 /// answer in, keyed on the `kind` the agent itself gave each one.
-fn split_options(
-    options: &[agent_client_protocol::schema::v1::PermissionOption],
-) -> (Vec<String>, Vec<String>) {
+fn split_options(options: &[agent_client_protocol::schema::v1::PermissionOption]) -> (Vec<String>, Vec<String>) {
     use agent_client_protocol::schema::v1::PermissionOptionKind;
     let (mut allow, mut deny) = (Vec::new(), Vec::new());
     for option in options {
@@ -409,11 +400,7 @@ pub struct AcpTransport {
 }
 
 impl AcpTransport {
-    pub fn new(
-        session_id: impl Into<String>,
-        agent: impl Into<String>,
-        overrides: AcpOverrides,
-    ) -> Self {
+    pub fn new(session_id: impl Into<String>, agent: impl Into<String>, overrides: AcpOverrides) -> Self {
         Self {
             agent: agent.into(),
             shared: Arc::new(Shared {
@@ -473,9 +460,7 @@ impl AgentTransport for AcpTransport {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("could not start the agent: {e}"))?;
+        let mut child = cmd.spawn().map_err(|e| format!("could not start the agent: {e}"))?;
         self.pid = Some(child.id());
 
         let stdin = child.stdin.take().ok_or("the agent gave no stdin")?;
@@ -539,7 +524,12 @@ impl AgentTransport for AcpTransport {
             // otherwise. Both measured agents are the first case; the fallback
             // exists so an agent that only implements `session/set_mode` is not
             // left without a mode switch at all.
-            let switch = self.shared.mode_switch.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let switch = self
+                .shared
+                .mode_switch
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             let command = match switch {
                 Switch::Available(config_id) => Command::SetConfigOption {
                     config_id,
@@ -635,16 +625,13 @@ impl AgentTransport for AcpTransport {
     fn set_model(&mut self, model: &str, effort: Option<String>) -> Result<(), String> {
         let config_id = match &*self.shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) {
             Switch::Available(config_id) => config_id.clone(),
-            Switch::Unsupported => {
-                return Err("this agent offers no model to switch to".to_string())
-            }
+            Switch::Unsupported => return Err("this agent offers no model to switch to".to_string()),
             // Not the agent's answer, Tori's timing: the options arrive with the
             // session, so a switch attempted before it opens has nothing to name
             // yet. Saying the agent offers no models would be a claim about the
             // agent made from Tori not having asked.
             Switch::Unknown => {
-                return Err("this chat is still opening, so its model list has not arrived yet"
-                    .to_string())
+                return Err("this chat is still opening, so its model list has not arrived yet".to_string())
             }
         };
         self.send_command(Command::SetConfigOption {
@@ -657,8 +644,15 @@ impl AgentTransport for AcpTransport {
         // did not is not sent a level it has nowhere to put, and the control
         // never offered one either - `model_catalogue` claims no levels for it.
         let Some(level) = effort else { return Ok(()) };
-        let switch = self.shared.effort_switch.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let Switch::Available(config_id) = switch else { return Ok(()) };
+        let switch = self
+            .shared
+            .effort_switch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let Switch::Available(config_id) = switch else {
+            return Ok(());
+        };
         self.send_command(Command::SetConfigOption {
             config_id,
             value: ChatConfigValue::Value(level.as_str().to_string()),
@@ -685,7 +679,9 @@ impl AgentTransport for AcpTransport {
             // friendlier word for a lever it has never seen, and the label is
             // the agent's too, so quoting the id at least names the thing the
             // agent itself refused.
-            what: ConfigOption::Mirrored { id: config_id.to_string() },
+            what: ConfigOption::Mirrored {
+                id: config_id.to_string(),
+            },
         })
     }
 
@@ -766,9 +762,7 @@ async fn run_session(
             agent_client_protocol::on_receive_request!(),
         )
         .connect_with(transport, |conn: ConnectionTo<Agent>| async move {
-            let result =
-                drive_session(&conn, &mut commands, &shared, &sink, &cwd, &agent, &overrides)
-                    .await;
+            let result = drive_session(&conn, &mut commands, &shared, &sink, &cwd, &agent, &overrides).await;
             if let Err(message) = result {
                 if !shared.finished.load(Ordering::SeqCst) {
                     emit(
@@ -802,17 +796,16 @@ fn park_permission_request(
     let request_id = shared.next_id("acp-perm");
     let (allow_options, deny_options) = split_options(&request.options);
     let deadline = now_ms() + DECIDE_TIMEOUT_SECS * 1000;
-    let event = acp::map_permission_request(
-        &shared.session_id,
-        &request_id,
-        &request,
-        Some(deadline),
-    );
+    let event = acp::map_permission_request(&shared.session_id, &request_id, &request, Some(deadline));
 
     if let Ok(mut pending) = shared.pending.lock() {
         pending.insert(
             request_id.clone(),
-            Parked { responder, allow_options, deny_options },
+            Parked {
+                responder,
+                allow_options,
+                deny_options,
+            },
         );
     } else {
         // The map is poisoned, so the question can never be answered through
@@ -842,8 +835,7 @@ fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) {
         {
             let Ok(mut pending) = shared.pending.lock() else { return };
             while pending.contains_key(&request_id) {
-                let Some(left) = expires_at.checked_duration_since(std::time::Instant::now())
-                else {
+                let Some(left) = expires_at.checked_duration_since(std::time::Instant::now()) else {
                     break;
                 };
                 if left.is_zero() {
@@ -907,8 +899,10 @@ async fn drive_session(
     // Sent again on every load: an agent starts the servers per session/new or
     // session/load, and a resumed chat would otherwise come back without them.
     let servers = mcp_servers(overrides, || tori_mcp_server(&shared.session_id));
-    let OpenedSession { session_id: session, config_options } =
-        open_session(conn, shared, sink, cwd, agent, &servers, &init).await?;
+    let OpenedSession {
+        session_id: session,
+        config_options,
+    } = open_session(conn, shared, sink, cwd, agent, &servers, &init).await?;
     adopt_session(shared, sink, cwd, &config_options);
     // **After the chat is open, never before it.** Enumerating an agent's other
     // sessions is worth one request on a connection that already exists, but it
@@ -963,7 +957,9 @@ async fn drive_session(
                         sink,
                         ChatEvent::SessionError {
                             session_id: shared.session_id.clone(),
-                            message: format!("this agent would not hand the conversation back, so this tab starts empty: {e}"),
+                            message: format!(
+                                "this agent would not hand the conversation back, so this tab starts empty: {e}"
+                            ),
                             fatal: false,
                         },
                     ),
@@ -985,10 +981,7 @@ async fn drive_session(
                 }
             }
             Command::SetMode(mode) => {
-                let request = SetSessionModeRequest::new(
-                    session_id.clone(),
-                    SessionModeId::new(mode.as_str()),
-                );
+                let request = SetSessionModeRequest::new(session_id.clone(), SessionModeId::new(mode.as_str()));
                 if let Err(e) = conn.send_request(request).block_task().await {
                     // A refusal rather than a plain error, so the store settles
                     // the pick instead of promising the mode forever.
@@ -1031,7 +1024,10 @@ fn switch_events(
     };
     let options = match answer {
         Err(e) => {
-            return vec![did_not_take(format!("this agent would not switch {}: {e}", what.noun()))]
+            return vec![did_not_take(format!(
+                "this agent would not switch {}: {e}",
+                what.noun()
+            ))]
         }
         Ok(options) => options,
     };
@@ -1048,8 +1044,7 @@ fn switch_events(
         // Only a mode reads "unsaid" as refused: left pending it would promise
         // the mode forever, while an unmentioned mirrored option is "cannot tell".
         None if *what == ConfigOption::Mode => events.push(did_not_take(
-            "this agent accepted the switch but its answer does not say which mode it is in."
-                .to_string(),
+            "this agent accepted the switch but its answer does not say which mode it is in.".to_string(),
         )),
         None => {}
     }
@@ -1202,8 +1197,15 @@ fn mcp_servers(overrides: &AcpOverrides, tori: impl FnOnce() -> Option<McpServer
 
 fn tori_mcp_server(session_id: &str) -> Option<McpServer> {
     let (exe, env) = crate::rpc::mcp_launch(crate::rpc::auth::Caller::Chat(session_id.to_string()))?;
-    let env = env.into_iter().map(|(name, value)| EnvVariable::new(name, value)).collect();
-    Some(McpServer::Stdio(McpServerStdio::new(crate::rpc::MCP_SERVER, exe).args(vec!["mcp".to_string()]).env(env)))
+    let env = env
+        .into_iter()
+        .map(|(name, value)| EnvVariable::new(name, value))
+        .collect();
+    Some(McpServer::Stdio(
+        McpServerStdio::new(crate::rpc::MCP_SERVER, exe)
+            .args(vec!["mcp".to_string()])
+            .env(env),
+    ))
 }
 
 /// Does this agent advertise `session/list`?
@@ -1248,11 +1250,7 @@ const MAX_SESSION_PAGES: usize = 10;
 /// very rows this listing exists to find. `adopt` already keeps Tori's spelling
 /// for a row it knows; this extends that to a row it is meeting for the first
 /// time, which is the whole of the import case.
-async fn refresh_listing(
-    conn: &ConnectionTo<Agent>,
-    agent: &str,
-    cwd: &str,
-) -> Result<usize, String> {
+async fn refresh_listing(conn: &ConnectionTo<Agent>, agent: &str, cwd: &str) -> Result<usize, String> {
     let known = acp_sessions::all();
     let ours = canonical(cwd);
     let filter = ours.clone().unwrap_or_else(|| cwd.to_string());
@@ -1284,8 +1282,13 @@ async fn refresh_listing(
         }
     }
 
-    let adopted =
-        acp_sessions::adopt(agent, &rows, &known, now_secs(), &crate::catalog_probe::probe_cwd_spellings());
+    let adopted = acp_sessions::adopt(
+        agent,
+        &rows,
+        &known,
+        now_secs(),
+        &crate::catalog_probe::probe_cwd_spellings(),
+    );
     let mut written = 0;
     for session in &adopted {
         // A listing runs on every connection and most of it is the same rows as
@@ -1308,7 +1311,9 @@ async fn refresh_listing(
 /// a listed row becomes is testable without a filesystem, and this is the one
 /// part of the question only the filesystem can answer.
 fn canonical(path: &str) -> Option<String> {
-    std::fs::canonicalize(path).ok().map(|p| p.to_string_lossy().into_owned())
+    std::fs::canonicalize(path)
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 fn listed_session(info: &agent_client_protocol::schema::v1::SessionInfo) -> ListedSession {
@@ -1445,9 +1450,7 @@ async fn open_session(
                 sink,
                 ChatEvent::SessionError {
                     session_id: shared.session_id.clone(),
-                    message:
-                        "this agent cannot reopen an earlier conversation, so this chat starts empty."
-                            .to_string(),
+                    message: "this agent cannot reopen an earlier conversation, so this chat starts empty.".to_string(),
                     fatal: false,
                 },
             );
@@ -1504,18 +1507,13 @@ async fn open_session(
 /// *text*, which Phase 5 rejected for reasons that still hold and which would
 /// have been dead code here. `an_agent_reporting_minus_32000_is_a_sign_in_failure`
 /// pins the measured value so the same claim cannot be made a third time.
-fn describe_session_failure(
-    error: &agent_client_protocol::Error,
-    methods: &[AuthMethod],
-) -> String {
+fn describe_session_failure(error: &agent_client_protocol::Error, methods: &[AuthMethod]) -> String {
     if error.code != ErrorCode::AuthRequired {
         return format!("The agent would not open a session: {error}");
     }
     match describe_auth_methods(methods) {
         Some(how) => format!("This agent needs you to sign in first. {how}"),
-        None => format!(
-            "This agent needs you to sign in first, and did not say how. {error}"
-        ),
+        None => format!("This agent needs you to sign in first, and did not say how. {error}"),
     }
 }
 
@@ -1574,9 +1572,7 @@ fn now_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_client_protocol::schema::v1::{
-        PermissionOption, PermissionOptionId, PermissionOptionKind,
-    };
+    use agent_client_protocol::schema::v1::{PermissionOption, PermissionOptionId, PermissionOptionKind};
 
     fn shared() -> Arc<Shared> {
         Arc::new(Shared {
@@ -1614,23 +1610,28 @@ mod tests {
         *shared.current_turn.lock().unwrap() = acp::turn_id(0);
         let turn = shared.turn();
         let chunk = |text: &str| {
-            SessionUpdate::UserMessageChunk(ContentChunk::new(AcpContentBlock::Text(
-                TextContent::new(text.to_string()),
-            )))
+            SessionUpdate::UserMessageChunk(ContentChunk::new(AcpContentBlock::Text(TextContent::new(
+                text.to_string(),
+            ))))
         };
 
         // What `run_turn` puts in the stream from what Tori sent.
         let mut stream = vec![ChatEvent::UserMessage {
             session_id: shared.session_id.clone(),
             turn_id: turn.clone(),
-            blocks: vec![ContentBlock::Text { text: "fix the bug".to_string() }],
+            blocks: vec![ContentBlock::Text {
+                text: "fix the bug".to_string(),
+            }],
         }];
         shared.note_echoed(&turn);
         // And what an echoing agent sends back for that same turn.
         stream.extend(update_events(&shared, &mut calls, &chunk("fix the bug"), None));
 
         assert_eq!(
-            stream.iter().filter(|e| matches!(e, ChatEvent::UserMessage { .. })).count(),
+            stream
+                .iter()
+                .filter(|e| matches!(e, ChatEvent::UserMessage { .. }))
+                .count(),
             1,
             "an echoed prompt must not become a second message: {stream:?}"
         );
@@ -1657,7 +1658,9 @@ mod tests {
         );
         assert_eq!(
             option_value(&ChatConfigValue::Value("detailed".into())),
-            SessionConfigOptionValue::ValueId { value: SessionConfigValueId::new("detailed") }
+            SessionConfigOptionValue::ValueId {
+                value: SessionConfigValueId::new("detailed")
+            }
         );
     }
 
@@ -1668,22 +1671,28 @@ mod tests {
     /// mismatch on every switch.
     #[test]
     fn a_mirrored_switch_is_read_back_by_the_agents_own_id() {
-        use agent_client_protocol::schema::v1::{
-            SessionConfigBoolean, SessionConfigId, SessionConfigKind,
-        };
+        use agent_client_protocol::schema::v1::{SessionConfigBoolean, SessionConfigId, SessionConfigKind};
 
         let options = vec![SessionConfigOption::new(
             SessionConfigId::new("web_search"),
             "Web search".to_string(),
             SessionConfigKind::Boolean(SessionConfigBoolean::new(true)),
         )];
-        let what = ConfigOption::Mirrored { id: "web_search".to_string() };
+        let what = ConfigOption::Mirrored {
+            id: "web_search".to_string(),
+        };
 
         assert_eq!(what.current(&options).as_deref(), Some("true"));
-        assert_eq!(what.noun(), "web_search", "and a failure names what the agent called it");
+        assert_eq!(
+            what.noun(),
+            "web_search",
+            "and a failure names what the agent called it"
+        );
         // An id the answer does not mention reads as unknown rather than as a
         // mismatch: "we cannot tell" must not render as the agent refusing.
-        let absent = ConfigOption::Mirrored { id: "verbosity".to_string() };
+        let absent = ConfigOption::Mirrored {
+            id: "verbosity".to_string(),
+        };
         assert_eq!(absent.current(&options), None);
     }
 
@@ -1773,7 +1782,11 @@ mod tests {
         assert_eq!(kinds(&refused), ["sessionError"]);
         let silent: Vec<SessionConfigOption> = vec![];
         let unsaid = switch_events("s1", &ConfigOption::Model, "gpt-5.6", Ok(&silent));
-        assert_eq!(kinds(&unsaid), ["configOptions"], "no model select reads as unknown, not refused");
+        assert_eq!(
+            kinds(&unsaid),
+            ["configOptions"],
+            "no model select reads as unknown, not refused"
+        );
     }
 
     /// An answer must come back in the agent's own vocabulary. Sending a fixed
@@ -1811,10 +1824,7 @@ mod tests {
     #[test]
     fn a_question_the_transport_never_parked_is_disclaimed() {
         let shared = shared();
-        assert_eq!(
-            shared.answer("never-seen", PermissionDecision::Allow, None),
-            Ok(false)
-        );
+        assert_eq!(shared.answer("never-seen", PermissionDecision::Allow, None), Ok(false));
     }
 
     /// The defect this pins: turn ids and permission request ids once came from
@@ -1857,7 +1867,9 @@ mod tests {
     #[test]
     fn a_model_switch_says_which_refusal_it_is() {
         let mut transport = AcpTransport::new("s1", "opencode", AcpOverrides::default());
-        let before = transport.set_model("anything", None).expect_err("nothing to switch yet");
+        let before = transport
+            .set_model("anything", None)
+            .expect_err("nothing to switch yet");
         assert!(before.contains("still opening"), "{before}");
 
         *transport.shared.model_switch.lock().unwrap() = Switch::Unsupported;
@@ -1900,10 +1912,14 @@ mod tests {
         transport.commands = Some(tx);
         *transport.shared.mode_switch.lock().unwrap() = Switch::Available("approval_policy".into());
 
-        transport.set_mode(PermissionMode::new("read-only")).expect("staging a mode the agent offered");
+        transport
+            .set_mode(PermissionMode::new("read-only"))
+            .expect("staging a mode the agent offered");
         assert!(rx.try_recv().is_err(), "staging alone puts nothing on the wire");
 
-        transport.send(&[ContentBlock::Text { text: "go".into() }]).expect("a prompt goes out");
+        transport
+            .send(&[ContentBlock::Text { text: "go".into() }])
+            .expect("a prompt goes out");
 
         assert!(
             matches!(
@@ -1924,9 +1940,7 @@ mod tests {
     /// comes back as a protocol error the user would see as a broken chat.
     #[test]
     fn an_agent_that_does_not_advertise_listing_is_never_asked_for_one() {
-        use agent_client_protocol::schema::v1::{
-            AgentCapabilities, SessionCapabilities, SessionListCapabilities,
-        };
+        use agent_client_protocol::schema::v1::{AgentCapabilities, SessionCapabilities, SessionListCapabilities};
 
         let silent = InitializeResponse::new(ProtocolVersion::V1);
         assert!(!lists_sessions(&silent));
@@ -2052,8 +2066,7 @@ mod tests {
     /// Saying nothing would leave the user with a bare protocol error.
     #[test]
     fn a_sign_in_failure_with_no_methods_still_says_so() {
-        let message =
-            describe_session_failure(&agent_client_protocol::Error::auth_required(), &[]);
+        let message = describe_session_failure(&agent_client_protocol::Error::auth_required(), &[]);
         assert!(message.contains("sign in"), "{message}");
         assert!(message.contains("did not say how"), "{message}");
     }
@@ -2063,7 +2076,9 @@ mod tests {
     /// present either way.
     #[test]
     fn mcp_servers_are_empty_unless_the_adapter_opts_in() {
-        let off = mcp_servers(&AcpOverrides::default(), || panic!("no token is minted for an agent that opted out"));
+        let off = mcp_servers(&AcpOverrides::default(), || {
+            panic!("no token is minted for an agent that opted out")
+        });
         let request = new_session_request("/tmp", &off);
         assert!(request.mcp_servers.is_empty());
         let wire = serde_json::to_value(&request).unwrap();
@@ -2072,9 +2087,15 @@ mod tests {
         let tori = McpServer::Stdio(
             McpServerStdio::new("tori", "/sock/bin/tori")
                 .args(vec!["mcp".to_string()])
-                .env(vec![EnvVariable::new("TORI_SOCK", "/sock/s"), EnvVariable::new("TORI_CALLER", "tok")]),
+                .env(vec![
+                    EnvVariable::new("TORI_SOCK", "/sock/s"),
+                    EnvVariable::new("TORI_CALLER", "tok"),
+                ]),
         );
-        let on = AcpOverrides { send_mcp_servers: true, ..Default::default() };
+        let on = AcpOverrides {
+            send_mcp_servers: true,
+            ..Default::default()
+        };
         let wire = serde_json::to_value(new_session_request("/tmp", &mcp_servers(&on, || Some(tori)))).unwrap();
         assert_eq!(
             wire["mcpServers"],
@@ -2115,11 +2136,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[cfg(test)]
-    fn live_session(
-        session_id: &str,
-        program: &str,
-        args: &[&str],
-    ) -> (AcpTransport, Arc<Mutex<Vec<ChatEvent>>>) {
+    fn live_session(session_id: &str, program: &str, args: &[&str]) -> (AcpTransport, Arc<Mutex<Vec<ChatEvent>>>) {
         live_session_as(session_id, program, args).0
     }
 
@@ -2191,11 +2208,7 @@ mod tests {
     }
 
     #[cfg(test)]
-    fn wait_for(
-        seen: &Arc<Mutex<Vec<ChatEvent>>>,
-        secs: u64,
-        done: impl Fn(&[ChatEvent]) -> bool,
-    ) -> Vec<ChatEvent> {
+    fn wait_for(seen: &Arc<Mutex<Vec<ChatEvent>>>, secs: u64, done: impl Fn(&[ChatEvent]) -> bool) -> Vec<ChatEvent> {
         let deadline = std::time::Instant::now() + Duration::from_secs(secs);
         loop {
             let events = seen.lock().unwrap().clone();
@@ -2232,7 +2245,10 @@ mod tests {
             .unwrap_or_else(|| panic!("no session started: {events:?}"));
         let (models, running) = started;
 
-        assert!(!models.is_empty(), "the agent offered a model selector, so the picker has rows");
+        assert!(
+            !models.is_empty(),
+            "the agent offered a model selector, so the picker has rows"
+        );
         assert!(
             models.iter().any(|m| m.value.contains('/')),
             "opencode's ids are provider-qualified: {:?}",
@@ -2252,7 +2268,9 @@ mod tests {
         // route rather than a verb the spec dropped.
         let other = models.iter().map(|m| m.value.clone()).find(|v| v != running);
         if let Some(other) = other {
-            transport.set_model(&other, None).expect("a switch to an offered model is accepted");
+            transport
+                .set_model(&other, None)
+                .expect("a switch to an offered model is accepted");
             let after = wait_for(&seen, 20, |e| {
                 e.iter().any(|e| matches!(e, ChatEvent::SessionError { .. }))
             });
@@ -2289,8 +2307,7 @@ mod tests {
 
         let adapter = crate::agents::find("opencode").expect("opencode ships bundled");
         let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
-        let args =
-            crate::chat::commands::build_args(chat, "live-generic", false, None, None, None, None, &[]);
+        let args = crate::chat::commands::build_args(chat, "live-generic", false, None, None, None, None, &[]);
 
         // The agent's own configuration, so it asks before it writes. Tori
         // contributes nothing to this decision and could not.
@@ -2311,8 +2328,7 @@ mod tests {
         let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
 
         // Program, args and quirks all from the adapter.
-        let mut transport =
-            AcpTransport::new("live-generic", &adapter.id, chat.acp.clone());
+        let mut transport = AcpTransport::new("live-generic", &adapter.id, chat.acp.clone());
         transport
             .start(
                 StartSpec {
@@ -2326,7 +2342,9 @@ mod tests {
             )
             .expect("the adapter's launch should start the agent");
 
-        wait_for(&seen, 60, |e| e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. })));
+        wait_for(&seen, 60, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
         transport
             .send(&[ContentBlock::Text {
                 text: "Create a file named generic.txt containing exactly the word hello. \
@@ -2342,14 +2360,14 @@ mod tests {
         let (request_id, suggestions) = asked
             .iter()
             .find_map(|e| match e {
-                ChatEvent::PermissionRequest { request_id, suggestions, .. } => {
-                    Some((request_id.clone(), suggestions.clone()))
-                }
+                ChatEvent::PermissionRequest {
+                    request_id,
+                    suggestions,
+                    ..
+                } => Some((request_id.clone(), suggestions.clone())),
                 _ => None,
             })
-            .unwrap_or_else(|| {
-                panic!("the agent's own config says ask, so it must ask: {asked:?}")
-            });
+            .unwrap_or_else(|| panic!("the agent's own config says ask, so it must ask: {asked:?}"));
 
         // Whatever the agent offered is what is on the prompt: Tori composes no
         // option of its own, so this is a record of the agent's vocabulary
@@ -2358,13 +2376,7 @@ mod tests {
 
         assert!(
             transport
-                .respond_permission(
-                    "",
-                    &request_id,
-                    PermissionDecision::Allow,
-                    PermissionScope::Once,
-                    None,
-                )
+                .respond_permission("", &request_id, PermissionDecision::Allow, PermissionScope::Once, None,)
                 .expect("answering is in-protocol"),
             "the answer went to the transport rather than to the PreToolUse bridge"
         );
@@ -2375,7 +2387,8 @@ mod tests {
         let _ = transport.close();
 
         assert!(
-            done.iter().any(|e| matches!(e, ChatEvent::TextDelta { .. } | ChatEvent::ThinkingDelta { .. })),
+            done.iter()
+                .any(|e| matches!(e, ChatEvent::TextDelta { .. } | ChatEvent::ThinkingDelta { .. })),
             "streaming text: {done:?}"
         );
         assert!(
@@ -2385,7 +2398,10 @@ mod tests {
         assert!(
             done.iter().any(|e| matches!(
                 e,
-                ChatEvent::TurnCompleted { outcome: crate::chat::model::TurnOutcome::Completed, .. }
+                ChatEvent::TurnCompleted {
+                    outcome: crate::chat::model::TurnOutcome::Completed,
+                    ..
+                }
             )),
             "and a turn that completed: {done:?}"
         );
@@ -2420,8 +2436,7 @@ mod tests {
 
         let adapter = crate::agents::find("codex").expect("codex ships bundled");
         let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
-        let args =
-            crate::chat::commands::build_args(chat, "live-codex", false, None, None, None, None, &[]);
+        let args = crate::chat::commands::build_args(chat, "live-codex", false, None, None, None, None, &[]);
 
         let root = std::env::temp_dir()
             .join(format!("tori-acp-live-{}", std::process::id()))
@@ -2465,9 +2480,12 @@ mod tests {
         let (models, modes, mode_now) = opened
             .iter()
             .find_map(|e| match e {
-                ChatEvent::SessionStarted { models, modes, permission_mode, .. } => {
-                    Some((models.clone(), modes.clone(), permission_mode.clone()))
-                }
+                ChatEvent::SessionStarted {
+                    models,
+                    modes,
+                    permission_mode,
+                    ..
+                } => Some((models.clone(), modes.clone(), permission_mode.clone())),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no session started: {opened:?}"));
@@ -2485,9 +2503,15 @@ mod tests {
         // what `Effort` can send, so `ultra` is measured on the wire and
         // deliberately absent here.
         let levels = &models[0].supported_effort_levels;
-        assert!(models[0].supports_effort, "codex publishes reasoning levels: {models:?}");
+        assert!(
+            models[0].supports_effort,
+            "codex publishes reasoning levels: {models:?}"
+        );
         assert!(levels.contains(&"xhigh".to_string()), "{levels:?}");
-        assert!(!levels.contains(&"ultra".to_string()), "a level Tori cannot send: {levels:?}");
+        assert!(
+            !levels.contains(&"ultra".to_string()),
+            "a level Tori cannot send: {levels:?}"
+        );
 
         // Into the one mode that makes it ask. Applied with the next prompt, so
         // this is staged rather than sent, which is the trait's contract.
@@ -2515,13 +2539,7 @@ mod tests {
 
         assert!(
             transport
-                .respond_permission(
-                    "",
-                    &request_id,
-                    PermissionDecision::Allow,
-                    PermissionScope::Once,
-                    None,
-                )
+                .respond_permission("", &request_id, PermissionDecision::Allow, PermissionScope::Once, None,)
                 .expect("answering is in-protocol"),
             "the answer went to the transport rather than to the PreToolUse bridge"
         );
@@ -2568,8 +2586,7 @@ mod tests {
 
         let adapter = crate::agents::find("codex").expect("codex ships bundled");
         let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
-        let args =
-            crate::chat::commands::build_args(chat, "live-quota", false, None, None, None, None, &[]);
+        let args = crate::chat::commands::build_args(chat, "live-quota", false, None, None, None, None, &[]);
 
         let root = std::env::temp_dir()
             .join(format!("tori-acp-quota-{}", std::process::id()))
@@ -2618,8 +2635,10 @@ mod tests {
             done.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. })),
             "a real turn ran: {done:?}"
         );
-        let quota: Vec<&ChatEvent> =
-            done.iter().filter(|e| matches!(e, ChatEvent::RateLimit { .. })).collect();
+        let quota: Vec<&ChatEvent> = done
+            .iter()
+            .filter(|e| matches!(e, ChatEvent::RateLimit { .. }))
+            .collect();
         assert!(
             quota.is_empty(),
             "codex-acp 1.2.0 forwarded a rate limit after all, so the `sessions` rung is \
@@ -2699,8 +2718,7 @@ mod tests {
         let cwd = root.to_string_lossy().into_owned();
 
         let open = |id: &str| {
-            let args =
-                crate::chat::commands::build_args(chat, id, false, None, None, None, None, &[]);
+            let args = crate::chat::commands::build_args(chat, id, false, None, None, None, None, &[]);
             let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
             let collected = seen.clone();
             let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
@@ -2734,8 +2752,7 @@ mod tests {
         });
         let _ = first.close();
 
-        let earlier = acp_sessions::read("live-codex-list-a")
-            .expect("the first session must leave a locator");
+        let earlier = acp_sessions::read("live-codex-list-a").expect("the first session must leave a locator");
         assert_eq!(earlier.agent, "codex", "a locator names the agent that wrote it");
 
         // **The store is wiped before the second connection, and that is the
@@ -2892,7 +2909,6 @@ mod tests {
         );
     }
 
-
     /// A live tool-using turn renders as a tool card, not as prose about one.
     ///
     /// Measured against `opencode acp` 1.18.3: a turn that writes a file emits
@@ -2914,8 +2930,7 @@ mod tests {
         });
         transport
             .send(&[ContentBlock::Text {
-                text: "Create a file called probe.txt containing the word hello. Use your tools."
-                    .to_string(),
+                text: "Create a file called probe.txt containing the word hello. Use your tools.".to_string(),
             }])
             .expect("the turn should submit");
         let events = wait_for(&seen, 180, |e| {
@@ -3034,8 +3049,11 @@ mod tests {
     fn a_live_permission_prompt_is_answered_in_the_agents_own_vocabulary() {
         use super::super::model::PermissionSuggestion;
 
-        let (mut transport, seen) =
-            live_session("live-permission", "npx", &["-y", "@agentclientprotocol/claude-agent-acp"]);
+        let (mut transport, seen) = live_session(
+            "live-permission",
+            "npx",
+            &["-y", "@agentclientprotocol/claude-agent-acp"],
+        );
         wait_for(&seen, 120, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
         });
@@ -3048,7 +3066,12 @@ mod tests {
         let asked = wait_for(&seen, 180, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::PermissionRequest { .. }))
         });
-        let Some(ChatEvent::PermissionRequest { request_id, tool_use_id, suggestions, .. }) = asked
+        let Some(ChatEvent::PermissionRequest {
+            request_id,
+            tool_use_id,
+            suggestions,
+            ..
+        }) = asked
             .iter()
             .find(|e| matches!(e, ChatEvent::PermissionRequest { .. }))
             .cloned()
@@ -3178,14 +3201,19 @@ mod tests {
 
         seen.lock().unwrap().clear();
         transport
-            .send(&[ContentBlock::Text { text: "Reply with exactly the word: marker".to_string() }])
+            .send(&[ContentBlock::Text {
+                text: "Reply with exactly the word: marker".to_string(),
+            }])
             .expect("the turn should submit");
         let live = wait_for(&seen, 240, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
         });
 
         seen.lock().unwrap().clear();
-        assert!(transport.replay().expect("the reload should submit"), "codex advertises loadSession");
+        assert!(
+            transport.replay().expect("the reload should submit"),
+            "codex advertises loadSession"
+        );
         let replayed = wait_for(&seen, 180, |e| {
             e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
         });

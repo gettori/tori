@@ -23,10 +23,7 @@ function buttonOutsideTheDialog() {
   return button;
 }
 
-function openDialog(
-  props: Partial<Omit<DialogProps, "open" | "onClose">> = {},
-  children?: JSX.Element,
-) {
+function openDialog(props: Partial<Omit<DialogProps, "open" | "onClose">> = {}, children?: JSX.Element) {
   const [open, setOpen] = createSignal(true);
   const onClose = vi.fn(() => setOpen(false));
   render(() => (
@@ -46,12 +43,8 @@ describe("Dialog", () => {
       // `aria-modal` is the wrapper's own doing: Kobalte expresses modality by
       // aria-hiding everything else and never sets the attribute.
       expect(dialog.getAttribute("aria-modal")).toBe("true");
-      expect(dialog.getAttribute("aria-labelledby")).toBe(
-        screen.getByText("Delete branch").id,
-      );
-      expect(dialog.getAttribute("aria-describedby")).toBe(
-        screen.getByText("This cannot be undone.").id,
-      );
+      expect(dialog.getAttribute("aria-labelledby")).toBe(screen.getByText("Delete branch").id);
+      expect(dialog.getAttribute("aria-describedby")).toBe(screen.getByText("This cannot be undone.").id);
     });
 
     it("keeps a hidden title as the accessible name", () => {
@@ -59,9 +52,7 @@ describe("Dialog", () => {
 
       const title = screen.getByText("Delete branch");
       expect(title.className).toBe(styles.titleHidden);
-      expect(screen.getByRole("dialog").getAttribute("aria-labelledby")).toBe(
-        title.id,
-      );
+      expect(screen.getByRole("dialog").getAttribute("aria-labelledby")).toBe(title.id);
     });
 
     it("carries a caller's class beside its own", () => {
@@ -79,23 +70,18 @@ describe("Dialog", () => {
     // jsdom resolves no `var()` and every panel measures zero. What is assertable
     // is that each size reaches its own rule, which is what silently breaks when
     // a key is renamed in one file and not the other.
-    it.each(["confirm", "sheet", "wide"] as const)(
-      "puts %s on its own rule",
-      (size) => {
-        openDialog({ size });
+    it.each(["confirm", "sheet", "wide"] as const)("puts %s on its own rule", (size) => {
+      openDialog({ size });
 
-        const dialog = screen.getByRole("dialog");
-        expect(dialog.classList.contains(styles[size])).toBe(true);
-        expect(styles[size]).toBeTruthy();
-      },
-    );
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.classList.contains(styles[size])).toBe(true);
+      expect(styles[size]).toBeTruthy();
+    });
 
     it("defaults to confirm", () => {
       openDialog();
 
-      expect(
-        screen.getByRole("dialog").classList.contains(styles.confirm),
-      ).toBe(true);
+      expect(screen.getByRole("dialog").classList.contains(styles.confirm)).toBe(true);
     });
   });
 
@@ -115,9 +101,7 @@ describe("Dialog", () => {
     it("is absent when the dialog has no body, rather than an empty tab stop", () => {
       openDialog({ description: "Nothing else to say." });
 
-      expect(
-        screen.getByRole("dialog").querySelector(`.${styles.body}`),
-      ).toBeNull();
+      expect(screen.getByRole("dialog").querySelector(`.${styles.body}`)).toBeNull();
     });
   });
 
@@ -213,10 +197,7 @@ describe("Dialog", () => {
 
     it("focuses the element the caller names", () => {
       let input: HTMLInputElement | undefined;
-      openDialog(
-        { initialFocus: () => input },
-        <input ref={input} aria-label="Branch name" />,
-      );
+      openDialog({ initialFocus: () => input }, <input ref={input} aria-label="Branch name" />);
 
       expect(document.activeElement).toBe(input);
     });
@@ -228,7 +209,14 @@ describe("Dialog", () => {
     it("falls back to the panel when the element it was told to focus refuses", () => {
       let confirm: HTMLButtonElement | undefined;
       openDialog(
-        { initialFocus: () => confirm, actions: <button ref={confirm} disabled>Removing…</button> },
+        {
+          initialFocus: () => confirm,
+          actions: (
+            <button ref={confirm} disabled>
+              Removing…
+            </button>
+          ),
+        },
         "Removing the worktree.",
       );
 
@@ -281,9 +269,7 @@ describe("Dialog", () => {
         </>,
       );
 
-      const sentinels = screen
-        .getByRole("dialog")
-        .querySelectorAll<HTMLElement>("[data-focus-trap]");
+      const sentinels = screen.getByRole("dialog").querySelectorAll<HTMLElement>("[data-focus-trap]");
       expect(sentinels).toHaveLength(2);
 
       // Tabbing past the last control lands on the end sentinel, which throws
@@ -293,9 +279,7 @@ describe("Dialog", () => {
       // focus navigation and this repo has no user-event, so a keydown-based
       // assertion would pass without moving anything.
       sentinels[1].focus();
-      expect(document.activeElement).toBe(
-        screen.getByRole("dialog").querySelector(`.${styles.body}`),
-      );
+      expect(document.activeElement).toBe(screen.getByRole("dialog").querySelector(`.${styles.body}`));
     });
 
     it("pulls focus back when something outside steals it", () => {

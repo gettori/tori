@@ -156,11 +156,7 @@ export function draftChatAgent(preferred: string | null | undefined, folder?: st
  * the last word: an answer they leave out gives way to this agent's first
  * account they keep.
  */
-export function draftChatProfile(
-  agentId: string,
-  remembered?: string | null,
-  folder?: string | null,
-): string | null {
+export function draftChatProfile(agentId: string, remembered?: string | null, folder?: string | null): string | null {
   const picked = layeredProfile(agentId, remembered);
   const allowed = allowedRows(folder)?.filter((r) => r.agent === agentId);
   if (!allowed?.length || allowed.some((r) => r.profile === asProfileId(picked))) return picked;

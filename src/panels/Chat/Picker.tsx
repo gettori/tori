@@ -103,11 +103,7 @@ export default function Picker(props: {
   );
 }
 
-function PillBody(props: {
-  icon: Component<{ size?: number | string }>;
-  prefix?: string;
-  value: string;
-}) {
+function PillBody(props: { icon: Component<{ size?: number | string }>; prefix?: string; value: string }) {
   return (
     <>
       <Icon icon={props.icon} size={15} class={styles.pillIcon} />
@@ -210,12 +206,7 @@ export function PickerOption(props: {
             so the default `top` lands the tooltip on the choices the user is
             reading past. Kobalte's popper flips on overflow by default, so a
             menu near the right edge gets it on the left with nothing extra. */}
-        <Tooltip<HTMLSpanElement>
-          as="span"
-          class={styles.pickName}
-          label={props.description}
-          placement="right"
-        >
+        <Tooltip<HTMLSpanElement> as="span" class={styles.pickName} label={props.description} placement="right">
           {props.label}
         </Tooltip>
         {/* Announced as well as hovered. The tooltip is `aria-describedby` on a
@@ -228,9 +219,7 @@ export function PickerOption(props: {
             </span>
           )}
         </Show>
-        <Show when={props.refusing && props.note}>
-          {(note) => <span class={styles.pickNote}>{note()}</span>}
-        </Show>
+        <Show when={props.refusing && props.note}>{(note) => <span class={styles.pickNote}>{note()}</span>}</Show>
       </span>
       {/* Held whatever the state, so rows do not shift sideways as the
           selection moves down the list. */}

@@ -102,7 +102,9 @@ fn staged_at(repo: &str, file: &str) -> Result<u8, String> {
     for rec in String::from_utf8_lossy(&out).split('\0').filter(|r| !r.is_empty()) {
         // `<mode> <sha> <stage>\t<path>`: the stage is the last field before
         // the tab, and the path may contain spaces.
-        let Some((meta, _)) = rec.split_once('\t') else { continue };
+        let Some((meta, _)) = rec.split_once('\t') else {
+            continue;
+        };
         match meta.rsplit(' ').next() {
             Some("1") => mask |= 1,
             Some("2") => mask |= 2,
@@ -157,7 +159,11 @@ fn git_path(project_path: &str, name: &str) -> Option<std::path::PathBuf> {
     }
     let p = Path::new(&rel);
     // `--git-path` answers relative to the repository, not to the caller.
-    Some(if p.is_absolute() { p.to_path_buf() } else { Path::new(project_path).join(p) })
+    Some(if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        Path::new(project_path).join(p)
+    })
 }
 
 /// What operation is mid-flight, which decides what to call stages 2 and 3.
@@ -188,7 +194,10 @@ fn trimmed(repo: &str, args: &[&str]) -> Option<String> {
 }
 
 fn side_ref(repo: &str, rev: &str, name: Option<String>) -> Option<SideRef> {
-    let sha = trimmed(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])?;
+    let sha = trimmed(
+        repo,
+        &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")],
+    )?;
     let short = trimmed(repo, &["rev-parse", "--short", &sha]).unwrap_or_else(|| sha.chars().take(7).collect());
     Some(SideRef { sha, short, name })
 }
@@ -196,8 +205,21 @@ fn side_ref(repo: &str, rev: &str, name: Option<String>) -> Option<SideRef> {
 // Tips only: `name-rev` would also name `feature~2`, but it walks history to
 // do it, which takes seconds on a large repository.
 fn branch_name(repo: &str, rev: &str) -> Option<String> {
-    let sha = trimmed(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])?;
-    let refs = trimmed(repo, &["for-each-ref", "--points-at", &sha, "--format=%(refname:short)", "refs/heads", "refs/remotes"])?;
+    let sha = trimmed(
+        repo,
+        &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")],
+    )?;
+    let refs = trimmed(
+        repo,
+        &[
+            "for-each-ref",
+            "--points-at",
+            &sha,
+            "--format=%(refname:short)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
     refs.lines().next().map(str::to_string)
 }
 
@@ -207,7 +229,11 @@ pub fn git_conflict_sides(project_path: String) -> Result<ConflictSides, String>
     let repo = project_path.as_str();
     let op = git_conflict_op(project_path.clone())?;
     if op == ConflictOp::Rebase {
-        let dir = if git_path(repo, "rebase-merge").is_some_and(|p| p.exists()) { "rebase-merge" } else { "rebase-apply" };
+        let dir = if git_path(repo, "rebase-merge").is_some_and(|p| p.exists()) {
+            "rebase-merge"
+        } else {
+            "rebase-apply"
+        };
         let read = |name: &str| {
             let text = std::fs::read_to_string(git_path(repo, &format!("{dir}/{name}"))?).ok()?;
             let text = text.trim().to_string();
@@ -217,7 +243,10 @@ pub fn git_conflict_sides(project_path: String) -> Result<ConflictSides, String>
         // named after `onto`; the commit being replayed belongs to `head-name`.
         let onto = read("onto").and_then(|sha| branch_name(repo, &sha));
         let head_name = read("head-name").map(|n| n.trim_start_matches("refs/heads/").to_string());
-        return Ok(ConflictSides { ours: side_ref(repo, "HEAD", onto), theirs: side_ref(repo, "REBASE_HEAD", head_name) });
+        return Ok(ConflictSides {
+            ours: side_ref(repo, "HEAD", onto),
+            theirs: side_ref(repo, "REBASE_HEAD", head_name),
+        });
     }
     let incoming = match op {
         ConflictOp::Merge => Some("MERGE_HEAD"),
@@ -226,7 +255,11 @@ pub fn git_conflict_sides(project_path: String) -> Result<ConflictSides, String>
         _ => None,
     };
     Ok(ConflictSides {
-        ours: side_ref(repo, "HEAD", trimmed(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])),
+        ours: side_ref(
+            repo,
+            "HEAD",
+            trimmed(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"]),
+        ),
         theirs: incoming.and_then(|rev| side_ref(repo, rev, branch_name(repo, rev))),
     })
 }
@@ -248,7 +281,10 @@ pub fn git_conflict_sides(project_path: String) -> Result<ConflictSides, String>
 /// of mistake the discard fingerprints exist to prevent.
 #[tauri::command]
 pub async fn git_conflict_resolve(project_path: String, file: String, content: Option<String>) -> Result<(), String> {
-    crate::exec::git_write("git_conflict_resolve", project_path.clone(), move || git_conflict_resolve_body(project_path, file, content)).await
+    crate::exec::git_write("git_conflict_resolve", project_path.clone(), move || {
+        git_conflict_resolve_body(project_path, file, content)
+    })
+    .await
 }
 
 pub(crate) fn git_conflict_resolve_body(
@@ -280,9 +316,9 @@ pub(crate) fn git_conflict_resolve_body(
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
     use std::path::PathBuf;
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
@@ -419,11 +455,20 @@ mod tests {
     fn the_sides_name_their_commits_and_swap_under_a_rebase() {
         let dir = conflicted("sides");
         let p = dir.to_string_lossy().into_owned();
-        let sha = |rev: &str| String::from_utf8_lossy(&capture(&p, &["rev-parse", rev]).unwrap()).trim().to_string();
+        let sha = |rev: &str| {
+            String::from_utf8_lossy(&capture(&p, &["rev-parse", rev]).unwrap())
+                .trim()
+                .to_string()
+        };
         let (main, feature) = (sha("main"), sha("feature"));
         let pair = |side: Option<SideRef>| {
             let side = side.expect("a side with a commit");
-            assert!(side.sha.starts_with(&side.short), "{} is a prefix of {}", side.short, side.sha);
+            assert!(
+                side.sha.starts_with(&side.short),
+                "{} is a prefix of {}",
+                side.short,
+                side.sha
+            );
             (side.sha, side.name)
         };
 
@@ -477,13 +522,21 @@ mod tests {
         std::fs::write(dir.join("f.txt"), "one\nOURS\nthree\n").unwrap();
         git(&dir, &["commit", "-qam", "ours"]);
 
-        let linked = dir.parent().unwrap().join(format!(
-            "{}_linked",
-            dir.file_name().unwrap().to_string_lossy()
-        ));
-        git(&dir, &["worktree", "add", "-q", "-b", "side", &linked.to_string_lossy(), "main"]);
+        let linked = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}_linked", dir.file_name().unwrap().to_string_lossy()));
+        git(
+            &dir,
+            &["worktree", "add", "-q", "-b", "side", &linked.to_string_lossy(), "main"],
+        );
         // Conflict inside the linked worktree, not the main one.
-        Command::new("git").arg("-C").arg(&linked).args(["merge", "feature"]).output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&linked)
+            .args(["merge", "feature"])
+            .output()
+            .unwrap();
         let p = linked.to_string_lossy().into_owned();
 
         assert!(linked.join(".git").is_file(), "a linked worktree's .git is a file");
@@ -591,8 +644,7 @@ mod tests {
         let outside = dir.parent().unwrap().join("escaped.txt");
         std::fs::remove_file(&outside).ok();
 
-        let err = git_conflict_resolve_body(p, "../escaped.txt".into(), Some("owned\n".into()))
-            .unwrap_err();
+        let err = git_conflict_resolve_body(p, "../escaped.txt".into(), Some("owned\n".into())).unwrap_err();
 
         // Refused before the write, whether by the containment check or by the
         // stage read; what matters is that nothing landed outside.

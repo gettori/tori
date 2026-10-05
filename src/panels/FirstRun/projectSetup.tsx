@@ -146,7 +146,8 @@ export function createProjectSetup(opts: {
     else void checkGit();
   }
 
-  const madePath = (space: FirstRunSpace, projectName: string) => shortHome(`${space.path}/${projectName}`, opts.home());
+  const madePath = (space: FirstRunSpace, projectName: string) =>
+    shortHome(`${space.path}/${projectName}`, opts.home());
 
   function okLine(j: StepJob): string {
     if (j.kind === "project") {
@@ -222,7 +223,9 @@ export function createProjectSetup(opts: {
                 </Show>
               }
             >
-              {(j) => <InlineJob job={j.job} okLine={okLine(j)} onCancel={clearJob} onState={(st) => onJobState(j, st)} />}
+              {(j) => (
+                <InlineJob job={j.job} okLine={okLine(j)} onCancel={clearJob} onState={(st) => onJobState(j, st)} />
+              )}
             </Show>
           }
         />

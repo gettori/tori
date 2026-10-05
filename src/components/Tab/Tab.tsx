@@ -49,8 +49,7 @@ export function TabRow(props: {
   );
 }
 
-export interface TabProps
-  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onClose" | "type" | "title"> {
+export interface TabProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onClose" | "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Nothing in Tori passes it. */
   type?: "submit" | "reset" | "button";
@@ -232,23 +231,25 @@ export default function Tab(props: TabProps) {
         <span class={styles.lockSlot} aria-hidden="true">
           {local.locked}
         </span>
-      ) : local.onClose && (
-        <button
-          type="button"
-          class={styles.close}
-          data-tab-close=""
-          tabindex={-1}
-          aria-hidden="true"
-          disabled={row.inert}
-          onClick={(e) => {
-            e.stopPropagation();
-            local.onClose!(e);
-          }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
+      ) : (
+        local.onClose && (
+          <button
+            type="button"
+            class={styles.close}
+            data-tab-close=""
+            tabindex={-1}
+            aria-hidden="true"
+            disabled={row.inert}
+            onClick={(e) => {
+              e.stopPropagation();
+              local.onClose!(e);
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )
       )}
     </span>
   );

@@ -4,13 +4,7 @@ import UsageCard from "./UsageCard";
 import { findAdapter } from "../../utils/agents";
 import { asProfileId, asTabProfile, profileLabel } from "../../utils/agentHealth";
 import { agentEnabled } from "../../utils/agentEnabled";
-import {
-  limitTypeLabel,
-  limitTypeShort,
-  quotaBand,
-  quotaState,
-  type QuotaState,
-} from "../../utils/chatRateLimit";
+import { limitTypeLabel, limitTypeShort, quotaBand, quotaState, type QuotaState } from "../../utils/chatRateLimit";
 import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import { pollUsage } from "../../utils/usageProbe";
 import {
@@ -56,11 +50,7 @@ export function shouldCollapse(topbarWidth: number): boolean {
 
 /** The window with the least headroom: what a one-bar row has to show, since
  *  the reason to glance at the strip is the limit you are nearest to. */
-export function tightestWindow(
-  windows: WindowReading[],
-  warnAt: number,
-  now = Date.now(),
-): WindowReading | null {
+export function tightestWindow(windows: WindowReading[], warnAt: number, now = Date.now()): WindowReading | null {
   const rank: Record<QuotaState, number> = { reached: 3, approaching: 2, ok: 1, expired: 0 };
   let best: WindowReading | null = null;
   let bestScore = -1;
@@ -73,8 +63,6 @@ export function tightestWindow(
   }
   return best;
 }
-
-
 
 /** One account with something to say, in the order the strip draws them. */
 type Cluster = {
@@ -313,11 +301,7 @@ export default function UsageStrip() {
               {/* Between every two rows: a thin one between two logins of one
                   agent, a taller one where the next agent starts. */}
               <Show when={i > 0}>
-                <span
-                  class={styles.divider}
-                  classList={{ [styles.agentDivider]: row().lead }}
-                  aria-hidden="true"
-                />
+                <span class={styles.divider} classList={{ [styles.agentDivider]: row().lead }} aria-hidden="true" />
               </Show>
               <button
                 type="button"
@@ -334,20 +318,12 @@ export default function UsageStrip() {
                     again is the widest thing on the strip saying the least.
                     Every other login carries its own name, which is the only
                     thing that tells two of them apart. */}
-                <Show
-                  when={row().lead}
-                  fallback={<span class={styles.name}>{row().label}</span>}
-                >
+                <Show when={row().lead} fallback={<span class={styles.name}>{row().label}</span>}>
                   <AgentGlyph id={row().agentId} label={row().label} size={18} />
                 </Show>
                 <Index each={row().windows}>
                   {(w) => (
-                    <UsageBar
-                      reading={w()}
-                      warnAt={row().warnAt}
-                      now={clock()}
-                      compact={collapsed() && !row().lead}
-                    />
+                    <UsageBar reading={w()} warnAt={row().warnAt} now={clock()} compact={collapsed() && !row().lead} />
                   )}
                 </Index>
               </button>

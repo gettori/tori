@@ -19,7 +19,13 @@ import {
 // (see panels/Editor/problemsFromState.ts).
 import { problemsFromState } from "../panels/Editor/problemsFromState";
 
-const p = (line: number, severity: Severity, message = "m"): Problem => ({ line, endLine: line, column: 1, severity, message });
+const p = (line: number, severity: Severity, message = "m"): Problem => ({
+  line,
+  endLine: line,
+  column: 1,
+  severity,
+  message,
+});
 
 describe("severityRank", () => {
   it("orders error before warning before info before hint", () => {
@@ -165,7 +171,10 @@ describe("store round trip", () => {
     publishDiagnostics("/a.ts", []);
     expect("/a.ts" in diagnostics()).toBe(false);
 
-    publishDiagnostics("/b.ts", Array.from({ length: 500 }, (_, i) => p(i + 1, "warning")));
+    publishDiagnostics(
+      "/b.ts",
+      Array.from({ length: 500 }, (_, i) => p(i + 1, "warning")),
+    );
     expect(diagnostics()["/b.ts"].length).toBe(MAX_PER_FILE);
 
     dropDiagnostics("/b.ts");

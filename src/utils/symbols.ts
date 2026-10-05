@@ -159,11 +159,9 @@ function str(v: unknown): string | null {
  *  shape threw away. Containment, not `containerName`: two overloads share a
  *  name, and a name is not a position. */
 function contains(outer: SymbolNode, inner: SymbolNode): boolean {
-  const startsAfter =
-    outer.line < inner.line || (outer.line === inner.line && outer.column <= inner.column);
+  const startsAfter = outer.line < inner.line || (outer.line === inner.line && outer.column <= inner.column);
   const endsBefore =
-    outer.endLine > inner.endLine ||
-    (outer.endLine === inner.endLine && outer.endColumn >= inner.endColumn);
+    outer.endLine > inner.endLine || (outer.endLine === inner.endLine && outer.endColumn >= inner.endColumn);
   return startsAfter && endsBefore;
 }
 
@@ -259,9 +257,7 @@ export function normalizeDocumentSymbols(res: unknown, path: string): SymbolNode
   const list = res.slice(0, MAX_SYMBOLS);
   const flatShape = list.some((e) => isRange((e as RawSymbolInformation)?.location?.range));
   const tree = flatShape
-    ? nestByRange(
-        list.map((e) => fromFlat(e as RawSymbolInformation, path)).filter((n): n is SymbolNode => !!n),
-      )
+    ? nestByRange(list.map((e) => fromFlat(e as RawSymbolInformation, path)).filter((n): n is SymbolNode => !!n))
     : list
         .map((e) => fromHierarchical(e as RawDocumentSymbol, path))
         .filter((n): n is SymbolNode => !!n)
@@ -277,10 +273,7 @@ export function normalizeDocumentSymbols(res: unknown, path: string): SymbolNode
  *  editor's business, and this module may not import the module that knows how
  *  (it reaches CodeMirror). A hit Tori cannot address is dropped rather than
  *  listed as something Enter would do nothing to. */
-export function normalizeWorkspaceSymbols(
-  res: unknown,
-  toPath: (uri: string) => string | null,
-): SymbolNode[] {
+export function normalizeWorkspaceSymbols(res: unknown, toPath: (uri: string) => string | null): SymbolNode[] {
   if (!Array.isArray(res)) return [];
   const out: SymbolNode[] = [];
   for (const entry of res.slice(0, MAX_SYMBOLS)) {

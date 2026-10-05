@@ -99,8 +99,7 @@ function openTabs(ws: string, paths: string[]) {
 /** `<repo> / <basename>`, tolerant of how an engine joins a hidden span to the
  *  text beside it: the separator is what matters, not the exact spaces around
  *  it (jsdom trims each node, browsers do not). */
-const NAMED = (repo: string, file: string) =>
-  new RegExp(`^${repo}\\s*/\\s*${file.replace(".", "\\.")}$`);
+const NAMED = (repo: string, file: string) => new RegExp(`^${repo}\\s*/\\s*${file.replace(".", "\\.")}$`);
 
 let mounted: ReturnType<typeof render> | null = null;
 const mount = (sel: unknown) => {
@@ -151,9 +150,7 @@ describe("a file tab inside a Topic", () => {
     // been one crumb here, and it would have been the basename. Counted by the
     // crumb class rather than by every button in the bar, which now ends in the
     // file's own controls (blame, preview).
-    expect(
-      crumbs.getAllByRole("button").filter((b) => /crumb/.test(b.className)),
-    ).toHaveLength(3);
+    expect(crumbs.getAllByRole("button").filter((b) => /crumb/.test(b.className))).toHaveLength(3);
     expect(crumbs.getByRole("button", { name: "src" })).toBeTruthy();
     expect(crumbs.getByRole("button", { name: "b.txt" })).toBeTruthy();
   });

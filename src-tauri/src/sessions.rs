@@ -118,7 +118,10 @@ fn extract_text(content: &serde_json::Value) -> Option<String> {
             .collect(),
         _ => Vec::new(),
     };
-    let typed = texts.iter().map(|t| crate::rpc::events::split_notes(t).1).find(|rest| !rest.is_empty());
+    let typed = texts
+        .iter()
+        .map(|t| crate::rpc::events::split_notes(t).1)
+        .find(|rest| !rest.is_empty());
     typed.or(texts.first().copied()).map(str::to_string)
 }
 
@@ -252,7 +255,11 @@ fn local_command_turn(text: &str, ts: u64) -> Option<TranscriptTurn> {
     } else {
         return None;
     };
-    Some(TranscriptTurn { role: "command".into(), ts, blocks: vec![block] })
+    Some(TranscriptTurn {
+        role: "command".into(),
+        ts,
+        blocks: vec![block],
+    })
 }
 
 pub(crate) fn clean_title(raw: &str) -> String {
@@ -305,11 +312,10 @@ fn profile_root(dir: &Path, home_default: &Path, home: &str) -> Option<PathBuf> 
 ///
 /// Pure: the profiles are passed in, so the whole rule is testable without an
 /// `accounts.json` or a home directory.
-fn roots_for<'a>(
-    adapter: &'a agents::AgentAdapter,
-    profiles: &[crate::accounts::Profile],
-) -> Vec<Root<'a>> {
-    let Some(agents::Discovery::File { dir, .. }) = &adapter.discovery else { return Vec::new() };
+fn roots_for<'a>(adapter: &'a agents::AgentAdapter, profiles: &[crate::accounts::Profile]) -> Vec<Root<'a>> {
+    let Some(agents::Discovery::File { dir, .. }) = &adapter.discovery else {
+        return Vec::new();
+    };
     profiles
         .iter()
         .filter_map(|p| {
@@ -322,7 +328,12 @@ fn roots_for<'a>(
                     profile_root(dir, default_home, home)?
                 }
             };
-            Some(Root { adapter, profile: p.id.clone(), dir: root, managed: p.managed })
+            Some(Root {
+                adapter,
+                profile: p.id.clone(),
+                dir: root,
+                managed: p.managed,
+            })
         })
         .collect()
 }
@@ -431,12 +442,10 @@ fn parse_by_adapter(
     created: SystemTime,
 ) -> Option<SessionMeta> {
     match adapter.parser_kind {
-        Some(agents::ParserKind::ClaudeJsonl) => {
-            parse_session(path, mtime, created, &adapter.id).map(|mut s| {
-                s.profile = Some(profile.to_string());
-                s
-            })
-        }
+        Some(agents::ParserKind::ClaudeJsonl) => parse_session(path, mtime, created, &adapter.id).map(|mut s| {
+            s.profile = Some(profile.to_string());
+            s
+        }),
         // Unreachable through `ensure_index`, which never walks a directory for
         // an adapter with no discovery, and answered anyway rather than
         // unwrapped: a file reached some other way is still not this adapter's
@@ -472,7 +481,9 @@ fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
         let Some(agents::Discovery::File { filename_regex, .. }) = &root.adapter.discovery else {
             continue;
         };
-        let Ok(dirs) = std::fs::read_dir(&root.dir) else { continue };
+        let Ok(dirs) = std::fs::read_dir(&root.dir) else {
+            continue;
+        };
         for dir in dirs.flatten() {
             let p = dir.path();
             if !p.is_dir() {
@@ -522,10 +533,7 @@ fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
 
 /// Takes the accounts file rather than reading it, so a caller that also needs
 /// it for the listing's labels reads it once.
-fn ensure_index(
-    index: &SessionIndex,
-    accounts: &crate::accounts::AccountsFile,
-) -> Vec<SessionMeta> {
+fn ensure_index(index: &SessionIndex, accounts: &crate::accounts::AccountsFile) -> Vec<SessionMeta> {
     let mut all = index_roots(index, &discovery_roots(accounts));
     all.extend(acp_sessions());
     all
@@ -598,7 +606,13 @@ pub(crate) fn owned_by_listing(cwd: &str, folder: &str) -> bool {
 fn filter_sort(all: Vec<SessionMeta>, folder: &str, inclusive: bool) -> Vec<SessionMeta> {
     let mut v: Vec<SessionMeta> = all
         .into_iter()
-        .filter(|s| if inclusive { cwd_matches(&s.cwd, folder) } else { owned_by_listing(&s.cwd, folder) })
+        .filter(|s| {
+            if inclusive {
+                cwd_matches(&s.cwd, folder)
+            } else {
+                owned_by_listing(&s.cwd, folder)
+            }
+        })
         .collect();
     v.sort_by(|a, b| b.last_active.cmp(&a.last_active));
     v
@@ -707,11 +721,7 @@ fn stamp_listing(
 /// Both user-authored halves of a listing are applied here rather than in the
 /// index: a rename and an account label are things the user typed, and the
 /// index holds no user-authored field (see this file's header).
-fn profile_label(
-    file: &crate::accounts::AccountsFile,
-    agent: &str,
-    profile: Option<&str>,
-) -> Option<String> {
+fn profile_label(file: &crate::accounts::AccountsFile, agent: &str, profile: Option<&str>) -> Option<String> {
     let profile = profile?;
     let profiles = crate::accounts::profiles_for(file, agent);
     // One account is every machine that never added a second, and it is the
@@ -847,10 +857,7 @@ pub fn seed_adopted(folders: Vec<String>) -> Result<(), String> {
 /// Is `folder` historical (a recreated folder whose sessions predate it)? Adopts
 /// it in passing when its sessions clearly belong to it (all postdate creation).
 #[tauri::command(async)]
-pub fn folder_historical(
-    index: State<SessionIndex>,
-    folder: String,
-) -> Result<bool, String> {
+pub fn folder_historical(index: State<SessionIndex>, folder: String) -> Result<bool, String> {
     let state = load_adopted();
     let times: Vec<u64> = filter_sort(ensure_index(&index, &crate::accounts::load()), &folder, false)
         .iter()
@@ -1053,10 +1060,11 @@ pub(crate) fn running_by_pattern(agent: &str, id: &str) -> bool {
     if !found_by_pattern(agent) {
         return false;
     }
-    let Some(pattern) = session_pattern(agent, id) else { return false };
+    let Some(pattern) = session_pattern(agent, id) else {
+        return false;
+    };
     let out = Command::new("pgrep").args(["-f", &pattern]).output();
-    out.map(|o| o.status.success() && !o.stdout.is_empty())
-        .unwrap_or(false)
+    out.map(|o| o.status.success() && !o.stdout.is_empty()).unwrap_or(false)
 }
 
 /// One session to probe: an id is only meaningful against the agent that owns it.
@@ -1082,7 +1090,9 @@ fn agent_command_lines(agent: &str) -> Vec<String> {
     // No pattern, no command lines: an adapter whose sessions are not on any
     // command line has none to collect, and `running_ids` would reject them all
     // anyway.
-    let Some(any_session) = session_pattern(agent, "[^ ]+") else { return Vec::new() };
+    let Some(any_session) = session_pattern(agent, "[^ ]+") else {
+        return Vec::new();
+    };
     let out = match Command::new("pgrep").args(["-lf", &any_session]).output() {
         Ok(o) => o,
         Err(_) => return Vec::new(),
@@ -1168,7 +1178,9 @@ pub fn sessions_running(
 }
 
 pub(crate) fn running_now(registry: &crate::chat::ownership::Registry, sessions: Vec<SessionRef>) -> Vec<String> {
-    resolve_running(sessions, found_by_pattern, agent_command_lines, |ids| registry.sessions_with_live_child(ids))
+    resolve_running(sessions, found_by_pattern, agent_command_lines, |ids| {
+        registry.sessions_with_live_child(ids)
+    })
 }
 
 #[derive(Serialize, Default)]
@@ -1312,21 +1324,13 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
 /// then attach the touched-file count (which rides its own cache). The
 /// per-line scan lives in `scan_counts`.
 #[tauri::command(async)]
-pub fn session_detail(
-    touched: State<TouchedIndex>,
-    path: String,
-    agent: String,
-) -> Result<SessionDetail, String> {
+pub fn session_detail(touched: State<TouchedIndex>, path: String, agent: String) -> Result<SessionDetail, String> {
     detail_of(&touched, &path, &agent)
 }
 
 /// The counts for one session. Split from the command so the store-less branch
 /// is testable without a Tauri `State`.
-fn detail_of(
-    touched: &TouchedIndex,
-    path: &str,
-    agent: &str,
-) -> Result<SessionDetail, String> {
+fn detail_of(touched: &TouchedIndex, path: &str, agent: &str) -> Result<SessionDetail, String> {
     // See `extract_touched_files` on why the kind is matched exhaustively. A
     // session with no transcript has no counts, and zeroes are the honest
     // answer: the panel renders empty rather than reporting a conversation that
@@ -1568,7 +1572,10 @@ fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
         if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
             continue;
         }
-        let Some(arr) = v.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_array())
+        let Some(arr) = v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
         else {
             continue;
         };
@@ -1611,8 +1618,9 @@ pub struct TouchedIndex(Mutex<HashMap<PathBuf, TouchedCacheEntry>>);
 /// touched panel (phase 3) already warmed the cache, or vice versa.
 fn touched_files_cached(index: &TouchedIndex, path: &str, agent: &str) -> Vec<TouchedFile> {
     let p = PathBuf::from(path);
-    let mtime =
-        std::fs::metadata(&p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+    let mtime = std::fs::metadata(&p)
+        .and_then(|m| m.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH);
 
     let mut cache = match index.0.lock() {
         Ok(c) => c,
@@ -1650,10 +1658,7 @@ pub fn session_touched_files(
 /// max explicitly, so a caller that filtered or reordered still gets the right
 /// answer.
 fn latest_written(files: &[TouchedFile]) -> Option<&TouchedFile> {
-    files
-        .iter()
-        .filter(|f| f.op != TouchOp::Read)
-        .max_by_key(|f| f.last_ts)
+    files.iter().filter(|f| f.op != TouchOp::Read).max_by_key(|f| f.last_ts)
 }
 
 /// The file this session wrote most recently, for the live "editing now"
@@ -1770,10 +1775,7 @@ fn folders_for(index: &SessionIndex, touched: &HashSet<PathBuf>) -> Option<Vec<S
 /// watches means that account's sessions do not appear until something else
 /// asks for a listing.
 #[tauri::command(async)]
-pub fn sessions_watch_start(
-    app: AppHandle,
-    state: State<SessionWatch>,
-) -> Result<(), String> {
+pub fn sessions_watch_start(app: AppHandle, state: State<SessionWatch>) -> Result<(), String> {
     let dirs = watchable_dirs(discovery_roots(&crate::accounts::load()))?;
 
     // Trailing-edge debounce. The watcher callback only records WHEN the last
@@ -1937,7 +1939,20 @@ pub struct TranscriptTurn {
 }
 
 pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
-    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
+    TranscriptBlock {
+        kind: kind.into(),
+        text: Some(text),
+        tool_name: None,
+        tool_input: None,
+        is_error: None,
+        tool_use_id: None,
+        tool_summary: None,
+        tool_patch: Vec::new(),
+        compact_trigger: None,
+        pre_tokens: None,
+        post_tokens: None,
+        subagent: None,
+    }
 }
 
 /// Where the conversation's middle was replaced by a summary. The summary text
@@ -1946,15 +1961,58 @@ pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
 /// screenshot, so reading them back would cost a session's worth of memory for
 /// nothing. Still a block, so an image-only prompt is still a turn.
 pub(crate) fn image_block() -> TranscriptBlock {
-    TranscriptBlock { kind: "image".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
+    TranscriptBlock {
+        kind: "image".into(),
+        text: None,
+        tool_name: None,
+        tool_input: None,
+        is_error: None,
+        tool_use_id: None,
+        tool_summary: None,
+        tool_patch: Vec::new(),
+        compact_trigger: None,
+        pre_tokens: None,
+        post_tokens: None,
+        subagent: None,
+    }
 }
 
-pub(crate) fn compaction_block(trigger: Option<String>, pre_tokens: Option<u64>, post_tokens: Option<u64>) -> TranscriptBlock {
-    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: trigger, pre_tokens, post_tokens, subagent: None }
+pub(crate) fn compaction_block(
+    trigger: Option<String>,
+    pre_tokens: Option<u64>,
+    post_tokens: Option<u64>,
+) -> TranscriptBlock {
+    TranscriptBlock {
+        kind: "compaction".into(),
+        text: None,
+        tool_name: None,
+        tool_input: None,
+        is_error: None,
+        tool_use_id: None,
+        tool_summary: None,
+        tool_patch: Vec::new(),
+        compact_trigger: trigger,
+        pre_tokens,
+        post_tokens,
+        subagent: None,
+    }
 }
 
 pub(crate) fn tool_call_block(name: String, input: serde_json::Value, tool_use_id: Option<String>) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
+    TranscriptBlock {
+        kind: "tool_call".into(),
+        text: None,
+        tool_name: Some(name),
+        tool_input: Some(input),
+        is_error: None,
+        tool_use_id,
+        tool_summary: None,
+        tool_patch: Vec::new(),
+        compact_trigger: None,
+        pre_tokens: None,
+        post_tokens: None,
+        subagent: None,
+    }
 }
 
 pub(crate) fn tool_result_block(
@@ -1965,11 +2023,37 @@ pub(crate) fn tool_result_block(
     tool_summary: Option<crate::chat::model::ToolSummary>,
     tool_patch: Vec<crate::chat::model::PatchHunk>,
 ) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, tool_summary, tool_patch, compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
+    TranscriptBlock {
+        kind: "tool_result".into(),
+        text: Some(text),
+        tool_name: name,
+        tool_input: None,
+        is_error: Some(is_error),
+        tool_use_id,
+        tool_summary,
+        tool_patch,
+        compact_trigger: None,
+        pre_tokens: None,
+        post_tokens: None,
+        subagent: None,
+    }
 }
 
 pub(crate) fn subagent_block(outcome: SubagentOutcome) -> TranscriptBlock {
-    TranscriptBlock { kind: "subagent".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: Some(outcome) }
+    TranscriptBlock {
+        kind: "subagent".into(),
+        text: None,
+        tool_name: None,
+        tool_input: None,
+        is_error: None,
+        tool_use_id: None,
+        tool_summary: None,
+        tool_patch: Vec::new(),
+        compact_trigger: None,
+        pre_tokens: None,
+        post_tokens: None,
+        subagent: Some(outcome),
+    }
 }
 
 /// The outcome an `Agent` call's `toolUseResult` records, `None` for every other
@@ -1980,7 +2064,11 @@ fn subagent_outcome(payload: &serde_json::Value) -> Option<SubagentOutcome> {
     let get = |k: &str| payload.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
     Some(SubagentOutcome {
         agent_id,
-        status: payload.get("status").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        status: payload
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
         // The same sentence the live `task_notification` puts on the lane, so a
         // reopened lane carries what a watched one did.
         summary: payload.get("content").map(stringify_content).filter(|s| !s.is_empty()),
@@ -1999,11 +2087,17 @@ fn task_notification(text: &str) -> Option<SubagentOutcome> {
     if !text.trim_start().starts_with("<task-notification>") {
         return None;
     }
-    let num = |tag: &str| tag_body(text, tag).and_then(|b| b.trim().parse::<u64>().ok()).unwrap_or(0);
+    let num = |tag: &str| {
+        tag_body(text, tag)
+            .and_then(|b| b.trim().parse::<u64>().ok())
+            .unwrap_or(0)
+    };
     Some(SubagentOutcome {
         agent_id: tag_body(text, "task-id")?.trim().to_string(),
         status: tag_body(text, "status").unwrap_or_default().trim().to_string(),
-        summary: tag_body(text, "summary").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        summary: tag_body(text, "summary")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
         usage: crate::chat::model::SubagentUsage {
             total_tokens: num("subagent_tokens"),
             tool_uses: num("tool_uses"),
@@ -2105,7 +2199,9 @@ fn find_transcript(roots: &[Root<'_>], session_id: &str) -> Option<Transcript> {
         // Per root, never `?`: a profile whose home has not been written to yet
         // is an unreadable directory, and giving up there would hide a session
         // sitting in the next root along.
-        let Ok(projects) = std::fs::read_dir(&root.dir) else { continue };
+        let Ok(projects) = std::fs::read_dir(&root.dir) else {
+            continue;
+        };
         for project in projects.flatten() {
             if !project.path().is_dir() {
                 continue;
@@ -2154,21 +2250,31 @@ pub struct SubagentTranscript {
 /// Every subagent this session launched, in no particular order: the replay
 /// places each one at its own `Agent` call rather than by arrival.
 pub(crate) fn subagent_transcripts(transcript_path: &str, agent: &str) -> Vec<SubagentTranscript> {
-    let Some(dir) = subagents_dir(transcript_path) else { return Vec::new() };
-    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let Some(dir) = subagents_dir(transcript_path) else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let Some(agent_id) = name.strip_prefix("agent-").and_then(|n| n.strip_suffix(".meta.json")) else {
             continue;
         };
-        let Ok(text) = std::fs::read_to_string(entry.path()) else { continue };
-        let Ok(meta) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Ok(meta) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
         let str_of = |k: &str| meta.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string();
         // No `toolUseId` means no call to hang the lane on, so the run cannot be
         // placed in the conversation at all.
         let tool_use_id = meta.get("toolUseId").and_then(|v| v.as_str());
-        let Some(tool_use_id) = tool_use_id.filter(|id| !id.is_empty()) else { continue };
+        let Some(tool_use_id) = tool_use_id.filter(|id| !id.is_empty()) else {
+            continue;
+        };
         let mut turns = parse_transcript_turns(&dir.join(format!("agent-{agent_id}.jsonl")).to_string_lossy(), agent);
         out.push(SubagentTranscript {
             agent_id: agent_id.to_string(),
@@ -2187,7 +2293,11 @@ fn take_prompt(turns: &mut Vec<TranscriptTurn>) -> String {
     let mut prompt = None;
     for turn in turns.iter_mut().filter(|t| t.role == "user") {
         if prompt.is_none() {
-            prompt = turn.blocks.iter().find(|b| b.kind == "text").and_then(|b| b.text.clone());
+            prompt = turn
+                .blocks
+                .iter()
+                .find(|b| b.kind == "text")
+                .and_then(|b| b.text.clone());
         }
         turn.blocks.retain(|b| b.kind != "text");
     }
@@ -2230,13 +2340,19 @@ fn tail_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
         Some(agents::ParserKind::ClaudeJsonl) => {}
         None => return Vec::new(),
     }
-    let Ok(mut file) = std::fs::File::open(path) else { return Vec::new() };
-    let Ok(len) = file.metadata().map(|m| m.len()) else { return Vec::new() };
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+    let Ok(len) = file.metadata().map(|m| m.len()) else {
+        return Vec::new();
+    };
 
     let mut window = TAIL_WINDOW_BYTES;
     loop {
         let from_start = window >= len;
-        let Ok(text) = read_tail(&mut file, len, window) else { return Vec::new() };
+        let Ok(text) = read_tail(&mut file, len, window) else {
+            return Vec::new();
+        };
         let mut lines = text.split('\n');
         // Unless the window covers the file, its first line starts mid-line.
         if !from_start {
@@ -2273,7 +2389,10 @@ struct FileStamp {
 
 fn stamp_of(path: &str) -> Option<FileStamp> {
     let m = std::fs::metadata(path).ok()?;
-    Some(FileStamp { mtime: m.modified().ok()?, size: m.len() })
+    Some(FileStamp {
+        mtime: m.modified().ok()?,
+        size: m.len(),
+    })
 }
 
 /// A transcript and the adapter reading it: the pair any cached answer here is
@@ -2282,8 +2401,7 @@ type TranscriptKey = (String, String);
 
 /// Tail classification per (path, agent), so a 1Hz heartbeat over an unchanged
 /// transcript costs a `stat` rather than a parse.
-static TAIL_STATE_CACHE: Mutex<Option<HashMap<TranscriptKey, (FileStamp, TailState)>>> =
-    Mutex::new(None);
+static TAIL_STATE_CACHE: Mutex<Option<HashMap<TranscriptKey, (FileStamp, TailState)>>> = Mutex::new(None);
 
 /// How many times the tail actually had to be read. Test-only, because the
 /// difference between a hit and a miss is a 64KB read either way: fast enough
@@ -2294,7 +2412,9 @@ static TAIL_READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsi
 
 /// `classify_tail(tail_turns(..))`, memoised on the file's stamp.
 fn cached_tail_state(path: &str, agent: &str) -> TailState {
-    let Some(stamp) = stamp_of(path) else { return classify_tail(&tail_turns(path, agent)) };
+    let Some(stamp) = stamp_of(path) else {
+        return classify_tail(&tail_turns(path, agent));
+    };
     let key = (path.to_string(), agent.to_string());
     if let Ok(guard) = TAIL_STATE_CACHE.lock() {
         if let Some((cached, state)) = guard.as_ref().and_then(|m| m.get(&key)) {
@@ -2337,7 +2457,11 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                     // Its own role, so the rewind boundary and the replay both
                     // stop treating a backgrounded subagent's ending as a prompt.
                     if let Some(outcome) = task_notification(s) {
-                        return Some(TranscriptTurn { role: "subagent".into(), ts, blocks: vec![subagent_block(outcome)] });
+                        return Some(TranscriptTurn {
+                            role: "subagent".into(),
+                            ts,
+                            blocks: vec![subagent_block(outcome)],
+                        });
                     }
                     // Both halves of a client-side command, each on its own
                     // role so neither can be mistaken for a prompt again. They
@@ -2382,9 +2506,7 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                                 // being carried through the whole replay.
                                 let payload = v.get("toolUseResult");
                                 let summary = payload.and_then(crate::chat::claude::summarise_result);
-                                let patch = payload
-                                    .map(crate::chat::claude::structured_patch)
-                                    .unwrap_or_default();
+                                let patch = payload.map(crate::chat::claude::structured_patch).unwrap_or_default();
                                 blocks.push(tool_result_block(None, text, is_error, id, summary, patch));
                                 // Beside the card rather than on it: an `Agent`
                                 // result settles a call and ends a lane, and the
@@ -2398,7 +2520,11 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                     }
                 }
             }
-            (!blocks.is_empty()).then(|| TranscriptTurn { role: "user".into(), ts, blocks })
+            (!blocks.is_empty()).then(|| TranscriptTurn {
+                role: "user".into(),
+                ts,
+                blocks,
+            })
         }
         // Where the current CLI files a client-side command's output: under
         // `system`, because neither speaker produced it. Older transcripts put
@@ -2422,7 +2548,9 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                 role: "compaction".into(),
                 ts,
                 blocks: vec![compaction_block(
-                    m.and_then(|m| m.get("trigger")).and_then(|t| t.as_str()).map(str::to_string),
+                    m.and_then(|m| m.get("trigger"))
+                        .and_then(|t| t.as_str())
+                        .map(str::to_string),
                     get("preTokens"),
                     get("postTokens"),
                 )],
@@ -2457,7 +2585,11 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                     }
                 }
             }
-            (!blocks.is_empty()).then(|| TranscriptTurn { role: "assistant".into(), ts, blocks })
+            (!blocks.is_empty()).then(|| TranscriptTurn {
+                role: "assistant".into(),
+                ts,
+                blocks,
+            })
         }
         _ => None,
     }
@@ -2607,18 +2739,34 @@ pub(crate) fn session_prompts_body(path: String, agent: String) -> Result<Vec<Pr
         None => return Ok(Vec::new()),
     }
     let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-    Ok(BufReader::new(file).lines().map_while(Result::ok).filter_map(|line| prompt_line(&line)).collect())
+    Ok(BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .filter_map(|line| prompt_line(&line))
+        .collect())
 }
 
 fn prompt_line(line: &str) -> Option<PromptLine> {
     let v: serde_json::Value = serde_json::from_str(line).ok()?;
-    if v.get("type").and_then(|t| t.as_str()) != Some("user") || v.get("isMeta").and_then(|m| m.as_bool()) == Some(true) {
+    if v.get("type").and_then(|t| t.as_str()) != Some("user") || v.get("isMeta").and_then(|m| m.as_bool()) == Some(true)
+    {
         return None;
     }
     let content = v.get("message")?.get("content")?;
-    let text = if is_human_prompt(content) { extract_text(content)? } else { command_prompt(&extract_text(content)?)? };
-    let ts = v.get("timestamp").and_then(|t| t.as_str()).and_then(parse_rfc3339_secs).unwrap_or(0);
-    Some(PromptLine { ts, text: clean_title(&text) })
+    let text = if is_human_prompt(content) {
+        extract_text(content)?
+    } else {
+        command_prompt(&extract_text(content)?)?
+    };
+    let ts = v
+        .get("timestamp")
+        .and_then(|t| t.as_str())
+        .and_then(parse_rfc3339_secs)
+        .unwrap_or(0);
+    Some(PromptLine {
+        ts,
+        text: clean_title(&text),
+    })
 }
 
 /// How much of the file's head identifies it, so an appended transcript can be
@@ -2638,8 +2786,7 @@ struct PromptTailEntry {
     last_ts: u64,
 }
 
-static PROMPT_TAIL_CACHE: Mutex<Option<HashMap<TranscriptKey, PromptTailEntry>>> =
-    Mutex::new(None);
+static PROMPT_TAIL_CACHE: Mutex<Option<HashMap<TranscriptKey, PromptTailEntry>>> = Mutex::new(None);
 
 /// What the cache had to say about this file.
 enum Resume {
@@ -2661,7 +2808,9 @@ fn scan_prompts(text: &str) -> (u32, u64, u64) {
         None => 0,
     };
     for line in text[..complete as usize].split('\n') {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
         let content = (v.get("type").and_then(|t| t.as_str()) == Some("user")
             && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true))
         .then(|| v.get("message").and_then(|m| m.get("content")).cloned())
@@ -2689,7 +2838,10 @@ fn scan_prompts(text: &str) -> (u32, u64, u64) {
 fn acp_prompt_tail(path: &str) -> PromptTail {
     let meta = crate::chat::mirror::meta_of(Path::new(path));
     let meta = crate::chat::mirror::read_meta(&meta).unwrap_or_default();
-    PromptTail { count: meta.prompt_count, last_ts: meta.last_prompt_ts }
+    PromptTail {
+        count: meta.prompt_count,
+        last_ts: meta.last_prompt_ts,
+    }
 }
 
 pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<PromptTail, String> {
@@ -2708,7 +2860,10 @@ pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<Pr
     }
     let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let meta = file.metadata().map_err(|e| e.to_string())?;
-    let stamp = FileStamp { mtime: meta.modified().map_err(|e| e.to_string())?, size: meta.len() };
+    let stamp = FileStamp {
+        mtime: meta.modified().map_err(|e| e.to_string())?,
+        size: meta.len(),
+    };
 
     let mut head = vec![0u8; TAIL_HEAD_SAMPLE.min(stamp.size as usize)];
     file.read_exact(&mut head).map_err(|e| e.to_string())?;
@@ -2722,8 +2877,7 @@ pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<Pr
             if e.stamp == stamp {
                 return Some(Resume::Settled(e.count, e.last_ts));
             }
-            (e.head == head && stamp.size >= e.consumed)
-                .then_some(Resume::From(e.consumed, e.count, e.last_ts))
+            (e.head == head && stamp.size >= e.consumed).then_some(Resume::From(e.consumed, e.count, e.last_ts))
         }),
         Err(_) => None,
     };
@@ -2747,7 +2901,13 @@ pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<Pr
     if let Ok(mut guard) = PROMPT_TAIL_CACHE.lock() {
         guard.get_or_insert_with(HashMap::new).insert(
             key,
-            PromptTailEntry { stamp, consumed: from + complete, head, count, last_ts },
+            PromptTailEntry {
+                stamp,
+                consumed: from + complete,
+                head,
+                count,
+                last_ts,
+            },
         );
     }
     Ok(PromptTail { count, last_ts })
@@ -2759,10 +2919,7 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     fn tmp_file(name: &str, contents: &str) -> PathBuf {
-        let n = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let dir = std::env::temp_dir().join(format!("tori_pi_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join(name);
@@ -2808,9 +2965,8 @@ mod tests {
         let dir = root.join(cwd.replace('/', "-"));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join(format!("{id}.jsonl"));
-        let line = format!(
-            r#"{{"type":"user","cwd":"{cwd}","message":{{"content":[{{"type":"text","text":"hello"}}]}}}}"#
-        );
+        let line =
+            format!(r#"{{"type":"user","cwd":"{cwd}","message":{{"content":[{{"type":"text","text":"hello"}}]}}}}"#);
         std::fs::write(&p, format!("{line}\n")).unwrap();
         p
     }
@@ -2853,14 +3009,20 @@ mod tests {
     fn each_profile_contributes_its_own_root() {
         let m = tmp_machine("roots");
         let a = adapter_at(&m, Some(&m.join("default")));
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
 
         let roots = roots_for(&a, &profiles);
         assert_eq!(roots.len(), 2);
         assert_eq!(roots[0].dir, m.join("default/projects"));
         assert_eq!(roots[0].profile, "default");
-        assert_eq!(roots[1].dir, m.join("work/projects"), "the layout under a profile home is the same one");
+        assert_eq!(
+            roots[1].dir,
+            m.join("work/projects"),
+            "the layout under a profile home is the same one"
+        );
         assert_eq!(roots[1].profile, "work");
 
         std::fs::remove_dir_all(&m).ok();
@@ -2873,15 +3035,20 @@ mod tests {
     fn a_transcript_resolves_under_a_second_profiles_root() {
         let m = tmp_machine("find");
         let a = adapter_at(&m, Some(&m.join("default")));
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
         let roots = roots_for(&a, &profiles);
         std::fs::create_dir_all(m.join("work/projects")).unwrap();
         let want = write_transcript(&m.join("work/projects"), "/repo", "sess-1");
 
         let found = find_transcript(&roots, "sess-1").expect("the second root holds it");
         assert_eq!(found.path, want.to_string_lossy());
-        assert_eq!(found.profile, "work", "the root that held it is the account it belongs to");
+        assert_eq!(
+            found.profile, "work",
+            "the root that held it is the account it belongs to"
+        );
 
         std::fs::remove_dir_all(&m).ok();
     }
@@ -2896,9 +3063,15 @@ mod tests {
         let roots = roots_for(&a, &[crate::accounts::default_profile()]);
         std::fs::create_dir_all(m.join("default/projects/-repo/sess-3/subagents")).unwrap();
 
-        assert!(find_transcript(&roots, "sess-3").is_none(), "a directory alone is no transcript");
+        assert!(
+            find_transcript(&roots, "sess-3").is_none(),
+            "a directory alone is no transcript"
+        );
         let want = write_transcript(&m.join("default/projects"), "/repo", "sess-3");
-        assert_eq!(find_transcript(&roots, "sess-3").expect("the file beside it").path, want.to_string_lossy());
+        assert_eq!(
+            find_transcript(&roots, "sess-3").expect("the file beside it").path,
+            want.to_string_lossy()
+        );
 
         std::fs::remove_dir_all(&m).ok();
     }
@@ -2947,8 +3120,10 @@ mod tests {
     fn a_profile_whose_adapter_names_no_default_home_is_not_scanned() {
         let m = tmp_machine("nodefault");
         let a = adapter_at(&m, None);
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
 
         let roots = roots_for(&a, &profiles);
         assert_eq!(roots.len(), 1, "only the default profile, which needs no swap");
@@ -2979,8 +3154,10 @@ mod tests {
         write_transcript(&m.join("default/projects"), "/repo", "aaa");
         write_transcript(&m.join("work/projects"), "/repo", "bbb");
 
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
         let index = SessionIndex::default();
         let mut rows = index_roots(&index, &roots_for(&a, &profiles));
         rows.sort_by(|x, y| x.id.cmp(&y.id));
@@ -3002,8 +3179,10 @@ mod tests {
         write_transcript(&m.join("default/projects"), "/repo", "same");
         write_transcript(&m.join("work/projects"), "/repo", "same");
 
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
         let index = SessionIndex::default();
         let rows = index_roots(&index, &roots_for(&a, &profiles));
 
@@ -3025,17 +3204,23 @@ mod tests {
         let a = adapter_at(&m, Some(&m.join("default")));
         write_transcript(&m.join("default/projects"), "/repo", "aaa");
         write_transcript(&m.join("work/projects"), "/repo", "bbb");
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
         let roots = roots_for(&a, &profiles);
 
         // A rename the user typed, which lives in the overlay and which no
         // rescan could reproduce, plus a second account to tag rows with.
         let mut overlay = HashMap::new();
-        overlay.insert("aaa".to_string(), Overlay { name: Some("the good one".into()) });
+        overlay.insert(
+            "aaa".to_string(),
+            Overlay {
+                name: Some("the good one".into()),
+            },
+        );
         let mut accounts = crate::accounts::AccountsFile::default();
-        crate::accounts::add_profile(&mut accounts, "x", added("work", "Work", &m.join("work")))
-            .unwrap();
+        crate::accounts::add_profile(&mut accounts, "x", added("work", "Work", &m.join("work"))).unwrap();
 
         let listing = |index: &SessionIndex| {
             let mut v: Vec<_> = stamp_listing(index_roots(index, &roots), &overlay, &accounts)
@@ -3049,7 +3234,7 @@ mod tests {
         let warm = SessionIndex::default();
         let first = listing(&warm);
         let _ = index_roots(&warm, &roots); // a second pass hits the mtime cache
-        // A brand-new index is exactly the "somebody deleted it" case.
+                                            // A brand-new index is exactly the "somebody deleted it" case.
         let rebuilt = listing(&SessionIndex::default());
 
         assert_eq!(first, rebuilt);
@@ -3075,7 +3260,10 @@ mod tests {
         write_transcript(&root, "/other", "old-two");
         let before = std::fs::read_dir(&root).unwrap().count();
 
-        let rows = index_roots(&SessionIndex::default(), &roots_for(&a, &[crate::accounts::default_profile()]));
+        let rows = index_roots(
+            &SessionIndex::default(),
+            &roots_for(&a, &[crate::accounts::default_profile()]),
+        );
 
         assert_eq!(rows.len(), 2, "pre-existing transcripts are listed by the first scan");
         assert_eq!(
@@ -3096,7 +3284,10 @@ mod tests {
         let a = adapter_at(&m, Some(&m.join("default")));
         write_transcript(&m.join("default/projects"), "/repo", "aaa");
 
-        let rows = index_roots(&SessionIndex::default(), &roots_for(&a, &[crate::accounts::default_profile()]));
+        let rows = index_roots(
+            &SessionIndex::default(),
+            &roots_for(&a, &[crate::accounts::default_profile()]),
+        );
         assert!(rows.iter().all(|s| s.name.is_none() && s.profile_label.is_none()));
 
         let source = include_str!("sessions.rs");
@@ -3193,11 +3384,18 @@ mod tests {
     /// records, caught the same way.
     #[test]
     fn the_typescript_mirror_lists_every_serialized_field() {
-        let home = crate::unit_home::Home { project: "/repo".into(), folder: "/repo".into(), branch: None, topic: None };
-        let row = Listed { meta: meta("a", "/repo", "claude", 1), home: Some(home) };
+        let home = crate::unit_home::Home {
+            project: "/repo".into(),
+            folder: "/repo".into(),
+            branch: None,
+            topic: None,
+        };
+        let row = Listed {
+            meta: meta("a", "/repo", "claude", 1),
+            home: Some(home),
+        };
         let json = serde_json::to_value(&row).unwrap();
-        let fields: Vec<String> =
-            json.as_object().unwrap().keys().cloned().collect();
+        let fields: Vec<String> = json.as_object().unwrap().keys().cloned().collect();
 
         let ts = include_str!("../../src/utils/sessionStore.ts");
         let (_, after) = ts.split_once("export type SessionMeta = {").unwrap();
@@ -3227,12 +3425,7 @@ mod tests {
         let mut file = crate::accounts::AccountsFile::default();
         assert_eq!(profile_label(&file, "x", Some("default")), None);
 
-        crate::accounts::add_profile(
-            &mut file,
-            "x",
-            added("work", "Work", Path::new("/homes/work")),
-        )
-        .unwrap();
+        crate::accounts::add_profile(&mut file, "x", added("work", "Work", Path::new("/homes/work"))).unwrap();
         assert_eq!(profile_label(&file, "x", Some("work")).as_deref(), Some("Work"));
         assert_eq!(profile_label(&file, "x", Some("default")).as_deref(), Some("Default"));
         // A row Tori cannot attribute names no account rather than the first one.
@@ -3288,8 +3481,7 @@ mod tests {
             .join("dev/fixtures/sessions")
             .join(format!("{name}.jsonl"));
         let t = UNIX_EPOCH + Duration::from_secs(1_775_000_000);
-        parse_session(&path, t, t, "claude")
-            .unwrap_or_else(|| panic!("fixture {name} parses"))
+        parse_session(&path, t, t, "claude").unwrap_or_else(|| panic!("fixture {name} parses"))
     }
 
     /// Titles for the real head shapes in `dev/fixtures/sessions/`. This began as
@@ -3346,12 +3538,14 @@ mod tests {
     #[test]
     fn command_prompt_needs_a_named_command_and_a_closed_args_tag() {
         assert_eq!(
-            command_prompt("<command-name>/plan</command-name><command-args>tidy up</command-args>")
-                .as_deref(),
+            command_prompt("<command-name>/plan</command-name><command-args>tidy up</command-args>").as_deref(),
             Some("/plan tidy up")
         );
         // No args tag, and an empty one, are both just the command.
-        assert_eq!(command_prompt("<command-name>/gg</command-name>").as_deref(), Some("/gg"));
+        assert_eq!(
+            command_prompt("<command-name>/gg</command-name>").as_deref(),
+            Some("/gg")
+        );
         assert_eq!(
             command_prompt("<command-name>/gg</command-name><command-args></command-args>").as_deref(),
             Some("/gg")
@@ -3392,9 +3586,15 @@ mod tests {
         // Teardown keeps the inclusive rule: `ids_under` is `cwd_matches`.
         assert!(cwd_matches(cwd, repo));
 
-        let all = vec![meta("in-repo", "/p/repo/src", "claude", 1), meta("in-member", cwd, "claude", 2)];
+        let all = vec![
+            meta("in-repo", "/p/repo/src", "claude", 1),
+            meta("in-member", cwd, "claude", 2),
+        ];
         let ids = |folder: &str, inclusive: bool| -> Vec<String> {
-            filter_sort(all.clone(), folder, inclusive).into_iter().map(|s| s.id).collect()
+            filter_sort(all.clone(), folder, inclusive)
+                .into_iter()
+                .map(|s| s.id)
+                .collect()
         };
         assert_eq!(ids(repo, false), vec!["in-repo"]);
         assert_eq!(ids(member, false), vec!["in-member"]);
@@ -3431,8 +3631,8 @@ mod tests {
         assert!(st.seeded);
         assert!(st.paths.contains("/p/a"));
         assert!(st.paths.contains("/p/b")); // trailing slash normalized
-        // Idempotent: a later discovery does not re-seed (a new folder added then
-        // is judged on its own, not blanket-adopted).
+                                            // Idempotent: a later discovery does not re-seed (a new folder added then
+                                            // is judged on its own, not blanket-adopted).
         assert!(!do_seed(&mut st, &["/p/c".to_string()]));
         assert!(!st.paths.contains("/p/c"));
     }
@@ -3467,7 +3667,10 @@ mod tests {
     fn verdict_adopted_when_in_set_or_no_sessions() {
         let mut set = HashSet::new();
         set.insert("/p/a".to_string());
-        assert!(matches!(folder_verdict(&set, "/p/a", &[50], 100), FolderVerdict::Adopted));
+        assert!(matches!(
+            folder_verdict(&set, "/p/a", &[50], 100),
+            FolderVerdict::Adopted
+        ));
         // Not in the set but no sessions: nothing to hide.
         assert!(matches!(folder_verdict(&set, "/p/b", &[], 100), FolderVerdict::Adopted));
     }
@@ -3476,9 +3679,15 @@ mod tests {
     fn verdict_autoadopt_when_all_postdate_else_historical() {
         let set = HashSet::new();
         // All sessions postdate the folder's creation: they are ours.
-        assert!(matches!(folder_verdict(&set, "/p/a", &[150, 200], 100), FolderVerdict::AutoAdopt));
+        assert!(matches!(
+            folder_verdict(&set, "/p/a", &[150, 200], 100),
+            FolderVerdict::AutoAdopt
+        ));
         // A session predating creation: a recreated folder with ghosts.
-        assert!(matches!(folder_verdict(&set, "/p/a", &[50, 200], 100), FolderVerdict::Historical));
+        assert!(matches!(
+            folder_verdict(&set, "/p/a", &[50, 200], 100),
+            FolderVerdict::Historical
+        ));
     }
 
     /// Does `pattern` (an extended regex passed to `pgrep -f`) match `cmdline`?
@@ -3500,11 +3709,17 @@ mod tests {
         let pat = session_pattern("claude", id).expect("claude declares a running pattern");
         assert!(ere_matches(&pat, "claude --resume abc-123-def"));
         assert!(ere_matches(&pat, "claude -r abc-123-def")); // -r alias
-        // Trailing flags after the id still match (no end anchor).
-        assert!(ere_matches(&pat, "claude --resume abc-123-def --dangerously-skip-permissions"));
+                                                             // Trailing flags after the id still match (no end anchor).
+        assert!(ere_matches(
+            &pat,
+            "claude --resume abc-123-def --dangerously-skip-permissions"
+        ));
         // A transcript merely opened in `less` must NOT match - the bare-uuid
         // pgrep collision this pattern replaces.
-        assert!(!ere_matches(&pat, "less /Users/x/.claude/projects/-Users-x-proj/abc-123-def.jsonl"));
+        assert!(!ere_matches(
+            &pat,
+            "less /Users/x/.claude/projects/-Users-x-proj/abc-123-def.jsonl"
+        ));
     }
 
     /// The batch probe's matching half, against real `pgrep -lf` output captured
@@ -3561,7 +3776,10 @@ mod tests {
 
         let sessions: Vec<SessionRef> = [(a, "claude"), (b, "claude"), (dead, "claude"), (a, "claude")]
             .iter()
-            .map(|(id, agent)| SessionRef { id: id.to_string(), agent: agent.to_string() })
+            .map(|(id, agent)| SessionRef {
+                id: id.to_string(),
+                agent: agent.to_string(),
+            })
             .collect();
 
         let mut running = resolve_running(
@@ -3595,7 +3813,10 @@ mod tests {
         let dead = "acp-dead";
         let sessions: Vec<SessionRef> = [live, dead]
             .iter()
-            .map(|id| SessionRef { id: id.to_string(), agent: "opencode".to_string() })
+            .map(|id| SessionRef {
+                id: id.to_string(),
+                agent: "opencode".to_string(),
+            })
             .collect();
 
         let running = resolve_running(
@@ -3721,13 +3942,18 @@ mod tests {
         let m = tmp_machine("watch");
         std::fs::remove_dir_all(m.join("default")).unwrap();
         let a = adapter_at(&m, Some(&m.join("default")));
-        let profiles =
-            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let profiles = vec![
+            crate::accounts::default_profile(),
+            added("work", "Work", &m.join("work")),
+        ];
 
         let dirs = watchable_dirs(roots_for(&a, &profiles)).unwrap();
         assert_eq!(dirs, [m.join("work/projects")], "the missing default root is skipped");
         assert!(m.join("work/projects").is_dir(), "a managed home gets its root created");
-        assert!(!m.join("default").exists(), "nothing is made where the default home would be");
+        assert!(
+            !m.join("default").exists(),
+            "nothing is made where the default home would be"
+        );
 
         std::fs::remove_dir_all(&m).ok();
     }
@@ -3772,14 +3998,23 @@ mod tests {
 
     #[test]
     fn normalize_touch_path_resolves_relative_against_cwd_leaves_absolute() {
-        assert_eq!(normalize_touch_path("src/app.rs", "/Users/x/proj"), "/Users/x/proj/src/app.rs");
-        assert_eq!(normalize_touch_path("./src/app.rs", "/Users/x/proj"), "/Users/x/proj/src/app.rs");
+        assert_eq!(
+            normalize_touch_path("src/app.rs", "/Users/x/proj"),
+            "/Users/x/proj/src/app.rs"
+        );
+        assert_eq!(
+            normalize_touch_path("./src/app.rs", "/Users/x/proj"),
+            "/Users/x/proj/src/app.rs"
+        );
         assert_eq!(
             normalize_touch_path("/Users/x/proj/src/app.rs", "/Users/x/proj"),
             "/Users/x/proj/src/app.rs"
         );
         // Trailing slash on cwd doesn't double up.
-        assert_eq!(normalize_touch_path("src/app.rs", "/Users/x/proj/"), "/Users/x/proj/src/app.rs");
+        assert_eq!(
+            normalize_touch_path("src/app.rs", "/Users/x/proj/"),
+            "/Users/x/proj/src/app.rs"
+        );
     }
 
     #[test]
@@ -3802,10 +4037,16 @@ mod tests {
         assert_eq!(app_rs.op, TouchOp::Edit);
         assert_eq!(app_rs.count, 2);
 
-        let new_txt = files.iter().find(|f| f.path == "/Users/x/proj/new.txt").expect("write recorded");
+        let new_txt = files
+            .iter()
+            .find(|f| f.path == "/Users/x/proj/new.txt")
+            .expect("write recorded");
         assert_eq!(new_txt.op, TouchOp::Create);
 
-        let readme = files.iter().find(|f| f.path == "/Users/x/proj/README.md").expect("read recorded");
+        let readme = files
+            .iter()
+            .find(|f| f.path == "/Users/x/proj/README.md")
+            .expect("read recorded");
         assert_eq!(readme.op, TouchOp::Read);
 
         // touched_count's own filter: reads excluded.
@@ -3989,7 +4230,15 @@ mod tests {
         // claude's needs_you capability is on, so the join surfaces directly.
         // No hook status file exists for this id, so the hooks capability
         // falls through to the tail join too.
-        assert_eq!(session_tail_state_body("no-hook-file-1".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::BlockedCandidate);
+        assert_eq!(
+            session_tail_state_body(
+                "no-hook-file-1".into(),
+                p.to_str().unwrap().to_string(),
+                "claude".into()
+            )
+            .unwrap(),
+            TailState::BlockedCandidate
+        );
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -4001,16 +4250,27 @@ mod tests {
 {"type":"assistant","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:08.000Z","message":{"content":[{"type":"text","text":"It's an empty entry point."}]}}
 "#;
         let p = tmp_file("claude_tail_done.jsonl", body);
-        assert_eq!(session_tail_state_body("no-hook-file-2".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Done);
+        assert_eq!(
+            session_tail_state_body(
+                "no-hook-file-2".into(),
+                p.to_str().unwrap().to_string(),
+                "claude".into()
+            )
+            .unwrap(),
+            TailState::Done
+        );
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
-#[test]
+    #[test]
     fn the_needs_you_gate_caps_an_unverified_adapter_at_working() {
         // A user adapter whose blocked-quiet join was never verified must never
         // reach amber off the tail alone; everything else passes through.
         assert_eq!(gate_tail(TailState::BlockedCandidate, false), TailState::Working);
-        assert_eq!(gate_tail(TailState::BlockedCandidate, true), TailState::BlockedCandidate);
+        assert_eq!(
+            gate_tail(TailState::BlockedCandidate, true),
+            TailState::BlockedCandidate
+        );
         assert_eq!(gate_tail(TailState::Done, false), TailState::Done);
         assert_eq!(gate_tail(TailState::Working, false), TailState::Working);
     }
@@ -4020,7 +4280,15 @@ mod tests {
         let body = r#"{"type":"user","cwd":"/Users/x/proj","timestamp":"2026-07-18T10:00:00.000Z","message":{"content":"hello"}}
 "#;
         let p = tmp_file("claude_tail_fresh.jsonl", body);
-        assert_eq!(session_tail_state_body("no-hook-file-5".into(), p.to_str().unwrap().to_string(), "claude".into()).unwrap(), TailState::Working);
+        assert_eq!(
+            session_tail_state_body(
+                "no-hook-file-5".into(),
+                p.to_str().unwrap().to_string(),
+                "claude".into()
+            )
+            .unwrap(),
+            TailState::Working
+        );
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -4120,7 +4388,11 @@ mod tests {
         assert_eq!(carried.kind, "tool_result");
         assert_eq!(
             carried.tool_summary,
-            Some(crate::chat::model::ToolSummary::Read { lines: 2, from: 1, total: Some(9) }),
+            Some(crate::chat::model::ToolSummary::Read {
+                lines: 2,
+                from: 1,
+                total: Some(9)
+            }),
             "the payload reached the summariser, `totalLines` included"
         );
 
@@ -4196,7 +4468,11 @@ mod tests {
         let path = p.to_str().unwrap().to_string();
 
         let full = classify_tail(&parse_transcript_turns(&path, "claude"));
-        assert_eq!(cached_tail_state(&path, "claude"), full, "the tail must answer what the whole file does");
+        assert_eq!(
+            cached_tail_state(&path, "claude"),
+            full,
+            "the tail must answer what the whole file does"
+        );
         assert_eq!(full, TailState::BlockedCandidate);
 
         let reads = TAIL_READS.load(std::sync::atomic::Ordering::SeqCst);
@@ -4205,7 +4481,10 @@ mod tests {
             assert_eq!(cached_tail_state(&path, "claude"), full);
         }
         let warm = t.elapsed() / 20;
-        assert!(warm < Duration::from_millis(5), "warm tail state took {warm:?}, budget is 5ms");
+        assert!(
+            warm < Duration::from_millis(5),
+            "warm tail state took {warm:?}, budget is 5ms"
+        );
         assert_eq!(
             TAIL_READS.load(std::sync::atomic::Ordering::SeqCst),
             reads,
@@ -4254,7 +4533,10 @@ mod tests {
         assert_eq!(acp.last_ts, 1_700_000_000);
 
         let claude = session_prompt_tail_body(path, "claude".into()).unwrap();
-        assert_eq!(claude.count, 0, "a claude agent must never read the ACP store's sidecar");
+        assert_eq!(
+            claude.count, 0,
+            "a claude agent must never read the ACP store's sidecar"
+        );
         std::fs::remove_dir_all(locator.parent().unwrap()).ok();
     }
 
@@ -4274,7 +4556,10 @@ mod tests {
         std::thread::sleep(Duration::from_millis(20));
         std::fs::write(&p, format!("{one}{two}")).unwrap();
         let grown = session_prompt_tail_body(path.clone(), "claude".into()).unwrap();
-        assert_eq!(grown.count, 2, "the appended prompt has to be added, not re-counted from zero");
+        assert_eq!(
+            grown.count, 2,
+            "the appended prompt has to be added, not re-counted from zero"
+        );
         assert!(grown.last_ts > first.last_ts);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
@@ -4284,10 +4569,14 @@ mod tests {
     #[test]
     fn a_partial_last_line_is_left_for_the_next_call() {
         let whole = "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:00:00.000Z\",\"message\":{\"content\":\"first question\"}}\n";
-        let partial = "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:05:00.000Z\",\"message\":{\"conte";
+        let partial =
+            "{\"type\":\"user\",\"cwd\":\"/x\",\"timestamp\":\"2026-07-18T10:05:00.000Z\",\"message\":{\"conte";
         let p = tmp_file("prompt_partial.jsonl", &format!("{whole}{partial}"));
         let path = p.to_str().unwrap().to_string();
-        assert_eq!(session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count, 1);
+        assert_eq!(
+            session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count,
+            1
+        );
 
         std::thread::sleep(Duration::from_millis(20));
         let rest = "nt\":\"second question\"}}\n";
@@ -4316,7 +4605,10 @@ mod tests {
         );
         let p = tmp_file("prompt_replaced.jsonl", &a);
         let path = p.to_str().unwrap().to_string();
-        assert_eq!(session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count, 2);
+        assert_eq!(
+            session_prompt_tail_body(path.clone(), "claude".into()).unwrap().count,
+            2
+        );
 
         // One prompt, but more bytes than the two it replaces, so size says
         // "grew" and only the head says "different file".
@@ -4346,8 +4638,20 @@ mod tests {
         let b = PathBuf::from("/roots/proj-a/two.jsonl");
         {
             let mut c = index.0.lock().unwrap();
-            c.insert(a.clone(), CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta("one", "/Users/x/proj-a", "claude", 1)) });
-            c.insert(b.clone(), CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta("two", "/Users/x/proj-a", "claude", 2)) });
+            c.insert(
+                a.clone(),
+                CacheEntry {
+                    mtime: SystemTime::UNIX_EPOCH,
+                    meta: Some(meta("one", "/Users/x/proj-a", "claude", 1)),
+                },
+            );
+            c.insert(
+                b.clone(),
+                CacheEntry {
+                    mtime: SystemTime::UNIX_EPOCH,
+                    meta: Some(meta("two", "/Users/x/proj-a", "claude", 2)),
+                },
+            );
         }
         let touched: HashSet<PathBuf> = [a, b].into_iter().collect();
         assert_eq!(folders_for(&index, &touched), Some(vec!["/Users/x/proj-a".to_string()]));
@@ -4362,10 +4666,14 @@ mod tests {
         let known = PathBuf::from("/roots/proj-a/one.jsonl");
         index.0.lock().unwrap().insert(
             known.clone(),
-            CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta("one", "/Users/x/proj-a", "claude", 1)) },
+            CacheEntry {
+                mtime: SystemTime::UNIX_EPOCH,
+                meta: Some(meta("one", "/Users/x/proj-a", "claude", 1)),
+            },
         );
-        let touched: HashSet<PathBuf> =
-            [known, PathBuf::from("/roots/proj-b/brand-new.jsonl")].into_iter().collect();
+        let touched: HashSet<PathBuf> = [known, PathBuf::from("/roots/proj-b/brand-new.jsonl")]
+            .into_iter()
+            .collect();
         assert_eq!(folders_for(&index, &touched), None);
     }
 
@@ -4378,7 +4686,13 @@ mod tests {
             let mut c = index.0.lock().unwrap();
             for i in 0..(TOUCHED_CAP + 1) {
                 let p = PathBuf::from(format!("/roots/proj/{i}.jsonl"));
-                c.insert(p.clone(), CacheEntry { mtime: SystemTime::UNIX_EPOCH, meta: Some(meta(&i.to_string(), "/Users/x/proj", "claude", 1)) });
+                c.insert(
+                    p.clone(),
+                    CacheEntry {
+                        mtime: SystemTime::UNIX_EPOCH,
+                        meta: Some(meta(&i.to_string(), "/Users/x/proj", "claude", 1)),
+                    },
+                );
                 touched.insert(p);
             }
         }
@@ -4413,7 +4727,11 @@ mod tests {
         // session never gets this far: `transcript_path` returns `None` first.
         std::fs::write(root.join("bare.jsonl"), "").expect("scratch transcript");
         assert_eq!(subagents_dir(root.join("bare.jsonl").to_str().unwrap()), None);
-        assert_eq!(subagents_dir("/nowhere/session"), None, "a path that is not a transcript at all");
+        assert_eq!(
+            subagents_dir("/nowhere/session"),
+            None,
+            "a path that is not a transcript at all"
+        );
     }
 
     /// The prompt is the one thing `meta.json` does not record, so it is read
@@ -4428,9 +4746,21 @@ mod tests {
         assert_eq!(subs[0].agent_type, "general-purpose");
         assert_eq!(subs[0].description, "Create sub-made.txt");
         assert_eq!(subs[0].tool_use_id, "toolu_01Ec9PYYDVBe9S6DjXp4RM1s");
-        assert_eq!(subs[0].prompt, "Use the Write tool to create sub-made.txt containing the word sub. Then report done.");
-        let kinds: Vec<&str> = subs[0].turns.iter().flat_map(|t| t.blocks.iter()).map(|b| b.kind.as_str()).collect();
-        assert_eq!(kinds, ["tool_call", "tool_result", "text"], "its work, with the prompt taken out");
+        assert_eq!(
+            subs[0].prompt,
+            "Use the Write tool to create sub-made.txt containing the word sub. Then report done."
+        );
+        let kinds: Vec<&str> = subs[0]
+            .turns
+            .iter()
+            .flat_map(|t| t.blocks.iter())
+            .map(|b| b.kind.as_str())
+            .collect();
+        assert_eq!(
+            kinds,
+            ["tool_call", "tool_result", "text"],
+            "its work, with the prompt taken out"
+        );
     }
 
     /// The CLI files a backgrounded subagent's ending under the user's own role,
@@ -4439,7 +4769,10 @@ mod tests {
     #[test]
     fn a_task_notification_is_an_ending_rather_than_a_prompt() {
         let turns = transcript_turns(&fixture_session("subagent-background"), "claude");
-        let notification = turns.iter().find(|t| t.role == "subagent").expect("the ending is its own turn");
+        let notification = turns
+            .iter()
+            .find(|t| t.role == "subagent")
+            .expect("the ending is its own turn");
         let outcome = notification.blocks[0].subagent.clone().expect("the block carries one");
         assert_eq!(outcome.agent_id, "ad7048d25dc5e778a");
         assert_eq!(outcome.status, "completed");

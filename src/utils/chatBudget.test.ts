@@ -7,7 +7,9 @@ import type { Budgets } from "../panels/Settings/settingsStore";
 const NOW = 1_788_500_000_000;
 
 const NONE: Budgets = { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 };
-const spend = (over: Partial<{ sessionUsd: number | null; projectUsd: number | null; contextPercent: number | null }> = {}) => ({
+const spend = (
+  over: Partial<{ sessionUsd: number | null; projectUsd: number | null; contextPercent: number | null }> = {},
+) => ({
   sessionUsd: null,
   projectUsd: null,
   contextPercent: null,

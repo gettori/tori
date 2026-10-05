@@ -59,7 +59,9 @@ pub fn install() {
                 .map(|s| s.to_string())
                 .or_else(|| info.payload().downcast_ref::<String>().cloned())
                 .unwrap_or_else(|| "panic with a non-string payload".into()),
-            location: info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())),
+            location: info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())),
             thread: thread.name().unwrap_or("unnamed").to_string(),
             detail: std::backtrace::Backtrace::force_capture().to_string(),
         };
@@ -88,7 +90,11 @@ fn write(dir: &Path, report: &Report, at: SystemTime) -> std::io::Result<PathBuf
         kind = report.kind,
         when = stamp(secs).replace('T', " "),
         thread = report.thread,
-        location = report.location.as_deref().map(|l| format!("at {l}")).unwrap_or_default(),
+        location = report
+            .location
+            .as_deref()
+            .map(|l| format!("at {l}"))
+            .unwrap_or_default(),
         headline = report.headline.trim(),
         detail = report.detail.trim(),
     );
@@ -160,14 +166,22 @@ static WEBVIEW: Mutex<Option<WebviewLog>> = Mutex::new(None);
 /// `None` when it was a repeat or the launch's cap is spent, which the caller
 /// does not act on either way.
 #[tauri::command(async)]
-pub fn record_webview_error(kind: String, message: String, stack: Option<String>, url: Option<String>) -> Option<String> {
+pub fn record_webview_error(
+    kind: String,
+    message: String,
+    stack: Option<String>,
+    url: Option<String>,
+) -> Option<String> {
     let headline = message.trim().to_string();
     if headline.is_empty() {
         return None;
     }
     {
         let mut slot = WEBVIEW.lock().ok()?;
-        let log = slot.get_or_insert_with(|| WebviewLog { seen: HashSet::new(), written: 0 });
+        let log = slot.get_or_insert_with(|| WebviewLog {
+            seen: HashSet::new(),
+            written: 0,
+        });
         if log.written >= WEBVIEW_CAP || !log.seen.insert(headline.clone()) {
             return None;
         }
@@ -212,7 +226,11 @@ pub fn crash_logs() -> CrashLogs {
     let d = dir();
     let mut files = list(&d);
     files.reverse();
-    CrashLogs { version: VERSION.into(), dir: d.to_string_lossy().into_owned(), files }
+    CrashLogs {
+        version: VERSION.into(),
+        dir: d.to_string_lossy().into_owned(),
+        files,
+    }
 }
 
 fn list(dir: &Path) -> Vec<CrashFile> {
@@ -336,7 +354,11 @@ mod tests {
         }
         let files = list(&d);
         assert_eq!(files.len(), KEEP, "older files are pruned");
-        assert_eq!(files.last().unwrap().at, 1_790_000_000 + KEEP as u64 + 2, "the newest survives");
+        assert_eq!(
+            files.last().unwrap().at,
+            1_790_000_000 + KEEP as u64 + 2,
+            "the newest survives"
+        );
         assert_eq!(files[0].headline, "index out of bounds");
         assert_eq!(files[0].kind, "panic");
         let text = fs::read_to_string(&files[0].path).unwrap();

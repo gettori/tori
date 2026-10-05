@@ -18,9 +18,9 @@ import { detectEol, fromDisk } from "./lineEndings";
  *  do (the language workspace hands back a `Text`, and `toString` is how you
  *  say what it should contain). */
 const PANEL_SOURCES = Object.fromEntries(
-  Object.entries(
-    import.meta.glob<string>("./*.{ts,tsx}", { query: "?raw", import: "default", eager: true }),
-  ).filter(([path]) => !/\.test\.tsx?$/.test(path)),
+  Object.entries(import.meta.glob<string>("./*.{ts,tsx}", { query: "?raw", import: "default", eager: true })).filter(
+    ([path]) => !/\.test\.tsx?$/.test(path),
+  ),
 );
 
 describe("detecting a file's ending", () => {

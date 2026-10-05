@@ -13,10 +13,7 @@ import styles from "./TooltipLines.module.css";
  * volunteered alongside it. One step of tone between them is the whole design;
  * anything more would be chrome competing with the row it describes.
  */
-export default function TooltipLines(props: {
-  lead: readonly string[];
-  rest?: readonly string[];
-}) {
+export default function TooltipLines(props: { lead: readonly string[]; rest?: readonly string[] }) {
   return (
     <span class={styles.lines}>
       <For each={props.lead}>{(line) => <span class={styles.lead}>{line}</span>}</For>

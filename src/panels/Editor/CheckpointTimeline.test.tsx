@@ -103,9 +103,7 @@ describe("backstop rows", () => {
     await waitFor(() => expect(restoreArgs).toEqual([{ repoPath: "/proj", ts: 1_700_000_000 }]));
     // Open buffers over a restored file have to hear about it, so the outcome
     // goes out on `onReverted` even though no backstop checkpoint was written.
-    await waitFor(() =>
-      expect(reverted).toEqual([{ backstop_ts: null, restored: ["src/a.ts"], deleted: [] }]),
-    );
+    await waitFor(() => expect(reverted).toEqual([{ backstop_ts: null, restored: ["src/a.ts"], deleted: [] }]));
   });
 
   it("refuses to restore while another chat is mid-turn in the folder", async () => {

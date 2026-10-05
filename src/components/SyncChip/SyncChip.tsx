@@ -86,9 +86,7 @@ export default function SyncChip(props: { root: string | null }) {
         type="button"
         class={`${styles.chip} ${styles[staleFetch() ? "muted" : state().tone]}`}
         data-sync-level={staleFetch() ? "staleFetch" : level()}
-        aria-label={
-          staleFetch() ? "Cannot reach the remote" : NAME[level() as Exclude<SyncLevel, "none">]
-        }
+        aria-label={staleFetch() ? "Cannot reach the remote" : NAME[level() as Exclude<SyncLevel, "none">]}
         label={
           <>
             <div>{staleFetch() ? "These counts are as old as the last fetch that worked." : state().detail}</div>
@@ -107,9 +105,7 @@ export default function SyncChip(props: { root: string | null }) {
                   {/* The only place a quiet failure is ever said out loud. A
                       repo behind a credential prompt fails every sweep, and a
                       toast per sweep would be the feature uninstalling itself. */}
-                  <Show when={f().error}>
-                    {(e) => <div class={styles.failure}>{`Last fetch failed: ${e()}`}</div>}
-                  </Show>
+                  <Show when={f().error}>{(e) => <div class={styles.failure}>{`Last fetch failed: ${e()}`}</div>}</Show>
                 </div>
               )}
             </Show>

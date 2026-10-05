@@ -114,8 +114,7 @@ const CAPS = {
 };
 
 describe("projectPause", () => {
-  const auth = (id: string): AuthState =>
-    id === "work" ? { kind: "suspect", login: "globex-arif" } : SIGNED_IN;
+  const auth = (id: string): AuthState => (id === "work" ? { kind: "suspect", login: "globex-arif" } : SIGNED_IN);
   const on = (accountId: string): RepoAccount => ({
     kind: "account",
     accountId,
@@ -130,9 +129,7 @@ describe("projectPause", () => {
   });
 
   it("waits on a pick, and reads a host with no account as signed out", () => {
-    expect(projectPause({ kind: "pick", host: "github.com", candidates: [] }, auth, true)).toBe(
-      "pickAccount",
-    );
+    expect(projectPause({ kind: "pick", host: "github.com", candidates: [] }, auth, true)).toBe("pickAccount");
     expect(projectPause({ kind: "noAccount", host: "github.com" }, auth, true)).toBe("signedOut");
     // No remote at all is Rust's `noRemote` to report, not a sign-in to ask for.
     expect(projectPause({ kind: "noAccount", host: null }, auth, true)).toBeNull();
@@ -249,6 +246,11 @@ describe("askOrder", () => {
 
   it("drops units the forge could not answer for anyway", () => {
     // A `plain-dir` unit has no branch.
-    expect(askOrder([{ branch: null, visible: true }, { branch: "", visible: true }])).toEqual([]);
+    expect(
+      askOrder([
+        { branch: null, visible: true },
+        { branch: "", visible: true },
+      ]),
+    ).toEqual([]);
   });
 });

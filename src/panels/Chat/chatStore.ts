@@ -1309,10 +1309,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // than on the window alone, or a reconnect that replays while a turn is
       // in flight would swallow one of the turns it is handing back.
       const last = s.items[s.items.length - 1];
-      const echo =
-        s.awaitingTurn &&
-        last?.kind === "user" &&
-        JSON.stringify(last.blocks) === JSON.stringify(ev.blocks);
+      const echo = s.awaitingTurn && last?.kind === "user" && JSON.stringify(last.blocks) === JSON.stringify(ev.blocks);
       if (echo) return;
       // A note Tori queued rode on the message this panel just drew, and the
       // agent read it first. Only the last row moves, and it is a user row, so
@@ -1847,9 +1844,7 @@ export function prependHistory(s: ChatState, events: readonly unknown[]) {
     kept.push(item);
   });
   const shift = (index: Record<string, number>) =>
-    Object.fromEntries(
-      Object.entries(index).flatMap(([k, i]) => (moved.has(i) ? [[k, moved.get(i) as number]] : [])),
-    );
+    Object.fromEntries(Object.entries(index).flatMap(([k, i]) => (moved.has(i) ? [[k, moved.get(i) as number]] : [])));
   s.toolIndex = { ...shift(s.toolIndex), ...page.toolIndex };
   s.questionIndex = { ...shift(s.questionIndex), ...page.questionIndex };
   s.openText = shift(s.openText);

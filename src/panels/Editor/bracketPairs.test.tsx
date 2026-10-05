@@ -224,8 +224,7 @@ describe("the depth ramp", () => {
     const max = Math.max(r, g, b);
     const chroma = max - Math.min(r, g, b);
     if (chroma === 0) return 0;
-    const h =
-      max === r ? ((g - b) / chroma) % 6 : max === g ? (b - r) / chroma + 2 : (r - g) / chroma + 4;
+    const h = max === r ? ((g - b) / chroma) % 6 : max === g ? (b - r) / chroma + 2 : (r - g) / chroma + 4;
     return (h * 60 + 360) % 360;
   }
 

@@ -51,7 +51,10 @@ function mappingOver(files: MaterialisedFile[]) {
 const allow: ApplyPolicy = { onDirty: () => Promise.resolve(null) };
 
 function agent(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {}) {
-  const files = over.files ?? [file(pathToUri(A), "const before = 1"), file(pathToUri(B), "import { before } from './a'")];
+  const files = over.files ?? [
+    file(pathToUri(A), "const before = 1"),
+    file(pathToUri(B), "import { before } from './a'"),
+  ];
   const byUri = new Map(files.map((f) => [f.uri, f]));
   const written: { path: string; contents: string }[] = [];
   const dispatched: string[] = [];
@@ -146,11 +149,7 @@ describe("applyWorkspaceEdit refuses resource operations", () => {
   it("names both the file and the operation, so the refusal does not read as a bug", async () => {
     const h = agent();
 
-    const out = await applyWorkspaceEdit(
-      { documentChanges: [{ kind: "create", uri: pathToUri(C) }] },
-      h.deps,
-      allow,
-    );
+    const out = await applyWorkspaceEdit({ documentChanges: [{ kind: "create", uri: pathToUri(C) }] }, h.deps, allow);
 
     expect(out).toMatchObject({ kind: "aborted" });
     const reason = (out as { reason: string }).reason;
@@ -180,7 +179,10 @@ describe("applyWorkspaceEdit refuses resource operations", () => {
     const out = await applyWorkspaceEdit(
       {
         documentChanges: [
-          { textDocument: { uri: pathToUri(A) }, edits: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] },
+          {
+            textDocument: { uri: pathToUri(A) },
+            edits: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }],
+          },
           { kind: "create", uri: pathToUri(C) },
         ],
       },
@@ -200,7 +202,10 @@ describe("applyWorkspaceEdit refuses resource operations", () => {
     const out = await applyWorkspaceEdit(
       {
         documentChanges: [
-          { textDocument: { uri: pathToUri(A) }, edits: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] },
+          {
+            textDocument: { uri: pathToUri(A) },
+            edits: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }],
+          },
         ],
       },
       h.deps,

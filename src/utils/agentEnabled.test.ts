@@ -45,12 +45,9 @@ const key = (id: string, profile: string | null = null) => `${id}:${profile ?? "
 vi.mock("./agentHealth", async (orig) => ({
   ...(await orig<typeof import("./agentHealth")>()),
   agentReady: (id: string, profile: string | null = null) =>
-    !health.notInstalled.has(id) &&
-    !health.noAccounts.has(id) &&
-    !health.signedOut.has(`${id}:${profile ?? ""}`),
+    !health.notInstalled.has(id) && !health.noAccounts.has(id) && !health.signedOut.has(`${id}:${profile ?? ""}`),
   noAccounts: (id: string) => health.noAccounts.has(id),
-  profileSignedOut: (id: string, profile: string | null = null) =>
-    health.signedOut.has(`${id}:${profile ?? ""}`),
+  profileSignedOut: (id: string, profile: string | null = null) => health.signedOut.has(`${id}:${profile ?? ""}`),
   agentHealthFor: (id: string) =>
     health.unswept.has(id)
       ? null
@@ -285,13 +282,11 @@ describe("the stored default account", () => {
   it("deletes the entry rather than storing the default account", () => {
     bench.defaultProfiles = { claude: "globex" };
     setDefaultProfile("claude", "default");
-    expect((bench.saved[0] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual(
-      {},
-    );
+    expect((bench.saved[0] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual({});
 
     setDefaultProfile("claude", "globex");
-    expect((bench.saved[1] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual(
-      { claude: "globex" },
-    );
+    expect((bench.saved[1] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual({
+      claude: "globex",
+    });
   });
 });

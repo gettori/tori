@@ -15,17 +15,13 @@ const PLAIN = "/root/work/repo";
 const worktreeProject = {
   name: "proj",
   path: CONTAINER,
-  branchUnits: [
-    { label: "main", folderPath: `${CONTAINER}/main`, branch: "main", kind: "worktree", isCurrent: true },
-  ],
+  branchUnits: [{ label: "main", folderPath: `${CONTAINER}/main`, branch: "main", kind: "worktree", isCurrent: true }],
 };
 
 const plainProject = {
   name: "repo",
   path: PLAIN,
-  branchUnits: [
-    { label: "main", folderPath: PLAIN, branch: "main", kind: "plain", isCurrent: true },
-  ],
+  branchUnits: [{ label: "main", folderPath: PLAIN, branch: "main", kind: "plain", isCurrent: true }],
 };
 
 const config = {
@@ -40,8 +36,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_branches")
-      return Promise.resolve([{ name: "main" }, { name: "wave-3" }]);
+    if (cmd === "list_branches") return Promise.resolve([{ name: "main" }, { name: "wave-3" }]);
     if (cmd === "list_remote_branches") return Promise.resolve(["release"]);
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "list_project_attempts") return Promise.resolve([]);

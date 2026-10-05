@@ -172,20 +172,29 @@ mod tests {
         windows.insert("five_hour".to_string(), reading("five_hour", Some(NOW / 1000 + 3600)));
         let mut readings = BTreeMap::new();
         readings.insert("claude default".to_string(), windows);
-        UsageSnapshot { readings, fired: BTreeMap::new() }
+        UsageSnapshot {
+            readings,
+            fired: BTreeMap::new(),
+        }
     }
 
     #[test]
     fn a_snapshot_reads_back_the_way_it_was_written() {
         let root = temp_root("round-trip");
         let mut snap = snapshot();
-        snap.fired.insert("claude default five_hour 1788503600 approaching".into(), Some(NOW / 1000 + 3600));
+        snap.fired.insert(
+            "claude default five_hour 1788503600 approaching".into(),
+            Some(NOW / 1000 + 3600),
+        );
 
         save_to(&root, snap.clone(), NOW).unwrap();
         let back = load_from(&root);
 
         assert_eq!(back.readings, snap.readings);
-        assert_eq!(back.fired, snap.fired, "the dedupe keys survive, or a restart repeats every notice");
+        assert_eq!(
+            back.fired, snap.fired,
+            "the dedupe keys survive, or a restart repeats every notice"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -218,11 +227,18 @@ mod tests {
         }"#;
         crate::owned_state::write_atomically(&usage_path(&root), legacy).unwrap();
 
-        assert_eq!(load_from(&root), UsageSnapshot::default(), "the unknown key is read past");
+        assert_eq!(
+            load_from(&root),
+            UsageSnapshot::default(),
+            "the unknown key is read past"
+        );
 
         save_to(&root, snapshot(), NOW).unwrap();
         let text = std::fs::read_to_string(usage_path(&root)).unwrap();
-        assert!(!text.contains("ring"), "and the next save writes it out of existence: {text}");
+        assert!(
+            !text.contains("ring"),
+            "and the next save writes it out of existence: {text}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -82,9 +82,7 @@ describe("an ACP agent that advertises image input", () => {
     await acpImages.onAttachUploads([{ name: "shot.png", bytes: new Uint8Array([1, 2, 3]) }]);
 
     expect(invoke).not.toHaveBeenCalled();
-    expect(pendingFor(KEY).map((p) => p.block)).toEqual([
-      { type: "image", mediaType: "image/png", data: "AQID" },
-    ]);
+    expect(pendingFor(KEY).map((p) => p.block)).toEqual([{ type: "image", mediaType: "image/png", data: "AQID" }]);
   });
 
   it("preserves the supported image media type", async () => {

@@ -9,10 +9,7 @@ import { render, screen } from "@solidjs/testing-library";
 
 const bench = vi.hoisted(() => ({
   enabled: new Set<string>(),
-  usage: {} as Record<
-    string,
-    { accounts?: Record<string, { windows?: string[]; warnAt?: number }> }
-  >,
+  usage: {} as Record<string, { accounts?: Record<string, { windows?: string[]; warnAt?: number }> }>,
   warnAt: 0.8,
 }));
 
@@ -113,11 +110,7 @@ describe("the model-scoped window", () => {
     render(() => <UsageStrip />);
 
     const row = clusterFor("claude", "default")!;
-    expect(barsIn(row).map((b) => b.dataset.kind)).toEqual([
-      "five_hour",
-      "seven_day",
-      "seven_day_fable",
-    ]);
+    expect(barsIn(row).map((b) => b.dataset.kind)).toEqual(["five_hour", "seven_day", "seven_day_fable"]);
     expect(row.getAttribute("aria-label")).toContain("Fable only");
     expect(row.getAttribute("aria-label")).not.toContain("seven_day_fable");
   });
@@ -268,12 +261,7 @@ describe("how old the number is", () => {
   // The one case a dimmed number would be a lie. Both windows are gone, and the
   // account still has a cluster: it has readings, they just say 0%.
   it("says 0% once a window is past its reset", () => {
-    seedUsageStoreForTests(
-      "claude",
-      null,
-      [win("five_hour", 0.98, PASSED), win("seven_day", 0.75, PASSED)],
-      NOW,
-    );
+    seedUsageStoreForTests("claude", null, [win("five_hour", 0.98, PASSED), win("seven_day", 0.75, PASSED)], NOW);
     render(() => <UsageStrip />);
 
     const row = clusterFor("claude", "default")!;

@@ -114,10 +114,7 @@ export async function runAxe(
 
 /** Assert `scope` has no accessibility violations, and that no rule failed to
  *  produce an answer. See the module comment for which element to pass. */
-export async function expectNoAxeViolations(
-  scope: AxeScope,
-  overrides: RunOptions = {},
-): Promise<void> {
+export async function expectNoAxeViolations(scope: AxeScope, overrides: RunOptions = {}): Promise<void> {
   const { violations, incomplete } = await runAxe(scope, overrides);
   const message = formatAxeFailure(violations, incomplete);
   if (message === null) return;
@@ -133,17 +130,13 @@ export async function expectNoAxeViolations(
 /** The failure text for a set of results, or `null` when there is nothing to
  *  report. Separated from the assertion so both branches are testable without
  *  having to find markup that makes a given axe rule indeterminate. */
-export function formatAxeFailure(
-  violations: Result[],
-  incomplete: Result[],
-): string | null {
+export function formatAxeFailure(violations: Result[], incomplete: Result[]): string | null {
   if (violations.length === 0 && incomplete.length === 0) return null;
 
   const parts: string[] = [];
   if (violations.length > 0) {
     parts.push(
-      `axe found ${count(violations.length, "accessibility violation")}:\n` +
-        violations.map(ruleReport).join("\n"),
+      `axe found ${count(violations.length, "accessibility violation")}:\n` + violations.map(ruleReport).join("\n"),
     );
   }
   if (incomplete.length > 0) {

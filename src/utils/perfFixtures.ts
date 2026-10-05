@@ -2,8 +2,26 @@
 // two runs feed the same bytes, and sized by argument so a run can scale them.
 
 const WORDS = [
-  "the", "worker", "answers", "each", "block", "with", "colours", "while", "stream", "keeps",
-  "text", "current", "frame", "paint", "lexer", "token", "grammar", "session", "branch", "commit",
+  "the",
+  "worker",
+  "answers",
+  "each",
+  "block",
+  "with",
+  "colours",
+  "while",
+  "stream",
+  "keeps",
+  "text",
+  "current",
+  "frame",
+  "paint",
+  "lexer",
+  "token",
+  "grammar",
+  "session",
+  "branch",
+  "commit",
 ];
 
 function words(seed: number, n: number): string {
@@ -66,7 +84,9 @@ export function projectPaths(n = 50_000): string[] {
     const pkg = i % 40;
     const area = (i * 7) % 25;
     const ext = ["ts", "tsx", "rs", "md", "json"][i % 5];
-    out.push(`packages/pkg-${pkg}/src/area-${area}/${WORDS[i % WORDS.length]}/${WORDS[(i * 3) % WORDS.length]}${i}.${ext}`);
+    out.push(
+      `packages/pkg-${pkg}/src/area-${area}/${WORDS[i % WORDS.length]}/${WORDS[(i * 3) % WORDS.length]}${i}.${ext}`,
+    );
   }
   return out;
 }

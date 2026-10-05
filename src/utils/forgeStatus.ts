@@ -95,7 +95,11 @@ const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
 
 const signedOut: AuthState = { kind: "signedOut" };
 const accountAuth = (id: string): AuthState => accounts().find((a) => a.id === id)?.auth ?? signedOut;
-const ids = (list: readonly ForgeAccount[]) => list.map((a) => a.id).sort().join("\n");
+const ids = (list: readonly ForgeAccount[]) =>
+  list
+    .map((a) => a.id)
+    .sort()
+    .join("\n");
 
 /** Every account and its credential state, from whoever last asked Rust. */
 export function noteForgeAccounts(list: readonly ForgeAccount[]) {
@@ -305,9 +309,7 @@ export function forgeAccountOrgNotices(accountId: string): OrgNotice[] {
     return repo?.kind === "account" && repo.accountId === accountId;
   });
   const source = accounts().find((a) => a.id === accountId)?.source ?? null;
-  return [...new Set(owned.map(([, org]) => org))]
-    .sort()
-    .map((org) => orgNotice(org, source, cliInstalled()));
+  return [...new Set(owned.map(([, org]) => org))].sort().map((org) => orgNotice(org, source, cliInstalled()));
 }
 
 /** Why polling is stopped for this checkout, or null when it is running or
@@ -322,8 +324,7 @@ export function forgePause(path: string | null): PauseReason | null {
 function clockFor(path: string, repo: RepoAccount): PollClock {
   const account = repo.kind === "account" ? (accountBlocked()[repo.accountId] ?? null) : null;
   const project = projectBlocked()[path] ?? null;
-  const blockedUntil =
-    account === null ? project : project === null ? account : Math.max(account, project);
+  const blockedUntil = account === null ? project : project === null ? account : Math.max(account, project);
   return { lastPollAt: lastPollAt()[path] ?? null, blockedUntil };
 }
 
@@ -464,7 +465,9 @@ export function startForgePolling(): () => void {
   void refreshForgeAccounts();
   // Which route an organisation notice may offer. Read once because it is a path
   // lookup answering a question about this machine, not about any account.
-  void invoke<boolean>("forge_cli_installed").then(setCliInstalled).catch(() => {});
+  void invoke<boolean>("forge_cli_installed")
+    .then(setCliInstalled)
+    .catch(() => {});
   const onFocus = () => void pollOnFocus();
   window.addEventListener("focus", onFocus);
   const timer = window.setInterval(() => void pollNow("interval"), POLL_INTERVAL_MS);

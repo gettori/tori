@@ -64,9 +64,27 @@ const MAX_ICON_BYTES: u64 = 2 * 1024 * 1024;
 /// Directories never worth descending: build output, dependency trees and
 /// caches. Their icons belong to someone else's package.
 const SKIP_DIRS: &[&str] = &[
-    "node_modules", ".git", "target", "dist", "build", "out", ".next", ".nuxt", ".svelte-kit",
-    "vendor", "Pods", "DerivedData", ".gradle", ".venv", "venv", "__pycache__", "coverage",
-    ".turbo", ".cache", ".output", "Carthage",
+    "node_modules",
+    ".git",
+    "target",
+    "dist",
+    "build",
+    "out",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    "vendor",
+    "Pods",
+    "DerivedData",
+    ".gradle",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "coverage",
+    ".turbo",
+    ".cache",
+    ".output",
+    "Carthage",
 ];
 
 /// Art that ships with a project generator. Matched on file name because that
@@ -228,18 +246,17 @@ fn offer(out: &mut Vec<Candidate>, path: PathBuf, authority: Authority, kind: Ki
 }
 
 /// `offer`, for a resolver whose list order is a genuine preference.
-fn offer_ranked(
-    out: &mut Vec<Candidate>,
-    path: PathBuf,
-    authority: Authority,
-    kind: Kind,
-    nested: bool,
-    rank: usize,
-) {
+fn offer_ranked(out: &mut Vec<Candidate>, path: PathBuf, authority: Authority, kind: Kind, nested: bool, rank: usize) {
     if !path.is_file() || !renderable(&path) || is_scaffold(&path) {
         return;
     }
-    out.push(Candidate { path, authority, kind, nested, rank });
+    out.push(Candidate {
+        path,
+        authority,
+        kind,
+        nested,
+        rank,
+    });
 }
 
 fn read_json(path: &Path) -> Option<serde_json::Value> {
@@ -272,7 +289,13 @@ fn from_tauri(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
     let Some(icons) = icons else { return };
     let base = conf.parent().unwrap_or(dir);
     for entry in icons.iter().filter_map(|v| v.as_str()) {
-        offer(out, join_declared(base, entry), Authority::Declared, Kind::AppIcon, nested);
+        offer(
+            out,
+            join_declared(base, entry),
+            Authority::Declared,
+            Kind::AppIcon,
+            nested,
+        );
     }
 }
 
@@ -286,9 +309,18 @@ fn from_expo(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
         // Anchored twice over: the file must be at the root AND carry an `expo`
         // key. `.obsidian/app.json` satisfies neither.
         let Some(expo) = json.get("expo") else { continue };
-        for ptr in ["/icon", "/ios/icon", "/android/adaptiveIcon/foregroundImage", "/web/favicon"] {
+        for ptr in [
+            "/icon",
+            "/ios/icon",
+            "/android/adaptiveIcon/foregroundImage",
+            "/web/favicon",
+        ] {
             if let Some(rel) = expo.pointer(ptr).and_then(|v| v.as_str()) {
-                let kind = if ptr == "/web/favicon" { Kind::Favicon } else { Kind::AppIcon };
+                let kind = if ptr == "/web/favicon" {
+                    Kind::Favicon
+                } else {
+                    Kind::AppIcon
+                };
                 offer(out, join_declared(dir, rel), Authority::Declared, kind, nested);
             }
         }
@@ -300,9 +332,19 @@ fn from_expo(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
 /// draws - `offer` rejects it, and the sibling PNG that usually sits beside it
 /// is picked up as a convention instead.
 fn from_package_json(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
-    let Some(json) = read_json(&dir.join("package.json")) else { return };
-    for ptr in ["/build/icon", "/build/mac/icon", "/build/win/icon", "/build/linux/icon", "/icon"] {
-        let Some(rel) = json.pointer(ptr).and_then(|v| v.as_str()) else { continue };
+    let Some(json) = read_json(&dir.join("package.json")) else {
+        return;
+    };
+    for ptr in [
+        "/build/icon",
+        "/build/mac/icon",
+        "/build/win/icon",
+        "/build/linux/icon",
+        "/icon",
+    ] {
+        let Some(rel) = json.pointer(ptr).and_then(|v| v.as_str()) else {
+            continue;
+        };
         let target = join_declared(dir, rel);
         // electron-builder accepts a DIRECTORY of sized icons as well as a file.
         if target.is_dir() {
@@ -328,16 +370,28 @@ fn from_web_manifest(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
     for rel in MANIFESTS {
         let conf = dir.join(rel);
         let Some(json) = read_json(&conf) else { continue };
-        let Some(icons) = json.get("icons").and_then(|v| v.as_array()) else { continue };
+        let Some(icons) = json.get("icons").and_then(|v| v.as_array()) else {
+            continue;
+        };
         let base = conf.parent().unwrap_or(dir);
         for icon in icons {
             // `purpose: "monochrome"` is a mask, not a mark: it renders as a
             // silhouette and would read as a solid blob at 16px.
-            if icon.get("purpose").and_then(|v| v.as_str()).is_some_and(|p| p.contains("monochrome")) {
+            if icon
+                .get("purpose")
+                .and_then(|v| v.as_str())
+                .is_some_and(|p| p.contains("monochrome"))
+            {
                 continue;
             }
             if let Some(src) = icon.get("src").and_then(|v| v.as_str()) {
-                offer(out, join_declared(base, src), Authority::Declared, Kind::AppIcon, nested);
+                offer(
+                    out,
+                    join_declared(base, src),
+                    Authority::Declared,
+                    Kind::AppIcon,
+                    nested,
+                );
             }
         }
     }
@@ -350,7 +404,9 @@ fn from_appiconset(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
     for set in find_appiconsets(dir) {
         let contents = set.join("Contents.json");
         let Some(json) = read_json(&contents) else { continue };
-        let Some(images) = json.get("images").and_then(|v| v.as_array()) else { continue };
+        let Some(images) = json.get("images").and_then(|v| v.as_array()) else {
+            continue;
+        };
         for image in images {
             if let Some(name) = image.get("filename").and_then(|v| v.as_str()) {
                 offer(out, set.join(name), Authority::Declared, Kind::AppIcon, nested);
@@ -391,17 +447,33 @@ fn find_appiconsets(dir: &Path) -> Vec<PathBuf> {
 /// skipped on purpose: it is an XML adaptive icon pointing at vector drawables,
 /// and neither is something a webview can draw.
 fn from_android(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
-    const RES_DIRS: &[&str] = &["android/app/src/main/res", "app/src/main/res", "android/src/main/res", "res"];
-    const DENSITIES: &[&str] = &["mipmap-xxxhdpi", "mipmap-xxhdpi", "mipmap-xhdpi", "mipmap-hdpi", "mipmap-mdpi"];
+    const RES_DIRS: &[&str] = &[
+        "android/app/src/main/res",
+        "app/src/main/res",
+        "android/src/main/res",
+        "res",
+    ];
+    const DENSITIES: &[&str] = &[
+        "mipmap-xxxhdpi",
+        "mipmap-xxhdpi",
+        "mipmap-xhdpi",
+        "mipmap-hdpi",
+        "mipmap-mdpi",
+    ];
     for res in RES_DIRS {
         let base = dir.join(res);
         if !base.is_dir() {
             continue;
         }
         for (di, density) in DENSITIES.iter().enumerate() {
-            for (ni, name) in ["ic_launcher.png", "ic_launcher_round.png", "ic_launcher.webp", "ic_launcher_foreground.png"]
-                .iter()
-                .enumerate()
+            for (ni, name) in [
+                "ic_launcher.png",
+                "ic_launcher_round.png",
+                "ic_launcher.webp",
+                "ic_launcher_foreground.png",
+            ]
+            .iter()
+            .enumerate()
             {
                 let path = base.join(density).join(name);
                 offer_ranked(out, path, Authority::Conventional, Kind::AppIcon, nested, di * 8 + ni);
@@ -415,20 +487,44 @@ fn from_android(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
 fn from_conventional(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
     const RESERVED: &[(&str, &[&str], Kind)] = &[
         // Tauri and Electron bundle icon sets.
-        ("src-tauri/icons", &["icon.png", "128x128@2x.png", "128x128.png", "32x32.png"], Kind::AppIcon),
-        ("build/icons", &["icon.png", "512x512.png", "256x256.png"], Kind::AppIcon),
+        (
+            "src-tauri/icons",
+            &["icon.png", "128x128@2x.png", "128x128.png", "32x32.png"],
+            Kind::AppIcon,
+        ),
+        (
+            "build/icons",
+            &["icon.png", "512x512.png", "256x256.png"],
+            Kind::AppIcon,
+        ),
         ("build", &["icon.png"], Kind::AppIcon),
         ("resources", &["icon.png"], Kind::AppIcon),
         // Flutter's web target, which mirrors the launcher icon.
         ("web/icons", &["Icon-512.png", "Icon-192.png"], Kind::AppIcon),
         ("web", &["favicon.png"], Kind::Favicon),
         // Expo's usual layout when the config is JS and cannot be read.
-        ("assets/images/appIcon", &["icon.png", "adaptive-icon.png"], Kind::AppIcon),
+        (
+            "assets/images/appIcon",
+            &["icon.png", "adaptive-icon.png"],
+            Kind::AppIcon,
+        ),
         ("assets/icons", &["icon.png", "app-icon.png"], Kind::AppIcon),
-        ("assets", &["icon.png", "app-icon.png", "adaptive-icon.png"], Kind::AppIcon),
+        (
+            "assets",
+            &["icon.png", "app-icon.png", "adaptive-icon.png"],
+            Kind::AppIcon,
+        ),
         // Next.js app router treats these as route files.
-        ("app", &["icon.svg", "icon.png", "apple-icon.png", "favicon.ico"], Kind::Favicon),
-        ("src/app", &["icon.svg", "icon.png", "apple-icon.png", "favicon.ico"], Kind::Favicon),
+        (
+            "app",
+            &["icon.svg", "icon.png", "apple-icon.png", "favicon.ico"],
+            Kind::Favicon,
+        ),
+        (
+            "src/app",
+            &["icon.svg", "icon.png", "apple-icon.png", "favicon.ico"],
+            Kind::Favicon,
+        ),
     ];
     for (sub, names, kind) in RESERVED {
         let base = dir.join(sub);
@@ -445,11 +541,32 @@ fn from_conventional(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
 /// because "there is a logo.png in assets/" is a guess about what the project
 /// considers its identity.
 fn from_generic(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
-    const FAVICONS: &[&str] = &["favicon.svg", "favicon.ico", "favicon.png", "icon.svg", "icon.png", "apple-touch-icon.png"];
+    const FAVICONS: &[&str] = &[
+        "favicon.svg",
+        "favicon.ico",
+        "favicon.png",
+        "icon.svg",
+        "icon.png",
+        "apple-touch-icon.png",
+    ];
     const LOGOS: &[&str] = &["logo.svg", "logo.png", "logo.webp"];
-    const PLACES: &[&str] = &["public", "static", "src/assets", "src/assets/images", "assets", "src", "img", "images", ""];
+    const PLACES: &[&str] = &[
+        "public",
+        "static",
+        "src/assets",
+        "src/assets/images",
+        "assets",
+        "src",
+        "img",
+        "images",
+        "",
+    ];
     for place in PLACES {
-        let base = if place.is_empty() { dir.to_path_buf() } else { dir.join(place) };
+        let base = if place.is_empty() {
+            dir.to_path_buf()
+        } else {
+            dir.join(place)
+        };
         if !base.is_dir() {
             continue;
         }
@@ -477,7 +594,9 @@ fn from_named_marks(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
     const MAX_PER_PLACE: usize = 4;
     for place in PLACES {
         let base = dir.join(place);
-        let Ok(entries) = std::fs::read_dir(&base) else { continue };
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
         let mut matches: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
@@ -501,13 +620,18 @@ fn from_named_marks(dir: &Path, out: &mut Vec<Candidate>, nested: bool) {
 /// Immediate subdirectories, skipping dotfiles and build output. Sorted, so
 /// everything downstream of it is deterministic.
 fn read_dirs(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut out: Vec<PathBuf> = entries
         .flatten()
         .map(|e| e.path())
         .filter(|p| {
             p.is_dir() && {
-                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_str())
             }
         })
@@ -519,7 +643,11 @@ fn read_dirs(dir: &Path) -> Vec<PathBuf> {
 /// The largest PNG directly inside `dir`, for an electron-builder icon folder.
 fn offer_largest_png(out: &mut Vec<Candidate>, dir: &Path, a: Authority, k: Kind, nested: bool) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
-    let mut pngs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| ext_of(p) == "png").collect();
+    let mut pngs: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| ext_of(p) == "png")
+        .collect();
     pngs.sort();
     for png in pngs {
         offer(out, png, a, k, nested);
@@ -579,9 +707,12 @@ fn workspace_members(dir: &Path) -> Vec<PathBuf> {
     // only ever sees the CHILD's name ("react"), never the skipped parent. So
     // the whole path below the project is re-checked here.
     members.retain(|m| {
-        m.strip_prefix(dir).map(|rel| {
-            !rel.components().any(|c| SKIP_DIRS.contains(&c.as_os_str().to_string_lossy().as_ref()))
-        }).unwrap_or(false)
+        m.strip_prefix(dir)
+            .map(|rel| {
+                !rel.components()
+                    .any(|c| SKIP_DIRS.contains(&c.as_os_str().to_string_lossy().as_ref()))
+            })
+            .unwrap_or(false)
     });
     members.sort();
     members.dedup();
@@ -715,8 +846,16 @@ pub fn shown_image<'a>(icon: Option<&str>, icon_file: Option<&'a str>, favicon: 
 pub fn image_version(path: &str) -> Option<String> {
     image_mime(path)?;
     let meta = std::fs::metadata(path).ok()?;
-    let modified = meta.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_millis();
-    Some(format!("{:016x}", fnv1a(format!("{path}\0{modified}\0{}", meta.len()).as_bytes())))
+    let modified = meta
+        .modified()
+        .ok()?
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    Some(format!(
+        "{:016x}",
+        fnv1a(format!("{path}\0{modified}\0{}", meta.len()).as_bytes())
+    ))
 }
 
 fn image_mime(path: &str) -> Option<&'static str> {
@@ -731,7 +870,11 @@ fn image_mime(path: &str) -> Option<&'static str> {
 }
 
 fn shrunk(path: &str) -> Option<Vec<u8>> {
-    let out = std::env::temp_dir().join(format!("tori-icon-{}-{:016x}.png", std::process::id(), fnv1a(path.as_bytes())));
+    let out = std::env::temp_dir().join(format!(
+        "tori-icon-{}-{:016x}.png",
+        std::process::id(),
+        fnv1a(path.as_bytes())
+    ));
     let done = Command::new("sips")
         .args(["-s", "format", "png", "-Z", DEVICE_IMAGE_PX, path, "--out"])
         .arg(&out)
@@ -753,8 +896,16 @@ pub fn device_image(path: &str) -> Option<DeviceImage> {
     use base64::Engine;
     let version = image_version(path)?;
     let bytes = std::fs::read(path).ok()?;
-    let (bytes, mime) = if bytes.len() as u64 <= DEVICE_IMAGE_MAX { (bytes, image_mime(path)?) } else { (shrunk(path)?, "image/png") };
-    Some(DeviceImage { version, mime, data: base64::engine::general_purpose::STANDARD.encode(bytes) })
+    let (bytes, mime) = if bytes.len() as u64 <= DEVICE_IMAGE_MAX {
+        (bytes, image_mime(path)?)
+    } else {
+        (shrunk(path)?, "image/png")
+    };
+    Some(DeviceImage {
+        version,
+        mime,
+        data: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -894,11 +1045,7 @@ mod tests {
     static SEQ: AtomicUsize = AtomicUsize::new(0);
     fn tmp(name: &str) -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "tori_icons_test_{}_{}_{name}",
-            std::process::id(),
-            n
-        ));
+        let dir = std::env::temp_dir().join(format!("tori_icons_test_{}_{}_{name}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -943,7 +1090,11 @@ mod tests {
     #[test]
     fn tauri_app_uses_the_icon_its_config_declares() {
         let dir = tmp("tauri");
-        write(&dir, "src-tauri/tauri.conf.json", br#"{"bundle":{"icon":["icons/32x32.png","icons/icon.png"]}}"#);
+        write(
+            &dir,
+            "src-tauri/tauri.conf.json",
+            br#"{"bundle":{"icon":["icons/32x32.png","icons/icon.png"]}}"#,
+        );
         write(&dir, "src-tauri/icons/32x32.png", &png(32));
         write(&dir, "src-tauri/icons/icon.png", &png(512));
         // A loose logo that the old first-match scan preferred over the manifest.
@@ -954,7 +1105,11 @@ mod tests {
     #[test]
     fn tauri_v1_nests_the_same_key_under_tauri() {
         let dir = tmp("tauri1");
-        write(&dir, "src-tauri/tauri.conf.json", br#"{"tauri":{"bundle":{"icon":["icons/icon.png"]}}}"#);
+        write(
+            &dir,
+            "src-tauri/tauri.conf.json",
+            br#"{"tauri":{"bundle":{"icon":["icons/icon.png"]}}}"#,
+        );
         write(&dir, "src-tauri/icons/icon.png", &png(256));
         assert_eq!(pick(&dir).as_deref(), Some("src-tauri/icons/icon.png"));
     }
@@ -962,7 +1117,11 @@ mod tests {
     #[test]
     fn expo_app_uses_the_icon_its_app_json_declares() {
         let dir = tmp("expo");
-        write(&dir, "app.json", br#"{"expo":{"icon":"./assets/images/appIcon/icon.png"}}"#);
+        write(
+            &dir,
+            "app.json",
+            br#"{"expo":{"icon":"./assets/images/appIcon/icon.png"}}"#,
+        );
         write(&dir, "assets/images/appIcon/icon.png", &png(1024));
         assert_eq!(pick(&dir).as_deref(), Some("assets/images/appIcon/icon.png"));
     }
@@ -1038,8 +1197,16 @@ mod tests {
             br#"{"images":[{"filename":"icon_32x32.png","size":"32x32","scale":"1x"},
                           {"filename":"Logo_1024.png","size":"512x512","scale":"2x"}]}"#,
         );
-        write(&dir, "NetCheck/Assets.xcassets/AppIcon.appiconset/icon_32x32.png", &png(32));
-        write(&dir, "NetCheck/Assets.xcassets/AppIcon.appiconset/Logo_1024.png", &png(1024));
+        write(
+            &dir,
+            "NetCheck/Assets.xcassets/AppIcon.appiconset/icon_32x32.png",
+            &png(32),
+        );
+        write(
+            &dir,
+            "NetCheck/Assets.xcassets/AppIcon.appiconset/Logo_1024.png",
+            &png(1024),
+        );
         assert_eq!(
             pick(&dir).as_deref(),
             Some("NetCheck/Assets.xcassets/AppIcon.appiconset/Logo_1024.png")
@@ -1050,7 +1217,11 @@ mod tests {
     fn android_app_uses_the_densest_launcher_icon() {
         let dir = tmp("android");
         write(&dir, "android/app/src/main/res/mipmap-mdpi/ic_launcher.png", &png(48));
-        write(&dir, "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png", &png(192));
+        write(
+            &dir,
+            "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+            &png(192),
+        );
         // The adaptive XML must never be chosen: a webview cannot draw it.
         touch(&dir, "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml");
         assert_eq!(
@@ -1105,7 +1276,11 @@ mod tests {
             ("", "favicon.ico"),
         ] {
             let dir = tmp("web");
-            let rel = if place.is_empty() { file.to_string() } else { format!("{place}/{file}") };
+            let rel = if place.is_empty() {
+                file.to_string()
+            } else {
+                format!("{place}/{file}")
+            };
             write(&dir, &rel, &png(64));
             assert_eq!(pick(&dir).as_deref(), Some(rel.as_str()), "for {rel}");
         }
@@ -1124,7 +1299,11 @@ mod tests {
     #[test]
     fn a_declared_workspace_member_supplies_the_icon() {
         let dir = tmp("workspaces");
-        write(&dir, "package.json", br#"{"workspaces":["core/application","clients/organization"]}"#);
+        write(
+            &dir,
+            "package.json",
+            br#"{"workspaces":["core/application","clients/organization"]}"#,
+        );
         write(&dir, "clients/organization/public/blood-connect-icon.svg", b"<svg/>");
         assert_eq!(
             pick(&dir).as_deref(),
@@ -1294,7 +1473,9 @@ mod tests {
     #[test]
     #[ignore]
     fn report_real_projects() {
-        let Some(root) = dirs::home_dir().map(|h| h.join("Projects")) else { return };
+        let Some(root) = dirs::home_dir().map(|h| h.join("Projects")) else {
+            return;
+        };
         let (mut hit, mut miss) = (0, 0);
         let mut seen: HashMap<String, Vec<String>> = HashMap::new();
         for space in read_dirs(&root) {
@@ -1308,7 +1489,10 @@ mod tests {
                 match resolve_project_icon(&project, &folders) {
                     Some(p) => {
                         hit += 1;
-                        let rel = Path::new(&p).strip_prefix(&project).map(|r| r.to_string_lossy().into_owned()).unwrap_or_else(|_| p.clone());
+                        let rel = Path::new(&p)
+                            .strip_prefix(&project)
+                            .map(|r| r.to_string_lossy().into_owned())
+                            .unwrap_or_else(|_| p.clone());
                         println!("  HIT  {name:<32} {rel}");
                         if let Ok(bytes) = std::fs::read(&p) {
                             seen.entry(format!("{:016x}", fnv1a(&bytes))).or_default().push(name);
@@ -1348,7 +1532,10 @@ mod tests {
 
     #[test]
     fn stored_name_separates_two_projects_of_the_same_basename() {
-        assert_ne!(stored_name("/one/app", b"same", "svg"), stored_name("/two/app", b"same", "svg"));
+        assert_ne!(
+            stored_name("/one/app", b"same", "svg"),
+            stored_name("/two/app", b"same", "svg")
+        );
     }
 
     #[test]

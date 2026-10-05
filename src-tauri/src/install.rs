@@ -39,9 +39,10 @@ pub enum InstallRoute {
 /// Pick the rung for one adapter.
 pub fn install_route(adapter: &agents::AgentAdapter) -> InstallRoute {
     match &adapter.install {
-        Some(spec) => {
-            InstallRoute::Terminal { program: spec.program.clone(), args: spec.args.clone() }
-        }
+        Some(spec) => InstallRoute::Terminal {
+            program: spec.program.clone(),
+            args: spec.args.clone(),
+        },
         None => InstallRoute::Undeclared,
     }
 }
@@ -57,36 +58,31 @@ pub fn uninstall_route(adapter: &agents::AgentAdapter) -> InstallRoute {
     verb_route(adapter, |spec| &spec.uninstall_args)
 }
 
-fn verb_route(
-    adapter: &agents::AgentAdapter,
-    args_of: fn(&agents::InstallSpec) -> &Vec<String>,
-) -> InstallRoute {
+fn verb_route(adapter: &agents::AgentAdapter, args_of: fn(&agents::InstallSpec) -> &Vec<String>) -> InstallRoute {
     match &adapter.install {
-        Some(spec) if !args_of(spec).is_empty() => {
-            InstallRoute::Terminal { program: spec.program.clone(), args: args_of(spec).clone() }
-        }
+        Some(spec) if !args_of(spec).is_empty() => InstallRoute::Terminal {
+            program: spec.program.clone(),
+            args: args_of(spec).clone(),
+        },
         _ => InstallRoute::Undeclared,
     }
 }
 
 #[tauri::command(async)]
 pub fn agent_install_route(adapter_id: String) -> Result<InstallRoute, String> {
-    let adapter =
-        agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
+    let adapter = agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
     Ok(install_route(adapter))
 }
 
 #[tauri::command(async)]
 pub fn agent_update_route(adapter_id: String) -> Result<InstallRoute, String> {
-    let adapter =
-        agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
+    let adapter = agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
     Ok(update_route(adapter))
 }
 
 #[tauri::command(async)]
 pub fn agent_uninstall_route(adapter_id: String) -> Result<InstallRoute, String> {
-    let adapter =
-        agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
+    let adapter = agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
     Ok(uninstall_route(adapter))
 }
 

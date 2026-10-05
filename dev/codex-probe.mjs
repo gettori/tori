@@ -231,7 +231,11 @@ function report(r, bindings) {
   const counts = {};
   for (const m of r.methods) counts[m.status] = (counts[m.status] ?? 0) + 1;
   lines.push("");
-  lines.push(`  ${r.methods.length} probed: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ")}`);
+  lines.push(
+    `  ${r.methods.length} probed: ${Object.entries(counts)
+      .map(([k, v]) => `${v} ${k}`)
+      .join(", ")}`,
+  );
   if (r.notifications?.length) {
     lines.push(`  notifications seen: ${r.notifications.join(", ")}`);
   }

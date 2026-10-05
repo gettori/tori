@@ -69,13 +69,11 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const PAUSED: Record<PauseReason, Say> = {
   disabled: {
     headline: "GitHub is switched off",
-    detail:
-      "Tori cannot read pull requests or post review comments. Settings, Integrations, GitHub turns it back on.",
+    detail: "Tori cannot read pull requests or post review comments. Settings, Integrations, GitHub turns it back on.",
   },
   signedOut: {
     headline: "GitHub is not connected",
-    detail:
-      "Tori cannot read pull requests or post review comments. Opening one still works, in your browser.",
+    detail: "Tori cannot read pull requests or post review comments. Opening one still works, in your browser.",
   },
   suspect: {
     headline: "GitHub rejected the stored credential",
@@ -83,8 +81,7 @@ const PAUSED: Record<PauseReason, Say> = {
   },
   pickAccount: {
     headline: "This repo has no account picked",
-    detail:
-      "More than one account reaches this host. Pick the one this repo uses from its branch chip in the sidebar.",
+    detail: "More than one account reaches this host. Pick the one this repo uses from its branch chip in the sidebar.",
   },
 };
 
@@ -140,8 +137,7 @@ export function pullsPanelState(input: {
       kind: "inert",
       origin,
       headline: "No review host for this remote",
-      detail:
-        "Tori reviews pull requests on GitHub. Everything else about this repo keeps working.",
+      detail: "Tori reviews pull requests on GitHub. Everything else about this repo keeps working.",
     };
   }
 
@@ -186,9 +182,7 @@ export function pullsPanelState(input: {
   }
 
   const answeredNoPr =
-    chip.kind === "noPr" ||
-    chip.kind === "readyForPr" ||
-    (input.direct.kind === "done" && input.direct.pr === null);
+    chip.kind === "noPr" || chip.kind === "readyForPr" || (input.direct.kind === "done" && input.direct.pr === null);
 
   if (answeredNoPr && branch !== null) {
     const upstream = sync?.upstream ?? null;

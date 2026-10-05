@@ -52,9 +52,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 const { default: HistoryPanel } = await import("./HistoryPanel");
 const { expectNoAxeViolations } = await import("../../test/axe");
 const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { noteDots, noteLiveTabs, resetSessionActivityForTests } = await import(
-  "../../utils/sessionActivity"
-);
+const { noteDots, noteLiveTabs, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { SESSION_ACTION } = await import("../../utils/events");
 const { ago } = await import("../../utils/relativeTime");
 
@@ -224,8 +222,7 @@ describe("what a History row can do", () => {
   it("walks the rows with the arrow keys and opens on Enter", async () => {
     bridge.listings[REPO] = [session("first", now()), session("second", now() - DAY)];
     await open();
-    const selected = () =>
-      screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
+    const selected = () => screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
     expect(selected()?.getAttribute("title")).toBe("first");
 
     fireEvent.keyDown(document, { key: "ArrowDown" });
@@ -281,8 +278,7 @@ describe("what a History row can do", () => {
   it("gives the arrows and Enter to the row menu while one is open", async () => {
     bridge.listings[REPO] = [session("first", now()), session("second", now() - DAY)];
     await open();
-    const selected = () =>
-      screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
+    const selected = () => screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
 
     fireEvent.contextMenu(screen.getAllByRole("option")[0]);
     await screen.findByRole("menu");
@@ -302,8 +298,7 @@ describe("what a History row can do", () => {
   it("takes its keys back when the row holding the menu is filtered away", async () => {
     bridge.listings[REPO] = [session("alpha", now()), session("beta", now() - DAY)];
     await open();
-    const selected = () =>
-      screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
+    const selected = () => screen.getAllByRole("option").find((r) => r.getAttribute("aria-selected") === "true");
 
     fireEvent.contextMenu(screen.getAllByRole("option")[0]);
     await screen.findByRole("menu");
@@ -321,9 +316,7 @@ describe("what a History row can do", () => {
   // and a row that changes shape when a session goes quiet pulls the eye to the
   // wrong one. Only the state that is a request gets a second element.
   it("keeps its shape between idle and executing, and badges only a request", async () => {
-    noteLiveTabs([
-      { id: "tab-1", workspace: REPO, kind: "agent", sessionId: "s1", agent: "claude", state: "live" },
-    ]);
+    noteLiveTabs([{ id: "tab-1", workspace: REPO, kind: "agent", sessionId: "s1", agent: "claude", state: "live" }]);
     noteDots([{ id: "s1", dot: "solid", certainty: "inferred", home: null }]);
     await open();
 
@@ -524,9 +517,7 @@ describe("a folder recreated over old sessions", () => {
     expect(rowLabels()).toHaveLength(1);
 
     fireEvent.click(screen.getByText("Adopt"));
-    await waitFor(() =>
-      expect(bridge.calls.some((c) => c.cmd === "adopt_path" && c.args.path === REPO)).toBe(true),
-    );
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "adopt_path" && c.args.path === REPO)).toBe(true));
     // Adopted: the section is gone and the sessions are ordinary history now.
     await waitFor(() => expect(screen.queryByText("Historical (1)")).toBeNull());
     expect(sections()).toEqual(["Older"]);
@@ -538,9 +529,7 @@ describe("a folder recreated over old sessions", () => {
   it("asks the verdict for its own folder and for no other", async () => {
     await open(REPO);
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "folder_historical")).toBe(true));
-    const asked = bridge.calls
-      .filter((c) => c.cmd === "folder_historical")
-      .map((c) => String(c.args.folder));
+    const asked = bridge.calls.filter((c) => c.cmd === "folder_historical").map((c) => String(c.args.folder));
     expect(new Set(asked)).toEqual(new Set([REPO]));
   });
 });

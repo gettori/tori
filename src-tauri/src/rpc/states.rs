@@ -85,12 +85,26 @@ impl SessionStates {
             }
             let was = before.as_ref().map(|b| b.state);
             if was != Some(r.state) {
-                events.push(session_event("session.state", &r.id, &place, json!({ "state": r.state })));
+                events.push(session_event(
+                    "session.state",
+                    &r.id,
+                    &place,
+                    json!({ "state": r.state }),
+                ));
                 if r.state == SessionState::NeedsYou {
                     events.push(session_event("session.needs_you", &r.id, &place, json!({})));
                 }
             }
-            next.insert(r.id, Held { state: r.state, source: r.source, tab: r.tab, folder: r.folder, place });
+            next.insert(
+                r.id,
+                Held {
+                    state: r.state,
+                    source: r.source,
+                    tab: r.tab,
+                    folder: r.folder,
+                    place,
+                },
+            );
         }
         let mut ended = Vec::new();
         for (id, gone) in held.drain() {
@@ -98,7 +112,12 @@ impl SessionStates {
                 next.insert(id, gone);
                 continue;
             }
-            events.push(session_event("session.state", &id, &gone.place, json!({ "state": SessionState::Ended })));
+            events.push(session_event(
+                "session.state",
+                &id,
+                &gone.place,
+                json!({ "state": SessionState::Ended }),
+            ));
             if gone.source == Source::Pty {
                 events.push(session_event("session.ended", &id, &gone.place, json!({})));
             }
@@ -126,7 +145,11 @@ impl SessionStates {
             if state != SessionState::Working || left.is_zero() {
                 return Some(state);
             }
-            held = self.settled.wait_timeout(held, left).unwrap_or_else(|e| e.into_inner()).0;
+            held = self
+                .settled
+                .wait_timeout(held, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
         }
     }
 
@@ -137,14 +160,20 @@ impl SessionStates {
 
     pub fn ids_in(&self, folder: &str) -> Vec<String> {
         let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ids: Vec<String> =
-            held.iter().filter(|(_, h)| h.folder.as_deref().is_some_and(|f| same_folder(f, folder))).map(|(id, _)| id.clone()).collect();
+        let mut ids: Vec<String> = held
+            .iter()
+            .filter(|(_, h)| h.folder.as_deref().is_some_and(|f| same_folder(f, folder)))
+            .map(|(id, _)| id.clone())
+            .collect();
         ids.sort();
         ids
     }
 
     pub fn mark_background(&self, id: &str) {
-        self.background.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
+        self.background
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string());
     }
 
     pub fn background(&self) -> HashSet<String> {
@@ -156,21 +185,39 @@ impl SessionStates {
     }
 
     pub fn mark_worker(&self, id: &str, spawner: &str) {
-        self.workers.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string());
-        self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), spawner.to_string());
+        self.workers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string());
+        self.spawned_by
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string(), spawner.to_string());
     }
 
     pub fn spawner_of(&self, id: &str) -> Option<String> {
-        self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned()
+        self.spawned_by
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+            .cloned()
     }
 
     pub fn spawned(&self) -> Vec<String> {
-        self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).keys().cloned().collect()
+        self.spawned_by
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .keys()
+            .cloned()
+            .collect()
     }
 
     pub fn rebind_spawner(&self, from: &str, to: &str) {
         let mut spawned_by = self.spawned_by.lock().unwrap_or_else(|e| e.into_inner());
-        spawned_by.values_mut().filter(|s| *s == from).for_each(|s| *s = to.to_string());
+        spawned_by
+            .values_mut()
+            .filter(|s| *s == from)
+            .for_each(|s| *s = to.to_string());
     }
 
     // The topmost background session in `id`'s spawn chain, `id` itself
@@ -200,15 +247,27 @@ mod tests {
     use super::*;
 
     fn report(id: &str, state: SessionState, source: Source) -> Reported {
-        Reported { id: id.into(), state, source, folder: Some("/p/wt".into()), tab: Some(format!("tab-{id}")) }
+        Reported {
+            id: id.into(),
+            state,
+            source,
+            folder: Some("/p/wt".into()),
+            tab: Some(format!("tab-{id}")),
+        }
     }
 
     fn place(_: &str) -> Place {
-        Place { project: Some("/p".into()), folder: Some("/p/wt".into()) }
+        Place {
+            project: Some("/p".into()),
+            folder: Some("/p/wt".into()),
+        }
     }
 
     fn kinds(events: &[Value]) -> Vec<String> {
-        events.iter().map(|e| format!("{} {}", e["kind"].as_str().unwrap(), e["id"].as_str().unwrap())).collect()
+        events
+            .iter()
+            .map(|e| format!("{} {}", e["kind"].as_str().unwrap(), e["id"].as_str().unwrap()))
+            .collect()
     }
 
     const GONE: fn(&str, &Held) -> bool = |_, _| false;
@@ -258,14 +317,20 @@ mod tests {
     fn a_waiter_wakes_when_the_session_settles() {
         let states = std::sync::Arc::new(SessionStates::default());
         states.replace(vec![report("w", SessionState::Working, Source::Chat)], place, GONE);
-        assert_eq!(states.wait_settled("w", Duration::from_millis(20)), Some(SessionState::Working));
+        assert_eq!(
+            states.wait_settled("w", Duration::from_millis(20)),
+            Some(SessionState::Working)
+        );
         assert_eq!(states.wait_settled("nobody", Duration::from_secs(5)), None);
         let flipping = states.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(30));
             flipping.replace(vec![report("w", SessionState::Idle, Source::Chat)], place, GONE);
         });
-        assert_eq!(states.wait_settled("w", Duration::from_secs(5)), Some(SessionState::Idle));
+        assert_eq!(
+            states.wait_settled("w", Duration::from_secs(5)),
+            Some(SessionState::Idle)
+        );
     }
 
     #[test]
@@ -281,7 +346,11 @@ mod tests {
         states.mark_worker("fg", "autopilot");
         assert_eq!(states.root_background("fg"), None, "a foreground session has no root");
         states.forget_worker("worker");
-        assert_eq!(states.root_background("helper").as_deref(), Some("worker"), "an ended link stops the walk");
+        assert_eq!(
+            states.root_background("helper").as_deref(),
+            Some("worker"),
+            "an ended link stops the walk"
+        );
     }
 
     #[test]
@@ -294,7 +363,10 @@ mod tests {
         states.replace(vec![], place, GONE);
         assert!(!states.is_worker("w"));
         assert!(!states.is_background("w"));
-        assert!(states.spawned_by.lock().unwrap().is_empty(), "its spawner link went with it");
+        assert!(
+            states.spawned_by.lock().unwrap().is_empty(),
+            "its spawner link went with it"
+        );
     }
 
     #[test]

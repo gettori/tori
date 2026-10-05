@@ -3,7 +3,14 @@
 // so with two servers on a file each publish would wipe out the other's.
 
 import { forEachDiagnostic, setDiagnostics, type Diagnostic } from "@codemirror/lint";
-import { ChangeSet, MapMode, type ChangeDesc, type EditorState, type Text, type TransactionSpec } from "@codemirror/state";
+import {
+  ChangeSet,
+  MapMode,
+  type ChangeDesc,
+  type EditorState,
+  type Text,
+  type TransactionSpec,
+} from "@codemirror/state";
 import { LSPPlugin, serverDiagnostics, type LSPClient } from "@codemirror/lsp-client";
 import { diffChanges } from "./docDiff";
 import type { RawDiagnostic } from "./lspDiagnosticContext";

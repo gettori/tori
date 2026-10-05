@@ -453,9 +453,7 @@ export const Registry: Story = {
           bufferLength: after.length,
           markerLine: after.markerLine,
           hostsConnected: ["r1", "r2", "r3"].map((id) => registry.get(id)!.isConnected),
-          hostsUnderOwnRow: ["r1", "r2", "r3"].map(
-            (id) => registry.get(id)!.parentElement?.dataset.row === id,
-          ),
+          hostsUnderOwnRow: ["r1", "r2", "r3"].map((id) => registry.get(id)!.parentElement?.dataset.row === id),
           disposedRows: [...disposedRows],
           errors: errs.count(),
         };
@@ -733,8 +731,26 @@ const P8_CSS = `
 
 export const PaneMoveCycle: Story = {
   render: () => {
-    const term1 = { id: "sh:1", title: "one", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [], profile: null };
-    const term2 = { id: "sh:2", title: "two", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [], profile: null };
+    const term1 = {
+      id: "sh:1",
+      title: "one",
+      cwd: "/tmp",
+      workspace: P8_WS,
+      kind: "shell" as const,
+      program: "",
+      args: [],
+      profile: null,
+    };
+    const term2 = {
+      id: "sh:2",
+      title: "two",
+      cwd: "/tmp",
+      workspace: P8_WS,
+      kind: "shell" as const,
+      program: "",
+      args: [],
+      profile: null,
+    };
     let live: ReturnType<typeof makeTerm> | undefined;
     // The other pane's surface is a CM6 view, so the same run shows both kinds
     // of stage re-measuring as the tree changes shape around them.
@@ -763,10 +779,10 @@ export const PaneMoveCycle: Story = {
         hostIds: () => open().map((t) => t.id),
       });
     }
-    const root = () => envelopeFor(P8_WS, () => seedTwoPane({ rightShare: 40, showLeft: true, showRight: true })).layout;
+    const root = () =>
+      envelopeFor(P8_WS, () => seedTwoPane({ rightShare: 40, showLeft: true, showRight: true })).layout;
     const tabs = () => open().map((t) => ({ id: t.id, kind: t.kind }));
-    const paneOf = (id: string) =>
-      stageHost(id).closest("[data-pane-id]")?.getAttribute("data-pane-id") ?? null;
+    const paneOf = (id: string) => stageHost(id).closest("[data-pane-id]")?.getAttribute("data-pane-id") ?? null;
 
     onMount(() => {
       // The app refits on REFIT_PANES; this story is the app for that purpose.
@@ -783,9 +799,17 @@ export const PaneMoveCycle: Story = {
         const colsBefore = live!.term.cols;
         const cmBefore = cmWidth();
 
-        updateLayout(P8_WS, (r) => splitPane(r, "left", "row", { type: "pane", id: "pane-1", size: 50, hidden: false }));
+        updateLayout(P8_WS, (r) =>
+          splitPane(r, "left", "row", { type: "pane", id: "pane-1", size: 50, hidden: false }),
+        );
         await frame();
-        const refusal = moveTabToPane({ ws: P8_WS, tab: { id: "sh:1", kind: "shell" }, targetPaneId: "pane-1", root: root(), tabsInWs: tabs() });
+        const refusal = moveTabToPane({
+          ws: P8_WS,
+          tab: { id: "sh:1", kind: "shell" },
+          targetPaneId: "pane-1",
+          root: root(),
+          tabsInWs: tabs(),
+        });
         await frame();
         await frame();
         const movedTo = paneOf("sh:1");
@@ -836,10 +860,7 @@ export const PaneMoveCycle: Story = {
       <div style={{ width: "900px", height: "360px", display: "flex" }}>
         <style>{P8_CSS}</style>
         <Portal mount={stageHost("sh:1")}>
-          <div
-            style={{ width: "100%", height: "100%" }}
-            ref={(el) => queueMicrotask(() => (live = makeTerm(el)))}
-          />
+          <div style={{ width: "100%", height: "100%" }} ref={(el) => queueMicrotask(() => (live = makeTerm(el)))} />
         </Portal>
         <Portal mount={stageHost("sh:2")}>
           <div
@@ -865,7 +886,16 @@ const P10_WS = "drag-ws";
 
 export const TabDragCycle: Story = {
   render: () => {
-    const mk = (id: string) => ({ id, title: id, cwd: "/tmp", workspace: P10_WS, kind: "shell" as const, program: "", args: [], profile: null });
+    const mk = (id: string) => ({
+      id,
+      title: id,
+      cwd: "/tmp",
+      workspace: P10_WS,
+      kind: "shell" as const,
+      program: "",
+      args: [],
+      profile: null,
+    });
     let live: ReturnType<typeof makeTerm> | undefined;
 
     localStorage.removeItem("tori.panes.v1");
@@ -888,7 +918,8 @@ export const TabDragCycle: Story = {
       stripReorder: () => {},
       hostIds: (_paneId, tabs) => tabs.map((t) => t.id),
     });
-    const root = () => envelopeFor(P10_WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true })).layout;
+    const root = () =>
+      envelopeFor(P10_WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true })).layout;
     const tabs = () => open().map((t) => ({ id: t.id, kind: t.kind }));
     const paneOf = (id: string) => stageHost(id).closest("[data-pane-id]")?.getAttribute("data-pane-id") ?? null;
     const center = (el: Element) => {
@@ -908,7 +939,9 @@ export const TabDragCycle: Story = {
       });
       const offSplit = onEventWith<SplitPaneEvt>(SPLIT_PANE, (p) => {
         const id = `pane-${leaves(root()).length}`;
-        updateLayout(P10_WS, (r) => splitPane(r, p.paneId ?? "left", p.dir, { type: "pane", id, size: 50, hidden: false }, p.pos));
+        updateLayout(P10_WS, (r) =>
+          splitPane(r, p.paneId ?? "left", p.dir, { type: "pane", id, size: 50, hidden: false }, p.pos),
+        );
         const tab = tabs().find((t) => t.id === p.tabId);
         if (tab) moveTabToPane({ ws: P10_WS, tab, targetPaneId: id, root: root(), tabsInWs: tabs() });
       });
@@ -927,7 +960,10 @@ export const TabDragCycle: Story = {
         const rightStrip = el('[data-pane-id="right"] .otab-list').parentElement!.getBoundingClientRect();
         return {
           tab: center(tabEl),
-          strip: { x: Math.round(rightStrip.left + rightStrip.width - 20), y: Math.round(rightStrip.top + rightStrip.height / 2) },
+          strip: {
+            x: Math.round(rightStrip.left + rightStrip.width - 20),
+            y: Math.round(rightStrip.top + rightStrip.height / 2),
+          },
           stripBox: { x: rightStrip.left, y: rightStrip.top, w: rightStrip.width, h: rightStrip.height },
           edge: { x: Math.round(rightPane.left + 10), y: Math.round(rightPane.top + rightPane.height / 2) },
           startedIn: paneOf("sh:1"),

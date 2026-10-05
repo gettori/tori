@@ -82,9 +82,7 @@ describe("composing a review thread for the agent that owns the branch", () => {
   );
 
   it("reproduces the committed golden exactly", async () => {
-    await expect(`${JSON.stringify(composed, null, 2)}\n`).toMatchFileSnapshot(
-      "./__fixtures__/threadAsk.golden.json",
-    );
+    await expect(`${JSON.stringify(composed, null, 2)}\n`).toMatchFileSnapshot("./__fixtures__/threadAsk.golden.json");
   });
 
   it("survives the send path unchanged", () => {
@@ -108,9 +106,7 @@ describe("composing a review thread for the agent that owns the branch", () => {
     // is a line of the file as it was, so an agent given the bare number would
     // edit the wrong place and be sure of it.
     expect(threadWhere(thread({ isOutdated: true }))).toBe("line 12 as the file then stood");
-    expect(threadWhere(thread({ line: null }))).toBe(
-      "on lines that have changed since it was written",
-    );
+    expect(threadWhere(thread({ line: null }))).toBe("on lines that have changed since it was written");
   });
 
   it("quotes every reply up to the cap and counts the rest", () => {
@@ -125,9 +121,7 @@ describe("composing a review thread for the agent that owns the branch", () => {
     // subfolder of the repo gets an absolute path, because the relative one
     // would resolve against its cwd and point at a file that is not there.
     const elsewhere = { ...TARGET, sessionCwd: `${ROOT}/docs` };
-    expect(composeThreadAsk(elsewhere, ROOT, 12, thread())).toContain(
-      `@${ROOT}/src/utils/diff.ts `,
-    );
+    expect(composeThreadAsk(elsewhere, ROOT, 12, thread())).toContain(`@${ROOT}/src/utils/diff.ts `);
   });
 
   it("resolves the path against the owning unit's folder, not the panel's", () => {

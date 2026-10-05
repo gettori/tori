@@ -28,9 +28,7 @@ function rollup(r: Partial<Rollup>) {
  *  tile's pill only reads right with neighbours beside it to push against. */
 function Strip(props: { children: JSX.Element }) {
   return (
-    <div style={{ display: "flex", "align-items": "center", gap: "3px", padding: "4px 0 0" }}>
-      {props.children}
-    </div>
+    <div style={{ display: "flex", "align-items": "center", gap: "3px", padding: "4px 0 0" }}>{props.children}</div>
   );
 }
 
@@ -43,7 +41,13 @@ const meta = {
     menu: MENU,
     onClick: () => {},
   },
-  decorators: [(Story) => <Strip><Story /></Strip>],
+  decorators: [
+    (Story) => (
+      <Strip>
+        <Story />
+      </Strip>
+    ),
+  ],
 } satisfies Meta<typeof SpaceTile>;
 
 export default meta;

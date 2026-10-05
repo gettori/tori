@@ -25,12 +25,7 @@ export function routeFor(sessionId: string, chatIds: ReadonlySet<string>): "chat
 
 /** An editor selection: the region, plus the text itself so the agent does not
  *  have to read the file back to see what the user meant. */
-export function selectionBlocks(
-  path: string,
-  startLine: number,
-  endLine: number,
-  text: string,
-): ContentBlock[] {
+export function selectionBlocks(path: string, startLine: number, endLine: number, text: string): ContentBlock[] {
   return [{ type: "fileRef", path, startLine, endLine, text: text || null }];
 }
 
@@ -44,12 +39,7 @@ export function fileMentionBlocks(path: string, label: string | null = null): Co
 /** A Changes-panel hunk comment: the region as structure, the comment as prose.
  *  Two blocks rather than one interpolated string, so the reference survives as
  *  a reference. */
-export function hunkCommentBlocks(
-  path: string,
-  startLine: number,
-  endLine: number,
-  comment: string,
-): ContentBlock[] {
+export function hunkCommentBlocks(path: string, startLine: number, endLine: number, comment: string): ContentBlock[] {
   return [
     { type: "fileRef", path, startLine, endLine, text: null },
     { type: "text", text: comment },
@@ -104,12 +94,47 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 // extension is a file: refusing `.lock` or `.toml` would be worse than
 // letting a rare binary through to an agent that says so itself.
 const OPAQUE_EXTENSIONS = new Set([
-  "mp4", "mov", "webm", "mkv", "avi", "m4v",
-  "mp3", "wav", "m4a", "ogg", "flac", "aac",
-  "zip", "gz", "tgz", "tar", "bz2", "xz", "7z", "rar", "dmg", "iso",
-  "exe", "dll", "so", "dylib", "bin", "o", "a", "class", "wasm",
-  "ttf", "otf", "woff", "woff2",
-  "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+  "mp4",
+  "mov",
+  "webm",
+  "mkv",
+  "avi",
+  "m4v",
+  "mp3",
+  "wav",
+  "m4a",
+  "ogg",
+  "flac",
+  "aac",
+  "zip",
+  "gz",
+  "tgz",
+  "tar",
+  "bz2",
+  "xz",
+  "7z",
+  "rar",
+  "dmg",
+  "iso",
+  "exe",
+  "dll",
+  "so",
+  "dylib",
+  "bin",
+  "o",
+  "a",
+  "class",
+  "wasm",
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
 ]);
 
 /** The kind of a file, by extension. The MIME breaks a tie only for a name
@@ -156,7 +181,10 @@ export function checkAttachment(
   }
   if (file.bytes !== null && file.bytes > MAX_BYTES[kind]) {
     const mb = (file.bytes / 1024 / 1024).toFixed(1);
-    return { ok: false, reason: `${file.name} is ${mb}MB, over the ${MAX_BYTES[kind] / 1024 / 1024}MB limit for a ${kind}.` };
+    return {
+      ok: false,
+      reason: `${file.name} is ${mb}MB, over the ${MAX_BYTES[kind] / 1024 / 1024}MB limit for a ${kind}.`,
+    };
   }
   return { ok: true, kind };
 }
@@ -507,7 +535,11 @@ function renameTokens(text: string, renames: ReadonlyMap<string, string>): strin
 /** Cut a token out of a sentence and close the gap, so removing the chip from
  *  "look at [Image 1] again" does not leave two spaces behind. */
 export function stripToken(text: string, token: string): string {
-  return text.split(token).join("").replace(/ {2,}/g, " ").replace(/[ \t]+$/gm, "");
+  return text
+    .split(token)
+    .join("")
+    .replace(/ {2,}/g, " ")
+    .replace(/[ \t]+$/gm, "");
 }
 
 /** Rename one chip and every token naming it, in the draft and in a message

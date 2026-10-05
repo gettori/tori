@@ -71,7 +71,7 @@ describe("the scopes above the top of the screen", () => {
       "  render() {",
       "    if (this.open) {",
       "      for (const child of this.children) {",
-      ]);
+    ]);
     // `from` is the start of the header's own line, which is where clicking the
     // row scrolls to.
     expect(rows[0].from).toBe(state.doc.line(1).from);

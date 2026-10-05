@@ -71,9 +71,7 @@ export interface SegmentedControlProps<T extends string> {
  *  Enter, so one keystroke would select a segment *and* submit the dialog.
  *  Stopping propagation here makes the rule predictable: Enter inside the
  *  strip selects, confirming needs focus outside it. */
-export default function SegmentedControl<T extends string>(
-  props: SegmentedControlProps<T>,
-) {
+export default function SegmentedControl<T extends string>(props: SegmentedControlProps<T>) {
   const onChange = (value: string | string[] | null) => {
     if (value == null || Array.isArray(value)) return;
     if (value !== props.value) props.onChange(value as T);
@@ -98,11 +96,7 @@ export default function SegmentedControl<T extends string>(
     >
       <For each={props.options}>
         {(opt) => (
-          <ToggleGroup.Item
-            value={opt.value}
-            aria-label={opt["aria-label"]}
-            class={styles.segment}
-          >
+          <ToggleGroup.Item value={opt.value} aria-label={opt["aria-label"]} class={styles.segment}>
             {opt.icon}
             {opt.label != null && <span>{opt.label}</span>}
           </ToggleGroup.Item>

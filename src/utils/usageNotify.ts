@@ -43,10 +43,7 @@ const focusedNow = () => (typeof document === "undefined" ? false : document.has
  * you were looking at Tori has been delivered, by the strip; firing it later
  * when you tab away would be news about something you already saw.
  */
-export function collectQuotaNotifications(
-  now = Date.now(),
-  focused = focusedNow(),
-): QuotaNotification[] {
+export function collectQuotaNotifications(now = Date.now(), focused = focusedNow()): QuotaNotification[] {
   const out: QuotaNotification[] = [];
 
   for (const key of accountsWithReadings()) {

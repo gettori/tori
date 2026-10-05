@@ -22,7 +22,9 @@ function navigateTo(raw: string): LinkTarget {
   const query = new URLSearchParams(raw.slice(TORI.length));
   const folder = query.get("folder") || undefined;
   const session = query.get("session") || undefined;
-  return folder?.startsWith("/") || (!folder && session) ? { kind: "navigate", target: { folder, session } } : { kind: "ignore" };
+  return folder?.startsWith("/") || (!folder && session)
+    ? { kind: "navigate", target: { folder, session } }
+    : { kind: "ignore" };
 }
 
 /** Percent-encoding is `marked`'s doing, not the model's: a path with a space

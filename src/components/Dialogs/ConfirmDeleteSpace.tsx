@@ -76,20 +76,14 @@ export default function ConfirmDeleteSpace(props: {
 
   // At-risk first, then whatever order the preview arrived in (the backend
   // sorts by name). A stable sort, so the tail keeps that order.
-  const rows = createMemo(() =>
-    [...props.entries].sort((a, b) => Number(b.unpushed) - Number(a.unpushed)),
-  );
+  const rows = createMemo(() => [...props.entries].sort((a, b) => Number(b.unpushed) - Number(a.unpushed)));
   const unpushedCount = () => props.entries.filter((e) => e.unpushed).length;
 
   // A plain folder has no git to be behind on, so the third panel reports the
   // absence rather than a zero that reads as "checked, and clean".
   const hasGit = () => props.kind !== "folder";
   const rootNoun = () =>
-    props.kind === "space"
-      ? "space folder"
-      : props.kind === "project"
-        ? "repository root"
-        : "plain folder";
+    props.kind === "space" ? "space folder" : props.kind === "project" ? "repository root" : "plain folder";
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
@@ -121,8 +115,8 @@ export default function ConfirmDeleteSpace(props: {
     >
       <div class={styles.spaceForm}>
         <div class={styles.consequence}>
-          This deletes the folder <span class={styles.consequencePath}>{props.path}</span> and
-          everything below it from disk. It cannot be undone.
+          This deletes the folder <span class={styles.consequencePath}>{props.path}</span> and everything below it from
+          disk. It cannot be undone.
         </div>
 
         <div class={styles.statRow}>
@@ -132,9 +126,7 @@ export default function ConfirmDeleteSpace(props: {
           </div>
           <div class={styles.stat}>
             <div class={styles.statLabel}>On disk</div>
-            <div class={styles.statValue}>
-              {props.sizeBytes === null ? "…" : formatBytes(props.sizeBytes)}
-            </div>
+            <div class={styles.statValue}>{props.sizeBytes === null ? "…" : formatBytes(props.sizeBytes)}</div>
           </div>
           <Show
             when={hasGit()}
@@ -168,10 +160,7 @@ export default function ConfirmDeleteSpace(props: {
               <span class={styles.contentsCount}>{props.entries.length} items</span>
             </div>
             <div class={styles.contents}>
-              <Show
-                when={rows().length}
-                fallback={<div class={styles.contentsEmpty}>Nothing inside it</div>}
-              >
+              <Show when={rows().length} fallback={<div class={styles.contentsEmpty}>Nothing inside it</div>}>
                 <For each={rows()}>
                   {(e) => (
                     <div class={styles.contentsRow}>

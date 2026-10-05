@@ -24,11 +24,13 @@ const edit = (sl: number, sc: number, el: number, ec: number, newText: string): 
 /** The two import lines, swapped: what organize-imports actually answers with. */
 const SORTED: LspTextEdit[] = [edit(0, 0, 1, 23, "import { a } from './a'\nimport { b } from './b'")];
 
-function agent(over: {
-  organize?: () => Promise<LspTextEdit[] | null>;
-  current?: () => { text: string; id: unknown } | null;
-  delay?: (ms: number) => Promise<void>;
-} = {}) {
+function agent(
+  over: {
+    organize?: () => Promise<LspTextEdit[] | null>;
+    current?: () => { text: string; id: unknown } | null;
+    delay?: (ms: number) => Promise<void>;
+  } = {},
+) {
   const before = { text: DOC, id: id(1) };
   return {
     before,

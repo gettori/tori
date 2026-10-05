@@ -69,7 +69,10 @@ pub fn output_with_timeout(cmd: &mut std::process::Command) -> Option<std::proce
     match rx.recv_timeout(PROBE_TIMEOUT) {
         Ok(result) => result.ok(),
         Err(_) => {
-            let _ = std::process::Command::new("kill").arg("-9").arg(pid.to_string()).status();
+            let _ = std::process::Command::new("kill")
+                .arg("-9")
+                .arg(pid.to_string())
+                .status();
             None
         }
     }
@@ -87,10 +90,10 @@ fn extract_sentinel(stdout: &str) -> Option<String> {
 }
 
 fn capture_login_path() -> Option<String> {
-    let out = output_with_timeout(std::process::Command::new(login_shell()).args([
-        "-lic",
-        &format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\""),
-    ]))?;
+    let out = output_with_timeout(
+        std::process::Command::new(login_shell())
+            .args(["-lic", &format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\"")]),
+    )?;
     extract_sentinel(&String::from_utf8_lossy(&out.stdout))
 }
 
@@ -123,8 +126,7 @@ fn probe_binary(program: &str) -> Option<PathBuf> {
     // `launch.program` can never break out into the probe command.
     let quoted = format!("'{}'", program.replace('\'', r"'\''"));
     let out = output_with_timeout(
-        std::process::Command::new(login_shell())
-            .args(["-lic", &format!("command -v -- {quoted}")]),
+        std::process::Command::new(login_shell()).args(["-lic", &format!("command -v -- {quoted}")]),
     )?;
     let line = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string();
     let path = PathBuf::from(line);
@@ -213,8 +215,7 @@ mod tests {
         // The nvm case: the agent CLI lives in a dir the GUI process PATH has
         // never heard of, so only the captured login PATH can resolve it.
         use std::os::unix::fs::PermissionsExt;
-        let nvm_like =
-            std::env::temp_dir().join(format!("tori-nvm-test-{}/bin", std::process::id()));
+        let nvm_like = std::env::temp_dir().join(format!("tori-nvm-test-{}/bin", std::process::id()));
         std::fs::create_dir_all(&nvm_like).unwrap();
         let agent = nvm_like.join("some-agent-cli");
         std::fs::write(&agent, "#!/bin/sh\n").unwrap();
@@ -252,8 +253,7 @@ mod tests {
 
     #[test]
     fn output_with_timeout_returns_a_fast_child_normally() {
-        let out = output_with_timeout(std::process::Command::new("/bin/echo").arg("hi"))
-            .expect("echo succeeds");
+        let out = output_with_timeout(std::process::Command::new("/bin/echo").arg("hi")).expect("echo succeeds");
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
     }
 

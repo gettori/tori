@@ -118,9 +118,7 @@ describe("rainbow brackets", () => {
     for (const depth of [0, 1, 2]) {
       expect(el.querySelectorAll(`.cm-bracket-depth-${depth}`), `depth ${depth}`).toHaveLength(2);
     }
-    const colours = [0, 1, 2].map(
-      (d) => el.querySelector(`.cm-bracket-depth-${d}`)?.getAttribute("style") ?? "",
-    );
+    const colours = [0, 1, 2].map((d) => el.querySelector(`.cm-bracket-depth-${d}`)?.getAttribute("style") ?? "");
     expect(new Set(colours).size).toBe(3);
   });
 
@@ -279,18 +277,12 @@ describe("sticky scroll", () => {
     // The whole of the gate: off means the plugin is never in the
     // configuration, so no container exists, nothing listens for a scroll, and
     // no walk of the syntax tree is ever made.
-    const el = mount(NESTED, [
-      await langForPath("/repo/a.ts"),
-      editorPrefExtensions({ ...BASE, stickyScroll: false }),
-    ]);
+    const el = mount(NESTED, [await langForPath("/repo/a.ts"), editorPrefExtensions({ ...BASE, stickyScroll: false })]);
     expect(el.querySelectorAll(`.${STICKY_CLASS}`)).toHaveLength(0);
   });
 
   it("mounts an overlay when the key is on, empty at the top of a file", async () => {
-    const el = mount(NESTED, [
-      await langForPath("/repo/a.ts"),
-      editorPrefExtensions({ ...BASE, stickyScroll: true }),
-    ]);
+    const el = mount(NESTED, [await langForPath("/repo/a.ts"), editorPrefExtensions({ ...BASE, stickyScroll: true })]);
     const overlay = el.querySelector(`.${STICKY_CLASS}`);
     expect(overlay).toBeTruthy();
     // Nothing has scrolled away yet, and the CSS hides an empty container so
@@ -299,10 +291,7 @@ describe("sticky scroll", () => {
   });
 
   it("pins a row per enclosing scope once they have scrolled away", async () => {
-    const el = mount(NESTED, [
-      await langForPath("/repo/a.ts"),
-      editorPrefExtensions({ ...BASE, stickyScroll: true }),
-    ]);
+    const el = mount(NESTED, [await langForPath("/repo/a.ts"), editorPrefExtensions({ ...BASE, stickyScroll: true })]);
     scrollTo(view!.state.doc.line(4).from);
     const rows = [...el.querySelectorAll(`.${STICKY_ROW_CLASS}`)];
     expect(rows.map((r) => r.textContent)).toEqual([

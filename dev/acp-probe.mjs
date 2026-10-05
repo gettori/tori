@@ -254,9 +254,7 @@ async function measureReload(call, session, cwd, frames) {
 function allowOption(params) {
   const options = params?.options ?? [];
   const pick =
-    options.find((o) => o.kind === "allow_once") ??
-    options.find((o) => o.kind === "allow_always") ??
-    options[0];
+    options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always") ?? options[0];
   return pick?.optionId ?? pick?.id ?? null;
 }
 
@@ -433,8 +431,10 @@ function reloadReport(rl) {
     lines.push("    -> Tori must keep its own log; re-asking is not available.");
     return lines;
   }
-  lines.push(`    a second session/load resolved, and replayed ${rl.updatesAfterLoad} updates` +
-    ` [${rl.kindsAfterLoad.join(", ") || "none"}]`);
+  lines.push(
+    `    a second session/load resolved, and replayed ${rl.updatesAfterLoad} updates` +
+      ` [${rl.kindsAfterLoad.join(", ") || "none"}]`,
+  );
   lines.push(
     rl.updatesAfterLoad > 0
       ? "    -> the conversation comes back: the transport can re-ask on a rewire."
@@ -564,7 +564,10 @@ function cliModelCount(spec) {
   const [program, ...rest] = spec.models_cli;
   const r = spawnSync(program, rest, { encoding: "utf8", timeout: 30_000 });
   if (r.status !== 0) return null;
-  const lines = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = r.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   return { count: lines.length, sample: lines.slice(0, 3) };
 }
 
@@ -612,17 +615,13 @@ function report(r, cli) {
   const caps = r.agentCapabilities ?? {};
   const sc = caps.sessionCapabilities ?? {};
   lines.push(`  loadSession: ${caps.loadSession ?? false}`);
-  lines.push(
-    `  sessionCapabilities: ${Object.keys(sc).length ? Object.keys(sc).sort().join(", ") : "(none)"}`,
-  );
+  lines.push(`  sessionCapabilities: ${Object.keys(sc).length ? Object.keys(sc).sort().join(", ") : "(none)"}`);
   if (caps.promptCapabilities) {
     lines.push(`  promptCapabilities: ${JSON.stringify(caps.promptCapabilities)}`);
   }
   lines.push(
     `  authMethods: ${
-      r.authMethods.length
-        ? r.authMethods.map((m) => `${m.id} (${m.description ?? m.name})`).join("; ")
-        : "(none)"
+      r.authMethods.length ? r.authMethods.map((m) => `${m.id} (${m.description ?? m.name})`).join("; ") : "(none)"
     }`,
   );
   lines.push(`  configOptions: ${r.configOptions.length}`);

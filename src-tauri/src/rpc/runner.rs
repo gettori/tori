@@ -67,12 +67,25 @@ pub struct Status {
 
 impl Status {
     fn off() -> Self {
-        Self { state: RunnerState::Off, session: None, agent: None, cwd: None, error: None }
+        Self {
+            state: RunnerState::Off,
+            session: None,
+            agent: None,
+            cwd: None,
+            error: None,
+        }
     }
 
     // Keeps the session that failed, so its transcript can still be read.
     fn failed(self, title: &str, detail: String) -> Self {
-        Self { state: RunnerState::Error, error: Some(RunnerError { title: title.into(), detail }), ..self }
+        Self {
+            state: RunnerState::Error,
+            error: Some(RunnerError {
+                title: title.into(),
+                detail,
+            }),
+            ..self
+        }
     }
 }
 
@@ -97,7 +110,10 @@ fn after_end(reason: EndReason, deaths_before: u32) -> AfterEnd {
 /// yet. `spawner` is already resolved, so a retired autopilot id reads as the
 /// current one. A worker whose item closed is released.
 pub fn locks(pilot: &Status, item: Option<ItemState>, spawner: Option<&str>) -> bool {
-    if !matches!(pilot.state, RunnerState::Starting | RunnerState::Idle | RunnerState::Working) {
+    if !matches!(
+        pilot.state,
+        RunnerState::Starting | RunnerState::Idle | RunnerState::Working
+    ) {
         return false;
     }
     match item {
@@ -124,11 +140,16 @@ struct RunnerFile {
 
 impl RunnerFile {
     fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
     }
 
     fn resumable(&self, agent: &str) -> Option<String> {
-        self.current.clone().filter(|_| !self.died && self.agent.as_deref() == Some(agent))
+        self.current
+            .clone()
+            .filter(|_| !self.died && self.agent.as_deref() == Some(agent))
     }
 
     // The id the new session replaces, if there was one.
@@ -169,7 +190,9 @@ struct Gauge {
 impl Gauge {
     fn see(&mut self, event: &ChatEvent) {
         match event {
-            ChatEvent::SessionStarted { model, slash_commands, .. } => {
+            ChatEvent::SessionStarted {
+                model, slash_commands, ..
+            } => {
                 self.model = Some(model.clone());
                 self.learn(slash_commands);
             }
@@ -214,7 +237,10 @@ fn reported_window(extra: &Extra, model: Option<&str>) -> Option<u64> {
     let usage = extra.get("modelUsage")?.as_object()?;
     let window = |v: &Value| v["contextWindow"].as_u64().filter(|w| *w > 0);
     let named = model.and_then(|m| {
-        usage.iter().find(|(id, v)| id.as_str() == m || v["canonicalModel"].as_str() == Some(m)).and_then(|(_, v)| window(v))
+        usage
+            .iter()
+            .find(|(id, v)| id.as_str() == m || v["canonicalModel"].as_str() == Some(m))
+            .and_then(|(_, v)| window(v))
     });
     named.or_else(|| usage.values().filter_map(window).max())
 }
@@ -236,8 +262,27 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn new(app: AppHandle, hub: Arc<Hub>, states: Arc<SessionStates>, asks: Arc<Asks>, bridge: Arc<Bridge>, dir: PathBuf) -> Self {
-        Self { app, hub, states, asks, bridge, dir, inner: Mutex::new(Inner { status: Status::off(), deaths: 0 }), gauge: Arc::default() }
+    pub fn new(
+        app: AppHandle,
+        hub: Arc<Hub>,
+        states: Arc<SessionStates>,
+        asks: Arc<Asks>,
+        bridge: Arc<Bridge>,
+        dir: PathBuf,
+    ) -> Self {
+        Self {
+            app,
+            hub,
+            states,
+            asks,
+            bridge,
+            dir,
+            inner: Mutex::new(Inner {
+                status: Status::off(),
+                deaths: 0,
+            }),
+            gauge: Arc::default(),
+        }
     }
 
     fn inner(&self) -> MutexGuard<'_, Inner> {
@@ -262,7 +307,10 @@ impl Runner {
 
     fn set(&self, status: Status) {
         self.inner().status = status.clone();
-        self.hub.publish(&Channel::Autopilot, json!({ "kind": "autopilot.status", "runner": status, "ts": now_ms() }));
+        self.hub.publish(
+            &Channel::Autopilot,
+            json!({ "kind": "autopilot.status", "runner": status, "ts": now_ms() }),
+        );
         let _ = self.app.emit("autopilot://status", &status);
         super::nudge_watcher();
     }
@@ -273,7 +321,10 @@ impl Runner {
         let running = {
             let mut inner = self.inner();
             inner.deaths = 0;
-            matches!(inner.status.state, RunnerState::Starting | RunnerState::Idle | RunnerState::Working)
+            matches!(
+                inner.status.state,
+                RunnerState::Starting | RunnerState::Idle | RunnerState::Working
+            )
         };
         if !running {
             self.launch();
@@ -348,7 +399,11 @@ impl Runner {
             return false;
         };
         self.gauge().rebriefed = true;
-        self.deliver_off_thread(id, super::events::from_tori("compacted", None, &format!("{COMPACTED}\n\n{brief}")), |_| {});
+        self.deliver_off_thread(
+            id,
+            super::events::from_tori("compacted", None, &format!("{COMPACTED}\n\n{brief}")),
+            |_| {},
+        );
         true
     }
 
@@ -357,7 +412,13 @@ impl Runner {
         let id = id.to_string();
         std::thread::spawn(move || {
             let text = vec![ContentBlock::Text { text }];
-            if runner.app.state::<ChatState>().0.deliver(&id, text, false, TurnBy::Local).is_err() {
+            if runner
+                .app
+                .state::<ChatState>()
+                .0
+                .deliver(&id, text, false, TurnBy::Local)
+                .is_err()
+            {
                 on_error(&mut runner.gauge());
                 if runner.is_current(&id) {
                     runner.set_turn(&id, RunnerState::Idle);
@@ -368,7 +429,12 @@ impl Runner {
 
     fn set_turn(&self, id: &str, state: RunnerState) {
         let status = self.status();
-        self.set(Status { state, session: Some(id.to_string()), error: None, ..status });
+        self.set(Status {
+            state,
+            session: Some(id.to_string()),
+            error: None,
+            ..status
+        });
     }
 
     fn ended(self: &Arc<Self>, id: &str, reason: EndReason) {
@@ -407,7 +473,13 @@ impl Runner {
         let resume = RunnerFile::load(&self.file_path()).resumable(&agent);
         let id = resume.clone().unwrap_or_else(new_session_id);
         let cwd = Some(self.session_dir().to_string_lossy().into_owned());
-        self.set(Status { state: RunnerState::Starting, session: Some(id.clone()), agent: Some(agent), cwd, error: None });
+        self.set(Status {
+            state: RunnerState::Starting,
+            session: Some(id.clone()),
+            agent: Some(agent),
+            cwd,
+            error: None,
+        });
         let runner = self.clone();
         std::thread::spawn(move || {
             let mut id = id;
@@ -428,7 +500,10 @@ impl Runner {
     // new id first, so the old one's end is not read as the autopilot's.
     fn start_fresh_instead(&self, old: &str) -> String {
         let fresh = new_session_id();
-        self.set(Status { session: Some(fresh.clone()), ..self.status() });
+        self.set(Status {
+            session: Some(fresh.clone()),
+            ..self.status()
+        });
         let _ = self.app.state::<ChatState>().0.close(old, EndReason::Closed);
         fresh
     }
@@ -454,7 +529,11 @@ impl Runner {
         let picks = crate::settings::autopilot();
         let agent_id = picks.agent.clone();
         let adapter = crate::agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
-        let transport = adapter.chat.as_ref().ok_or_else(|| format!("{} has no chat transport", adapter.label))?.transport;
+        let transport = adapter
+            .chat
+            .as_ref()
+            .ok_or_else(|| format!("{} has no chat transport", adapter.label))?
+            .transport;
         let acp = matches!(transport, ChatTransport::Acp);
 
         if !resume {
@@ -511,7 +590,9 @@ impl Runner {
             return host.close(id, EndReason::Closed);
         }
         if acp {
-            started_rx.recv_timeout(STARTED_TIMEOUT).map_err(|_| "the agent never opened its session".to_string())?;
+            started_rx
+                .recv_timeout(STARTED_TIMEOUT)
+                .map_err(|_| "the agent never opened its session".to_string())?;
             if let Some(model) = &picks.model {
                 host.set_model(id, model, picks.effort.clone())?;
             }
@@ -525,7 +606,12 @@ impl Runner {
     }
 
     fn brief(&self) -> Result<String, String> {
-        let from_bundle = self.app.path().resolve(BRIEF, tauri::path::BaseDirectory::Resource).ok().filter(|p| p.exists());
+        let from_bundle = self
+            .app
+            .path()
+            .resolve(BRIEF, tauri::path::BaseDirectory::Resource)
+            .ok()
+            .filter(|p| p.exists());
         let path = from_bundle.unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/")).join(BRIEF));
         std::fs::read_to_string(&path).map_err(|e| format!("could not read the brief at {}: {e}", path.display()))
     }
@@ -546,12 +632,22 @@ fn rebind(states: &SessionStates, asks: &Asks, from: &str, to: &str) -> Vec<supe
 
 // Claude takes `--session-id` only as a UUID.
 fn new_session_id() -> String {
-    let mut hex: Vec<char> = crate::chat::approval::random_token().chars().filter(char::is_ascii_hexdigit).collect();
+    let mut hex: Vec<char> = crate::chat::approval::random_token()
+        .chars()
+        .filter(char::is_ascii_hexdigit)
+        .collect();
     hex.resize(32, '0');
     hex[12] = '4';
     hex[16] = ['8', '9', 'a', 'b'][hex[16].to_digit(16).unwrap_or(0) as usize % 4];
     let s: String = hex.into_iter().collect();
-    format!("{}-{}-{}-{}-{}", &s[0..8], &s[8..12], &s[12..16], &s[16..20], &s[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &s[0..8],
+        &s[8..12],
+        &s[12..16],
+        &s[16..20],
+        &s[20..32]
+    )
 }
 
 #[cfg(test)]
@@ -567,13 +663,21 @@ mod tests {
     #[test]
     fn a_close_or_a_kill_never_restarts() {
         for deaths in [0, 1] {
-            assert_eq!(after_end(EndReason::Closed, deaths), AfterEnd::Off, "a stop or app exit");
+            assert_eq!(
+                after_end(EndReason::Closed, deaths),
+                AfterEnd::Off,
+                "a stop or app exit"
+            );
             assert_eq!(after_end(EndReason::Killed, deaths), AfterEnd::Off);
         }
     }
 
     fn pilot(state: RunnerState) -> Status {
-        Status { state, session: Some("pilot".into()), ..Status::off() }
+        Status {
+            state,
+            session: Some("pilot".into()),
+            ..Status::off()
+        }
     }
 
     #[test]
@@ -624,19 +728,40 @@ mod tests {
             method: crate::forge::MergeMethod::Squash,
             head_sha: "abc".into(),
         };
-        super::super::approvals::Approval { project: "/p".into(), draft }
+        super::super::approvals::Approval {
+            project: "/p".into(),
+            draft,
+        }
     }
 
     // S1 spawned W and held an item; W asked for an approval mirrored to S1.
     // S1 died, and its successor S2 takes over what S1 held.
-    fn restart(dir: &Path, from: &str, to: &str) -> (SessionStates, Asks, super::super::asks::Ask, super::super::asks::Ask) {
+    fn restart(
+        dir: &Path,
+        from: &str,
+        to: &str,
+    ) -> (SessionStates, Asks, super::super::asks::Ask, super::super::asks::Ask) {
         let states = SessionStates::default();
         let asks = Asks::with_holds(dir.join("holds.json"), Box::new(|_| {}));
         states.mark_background(from);
         states.mark_background("w");
         states.mark_worker("w", from);
-        let held = asks.create(from.into(), "merge?".into(), vec![], Some(approval()), None, Some("item-1".into()));
-        let workers = asks.create("w".into(), "merge?".into(), vec![], Some(approval()), states.root_background("w"), None);
+        let held = asks.create(
+            from.into(),
+            "merge?".into(),
+            vec![],
+            Some(approval()),
+            None,
+            Some("item-1".into()),
+        );
+        let workers = asks.create(
+            "w".into(),
+            "merge?".into(),
+            vec![],
+            Some(approval()),
+            states.root_background("w"),
+            None,
+        );
         asks.forget_session(from);
         states.forget_worker(from);
         states.mark_background(to);
@@ -644,15 +769,39 @@ mod tests {
         (states, asks, held, workers)
     }
 
-    fn assert_moved(states: &SessionStates, asks: &Asks, held: &super::super::asks::Ask, workers: &super::super::asks::Ask, to: &str) {
-        assert_eq!(states.root_background("w").as_deref(), Some(to), "the worker's spawner is the new autopilot");
+    fn assert_moved(
+        states: &SessionStates,
+        asks: &Asks,
+        held: &super::super::asks::Ask,
+        workers: &super::super::asks::Ask,
+        to: &str,
+    ) {
+        assert_eq!(
+            states.root_background("w").as_deref(),
+            Some(to),
+            "the worker's spawner is the new autopilot"
+        );
         let mirrored = asks.pending().into_iter().find(|a| a.id == workers.id).unwrap();
-        assert!(mirrored.shown_in.iter().any(|s| s == to), "the worker's card shows in the new autopilot's chat");
-        asks.answer(&held.id, super::super::approvals::APPROVE.into(), super::super::asks::By::User).unwrap();
-        let super::super::asks::Waited::Answered { approval_id: Some(id), .. } = asks.wait(&held.id, Duration::ZERO) else {
+        assert!(
+            mirrored.shown_in.iter().any(|s| s == to),
+            "the worker's card shows in the new autopilot's chat"
+        );
+        asks.answer(
+            &held.id,
+            super::super::approvals::APPROVE.into(),
+            super::super::asks::By::User,
+        )
+        .unwrap();
+        let super::super::asks::Waited::Answered {
+            approval_id: Some(id), ..
+        } = asks.wait(&held.id, Duration::ZERO)
+        else {
             panic!("no approval id")
         };
-        assert!(asks.approvals.reserve(Some(&id), to, &approval()).is_ok(), "the new autopilot can spend the approval");
+        assert!(
+            asks.approvals.reserve(Some(&id), to, &approval()).is_ok(),
+            "the new autopilot can spend the approval"
+        );
     }
 
     #[test]

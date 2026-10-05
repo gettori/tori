@@ -1,18 +1,6 @@
-import {
-  createSignal,
-  createMemo,
-  createEffect,
-  on,
-  onCleanup,
-  onMount,
-  For,
-  Show,
-} from "solid-js";
+import { createSignal, createMemo, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import Combobox, {
-  type ComboboxGroup,
-  type ComboboxOption,
-} from "../Combobox/Combobox";
+import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import { fuzzyScore } from "../../utils/fuzzy";
 import { traceWork } from "../../utils/perfTrace";
@@ -43,12 +31,7 @@ import { loadTaskRuns } from "../../utils/taskRecents";
 import { runTask } from "../../utils/runTask";
 import { MODES, parseLine, parseQuery, specOf } from "../../utils/omniboxModes";
 import { debounce } from "../../utils/debounce";
-import {
-  flattenSymbols,
-  searchWorkspaceSymbols,
-  symbolsFor,
-  type SymbolNode,
-} from "../../utils/symbols";
+import { flattenSymbols, searchWorkspaceSymbols, symbolsFor, type SymbolNode } from "../../utils/symbols";
 import { mentionPath } from "../../utils/pathScope";
 import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
@@ -123,9 +106,7 @@ function unmetReason(req: Requirement): string | null {
     case "ahead":
       return canPush(editorState().projectRoot) ? null : "Nothing to push";
     case "sourceActions":
-      return offersAnySourceAction()
-        ? null
-        : "This language server has no whole-file actions";
+      return offersAnySourceAction() ? null : "This language server has no whole-file actions";
     case "implementationProvider":
     case "typeDefinitionProvider":
       return activeServerProvides(req) ? null : "This language server cannot answer that";
@@ -145,9 +126,7 @@ const HIDES_WHEN_UNMET = new Set<Requirement>(["sourceActions", "implementationP
 
 /** Whether a command should not be listed at all right now. */
 function suppressed(c: Command): boolean {
-  return (c.requires ?? []).some(
-    (req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req) !== null,
-  );
+  return (c.requires ?? []).some((req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req) !== null);
 }
 
 /** The first unmet requirement's reason, in the order the command listed them. */
@@ -205,8 +184,7 @@ export default function Omnibox(props: {
     return at ? [at] : [];
   };
 
-  const topicId = () =>
-    props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null;
+  const topicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
   const members = createTopicMembers(topicId);
   // One map rather than a `memberFor` per row: the untyped list draws hundreds,
   // and a member's key is the very root the rows already carry.
@@ -349,9 +327,7 @@ export default function Omnibox(props: {
       id: `sym:${node.path}:${node.selectLine}:${node.name}`,
       label: node.name,
       symbolKind: node.kind,
-      meta:
-        node.container ??
-        (showFile ? basename(node.path) : (node.detail ?? "")),
+      meta: node.container ?? (showFile ? basename(node.path) : (node.detail ?? "")),
       // The name, not the body: a class's opening brace is technically the
       // symbol and practically the wrong line to land on.
       run: () => openAt(node.path, node.selectLine, node.selectColumn),
@@ -523,16 +499,13 @@ export default function Omnibox(props: {
   // Flattened once per published tree rather than once per keystroke: the tree
   // can hold `MAX_SYMBOLS` nodes, and the query changes far more often than the
   // file does.
-  const docSymbols = createMemo(() =>
-    flattenSymbols(symbolsFor(editorState().activePath)),
-  );
+  const docSymbols = createMemo(() => flattenSymbols(symbolsFor(editorState().activePath)));
 
   const docRows = createMemo((): Row[] => {
     const all = docSymbols();
     const q = term();
     // No query: document order, which is the order the file reads in.
-    if (!q)
-      return all.slice(0, MAX_RESULTS).map((node) => symbolRow(node, false));
+    if (!q) return all.slice(0, MAX_RESULTS).map((node) => symbolRow(node, false));
     const scored: { node: SymbolNode; score: number }[] = [];
     for (const node of all) {
       const s = fuzzyScore(q, node.name);
@@ -615,13 +588,9 @@ export default function Omnibox(props: {
       case "command":
         return "No matches";
       case "doc":
-        return docSymbols().length
-          ? "No matching symbols"
-          : "No symbols in the open file";
+        return docSymbols().length ? "No matching symbols" : "No symbols in the open file";
       case "workspace":
-        return term()
-          ? "No matching symbols"
-          : "Type to search project symbols";
+        return term() ? "No matching symbols" : "Type to search project symbols";
       case "line":
         return editorState().activePath ? "Type a line number" : "No file open";
       case "help":
@@ -692,9 +661,7 @@ export default function Omnibox(props: {
         <Show when={item.keys}>
           {(keys) => (
             <span class={styles.itemKeys}>
-              <For each={keys()}>
-                {(key) => <kbd class={styles.key}>{key}</kbd>}
-              </For>
+              <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
             </span>
           )}
         </Show>

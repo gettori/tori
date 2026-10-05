@@ -27,14 +27,7 @@ export type PrState = "open" | "closed" | "merged";
 /// adds later. It means *ask again*, never a green light: Tori cannot see branch
 /// protection or required checks it does not model, so a locally-derived verdict
 /// would render an enabled button the server then refuses.
-export type MergeableState =
-  | "clean"
-  | "blocked"
-  | "behind"
-  | "dirty"
-  | "unstable"
-  | "draft"
-  | "unknown";
+export type MergeableState = "clean" | "blocked" | "behind" | "dirty" | "unstable" | "draft" | "unknown";
 
 export type PullRequest = {
   number: number;
@@ -204,14 +197,7 @@ export type ReviewThread = {
 /// `changed` is GitHub's own word for a file it could not classify further. It
 /// is kept rather than folded into `modified` so a status the server invents
 /// later does not arrive wearing a word it did not choose.
-export type FileStatus =
-  | "added"
-  | "modified"
-  | "removed"
-  | "renamed"
-  | "copied"
-  | "changed"
-  | "unchanged";
+export type FileStatus = "added" | "modified" | "removed" | "renamed" | "copied" | "changed" | "unchanged";
 
 /// One file of a pull request's diff, with the forge's **own** patch.
 ///
@@ -477,16 +463,7 @@ export const FORGE_KEYS = {
   prCounts: ["additions", "changedFiles", "commits", "deletions", "reviews"],
   prReviewCounts: ["approved", "changesRequested"],
   unitStatus: ["checks", "headRef", "pullRequest", "reviewDecision"],
-  reviewThread: [
-    "comments",
-    "diffHunk",
-    "id",
-    "isOutdated",
-    "isResolved",
-    "line",
-    "path",
-    "startLine",
-  ],
+  reviewThread: ["comments", "diffHunk", "id", "isOutdated", "isResolved", "line", "path", "startLine"],
   reviewComment: ["author", "body", "createdAt", "id"],
   prFile: ["additions", "deletions", "patch", "path", "previousPath", "status"],
   draftComment: ["body", "line", "path", "side", "startLine", "startSide"],
@@ -537,12 +514,7 @@ export const MERGEABLE_STATES: readonly MergeableState[] = [
   "draft",
   "unknown",
 ];
-export const REVIEW_DECISIONS: readonly ReviewDecision[] = [
-  "approved",
-  "changesRequested",
-  "reviewRequired",
-  "none",
-];
+export const REVIEW_DECISIONS: readonly ReviewDecision[] = ["approved", "changesRequested", "reviewRequired", "none"];
 export const AUTH_STATE_KINDS: readonly AuthState["kind"][] = ["signedOut", "signedIn", "suspect"];
 export const DIFF_SIDES: readonly DiffSide[] = ["LEFT", "RIGHT"];
 export const REVIEW_EVENTS: readonly ReviewEvent[] = ["approve", "comment", "requestChanges"];

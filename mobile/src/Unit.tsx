@@ -12,7 +12,17 @@ import type { Crew } from "./Autopilot";
 import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
 import { DOT, Offline, PhaseMark } from "./Root";
 import { GitCounts, PushTop, watchGit, watchSync } from "./Screens";
-import { PHASE_LABEL, agentHolds, atUnit, newest, phaseOf, sessionLabel, type SessionRow, type Topic, type Unit } from "./tree";
+import {
+  PHASE_LABEL,
+  agentHolds,
+  atUnit,
+  newest,
+  phaseOf,
+  sessionLabel,
+  type SessionRow,
+  type Topic,
+  type Unit,
+} from "./tree";
 import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
@@ -42,7 +52,10 @@ function NowCard(props: { row: SessionRow; where?: string; crewed: boolean; spin
           <span class={styles.stateLabel} data-phase={phase()}>
             {PHASE_LABEL[phase()]}
           </span>
-          <span class={styles.time}>{props.where ? `${props.where} ${DOT} ` : ""}{ago(props.row.last_active)}</span>
+          <span class={styles.time}>
+            {props.where ? `${props.where} ${DOT} ` : ""}
+            {ago(props.row.last_active)}
+          </span>
           <Show when={props.crewed}>
             <span class={styles.apChip} data-spin={props.spinning}>
               <WheelGlyph size={12} />
@@ -63,15 +76,24 @@ function HistoryItem(props: { row: SessionRow; where?: string; onOpen: () => voi
           <AgentMark agent={props.row.agent} size={14} />
         </span>
         <span class={styles.historyTitle}>{sessionLabel(props.row)}</span>
-        <span class={styles.time}>{props.where ? `${props.where} ${DOT} ` : ""}{ago(props.row.last_active)}</span>
+        <span class={styles.time}>
+          {props.where ? `${props.where} ${DOT} ` : ""}
+          {ago(props.row.last_active)}
+        </span>
       </button>
     </li>
   );
 }
 
 /** The live sessions in `units` and the ended ones the Mac lists for their folders. */
-export function unitSessions(client: RemoteClient, units: () => Unit[], live: () => SessionRow[], topic?: Pick<Topic, "id" | "home">) {
-  const owned = (row: SessionRow) => units().some((unit) => atUnit(row, unit)) || (!!topic && row.home?.topic === topic.id);
+export function unitSessions(
+  client: RemoteClient,
+  units: () => Unit[],
+  live: () => SessionRow[],
+  topic?: Pick<Topic, "id" | "home">,
+) {
+  const owned = (row: SessionRow) =>
+    units().some((unit) => atUnit(row, unit)) || (!!topic && row.home?.topic === topic.id);
   const folders = () => [...units().map((unit) => unit.folder), ...(topic?.home ? [topic.home] : [])];
   const here = () => live().filter(owned);
   const [earlier, { refetch }] = createResource<SessionRow[], number>(
@@ -79,7 +101,12 @@ export function unitSessions(client: RemoteClient, units: () => Unit[], live: ()
     (_, info) =>
       Promise.all(folders().map((cwd) => client.request<SessionRow[]>("sessions.list", { cwd, limit: EARLIER_LIMIT })))
         .then((lists) => {
-          const rows = new Map(lists.flat().filter((row) => !row.live && owned(row)).map((row) => [row.id, row]));
+          const rows = new Map(
+            lists
+              .flat()
+              .filter((row) => !row.live && owned(row))
+              .map((row) => [row.id, row]),
+          );
           return [...rows.values()].sort((a, b) => b.last_active - a.last_active);
         })
         .catch(() => info.value ?? []),
@@ -131,7 +158,9 @@ export function SessionList(props: {
           <>
             <h2 class={styles.label}>{bucket.label}</h2>
             <ul class={styles.group}>
-              <For each={bucket.sessions}>{(row) => <HistoryItem row={row} where={props.where?.(row)} onOpen={() => props.onOpen(row)} />}</For>
+              <For each={bucket.sessions}>
+                {(row) => <HistoryItem row={row} where={props.where?.(row)} onOpen={() => props.onOpen(row)} />}
+              </For>
             </ul>
           </>
         )}
@@ -167,7 +196,8 @@ export default function UnitScreen(props: {
     setError(null);
     try {
       const started = await spawn(remembered).catch((e: unknown) => {
-        if (e instanceof RpcError && e.code === REFUSED_CODE && remembered !== FALLBACK_AGENT) return spawn(FALLBACK_AGENT);
+        if (e instanceof RpcError && e.code === REFUSED_CODE && remembered !== FALLBACK_AGENT)
+          return spawn(FALLBACK_AGENT);
         throw e;
       });
       props.onOpen({
@@ -214,7 +244,13 @@ export default function UnitScreen(props: {
           />
           <SyncMarks marks={agentHolds(here()) ? [] : syncMarks(sync(props.unit))} />
         </div>
-        <SessionList here={here()} earlier={earlier()} crew={props.crew} autopilotOn={props.autopilotOn} onOpen={props.onOpen} />
+        <SessionList
+          here={here()}
+          earlier={earlier()}
+          crew={props.crew}
+          autopilotOn={props.autopilotOn}
+          onOpen={props.onOpen}
+        />
       </div>
     </div>
   );

@@ -45,11 +45,7 @@ import {
 } from "../../../../utils/usageSettings";
 import { pollUsage, usageReason } from "../../../../utils/usageProbe";
 import { temporalOf, windowsFor, type WindowReading } from "../../../../utils/usageStore";
-import {
-  catalogFor,
-  ensureModelCatalogsLoaded,
-  forgetModelCatalogs,
-} from "../../../../utils/modelCatalog";
+import { catalogFor, ensureModelCatalogsLoaded, forgetModelCatalogs } from "../../../../utils/modelCatalog";
 import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import dialogStyles from "../../../../components/Dialogs/Dialogs.module.css";
@@ -182,8 +178,7 @@ function WindowCard(props: {
   dim: boolean;
   note: string | null;
 }) {
-  const state = (): QuotaState | null =>
-    props.reading ? quotaState(props.reading, props.warnAt, props.now) : null;
+  const state = (): QuotaState | null => (props.reading ? quotaState(props.reading, props.warnAt, props.now) : null);
   const band = () => (props.reading ? quotaBand(props.reading, state()!) : "none");
   const pct = () => {
     const u = props.reading?.utilization;
@@ -399,10 +394,7 @@ function AccountCard(props: {
   const catalogue = () => catalogFor(props.agentId, tab())?.catalogue ?? null;
   const models = () => catalogue()?.models.length ?? 0;
   const fact = () =>
-    [
-      catalogue()?.account?.subscriptionType.trim(),
-      models() ? `${models()} model${models() === 1 ? "" : "s"}` : "",
-    ]
+    [catalogue()?.account?.subscriptionType.trim(), models() ? `${models()} model${models() === 1 ? "" : "s"}` : ""]
       .filter(Boolean)
       .join(", ");
 
@@ -423,14 +415,7 @@ function AccountCard(props: {
     });
 
   const signIn = () => {
-    const job = loginJob(
-      props.agentId,
-      props.agentLabel,
-      p().id,
-      p().label,
-      p().login,
-      props.cwd,
-    );
+    const job = loginJob(props.agentId, props.agentLabel, p().id, p().label, p().login, props.cwd);
     if (!job) {
       toast(loginNote(props.agentLabel, p().login) ?? "", "info");
       return;
@@ -644,9 +629,8 @@ function AccountCard(props: {
           <Show when={p().isDefault ? props.view.inheritedHome : null}>
             {(inherited) => (
               <div class={styles.hint}>
-                Runs in <code>{inherited()}</code>: the home variable was already set when Tori
-                started, so this is that account and not the variable left unset. Start Tori from
-                a shell without it to get your own login back.
+                Runs in <code>{inherited()}</code>: the home variable was already set when Tori started, so this is that
+                account and not the variable left unset. Start Tori from a shell without it to get your own login back.
               </div>
             )}
           </Show>
@@ -656,8 +640,8 @@ function AccountCard(props: {
           <Show when={p().apiKeySource}>
             {(source) => (
               <div class={styles.hint}>
-                <code>{source()}</code> is set, so this account bills against that API key rather
-                than its subscription. Unset it to go back to the subscription.
+                <code>{source()}</code> is set, so this account bills against that API key rather than its subscription.
+                Unset it to go back to the subscription.
               </div>
             )}
           </Show>
@@ -666,8 +650,7 @@ function AccountCard(props: {
           <Show when={p().duplicateOf}>
             {(first) => (
               <div class={styles.hint}>
-                Signed in to the same account as {first()}, so the two are indistinguishable except
-                by name.
+                Signed in to the same account as {first()}, so the two are indistinguishable except by name.
               </div>
             )}
           </Show>
@@ -708,9 +691,7 @@ function AccountCard(props: {
 
             {/* Beside the windows, never instead of them: a read that failed has
                 to say so while whatever a cheaper rung filled stays on screen. */}
-            <Show when={usageReason(props.agentId, tab())}>
-              {(why) => <div class={styles.hint}>{why()}</div>}
-            </Show>
+            <Show when={usageReason(props.agentId, tab())}>{(why) => <div class={styles.hint}>{why()}</div>}</Show>
 
             <div class={styles.acctRow}>
               <span class={styles.label}>Titlebar preview</span>
@@ -753,8 +734,8 @@ function AccountCard(props: {
                         : `Removing ${p().label} forgets it here. Its folder and the login in it stay.`
                     }
                   >
-                    Signing out drops {p().label}'s token and its group leaves the titlebar. Chats
-                    already running on it keep going.
+                    Signing out drops {p().label}'s token and its group leaves the titlebar. Chats already running on it
+                    keep going.
                   </Show>
                 </div>
               </div>
@@ -817,9 +798,7 @@ export default function AgentAccounts(props: {
     setAccountReq(null);
     req?.resolve(v);
   };
-  const [confirmReq, setConfirmReq] = createSignal<
-    (ConfirmAsk & { resolve: (v: ConfirmAnswer) => void }) | null
-  >(null);
+  const [confirmReq, setConfirmReq] = createSignal<(ConfirmAsk & { resolve: (v: ConfirmAnswer) => void }) | null>(null);
   const [alsoRemove, setAlsoRemove] = createSignal(false);
   const askConfirm = (ask: ConfirmAsk) =>
     new Promise<ConfirmAnswer>((resolve) => {
@@ -999,9 +978,7 @@ export default function AgentAccounts(props: {
                 danger={req().danger || alsoRemove()}
                 extra={
                   <>
-                    <Show when={req().home}>
-                      {(path) => <div class={dialogStyles.path}>{path()}</div>}
-                    </Show>
+                    <Show when={req().home}>{(path) => <div class={dialogStyles.path}>{path()}</div>}</Show>
                     <Show when={req().removable}>
                       {(note) => (
                         <>

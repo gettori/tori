@@ -15,7 +15,18 @@ import {
   selectMatches,
   setSearchQuery,
 } from "@codemirror/search";
-import { ArrowDown, ArrowUp, CaseSensitive, ChevronDown, ChevronRight, Regex, Replace, ReplaceAll, WholeWord, X } from "lucide-solid";
+import {
+  ArrowDown,
+  ArrowUp,
+  CaseSensitive,
+  ChevronDown,
+  ChevronRight,
+  Regex,
+  Replace,
+  ReplaceAll,
+  WholeWord,
+  X,
+} from "lucide-solid";
 import { InlineToggle } from "./SearchFields";
 import styles from "./FindWidget.module.css";
 
@@ -193,8 +204,18 @@ function createFindPanel(view: EditorView): Panel {
                 onClick={() => commit({ regexp: !query().regexp })}
               />
             </div>
-            <InlineToggle icon={ArrowUp} label="Previous Match (Shift+Enter)" disabled={none()} onClick={() => findPrevious(view)} />
-            <InlineToggle icon={ArrowDown} label="Next Match (Enter)" disabled={none()} onClick={() => findNext(view)} />
+            <InlineToggle
+              icon={ArrowUp}
+              label="Previous Match (Shift+Enter)"
+              disabled={none()}
+              onClick={() => findPrevious(view)}
+            />
+            <InlineToggle
+              icon={ArrowDown}
+              label="Next Match (Enter)"
+              disabled={none()}
+              onClick={() => findNext(view)}
+            />
             <InlineToggle icon={X} label="Close (Escape)" onClick={() => closeSearchPanel(view)} />
           </div>
           <Show when={replaceOpen() && !readOnly()}>
@@ -209,8 +230,18 @@ function createFindPanel(view: EditorView): Panel {
                   value={query().replace}
                   onInput={(e) => commit({ replace: e.currentTarget.value })}
                 />
-                <InlineToggle icon={Replace} label="Replace (Enter)" disabled={none()} onClick={() => replaceNext(view)} />
-                <InlineToggle icon={ReplaceAll} label="Replace All (Cmd+Enter)" disabled={none()} onClick={() => replaceAll(view)} />
+                <InlineToggle
+                  icon={Replace}
+                  label="Replace (Enter)"
+                  disabled={none()}
+                  onClick={() => replaceNext(view)}
+                />
+                <InlineToggle
+                  icon={ReplaceAll}
+                  label="Replace All (Cmd+Enter)"
+                  disabled={none()}
+                  onClick={() => replaceAll(view)}
+                />
               </div>
             </div>
           </Show>

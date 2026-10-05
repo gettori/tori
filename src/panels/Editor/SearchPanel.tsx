@@ -1,14 +1,4 @@
-import {
-  createSignal,
-  createEffect,
-  createMemo,
-  on,
-  onMount,
-  onCleanup,
-  For,
-  Show,
-  type JSX,
-} from "solid-js";
+import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -69,7 +59,16 @@ import {
   type SearchSection,
   type ToggleKey,
 } from "../../utils/searchOptions";
-import { baseName, dirName, filesUnder, folderPaths, folderTree, groupByFile, type FileGroup, type FolderNode } from "../../utils/pathTree";
+import {
+  baseName,
+  dirName,
+  filesUnder,
+  folderPaths,
+  folderTree,
+  groupByFile,
+  type FileGroup,
+  type FolderNode,
+} from "../../utils/pathTree";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { type MemberRoot, type TintedMember } from "../../utils/topicMembers";
 import {
@@ -253,12 +252,18 @@ export default function SearchPanel(props: {
   const sectionOf = (root: string) => sections().find((s) => s.root === root);
   /** The searched root set as one comparable string, for the effects that must
    *  re-run when the set changes. */
-  const rootsKey = () => searchRoots().map((r) => r.path).join(NUL);
+  const rootsKey = () =>
+    searchRoots()
+      .map((r) => r.path)
+      .join(NUL);
   /** Every member the panel draws, restriction ignored. What the reset effect
    *  keys on: narrowing the search with a chip changes what gets grepped, not
    *  which workspace you are in, and it must not cost the history cursor or a
    *  half-typed name. */
-  const membersKey = () => allRoots().map((r) => r.path).join(NUL);
+  const membersKey = () =>
+    allRoots()
+      .map((r) => r.path)
+      .join(NUL);
 
   /** Each section's matches minus the ones dismissed, which every count, the
    *  replace targets and the editor hand-off read instead of the raw set. */
@@ -548,7 +553,6 @@ export default function SearchPanel(props: {
     void runSearch(query());
   }
 
-
   function setGlob(key: "include" | "exclude", v: string) {
     setOptions((o) => ({ ...o, [key]: v }));
     debouncedGlobs();
@@ -807,7 +811,9 @@ export default function SearchPanel(props: {
         },
       },
       { separator: true },
-      ...(replacing() ? [{ label: "Replace All", disabled: applying(), onClick: () => replacePaths(root, files) }] : []),
+      ...(replacing()
+        ? [{ label: "Replace All", disabled: applying(), onClick: () => replacePaths(root, files) }]
+        : []),
       { label: "Dismiss", onClick: () => dismiss(files.map((p) => fileKey(root, p))) },
       { separator: true },
       ...copyPathItems(root, node.path),
@@ -845,7 +851,9 @@ export default function SearchPanel(props: {
   }
 
   // A match sits under its file's name, past the chevron and the file icon.
-  const indent = (depth: number, extra = 0) => ({ "padding-left": `calc(${depth * 12 + 8}px + ${extra} * var(--control-icon))` });
+  const indent = (depth: number, extra = 0) => ({
+    "padding-left": `calc(${depth * 12 + 8}px + ${extra} * var(--control-icon))`,
+  });
 
   function MatchRow(p: { root: string; m: SearchMatch; depth: number }) {
     const segments = createMemo(() => previewSegments(p.m.text, p.m.submatches));
@@ -958,10 +966,19 @@ export default function SearchPanel(props: {
                   icon={ReplaceAll}
                   label="Replace All"
                   disabled={applying()}
-                  onClick={() => replacePaths(p.root, files().map((f) => f.path))}
+                  onClick={() =>
+                    replacePaths(
+                      p.root,
+                      files().map((f) => f.path),
+                    )
+                  }
                 />
               </Show>
-              <RowAction icon={X} label="Dismiss" onClick={() => dismiss(files().map((f) => fileKey(p.root, f.path)))} />
+              <RowAction
+                icon={X}
+                label="Dismiss"
+                onClick={() => dismiss(files().map((f) => fileKey(p.root, f.path)))}
+              />
             </span>
             <span class={styles.badge}>{count()}</span>
           </span>

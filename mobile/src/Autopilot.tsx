@@ -89,7 +89,14 @@ export function watchRunner(client: RemoteClient) {
     const held = holds().map(askOf);
     const asks = (pending() ?? [])
       .filter((row) => row.kind === "ask" && !held.some((hold) => hold.id === row.id))
-      .map((row) => ({ id: row.id, session: row.session, question: row.text, options: row.options, approval: row.approval, shown_in: [session() ?? ""] }));
+      .map((row) => ({
+        id: row.id,
+        session: row.session,
+        question: row.text,
+        options: row.options,
+        approval: row.approval,
+        shown_in: [session() ?? ""],
+      }));
     return decisionsFor([...held, ...asks], session());
   };
   const crew = createMemo((): Crew => {
@@ -123,7 +130,13 @@ const askOf = (hold: FullHold): SocketAsk => ({
   item: hold.item,
 });
 
-function CallCard(props: { ask: SocketAsk; watch: Watch; live: SessionRow[]; busy: boolean; onAnswer: (answer: string) => void }) {
+function CallCard(props: {
+  ask: SocketAsk;
+  watch: Watch;
+  live: SessionRow[];
+  busy: boolean;
+  onAnswer: (answer: string) => void;
+}) {
   const [text, setText] = createSignal("");
   const asker = (session: string) => {
     const row = props.live.find((r) => r.id === session);
@@ -153,7 +166,11 @@ function CallCard(props: { ask: SocketAsk; watch: Watch; live: SessionRow[]; bus
       <span class={styles.callActions}>
         <For each={props.ask.options}>
           {(option, at) => (
-            <button class={at() === 0 ? styles.callYes : styles.callNo} disabled={props.busy} onClick={() => props.onAnswer(option)}>
+            <button
+              class={at() === 0 ? styles.callYes : styles.callNo}
+              disabled={props.busy}
+              onClick={() => props.onAnswer(option)}
+            >
               {option}
             </button>
           )}
@@ -167,7 +184,12 @@ function CallCard(props: { ask: SocketAsk; watch: Watch; live: SessionRow[]; bus
             if (text().trim()) props.onAnswer(text().trim());
           }}
         >
-          <input class={styles.callInput} placeholder="Or type an answer" value={text()} onInput={(e) => setText(e.currentTarget.value)} />
+          <input
+            class={styles.callInput}
+            placeholder="Or type an answer"
+            value={text()}
+            onInput={(e) => setText(e.currentTarget.value)}
+          />
         </form>
       </Show>
     </div>
@@ -297,7 +319,10 @@ export default function AutopilotScreen(props: {
           fallback={
             <div class={styles.docked}>
               <div class={styles.infoCard}>
-                <span>The autopilot picks up issues, runs workers in your worktrees and asks you before anything leaves the machine.</span>
+                <span>
+                  The autopilot picks up issues, runs workers in your worktrees and asks you before anything leaves the
+                  machine.
+                </span>
               </div>
               <button class={styles.setSail} disabled={busy() === "switch" || !runner()} onClick={flip}>
                 <WheelGlyph size={18} />
@@ -338,7 +363,10 @@ export default function AutopilotScreen(props: {
             </div>
           </Show>
           <h2 class={styles.label}>Crew</h2>
-          <Show when={workers().length > 0} fallback={<p class={styles.empty}>The deck is quiet. Hand the autopilot a ticket or a PR.</p>}>
+          <Show
+            when={workers().length > 0}
+            fallback={<p class={styles.empty}>The deck is quiet. Hand the autopilot a ticket or a PR.</p>}
+          >
             <div class={styles.crew}>
               <For each={workers()}>
                 {(worker, at) => {
@@ -350,7 +378,9 @@ export default function AutopilotScreen(props: {
                       onClick={() => item()?.session && props.onSession(item()!.session!)}
                     >
                       <span class={styles.workerHead}>
-                        <PhaseMark phase={worker.status === "needs" ? "needs" : worker.status === "idle" ? "idle" : "working"} />
+                        <PhaseMark
+                          phase={worker.status === "needs" ? "needs" : worker.status === "idle" ? "idle" : "working"}
+                        />
                         <span class={styles.time}>{worker.ticket.label}</span>
                       </span>
                       <span class={styles.workerName}>{worker.title}</span>
@@ -368,7 +398,9 @@ export default function AutopilotScreen(props: {
                 <div class={styles.logRow}>
                   <span class={styles.logTime}>{entry.time}</span>
                   <span class={styles.logText} data-needs={entry.needsYou === true}>
-                    <Show when={entry.ticket}>{(ticket) => <span class={styles.logTicket}>{ticket().label} </span>}</Show>
+                    <Show when={entry.ticket}>
+                      {(ticket) => <span class={styles.logTicket}>{ticket().label} </span>}
+                    </Show>
                     {entry.text}
                   </span>
                 </div>
@@ -390,7 +422,12 @@ export default function AutopilotScreen(props: {
           value={draft()}
           onInput={(e) => setDraft(e.currentTarget.value)}
         />
-        <button type="submit" class={styles.apSend} aria-label="Send" disabled={!session() || !draft().trim() || busy() === "send"}>
+        <button
+          type="submit"
+          class={styles.apSend}
+          aria-label="Send"
+          disabled={!session() || !draft().trim() || busy() === "send"}
+        >
           <Icon icon={ArrowUp} size={16} strokeWidth={2.6} />
         </button>
       </form>

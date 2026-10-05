@@ -60,12 +60,14 @@ const REQUIRED_TOP_LEVEL: [&str; 5] = ["schemaVersion", "id", "label", "appearan
 /// error message. Names every missing top-level field in one message rather than
 /// only the first, the way a bare serde error would.
 fn load_theme_str(text: &str, source: &str) -> Result<Palette, String> {
-    let value: serde_json::Value =
-        serde_json::from_str(text).map_err(|e| format!("{source}: {e}"))?;
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("{source}: {e}"))?;
 
     if let Some(object) = value.as_object() {
-        let missing: Vec<&str> =
-            REQUIRED_TOP_LEVEL.iter().filter(|k| !object.contains_key(**k)).copied().collect();
+        let missing: Vec<&str> = REQUIRED_TOP_LEVEL
+            .iter()
+            .filter(|k| !object.contains_key(**k))
+            .copied()
+            .collect();
         if !missing.is_empty() {
             return Err(format!("{source}: missing required field(s): {}", missing.join(", ")));
         }
@@ -157,7 +159,9 @@ pub fn themes_watch_start(app: AppHandle, state: State<ThemesWatch>) -> Result<(
     })
     .map_err(|e| e.to_string())?;
 
-    watcher.watch(&dir, RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
+    watcher
+        .watch(&dir, RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
 
     *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())
@@ -208,7 +212,10 @@ mod tests {
     fn a_bad_schema_version_is_rejected() {
         let text = TORI_DARK.replacen("\"schemaVersion\": 1", "\"schemaVersion\": 2", 1);
         let err = load_theme_str(&text, "t.json").unwrap_err();
-        assert!(err.contains("schemaVersion"), "error should mention schemaVersion: {err}");
+        assert!(
+            err.contains("schemaVersion"),
+            "error should mention schemaVersion: {err}"
+        );
     }
 
     /// An unknown colour key is a typo, and a typo means the role it was meant

@@ -169,13 +169,13 @@ export function DiffView(props: {
   return (
     <Rows rows={lines()} class={styles.toolDiffRows}>
       {(line) => (
-        <Show when={"header" in line ? line : null} fallback={<CodeRow line={line as Extract<DiffLine, { row: DiffRow }>} />}>
+        <Show
+          when={"header" in line ? line : null}
+          fallback={<CodeRow line={line as Extract<DiffLine, { row: DiffRow }>} />}
+        >
           {(head) => (
             <div class={styles.diffHunkRow}>
-              <Show
-                when={props.path}
-                fallback={<span class={styles.diffHunkHeader}>{head().header}</span>}
-              >
+              <Show when={props.path} fallback={<span class={styles.diffHunkHeader}>{head().header}</span>}>
                 {(path) => (
                   <button
                     type="button"
@@ -356,12 +356,7 @@ export function ToolInput(props: { card: ToolItem; renderer: ToolRenderer; onOpe
  * search and a path list get one clickable row per entry, and a command gets
  * its terminal escapes stripped, since there is no terminal here to obey them.
  */
-export function ToolOutput(props: {
-  card: ToolItem;
-  renderer: ToolRenderer;
-  text: string;
-  onOpen: OpenPath;
-}) {
+export function ToolOutput(props: { card: ToolItem; renderer: ToolRenderer; text: string; onOpen: OpenPath }) {
   // ACP answers an execute call with its whole `rawOutput` object, so this is
   // the difference between a readable body and a JSON blob on one line.
   const json = createMemo(() => (props.renderer === "execute" ? prettyJson(props.text) : null));

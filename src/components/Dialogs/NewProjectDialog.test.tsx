@@ -23,15 +23,7 @@ type NewProps = Parameters<typeof NewProjectDialog>[0];
 function open(props: Partial<Omit<NewProps, "onConfirm" | "onCancel">> = {}) {
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
-  render(() => (
-    <NewProjectDialog
-      spaceName="work"
-      busy={false}
-      onConfirm={onConfirm}
-      onCancel={onCancel}
-      {...props}
-    />
-  ));
+  render(() => <NewProjectDialog spaceName="work" busy={false} onConfirm={onConfirm} onCancel={onCancel} {...props} />);
   const mode = (name: string) => screen.getByRole("button", { name });
   const name = () =>
     (screen.queryByPlaceholderText("folder name") ??
@@ -80,9 +72,7 @@ describe("NewProjectDialog", () => {
       fireEvent.click(mode("Bare + worktree"));
 
       expect(
-        screen.getByText(
-          "A .bare repo plus one initial worktree. Add more branches later as their own folders.",
-        ),
+        screen.getByText("A .bare repo plus one initial worktree. Add more branches later as their own folders."),
       ).toBeTruthy();
     });
 

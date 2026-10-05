@@ -253,9 +253,7 @@ describe("handing one to the agent", () => {
       const send = screen.getByRole("button", { name: "Send" });
       send.focus();
       fireEvent.focus(send);
-      await waitFor(() =>
-        expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"),
-      );
+      await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"));
       fireEvent.click(screen.getByText("Send"));
       await waitFor(() => expect(screen.queryByText("// TODO wire it up")).toBeTruthy());
     } finally {
@@ -274,7 +272,6 @@ describe("the todo panel, to axe", () => {
   });
 });
 
-
 describe("a Topic's members", () => {
   const API = "/w/api";
   const WEB = "/w/web";
@@ -286,11 +283,12 @@ describe("a Topic's members", () => {
   });
   const ROOTS = [member("api", API), member("web", WEB)];
 
-  const perRoot = (byRoot: Record<string, ReturnType<typeof hit>[]>, truncated: string[] = []) =>
-    (_query: string, root: string) => ok(byRoot[root] ?? [], truncated.includes(root));
+  const perRoot =
+    (byRoot: Record<string, ReturnType<typeof hit>[]>, truncated: string[] = []) =>
+    (_query: string, root: string) =>
+      ok(byRoot[root] ?? [], truncated.includes(root));
 
-  const mountTopic = (roots = ROOTS) =>
-    render(() => <TodoPanel root={API} selected={null} roots={roots} />);
+  const mountTopic = (roots = ROOTS) => render(() => <TodoPanel root={API} selected={null} roots={roots} />);
 
   /** Past the panel's own fs debounce, which is deliberately longer than the
    *  tree's so a burst of writes is one rescan. */

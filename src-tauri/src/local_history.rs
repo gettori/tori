@@ -104,7 +104,11 @@ fn now_ms() -> u64 {
 fn entries_under(repo: &str, prefix: &str) -> Vec<HistoryEntry> {
     let out = match git_capture(
         repo,
-        &["for-each-ref", "--format=%(refname) %(objectname) %(objectsize)", prefix],
+        &[
+            "for-each-ref",
+            "--format=%(refname) %(objectname) %(objectsize)",
+            prefix,
+        ],
     ) {
         Ok(text) => text,
         Err(_) => return Vec::new(),
@@ -117,7 +121,11 @@ fn entries_under(repo: &str, prefix: &str) -> Vec<HistoryEntry> {
             let blob = parts.next()?;
             let size = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
             let ts = name.strip_prefix(prefix)?.parse().ok()?;
-            Some(HistoryEntry { ts, blob: blob.to_string(), size })
+            Some(HistoryEntry {
+                ts,
+                blob: blob.to_string(),
+                size,
+            })
         })
         .collect();
     entries.sort_by(|a, b| b.ts.cmp(&a.ts));
@@ -185,7 +193,10 @@ fn prefix_for(repo: &str, path: &str) -> Option<String> {
 /// worktree simply has no local history, which is not a failed save.
 #[tauri::command]
 pub async fn local_history_note(repo_path: String, path: String) -> Result<bool, String> {
-    crate::exec::git_write("local_history_note", repo_path.clone(), move || local_history_note_body(repo_path, path)).await
+    crate::exec::git_write("local_history_note", repo_path.clone(), move || {
+        local_history_note_body(repo_path, path)
+    })
+    .await
 }
 
 pub(crate) fn local_history_note_body(repo_path: String, path: String) -> Result<bool, String> {
@@ -268,7 +279,10 @@ pub fn local_history_diff(repo_path: String, path: String, ts: u64) -> Result<St
 /// anything, and whatever they had already staged has to survive it untouched.
 #[tauri::command]
 pub async fn local_history_restore(repo_path: String, path: String, ts: u64) -> Result<(), String> {
-    crate::exec::git_write("local_history_restore", repo_path.clone(), move || local_history_restore_body(repo_path, path, ts)).await
+    crate::exec::git_write("local_history_restore", repo_path.clone(), move || {
+        local_history_restore_body(repo_path, path, ts)
+    })
+    .await
 }
 
 pub(crate) fn local_history_restore_body(repo_path: String, path: String, ts: u64) -> Result<(), String> {
@@ -323,7 +337,10 @@ fn files_under(dir: &Path, out: &mut Vec<String>) {
 /// listing has to be taken before the move.
 #[tauri::command]
 pub async fn local_history_rename(repo_path: String, from: String, to: String) -> Result<(), String> {
-    crate::exec::git_write("local_history_rename", repo_path.clone(), move || local_history_rename_body(repo_path, from, to)).await
+    crate::exec::git_write("local_history_rename", repo_path.clone(), move || {
+        local_history_rename_body(repo_path, from, to)
+    })
+    .await
 }
 
 pub(crate) fn local_history_rename_body(repo_path: String, from: String, to: String) -> Result<(), String> {
@@ -353,8 +370,7 @@ pub(crate) fn local_history_rename_body(repo_path: String, from: String, to: Str
 
 /// One file's move, with the worktree key already resolved.
 fn rename_one(repo_path: &str, wt: &str, from: &str, to: &str) -> Result<(), String> {
-    let (Some(src_rel), Some(dst_rel)) = (relative_to(repo_path, from), relative_to(repo_path, to))
-    else {
+    let (Some(src_rel), Some(dst_rel)) = (relative_to(repo_path, from), relative_to(repo_path, to)) else {
         return Ok(());
     };
     let src = ref_prefix(wt, &digest(&src_rel));
@@ -394,7 +410,10 @@ fn rename_one(repo_path: &str, wt: &str, from: &str, to: &str) -> Result<(), Str
 /// could find them again.
 #[tauri::command]
 pub async fn local_history_forget(repo_path: String, path: String) -> Result<(), String> {
-    crate::exec::git_write("local_history_forget", repo_path.clone(), move || local_history_forget_body(repo_path, path)).await
+    crate::exec::git_write("local_history_forget", repo_path.clone(), move || {
+        local_history_forget_body(repo_path, path)
+    })
+    .await
 }
 
 pub(crate) fn local_history_forget_body(repo_path: String, path: String) -> Result<(), String> {
@@ -450,7 +469,10 @@ fn live_keys(repo: &str) -> Option<Vec<String>> {
 /// was removed and took its files with it.
 #[tauri::command]
 pub async fn local_history_prune(repo_path: String) -> Result<(), String> {
-    crate::exec::git_write("local_history_prune", repo_path.clone(), move || local_history_prune_body(repo_path)).await
+    crate::exec::git_write("local_history_prune", repo_path.clone(), move || {
+        local_history_prune_body(repo_path)
+    })
+    .await
 }
 
 pub(crate) fn local_history_prune_body(repo_path: String) -> Result<(), String> {
@@ -473,8 +495,7 @@ pub(crate) fn local_history_prune_body(repo_path: String) -> Result<(), String> 
                 return false;
             };
             let mut parts = rest.split('/');
-            let (Some(wt), Some(_path), Some(ts)) = (parts.next(), parts.next(), parts.next())
-            else {
+            let (Some(wt), Some(_path), Some(ts)) = (parts.next(), parts.next(), parts.next()) else {
                 return false;
             };
             if !live.iter().any(|k| k == wt) {
@@ -489,9 +510,9 @@ pub(crate) fn local_history_prune_body(repo_path: String) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
     use std::path::PathBuf;
+    use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn git(dir: &Path, args: &[&str]) {
@@ -505,7 +526,12 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "t@t.test")
             .output()
             .unwrap();
-        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn tmp_repo() -> PathBuf {
@@ -538,11 +564,14 @@ mod tests {
 
     /// Every ref in the family, for asserting what a run left behind.
     fn all_refs(dir: &Path) -> Vec<String> {
-        git_capture(&repo(dir), &["for-each-ref", "--format=%(refname)", &format!("{FAMILY}/")])
-            .unwrap()
-            .lines()
-            .map(|s| s.to_string())
-            .collect()
+        git_capture(
+            &repo(dir),
+            &["for-each-ref", "--format=%(refname)", &format!("{FAMILY}/")],
+        )
+        .unwrap()
+        .lines()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     #[test]
@@ -576,7 +605,10 @@ mod tests {
         let dir = tmp_repo();
         let file = write(&dir, "a.ts", "one\n");
         assert!(local_history_note_body(repo(&dir), file.clone()).unwrap());
-        assert!(!local_history_note_body(repo(&dir), file.clone()).unwrap(), "deduped by blob");
+        assert!(
+            !local_history_note_body(repo(&dir), file.clone()).unwrap(),
+            "deduped by blob"
+        );
         assert_eq!(local_history_list(repo(&dir), file.clone()).unwrap().len(), 1);
 
         write(&dir, "a.ts", "two\n");
@@ -609,8 +641,14 @@ mod tests {
         let entries = local_history_list(repo(&dir), file).unwrap();
         assert_eq!(entries.len(), 2);
         assert!(entries[0].ts >= entries[1].ts);
-        assert_eq!(local_history_read(repo(&dir), entries[0].blob.clone()).unwrap(), "two\n");
-        assert_eq!(local_history_read(repo(&dir), entries[1].blob.clone()).unwrap(), "one\n");
+        assert_eq!(
+            local_history_read(repo(&dir), entries[0].blob.clone()).unwrap(),
+            "two\n"
+        );
+        assert_eq!(
+            local_history_read(repo(&dir), entries[1].blob.clone()).unwrap(),
+            "one\n"
+        );
     }
 
     #[test]
@@ -787,7 +825,11 @@ mod tests {
 
         local_history_forget_body(repo(&dir), dir.join("src").to_string_lossy().into_owned()).unwrap();
         assert!(local_history_list(repo(&dir), a).unwrap().is_empty());
-        assert_eq!(local_history_list(repo(&dir), kept).unwrap().len(), 1, "and only that folder");
+        assert_eq!(
+            local_history_list(repo(&dir), kept).unwrap().len(),
+            1,
+            "and only that folder"
+        );
     }
 
     #[test]
@@ -817,8 +859,7 @@ mod tests {
         // The cap itself, exercised through the same function the save path
         // calls, rather than by writing 51 versions.
         let entries = local_history_list(repo(&dir), file.clone()).unwrap();
-        let doomed: Vec<String> =
-            entries.iter().skip(2).map(|e| format!("{prefix}{}", e.ts)).collect();
+        let doomed: Vec<String> = entries.iter().skip(2).map(|e| format!("{prefix}{}", e.ts)).collect();
         delete_refs(&repo(&dir), &doomed).unwrap();
         let left = local_history_list(repo(&dir), file).unwrap();
         assert_eq!(left.len(), 2);
@@ -881,7 +922,10 @@ mod tests {
         assert_eq!(mine.len(), 1);
         assert_eq!(theirs.len(), 1);
         assert_eq!(local_history_read(repo(&dir), mine[0].blob.clone()).unwrap(), "main\n");
-        assert_eq!(local_history_read(repo(&dir), theirs[0].blob.clone()).unwrap(), "side\n");
+        assert_eq!(
+            local_history_read(repo(&dir), theirs[0].blob.clone()).unwrap(),
+            "side\n"
+        );
         assert_ne!(mine[0].blob, theirs[0].blob);
         // Two refs in the one shared store, under two different worktree keys.
         assert_eq!(all_refs(&dir).len(), 2);

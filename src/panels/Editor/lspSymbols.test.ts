@@ -29,9 +29,7 @@ vi.mock("./lspClient", () => ({
   lspTargets: () => targets,
 }));
 
-const { requestDocumentSymbols, refreshDocumentSymbols, requestWorkspaceSymbols } = await import(
-  "./lspSymbols"
-);
+const { requestDocumentSymbols, refreshDocumentSymbols, requestWorkspaceSymbols } = await import("./lspSymbols");
 const { symbolsFor, symbolsSupported, clearSymbols } = await import("../../utils/symbols");
 
 const range = (sl: number, sc: number, el: number, ec: number) => ({
@@ -134,9 +132,7 @@ describe("the initialize payload", () => {
 
 describe("requestDocumentSymbols", () => {
   const PATH = "/proj/src/a.ts";
-  const RES = [
-    { name: "Thing", kind: 5, range: range(0, 0, 4, 1), selectionRange: range(0, 6, 0, 11) },
-  ];
+  const RES = [{ name: "Thing", kind: 5, range: range(0, 0, 4, 1), selectionRange: range(0, 6, 0, 11) }];
 
   it("answers null when no server claims the file", async () => {
     await expect(requestDocumentSymbols(PATH)).resolves.toBeNull();
@@ -235,7 +231,12 @@ describe("refreshDocumentSymbols", () => {
   }
 
   it("publishes the answer", async () => {
-    targets = [target({ provides: ["documentSymbolProvider"], res: [{ name: "Thing", kind: 5, range: range(0, 0, 4, 1), selectionRange: range(0, 6, 0, 11) }] })];
+    targets = [
+      target({
+        provides: ["documentSymbolProvider"],
+        res: [{ name: "Thing", kind: 5, range: range(0, 0, 4, 1), selectionRange: range(0, 6, 0, 11) }],
+      }),
+    ];
     await expect(refreshDocumentSymbols(PATH)).resolves.toBe(true);
     expect(symbolsFor(PATH).map((n) => n.name)).toEqual(["Thing"]);
   });
@@ -329,7 +330,10 @@ describe("requestWorkspaceSymbols", () => {
 
   it("skips a server with no provider without asking it", async () => {
     const mute = target({ root: "/proj/a", provides: [] });
-    targets = [mute, target({ root: "/proj/b", provides: ["workspaceSymbolProvider"], res: [hit("f", "file:///proj/b/y.ts", 0)] })];
+    targets = [
+      mute,
+      target({ root: "/proj/b", provides: ["workspaceSymbolProvider"], res: [hit("f", "file:///proj/b/y.ts", 0)] }),
+    ];
     expect((await requestWorkspaceSymbols("f")).map((h) => h.name)).toEqual(["f"]);
     expect(mute.asked).toHaveLength(0);
   });
@@ -349,7 +353,11 @@ describe("requestWorkspaceSymbols", () => {
     const same = hit("shared", "file:///proj/a/x.ts", 3);
     targets = [
       target({ root: "/proj", provides: ["workspaceSymbolProvider"], res: [same] }),
-      target({ root: "/proj/a", provides: ["workspaceSymbolProvider"], res: [{ ...same, location: { ...same.location, uri: "file:///proj/a/x.ts" } }] }),
+      target({
+        root: "/proj/a",
+        provides: ["workspaceSymbolProvider"],
+        res: [{ ...same, location: { ...same.location, uri: "file:///proj/a/x.ts" } }],
+      }),
     ];
     expect(await requestWorkspaceSymbols("shared")).toHaveLength(1);
   });

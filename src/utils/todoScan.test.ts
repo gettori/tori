@@ -65,9 +65,7 @@ describe("the query it searches with", () => {
 describe("turning hits into rows", () => {
   it("labels each row with the tag the backend actually matched", () => {
     const rows = todoItems([hit("src/a.ts", 12, "  // TODO: wire this up", [5, 9])]);
-    expect(rows).toEqual([
-      { path: "src/a.ts", line: 12, tag: "TODO", text: "// TODO: wire this up" },
-    ]);
+    expect(rows).toEqual([{ path: "src/a.ts", line: 12, tag: "TODO", text: "// TODO: wire this up" }]);
   });
 
   it("trims the line, because a TODO sits behind whatever indents it", () => {
@@ -128,8 +126,6 @@ describe("what it says above the list", () => {
     // The thing the user cannot see is that the project holds more than this.
     // Repeating a number they are looking at tells them nothing, and the cap is
     // also the one figure a chip selection does not change.
-    expect(todoSummary(one, 1, true, 500)).toBe(
-      "1 item in 1 file (capped at 500, narrow the tags to see the rest)",
-    );
+    expect(todoSummary(one, 1, true, 500)).toBe("1 item in 1 file (capped at 500, narrow the tags to see the rest)");
   });
 });

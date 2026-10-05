@@ -14,13 +14,7 @@
 // because a person just pressed a key, and a multi-file one takes a snapshot
 // first because there is no other way back.
 
-import {
-  applyWorkspaceEdit,
-  list,
-  type ApplyDeps,
-  type EditTarget,
-  type WorkspaceEdit,
-} from "./workspaceEdit";
+import { applyWorkspaceEdit, list, type ApplyDeps, type EditTarget, type WorkspaceEdit } from "./workspaceEdit";
 
 // Re-exported, not re-declared: these were this module's before the applier
 // existed and callers still reach for them here. Exactly what has an importer,

@@ -28,8 +28,7 @@ use serde::{Deserialize, Serialize};
 /// Same list as `fs::IGNORED_DIRS`, including `.tori-attempts`: an attempt is a
 /// second checkout of the same project, so without it every hit in the user's
 /// own code would come back once more per attempt.
-const IGNORED_DIRS: &[&str] =
-    &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
+const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
 /// What the user asked for, straight from the panel's toggles. `include` and
 /// `exclude` are comma-separated glob lists; empty means "no filter".
@@ -127,9 +126,21 @@ fn normalise_line(s: &str) -> &str {
 
 /// The pattern every backend and every offset agrees on.
 fn canonical_pattern(query: &str, opts: &SearchOptions) -> String {
-    let base = if opts.regex { query.to_string() } else { regex::escape(query) };
-    let worded = if opts.whole_word { format!(r"\b(?:{base})\b") } else { base };
-    if opts.case { worded } else { format!("(?i){worded}") }
+    let base = if opts.regex {
+        query.to_string()
+    } else {
+        regex::escape(query)
+    };
+    let worded = if opts.whole_word {
+        format!(r"\b(?:{base})\b")
+    } else {
+        base
+    };
+    if opts.case {
+        worded
+    } else {
+        format!("(?i){worded}")
+    }
 }
 
 fn build_regex(query: &str, opts: &SearchOptions) -> Result<Regex, String> {
@@ -145,7 +156,11 @@ fn build_regex(query: &str, opts: &SearchOptions) -> Result<Regex, String> {
 /// pattern as a whole, and pre-filtering on it would drop real matches.
 fn longest_literal(query: &str, opts: &SearchOptions) -> Option<String> {
     if !opts.regex {
-        return if query.is_empty() { None } else { Some(query.to_string()) };
+        return if query.is_empty() {
+            None
+        } else {
+            Some(query.to_string())
+        };
     }
     // A literal inside a group or an alternation branch is not required by the
     // pattern overall, and a quantifier can make a whole group vanish. Rather
@@ -252,7 +267,11 @@ fn parse_rg_json(stdout: &[u8]) -> Vec<Candidate> {
         let rel = path.strip_prefix("./").unwrap_or(path).to_string();
         let line_no = data["line_number"].as_u64().unwrap_or(0) as u32;
         let text = normalise_line(data["lines"]["text"].as_str().unwrap_or("")).to_string();
-        out.push(Candidate { path: rel, line: line_no, text });
+        out.push(Candidate {
+            path: rel,
+            line: line_no,
+            text,
+        });
     }
     out
 }
@@ -264,15 +283,18 @@ fn parse_grep_lines(stdout: &[u8]) -> Vec<Candidate> {
     let mut out = Vec::new();
     for line in String::from_utf8_lossy(stdout).lines() {
         let mut parts = line.splitn(3, ':');
-        let (Some(path), Some(line_no), Some(text)) = (parts.next(), parts.next(), parts.next())
-        else {
+        let (Some(path), Some(line_no), Some(text)) = (parts.next(), parts.next(), parts.next()) else {
             continue;
         };
         let Ok(line_no) = line_no.parse::<u32>() else {
             continue;
         };
         let path = path.strip_prefix("./").unwrap_or(path).to_string();
-        out.push(Candidate { path, line: line_no, text: normalise_line(text).to_string() });
+        out.push(Candidate {
+            path,
+            line: line_no,
+            text: normalise_line(text).to_string(),
+        });
     }
     out
 }
@@ -310,7 +332,12 @@ fn finalize(
             truncated = true;
             break;
         }
-        matches.push(SearchMatch { path: c.path, line: c.line, text: c.text, submatches });
+        matches.push(SearchMatch {
+            path: c.path,
+            line: c.line,
+            text: c.text,
+            submatches,
+        });
     }
     (matches, truncated)
 }
@@ -325,10 +352,9 @@ fn digests_for(root: &str, matches: &[SearchMatch]) -> Vec<FileDigest> {
             order.push(m.path.clone());
         }
     }
-    order.into_iter()
-        .filter_map(|p| {
-            digest_of(&Path::new(root).join(&p)).map(|digest| FileDigest { path: p, digest })
-        })
+    order
+        .into_iter()
+        .filter_map(|p| digest_of(&Path::new(root).join(&p)).map(|digest| FileDigest { path: p, digest }))
         .collect()
 }
 
@@ -345,12 +371,7 @@ fn pick_backend(root: &str, use_rg: bool) -> (&'static str, Vec<String>) {
     }
 }
 
-fn run_rg(
-    root: &str,
-    pattern: &str,
-    opts: &SearchOptions,
-    max: usize,
-) -> Result<Vec<Candidate>, String> {
+fn run_rg(root: &str, pattern: &str, opts: &SearchOptions, max: usize) -> Result<Vec<Candidate>, String> {
     let mut cmd = Command::new("rg");
     cmd.args(["--json", "--line-number"]);
     // A coarse bound on how much JSON a single pathological file can emit.
@@ -383,11 +404,7 @@ fn run_rg(
     Err(String::from_utf8_lossy(&out.stderr).into_owned())
 }
 
-fn run_git_grep(
-    root: &str,
-    literal: Option<&str>,
-    opts: &SearchOptions,
-) -> Result<Vec<Candidate>, String> {
+fn run_git_grep(root: &str, literal: Option<&str>, opts: &SearchOptions) -> Result<Vec<Candidate>, String> {
     let mut cmd = crate::exec::git_in(root);
     cmd.args(["grep", "-n", "--untracked"]);
     // `--no-exclude-standard` is what reaches ignored files. Merely dropping
@@ -419,11 +436,7 @@ fn run_git_grep(
 /// `IGNORED_DIRS` list, so the `no_ignore` option is meaningless here. That is
 /// reported to the UI as an unsupported option rather than left to look like a
 /// working toggle.
-fn plain_grep(
-    root: &str,
-    literal: Option<&str>,
-    opts: &SearchOptions,
-) -> Result<Vec<Candidate>, String> {
+fn plain_grep(root: &str, literal: Option<&str>, opts: &SearchOptions) -> Result<Vec<Candidate>, String> {
     let mut cmd = Command::new("grep");
     cmd.arg("-rn");
     if !opts.case {
@@ -450,12 +463,7 @@ fn plain_grep(
 
 /// Search `root` for `query` under `options`, capping at `max` matching lines.
 #[tauri::command(async)]
-pub fn grep_project(
-    root: String,
-    query: String,
-    options: SearchOptions,
-    max: usize,
-) -> Result<SearchResult, String> {
+pub fn grep_project(root: String, query: String, options: SearchOptions, max: usize) -> Result<SearchResult, String> {
     let use_rg = has_rg();
     let (backend, unsupported) = pick_backend(&root, use_rg);
 
@@ -594,14 +602,7 @@ fn line_spans(content: &str) -> Vec<(usize, usize)> {
 /// Going through `Captures::expand` is what makes `$1` and `${name}` work, and
 /// it is also why the span has to be re-found rather than trusted: the captures
 /// only exist as a by-product of matching.
-fn expand_at(
-    re: &Regex,
-    line: &str,
-    start: usize,
-    end: usize,
-    replacement: &str,
-    preserve: bool,
-) -> Option<String> {
+fn expand_at(re: &Regex, line: &str, start: usize, end: usize, replacement: &str, preserve: bool) -> Option<String> {
     let caps = re.captures_at(line, start)?;
     let m = caps.get(0)?;
     if m.start() != start || m.end() != end {
@@ -619,9 +620,7 @@ fn case_like(matched: &str, pattern: &str) -> String {
         return pattern.to_string();
     }
     let splits_on = |sep: char| {
-        matched.contains(sep)
-            && pattern.contains(sep)
-            && matched.split(sep).count() == pattern.split(sep).count()
+        matched.contains(sep) && pattern.contains(sep) && matched.split(sep).count() == pattern.split(sep).count()
     };
     let (hyphens, underscores) = (splits_on('-'), splits_on('_'));
     if hyphens != underscores {
@@ -696,7 +695,10 @@ pub fn replace_in_files(
         let abs = Path::new(&root).join(&target.path);
         let abs_str = abs.to_string_lossy().into_owned();
         let mut skip = |reason: &str| {
-            skipped.push(SkippedFile { path: target.path.clone(), reason: reason.to_string() });
+            skipped.push(SkippedFile {
+                path: target.path.clone(),
+                reason: reason.to_string(),
+            });
         };
 
         if let Err(e) = crate::fs::ensure_inside_named(&root, &abs_str, "project folder") {
@@ -730,8 +732,7 @@ pub fn replace_in_files(
                 break;
             };
             let text = &content[ls..le];
-            let (Some(bs), Some(be)) = (utf16_to_byte(text, span.start), utf16_to_byte(text, span.end))
-            else {
+            let (Some(bs), Some(be)) = (utf16_to_byte(text, span.start), utf16_to_byte(text, span.end)) else {
                 bad = true;
                 break;
             };
@@ -775,7 +776,11 @@ pub fn replace_in_files(
         changed.push(target.path.clone());
     }
 
-    Ok(ReplaceResult { changed, skipped, occurrences })
+    Ok(ReplaceResult {
+        changed,
+        skipped,
+        occurrences,
+    })
 }
 
 // --- write-back from the editable results buffer ---
@@ -832,7 +837,10 @@ pub fn apply_line_edits(root: String, files: Vec<FileEdits>) -> Result<ApplyResu
         let abs = Path::new(&root).join(&file.path);
         let abs_str = abs.to_string_lossy().into_owned();
         let mut skip = |reason: &str| {
-            skipped.push(SkippedFile { path: file.path.clone(), reason: reason.to_string() });
+            skipped.push(SkippedFile {
+                path: file.path.clone(),
+                reason: reason.to_string(),
+            });
         };
 
         if let Err(e) = crate::fs::ensure_inside_named(&root, &abs_str, "project folder") {
@@ -937,7 +945,10 @@ mod tests {
     }
 
     fn opts() -> SearchOptions {
-        SearchOptions { case: true, ..Default::default() }
+        SearchOptions {
+            case: true,
+            ..Default::default()
+        }
     }
 
     // --- the canonical matcher ---
@@ -947,30 +958,64 @@ mod tests {
         let base = SearchOptions::default();
 
         // Literal mode escapes, regex mode does not.
-        assert_eq!(canonical_pattern("a.b", &SearchOptions { case: true, ..base.clone() }), "a\\.b");
         assert_eq!(
-            canonical_pattern("a.b", &SearchOptions { case: true, regex: true, ..base.clone() }),
+            canonical_pattern(
+                "a.b",
+                &SearchOptions {
+                    case: true,
+                    ..base.clone()
+                }
+            ),
+            "a\\.b"
+        );
+        assert_eq!(
+            canonical_pattern(
+                "a.b",
+                &SearchOptions {
+                    case: true,
+                    regex: true,
+                    ..base.clone()
+                }
+            ),
             "a.b"
         );
         // Whole word wraps the whole pattern, so an alternation stays grouped.
         assert_eq!(
             canonical_pattern(
                 "a|b",
-                &SearchOptions { case: true, regex: true, whole_word: true, ..base.clone() }
+                &SearchOptions {
+                    case: true,
+                    regex: true,
+                    whole_word: true,
+                    ..base.clone()
+                }
             ),
             "\\b(?:a|b)\\b"
         );
         // Case-insensitivity is an inline flag, so no backend needs its own -i.
         assert_eq!(canonical_pattern("x", &SearchOptions { ..base.clone() }), "(?i)x");
         assert_eq!(
-            canonical_pattern("x", &SearchOptions { whole_word: true, ..base }),
+            canonical_pattern(
+                "x",
+                &SearchOptions {
+                    whole_word: true,
+                    ..base
+                }
+            ),
             "(?i)\\b(?:x)\\b"
         );
     }
 
     #[test]
     fn build_regex_returns_err_for_an_unclosed_class() {
-        let err = build_regex("[", &SearchOptions { case: true, regex: true, ..Default::default() });
+        let err = build_regex(
+            "[",
+            &SearchOptions {
+                case: true,
+                regex: true,
+                ..Default::default()
+            },
+        );
         assert!(err.is_err(), "an unclosed character class must not compile");
         // Literal mode escapes it, so the same query is fine there.
         assert!(build_regex("[", &opts()).is_ok());
@@ -983,8 +1028,15 @@ mod tests {
         let cs = build_regex("foo", &opts()).unwrap();
         assert!(!cs.is_match("FOO"));
 
-        let word = build_regex("foo", &SearchOptions { case: true, whole_word: true, ..Default::default() })
-            .unwrap();
+        let word = build_regex(
+            "foo",
+            &SearchOptions {
+                case: true,
+                whole_word: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(word.is_match("a foo b"));
         assert!(!word.is_match("foobar"));
     }
@@ -1002,17 +1054,15 @@ mod tests {
         // `foo` matches twice: `+` is a non-word character, so `+foo` carries a
         // word boundary even though the pattern `+foo` itself does not.
         for (query, expected) in [(".env", 0usize), ("+foo", 0), ("foo", 2)] {
-            let o = SearchOptions { case: true, whole_word: true, ..Default::default() };
+            let o = SearchOptions {
+                case: true,
+                whole_word: true,
+                ..Default::default()
+            };
             let re = build_regex(query, &o).unwrap();
             let literal = longest_literal(query, &o);
 
-            let (from_plain, _) = finalize(
-                plain_grep(&root, literal.as_deref(), &o).unwrap(),
-                &re,
-                None,
-                None,
-                100,
-            );
+            let (from_plain, _) = finalize(plain_grep(&root, literal.as_deref(), &o).unwrap(), &re, None, None, 100);
             assert_eq!(
                 from_plain.len(),
                 expected,
@@ -1037,10 +1087,17 @@ mod tests {
 
     #[test]
     fn word_boundary_still_matches_a_plain_identifier() {
-        let o = SearchOptions { case: true, whole_word: true, ..Default::default() };
+        let o = SearchOptions {
+            case: true,
+            whole_word: true,
+            ..Default::default()
+        };
         let re = build_regex("foo", &o).unwrap();
-        let candidates =
-            vec![Candidate { path: "a.txt".into(), line: 1, text: "call foo(1)".into() }];
+        let candidates = vec![Candidate {
+            path: "a.txt".into(),
+            line: 1,
+            text: "call foo(1)".into(),
+        }];
         let (matches, _) = finalize(candidates, &re, None, None, 10);
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].submatches, vec![(5, 8)]);
@@ -1064,8 +1121,15 @@ mod tests {
 
     #[test]
     fn zero_width_matches_are_dropped() {
-        let re = build_regex("x*", &SearchOptions { case: true, regex: true, ..Default::default() })
-            .unwrap();
+        let re = build_regex(
+            "x*",
+            &SearchOptions {
+                case: true,
+                regex: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(submatches_utf16(&re, "no ex here").iter().all(|(s, e)| e > s));
     }
 
@@ -1090,9 +1154,12 @@ mod tests {
         let dir = glob_fixture("globs");
         let root = dir.to_string_lossy().into_owned();
 
-        for (include, exclude) in
-            [("src/**/*.ts", ""), ("**/*.test.ts", ""), ("", "vendor/**"), ("src/**", "**/deep/**")]
-        {
+        for (include, exclude) in [
+            ("src/**/*.ts", ""),
+            ("**/*.test.ts", ""),
+            ("", "vendor/**"),
+            ("src/**", "**/deep/**"),
+        ] {
             let o = SearchOptions {
                 case: true,
                 include: include.to_string(),
@@ -1108,7 +1175,10 @@ mod tests {
             let (from_rg, _) = finalize(rg_filtered, &re, inc.as_ref(), exc.as_ref(), 100);
 
             // The same tree with no native filtering, filtered by globset alone.
-            let bare = SearchOptions { case: true, ..Default::default() };
+            let bare = SearchOptions {
+                case: true,
+                ..Default::default()
+            };
             let unfiltered = run_rg(&root, &canonical_pattern("needle", &bare), &bare, 100).unwrap();
             let (from_globset, _) = finalize(unfiltered, &re, inc.as_ref(), exc.as_ref(), 100);
 
@@ -1116,7 +1186,10 @@ mod tests {
             let mut b: Vec<_> = from_globset.iter().map(|m| m.path.clone()).collect();
             a.sort();
             b.sort();
-            assert_eq!(a, b, "rg and globset disagreed on include={include:?} exclude={exclude:?}");
+            assert_eq!(
+                a, b,
+                "rg and globset disagreed on include={include:?} exclude={exclude:?}"
+            );
             assert!(!a.is_empty(), "fixture produced no matches for include={include:?}");
         }
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1130,14 +1203,20 @@ mod tests {
         }
         let dir = glob_fixture("anchored");
         let root = dir.to_string_lossy().into_owned();
-        let o = SearchOptions { case: true, include: "src/**".to_string(), ..Default::default() };
+        let o = SearchOptions {
+            case: true,
+            include: "src/**".to_string(),
+            ..Default::default()
+        };
 
         // The regression this guards: with an absolute path as rg's search
         // target, `src/**` matches nothing at all.
         let candidates = run_rg(&root, &canonical_pattern("needle", &o), &o, 100).unwrap();
         assert!(!candidates.is_empty(), "anchored glob matched nothing");
         assert!(
-            candidates.iter().all(|c| !c.path.starts_with("./") && !c.path.starts_with('/')),
+            candidates
+                .iter()
+                .all(|c| !c.path.starts_with("./") && !c.path.starts_with('/')),
             "paths must come back root-relative"
         );
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1147,7 +1226,11 @@ mod tests {
 
     #[test]
     fn longest_literal_picks_the_longest_required_run() {
-        let rx = SearchOptions { case: true, regex: true, ..Default::default() };
+        let rx = SearchOptions {
+            case: true,
+            regex: true,
+            ..Default::default()
+        };
         assert_eq!(longest_literal("foo.*barbaz", &rx).as_deref(), Some("barbaz"));
         assert_eq!(longest_literal(r"\d+items", &rx).as_deref(), Some("items"));
         // A trailing `?`/`*` makes the preceding character optional.
@@ -1160,7 +1243,11 @@ mod tests {
 
     #[test]
     fn longest_literal_bails_on_alternation_and_groups() {
-        let rx = SearchOptions { case: true, regex: true, ..Default::default() };
+        let rx = SearchOptions {
+            case: true,
+            regex: true,
+            ..Default::default()
+        };
         // "foo" is not required: a line matching "bar" would be pre-filtered away.
         assert_eq!(longest_literal("foo|bar", &rx), None);
         assert_eq!(longest_literal("(abc)?def", &rx), None);
@@ -1173,7 +1260,11 @@ mod tests {
         let dir = temp_dir("noliteral");
         std::fs::write(dir.join("a.txt"), "value 4321 here\nno digits\n").unwrap();
         let root = dir.to_string_lossy().into_owned();
-        let o = SearchOptions { case: true, regex: true, ..Default::default() };
+        let o = SearchOptions {
+            case: true,
+            regex: true,
+            ..Default::default()
+        };
 
         // No literal run, so grep is handed an empty -F pattern (every line)
         // and the canonical regex does the actual selecting.
@@ -1210,7 +1301,11 @@ mod tests {
     fn the_cap_still_truncates_on_genuine_overflow() {
         let re = build_regex("needle", &opts()).unwrap();
         let candidates: Vec<Candidate> = (0..10)
-            .map(|i| Candidate { path: format!("f{i}.txt"), line: 1, text: "needle".into() })
+            .map(|i| Candidate {
+                path: format!("f{i}.txt"),
+                line: 1,
+                text: "needle".into(),
+            })
             .collect();
         let (matches, truncated) = finalize(candidates, &re, None, None, 3);
         assert_eq!(matches.len(), 3);
@@ -1257,7 +1352,10 @@ mod tests {
         assert_eq!(grep_crlf[0].text, rg_lf[0].text);
 
         let re = build_regex("x", &opts()).unwrap();
-        assert_eq!(submatches_utf16(&re, &rg_crlf[0].text), submatches_utf16(&re, &rg_lf[0].text));
+        assert_eq!(
+            submatches_utf16(&re, &rg_crlf[0].text),
+            submatches_utf16(&re, &rg_lf[0].text)
+        );
     }
 
     #[test]
@@ -1266,8 +1364,15 @@ mod tests {
         // the end of the rendered text.
         let candidates = parse_grep_lines(b"a.ts:1:let x = 1;   \n");
         assert_eq!(candidates[0].text, "let x = 1;   ");
-        let re = build_regex(r";\s+$", &SearchOptions { case: true, regex: true, ..Default::default() })
-            .unwrap();
+        let re = build_regex(
+            r";\s+$",
+            &SearchOptions {
+                case: true,
+                regex: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let spans = submatches_utf16(&re, &candidates[0].text);
         assert_eq!(spans, vec![(9, 13)]);
         assert!(spans[0].1 as usize <= candidates[0].text.encode_utf16().count());
@@ -1307,9 +1412,16 @@ mod tests {
         assert!(paths.contains(&"kept.txt"));
         assert!(!paths.contains(&"ignored.txt"));
 
-        let ignoring =
-            run_git_grep(&root, Some("needle"), &SearchOptions { case: true, no_ignore: true, ..Default::default() })
-                .unwrap();
+        let ignoring = run_git_grep(
+            &root,
+            Some("needle"),
+            &SearchOptions {
+                case: true,
+                no_ignore: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let paths: Vec<_> = ignoring.iter().map(|c| c.path.as_str()).collect();
         assert!(paths.contains(&"kept.txt"));
         assert!(paths.contains(&"ignored.txt"), "no_ignore must reach gitignored files");
@@ -1379,7 +1491,10 @@ mod tests {
 
         let (backend, unsupported) = pick_backend(&root, false);
         assert_eq!(backend, "git", "a repo without rg must fall to git grep");
-        assert!(unsupported.is_empty(), "git grep honours no_ignore via --no-exclude-standard");
+        assert!(
+            unsupported.is_empty(),
+            "git grep honours no_ignore via --no-exclude-standard"
+        );
 
         let (backend, unsupported) = pick_backend(&root, true);
         assert_eq!(backend, "rg");
@@ -1395,7 +1510,11 @@ mod tests {
         std::fs::write(&file, "needle here\n").unwrap();
 
         let first = digest_of(&file).unwrap();
-        assert_eq!(first, digest_of(&file).unwrap(), "an untouched file must digest the same");
+        assert_eq!(
+            first,
+            digest_of(&file).unwrap(),
+            "an untouched file must digest the same"
+        );
 
         // A length change, which size alone would catch.
         std::fs::write(&file, "needle here\nand more\n").unwrap();
@@ -1447,9 +1566,24 @@ mod tests {
         let root = dir.to_string_lossy().into_owned();
 
         let matches = vec![
-            SearchMatch { path: "a.txt".into(), line: 1, text: "needle".into(), submatches: vec![(0, 6)] },
-            SearchMatch { path: "a.txt".into(), line: 2, text: "needle".into(), submatches: vec![(0, 6)] },
-            SearchMatch { path: "b.txt".into(), line: 1, text: "needle".into(), submatches: vec![(0, 6)] },
+            SearchMatch {
+                path: "a.txt".into(),
+                line: 1,
+                text: "needle".into(),
+                submatches: vec![(0, 6)],
+            },
+            SearchMatch {
+                path: "a.txt".into(),
+                line: 2,
+                text: "needle".into(),
+                submatches: vec![(0, 6)],
+            },
+            SearchMatch {
+                path: "b.txt".into(),
+                line: 1,
+                text: "needle".into(),
+                submatches: vec![(0, 6)],
+            },
         ];
         let files = digests_for(&root, &matches);
         assert_eq!(files.len(), 2, "three matches across two files means two digests");
@@ -1481,7 +1615,11 @@ mod tests {
     fn grep_project_surfaces_a_bad_regex_instead_of_panicking() {
         let dir = temp_dir("badregex");
         let root = dir.to_string_lossy().into_owned();
-        let o = SearchOptions { case: true, regex: true, ..Default::default() };
+        let o = SearchOptions {
+            case: true,
+            regex: true,
+            ..Default::default()
+        };
         assert!(grep_project(root, "[".into(), o, 500).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1538,13 +1676,21 @@ mod tests {
 
     #[test]
     fn preview_expands_captures_named_groups_and_a_literal_dollar() {
-        let rx = SearchOptions { case: true, regex: true, ..Default::default() };
+        let rx = SearchOptions {
+            case: true,
+            regex: true,
+            ..Default::default()
+        };
 
         let out = preview_replace(
             r"(\w+)@(\w+)".into(),
             rx.clone(),
             "$2 at $1".into(),
-            vec![PreviewSpan { text: "mail bob@example here".into(), start: 5, end: 16 }],
+            vec![PreviewSpan {
+                text: "mail bob@example here".into(),
+                start: 5,
+                end: 16,
+            }],
         )
         .unwrap();
         assert_eq!(out, vec![Some("example at bob".to_string())]);
@@ -1553,7 +1699,11 @@ mod tests {
             r"(?P<user>\w+)@(?P<host>\w+)".into(),
             rx.clone(),
             "${host}/${user}".into(),
-            vec![PreviewSpan { text: "bob@example".into(), start: 0, end: 11 }],
+            vec![PreviewSpan {
+                text: "bob@example".into(),
+                start: 0,
+                end: 11,
+            }],
         )
         .unwrap();
         assert_eq!(out, vec![Some("example/bob".to_string())]);
@@ -1561,9 +1711,16 @@ mod tests {
         // `$$` is the escape for a literal dollar.
         let out = preview_replace(
             "cost".into(),
-            SearchOptions { case: true, ..Default::default() },
+            SearchOptions {
+                case: true,
+                ..Default::default()
+            },
             "$$5".into(),
-            vec![PreviewSpan { text: "the cost here".into(), start: 4, end: 8 }],
+            vec![PreviewSpan {
+                text: "the cost here".into(),
+                start: 4,
+                end: 8,
+            }],
         )
         .unwrap();
         assert_eq!(out, vec![Some("$5".to_string())]);
@@ -1573,12 +1730,23 @@ mod tests {
     fn preview_returns_null_for_a_span_that_no_longer_matches() {
         let out = preview_replace(
             "needle".into(),
-            SearchOptions { case: true, ..Default::default() },
+            SearchOptions {
+                case: true,
+                ..Default::default()
+            },
             "pin".into(),
             vec![
-                PreviewSpan { text: "needle here".into(), start: 0, end: 6 },
+                PreviewSpan {
+                    text: "needle here".into(),
+                    start: 0,
+                    end: 6,
+                },
                 // Right length, wrong place: nothing matches at this offset.
-                PreviewSpan { text: "needle here".into(), start: 5, end: 11 },
+                PreviewSpan {
+                    text: "needle here".into(),
+                    start: 5,
+                    end: 11,
+                },
             ],
         )
         .unwrap();
@@ -1591,7 +1759,11 @@ mod tests {
         let dir = temp_dir("previewparity");
         std::fs::write(dir.join("a.txt"), "bob@example here\n").unwrap();
         let root = dir.to_string_lossy().into_owned();
-        let o = SearchOptions { case: true, regex: true, ..Default::default() };
+        let o = SearchOptions {
+            case: true,
+            regex: true,
+            ..Default::default()
+        };
         let query = r"(\w+)@(\w+)";
         let replacement = "$2 at $1";
 
@@ -1611,14 +1783,7 @@ mod tests {
             .clone()
             .unwrap();
 
-        replace_in_files(
-            root.clone(),
-            query.into(),
-            o,
-            replacement.into(),
-            targets_from(&found),
-        )
-        .unwrap();
+        replace_in_files(root.clone(), query.into(), o, replacement.into(), targets_from(&found)).unwrap();
 
         let after = std::fs::read_to_string(dir.join("a.txt")).unwrap();
         assert!(after.contains(&previewed), "wrote {after:?}, previewed {previewed:?}");
@@ -1653,8 +1818,7 @@ mod tests {
             },
         ];
         let n = targets.len();
-        let out =
-            replace_in_files(root, "needle".into(), o, "pin".into(), targets).unwrap();
+        let out = replace_in_files(root, "needle".into(), o, "pin".into(), targets).unwrap();
 
         assert!(out.changed.is_empty());
         assert_eq!(out.skipped.len(), n);
@@ -1731,8 +1895,7 @@ mod tests {
         let o = opts();
 
         let found = search_for(&root, "needle", &o);
-        let out =
-            replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
+        let out = replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
         assert_eq!(out.changed.len(), 2, "skipped: {:?}", out.skipped);
 
         assert_eq!(std::fs::read_to_string(&crlf).unwrap(), "one pin\r\ntwo pin\r\n");
@@ -1757,8 +1920,7 @@ mod tests {
 
         // A longer replacement, so a front-to-back application would corrupt the
         // second offset.
-        let out =
-            replace_in_files(root, "ab".into(), o, "XYZ".into(), targets_from(&found)).unwrap();
+        let out = replace_in_files(root, "ab".into(), o, "XYZ".into(), targets_from(&found)).unwrap();
         assert_eq!(out.occurrences, 2);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "XYZ cd XYZ\n");
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1774,8 +1936,7 @@ mod tests {
 
         let found = search_for(&root, "needle", &o);
         assert_eq!(found.matches[0].submatches, vec![(5, 11)]);
-        let out =
-            replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
+        let out = replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
         assert_eq!(out.occurrences, 1);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "café pin here\n");
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1804,7 +1965,11 @@ mod tests {
         .unwrap();
 
         assert!(out.changed.is_empty());
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "abcdef\n", "file must be untouched");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "abcdef\n",
+            "file must be untouched"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1824,13 +1989,15 @@ mod tests {
         let found = search_for(&root, "needle", &o);
         let mut handle = std::fs::File::open(&file).unwrap();
 
-        let out =
-            replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
+        let out = replace_in_files(root, "needle".into(), o, "pin".into(), targets_from(&found)).unwrap();
         assert_eq!(out.changed.len(), 1);
 
         let mut old = String::new();
         handle.read_to_string(&mut old).unwrap();
-        assert_eq!(old, "needle here\n", "the pre-open handle must still see the replaced file");
+        assert_eq!(
+            old, "needle here\n",
+            "the pre-open handle must still see the replaced file"
+        );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "pin here\n");
 
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1866,14 +2033,21 @@ mod tests {
         let root = dir.to_string_lossy().into_owned();
         let result = grep_project(root, String::new(), opts(), 500).unwrap();
         assert!(result.matches.is_empty());
-        assert!(!result.backend.is_empty(), "the panel needs the backend before the first query");
+        assert!(
+            !result.backend.is_empty(),
+            "the panel needs the backend before the first query"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     // --- line write-back (the editable results buffer) ---
 
     fn edit(line: u32, was: &str, now: &str) -> LineEdit {
-        LineEdit { line, was: was.into(), now: now.into() }
+        LineEdit {
+            line,
+            was: was.into(),
+            now: now.into(),
+        }
     }
 
     #[test]
@@ -1884,7 +2058,10 @@ mod tests {
 
         let out = apply_line_edits(
             root,
-            vec![FileEdits { path: "a.txt".into(), edits: vec![edit(2, "needle", "pin")] }],
+            vec![FileEdits {
+                path: "a.txt".into(),
+                edits: vec![edit(2, "needle", "pin")],
+            }],
         )
         .unwrap();
 
@@ -1934,9 +2111,18 @@ mod tests {
         let out = apply_line_edits(
             root,
             vec![
-                FileEdits { path: "a.txt".into(), edits: vec![edit(1, "needle a", "pin a")] },
-                FileEdits { path: "b.txt".into(), edits: vec![edit(1, "needle b", "pin b")] },
-                FileEdits { path: "c.txt".into(), edits: vec![edit(1, "needle c", "pin c")] },
+                FileEdits {
+                    path: "a.txt".into(),
+                    edits: vec![edit(1, "needle a", "pin a")],
+                },
+                FileEdits {
+                    path: "b.txt".into(),
+                    edits: vec![edit(1, "needle b", "pin b")],
+                },
+                FileEdits {
+                    path: "c.txt".into(),
+                    edits: vec![edit(1, "needle c", "pin c")],
+                },
             ],
         )
         .unwrap();
@@ -1957,7 +2143,10 @@ mod tests {
 
         let out = apply_line_edits(
             root,
-            vec![FileEdits { path: "a.txt".into(), edits: vec![edit(1, "needle", "pin\nmore")] }],
+            vec![FileEdits {
+                path: "a.txt".into(),
+                edits: vec![edit(1, "needle", "pin\nmore")],
+            }],
         )
         .unwrap();
 
@@ -2024,7 +2213,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(out.changed, vec!["a.txt".to_string()]);
-        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\r\npin\r\nfinal");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+            "one\r\npin\r\nfinal"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -2034,10 +2226,19 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "needle\n").unwrap();
         let root = dir.to_string_lossy().into_owned();
 
-        let out =
-            apply_line_edits(root, vec![FileEdits { path: "a.txt".into(), edits: vec![] }]).unwrap();
+        let out = apply_line_edits(
+            root,
+            vec![FileEdits {
+                path: "a.txt".into(),
+                edits: vec![],
+            }],
+        )
+        .unwrap();
 
-        assert!(out.changed.is_empty(), "a file with no edits is not a file that was written");
+        assert!(
+            out.changed.is_empty(),
+            "a file with no edits is not a file that was written"
+        );
         assert!(out.skipped.is_empty(), "and it is not a failure either");
         std::fs::remove_dir_all(&dir).unwrap();
     }

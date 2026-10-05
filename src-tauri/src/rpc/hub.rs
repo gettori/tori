@@ -43,8 +43,15 @@ impl Channel {
             "accounts" => Some(Channel::Accounts),
             "autopilot" => Some(Channel::Autopilot),
             _ => {
-                let id = |prefix| topic.strip_prefix(prefix).filter(|id| !id.is_empty()).map(str::to_string);
-                id("session:").map(Channel::Session).or_else(|| id("chat:").map(Channel::Chat))
+                let id = |prefix| {
+                    topic
+                        .strip_prefix(prefix)
+                        .filter(|id| !id.is_empty())
+                        .map(str::to_string)
+                };
+                id("session:")
+                    .map(Channel::Session)
+                    .or_else(|| id("chat:").map(Channel::Chat))
             }
         }
     }
@@ -124,7 +131,10 @@ impl ChatOutbox {
 }
 
 fn event_line(channel: &Channel, data: Value) -> String {
-    to_line(&Notification::new("event", json!({ "topic": channel.to_string(), "data": data })))
+    to_line(&Notification::new(
+        "event",
+        json!({ "topic": channel.to_string(), "data": data }),
+    ))
 }
 
 #[derive(Default)]
@@ -179,7 +189,16 @@ impl Hub {
         let mut inner = self.lock();
         inner.next += 1;
         let id = inner.next;
-        inner.conns.insert(id, Conn { tx, close, channels: HashSet::new(), device: None, chat: Arc::default() });
+        inner.conns.insert(
+            id,
+            Conn {
+                tx,
+                close,
+                channels: HashSet::new(),
+                device: None,
+                chat: Arc::default(),
+            },
+        );
         id
     }
 
@@ -205,7 +224,12 @@ impl Hub {
     /// Drops every connection held by `device`.
     pub fn close_device(&self, device: &str) {
         self.with_devices(|inner| {
-            let ids: Vec<ConnId> = inner.conns.iter().filter(|(_, c)| c.device.as_deref() == Some(device)).map(|(id, _)| *id).collect();
+            let ids: Vec<ConnId> = inner
+                .conns
+                .iter()
+                .filter(|(_, c)| c.device.as_deref() == Some(device))
+                .map(|(id, _)| *id)
+                .collect();
             close_all(inner, ids);
         });
     }
@@ -216,7 +240,11 @@ impl Hub {
 
     /// `false` when the connection is already gone.
     pub fn subscribe(&self, conn: ConnId, channel: Channel) -> bool {
-        self.lock().conns.get_mut(&conn).map(|c| c.channels.insert(channel)).is_some()
+        self.lock()
+            .conns
+            .get_mut(&conn)
+            .map(|c| c.channels.insert(channel))
+            .is_some()
     }
 
     pub fn unsubscribe(&self, conn: ConnId, channel: &Channel) {
@@ -298,7 +326,10 @@ mod tests {
         hub.publish(&Channel::Autopilot, json!({}));
         let got: Value = serde_json::from_str(&rx_a.try_recv().unwrap()).unwrap();
         assert_eq!(got["params"], json!({"topic": "sessions", "data": {"kind": "started"}}));
-        assert!(rx_a.try_recv().is_err(), "nothing from a channel it did not subscribe to");
+        assert!(
+            rx_a.try_recv().is_err(),
+            "nothing from a channel it did not subscribe to"
+        );
         assert!(rx_b.try_recv().is_err());
 
         hub.unsubscribe(a, &Channel::Sessions);
@@ -316,7 +347,10 @@ mod tests {
         hub.subscribe(hub.register(tx_one, Box::new(|| {})), Channel::Session("s1".into()));
         hub.subscribe(hub.register(tx_other, Box::new(|| {})), Channel::Session("s2".into()));
 
-        let place = Place { project: Some("/p".into()), folder: Some("/p/wt".into()) };
+        let place = Place {
+            project: Some("/p".into()),
+            folder: Some("/p/wt".into()),
+        };
         hub.publish_session("s1", session_event("session.started", "s1", &place, json!({})));
         for (rx, topic) in [(&rx_all, "sessions"), (&rx_one, "session:s1")] {
             let got: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
@@ -365,7 +399,10 @@ mod tests {
             hub.publish(&Channel::Chat("s1".into()), json!({ "n": n }));
         }
         hub.publish(&Channel::Sessions, json!({ "kind": "session.dot" }));
-        assert!(!closed.load(Ordering::SeqCst), "a chat flood does not cost the connection");
+        assert!(
+            !closed.load(Ordering::SeqCst),
+            "a chat flood does not cost the connection"
+        );
 
         let main: Vec<String> = rx.try_iter().collect();
         assert_eq!(main[0], WAKE, "one wake, however many chat lines");
@@ -374,8 +411,13 @@ mod tests {
         assert_eq!(sessions["params"]["data"]["kind"], "session.dot");
 
         chat.clear_wake();
-        let queued: Vec<Value> = std::iter::from_fn(|| chat.pop()).map(|l| serde_json::from_str(&l).unwrap()).collect();
-        let resyncs: Vec<&Value> = queued.iter().filter(|l| l["params"]["data"]["kind"] == "chat.resync").collect();
+        let queued: Vec<Value> = std::iter::from_fn(|| chat.pop())
+            .map(|l| serde_json::from_str(&l).unwrap())
+            .collect();
+        let resyncs: Vec<&Value> = queued
+            .iter()
+            .filter(|l| l["params"]["data"]["kind"] == "chat.resync")
+            .collect();
         assert_eq!(resyncs.len(), 1);
         assert_eq!(resyncs[0]["params"]["topic"], "chat:s1");
         assert!(queued.len() < CHAT_CAP, "the backlog is gone");
@@ -416,7 +458,11 @@ mod tests {
         }));
         let (tx, _rx) = sync_channel(QUEUE_CAP);
         let conn = hub.register(tx, Box::new(|| {}));
-        assert_eq!(notices.load(Ordering::SeqCst), 0, "an untagged connection is nobody's device");
+        assert_eq!(
+            notices.load(Ordering::SeqCst),
+            0,
+            "an untagged connection is nobody's device"
+        );
         hub.tag_device(conn, "phone");
         assert!(hub.connected_devices().contains("phone"));
         assert_eq!(notices.load(Ordering::SeqCst), 1);

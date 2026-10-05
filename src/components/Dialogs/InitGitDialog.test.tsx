@@ -23,15 +23,7 @@ type InitProps = Parameters<typeof InitGitDialog>[0];
 function open(props: Partial<Omit<InitProps, "onConfirm" | "onCancel">> = {}) {
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
-  render(() => (
-    <InitGitDialog
-      folderName="notes"
-      busy={false}
-      onConfirm={onConfirm}
-      onCancel={onCancel}
-      {...props}
-    />
-  ));
+  render(() => <InitGitDialog folderName="notes" busy={false} onConfirm={onConfirm} onCancel={onCancel} {...props} />);
   return {
     onConfirm,
     onCancel,
@@ -90,16 +82,12 @@ describe("InitGitDialog", () => {
     it("says which of the two layouts is about to be created", () => {
       const { bare } = open();
 
-      expect(
-        screen.getByText("A standard git repository with one working tree in this folder."),
-      ).toBeTruthy();
+      expect(screen.getByText("A standard git repository with one working tree in this folder.")).toBeTruthy();
 
       fireEvent.click(bare);
 
       expect(
-        screen.getByText(
-          "A .bare repo in this folder, with each branch checked out as its own sibling folder.",
-        ),
+        screen.getByText("A .bare repo in this folder, with each branch checked out as its own sibling folder."),
       ).toBeTruthy();
     });
 

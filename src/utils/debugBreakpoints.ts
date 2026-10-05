@@ -103,12 +103,7 @@ export function toggleBreakpointAt(ws: string, path: string, line: number): void
  * Nothing is sent from here. An edit that moved a breakpoint is exactly the case
  * where the buffer and the file on disk disagree, which is what `pending` is.
  */
-export function breakpointsMoved(
-  ws: string,
-  path: string,
-  lines: readonly number[],
-  docLines: number,
-): void {
+export function breakpointsMoved(ws: string, path: string, lines: readonly number[], docLines: number): void {
   const beyond = breakpointsFor(store(), ws, path).filter((line) => line > docLines);
   write(setFileBreakpoints(store(), ws, path, [...lines, ...beyond]));
 }
@@ -279,7 +274,10 @@ function wire(session: DapSession): void {
   // always says `false`. js-debug re-sends the same event several times for one
   // breakpoint, so this has to be idempotent, which a set of keys is.
   session.conn.on("breakpoint", (body) => {
-    const b = (body ?? {}) as { reason?: string; breakpoint?: { verified?: boolean; line?: number; source?: { path?: string } } };
+    const b = (body ?? {}) as {
+      reason?: string;
+      breakpoint?: { verified?: boolean; line?: number; source?: { path?: string } };
+    };
     const path = b.breakpoint?.source?.path;
     const line = b.breakpoint?.line;
     if (typeof path !== "string" || typeof line !== "number") return;

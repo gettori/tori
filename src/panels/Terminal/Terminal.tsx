@@ -71,12 +71,7 @@ import {
   type TerminalTabFocused,
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
-import {
-  agentEnabled,
-  agentOffReason,
-  draftChatAgent,
-  draftChatProfile,
-} from "../../utils/agentEnabled";
+import { agentEnabled, agentOffReason, draftChatAgent, draftChatProfile } from "../../utils/agentEnabled";
 import { agentRefusal, NOT_ALLOWED } from "../../utils/projectAgents";
 import {
   asProfileId,
@@ -108,7 +103,13 @@ import {
   agentIdForProgram,
   applyTemplate,
 } from "../../utils/agents";
-import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
+import {
+  BLOCKED_REASON,
+  sanitizeForSend,
+  bracketedPaste,
+  sendWithProbeGate,
+  type ProbeState,
+} from "../../utils/safeSend";
 import { awaitingUser, blockedOnUser, isWorking, type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionStatus";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
@@ -559,37 +560,38 @@ export default function Terminal(props: {
           continue;
         }
         const id = restoredId(d.id, chatId, () => live.chat.has(d.sessionId!));
-        openOrActivate({
-          id,
-          // The session's own name wins over the stored one, on the same rule
-          // `syncTabTitles` and `focusOrResume` already use: a rename lands on
-          // the session, so that is where the current name is. It also heals a
-          // store written before the title was persisted through `tabTitle`,
-          // which is every store that has a chat in it today.
-          title: (s.name || s.title || d.title).slice(0, 28),
-          cwd: await cwdFor(d.cwd),
-          workspace: ws,
-          kind: "chat",
-          program: d.program || "claude",
-          args: [],
-          // The listing's answer wins over the stored one: both name an
-          // account, but the listing's comes from the root that actually held
-          // the transcript, which is the same authority `chat_spawn` resolves
-          // against. Preferring the store would turn a profile renamed since
-          // last launch into a refused resume.
-          profile: asTabProfile(s.profile ?? d.profile),
-          sessionId: d.sessionId,
-          resume: true,
-          // Resumed, not re-forked: the fork happened last run and its
-          // conversation is in this session's own transcript now. The marker
-          // rides along only so the tab keeps saying the agent remembers turns
-          // that were undone, which is still true.
-          rewindTo: d.rewindTo,
-          background: d.background,
-          spawner: d.spawner,
-        },
-        false,
-      );
+        openOrActivate(
+          {
+            id,
+            // The session's own name wins over the stored one, on the same rule
+            // `syncTabTitles` and `focusOrResume` already use: a rename lands on
+            // the session, so that is where the current name is. It also heals a
+            // store written before the title was persisted through `tabTitle`,
+            // which is every store that has a chat in it today.
+            title: (s.name || s.title || d.title).slice(0, 28),
+            cwd: await cwdFor(d.cwd),
+            workspace: ws,
+            kind: "chat",
+            program: d.program || "claude",
+            args: [],
+            // The listing's answer wins over the stored one: both name an
+            // account, but the listing's comes from the root that actually held
+            // the transcript, which is the same authority `chat_spawn` resolves
+            // against. Preferring the store would turn a profile renamed since
+            // last launch into a refused resume.
+            profile: asTabProfile(s.profile ?? d.profile),
+            sessionId: d.sessionId,
+            resume: true,
+            // Resumed, not re-forked: the fork happened last run and its
+            // conversation is in this session's own transcript now. The marker
+            // rides along only so the tab keeps saying the agent remembers turns
+            // that were undone, which is still true.
+            rewindTo: d.rewindTo,
+            background: d.background,
+            spawner: d.spawner,
+          },
+          false,
+        );
         // What was typed at this conversation while nothing was driving it, and
         // what it was running.
         //
@@ -666,16 +668,17 @@ export default function Terminal(props: {
         }
       }
       const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
-      openOrActivate({
-        id,
-        title: d.title,
-        cwd,
-        workspace: ws,
-        kind: d.kind,
-        program: d.program,
-        args: d.args,
-        profile,
-        ...(env && Object.keys(env).length ? { env } : {}),
+      openOrActivate(
+        {
+          id,
+          title: d.title,
+          cwd,
+          workspace: ws,
+          kind: d.kind,
+          program: d.program,
+          args: d.args,
+          profile,
+          ...(env && Object.keys(env).length ? { env } : {}),
           ...(d.kind === "agent" && d.program ? { init: agentInit(d.program, d.args) } : {}),
         },
         false,
@@ -699,7 +702,8 @@ export default function Terminal(props: {
       notices.push(
         `${refusedAccounts} tab${refusedAccounts > 1 ? "s" : ""} ran on an account this project does not allow`,
       );
-    if (relocated) notices.push(`${relocated} folder${relocated > 1 ? "s" : ""} missing, opened in your home directory`);
+    if (relocated)
+      notices.push(`${relocated} folder${relocated > 1 ? "s" : ""} missing, opened in your home directory`);
     if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
   }
 
@@ -736,10 +740,12 @@ export default function Terminal(props: {
     // Only a live tab hosts its session. A restored tab nobody reached for
     // names a session it is not driving, and counting it as hosted would hide
     // exactly the case this button is about: running here, with no tab on it.
-    const hosted = new Set(open().filter((t) => tabState(t) === "live").map((t) => t.sessionId));
-    return (sessions()[ws] ?? []).filter(
-      (s) => !hosted.has(s.id) && sessionStatus(s.id) !== "none",
-    ).length;
+    const hosted = new Set(
+      open()
+        .filter((t) => tabState(t) === "live")
+        .map((t) => t.sessionId),
+    );
+    return (sessions()[ws] ?? []).filter((s) => !hosted.has(s.id) && sessionStatus(s.id) !== "none").length;
   });
 
   // Where the panel says you are. The selection carries the names when it is
@@ -821,7 +827,11 @@ export default function Terminal(props: {
     });
 
   function saveTabStore(tabs: readonly OpenTerm[], active: Record<string, string>) {
-    const live = toStore(untrack(() => withDrafts(tabs)), active, Date.now());
+    const live = toStore(
+      untrack(() => withDrafts(tabs)),
+      active,
+      Date.now(),
+    );
     for (const ws of Object.keys(live)) touched.add(ws);
     saveTabs(mergeStore(restorable, live, touched));
   }
@@ -998,7 +1008,14 @@ export default function Terminal(props: {
     closeId(tab.id, "replace");
     // On the refused tab's own account: a fork is the same work under a new
     // session id, and moving it to another login would be a different session.
-    void spawnSession(tab.program, tab.workspace, tab.workspace.split("/").pop() || tab.program, false, tab.workspace, tab.profile);
+    void spawnSession(
+      tab.program,
+      tab.workspace,
+      tab.workspace.split("/").pop() || tab.program,
+      false,
+      tab.workspace,
+      tab.profile,
+    );
   }
 
   async function endRefusalOrphan(entry: { tab: OpenTerm; refusal: Refusal }) {
@@ -1277,7 +1294,11 @@ export default function Terminal(props: {
   // session whose cwd matches and which was created at/after the tab's spawn
   // (so an older session sharing the cwd is never misattributed).
   async function backfillFreshSessions() {
-    const claimed = new Set(open().map((t) => t.sessionId).filter((x): x is string => !!x));
+    const claimed = new Set(
+      open()
+        .map((t) => t.sessionId)
+        .filter((x): x is string => !!x),
+    );
     const byWorkspace = new Map<string, OpenTerm[]>();
     for (const t of open()) {
       // A tab short of `live` hosts nothing, so no session can have appeared
@@ -1408,9 +1429,7 @@ export default function Terminal(props: {
     const runningElsewhere =
       hostedHere || settings.chatDefaults.defaultSurface === "agent"
         ? false
-        : await invoke<boolean>("session_running_elsewhere", { id: sessionId, agent: agentId }).catch(
-            () => true,
-          );
+        : await invoke<boolean>("session_running_elsewhere", { id: sessionId, agent: agentId }).catch(() => true);
     const route = routeSelection({
       preference: settings.chatDefaults.defaultSurface,
       hostedHere,
@@ -1445,13 +1464,9 @@ export default function Terminal(props: {
       // exited (dropped to the shell), retype the resume so the session comes
       // back in place. Best-effort: without shell integration we can't tell an
       // idle prompt from a foreground program, so treat "agent gone" as idle.
-      const running = await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(
-        () => true,
-      );
+      const running = await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(() => true);
       if (!running) {
-        invoke("pty_write", { id: existing.id, data: agentInit(existing.program, existing.args) }).catch(
-          () => {},
-        );
+        invoke("pty_write", { id: existing.id, data: agentInit(existing.program, existing.args) }).catch(() => {});
       }
       return;
     }
@@ -1464,14 +1479,15 @@ export default function Terminal(props: {
     // open a tab that cannot be what it says it is.
     const env = await spawnEnvOrWarn(agentId, sel.profile ?? null, sel.sessionCwd || sel.folderPath);
     if (!env) return;
-    openOrActivate({
-      id,
-      title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
-      cwd: sel.sessionCwd || sel.folderPath,
-      workspace: sel.folderPath,
-      kind: "agent",
-      program: a.program,
-      args,
+    openOrActivate(
+      {
+        id,
+        title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
+        cwd: sel.sessionCwd || sel.folderPath,
+        workspace: sel.folderPath,
+        kind: "agent",
+        program: a.program,
+        args,
         profile: sel.profile ?? null,
         ...(Object.keys(env).length ? { env } : {}),
         init: agentInit(a.program, args),
@@ -1653,17 +1669,18 @@ export default function Terminal(props: {
     id: string = chatId(),
     focus = true,
   ): string {
-    openOrActivate({
-      id,
-      title: chatTabLabel(
-        baseName,
-        tabsIn(workspace)
-          .filter((t) => t.kind === "chat")
-          .map(tabTitle),
-      ),
-      cwd,
-      workspace,
-      kind: "chat",
+    openOrActivate(
+      {
+        id,
+        title: chatTabLabel(
+          baseName,
+          tabsIn(workspace)
+            .filter((t) => t.kind === "chat")
+            .map(tabTitle),
+        ),
+        cwd,
+        workspace,
+        kind: "chat",
         program: agentId,
         args: [],
         profile,
@@ -1915,9 +1932,7 @@ export default function Terminal(props: {
   const noChatReason = () => {
     const root = selectionRoot(props.selected);
     if (!root) return "Select a branch first";
-    return draftAgent(workspaceKey(props.selected), root)
-      ? null
-      : "No agent enabled. Turn one on in Settings.";
+    return draftAgent(workspaceKey(props.selected), root) ? null : "No agent enabled. Turn one on in Settings.";
   };
 
   /** The agent-terminal row, one per account once there are two of them.
@@ -2132,7 +2147,10 @@ export default function Terminal(props: {
       const recorded = activeByWorkspace()[t.workspace];
       const activeNow = recorded && wsTabs.some((o) => o.id === recorded) ? recorded : wsTabs[0]?.id;
       if (activeNow === id) {
-        const next = nextActiveAfterClose(wsTabs.map((o) => o.id), id);
+        const next = nextActiveAfterClose(
+          wsTabs.map((o) => o.id),
+          id,
+        );
         if (next) setActiveByWorkspace({ ...activeByWorkspace(), [t.workspace]: next });
       }
     }
@@ -2286,8 +2304,7 @@ export default function Terminal(props: {
 
   /** Which member a tab's shell is sitting in. A terminal has no file, so the
    *  cwd is what answers; null outside a Topic. */
-  const tabMember = (cwd: string): TintedMember | null =>
-    topicId() ? memberFor(cwd, members()) : null;
+  const tabMember = (cwd: string): TintedMember | null => (topicId() ? memberFor(cwd, members()) : null);
 
   const termMenuItem = (u: UnifiedTab) => {
     const t = asTerm(u);
@@ -2421,7 +2438,15 @@ export default function Terminal(props: {
         onStart={() => advanceTabState(t, "live")}
         active={active()}
         onForkSession={() =>
-          spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, undefined, undefined, t.profile)
+          spawnChat(
+            t.workspace,
+            t.cwd,
+            t.workspace.split("/").pop() || "chat",
+            t.program,
+            undefined,
+            undefined,
+            t.profile,
+          )
         }
         onForkFrom={() =>
           spawnChat(
@@ -2455,149 +2480,149 @@ export default function Terminal(props: {
     const [menuOpen, setMenuOpen] = createSignal(false);
     return (
       <>
-      <div class={styles.termNewSplit}>
-        {/* Main half: a new chat, which is a draft and so costs nothing until
+        <div class={styles.termNewSplit}>
+          {/* Main half: a new chat, which is a draft and so costs nothing until
             it is written in. A plus rather than a terminal icon, because the
             thing it makes is no longer a shell: the shell moved into the menu
             beside every other surface. Caret half: everything else. */}
-        {/* `whenDisabled`: with no branch picked, or with no agent enabled,
+          {/* `whenDisabled`: with no branch picked, or with no agent enabled,
             the label is the reason the button is greyed out, not a
             description of what it does. */}
-        <Tooltip
-          as="button"
-          type="button"
-          class={`${styles.termNew} ${styles.termNewMain}`}
-          disabled={noChatReason() !== null}
-          whenDisabled
-          label={noChatReason() ?? `New chat in ${props.selected!.projectName}`}
-          aria-label={props.selected ? `New chat in ${props.selected.projectName}` : "New chat"}
-          onClick={() => newChat()}
-        >
-          <Icon icon={Plus} />
-        </Tooltip>
-        {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
-            wrapper keeps a box (a dropdown anchors on its trigger's rect),
-            and the two sibling rules the split button relies on are
-            written through it, see the stylesheet. */}
-        <Dropdown
-          as="span"
-          wrapper
-          class={styles.termNewCaretWrap}
-          open={menuOpen()}
-          onOpenChange={setMenuOpen}
-          placement="bottom-end"
-          items={[
-            // The shell leads. It is the one row here with no agent behind it
-            // and nothing gating it, and it is what the main half used to open,
-            // so it is the route most often come looking for.
-            { label: "Terminal", icon: TerminalIcon, onClick: () => newShell() },
-            // No chat row: the main half of this split button is already that
-            // click, and a menu repeating its own button says there are two
-            // things where there is one.
-            //
-            // Every entry that would start an agent is absent unless that
-            // agent is one this install offers: a menu row is a promise, and
-            // one that starts something the user turned off in Settings is
-            // Tori going around its own setting.
-            ...claudeTerminalItem("terminal"),
-            // Absent when there is nothing to close, since a row that would
-            // do nothing is worse than no row. Counted in the label: the
-            // whole point is knowing how much of the strip this clears.
-            ...(inertTabs().length
-              ? [
-                  {
-                    label: `Close ${inertTabs().length} tab${inertTabs().length > 1 ? "s" : ""} not started`,
-                    icon: ListX,
-                    onClick: closeInert,
-                  },
-                ]
-              : []),
-            // Only for a session selection, since there is nothing to
-            // continue from a bare branch. The session need not have been
-            // started in chat: every surface writes the transcript this
-            // resumes and backfills from.
-            ...(props.selected?.sessionId
-              ? [
-                  {
-                    label: "Continue this session in chat",
-                    icon: MessageSquare,
-                    // Disabled rather than absent, and the label says why: the
-                    // session exists and the reader can see it, so a row that
-                    // silently vanished would read as Tori losing it.
-                    disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
-                    onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
-                  },
-                  // The counterpart route for a session selection, so the
-                  // PTY surface is reachable for an existing session and
-                  // not only for a new one.
-                  {
-                    label: "Continue this session in terminal",
-                    icon: SquareTerminal,
-                    disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
-                    onClick: () => void focusOrResume(props.selected!),
-                  },
-                ]
-              : []),
-            ...(agentEnabled("claude")
-              ? [
-                  {
-                    label: `${findAdapter("claude").label} (yolo)`,
-                    icon: Zap,
-                    onClick: () => newSession("claude", true),
-                    ...claudeRowRefusal(),
-                  },
-                ]
-              : []),
-          ]}
-        >
           <Tooltip
             as="button"
             type="button"
-            class={`${styles.termNew} ${styles.termNewCaret}`}
-            disabled={!props.selected}
-            label="Launch an agent session"
-            aria-label="Launch an agent session"
-            // Kobalte writes these on the trigger, which is the wrapper,
-            // and they cannot be taken off it (`wrapper` removes its
-            // `role` and tab stop, not its ARIA). The button is what the
-            // keyboard reaches, so it says this too.
-            aria-haspopup="menu"
-            aria-expanded={menuOpen()}
+            class={`${styles.termNew} ${styles.termNewMain}`}
+            disabled={noChatReason() !== null}
+            whenDisabled
+            label={noChatReason() ?? `New chat in ${props.selected!.projectName}`}
+            aria-label={props.selected ? `New chat in ${props.selected.projectName}` : "New chat"}
+            onClick={() => newChat()}
           >
-            <Icon icon={ChevronDown} class={styles.termNewChevron} />
+            <Icon icon={Plus} />
           </Tooltip>
-        </Dropdown>
-      </div>
-      {/* Session navigation, at the surface the sessions run in rather than
+          {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
+            wrapper keeps a box (a dropdown anchors on its trigger's rect),
+            and the two sibling rules the split button relies on are
+            written through it, see the stylesheet. */}
+          <Dropdown
+            as="span"
+            wrapper
+            class={styles.termNewCaretWrap}
+            open={menuOpen()}
+            onOpenChange={setMenuOpen}
+            placement="bottom-end"
+            items={[
+              // The shell leads. It is the one row here with no agent behind it
+              // and nothing gating it, and it is what the main half used to open,
+              // so it is the route most often come looking for.
+              { label: "Terminal", icon: TerminalIcon, onClick: () => newShell() },
+              // No chat row: the main half of this split button is already that
+              // click, and a menu repeating its own button says there are two
+              // things where there is one.
+              //
+              // Every entry that would start an agent is absent unless that
+              // agent is one this install offers: a menu row is a promise, and
+              // one that starts something the user turned off in Settings is
+              // Tori going around its own setting.
+              ...claudeTerminalItem("terminal"),
+              // Absent when there is nothing to close, since a row that would
+              // do nothing is worse than no row. Counted in the label: the
+              // whole point is knowing how much of the strip this clears.
+              ...(inertTabs().length
+                ? [
+                    {
+                      label: `Close ${inertTabs().length} tab${inertTabs().length > 1 ? "s" : ""} not started`,
+                      icon: ListX,
+                      onClick: closeInert,
+                    },
+                  ]
+                : []),
+              // Only for a session selection, since there is nothing to
+              // continue from a bare branch. The session need not have been
+              // started in chat: every surface writes the transcript this
+              // resumes and backfills from.
+              ...(props.selected?.sessionId
+                ? [
+                    {
+                      label: "Continue this session in chat",
+                      icon: MessageSquare,
+                      // Disabled rather than absent, and the label says why: the
+                      // session exists and the reader can see it, so a row that
+                      // silently vanished would read as Tori losing it.
+                      disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
+                      onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                    },
+                    // The counterpart route for a session selection, so the
+                    // PTY surface is reachable for an existing session and
+                    // not only for a new one.
+                    {
+                      label: "Continue this session in terminal",
+                      icon: SquareTerminal,
+                      disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
+                      onClick: () => void focusOrResume(props.selected!),
+                    },
+                  ]
+                : []),
+              ...(agentEnabled("claude")
+                ? [
+                    {
+                      label: `${findAdapter("claude").label} (yolo)`,
+                      icon: Zap,
+                      onClick: () => newSession("claude", true),
+                      ...claudeRowRefusal(),
+                    },
+                  ]
+                : []),
+            ]}
+          >
+            <Tooltip
+              as="button"
+              type="button"
+              class={`${styles.termNew} ${styles.termNewCaret}`}
+              disabled={!props.selected}
+              label="Launch an agent session"
+              aria-label="Launch an agent session"
+              // Kobalte writes these on the trigger, which is the wrapper,
+              // and they cannot be taken off it (`wrapper` removes its
+              // `role` and tab stop, not its ARIA). The button is what the
+              // keyboard reaches, so it says this too.
+              aria-haspopup="menu"
+              aria-expanded={menuOpen()}
+            >
+              <Icon icon={ChevronDown} class={styles.termNewChevron} />
+            </Tooltip>
+          </Dropdown>
+        </div>
+        {/* Session navigation, at the surface the sessions run in rather than
           in a tree you have to find them in. After the launch control: the
           two are one pair, and the thing you reach for most often is the
           one nearer the strip's edge. */}
-      <Tooltip
-        as="button"
-        type="button"
-        class={`${styles.termNew} ${styles.termHistory}`}
-        disabled={!activeWorkspace()}
-        label="Session history"
-        aria-label="Session history"
-        aria-haspopup="dialog"
-        aria-expanded={historyOpen()}
-        onClick={toggleHistory}
-      >
-        <Icon icon={History} />
-        <Show when={detachedLive()}>
-          <span
-            class={styles.termHistoryBadge}
-            title={
-              detachedLive() === 1
-                ? "1 session running here with no tab open"
-                : `${detachedLive()} sessions running here with no tab open`
-            }
-          >
-            <Icon icon={CircleDashed} />
-            <Show when={detachedLive() > 1}>{detachedLive()}</Show>
-          </span>
-        </Show>
-      </Tooltip>
+        <Tooltip
+          as="button"
+          type="button"
+          class={`${styles.termNew} ${styles.termHistory}`}
+          disabled={!activeWorkspace()}
+          label="Session history"
+          aria-label="Session history"
+          aria-haspopup="dialog"
+          aria-expanded={historyOpen()}
+          onClick={toggleHistory}
+        >
+          <Icon icon={History} />
+          <Show when={detachedLive()}>
+            <span
+              class={styles.termHistoryBadge}
+              title={
+                detachedLive() === 1
+                  ? "1 session running here with no tab open"
+                  : `${detachedLive()} sessions running here with no tab open`
+              }
+            >
+              <Icon icon={CircleDashed} />
+              <Show when={detachedLive() > 1}>{detachedLive()}</Show>
+            </span>
+          </Show>
+        </Tooltip>
       </>
     );
   };
@@ -2617,12 +2642,7 @@ export default function Terminal(props: {
     icon: (u) => {
       const t = asTerm(u);
       const mark = marksSession(t) ? (
-        <TabMark
-          agentId={t.program}
-          status={tabStatus(t)}
-          certainty={tabCertainty(t)}
-          background={chatBackground(t)}
-        />
+        <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} background={chatBackground(t)} />
       ) : (
         <Icon icon={KIND_GLYPHS[t.kind]} />
       );
@@ -2663,9 +2683,7 @@ export default function Terminal(props: {
       // install every tab would otherwise say "Default", which names nothing.
       const account = profileLabel(t.program, t.profile);
       const on = account ? `\nAccount: ${account}` : "";
-      return blockedTab(t)
-        ? `${t.cwd} - waiting for your approval${state}${on}`
-        : `${t.cwd}${state}${on}`;
+      return blockedTab(t) ? `${t.cwd} - waiting for your approval${state}${on}` : `${t.cwd}${state}${on}`;
     },
     dots: (u) => (
       <Show when={u.kind === "command" && commandVerdict(u.id)}>

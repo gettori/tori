@@ -21,11 +21,7 @@ import {
   type AgentHealth,
 } from "./agentHealth";
 
-const row = (
-  id: string,
-  status: AgentHealth["status"],
-  signIn: AgentHealth["signIn"] = "unknown",
-): AgentHealth => ({
+const row = (id: string, status: AgentHealth["status"], signIn: AgentHealth["signIn"] = "unknown"): AgentHealth => ({
   id,
   label: id,
   program: id,

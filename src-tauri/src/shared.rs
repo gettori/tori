@@ -154,7 +154,11 @@ fn split_exclude(text: &str) -> (Vec<&str>, Vec<&str>, Vec<&str>) {
         .position(|l| l.trim_start().starts_with('#'))
         .map(|i| at + 1 + i)
         .unwrap_or(lines.len());
-    let ours = lines[at + 1..end].iter().copied().filter(|l| !l.trim().is_empty()).collect();
+    let ours = lines[at + 1..end]
+        .iter()
+        .copied()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
     (lines[..at].to_vec(), ours, lines[end..].to_vec())
 }
 
@@ -321,11 +325,7 @@ fn remove_in(shared: &Path, worktrees: &[PathBuf], name: &str) -> Result<(), Str
 /// same rule `link_shared` follows at creation: a file the branch carries is
 /// never replaced by a link.
 #[tauri::command(async)]
-pub fn shared_link(
-    container: String,
-    name: String,
-    worktree: Option<String>,
-) -> Result<u32, String> {
+pub fn shared_link(container: String, name: String, worktree: Option<String>) -> Result<u32, String> {
     let name = checked_name(&name)?;
     let mut live = live_worktrees(&container);
     // Named or not, the target comes from git's own list: a path the page held
@@ -452,7 +452,9 @@ pub fn shared_keep_in(container: String, worktree: String, name: String) -> Resu
 }
 
 fn basename(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+    p.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 /// Delete an entry and every link pointing at it. The links go first: removing
@@ -564,7 +566,11 @@ mod tests {
         remove_in(&shared, &wts, ".env").unwrap();
 
         assert!(wts[0].join(".env").symlink_metadata().is_err(), "our link goes");
-        assert_eq!(fs::read_to_string(wts[1].join(".env")).unwrap(), "mine", "their file stays");
+        assert_eq!(
+            fs::read_to_string(wts[1].join(".env")).unwrap(),
+            "mine",
+            "their file stays"
+        );
         assert!(!shared.join(".env").exists());
 
         fs::remove_dir_all(&root).ok();
@@ -595,9 +601,15 @@ mod tests {
         let (root, _shared, _w) = container(1);
         let c = root.to_string_lossy().to_string();
         for bad in ["../escape", "a/b", "", "..", "."] {
-            assert!(shared_link(c.clone(), bad.into(), None).is_err(), "{bad} must be refused");
+            assert!(
+                shared_link(c.clone(), bad.into(), None).is_err(),
+                "{bad} must be refused"
+            );
             assert!(shared_remove(c.clone(), bad.into()).is_err(), "{bad} must be refused");
-            assert!(shared_unlink(c.clone(), c.clone(), bad.into()).is_err(), "{bad} must be refused");
+            assert!(
+                shared_unlink(c.clone(), c.clone(), bad.into()).is_err(),
+                "{bad} must be refused"
+            );
         }
         fs::remove_dir_all(&root).ok();
     }

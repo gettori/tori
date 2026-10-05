@@ -58,7 +58,10 @@ export default function DiffBufferView(props: {
   const stageConf = new Compartment();
   const blameConf = new Compartment();
   let blameShown = false;
-  const stageGutter = hunkActionGutter({ staged: () => props.staged, run: (hunk, action) => props.onHunk(hunk, action) });
+  const stageGutter = hunkActionGutter({
+    staged: () => props.staged,
+    run: (hunk, action) => props.onHunk(hunk, action),
+  });
 
   function load() {
     if (!view) return;
@@ -111,7 +114,10 @@ export default function DiffBufferView(props: {
           ]),
           caretListener((line, column) => props.onCaret?.(line, column)),
           EditorView.updateListener.of((update) => {
-            if (update.selectionSet || update.startState.field(diffBufferField) !== update.state.field(diffBufferField)) {
+            if (
+              update.selectionSet ||
+              update.startState.field(diffBufferField) !== update.state.field(diffBufferField)
+            ) {
               props.onSelect(selectedRows(update.state));
             }
           }),
@@ -144,7 +150,12 @@ export default function DiffBufferView(props: {
   createEffect(
     on(vimModeOn, (vimOn) => view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimOn)) }), { defer: true }),
   );
-  createEffect(on(() => props.busy, (busy) => view?.dispatch({ effects: setHunksBusy.of(busy) })));
+  createEffect(
+    on(
+      () => props.busy,
+      (busy) => view?.dispatch({ effects: setHunksBusy.of(busy) }),
+    ),
+  );
   createEffect(
     on(
       () => props.canStage,

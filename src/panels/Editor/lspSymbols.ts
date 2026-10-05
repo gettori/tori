@@ -68,10 +68,7 @@ const pending = new Map<string, number>();
  * the server was answering. Publishing then would put back an entry the tab
  * close already dropped, and nothing would drop it again.
  */
-export async function refreshDocumentSymbols(
-  path: string,
-  stillOpen: () => boolean = () => true,
-): Promise<boolean> {
+export async function refreshDocumentSymbols(path: string, stillOpen: () => boolean = () => true): Promise<boolean> {
   const token = (pending.get(path) ?? 0) + 1;
   pending.set(path, token);
   const nodes = await requestDocumentSymbols(path);

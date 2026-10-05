@@ -11,9 +11,7 @@ function shortTime(ms: number): string {
   const d = new Date(ms);
   const today = new Date();
   const sameDay =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
+    d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
   const clock = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   // The date only when it is not today: a column of "today" on every row is a
   // column that distinguishes nothing.
@@ -30,12 +28,7 @@ function formatBytes(bytes: number): string {
  *  unified diff reads identically wherever it appears. */
 function diffLineClass(line: string): string {
   if (line.startsWith("@@")) return "hunk";
-  if (
-    line.startsWith("+++") ||
-    line.startsWith("---") ||
-    line.startsWith("diff ") ||
-    line.startsWith("index ")
-  ) {
+  if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")) {
     return "meta";
   }
   if (line.startsWith("+")) return "add";
@@ -86,11 +79,13 @@ export default function LocalHistory(props: { workspace: string; file: string })
     }
   }
 
-  createEffect(on([() => props.workspace, () => props.file], () => {
-    setPicked(null);
-    setDiff(null);
-    void reload();
-  }));
+  createEffect(
+    on([() => props.workspace, () => props.file], () => {
+      setPicked(null);
+      setDiff(null);
+      void reload();
+    }),
+  );
 
   // Bumped per request so a slow diff cannot land under a row picked since, the
   // same latest-wins guard the Search, TODO and Tasks panels keep.
@@ -141,12 +136,14 @@ export default function LocalHistory(props: { workspace: string; file: string })
         <span class={styles.sub}>{props.file}</span>
       </div>
       <Show when={!error()} fallback={<div class="tree-empty">{error()}</div>}>
-        <Show when={loading() || entries().length} fallback={
-          <div class="tree-empty">
-            No saved versions yet. Tori keeps one each time you save this file, whether or not it
-            is committed.
-          </div>
-        }>
+        <Show
+          when={loading() || entries().length}
+          fallback={
+            <div class="tree-empty">
+              No saved versions yet. Tori keeps one each time you save this file, whether or not it is committed.
+            </div>
+          }
+        >
           <div class={styles.list}>
             <For each={entries()}>
               {(entry, i) => (
@@ -178,19 +175,14 @@ export default function LocalHistory(props: { workspace: string; file: string })
                   </div>
                   <Show when={picked() === entry.ts}>
                     <div class={styles.diff}>
-                      <Show
-                        when={diff() !== null}
-                        fallback={<div class={styles.same}>Reading that version…</div>}
-                      >
+                      <Show when={diff() !== null} fallback={<div class={styles.same}>Reading that version…</div>}>
                         <Show
                           when={diff()}
                           fallback={<div class={styles.same}>Identical to the file as it is now.</div>}
                         >
                           <For each={diff()!.split("\n")}>
                             {(line) => (
-                              <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>
-                                {line || " "}
-                              </div>
+                              <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>
                             )}
                           </For>
                         </Show>

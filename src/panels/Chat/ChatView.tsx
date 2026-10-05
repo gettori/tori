@@ -216,12 +216,7 @@ import {
   type ToolItem,
 } from "./chatStore";
 import { loadQueue, saveQueue } from "./queuePersist";
-import {
-  refusalMessage,
-  refusalOf,
-  CONTESTED_NOTICE,
-  type ClaimOutcome,
-} from "../../utils/chatOwnership";
+import { refusalMessage, refusalOf, CONTESTED_NOTICE, type ClaimOutcome } from "../../utils/chatOwnership";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
@@ -439,7 +434,10 @@ export default function ChatView(props: {
   onMount(() => {
     void loadStash();
     const offSaved = onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => mirrorSaved(composerKey(), saved));
-    const offClosed = onWith<EditorTabClosed>(EDITOR_TAB_CLOSED, (closed) => void scratchTabClosed(composerKey(), closed));
+    const offClosed = onWith<EditorTabClosed>(
+      EDITOR_TAB_CLOSED,
+      (closed) => void scratchTabClosed(composerKey(), closed),
+    );
     const offDone = onWith<EditorPromptDone>(EDITOR_PROMPT_DONE, ({ path }) => {
       if (path !== linkedScratchFor(composerKey())) return;
       void unlinkScratch(composerKey(), { closeTab: true });
@@ -526,8 +524,7 @@ export default function ChatView(props: {
 
   /** The lane an `Agent` call opened, so its card can offer a way in from where
    *  the launch actually happened rather than from a strip of equal chips. */
-  const laneOpenedBy = (toolUseId: string) =>
-    laneStrip(state).find((l) => l.toolUseId === toolUseId)?.agentId ?? null;
+  const laneOpenedBy = (toolUseId: string) => laneStrip(state).find((l) => l.toolUseId === toolUseId)?.agentId ?? null;
 
   /** The lane a row on screen actually belongs to, which only differs from what
    *  the reader picked for a blocked row: those show in main too. */
@@ -1268,7 +1265,6 @@ export default function ChatView(props: {
   // second agent would otherwise inherit Claude's measurements by silence.
   const tier = () => chatTier(findAdapter(props.agentId).chat?.transport);
 
-
   // A held message is exempt from the autopilot's lock: it is the first prompt
   // this session was opened with, not someone typing into a running one.
   async function sendBlocks(blocks: ContentBlock[], command: "chat_send" | "chat_send_held" = "chat_send") {
@@ -1320,7 +1316,10 @@ export default function ChatView(props: {
   onMount(() => {
     void loadQueue(props.sessionId).then((entries) => {
       edit((s) => restoreQueue(s, entries));
-      raiseLabels(composerKey(), entries.flatMap((e) => labelsOf(e.blocks)));
+      raiseLabels(
+        composerKey(),
+        entries.flatMap((e) => labelsOf(e.blocks)),
+      );
       setQueueLoaded(true);
     });
   });
@@ -1423,7 +1422,9 @@ export default function ChatView(props: {
       // is unaffected by a steer that never left, so this only has to say so.
       // Null rather than a `SendResult`, because none of them is true here and
       // claiming "sent" would be a lie the next branch reads.
-      edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: false }));
+      edit((s) =>
+        applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: false }),
+      );
       return null;
     });
     if (result?.kind === "blocked") emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
@@ -1435,7 +1436,8 @@ export default function ChatView(props: {
   // two queued messages can never disagree about which one carries a file.
   // The autopilot drives this session: no composer, and its questions are the autopilot's to answer.
   const locked = () => isLocked(props.sessionId);
-  const lockedItem = () => autopilotItems().find((i) => i.session === props.sessionId && !["done", "failed"].includes(i.state));
+  const lockedItem = () =>
+    autopilotItems().find((i) => i.session === props.sessionId && !["done", "failed"].includes(i.state));
 
   function onSend(text: string, command: "chat_send" | "chat_send_held" = "chat_send", queue = false) {
     // A draft being edited in a scratch tab sends what the editor holds right
@@ -1499,7 +1501,10 @@ export default function ChatView(props: {
     cancelQueueEdit();
     const stash = stashComposer(composerKey());
     setDraft(composerKey(), queuedText(entry));
-    offerToComposer(composerKey(), entry.blocks.filter((b) => b.type !== "text"));
+    offerToComposer(
+      composerKey(),
+      entry.blocks.filter((b) => b.type !== "text"),
+    );
     setQueueEdit({ id, stash, original: composerSnapshot() });
   }
 
@@ -1682,12 +1687,18 @@ export default function ChatView(props: {
    * threshold, one notice; a banner for it would be permanently up on any busy
    * account, which is how a banner stops being read.
    */
-  const quotaBanner = () => quotaWindows().find((w) => w.state === "reached")?.sentence() ?? null;
+  const quotaBanner = () =>
+    quotaWindows()
+      .find((w) => w.state === "reached")
+      ?.sentence() ?? null;
 
   // Off this session's own stop, never the account's banner: a sibling chat on
   // the same login has nothing to continue.
   const canResume = () =>
-    !!state.limitStop && findAdapter(props.agentId).chat?.transport === "claude_stream_json" && !props.cockpit && !locked();
+    !!state.limitStop &&
+    findAdapter(props.agentId).chat?.transport === "claude_stream_json" &&
+    !props.cockpit &&
+    !locked();
   const armResume = (byHand = false) => {
     const stop = state.limitStop;
     if (!stop || !canResume()) return;
@@ -2010,15 +2021,19 @@ export default function ChatView(props: {
    *  answers every switch with a fresh one. So a refused switch leaves the
    *  control showing what is actually in force, and the error says why. */
   function applyConfigOption(configId: string, value: ChatConfigValue) {
-    void invoke("chat_set_config_option", { sessionId: props.sessionId, configId, value }).catch(
-      (e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
+    void invoke("chat_set_config_option", { sessionId: props.sessionId, configId, value }).catch((e) =>
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
     );
   }
 
   // Shared with the draft surface, so what an `@` mention resolves to cannot
   // differ between a chat and the draft it grew out of.
-  const attachments = composerAttachments(composerKey, () => props.cwd, tier, () => state.capabilities, (reason) =>
-    emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+  const attachments = composerAttachments(
+    composerKey,
+    () => props.cwd,
+    tier,
+    () => state.capabilities,
+    (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
   );
 
   // Move what is in the composer to a brand-new chat and let it open with that
@@ -2215,12 +2230,17 @@ export default function ChatView(props: {
       childPid,
       agentId: props.agentId,
     })
-      .then(() => emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "info" }))
+      .then(() =>
+        emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "info" }),
+      )
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
   return (
-    <div class={`${styles.chat} ${props.active ? styles.active : ""}`} data-cockpit={props.cockpit ? "true" : undefined}>
+    <div
+      class={`${styles.chat} ${props.active ? styles.active : ""}`}
+      data-cockpit={props.cockpit ? "true" : undefined}
+    >
       <Show when={overCap()}>
         <div class={styles.banner}>
           <span class={styles.bannerText}>{capSaid()}</span>
@@ -2412,40 +2432,40 @@ export default function ChatView(props: {
           />
         }
       >
-      <MessageList
-        ref={(el) => (transcriptEl = el)}
-        items={shownItems()}
-        onFetchEarlier={earlier() ? fetchEarlier : undefined}
-        streaming={running()}
-        sessionId={props.sessionId}
-        cwd={props.cwd}
-        anchorTurnId={anchorTurn()}
-        onAnchor={setAnchorTurn}
-        // The catalogue's display name when the resolved id matches one, the
-        // raw id when it does not: an old id from a resumed transcript is
-        // still better named than hidden.
-        modelLabelFor={(turnId) => {
-          const resolved = turnModel(state, turnId);
-          if (!resolved) return null;
-          return models().find((m) => m.resolvedModel === resolved)?.label ?? resolved;
-        }}
-        onAnswer={locked() ? undefined : onAnswer}
-        onAnswerQuestion={locked() ? undefined : onAnswerQuestion}
-        onSetMode={onSelectMode}
-        onRevertHunk={onRevertHunk}
-        // Gated on the declaration, not on the checkpoint alone: a agent that
-        // cannot fork has no way to carry the conversation across, and offering
-        // "rewind to here" there would promise the tree *and* the conversation
-        // and deliver only the tree.
-        rewindTsFor={(turnId) => (tier().rewind === "fork" && !locked() ? turnStamps()[turnId] ?? null : null)}
-        agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
-        laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
-        blockedIn={blockedIn}
-        onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
-        onRewind={onRewind}
-        replyMark={props.cockpit ? ReplyMark : undefined}
-        collapseWork={settings.chatDefaults.collapseWork}
-      />
+        <MessageList
+          ref={(el) => (transcriptEl = el)}
+          items={shownItems()}
+          onFetchEarlier={earlier() ? fetchEarlier : undefined}
+          streaming={running()}
+          sessionId={props.sessionId}
+          cwd={props.cwd}
+          anchorTurnId={anchorTurn()}
+          onAnchor={setAnchorTurn}
+          // The catalogue's display name when the resolved id matches one, the
+          // raw id when it does not: an old id from a resumed transcript is
+          // still better named than hidden.
+          modelLabelFor={(turnId) => {
+            const resolved = turnModel(state, turnId);
+            if (!resolved) return null;
+            return models().find((m) => m.resolvedModel === resolved)?.label ?? resolved;
+          }}
+          onAnswer={locked() ? undefined : onAnswer}
+          onAnswerQuestion={locked() ? undefined : onAnswerQuestion}
+          onSetMode={onSelectMode}
+          onRevertHunk={onRevertHunk}
+          // Gated on the declaration, not on the checkpoint alone: a agent that
+          // cannot fork has no way to carry the conversation across, and offering
+          // "rewind to here" there would promise the tree *and* the conversation
+          // and deliver only the tree.
+          rewindTsFor={(turnId) => (tier().rewind === "fork" && !locked() ? (turnStamps()[turnId] ?? null) : null)}
+          agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
+          laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
+          blockedIn={blockedIn}
+          onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
+          onRewind={onRewind}
+          replyMark={props.cockpit ? ReplyMark : undefined}
+          collapseWork={settings.chatDefaults.collapseWork}
+        />
       </Show>
       {/* Selected transcript text goes into the reply as a quote. Scoped to this
           transcript's root, since every attached tab stays mounted. */}
@@ -2501,7 +2521,11 @@ export default function ChatView(props: {
           // than a list that may name a command since removed - which the agent
           // refuses with a sentence. Replaced, never merged: once the session has
           // spoken, it is the only authority on what it takes.
-          commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, resolvedProfile()))}
+          commands={
+            state.slashCommands.length
+              ? state.slashCommands
+              : cachedCommands(catalogFor(props.agentId, resolvedProfile()))
+          }
           loadFiles={attachments.loadProjectFiles}
           parked={state.queueParked}
           restored={state.queueRestored}
@@ -2542,51 +2566,53 @@ export default function ChatView(props: {
           // effort. All the switches land at the same next-turn boundary, so
           // they sit together in the bar under the input.
           controls={
-            props.cockpit ? undefined : <>
-              {/* Model, then its thinking level, then the mode. The order is the
+            props.cockpit ? undefined : (
+              <>
+                {/* Model, then its thinking level, then the mode. The order is the
                   dependency: the effort levels on offer are a property of the
                   selected model, so the control that decides them comes first,
                   and the mode - which no model constrains - sits at the end. */}
-              <ModelPicker
-                models={models()}
-                // One provider, which is the whole of the lock: the palette has
-                // no locked mode, it is simply handed a list of one.
-                providers={[
-                  lockedProvider(findAdapter(props.agentId), models(), {
-                    version: agentVersion(props.agentId),
-                    profile: resolvedProfile(),
-                    account: profileLabel(props.agentId, resolvedProfile()),
-                  }),
-                ]}
-                value={shownModel()?.value ?? null}
-                agentId={props.agentId}
-                profile={resolvedProfile()}
-                profileLabel={profileLabel(props.agentId, resolvedProfile())}
-                effort={shownEffort(state)}
-                modelPending={modelPending(state)}
-                effortPending={effortPending(state)}
-                disabled={refused() || state.ended}
-                onSelectModel={onSelectModel}
-                onSelectEffort={onSelectEffort}
-              />
-              <ModeSelector
-                mode={shownModeValue()}
-                modes={offered().modes}
-                pending={modePending(state)}
-                refusals={state.refusedModes}
-                disabled={refused() || state.ended}
-                onSelect={onSelectMode}
-              />
-              {/* Last, after the three Tori has controls of its own for: these
+                <ModelPicker
+                  models={models()}
+                  // One provider, which is the whole of the lock: the palette has
+                  // no locked mode, it is simply handed a list of one.
+                  providers={[
+                    lockedProvider(findAdapter(props.agentId), models(), {
+                      version: agentVersion(props.agentId),
+                      profile: resolvedProfile(),
+                      account: profileLabel(props.agentId, resolvedProfile()),
+                    }),
+                  ]}
+                  value={shownModel()?.value ?? null}
+                  agentId={props.agentId}
+                  profile={resolvedProfile()}
+                  profileLabel={profileLabel(props.agentId, resolvedProfile())}
+                  effort={shownEffort(state)}
+                  modelPending={modelPending(state)}
+                  effortPending={effortPending(state)}
+                  disabled={refused() || state.ended}
+                  onSelectModel={onSelectModel}
+                  onSelectEffort={onSelectEffort}
+                />
+                <ModeSelector
+                  mode={shownModeValue()}
+                  modes={offered().modes}
+                  pending={modePending(state)}
+                  refusals={state.refusedModes}
+                  disabled={refused() || state.ended}
+                  onSelect={onSelectMode}
+                />
+                {/* Last, after the three Tori has controls of its own for: these
                   are the agent's, in the agent's own words, and their order is
                   the order it published them in. */}
-              <ConfigMirror
-                options={state.configOptions}
-                disabled={refused() || state.ended}
-                onSet={applyConfigOption}
-              />
-              <FollowToggle />
-            </>
+                <ConfigMirror
+                  options={state.configOptions}
+                  disabled={refused() || state.ended}
+                  onSet={applyConfigOption}
+                />
+                <FollowToggle />
+              </>
+            )
           }
         />
       </Show>

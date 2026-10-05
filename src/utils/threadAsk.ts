@@ -43,10 +43,7 @@ const flat = sanitizeForSend;
 export function threadWhere(thread: ReviewThread): string {
   if (thread.line === null) return "on lines that have changed since it was written";
   const start = thread.startLine;
-  const range =
-    start !== null && start !== thread.line
-      ? `lines ${start}-${thread.line}`
-      : `line ${thread.line}`;
+  const range = start !== null && start !== thread.line ? `lines ${start}-${thread.line}` : `line ${thread.line}`;
   return thread.isOutdated ? `${range} as the file then stood` : range;
 }
 
@@ -59,12 +56,7 @@ export function threadWhere(thread: ReviewThread): string {
  * cannot open. Relativity then follows the drag-mention convention like every
  * other composer here (inside the target's cwd, relative; outside it, absolute).
  */
-export function composeThreadAsk(
-  target: SessionTarget,
-  root: string,
-  number: number,
-  thread: ReviewThread,
-): string {
+export function composeThreadAsk(target: SessionTarget, root: string, number: number, thread: ReviewThread): string {
   const cwd = target.sessionCwd || target.folderPath;
   const mention = mentionPath(`${root.replace(/\/+$/, "")}/${thread.path}`, cwd);
   const lead = thread.isResolved ? "Resolved review comment" : "Review comment";

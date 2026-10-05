@@ -86,8 +86,8 @@ export default function TopicWorktreeSweepDialog(props: {
       }
     >
       <div class={styles.msg}>
-        A kept worktree stays on {props.branch} and shows up in Spaces as an ordinary branch of its
-        repository. Nothing here is undone by closing this.
+        A kept worktree stays on {props.branch} and shows up in Spaces as an ordinary branch of its repository. Nothing
+        here is undone by closing this.
       </div>
 
       <div class={styles.delEntries}>
@@ -124,9 +124,7 @@ export default function TopicWorktreeSweepDialog(props: {
                   label={`Delete ${props.branch}`}
                 />
               </div>
-              <Show when={props.failures?.[m.repoPath]}>
-                {(why) => <div class={styles.sweepError}>{why()}</div>}
-              </Show>
+              <Show when={props.failures?.[m.repoPath]}>{(why) => <div class={styles.sweepError}>{why()}</div>}</Show>
             </div>
           )}
         </For>

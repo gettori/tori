@@ -32,8 +32,7 @@ vi.mock("./panels/Terminal/Terminal", async () => {
           renderMenuItem: (u) => <span>{u.id}</span>,
           activate: (u) => store.focusTab(u.workspace, u.id),
           close: () => {},
-          stripItems: () =>
-            unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
+          stripItems: () => unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
           stripActiveId: store.visibleId,
           stripReorder: () => {},
           hostIds: () => store.open().map((t) => t.id),
@@ -59,8 +58,7 @@ vi.mock("./panels/Editor/Editor", async () => {
         stripItems: () => unifiedTabs().filter((u) => u.kind === "file"),
         stripActiveId: () => store.activeByWs()[REPO] ?? null,
         stripReorder: () => {},
-        hostIds: (paneId, tabs) =>
-          paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : [],
+        hostIds: (paneId, tabs) => (paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : []),
       });
       return null;
     },
@@ -98,7 +96,10 @@ const term = (id: string) => ({
 });
 
 const pane = (n: number) => document.querySelectorAll<HTMLElement>(".work-split .pane")[n];
-const tabsIn = (el: HTMLElement) => within(el).queryAllByRole("tab").map((t) => t.textContent ?? "");
+const tabsIn = (el: HTMLElement) =>
+  within(el)
+    .queryAllByRole("tab")
+    .map((t) => t.textContent ?? "");
 const A = `${REPO}/a.ts`;
 
 /** The built-in settings, taken before anything saves. The store proxies

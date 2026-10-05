@@ -13,7 +13,22 @@ import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, Offline, StateMark } from "./Root";
 import { SessionList, unitSessions } from "./Unit";
-import { agentHolds, atUnit, inUnit, kindName, newest, unitCounts, unitsHeading, rollupOf, type Project, type SessionRow, type Topic, type Tree, type Unit, type UnitGit } from "./tree";
+import {
+  agentHolds,
+  atUnit,
+  inUnit,
+  kindName,
+  newest,
+  unitCounts,
+  unitsHeading,
+  rollupOf,
+  type Project,
+  type SessionRow,
+  type Topic,
+  type Tree,
+  type Unit,
+  type UnitGit,
+} from "./tree";
 import styles from "./shell.module.css";
 
 // Git runs once per folder on the Mac; a project with many worktrees on a slow
@@ -50,7 +65,12 @@ export function watchSync(client: RemoteClient, units: () => Unit[]) {
       client
         .request<Record<string, BranchSync>>(
           "units.sync",
-          { units: list.filter((u) => u.branch).slice(0, GIT_FOLDERS_MAX).map((u) => ({ path: u.folder, branch: u.branch })) },
+          {
+            units: list
+              .filter((u) => u.branch)
+              .slice(0, GIT_FOLDERS_MAX)
+              .map((u) => ({ path: u.folder, branch: u.branch })),
+          },
           GIT_REPLY_MS,
         )
         .catch(() => info.value ?? {}),
@@ -64,7 +84,11 @@ export function watchPr(client: RemoteClient, project: () => Project) {
     () => (client.generation() ? project() : undefined),
     (p, info) =>
       client
-        .request<{ statuses: UnitStatus[] }>("units.pr", { project: p.path, branches: p.units.flatMap((u) => (u.branch ? [u.branch] : [])) }, GIT_REPLY_MS)
+        .request<{ statuses: UnitStatus[] }>(
+          "units.pr",
+          { project: p.path, branches: p.units.flatMap((u) => (u.branch ? [u.branch] : [])) },
+          GIT_REPLY_MS,
+        )
         .then((r) => r.statuses)
         .catch(() => info.value ?? []),
   );
@@ -196,7 +220,8 @@ export function ProjectScreen(props: {
   const git = watchGit(props.client, () => props.project.units.map((unit) => unit.folder));
   const sync = watchSync(props.client, () => props.project.units);
   const pr = watchPr(props.client, () => props.project);
-  const sessions = () => props.live().filter((row) => props.project.units.some((unit) => inUnit(row.home, unit))).length;
+  const sessions = () =>
+    props.live().filter((row) => props.project.units.some((unit) => inUnit(row.home, unit))).length;
   const meta = () => {
     const units = unitCounts(props.project.units, DOT);
     return sessions() > 0 ? `${units} ${DOT} ${sessions()} live` : units;
@@ -254,7 +279,9 @@ export function TopicScreen(props: {
   onBack: () => void;
 }) {
   const members = () =>
-    [...props.topic.members].sort((a, b) => a.order - b.order).map((member) => ({ member, unit: memberUnit(props.tree, props.topic, member) }));
+    [...props.topic.members]
+      .sort((a, b) => a.order - b.order)
+      .map((member) => ({ member, unit: memberUnit(props.tree, props.topic, member) }));
   const { here, earlier } = unitSessions(props.client, () => members().map((m) => m.unit), props.live, props.topic);
   const where = (row: SessionRow) => members().find((m) => atUnit(row, m.unit))?.member.displayName;
   return (
@@ -263,15 +290,30 @@ export function TopicScreen(props: {
       <Offline client={props.client} />
       <div class={styles.scroll}>
         <h1 class={styles.screenTitle}>{props.topic.name}</h1>
-        <h2 class={styles.label}>Members {DOT} {members().length}</h2>
+        <h2 class={styles.label}>
+          Members {DOT} {members().length}
+        </h2>
         <ul class={styles.group}>
           <For each={members()} fallback={<li class={styles.empty}>No members</li>}>
             {({ member, unit }) => (
-              <UnitItem unit={unit} name={member.displayName} meta={unit.branch ?? props.topic.branch} live={props.live()} onOpen={() => props.onUnit(unit)} />
+              <UnitItem
+                unit={unit}
+                name={member.displayName}
+                meta={unit.branch ?? props.topic.branch}
+                live={props.live()}
+                onOpen={() => props.onUnit(unit)}
+              />
             )}
           </For>
         </ul>
-        <SessionList here={here()} earlier={earlier()} crew={props.crew} autopilotOn={props.autopilotOn} where={where} onOpen={props.onOpen} />
+        <SessionList
+          here={here()}
+          earlier={earlier()}
+          crew={props.crew}
+          autopilotOn={props.autopilotOn}
+          where={where}
+          onOpen={props.onOpen}
+        />
       </div>
     </div>
   );

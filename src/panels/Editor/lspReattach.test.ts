@@ -23,17 +23,25 @@ function buffer(): LspBuffer {
 describe("reattachLsp", () => {
   it("reconfigures a background buffer in place when no view claims it", () => {
     const buf = buffer();
-    reattachLsp([["/a.ts", buf]], () => EditorState.tabSize.of(TAB_AFTER), () => false);
+    reattachLsp(
+      [["/a.ts", buf]],
+      () => EditorState.tabSize.of(TAB_AFTER),
+      () => false,
+    );
     expect(buf.state.tabSize).toBe(TAB_AFTER);
   });
 
   it("routes the shown buffer through dispatch and leaves its stashed state alone", () => {
     const buf = buffer();
     const effects: StateEffect<unknown>[] = [];
-    reattachLsp([["/a.ts", buf]], () => EditorState.tabSize.of(TAB_AFTER), (_p, e) => {
-      effects.push(e);
-      return true;
-    });
+    reattachLsp(
+      [["/a.ts", buf]],
+      () => EditorState.tabSize.of(TAB_AFTER),
+      (_p, e) => {
+        effects.push(e);
+        return true;
+      },
+    );
     expect(effects).toHaveLength(1);
     // The view owns the shown buffer's truth; writing the stash here would
     // clobber whatever the user has typed since the last swap.

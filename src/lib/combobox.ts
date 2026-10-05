@@ -1,14 +1,5 @@
 import type { ComponentProps, JSX } from "solid-js";
-import {
-  Control,
-  Input,
-  Item,
-  ItemLabel,
-  Listbox,
-  Root,
-  Section,
-  useComboboxContext,
-} from "@kobalte/core/combobox";
+import { Control, Input, Item, ItemLabel, Listbox, Root, Section, useComboboxContext } from "@kobalte/core/combobox";
 
 /** Selection behaviour the combobox's listbox forwards to `Listbox.Root` and
  *  does not type. Named here so the one call site that turns hover-focus off

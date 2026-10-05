@@ -22,7 +22,10 @@ function at(line: number, character: number): LspPosition {
 }
 
 function agent(over: Partial<ApplyDeps> & { files?: MaterialisedFile[] } = {}) {
-  const files = over.files ?? [file(pathToUri(A), "const before = 1"), file(pathToUri(B), "import { before } from './a'")];
+  const files = over.files ?? [
+    file(pathToUri(A), "const before = 1"),
+    file(pathToUri(B), "import { before } from './a'"),
+  ];
   const byUri = new Map(files.map((f) => [f.uri, f]));
   const written: { path: string; contents: string }[] = [];
   const notices: string[] = [];
@@ -85,9 +88,7 @@ describe("answerApplyEdit", () => {
     expect(res.applied).toBe(false);
     expect(res.failureReason).toContain("unsaved changes");
     expect(h.written, "nothing was written").toEqual([]);
-    expect(h.notices, "the reason was surfaced, since the server's answer is invisible").toEqual([
-      res.failureReason,
-    ]);
+    expect(h.notices, "the reason was surfaced, since the server's answer is invisible").toEqual([res.failureReason]);
   });
 
   it("answers a resource operation with a reason instead of applying half of it", async () => {

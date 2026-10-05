@@ -156,9 +156,7 @@ describe("how many models a agent offers", () => {
   // Read off the row's own MODELS cell, not the whole row: the version cell
   // beside it is also digits, so row text cannot tell the two apart.
   const cell = (container: HTMLElement, id = "claude") =>
-    container
-      .querySelector(`[data-agent="${id}"] .${styles.agentModels}`)
-      ?.textContent?.trim() ?? "";
+    container.querySelector(`[data-agent="${id}"] .${styles.agentModels}`)?.textContent?.trim() ?? "";
 
   it("claims no count for a agent nothing has asked", async () => {
     const { container } = mount({}, [neverProbed("claude")]);
@@ -344,10 +342,7 @@ describe("the model list on a agent page", () => {
   // the characters that earned the match.
   it("filters fuzzily and marks only what matched", async () => {
     const r = mount({}, [
-      probed("claude", [
-        model("sonnet", "claude-sonnet-5", { displayName: "Sonnet 5" }),
-        ...fillers,
-      ]),
+      probed("claude", [model("sonnet", "claude-sonnet-5", { displayName: "Sonnet 5" }), ...fillers]),
     ]);
     const { container, getByLabelText } = await open(r, /Claude/);
 
@@ -386,9 +381,7 @@ describe("the model list on a agent page", () => {
   });
 
   it("says so when the filter matches nothing", async () => {
-    const r = mount({}, [
-      probed("claude", [model("sonnet", "claude-sonnet-5"), ...fillers]),
-    ]);
+    const r = mount({}, [probed("claude", [model("sonnet", "claude-sonnet-5"), ...fillers])]);
     const { container, getByLabelText } = await open(r, /Claude/);
 
     fireEvent.input(getByLabelText("Filter models"), { target: { value: "zzz" } });
@@ -466,11 +459,7 @@ describe("the model list on a agent page", () => {
     invoked.mockClear();
     fireEvent.click(r.getByRole("button", { name: /Ask again/ }));
 
-    await waitFor(() =>
-      expect(
-        invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog"),
-      ).toHaveLength(1),
-    );
+    await waitFor(() => expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toHaveLength(1));
     expect(invoked.mock.calls.find(([cmd]) => cmd === "refresh_model_catalog")?.[1]).toEqual({
       agentId: "claude",
       profileId: "globex",
@@ -485,10 +474,7 @@ describe("the model list on a agent page", () => {
   // Tori's sentence names the kind of failure; the agent's own words are
   // quoted after it rather than paraphrased.
   it("names the failure and quotes the agent", async () => {
-    const { container } = await open(
-      mount({}, [failed("claude", "signedOut", "run `claude /login`")]),
-      /Claude/,
-    );
+    const { container } = await open(mount({}, [failed("claude", "signedOut", "run `claude /login`")]), /Claude/);
     expect(container.textContent).toContain("Nobody is signed in");
     expect(container.textContent).toContain("run `claude /login`");
   });
@@ -508,9 +494,7 @@ describe("the model list on a agent page", () => {
     const r = await open(mount({}, [neverProbed("claude")]), /Claude/);
     invoked.mockClear();
     fireEvent.click(r.getByRole("button", { name: /Ask again/ }));
-    await waitFor(() =>
-      expect(invoked.mock.calls.map(([cmd]) => cmd)).toContain("refresh_model_catalog"),
-    );
+    await waitFor(() => expect(invoked.mock.calls.map(([cmd]) => cmd)).toContain("refresh_model_catalog"));
   });
 });
 
@@ -520,9 +504,7 @@ describe("the model list on a agent page", () => {
 // probe by accident.
 describe("looking at Settings never probes a agent", () => {
   const probes = () =>
-    invoked.mock.calls
-      .map(([cmd]) => cmd as string)
-      .filter((cmd) => cmd.startsWith("refresh_model_catalog"));
+    invoked.mock.calls.map(([cmd]) => cmd as string).filter((cmd) => cmd.startsWith("refresh_model_catalog"));
 
   it("issues no probe on open", async () => {
     const { container } = mount({}, [neverProbed("claude")]);
@@ -602,7 +584,9 @@ describe.skip("asking every agent at once", () => {
     await waitFor(() => expect(r.container.textContent).not.toContain("checking…"));
 
     const asked = () =>
-      invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog").map(([, a]) => (a as { agentId?: string })?.agentId);
+      invoked.mock.calls
+        .filter(([cmd]) => cmd === "refresh_model_catalog")
+        .map(([, a]) => (a as { agentId?: string })?.agentId);
     expect(asked()).toEqual(["claude", "solo", "overprotocol"]);
 
     await clickCheckAll(r);

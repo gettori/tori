@@ -27,13 +27,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tori remote probe</title>
     <style>
-      body { font: 14px/1.4 system-ui, sans-serif; margin: 1.5rem; max-width: 48rem; }
-      label { display: block; margin-top: 0.75rem; }
-      input { width: 100%; font: inherit; padding: 0.3rem; box-sizing: border-box; }
-      button { margin-top: 0.75rem; font: inherit; }
-      pre { background: #f4f4f4; padding: 0.75rem; white-space: pre-wrap; word-break: break-all; }
-      .fail { color: #b00020; }
-      .ok { color: #1b5e20; }
+      body {
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        margin: 1.5rem;
+        max-width: 48rem;
+      }
+      label {
+        display: block;
+        margin-top: 0.75rem;
+      }
+      input {
+        width: 100%;
+        font: inherit;
+        padding: 0.3rem;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 0.75rem;
+        font: inherit;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .fail {
+        color: #b00020;
+      }
+      .ok {
+        color: #1b5e20;
+      }
     </style>
   </head>
   <body>
@@ -134,7 +160,12 @@
         log(`pairing with ${url}`);
         pairing.onopen = () =>
           pairing.send(
-            JSON.stringify({ jsonrpc: "2.0", id: 0, method: "pair", params: { code: $("code").value, name: $("name").value } }),
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 0,
+              method: "pair",
+              params: { code: $("code").value, name: $("name").value },
+            }),
           );
         pairing.onmessage = (message) => {
           const frame = JSON.parse(message.data);

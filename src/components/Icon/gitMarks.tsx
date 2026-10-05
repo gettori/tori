@@ -99,21 +99,21 @@ export const BranchMark: Component<GitMarkProps> = (props) => (
 export const WorktreeMark: Component<GitMarkProps & { stub?: boolean }> = (props) => {
   const [local, rest] = splitProps(props, ["stub"]);
   return (
-  <Frame {...rest} mark="worktree" data-stub={local.stub ? "true" : undefined}>
-    <g class={styles.base}>
-      <path d={WORKTREE_STEM} />
-      <path d={FOLDER_OUTLINE} classList={{ [styles.stub]: local.stub }} />
-      <circle cx="13" cy="12" r="2" />
-      <circle class={styles.tip} cx="20" cy="19" r="2" />
-    </g>
-    <g class={styles.pulse}>
-      <path class={styles.tail} pathLength="100" d={FOLDER_OUTLINE} />
-      <path class={styles.head} pathLength="100" stroke-width={headStroke(props.strokeWidth)} d={FOLDER_OUTLINE} />
-      <path class={styles.stem} pathLength="100" stroke-width={headStroke(props.strokeWidth)} d={WORKTREE_STEM} />
-      <circle class={styles.nodeLeaf} cx="20" cy="19" r="2" fill="currentColor" />
-      <circle class={styles.nodeFork} cx="13" cy="12" r="2" fill="currentColor" />
-    </g>
-  </Frame>
+    <Frame {...rest} mark="worktree" data-stub={local.stub ? "true" : undefined}>
+      <g class={styles.base}>
+        <path d={WORKTREE_STEM} />
+        <path d={FOLDER_OUTLINE} classList={{ [styles.stub]: local.stub }} />
+        <circle cx="13" cy="12" r="2" />
+        <circle class={styles.tip} cx="20" cy="19" r="2" />
+      </g>
+      <g class={styles.pulse}>
+        <path class={styles.tail} pathLength="100" d={FOLDER_OUTLINE} />
+        <path class={styles.head} pathLength="100" stroke-width={headStroke(props.strokeWidth)} d={FOLDER_OUTLINE} />
+        <path class={styles.stem} pathLength="100" stroke-width={headStroke(props.strokeWidth)} d={WORKTREE_STEM} />
+        <circle class={styles.nodeLeaf} cx="20" cy="19" r="2" fill="currentColor" />
+        <circle class={styles.nodeFork} cx="13" cy="12" r="2" fill="currentColor" />
+      </g>
+    </Frame>
   );
 };
 

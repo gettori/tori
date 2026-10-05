@@ -110,7 +110,11 @@ pub async fn agent_plugins(adapter_id: String) -> Result<PluginsView, String> {
         .cloned()
         .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))?;
     let Some(kind) = adapter.accounts.as_ref().and_then(|a| a.plugins_kind) else {
-        return Ok(PluginsView { adapter_id, declared: false, profiles: Vec::new() });
+        return Ok(PluginsView {
+            adapter_id,
+            declared: false,
+            profiles: Vec::new(),
+        });
     };
     let homes = crate::agent_config::homes_for(&adapter);
     crate::exec::blocking("agent_plugins", move || {
@@ -123,7 +127,11 @@ pub async fn agent_plugins(adapter_id: String) -> Result<PluginsView, String> {
                 plugins: installed_in(kind, &home),
             })
             .collect();
-        Ok(PluginsView { adapter_id, declared: true, profiles })
+        Ok(PluginsView {
+            adapter_id,
+            declared: true,
+            profiles,
+        })
     })
     .await
 }

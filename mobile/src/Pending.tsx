@@ -42,7 +42,11 @@ function QuestionCard(props: { row: Extract<PendingRow, { kind: "question" }>; s
         )}
       </Index>
       <div class={styles.cardActions}>
-        <button class={styles.primarySmall} disabled={answers().some((a) => !a.trim())} onClick={() => props.send(answers())}>
+        <button
+          class={styles.primarySmall}
+          disabled={answers().some((a) => !a.trim())}
+          onClick={() => props.send(answers())}
+        >
           Answer
         </button>
       </div>
@@ -79,7 +83,10 @@ function AskCard(props: { row: Extract<PendingRow, { kind: "ask" }>; here: strin
       <div class={styles.cardActions}>
         <For each={props.row.options}>
           {(option) => (
-            <button class={option === "Approve" ? styles.primarySmall : styles.secondary} onClick={() => props.send(option)}>
+            <button
+              class={option === "Approve" ? styles.primarySmall : styles.secondary}
+              onClick={() => props.send(option)}
+            >
               {option}
             </button>
           )}
@@ -87,7 +94,12 @@ function AskCard(props: { row: Extract<PendingRow, { kind: "ask" }>; here: strin
       </div>
       <Show when={!props.row.approval}>
         <div class={styles.cardActions}>
-          <input class={styles.input} placeholder="Or type an answer" value={text()} onInput={(e) => setText(e.currentTarget.value)} />
+          <input
+            class={styles.input}
+            placeholder="Or type an answer"
+            value={text()}
+            onInput={(e) => setText(e.currentTarget.value)}
+          />
           <button class={styles.secondary} disabled={!text().trim()} onClick={() => props.send(text().trim())}>
             Send
           </button>
@@ -97,7 +109,12 @@ function AskCard(props: { row: Extract<PendingRow, { kind: "ask" }>; here: strin
   );
 }
 
-export default function Pending(props: { client: RemoteClient; session: string; rows: PendingRow[]; onSettled: () => void }) {
+export default function Pending(props: {
+  client: RemoteClient;
+  session: string;
+  rows: PendingRow[];
+  onSettled: () => void;
+}) {
   const [busy, setBusy] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const answer = (id: string, method: string, params: unknown) => {
@@ -118,13 +135,22 @@ export default function Pending(props: { client: RemoteClient; session: string; 
         <Show when={error()}>{(e) => <p class={styles.error}>{e()}</p>}</Show>
         <For each={props.rows}>
           {(row) => {
-            const native = (a: string | string[]) => answer(row.id, "session.answer", { session: props.session, id: row.id, answer: a });
+            const native = (a: string | string[]) =>
+              answer(row.id, "session.answer", { session: props.session, id: row.id, answer: a });
             return (
               <Switch>
                 <Match when={row.kind === "question" && row}>{(q) => <QuestionCard row={q()} send={native} />}</Match>
-                <Match when={row.kind === "permission" && row}>{(p) => <PermissionCard row={p()} send={native} />}</Match>
+                <Match when={row.kind === "permission" && row}>
+                  {(p) => <PermissionCard row={p()} send={native} />}
+                </Match>
                 <Match when={row.kind === "ask" && row}>
-                  {(ask) => <AskCard row={ask()} here={props.session} send={(a) => answer(row.id, "ask.answer", { id: row.id, answer: a })} />}
+                  {(ask) => (
+                    <AskCard
+                      row={ask()}
+                      here={props.session}
+                      send={(a) => answer(row.id, "ask.answer", { id: row.id, answer: a })}
+                    />
+                  )}
                 </Match>
               </Switch>
             );

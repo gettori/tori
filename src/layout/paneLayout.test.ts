@@ -178,10 +178,7 @@ describe("normalization through mapNode", () => {
       id: "root",
       dir: "row",
       size: 100,
-      children: [
-        leaf("a", 50),
-        { type: "split", id: "inner", dir: "row", size: 50, children: [leaf("b"), leaf("c")] },
-      ],
+      children: [leaf("a", 50), { type: "split", id: "inner", dir: "row", size: 50, children: [leaf("b"), leaf("c")] }],
     };
     // Any edit that rebuilds the root flattens it; delete "a".
     const next = mapNode(root, "a", () => null)!;
@@ -329,8 +326,7 @@ describe("split ids", () => {
   it("step past an id the tree already holds", () => {
     const once = splitPane(twoPane(), "left", "column", leaf("pane-1"))!;
     const twice = splitPane(once, "right", "column", leaf("pane-2"))!;
-    const ids = (n: PaneNode): string[] =>
-      n.type === "split" ? [n.id, ...n.children.flatMap(ids)] : [];
+    const ids = (n: PaneNode): string[] => (n.type === "split" ? [n.id, ...n.children.flatMap(ids)] : []);
     expect(ids(twice)).toEqual(["root", "split-1", "split-2"]);
   });
 });

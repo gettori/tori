@@ -203,7 +203,13 @@ pub fn diff_against_now(repo: &Path, before: &BeforeState, path: &str) -> Option
     }
 
     let out = crate::exec::git_in(repo)
-        .args(["diff", "--no-color", &format!("-U{DIFF_CONTEXT}"), &before_sha, &after_sha])
+        .args([
+            "diff",
+            "--no-color",
+            &format!("-U{DIFF_CONTEXT}"),
+            &before_sha,
+            &after_sha,
+        ])
         .output()
         .ok()?;
     // `git diff` between two blobs reports difference through stdout, not
@@ -250,7 +256,11 @@ pub struct SnapshotCache {
 
 impl SnapshotCache {
     pub fn new(cap: usize) -> Self {
-        Self { entries: HashMap::new(), order: VecDeque::new(), cap: cap.max(1) }
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            cap: cap.max(1),
+        }
     }
 
     pub fn insert(&mut self, tool_use_id: &str, captured: Vec<Captured>) {
@@ -298,7 +308,6 @@ impl SnapshotCache {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
-
 }
 
 /// The new-side line numbers a diff marks as added, in the file's current
@@ -364,15 +373,16 @@ pub fn accumulate(repo: &Path, path: &str, calls: &[(String, BeforeState)]) -> O
 
     let mut owner: HashMap<u32, String> = HashMap::new();
     for (id, before) in calls {
-        let Some(d) = diff_against_now(repo, before, path) else { continue };
+        let Some(d) = diff_against_now(repo, before, path) else {
+            continue;
+        };
         for line in changed_new_lines(&d) {
             owner.insert(line, id.clone());
         }
     }
     // Rank by call order so a hunk spanning two calls' lines reports the later
     // one, matching what the line-level rule already does.
-    let rank: HashMap<&str, usize> =
-        calls.iter().enumerate().map(|(i, (id, _))| (id.as_str(), i)).collect();
+    let rank: HashMap<&str, usize> = calls.iter().enumerate().map(|(i, (id, _))| (id.as_str(), i)).collect();
 
     let hunk_tool_use_ids = crate::patch::parse_patch(&diff)
         .hunks
@@ -510,15 +520,19 @@ fn apply_reverse(repo: &Path, patch: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
     use serde_json::json;
+    use std::process::Command;
 
     fn temp_repo(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("tori-snap-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let ok = Command::new("git").current_dir(&dir).args(["init", "-q"]).status().unwrap();
+        let ok = Command::new("git")
+            .current_dir(&dir)
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
         assert!(ok.success());
         dir
     }
@@ -540,7 +554,10 @@ mod tests {
         // Same bytes, same address: git deduplicates it against the identical
         // content the hook path would have captured off disk.
         std::fs::write(repo.join("f.txt"), "one\ntwo\nthree\n").unwrap();
-        assert_eq!(capture(&repo, repo.join("f.txt").to_str().unwrap()), BeforeState::Blob { sha });
+        assert_eq!(
+            capture(&repo, repo.join("f.txt").to_str().unwrap()),
+            BeforeState::Blob { sha }
+        );
 
         std::fs::remove_dir_all(&repo).ok();
     }
@@ -576,7 +593,11 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "t@t.test")
             .output()
             .unwrap();
-        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
@@ -610,10 +631,17 @@ mod tests {
         let last_tree = git_out(&repo, &["write-tree"]);
 
         let acc = accumulate(&repo, &path, &calls).expect("the session captured this file");
-        let expected = git_out(&repo, &["diff", "--no-color", "-U3", &first_tree, &last_tree, "--", "a.txt"]);
+        let expected = git_out(
+            &repo,
+            &["diff", "--no-color", "-U3", &first_tree, &last_tree, "--", "a.txt"],
+        );
 
         assert_eq!(changed_lines(&acc.diff), changed_lines(&expected));
-        assert!(!acc.diff.contains("+TWO\n"), "the intermediate value is not on disk: {}", acc.diff);
+        assert!(
+            !acc.diff.contains("+TWO\n"),
+            "the intermediate value is not on disk: {}",
+            acc.diff
+        );
         assert_eq!(acc.tool_use_ids, ["call-1", "call-2", "call-3"]);
         assert!(!acc.created);
     }
@@ -643,7 +671,12 @@ mod tests {
         std::fs::write(&file, format!("{}\n", now.join("\n"))).unwrap();
 
         let acc = accumulate(&repo, &path, &calls).unwrap();
-        assert_eq!(acc.hunk_tool_use_ids.len(), 2, "two edit sites, two hunks: {}", acc.diff);
+        assert_eq!(
+            acc.hunk_tool_use_ids.len(),
+            2,
+            "two edit sites, two hunks: {}",
+            acc.diff
+        );
         assert_eq!(acc.hunk_tool_use_ids[0].as_deref(), Some("call-top"));
         assert_eq!(
             acc.hunk_tool_use_ids[1].as_deref(),
@@ -691,9 +724,15 @@ mod tests {
         let diff_2 = diff_against_now(&repo, &before_2, &path).unwrap();
 
         assert!(diff_1.contains("-two") && diff_1.contains("+TWO"), "{diff_1}");
-        assert!(!diff_1.contains("THREE"), "the first diff cannot know about the second edit: {diff_1}");
+        assert!(
+            !diff_1.contains("THREE"),
+            "the first diff cannot know about the second edit: {diff_1}"
+        );
         assert!(diff_2.contains("-three") && diff_2.contains("+THREE"), "{diff_2}");
-        assert!(!diff_2.contains("+TWO"), "the second diff is against what the first left: {diff_2}");
+        assert!(
+            !diff_2.contains("+TWO"),
+            "the second diff is against what the first left: {diff_2}"
+        );
         assert_ne!(diff_1, diff_2);
     }
 
@@ -750,7 +789,9 @@ mod tests {
         std::fs::write(&file, &original).unwrap();
         let path = file.to_string_lossy().into_owned();
         let before = capture(&repo, &path);
-        let edited = original.replace("line 3\n", "LINE THREE\n").replace("line 17\n", "LINE SEVENTEEN\n");
+        let edited = original
+            .replace("line 3\n", "LINE THREE\n")
+            .replace("line 17\n", "LINE SEVENTEEN\n");
         std::fs::write(&file, edited).unwrap();
         (repo, file, before)
     }
@@ -766,7 +807,11 @@ mod tests {
         let (repo, file, before) = two_hunk_edit("revert-one-hunk");
         let path = file.to_string_lossy().into_owned();
         let parsed = hunks_of(&repo, &before, &path);
-        assert_eq!(parsed.hunks.len(), 2, "the fixture must produce two hunks to be testing anything");
+        assert_eq!(
+            parsed.hunks.len(),
+            2,
+            "the fixture must produce two hunks to be testing anything"
+        );
 
         let outcome = revert_hunk(&repo, &before, &path, 0, &parsed.hunks[0].fingerprint).unwrap();
         assert_eq!(outcome, "reverted");
@@ -803,7 +848,11 @@ mod tests {
 
         let err = revert_hunk(&repo, &before, &path, 0, "deadbeef").unwrap_err();
         assert!(err.contains("Nothing was reverted"), "{err}");
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), content, "the file must be byte-identical");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            content,
+            "the file must be byte-identical"
+        );
     }
 
     /// An index past the end of the fresh diff is the same failure as a bad
@@ -863,7 +912,10 @@ mod tests {
     fn only_the_writing_tools_have_capture_targets() {
         assert_eq!(write_targets("Edit", &json!({"file_path": "/a.rs"})), vec!["/a.rs"]);
         assert_eq!(write_targets("Write", &json!({"file_path": "/a.rs"})), vec!["/a.rs"]);
-        assert_eq!(write_targets("MultiEdit", &json!({"file_path": "/a.rs"})), vec!["/a.rs"]);
+        assert_eq!(
+            write_targets("MultiEdit", &json!({"file_path": "/a.rs"})),
+            vec!["/a.rs"]
+        );
         // A read has no before-state worth the hook's time.
         assert!(write_targets("Read", &json!({"file_path": "/a.rs"})).is_empty());
         assert!(write_targets("Bash", &json!({"command": "rm /a.rs"})).is_empty());
@@ -886,7 +938,10 @@ mod tests {
             (BeforeState::Blob { sha: a }, BeforeState::Blob { sha: b }) => {
                 assert_ne!(a, b, "each edit must capture its own before-state");
                 assert_eq!(read_back(&repo, a).as_deref(), Some("fn main() {}\n"));
-                assert_eq!(read_back(&repo, b).as_deref(), Some("fn main() { println!(\"hi\"); }\n"));
+                assert_eq!(
+                    read_back(&repo, b).as_deref(),
+                    Some("fn main() { println!(\"hi\"); }\n")
+                );
             }
             other => panic!("expected two blobs, got {other:?}"),
         }
@@ -939,12 +994,18 @@ mod tests {
         let held: usize = (0..40)
             .filter_map(|i| cache.get(&format!("toolu_{i}")))
             .flatten()
-            .map(|c| c.path.len() + match &c.before {
-                BeforeState::Blob { sha } => sha.len(),
-                _ => 0,
+            .map(|c| {
+                c.path.len()
+                    + match &c.before {
+                        BeforeState::Blob { sha } => sha.len(),
+                        _ => 0,
+                    }
             })
             .sum();
-        assert!(held < 20_000, "the cache should hold kilobytes of shas and paths, held {held} bytes");
+        assert!(
+            held < 20_000,
+            "the cache should hold kilobytes of shas and paths, held {held} bytes"
+        );
 
         // And the content really is retrievable, so holding only shas cost
         // nothing. The last call's before-state is what round 38 wrote, which is
@@ -953,7 +1014,11 @@ mod tests {
         match &last[0].before {
             BeforeState::Blob { sha } => {
                 let content = read_back(&repo, sha).expect("the blob should still be readable");
-                assert!(content.starts_with("r38-"), "expected round 38's content, got {:.8}", content);
+                assert!(
+                    content.starts_with("r38-"),
+                    "expected round 38's content, got {:.8}",
+                    content
+                );
             }
             other => panic!("expected a blob, got {other:?}"),
         }
@@ -968,14 +1033,20 @@ mod tests {
         for i in 0..5 {
             cache.insert(
                 &format!("toolu_{i}"),
-                vec![Captured { path: format!("/f{i}"), before: BeforeState::Absent }],
+                vec![Captured {
+                    path: format!("/f{i}"),
+                    before: BeforeState::Absent,
+                }],
             );
         }
         assert_eq!(cache.len(), 3);
         assert!(cache.get("toolu_0").is_none(), "the oldest should be evicted");
         assert!(cache.get("toolu_1").is_none());
         for i in 2..5 {
-            assert!(cache.get(&format!("toolu_{i}")).is_some(), "toolu_{i} should still render");
+            assert!(
+                cache.get(&format!("toolu_{i}")).is_some(),
+                "toolu_{i} should still render"
+            );
         }
     }
 
@@ -984,8 +1055,20 @@ mod tests {
     #[test]
     fn an_evicted_entry_reads_as_missing_rather_than_erroring() {
         let mut cache = SnapshotCache::new(1);
-        cache.insert("old", vec![Captured { path: "/a".into(), before: BeforeState::Absent }]);
-        cache.insert("new", vec![Captured { path: "/b".into(), before: BeforeState::Absent }]);
+        cache.insert(
+            "old",
+            vec![Captured {
+                path: "/a".into(),
+                before: BeforeState::Absent,
+            }],
+        );
+        cache.insert(
+            "new",
+            vec![Captured {
+                path: "/b".into(),
+                before: BeforeState::Absent,
+            }],
+        );
         assert_eq!(cache.get("old"), None, "an evicted card renders the fallback");
         assert!(cache.get("new").is_some());
     }
@@ -995,9 +1078,27 @@ mod tests {
     #[test]
     fn reinserting_an_id_does_not_corrupt_the_eviction_order() {
         let mut cache = SnapshotCache::new(2);
-        cache.insert("a", vec![Captured { path: "/a".into(), before: BeforeState::Absent }]);
-        cache.insert("a", vec![Captured { path: "/a2".into(), before: BeforeState::Absent }]);
-        cache.insert("b", vec![Captured { path: "/b".into(), before: BeforeState::Absent }]);
+        cache.insert(
+            "a",
+            vec![Captured {
+                path: "/a".into(),
+                before: BeforeState::Absent,
+            }],
+        );
+        cache.insert(
+            "a",
+            vec![Captured {
+                path: "/a2".into(),
+                before: BeforeState::Absent,
+            }],
+        );
+        cache.insert(
+            "b",
+            vec![Captured {
+                path: "/b".into(),
+                before: BeforeState::Absent,
+            }],
+        );
         assert_eq!(cache.len(), 2);
         assert_eq!(cache.get("a").unwrap()[0].path, "/a2", "the newer capture should win");
         assert!(cache.get("b").is_some());

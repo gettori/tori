@@ -85,8 +85,14 @@ const {
   setReviewBody,
   PR_REVIEW_DRAFTS_KEY,
 } = await import("./prReviewStore");
-const { noteForgeAccounts, noteForgeEnabled, noteWatchedProjects, pollNow, resetForgeStatusForTests, resolveForgeRepo } =
-  await import("./forgeStatus");
+const {
+  noteForgeAccounts,
+  noteForgeEnabled,
+  noteWatchedProjects,
+  pollNow,
+  resetForgeStatusForTests,
+  resolveForgeRepo,
+} = await import("./forgeStatus");
 
 const ROOT = "/root/work/gh";
 const BRANCH = "wave-3";
@@ -306,8 +312,22 @@ describe("the pull request review store", () => {
   it("drops a draft older than the cap when it loads", () => {
     const now = 1_785_179_400_000;
     const raw = JSON.stringify({
-      [`${ROOT}\n42`]: { headSha: SHA_A, pending: [], reviewBody: "old", composers: [], viewed: [], savedAt: now - 15 * 24 * 60 * 60 * 1000 },
-      [`${ROOT}\n43`]: { headSha: SHA_A, pending: [], reviewBody: "new", composers: [], viewed: [], savedAt: now - 60_000 },
+      [`${ROOT}\n42`]: {
+        headSha: SHA_A,
+        pending: [],
+        reviewBody: "old",
+        composers: [],
+        viewed: [],
+        savedAt: now - 15 * 24 * 60 * 60 * 1000,
+      },
+      [`${ROOT}\n43`]: {
+        headSha: SHA_A,
+        pending: [],
+        reviewBody: "new",
+        composers: [],
+        viewed: [],
+        savedAt: now - 60_000,
+      },
     });
     expect(Object.keys(parseDrafts(raw, now))).toEqual([`${ROOT}\n43`]);
   });

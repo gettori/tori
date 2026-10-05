@@ -1,13 +1,4 @@
-import {
-  CloseButton,
-  Content,
-  Description,
-  Overlay,
-  Portal,
-  Root,
-  Title,
-  Trigger,
-} from "@kobalte/core/dialog";
+import { CloseButton, Content, Description, Overlay, Portal, Root, Title, Trigger } from "@kobalte/core/dialog";
 
 /**
  * Kobalte's dialog, and the only door it comes through.

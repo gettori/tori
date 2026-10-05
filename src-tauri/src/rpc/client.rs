@@ -29,10 +29,18 @@ pub struct Endpoint {
 pub fn locate() -> Option<Endpoint> {
     let env = |key| std::env::var(key).ok().filter(|v: &String| !v.is_empty());
     if let (Some(sock), Some(token)) = (env(ENV_SOCK), env(ENV_CALLER)) {
-        return Some(Endpoint { sock, token, found: Found::Env });
+        return Some(Endpoint {
+            sock,
+            token,
+            found: Found::Env,
+        });
     }
     let (sock, token) = crate::credential::socket_in_file(&bridge_path())?;
-    Some(Endpoint { sock, token, found: Found::File })
+    Some(Endpoint {
+        sock,
+        token,
+        found: Found::File,
+    })
 }
 
 #[derive(Debug)]
@@ -70,7 +78,12 @@ impl Client {
     pub fn connect(endpoint: &Endpoint) -> Result<Self, ClientError> {
         let writer = UnixStream::connect(&endpoint.sock)?;
         let reader = BufReader::new(writer.try_clone()?);
-        let mut client = Client { reader, writer, next_id: 0, events: VecDeque::new() };
+        let mut client = Client {
+            reader,
+            writer,
+            next_id: 0,
+            events: VecDeque::new(),
+        };
         client.call("auth", json!({ "token": endpoint.token }))?;
         Ok(client)
     }
@@ -93,8 +106,8 @@ impl Client {
                 continue;
             }
             if let Some(error) = message.get("error") {
-                let error = serde_json::from_value(error.clone())
-                    .unwrap_or_else(|_| RpcError::new(0, error.to_string()));
+                let error =
+                    serde_json::from_value(error.clone()).unwrap_or_else(|_| RpcError::new(0, error.to_string()));
                 return Err(ClientError::Rpc(error));
             }
             return Ok(message.get("result").cloned().unwrap_or(Value::Null));
@@ -125,7 +138,9 @@ impl Client {
             if text.trim().is_empty() {
                 continue;
             }
-            return serde_json::from_str(text.trim()).map(Some).map_err(|e| ClientError::Io(e.into()));
+            return serde_json::from_str(text.trim())
+                .map(Some)
+                .map_err(|e| ClientError::Io(e.into()));
         }
     }
 }

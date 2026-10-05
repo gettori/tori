@@ -38,7 +38,10 @@ pub struct RpcError {
 
 impl RpcError {
     pub fn new(code: i64, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
 
@@ -54,11 +57,21 @@ pub struct Response {
 
 impl Response {
     pub fn ok(id: Value, result: Value) -> Self {
-        Self { jsonrpc: "2.0", id, result: Some(result), error: None }
+        Self {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn err(id: Value, error: RpcError) -> Self {
-        Self { jsonrpc: "2.0", id, result: None, error: Some(error) }
+        Self {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(error),
+        }
     }
 
     pub fn reply(id: Value, outcome: Result<Value, RpcError>) -> Self {
@@ -78,7 +91,11 @@ pub struct Notification {
 
 impl Notification {
     pub fn new(method: &'static str, params: Value) -> Self {
-        Self { jsonrpc: "2.0", method, params }
+        Self {
+            jsonrpc: "2.0",
+            method,
+            params,
+        }
     }
 }
 
@@ -106,7 +123,11 @@ impl ReadError {
 pub fn read_request(reader: &mut impl BufRead) -> Result<Option<Request>, ReadError> {
     loop {
         let mut line = Vec::new();
-        let n = reader.by_ref().take(MAX_FRAME as u64 + 1).read_until(b'\n', &mut line).map_err(ReadError::Io)?;
+        let n = reader
+            .by_ref()
+            .take(MAX_FRAME as u64 + 1)
+            .read_until(b'\n', &mut line)
+            .map_err(ReadError::Io)?;
         if n == 0 {
             return Ok(None);
         }
@@ -171,9 +192,15 @@ mod tests {
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"a\",\"params\":{\"x\":1}}\n\n{\"jsonrpc\":\"2.0\",\"method\":\"b\"}\n",
         );
         let first = got[0].as_ref().unwrap().as_ref().unwrap();
-        assert_eq!((first.id.clone(), first.method.as_str(), first.params.clone()), (Some(json!(1)), "a", json!({"x": 1})));
+        assert_eq!(
+            (first.id.clone(), first.method.as_str(), first.params.clone()),
+            (Some(json!(1)), "a", json!({"x": 1}))
+        );
         let second = got[1].as_ref().unwrap().as_ref().unwrap();
-        assert_eq!((second.id.clone(), second.method.as_str(), second.params.clone()), (None, "b", Value::Null));
+        assert_eq!(
+            (second.id.clone(), second.method.as_str(), second.params.clone()),
+            (None, "b", Value::Null)
+        );
         assert!(matches!(got[2], Ok(None)));
     }
 
@@ -188,7 +215,10 @@ mod tests {
     fn wrong_version_and_batches_are_invalid_requests() {
         let got = read_all("{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"a\"}\n[]\n{\"id\":1}\n");
         for bad in &got[..3] {
-            assert!(matches!(bad, Err(ReadError::Bad(e)) if e.code == INVALID_REQUEST), "{bad:?}");
+            assert!(
+                matches!(bad, Err(ReadError::Bad(e)) if e.code == INVALID_REQUEST),
+                "{bad:?}"
+            );
         }
     }
 
@@ -208,7 +238,10 @@ mod tests {
         for line in [&ok, &err, &note] {
             assert!(line.ends_with('\n') && line.matches('\n').count() == 1, "{line}");
         }
-        assert_eq!(serde_json::from_str::<Value>(&ok).unwrap(), json!({"jsonrpc": "2.0", "id": 1, "result": {"a": 1}}));
+        assert_eq!(
+            serde_json::from_str::<Value>(&ok).unwrap(),
+            json!({"jsonrpc": "2.0", "id": 1, "result": {"a": 1}})
+        );
         assert_eq!(
             serde_json::from_str::<Value>(&err).unwrap(),
             json!({"jsonrpc": "2.0", "id": 2, "error": {"code": -32601, "message": "nope"}})

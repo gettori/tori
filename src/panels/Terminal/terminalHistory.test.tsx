@@ -41,8 +41,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_sessions") return Promise.resolve(bridge.listing);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
     if (cmd === "session_running") return Promise.resolve(bridge.liveHere.includes(String(args?.id)));
-    if (cmd === "session_running_elsewhere")
-      return Promise.resolve(bridge.elsewhere.includes(String(args?.id)));
+    if (cmd === "session_running_elsewhere") return Promise.resolve(bridge.elsewhere.includes(String(args?.id)));
     if (cmd === "chat_orphans") return Promise.resolve([]);
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
     if (cmd === "profile_spawn_env") return Promise.resolve({});
@@ -69,9 +68,7 @@ vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }
 const { default: Terminal } = await import("./Terminal");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { trackFolders, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { noteDots, noteLiveTabs, resetSessionActivityForTests } = await import(
-  "../../utils/sessionActivity"
-);
+const { noteDots, noteLiveTabs, resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 type LiveTab = import("../../utils/events").LiveTab;
 
 // The tab bar measures itself to decide what fits. jsdom reports every width as
@@ -188,9 +185,7 @@ describe("the History button on the tab bar", () => {
 
     // It exited: Rust's next dot says so, and the badge goes.
     noteDots([{ id: "outsider", dot: "none", certainty: "inferred", home: null }]);
-    await waitFor(() =>
-      expect(screen.queryByTitle("1 session running here with no tab open")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByTitle("1 session running here with no tab open")).toBeNull());
   });
 
   // What a webview reload leaves: the chat child is still running, so the
@@ -236,7 +231,13 @@ describe("the mark a PTY agent tab wears", () => {
   });
 
   it("pulses while working and badges when Rust reads it blocked, without claiming a measurement", async () => {
-    mount({ ...branchSelection, sessionId: "s1", agent: "claude", sessionFile: `${REPO}/.t/s1.jsonl`, sessionCwd: REPO });
+    mount({
+      ...branchSelection,
+      sessionId: "s1",
+      agent: "claude",
+      sessionFile: `${REPO}/.t/s1.jsonl`,
+      sessionCwd: REPO,
+    });
     await trackFolders([REPO]);
     await waitFor(() => expect(screen.getByTestId("pty")).toBeTruthy());
     const rust = (dot: "solid" | "working" | "needsYou") =>

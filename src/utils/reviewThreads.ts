@@ -94,22 +94,12 @@ export function withComment(
 }
 
 /** Take a comment back out, for a reply the server refused. */
-export function withoutComment(
-  threads: readonly ReviewThread[],
-  threadId: string,
-  commentId: string,
-): ReviewThread[] {
-  return threads.map((t) =>
-    t.id === threadId ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) } : t,
-  );
+export function withoutComment(threads: readonly ReviewThread[], threadId: string, commentId: string): ReviewThread[] {
+  return threads.map((t) => (t.id === threadId ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) } : t));
 }
 
 /** Set one thread's resolved flag. */
-export function withResolved(
-  threads: readonly ReviewThread[],
-  threadId: string,
-  resolved: boolean,
-): ReviewThread[] {
+export function withResolved(threads: readonly ReviewThread[], threadId: string, resolved: boolean): ReviewThread[] {
   return threads.map((t) => (t.id === threadId ? { ...t, isResolved: resolved } : t));
 }
 

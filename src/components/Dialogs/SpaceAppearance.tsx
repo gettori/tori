@@ -4,14 +4,7 @@ import styles from "./Dialogs.module.css";
 import Icon from "../Icon/Icon";
 import IconGrid from "../IconGrid/IconGrid";
 import Popover from "../Popover/Popover";
-import {
-  PICKER_ICONS,
-  SHELF,
-  drawShelf,
-  resolveIcon,
-  restingShelf,
-  searchIcons,
-} from "../Icon/iconRegistry";
+import { PICKER_ICONS, SHELF, drawShelf, resolveIcon, restingShelf, searchIcons } from "../Icon/iconRegistry";
 import { SPACE_COLORS, rgbTriple, spaceHueRgb } from "../../utils/spaceTint";
 import { spaceInitials } from "../../utils/names";
 

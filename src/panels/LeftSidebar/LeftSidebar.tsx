@@ -1,4 +1,16 @@
-import { createSignal, For, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
+import {
+  createSignal,
+  For,
+  Match,
+  Show,
+  Switch,
+  onMount,
+  onCleanup,
+  createEffect,
+  createMemo,
+  on,
+  untrack,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -14,7 +26,15 @@ import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog"
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../components/Dialogs/AddBranchDialog";
-import { errorText, issueDraft, unitIssueOf, type Issue, type IssueRef, type LinkOutcome, type UnitIssue } from "../../utils/issues";
+import {
+  errorText,
+  issueDraft,
+  unitIssueOf,
+  type Issue,
+  type IssueRef,
+  type LinkOutcome,
+  type UnitIssue,
+} from "../../utils/issues";
 import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
@@ -70,11 +90,7 @@ import { projectUnitKind } from "../../utils/topicMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
-import {
-  rollupStatuses,
-  type LiveSessionStatus,
-  type Rollup,
-} from "../../utils/sessionStatus";
+import { rollupStatuses, type LiveSessionStatus, type Rollup } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
 import { findAdapter } from "../../utils/agents";
 import { asTabProfile } from "../../utils/agentHealth";
@@ -150,28 +166,24 @@ import {
   UserRound,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
-import {
-  attemptFolderName,
-  groupAttempts,
-  samePath,
-  type AttemptGroup,
-  type AttemptRecord,
-} from "./attempts";
+import { attemptFolderName, groupAttempts, samePath, type AttemptGroup, type AttemptRecord } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
-import { noteTopics, topicKey, topicSelection, isShellsKey, isReference, tabUnderFolder, type Topic } from "../../utils/topics";
+import {
+  noteTopics,
+  topicKey,
+  topicSelection,
+  isShellsKey,
+  isReference,
+  tabUnderFolder,
+  type Topic,
+} from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
 import BranchLine from "./BranchLine";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
-import {
-  BranchRow,
-  EmptyRow,
-  GroupRow,
-  MoreRow,
-  ProjectRow,
-} from "./SidebarRows";
+import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./LeftSidebar.module.css";
 
@@ -487,11 +499,7 @@ export default function LeftSidebar(props: {
   function unitAt(p: Project, folderPath: string, branch?: string | null): BranchUnit | undefined {
     const here = p.branchUnits.filter((u) => sameCwd(u.folderPath, folderPath));
     if (here.length < 2) return here[0];
-    return (
-      (branch ? here.find((u) => unitLabel(u) === branch) : undefined) ??
-      here.find((u) => u.isCurrent) ??
-      here[0]
-    );
+    return (branch ? here.find((u) => unitLabel(u) === branch) : undefined) ?? here.find((u) => u.isCurrent) ?? here[0];
   }
 
   // Re-read from the live tree, so a folder that is gone restores nothing
@@ -738,9 +746,7 @@ export default function LeftSidebar(props: {
   // running in this repo's `.tori/worktrees/` belongs to the Topic, but
   // removing the repo still kills it, so the confirm has to count it.
   async function countRunningAgents(path: string): Promise<number> {
-    const tabs = (props.liveTabs ?? []).filter(
-      (t) => t.state === "live" && isUnderPath(t.cwd ?? t.workspace, path),
-    );
+    const tabs = (props.liveTabs ?? []).filter((t) => t.state === "live" && isUnderPath(t.cwd ?? t.workspace, path));
     const tabSessions = new Set(tabs.map((t) => t.sessionId).filter((x): x is string => !!x));
     const nested = await invoke<SessionMeta[]>("list_sessions", { folder: path, inclusive: true }).catch(
       () => [] as SessionMeta[],
@@ -839,7 +845,12 @@ export default function LeftSidebar(props: {
     // a second snapshot for a turn already captured.
     if (ticks.length) await noteCheckpointTicks(ticks, liveChatIds());
   }
-  createEffect(on(() => [props.liveTabs, sessions()] as const, () => void refreshCheckpointTicks()));
+  createEffect(
+    on(
+      () => [props.liveTabs, sessions()] as const,
+      () => void refreshCheckpointTicks(),
+    ),
+  );
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
   // needs-you both need a real PTY to observe, which only a live tab has. The
@@ -910,8 +921,7 @@ export default function LeftSidebar(props: {
         { heading: `${repo.host} account` },
         ...repo.candidates.map((a) => ({
           label: forgeAccountName(a),
-          onClick: () =>
-            void pickForgeAccount(p.path, a.id).catch((e) => setError(forgeErrorMessage(e))),
+          onClick: () => void pickForgeAccount(p.path, a.id).catch((e) => setError(forgeErrorMessage(e))),
         })),
       ];
     };
@@ -959,12 +969,7 @@ export default function LeftSidebar(props: {
         <Show when={door()?.kind === "pickAccount"}>
           {/* The row toggles the project on click, which picking must not also do. */}
           <span onClick={(e) => e.stopPropagation()}>
-            <Dropdown
-              as="span"
-              items={pickItems()}
-              placement="bottom-end"
-              aria-label={`Pick an account for ${p.name}`}
-            >
+            <Dropdown as="span" items={pickItems()} placement="bottom-end" aria-label={`Pick an account for ${p.name}`}>
               <Tooltip
                 as="button"
                 type="button"
@@ -1126,9 +1131,7 @@ export default function LeftSidebar(props: {
   // nothing left to click to fix it.
   onCleanup(onWith<SessionAction>(SESSION_ACTION, (d) => void runSessionAction(d)));
   onCleanup(onWith<NavTarget>(NAVIGATE, (t) => void navigateTo(t)));
-  onCleanup(
-    onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)),
-  );
+  onCleanup(onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)));
   // "Delete the branch" from the Pull Requests panel, after it landed one.
   //
   // Routed here rather than done there because this is where the guards live: a
@@ -1276,8 +1279,7 @@ export default function LeftSidebar(props: {
     if (!req) return;
     setDeleteReq(null);
     emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
-    const cmd =
-      req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_space";
+    const cmd = req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_space";
     try {
       await invoke(cmd, { path: req.path });
       dropSelectionUnder((f) => isUnderPath(f, req.path));
@@ -1314,9 +1316,7 @@ export default function LeftSidebar(props: {
       void syncUnits(cfg.spaces.flatMap((g) => g.projects.flatMap((p) => p.branchUnits)));
       // Seed the adopted set from the first real discovery (idempotent, and a
       // no-op on empty), so existing folders are never flagged historical.
-      const folders = cfg.spaces.flatMap((g) =>
-        g.projects.flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
-      );
+      const folders = cfg.spaces.flatMap((g) => g.projects.flatMap((p) => p.branchUnits.map((u) => u.folderPath)));
       invoke("seed_adopted", { folders }).catch(() => {});
       // Seed each plain repo's attached-branch set once (origin default, else the
       // checkout), so it shows a sensible branch instead of every local branch.
@@ -1594,9 +1594,7 @@ export default function LeftSidebar(props: {
       )
       .catch(() =>
         setWtReq((r) =>
-          r && r.u.folderPath === u.folderPath
-            ? { ...r, dirty: false, unpushed: false, hasRemote: false }
-            : r,
+          r && r.u.folderPath === u.folderPath ? { ...r, dirty: false, unpushed: false, hasRemote: false } : r,
         ),
       );
   }
@@ -1775,8 +1773,7 @@ export default function LeftSidebar(props: {
     // next best thing (and what creating a branch did before it was asked).
     const fallback = branches.find((b) => b.current)?.name;
     const baseDefault =
-      (await invoke<string | null>("repo_default_branch", { repo: p.path }).catch(() => null)) ??
-      fallback;
+      (await invoke<string | null>("repo_default_branch", { repo: p.path }).catch(() => null)) ?? fallback;
     // A branch the tree already shows is listed but refused: it is still an
     // answer to "which branches are there" and not one to "which do you want".
     const shown = mode === "worktree" ? "worktree" : "plain";
@@ -1813,8 +1810,10 @@ export default function LeftSidebar(props: {
   }
 
   /** Rewrite the armed delete, if it is still the one that asked. */
-  const forDeleting = (branch: string, fn: (d: { branch: string; unpushed: boolean | null; busy: boolean }) => typeof d) =>
-    setBranchReq((r) => (r?.deleting?.branch === branch ? { ...r, deleting: fn(r.deleting) } : r));
+  const forDeleting = (
+    branch: string,
+    fn: (d: { branch: string; unpushed: boolean | null; busy: boolean }) => typeof d,
+  ) => setBranchReq((r) => (r?.deleting?.branch === branch ? { ...r, deleting: fn(r.deleting) } : r));
 
   // Arm the picker's delete: the confirm strip goes up at once and the one fact
   // that decides whether this is safe - commits the remote has never seen -
@@ -1853,7 +1852,6 @@ export default function LeftSidebar(props: {
   function openSharedFiles(p: Project) {
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("shared", p.path) });
   }
-
 
   // Confirmed. Where the branch was found is what says how to add it, and the
   // dialog carries that rather than this re-deriving it from the name: a local
@@ -2030,10 +2028,12 @@ export default function LeftSidebar(props: {
     let made = 0;
     for (let i = 1; i <= Number(count); i++) {
       try {
-        const created = await invoke<{ path: string; branch: string; uncloned: string[] }>(
-          "create_attempt",
-          { root: p.path, groupId, goal: what, branch: `${stem}-${i}` },
-        );
+        const created = await invoke<{ path: string; branch: string; uncloned: string[] }>("create_attempt", {
+          root: p.path,
+          groupId,
+          goal: what,
+          branch: `${stem}-${i}`,
+        });
         created.uncloned.forEach((d) => uncloned.add(d));
         made++;
       } catch (e) {
@@ -2049,10 +2049,7 @@ export default function LeftSidebar(props: {
     // tree cannot show is said out loud: a dependency directory that was not
     // cloned, which the user would otherwise meet at the first build.
     if (uncloned.size) {
-      setError(
-        `Not cloned into the attempts (install them there): ${[...uncloned].join(", ")}`,
-        "info",
-      );
+      setError(`Not cloned into the attempts (install them there): ${[...uncloned].join(", ")}`, "info");
     }
   }
 
@@ -2060,18 +2057,13 @@ export default function LeftSidebar(props: {
   // exactly as it stands, on its own branch: nothing here merges, and what to do
   // with that branch afterwards is ordinary git work.
   async function promoteAttempt(p: Project, u: BranchUnit, a: AttemptRecord) {
-    const losers = (attempts()[p.path] ?? []).filter(
-      (x) => x.groupId === a.groupId && !samePath(x.path, a.path),
-    );
+    const losers = (attempts()[p.path] ?? []).filter((x) => x.groupId === a.groupId && !samePath(x.path, a.path));
     const n = losers.length;
     // What is still running inside the attempts about to be deleted. Counted
     // before the confirm, as worktree removal does: a promotion removes with
     // `force`, so nothing further down stops for a live agent, and the tabs are
     // torn down here a moment later.
-    const running = (await Promise.all(losers.map((l) => countRunningAgents(l.path)))).reduce(
-      (a, b) => a + b,
-      0,
-    );
+    const running = (await Promise.all(losers.map((l) => countRunningAgents(l.path)))).reduce((a, b) => a + b, 0);
     const ok = await askConfirm({
       title: `Promote “${unitLabel(u)}”?`,
       message:
@@ -2120,15 +2112,9 @@ export default function LeftSidebar(props: {
     setBrReq({ p, u, unpushed: null, hasRemote: null, busy: false });
     invoke<{ unpushed: boolean; hasRemote: boolean }>("branch_status", { repo: p.path, branch })
       .then((s) =>
-        setBrReq((r) =>
-          r && r.u.branch === branch ? { ...r, unpushed: s.unpushed, hasRemote: s.hasRemote } : r,
-        ),
+        setBrReq((r) => (r && r.u.branch === branch ? { ...r, unpushed: s.unpushed, hasRemote: s.hasRemote } : r)),
       )
-      .catch(() =>
-        setBrReq((r) =>
-          r && r.u.branch === branch ? { ...r, unpushed: false, hasRemote: false } : r,
-        ),
-      );
+      .catch(() => setBrReq((r) => (r && r.u.branch === branch ? { ...r, unpushed: false, hasRemote: false } : r)));
   }
 
   // Confirmed branch removal. Delete the remote branch first (while the local
@@ -2223,10 +2209,7 @@ export default function LeftSidebar(props: {
   // without the header the menu is four rows that never say what they act on.
   const spaceMenuHead = (g: Space) => (
     <span class={styles.spaceMenuHead} style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}>
-      <Show
-        when={resolveIcon(g.icon)}
-        fallback={<span class={styles.spaceMenuMark}>{spaceInitials(g.name)}</span>}
-      >
+      <Show when={resolveIcon(g.icon)} fallback={<span class={styles.spaceMenuMark}>{spaceInitials(g.name)}</span>}>
         {(glyph) => <Icon icon={glyph()} />}
       </Show>
       <span class={styles.spaceMenuName}>{g.name}</span>
@@ -2513,8 +2496,7 @@ export default function LeftSidebar(props: {
   const mkey = (g: Space, p: Project) => `m:${g.name}/${p.name}`;
 
   const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
-  const currentBranch = (p: Project) =>
-    p.branchUnits.find((u) => u.isCurrent)?.branch ?? null;
+  const currentBranch = (p: Project) => p.branchUnits.find((u) => u.isCurrent)?.branch ?? null;
 
   // Safe checkout guard (plain repos only). Opening/resuming a branch whose name
   // is not the current checkout would otherwise show the wrong files, so confirm,
@@ -2734,15 +2716,13 @@ export default function LeftSidebar(props: {
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         meta={
-          showPr() || (sync()?.base?.stat?.files ?? 0) > 0
-            ? (
-              <BranchLine
-                status={showPr() ? status()! : null}
-                base={sync()?.base}
-                watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
-              />
-            )
-            : undefined
+          showPr() || (sync()?.base?.stat?.files ?? 0) > 0 ? (
+            <BranchLine
+              status={showPr() ? status()! : null}
+              base={sync()?.base}
+              watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
+            />
+          ) : undefined
         }
         end={
           <>
@@ -2764,10 +2744,7 @@ export default function LeftSidebar(props: {
                 </Tooltip>
               )}
             </Show>
-            <SyncMarks
-              marks={marks()}
-              label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
-            />
+            <SyncMarks marks={marks()} label={<TooltipLines lead={storyLead()} rest={storyRest()} />} />
             <For each={topicsAt(u.folderPath)}>
               {(f) => (
                 <IconButton
@@ -2860,9 +2837,7 @@ export default function LeftSidebar(props: {
         end={statusBubble(() => (open() ? null : bubbleForUnits(units())))}
       >
         <Show when={open()}>
-          <For each={grp.members}>
-            {(m) => unitNode(g, p, attemptUnit(m), m.attempt)}
-          </For>
+          <For each={grp.members}>{(m) => unitNode(g, p, attemptUnit(m), m.attempt)}</For>
         </Show>
       </GroupRow>
     );
@@ -2916,9 +2891,7 @@ export default function LeftSidebar(props: {
     });
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
-    unlistenTrayFocus = await listen<string>("tray://focus-session", (e) =>
-      void selectSessionById(e.payload),
-    );
+    unlistenTrayFocus = await listen<string>("tray://focus-session", (e) => void selectSessionById(e.payload));
     unlistenNavOpen = await listen<NavTarget>("nav://open", (e) => void navigateTo(e.payload));
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
@@ -2961,17 +2934,14 @@ export default function LeftSidebar(props: {
       if (!e.payload.quiet) loadConfig();
     });
     unlistenBaseChanged = await listen<{ repo: string }>("git://base-changed", (e) => void resyncRoot(e.payload.repo));
-    unlistenFetchError = await listen<{ repo: string; error: string; quiet?: boolean }>(
-      "git://fetch-error",
-      (e) => {
-        // A sweep fails on every repo behind a password prompt it refuses to
-        // show. That is the expected resting state of those repos, not an error
-        // line across the sidebar.
-        if (e.payload.quiet) return;
-        setError(e.payload.error || "Fetch failed");
-        setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? { ...r, fetching: false } : r));
-      },
-    );
+    unlistenFetchError = await listen<{ repo: string; error: string; quiet?: boolean }>("git://fetch-error", (e) => {
+      // A sweep fails on every repo behind a password prompt it refuses to
+      // show. That is the expected resting state of those repos, not an error
+      // line across the sidebar.
+      if (e.payload.quiet) return;
+      setError(e.payload.error || "Fetch failed");
+      setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? { ...r, fetching: false } : r));
+    });
   });
   onCleanup(() => {
     unlistenConfig?.();
@@ -3015,7 +2985,10 @@ export default function LeftSidebar(props: {
         const k = `${m.repoPath}\n${topic.branch}`;
         if (untrack(topicBranches)[k] || probing.has(k)) continue;
         probing.add(k);
-        void invoke<{ local: boolean; remote: boolean }>("probe_topic_branch", { repoPath: m.repoPath, branch: topic.branch })
+        void invoke<{ local: boolean; remote: boolean }>("probe_topic_branch", {
+          repoPath: m.repoPath,
+          branch: topic.branch,
+        })
           .then((p) => p.local || p.remote)
           .catch(() => false)
           .then((known) => {
@@ -3064,9 +3037,7 @@ export default function LeftSidebar(props: {
         const open = expanded().has(pkey(g!, p));
         return {
           path: p.path,
-          units: p.branchUnits
-            .filter((u) => u.branch)
-            .map((u) => ({ branch: u.branch, visible: open })),
+          units: p.branchUnits.filter((u) => u.branch).map((u) => ({ branch: u.branch, visible: open })),
         };
       });
     const watched = mergeWatched([
@@ -3124,8 +3095,7 @@ export default function LeftSidebar(props: {
     }
     const prev = nameW();
     const same =
-      Object.keys(each).length === Object.keys(prev).length &&
-      Object.entries(each).every(([n, w]) => prev[n] === w);
+      Object.keys(each).length === Object.keys(prev).length && Object.entries(each).every(([n, w]) => prev[n] === w);
     if (!same) setNameW(each);
   }
 
@@ -3164,7 +3134,10 @@ export default function LeftSidebar(props: {
   // The set of names is the other input. After paint, or the probe has no box.
   createEffect(
     on(
-      () => visibleSpaces().map((g) => g.name).join(" "),
+      () =>
+        visibleSpaces()
+          .map((g) => g.name)
+          .join(" "),
       () => requestAnimationFrame(() => measureNames()),
     ),
   );
@@ -3191,7 +3164,10 @@ export default function LeftSidebar(props: {
         rollup={spaceRollup(g)}
         onClick={() => openSpace(g)}
         onDragStart={(e) => {
-          startAbsDrag(e, g.projects.map((p) => p.path));
+          startAbsDrag(
+            e,
+            g.projects.map((p) => p.path),
+          );
           setDragSpace(g.name);
         }}
         onDragOver={(e) => onSpaceDragOver(e, g)}
@@ -3228,8 +3204,7 @@ export default function LeftSidebar(props: {
     // "Active" here means its tree is on screen. In Topics, or with the sidebar
     // down to its rail, nothing of it is rendered, so all of its sessions
     // bubble to the tile.
-    const isActive = () =>
-      mode() === "spaces" && !props.railOnly && activeSpace()?.name === g.name;
+    const isActive = () => mode() === "spaces" && !props.railOnly && activeSpace()?.name === g.name;
     return () =>
       isActive()
         ? bubbleFor((s) => {
@@ -3265,34 +3240,31 @@ export default function LeftSidebar(props: {
             on the group rather than on the name. Withheld until there is a
             space to name, or it would read "Spaces" at every cold start. */}
         <Show when={mode() !== "spaces" || activeSpace()}>
-        <div
-          class={styles.spaceHeader}
-          onContextMenu={mode() === "spaces" ? onSpaceAreaMenu : undefined}
-        >
-          <span class={styles.spaceHeaderName}>{headingName()}</span>
-          <Show when={mode() === "spaces"}>
-            <span class={styles.spaceHeaderKind}>· Spaces</span>
-          </Show>
-          <Show when={mode() === "spaces" && activeSpace()}>
-            {(g) => (
-              <Dropdown
-                as="span"
-                wrapper
-                class={styles.spaceHeaderMenu}
-                items={spaceMenu(g())}
-                placement="bottom-end"
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class={styles.spaceHeaderMenuBtn}
-                  tooltip={`Actions for ${g().name}`}
-                  icon={<Icon icon={Ellipsis} />}
-                />
-              </Dropdown>
-            )}
-          </Show>
-        </div>
+          <div class={styles.spaceHeader} onContextMenu={mode() === "spaces" ? onSpaceAreaMenu : undefined}>
+            <span class={styles.spaceHeaderName}>{headingName()}</span>
+            <Show when={mode() === "spaces"}>
+              <span class={styles.spaceHeaderKind}>· Spaces</span>
+            </Show>
+            <Show when={mode() === "spaces" && activeSpace()}>
+              {(g) => (
+                <Dropdown
+                  as="span"
+                  wrapper
+                  class={styles.spaceHeaderMenu}
+                  items={spaceMenu(g())}
+                  placement="bottom-end"
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class={styles.spaceHeaderMenuBtn}
+                    tooltip={`Actions for ${g().name}`}
+                    icon={<Icon icon={Ellipsis} />}
+                  />
+                </Dropdown>
+              )}
+            </Show>
+          </div>
         </Show>
         <Show when={searching()}>
           <input
@@ -3364,148 +3336,133 @@ export default function LeftSidebar(props: {
       />
 
       <Show when={mode() === "spaces"}>
-      <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu}>
-        <For each={activeProjects()}>
-          {(p) => {
-            const g = activeSpace()!;
-            const popen = () => expanded().has(pkey(g, p));
-            // A non-git folder has no branch node, and now no session rows
-            // either: its project row *is* the branch-unit, a leaf that selects
-            // its single unit when clicked.
-            const plainDir = () => projectUnitKind(p) === "plain-dir";
-            const folderUnit = () => p.branchUnits[0];
-            // The flat units and the fan-out groups. An attempt of a worktree
-            // container arrives as an ordinary worktree unit, so it is lifted
-            // out here rather than rendered twice.
-            const split = () => groupAttempts(inSpaces(p.branchUnits), attempts()[p.path] ?? []);
-            // A long branch list is cut to BRANCH_CAP with the rest behind a
-            // "N more branches" row. The selected unit is always kept, IN ITS
-            // OWN PLACE in the order: a highlight you cannot see is worse than
-            // a longer list, and lifting it to the top would reorder the tree
-            // under the user. Partitioned in one pass so the shown and hidden
-            // halves are always two views of the same `split()`.
-            const showAll = () => expanded().has(mkey(g, p));
-            const shown = () => {
-              const all = split().units;
-              if (showAll() || all.length <= BRANCH_CAP) return { units: all, hidden: [] as BranchUnit[] };
-              const units: BranchUnit[] = [];
-              const hidden: BranchUnit[] = [];
-              for (const [i, u] of all.entries()) {
-                (i < BRANCH_CAP || unitSelected(u) ? units : hidden).push(u);
-              }
-              return { units, hidden };
-            };
-            // Show the control only when it has something to say. Open, that is
-            // "the list is longer than the cap"; closed, "something is actually
-            // hidden" - which a cap+1 list whose last unit is selected is not.
-            const truncated = () =>
-              showAll() ? split().units.length > BRANCH_CAP : shown().hidden.length > 0;
-            // Everything under this project, groups included, for the rollup a
-            // collapsed project row shows: on a plain repo an attempt is not a
-            // branch-unit at all, so its running session would bubble nowhere.
-            const allUnits = () => [
-              ...inSpaces(p.branchUnits),
-              ...split()
-                .groups.flatMap((grp) => grp.members)
-                .filter((m) => !m.unit)
-                .map(attemptUnit),
-            ];
-            return (
-              <ProjectRow
-                name={p.name}
-                icon={
-                  <ProjectIcon
-                    seed={p.path}
-                    icon={p.icon}
-                    iconFile={p.iconFile}
-                    favicon={p.favicon}
-                  />
+        <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu}>
+          <For each={activeProjects()}>
+            {(p) => {
+              const g = activeSpace()!;
+              const popen = () => expanded().has(pkey(g, p));
+              // A non-git folder has no branch node, and now no session rows
+              // either: its project row *is* the branch-unit, a leaf that selects
+              // its single unit when clicked.
+              const plainDir = () => projectUnitKind(p) === "plain-dir";
+              const folderUnit = () => p.branchUnits[0];
+              // The flat units and the fan-out groups. An attempt of a worktree
+              // container arrives as an ordinary worktree unit, so it is lifted
+              // out here rather than rendered twice.
+              const split = () => groupAttempts(inSpaces(p.branchUnits), attempts()[p.path] ?? []);
+              // A long branch list is cut to BRANCH_CAP with the rest behind a
+              // "N more branches" row. The selected unit is always kept, IN ITS
+              // OWN PLACE in the order: a highlight you cannot see is worse than
+              // a longer list, and lifting it to the top would reorder the tree
+              // under the user. Partitioned in one pass so the shown and hidden
+              // halves are always two views of the same `split()`.
+              const showAll = () => expanded().has(mkey(g, p));
+              const shown = () => {
+                const all = split().units;
+                if (showAll() || all.length <= BRANCH_CAP) return { units: all, hidden: [] as BranchUnit[] };
+                const units: BranchUnit[] = [];
+                const hidden: BranchUnit[] = [];
+                for (const [i, u] of all.entries()) {
+                  (i < BRANCH_CAP || unitSelected(u) ? units : hidden).push(u);
                 }
-                disclosure={!plainDir()}
-                open={popen()}
-                menu={projectMenu(g, p)}
-                onClick={() => {
-                  if (plainDir()) selectUnit(g, p, folderUnit());
-                  else toggle(pkey(g, p));
-                }}
-                onDragStart={(e) => startAbsDrag(e, p.path)}
-                end={
-                  <>
-                    {/* Lit only when a worktree is missing a shared file, since
+                return { units, hidden };
+              };
+              // Show the control only when it has something to say. Open, that is
+              // "the list is longer than the cap"; closed, "something is actually
+              // hidden" - which a cap+1 list whose last unit is selected is not.
+              const truncated = () => (showAll() ? split().units.length > BRANCH_CAP : shown().hidden.length > 0);
+              // Everything under this project, groups included, for the rollup a
+              // collapsed project row shows: on a plain repo an attempt is not a
+              // branch-unit at all, so its running session would bubble nowhere.
+              const allUnits = () => [
+                ...inSpaces(p.branchUnits),
+                ...split()
+                  .groups.flatMap((grp) => grp.members)
+                  .filter((m) => !m.unit)
+                  .map(attemptUnit),
+              ];
+              return (
+                <ProjectRow
+                  name={p.name}
+                  icon={<ProjectIcon seed={p.path} icon={p.icon} iconFile={p.iconFile} favicon={p.favicon} />}
+                  disclosure={!plainDir()}
+                  open={popen()}
+                  menu={projectMenu(g, p)}
+                  onClick={() => {
+                    if (plainDir()) selectUnit(g, p, folderUnit());
+                    else toggle(pkey(g, p));
+                  }}
+                  onDragStart={(e) => startAbsDrag(e, p.path)}
+                  end={
+                    <>
+                      {/* Lit only when a worktree is missing a shared file, since
                         a healthy container has nothing to say. Doubles as the
                         one path to the page that is not a right-click. */}
-                    <Show when={sharedGaps()[p.path]}>
-                      {(n) => (
-                        <IconButton
-                          size="xs"
-                          class={rows.driftMark}
-                          icon={<Icon icon={Unlink} />}
-                          aria-label={`${p.name}: shared files missing from a worktree`}
-                          tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
-                          onClick={(e: MouseEvent) => {
-                            e.stopPropagation();
-                            openSharedFiles(p);
-                          }}
-                        />
-                      )}
-                    </Show>
-                    {forgeDoorNode(p)}
-                    {statusBubble(() =>
-                      plainDir()
-                        ? bubbleForUnits([folderUnit()])
-                        : !popen()
-                          ? bubbleForUnits(allUnits())
-                          : null,
-                    )}
-                  </>
-                }
-              >
-                <Show when={popen() && !plainDir()}>
-                  <For
-                    each={shown().units}
-                    fallback={
-                      <Show when={split().groups.length === 0}>
-                        <EmptyRow>no branches</EmptyRow>
+                      <Show when={sharedGaps()[p.path]}>
+                        {(n) => (
+                          <IconButton
+                            size="xs"
+                            class={rows.driftMark}
+                            icon={<Icon icon={Unlink} />}
+                            aria-label={`${p.name}: shared files missing from a worktree`}
+                            tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
+                            onClick={(e: MouseEvent) => {
+                              e.stopPropagation();
+                              openSharedFiles(p);
+                            }}
+                          />
+                        )}
                       </Show>
-                    }
-                  >
-                    {(u) => unitNode(g, p, u)}
-                  </For>
-                  <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
-                  <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
-                </Show>
-              </ProjectRow>
-            );
-          }}
-        </For>
+                      {forgeDoorNode(p)}
+                      {statusBubble(() =>
+                        plainDir() ? bubbleForUnits([folderUnit()]) : !popen() ? bubbleForUnits(allUnits()) : null,
+                      )}
+                    </>
+                  }
+                >
+                  <Show when={popen() && !plainDir()}>
+                    <For
+                      each={shown().units}
+                      fallback={
+                        <Show when={split().groups.length === 0}>
+                          <EmptyRow>no branches</EmptyRow>
+                        </Show>
+                      }
+                    >
+                      {(u) => unitNode(g, p, u)}
+                    </For>
+                    <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
+                    <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
+                  </Show>
+                </ProjectRow>
+              );
+            }}
+          </For>
 
-        <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
-          <Show
-            when={!q() && activeSpace()}
-            fallback={<EmptyRow>no matches in this space</EmptyRow>}
-          >
-            {(g) => (
-              <div class="tree-empty">
-                <p>This space has no projects yet. Press Add to create, clone or add one.</p>
-                <Button icon={<Icon icon={Plus} />} onClick={() => openNewProject(g())}>
-                  Add
-                </Button>
-              </div>
-            )}
+          <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
+            <Show when={!q() && activeSpace()} fallback={<EmptyRow>no matches in this space</EmptyRow>}>
+              {(g) => (
+                <div class="tree-empty">
+                  <p>This space has no projects yet. Press Add to create, clone or add one.</p>
+                  <Button icon={<Icon icon={Plus} />} onClick={() => openNewProject(g())}>
+                    Add
+                  </Button>
+                </div>
+              )}
+            </Show>
           </Show>
-        </Show>
-      </OverlayScroll>
+        </OverlayScroll>
 
-      <Show when={activeSpace()}>
-        {(g) => (
-          <Dropdown
-            open={spaceAnchor() != null}
-            anchor={spaceAnchor() ?? { x: 0, y: 0 }}
-            onOpenChange={(open) => !open && setSpaceAnchor(undefined)}
-            items={spaceMenu(g())}
-          />
-        )}
-      </Show>
+        <Show when={activeSpace()}>
+          {(g) => (
+            <Dropdown
+              open={spaceAnchor() != null}
+              anchor={spaceAnchor() ?? { x: 0, y: 0 }}
+              onOpenChange={(open) => !open && setSpaceAnchor(undefined)}
+              items={spaceMenu(g())}
+            />
+          )}
+        </Show>
       </Show>
 
       {/* Outside the mode gate: the strip is how you leave a mode, so it has to

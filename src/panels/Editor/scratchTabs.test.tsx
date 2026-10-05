@@ -135,11 +135,11 @@ let mounted: ReturnType<typeof render> | null = null;
 
 async function mountEditor() {
   mounted = render(() => (
-      <>
-        <Editor selected={selection as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selection as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
   // The scratch directory arrives one await after mount, and every delete path
   // is gated on knowing it.
@@ -279,15 +279,11 @@ describe("saving one under a real name", () => {
     answerPrompt("Save as", "notes.md");
 
     await waitFor(() => expect(code?.activePath).toBe(`${REPO}/notes.md`));
-    expect(argsFor("fs_write_file")).toEqual([
-      { path: `${REPO}/notes.md`, contents: "half a thought" },
-    ]);
+    expect(argsFor("fs_write_file")).toEqual([{ path: `${REPO}/notes.md`, contents: "half a thought" }]);
     // And the untitled file it was is gone, rooted at the scratch directory so
     // the containment check has something to hold it to.
     await waitFor(() =>
-      expect(argsFor("fs_delete")).toEqual([
-        { root: SCRATCH_DIR, path: SCRATCH, noun: "scratch folder" },
-      ]),
+      expect(argsFor("fs_delete")).toEqual([{ root: SCRATCH_DIR, path: SCRATCH, noun: "scratch folder" }]),
     );
     expect(code?.openPaths).toEqual([`${REPO}/notes.md`]);
   });

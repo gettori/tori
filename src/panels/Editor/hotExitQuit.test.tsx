@@ -82,9 +82,8 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvicted
 const { default: Editor } = await import("./Editor");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { DEFAULT_SETTINGS, loadSettings } = await import("../Settings/settingsStore");
-const { emitWith, onWith, OPEN_IN_EDITOR, EDITOR_STASH_DIRTY, EDITOR_STASH_RESULT } = await import(
-  "../../utils/events"
-);
+const { emitWith, onWith, OPEN_IN_EDITOR, EDITOR_STASH_DIRTY, EDITOR_STASH_RESULT } =
+  await import("../../utils/events");
 const BASE_SETTINGS = structuredClone(DEFAULT_SETTINGS);
 
 const CONFIRM = /Close anyway/;
@@ -101,11 +100,11 @@ function answerStashWith(ok: boolean) {
 
 async function mountWithDirtyFile() {
   mounted = render(() => (
-      <>
-        <Editor selected={selectionFor(REPO) as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selectionFor(REPO) as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(onClose).not.toBeNull());
   emitWith(OPEN_IN_EDITOR, { path: FILE });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());

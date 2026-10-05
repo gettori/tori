@@ -1,15 +1,6 @@
 import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  CircleAlert,
-  CornerDownRight,
-  Folder,
-  FolderSymlink,
-  GitBranch,
-  Link,
-  RefreshCw,
-  Trash2,
-} from "lucide-solid";
+import { CircleAlert, CornerDownRight, Folder, FolderSymlink, GitBranch, Link, RefreshCw, Trash2 } from "lucide-solid";
 
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../Settings/settingsStore";
@@ -93,7 +84,12 @@ export default function SharedFilesView(props: { workspace: string }) {
     }
   }
 
-  createEffect(on(() => props.workspace, () => void load()));
+  createEffect(
+    on(
+      () => props.workspace,
+      () => void load(),
+    ),
+  );
 
   function toast(message: string, kind?: ToastEvent["kind"]) {
     emitWith<ToastEvent>(TOAST, { message, kind });
@@ -220,12 +216,7 @@ export default function SharedFilesView(props: { workspace: string }) {
           {data()?.dir ?? props.workspace}
         </span>
         <span class={styles.spacer} />
-        <IconButton
-          size="sm"
-          icon={<Icon icon={RefreshCw} />}
-          tooltip="Refresh"
-          onClick={() => void load()}
-        />
+        <IconButton size="sm" icon={<Icon icon={RefreshCw} />} tooltip="Refresh" onClick={() => void load()} />
       </div>
 
       <section class={styles.setup}>
@@ -244,9 +235,8 @@ export default function SharedFilesView(props: { workspace: string }) {
           label="Agents started over the socket wait for it"
         />
         <p class={styles.lede}>
-          Runs with <code>sh -c</code> in each worktree Tori creates here, with{" "}
-          <code>TORI_PROJECT_ROOT</code> and <code>TORI_WORKTREE_PATH</code> set. A fork's pull
-          request never runs it.
+          Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
+          <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
         </p>
       </section>
 
@@ -266,16 +256,12 @@ export default function SharedFilesView(props: { workspace: string }) {
             {/* The one thing nobody guesses, and the reason the pane beside
                 this has anything to do. */}
             <p class={styles.lede}>
-              Links are made when a worktree is created, so anything shared later needs linking in
-              by hand.
+              Links are made when a worktree is created, so anything shared later needs linking in by hand.
             </p>
           </div>
 
           <OverlayScroll class={styles.railList}>
-            <Show
-              when={entries().length}
-              fallback={<p class={styles.empty}>Nothing is shared yet.</p>}
-            >
+            <Show when={entries().length} fallback={<p class={styles.empty}>Nothing is shared yet.</p>}>
               <For each={entries()}>
                 {(e) => (
                   <button
@@ -311,8 +297,7 @@ export default function SharedFilesView(props: { workspace: string }) {
             when={chosen()}
             fallback={
               <p class={styles.blank}>
-                Share a file by right-clicking it in the file tree. It is linked into every worktree
-                from then on.
+                Share a file by right-clicking it in the file tree. It is linked into every worktree from then on.
               </p>
             }
           >
@@ -324,12 +309,7 @@ export default function SharedFilesView(props: { workspace: string }) {
                     <span class={styles.kind}>{e().is_dir ? "folder" : "file"}</span>
                     <span class={styles.spacer} />
                     <Show when={missingIn(e())}>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        disabled={!!busy()}
-                        onClick={() => link(e().name)}
-                      >
+                      <Button size="sm" variant="primary" disabled={!!busy()} onClick={() => link(e().name)}>
                         Link into {plural(missingIn(e()), "worktree")}
                       </Button>
                     </Show>
@@ -338,9 +318,7 @@ export default function SharedFilesView(props: { workspace: string }) {
                     {data()?.dir}/{e().name}
                   </p>
                   <Show when={missingIn(e())}>
-                    <p class={styles.note}>
-                      {plural(missingIn(e()), "worktree")} never received it, or lost the link.
-                    </p>
+                    <p class={styles.note}>{plural(missingIn(e()), "worktree")} never received it, or lost the link.</p>
                   </Show>
                 </div>
 
@@ -409,8 +387,8 @@ export default function SharedFilesView(props: { workspace: string }) {
                     Delete entry...
                   </Button>
                   <p class={styles.footNote}>
-                    Stop sharing moves the real {e().is_dir ? "folder" : "file"} into one worktree
-                    you choose, and the rest lose it. Delete removes it and every link.
+                    Stop sharing moves the real {e().is_dir ? "folder" : "file"} into one worktree you choose, and the
+                    rest lose it. Delete removes it and every link.
                   </p>
                 </div>
               </>

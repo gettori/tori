@@ -72,11 +72,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * that is on purpose. None of them is worth a message: the user pressed ⌘S, and
  * what they need is the file on disk.
  */
-export async function organizeForSave(
-  deps: OrganizeDeps,
-  path: string,
-  before: Snapshot,
-): Promise<OrganizeText> {
+export async function organizeForSave(deps: OrganizeDeps, path: string, before: Snapshot): Promise<OrganizeText> {
   const wait = deps.delay ?? sleep;
   let edits: LspTextEdit[] | null;
   try {

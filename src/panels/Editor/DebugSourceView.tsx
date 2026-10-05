@@ -54,11 +54,7 @@ export default function DebugSourceView(props: { id: string; name: string }) {
         <div class={styles.code} ref={host}>
           <For each={lines()}>
             {(text, i) => (
-              <div
-                class={styles.row}
-                classList={{ [styles.current]: here() === i() + 1 }}
-                data-line={i() + 1}
-              >
+              <div class={styles.row} classList={{ [styles.current]: here() === i() + 1 }} data-line={i() + 1}>
                 <span class={styles.gutter}>{i() + 1}</span>
                 <span class={styles.text}>{text}</span>
               </div>

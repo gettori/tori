@@ -111,7 +111,10 @@ vi.mock("../panels/Chat/ChatDraft", () => ({
   ),
 }));
 vi.mock("../panels/Editor/CodeEditor", () => ({ default: () => null }));
-vi.mock("../panels/Editor/lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
+vi.mock("../panels/Editor/lspClient", () => ({
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
+}));
 
 const { default: Terminal } = await import("../panels/Terminal/Terminal");
 const { default: PaneView } = await import("./PaneView");
@@ -150,7 +153,15 @@ beforeEach(() => {
 /** A stored chat tab, and the on-disk session it names. */
 const chatTab = (n: number) => {
   storedSessions.push({ id: `s-${n}`, agent: "claude", cwd: REPO, path: `/t/s-${n}.jsonl` });
-  return { title: `chat ${n}`, cwd: REPO, kind: "chat", program: "claude", args: [], id: `chat:${n}`, sessionId: `s-${n}` };
+  return {
+    title: `chat ${n}`,
+    cwd: REPO,
+    kind: "chat",
+    program: "claude",
+    args: [],
+    id: `chat:${n}`,
+    sessionId: `s-${n}`,
+  };
 };
 
 /** A stored workspace, saved just now so nothing prunes it. */
@@ -344,9 +355,7 @@ describe("restore, per pane", () => {
     // lands on, and the tab is a chat with a session id now - the shape the old
     // rule dropped the text for.
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0].text).toBe(
-        "where were we",
-      ),
+      expect(JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0].text).toBe("where were we"),
     );
   });
 });
@@ -518,7 +527,12 @@ describe("a restored tab is inert until it is reached for", () => {
     await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(2));
     // The first one is not torn down by looking away from it: that would be the
     // destroy gate a lazy surface must never become.
-    expect(screen.getAllByTestId("pty").map((el) => el.dataset.id).sort()).toEqual(["sh:0", "sh:4"]);
+    expect(
+      screen
+        .getAllByTestId("pty")
+        .map((el) => el.dataset.id)
+        .sort(),
+    ).toEqual(["sh:0", "sh:4"]);
   });
 
   // Nothing was ever spawned, so there is nothing to kill. Issuing `pty_kill`
@@ -647,7 +661,10 @@ describe("reload reattach", () => {
   // what this suite can see and the rewire is the backend's own contract.
   const mountedPtys = () => screen.queryAllByTestId("pty").map((el) => el.dataset.id);
   const startedChats = () =>
-    screen.queryAllByTestId("chat").filter((el) => el.dataset.started === "true").map((el) => el.dataset.tab);
+    screen
+      .queryAllByTestId("chat")
+      .filter((el) => el.dataset.started === "true")
+      .map((el) => el.dataset.tab);
 
   // A detached PTY's output is dropped rather than buffered, so a tab that
   // waited to be clicked would come back missing whatever ran meanwhile. The
@@ -856,7 +873,13 @@ describe("closing every tab that was never started", () => {
 
     await menuItem("Close 10 tabs not started");
 
-    await waitFor(() => expect(open().map((t) => t.id).sort()).toEqual(["sh:0", "sh:5"]));
+    await waitFor(() =>
+      expect(
+        open()
+          .map((t) => t.id)
+          .sort(),
+      ).toEqual(["sh:0", "sh:5"]),
+    );
     // Nothing was started in the ten, so there was nothing to end.
     expect(invokes.filter((i) => i.cmd === "pty_kill")).toEqual([]);
     expect(invokes.filter((i) => i.cmd === "chat_close")).toEqual([]);
@@ -904,7 +927,6 @@ describe("a session selection delivered while the strip is still restoring", () 
     expect(open().filter((t) => t.sessionId === "s-1")).toHaveLength(1);
   });
 });
-
 
 // A chat tab has two titles: `t.title`, captured when the tab was made, and the
 // `tabTitles` override that `syncTabTitles` and a rename write, which is what

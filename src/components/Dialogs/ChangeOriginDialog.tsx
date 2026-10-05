@@ -66,9 +66,7 @@ export default function ChangeOriginDialog(props: {
     if (!valid()) return "Not a git remote. Expected https://, git@ or ssh://.";
     if (same()) return "Same as the current origin.";
     const host = originHost(typed());
-    return host
-      ? `Points at ${host}. Existing branches keep their names.`
-      : "Existing branches keep their names.";
+    return host ? `Points at ${host}. Existing branches keep their names.` : "Existing branches keep their names.";
   };
 
   const confirm = () => {
@@ -86,11 +84,7 @@ export default function ChangeOriginDialog(props: {
     <Dialog
       open
       size="sheet"
-      title={
-        props.current
-          ? `Change origin for “${props.projectName}”`
-          : `Set origin for “${props.projectName}”`
-      }
+      title={props.current ? `Change origin for “${props.projectName}”` : `Set origin for “${props.projectName}”`}
       onClose={() => props.onCancel()}
       onKeyDown={onKeyDown}
       // Selected, not just focused: the field opens holding the current URL, and
@@ -102,11 +96,7 @@ export default function ChangeOriginDialog(props: {
       actions={
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={props.busy || !canConfirm()}
-            onClick={() => confirm()}
-          >
+          <Button variant="primary" disabled={props.busy || !canConfirm()} onClick={() => confirm()}>
             {props.busy ? "Working…" : props.current ? "Change origin" : "Set origin"}
           </Button>
         </>
@@ -130,7 +120,9 @@ export default function ChangeOriginDialog(props: {
         <div class={styles.spaceField}>
           <div class={styles.spaceLabel}>
             <span id={URL_LABEL}>New origin</span>
-            <span class={styles.spaceRequired} aria-hidden="true">Required</span>
+            <span class={styles.spaceRequired} aria-hidden="true">
+              Required
+            </span>
           </div>
           <input
             ref={first}
@@ -147,11 +139,7 @@ export default function ChangeOriginDialog(props: {
             autocorrect="off"
             spellcheck={false}
           />
-          <div
-            id={URL_HELP}
-            class={styles.spaceHelp}
-            classList={{ [styles.helpError]: malformed() }}
-          >
+          <div id={URL_HELP} class={styles.spaceHelp} classList={{ [styles.helpError]: malformed() }}>
             {help()}
           </div>
         </div>

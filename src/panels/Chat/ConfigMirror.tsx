@@ -73,9 +73,7 @@ export default function ConfigMirror(props: {
     <For each={shown().map((o) => o.id)}>
       {(id) => (
         <Show when={shown().find((o) => o.id === id)}>
-          {(option) => (
-            <MirrorRow option={option()} barDisabled={props.disabled} onSet={props.onSet} />
-          )}
+          {(option) => <MirrorRow option={option()} barDisabled={props.disabled} onSet={props.onSet} />}
         </Show>
       )}
     </For>
@@ -83,8 +81,7 @@ export default function ConfigMirror(props: {
 }
 
 /** A select with more values than a toggle can carry, which is the menu case. */
-const asSelect = (o: ChatConfigOption) =>
-  o.kind === "select" && o.choices.length !== 2 ? o : undefined;
+const asSelect = (o: ChatConfigOption) => (o.kind === "select" && o.choices.length !== 2 ? o : undefined);
 
 /**
  * The two-state levers, whatever shape the agent published them in.
@@ -149,8 +146,7 @@ function MirrorRow(props: {
 }) {
   const refused = () => props.option.disabled;
   const note = () => (refused() ? props.option.note : "");
-  const tooltip = () =>
-    [props.option.description, note()].filter(Boolean).join(" ") || undefined;
+  const tooltip = () => [props.option.description, note()].filter(Boolean).join(" ") || undefined;
 
   const toggleTooltip = (action: string | null) =>
     [action ?? props.option.description, note()].filter(Boolean).join(" ") || undefined;
@@ -162,9 +158,7 @@ function MirrorRow(props: {
           <Picker
             icon={Settings2}
             prefix={`${props.option.name}:`}
-            value={
-              select().choices.find((c) => c.value === select().current)?.label ?? select().current
-            }
+            value={select().choices.find((c) => c.value === select().current)?.label ?? select().current}
             ariaLabel={props.option.name}
             tooltip={tooltip()}
             disabled={props.barDisabled}

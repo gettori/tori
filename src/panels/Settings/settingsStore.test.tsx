@@ -140,7 +140,10 @@ describe("rememberFormatOnSave", () => {
   });
 
   it("clears an answer back to the default", async () => {
-    await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false }, editor: { "/repo/a": { formatOnSave: false } } });
+    await seed({
+      editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false },
+      editor: { "/repo/a": { formatOnSave: false } },
+    });
     rememberFormatOnSave("/repo/a", null);
     await vi.waitFor(() => expect(formatOnSaveFor("/repo/a")).toBe(true));
   });

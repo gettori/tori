@@ -55,9 +55,7 @@ describe("fileSkip", () => {
 describe("fileLabel", () => {
   it("says both halves of a rename", () => {
     // "src/to.ts" on its own is indistinguishable from a brand-new file.
-    expect(fileLabel(file({ previousPath: "src/from.ts", path: "src/to.ts" }))).toBe(
-      "src/from.ts → src/to.ts",
-    );
+    expect(fileLabel(file({ previousPath: "src/from.ts", path: "src/to.ts" }))).toBe("src/from.ts → src/to.ts");
     expect(fileLabel(file({ path: "src/to.ts" }))).toBe("src/to.ts");
   });
 });

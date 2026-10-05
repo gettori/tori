@@ -70,9 +70,7 @@ const { emit, emitWith, onWith, CLOSE_TAB, OPEN_JOB, TOAST, TOGGLE_DOCK } = awai
 const { SHELLS_KEY } = await import("./utils/topics");
 const { paneLock } = await import("./layout/tabPlacement");
 const { layoutRoot } = await import("./layout/layoutStore");
-const { activeWorkspace, dockActiveId, focusTab, open, setOpen } = await import(
-  "./panels/Terminal/terminalTabStore"
-);
+const { activeWorkspace, dockActiveId, focusTab, open, setOpen } = await import("./panels/Terminal/terminalTabStore");
 const { BINDINGS } = await import("./utils/hotkeys");
 const { resetCommandStatus } = await import("./panels/Terminal/commandStatus");
 type OpenJob = import("./utils/events").OpenJob;
@@ -289,7 +287,14 @@ describe("the dock", () => {
   it("starts with nothing selected from a Shells selection an earlier build stored", async () => {
     localStorage.setItem(
       "tori.selection.v1",
-      JSON.stringify({ kind: "shells", spaceName: "", projectName: "Shells", projectPath: "", folderPath: "", branch: "" }),
+      JSON.stringify({
+        kind: "shells",
+        spaceName: "",
+        projectName: "Shells",
+        projectPath: "",
+        folderPath: "",
+        branch: "",
+      }),
     );
     mount();
     await waitFor(() => expect(bridge.selected).toBeNull());

@@ -20,7 +20,11 @@ pub fn spaces(index: &ProjectIndex) -> Arc<Vec<Space>> {
     if let Some((_, spaces)) = held.as_ref().filter(|(at, _)| at.elapsed() < FRESH) {
         return spaces.clone();
     }
-    let spaces = Arc::new(crate::config::get_config_body(index).map(|c| c.spaces).unwrap_or_default());
+    let spaces = Arc::new(
+        crate::config::get_config_body(index)
+            .map(|c| c.spaces)
+            .unwrap_or_default(),
+    );
     *held = Some((Instant::now(), spaces.clone()));
     spaces
 }
@@ -44,7 +48,10 @@ pub fn topic_of<'a>(topics: &'a [Topic], at: &str) -> Option<&'a Topic> {
     }
     topics.iter().find(|t| {
         t.home.as_deref().is_some_and(|h| crate::sessions::cwd_matches(at, h))
-            || t.members.iter().filter_map(|m| m.worktree_path.as_deref()).any(|w| crate::sessions::cwd_matches(at, w))
+            || t.members
+                .iter()
+                .filter_map(|m| m.worktree_path.as_deref())
+                .any(|w| crate::sessions::cwd_matches(at, w))
     })
 }
 
@@ -101,7 +108,10 @@ pub fn home_of(spaces: &[Space], topics: &[Topic], cwd: &str, branch: Option<&st
             topic: None,
         })
     })?;
-    Some(Home { topic: topic.map(|t| t.id.clone()), ..home })
+    Some(Home {
+        topic: topic.map(|t| t.id.clone()),
+        ..home
+    })
 }
 
 fn unit_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home> {
@@ -111,9 +121,18 @@ fn unit_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home> {
         .flat_map(|p| p.branch_units.iter().map(move |u| (p, u.folder_path.as_str())))
         .filter(|(_, folder)| crate::sessions::owned_by_listing(cwd, folder))
         .max_by_key(|(_, folder)| folder.len())?;
-    let siblings: Vec<&BranchUnit> = project.branch_units.iter().filter(|u| u.folder_path == folder).collect();
+    let siblings: Vec<&BranchUnit> = project
+        .branch_units
+        .iter()
+        .filter(|u| u.folder_path == folder)
+        .collect();
     let unit = siblings.iter().find(|u| belongs_to_unit(branch, u, &siblings))?;
-    Some(Home { project: project.path.clone(), folder: folder.to_string(), branch: unit.branch.clone(), topic: None })
+    Some(Home {
+        project: project.path.clone(),
+        folder: folder.to_string(),
+        branch: unit.branch.clone(),
+        topic: None,
+    })
 }
 
 /// The name of the project one of whose units lives at `folder`, or empty.
@@ -206,11 +225,26 @@ pub(crate) mod tests {
             icon_file: None,
             favicon: None,
         };
-        let spaces = [Space { name: "s".into(), path: "/p".into(), projects: vec![project], icon: None, color: None }];
+        let spaces = [Space {
+            name: "s".into(),
+            path: "/p".into(),
+            projects: vec![project],
+            icon: None,
+            color: None,
+        }];
         let home = |cwd, branch| home_of(&spaces, &[], cwd, branch).map(|h| (h.folder, h.branch));
-        assert_eq!(home("/p/repo/src", Some("feat")), Some(("/p/repo".into(), Some("feat".into()))));
-        assert_eq!(home("/p/repo", Some("gone")), Some(("/p/repo".into(), Some("main".into()))));
-        assert_eq!(home("/p/repo-wt/feat", Some("main")), Some(("/p/repo-wt/feat".into(), Some("feat".into()))));
+        assert_eq!(
+            home("/p/repo/src", Some("feat")),
+            Some(("/p/repo".into(), Some("feat".into())))
+        );
+        assert_eq!(
+            home("/p/repo", Some("gone")),
+            Some(("/p/repo".into(), Some("main".into())))
+        );
+        assert_eq!(
+            home("/p/repo-wt/feat", Some("main")),
+            Some(("/p/repo-wt/feat".into(), Some("feat".into())))
+        );
         assert_eq!(home("/p/repo/.tori/worktrees/auth", Some("auth")), None);
         assert_eq!(home("/elsewhere", None), None);
     }
@@ -222,7 +256,11 @@ pub(crate) mod tests {
             display_name: String::new(),
             mode,
             worktree_path: worktree.map(Into::into),
-            checkout: (mode == MemberMode::Reference).then(|| Checkout { path: repo.into(), branch: None, default_branch: None }),
+            checkout: (mode == MemberMode::Reference).then(|| Checkout {
+                path: repo.into(),
+                branch: None,
+                default_branch: None,
+            }),
             state: MemberState::Present,
             order: 0,
         };
@@ -245,12 +283,21 @@ pub(crate) mod tests {
         let web = crate::config::Project {
             name: "web".into(),
             path: "/p/web".into(),
-            branch_units: vec![BranchUnit { folder_path: "/p/web".into(), ..plain(Some("main"), true) }],
+            branch_units: vec![BranchUnit {
+                folder_path: "/p/web".into(),
+                ..plain(Some("main"), true)
+            }],
             icon: None,
             icon_file: None,
             favicon: None,
         };
-        let spaces = [Space { name: "s".into(), path: "/p".into(), projects: vec![web], icon: None, color: None }];
+        let spaces = [Space {
+            name: "s".into(),
+            path: "/p".into(),
+            projects: vec![web],
+            icon: None,
+            color: None,
+        }];
         let topics = [topic()];
         let home = |at| home_of(&spaces, &topics, at, None).map(|h| (h.folder, h.topic));
         let topic_home = Some(("/cfg/topics/auth-1".to_string(), Some("auth-1".to_string())));
@@ -260,10 +307,29 @@ pub(crate) mod tests {
         assert_eq!(home("/p/web"), Some(("/p/web".to_string(), None)));
         assert_eq!(home("topic:gone"), None);
 
-        let wt = BranchUnit { folder_path: "/p/api/.tori/worktrees/auth".into(), ..unit(ProjectKind::Worktree, Some("auth"), false) };
-        let api = crate::config::Project { name: "api".into(), path: "/p/api".into(), branch_units: vec![wt], icon: None, icon_file: None, favicon: None };
-        let spaces = [Space { name: "s".into(), path: "/p".into(), projects: vec![api], icon: None, color: None }];
+        let wt = BranchUnit {
+            folder_path: "/p/api/.tori/worktrees/auth".into(),
+            ..unit(ProjectKind::Worktree, Some("auth"), false)
+        };
+        let api = crate::config::Project {
+            name: "api".into(),
+            path: "/p/api".into(),
+            branch_units: vec![wt],
+            icon: None,
+            icon_file: None,
+            favicon: None,
+        };
+        let spaces = [Space {
+            name: "s".into(),
+            path: "/p".into(),
+            projects: vec![api],
+            icon: None,
+            color: None,
+        }];
         let unit_home = home_of(&spaces, &topics, "/p/api/.tori/worktrees/auth", Some("auth")).unwrap();
-        assert_eq!((unit_home.project.as_str(), unit_home.topic.as_deref()), ("/p/api", Some("auth-1")));
+        assert_eq!(
+            (unit_home.project.as_str(), unit_home.topic.as_deref()),
+            ("/p/api", Some("auth-1"))
+        );
     }
 }

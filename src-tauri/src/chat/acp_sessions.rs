@@ -266,9 +266,7 @@ pub fn adopt(
                     .unwrap_or_else(|| tori_id_for(&row.acp_session_id)),
                 agent: agent.to_string(),
                 acp_session_id: row.acp_session_id.clone(),
-                cwd: existing
-                    .map(|k| k.cwd.clone())
-                    .unwrap_or_else(|| row.cwd.clone()),
+                cwd: existing.map(|k| k.cwd.clone()).unwrap_or_else(|| row.cwd.clone()),
                 title: title_for(row.title.as_deref()),
                 updated_at: row
                     .updated_at
@@ -384,16 +382,25 @@ mod tests {
         // stopped filtering by extension, this would list as a second session
         // rather than merely failing to parse, so the filter is what the
         // assertion below actually tests.
-        let decoy = AcpSession { id: "log-scan-decoy".to_string(), ..session.clone() };
+        let decoy = AcpSession {
+            id: "log-scan-decoy".to_string(),
+            ..session.clone()
+        };
         std::fs::write(log_path("log-scan"), serde_json::to_string(&decoy).unwrap()).unwrap();
-        let decoy = AcpSession { id: "log-scan-meta-decoy".to_string(), ..session.clone() };
+        let decoy = AcpSession {
+            id: "log-scan-meta-decoy".to_string(),
+            ..session.clone()
+        };
         std::fs::write(meta_path("log-scan"), serde_json::to_string(&decoy).unwrap()).unwrap();
 
         // Scoped to the ids this test wrote: `use_dir_for_tests` is one global
         // for the whole process, so counting every row would count a concurrent
         // test's as well.
-        let mine: Vec<String> =
-            all().into_iter().map(|s| s.id).filter(|id| id.starts_with("log-scan")).collect();
+        let mine: Vec<String> = all()
+            .into_iter()
+            .map(|s| s.id)
+            .filter(|id| id.starts_with("log-scan"))
+            .collect();
         assert_eq!(
             mine,
             vec!["log-scan".to_string()],
@@ -616,16 +623,10 @@ mod tests {
         assert_eq!(epoch_from_iso8601("2026-08-14T12:00:00Z"), Some(1_786_708_800));
         // A fractional second is carried by both measured agents and must not
         // defeat the parse.
-        assert_eq!(
-            epoch_from_iso8601("2026-08-14T12:00:00.512Z"),
-            Some(1_786_708_800)
-        );
+        assert_eq!(epoch_from_iso8601("2026-08-14T12:00:00.512Z"), Some(1_786_708_800));
         // An offset is applied, not ignored: reading +02:00 as UTC would date
         // the session two hours late and sort it above sessions newer than it.
-        assert_eq!(
-            epoch_from_iso8601("2026-08-14T14:00:00+02:00"),
-            Some(1_786_708_800)
-        );
+        assert_eq!(epoch_from_iso8601("2026-08-14T14:00:00+02:00"), Some(1_786_708_800));
     }
 
     /// A stamp this cannot read must be `None` rather than 0. A session dated

@@ -17,7 +17,12 @@ const asToken: SignInStart = { kind: "token", routes };
 const asBrowser: SignInStart = {
   kind: "browser",
   routes: { ...routes, deviceFlow: true },
-  prompt: { userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", expiresInSecs: 900, intervalSecs: 5 },
+  prompt: {
+    userCode: "ABCD-1234",
+    verificationUri: "https://github.com/login/device",
+    expiresInSecs: 900,
+    intervalSecs: 5,
+  },
 };
 
 describe("the add flow", () => {
@@ -46,7 +51,10 @@ describe("the add flow", () => {
 
   it("fails a denied or expired code on the browser route", () => {
     for (const kind of ["denied", "expired"] as const) {
-      const start = failed(began(github, asBrowser)!, { kind, code: kind === "denied" ? "access_denied" : "expired_token" });
+      const start = failed(began(github, asBrowser)!, {
+        kind,
+        code: kind === "denied" ? "access_denied" : "expired_token",
+      });
       expect(start).toMatchObject({ step: "error", route: "browser", failure: { kind } });
     }
   });

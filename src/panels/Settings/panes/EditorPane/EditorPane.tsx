@@ -55,22 +55,15 @@ export default function EditorPane(props: PaneProps) {
           <Switch checked={blameOn()} onChange={writeBlamePref} aria-label="Git blame" />
         </Row>
         <Row {...props} id="side-by-side-diff" label="Side-by-side diffs">
-          <Switch
-            checked={sideBySideOn()}
-            onChange={writeSideBySide}
-            aria-label="Side-by-side diffs"
-          />
+          <Switch checked={sideBySideOn()} onChange={writeSideBySide} aria-label="Side-by-side diffs" />
         </Row>
         <Show
           when={overlayRoot()}
-          fallback={
-            <div class={styles.note}>Select a branch to override any of these for one workspace.</div>
-          }
+          fallback={<div class={styles.note}>Select a branch to override any of these for one workspace.</div>}
         >
           <div class={styles.note}>
-            “Set here” writes to <code>{workspaceName()}/.tori/settings.json</code>, which stays on this
-            machine: Tori adds it to the repo's own ignore list, so it never reaches a commit or a
-            teammate.
+            “Set here” writes to <code>{workspaceName()}/.tori/settings.json</code>, which stays on this machine: Tori
+            adds it to the repo's own ignore list, so it never reaches a commit or a teammate.
           </div>
         </Show>
       </Group>

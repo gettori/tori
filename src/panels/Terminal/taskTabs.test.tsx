@@ -117,8 +117,26 @@ describe("what a relaunch brings back", () => {
     const stored = toStore(
       [
         { ...TASK, kind: "task", workspace: REPO, profile: null },
-        { id: "shell-1", title: "repo shell", cwd: REPO, workspace: REPO, kind: "shell", program: "", args: [], profile: null },
-        { id: "clone-1", title: "Clone", cwd: "/tmp/new", workspace: "/tmp/new", kind: "command", program: "git", args: [], profile: null },
+        {
+          id: "shell-1",
+          title: "repo shell",
+          cwd: REPO,
+          workspace: REPO,
+          kind: "shell",
+          program: "",
+          args: [],
+          profile: null,
+        },
+        {
+          id: "clone-1",
+          title: "Clone",
+          cwd: "/tmp/new",
+          workspace: "/tmp/new",
+          kind: "command",
+          program: "git",
+          args: [],
+          profile: null,
+        },
       ],
       {},
       1,

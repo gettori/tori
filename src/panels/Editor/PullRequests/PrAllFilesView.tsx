@@ -52,17 +52,14 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
   /// tabs read them in: the poll is fresher and already on screen, and the
   /// store's copy is what keeps a pull request on a branch this machine has no
   /// unit for from rendering as no pull request at all.
-  const pr = createMemo(
-    () => unitStatusForPr(props.workspace, number())?.pullRequest ?? entry().pr,
-  );
+  const pr = createMemo(() => unitStatusForPr(props.workspace, number())?.pullRequest ?? entry().pr);
   const files = () => entry().files;
   const drifted = () => headDrift(props.workspace, number());
   /// The layout preference, shared with the per-file tabs. Read-only here: the
   /// toggle lives on a diff tab, where the header has room for it.
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
 
-  const unresolvedIn = (path: string) =>
-    entry().threads.filter((t) => t.path === path && !t.isResolved).length;
+  const unresolvedIn = (path: string) => entry().threads.filter((t) => t.path === path && !t.isResolved).length;
   /// This file's conversations that its rows cannot carry. Per section for the
   /// same reason the diff tab keeps them per file: a section is one file, so an
   /// outdated thread here either goes in its strip or disappears.
@@ -184,21 +181,14 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
       <Show when={drifted()}>
         <div class={styles.drift}>
           <span>This pull request has new commits since you read this.</span>
-          <Button
-            variant="ghost"
-            onClick={() => void refresh(props.workspace, number(), "files")}
-          >
+          <Button variant="ghost" onClick={() => void refresh(props.workspace, number(), "files")}>
             Reload the diff
           </Button>
         </div>
       </Show>
 
-      <Show when={entry().filesError}>
-        {(message) => <div class={styles.error}>{message()}</div>}
-      </Show>
-      <Show when={entry().threadsError}>
-        {(message) => <div class={styles.error}>{message()}</div>}
-      </Show>
+      <Show when={entry().filesError}>{(message) => <div class={styles.error}>{message()}</div>}</Show>
+      <Show when={entry().threadsError}>{(message) => <div class={styles.error}>{message()}</div>}</Show>
       {/* This tab's name says "all files", so the one cap that contradicts it
           belongs at the top of it. Same for the conversations: a partial answer
           rendered as a complete one is the failure nobody reports. */}
@@ -249,9 +239,7 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
                         class={styles.fileToggle}
                         aria-expanded={expanded()}
                         aria-label={fileRowName(f, unresolvedIn(f.path), viewed())}
-                        onClick={() =>
-                          setFileExpanded(props.workspace, number(), f.path, !expanded())
-                        }
+                        onClick={() => setFileExpanded(props.workspace, number(), f.path, !expanded())}
                       >
                         <Icon
                           icon={expanded() ? ChevronDown : ChevronRight}
@@ -284,12 +272,7 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
                           )}
                         </Show>
                         <Show when={viewed()}>
-                          <Icon
-                            icon={Check}
-                            size={13}
-                            class={styles.viewedMark}
-                            aria-hidden="true"
-                          />
+                          <Icon icon={Check} size={13} class={styles.viewedMark} aria-hidden="true" />
                         </Show>
                         <span class={styles.counts} aria-hidden="true">
                           <span class={styles.added}>+{f.additions}</span>

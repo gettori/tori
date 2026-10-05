@@ -102,12 +102,7 @@ export function zoomStep(percent: number, direction: 1 | -1): number {
  * page; the ceiling is what stops a 400% zoom on a large page from asking for a
  * canvas the browser will not allocate.
  */
-export function renderScale(
-  scale: number,
-  page: PageSize,
-  dpr: number,
-  maxPixels = MAX_CANVAS_PIXELS,
-): number {
+export function renderScale(scale: number, page: PageSize, dpr: number, maxPixels = MAX_CANVAS_PIXELS): number {
   const wanted = scale * dpr;
   const area = page.width * page.height;
   if (area <= 0) return wanted;

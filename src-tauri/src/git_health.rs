@@ -40,8 +40,7 @@ fn probe(
     }
     let out = run_version(&path);
     let stale_tools = out.as_ref().is_some_and(|o| {
-        !o.status.success()
-            && String::from_utf8_lossy(&o.stderr).contains("invalid active developer path")
+        !o.status.success() && String::from_utf8_lossy(&o.stderr).contains("invalid active developer path")
     });
     if stale_tools {
         return GitHealth::ToolsMissing;
@@ -49,14 +48,19 @@ fn probe(
     let version = out
         .filter(|o| o.status.success())
         .and_then(|o| crate::health::parse_version(&String::from_utf8_lossy(&o.stdout)));
-    GitHealth::Ready { path: path.to_string_lossy().into_owned(), version }
+    GitHealth::Ready {
+        path: path.to_string_lossy().into_owned(),
+        version,
+    }
 }
 
 fn developer_tools_present() -> bool {
     crate::env::output_with_timeout(Command::new("/usr/bin/xcode-select").arg("-p"))
         .filter(|o| o.status.success())
         .is_some_and(|o| {
-            Path::new(String::from_utf8_lossy(&o.stdout).trim()).join("usr/bin/git").is_file()
+            Path::new(String::from_utf8_lossy(&o.stdout).trim())
+                .join("usr/bin/git")
+                .is_file()
         })
 }
 
@@ -95,7 +99,10 @@ fn forget() {
 /// this has to have somewhere quiet to go, and guessing yes would send it into
 /// a subcommand that answers with a usage error.
 pub(crate) fn at_least(major: u32, minor: u32) -> bool {
-    let GitHealth::Ready { version: Some(version), .. } = current() else {
+    let GitHealth::Ready {
+        version: Some(version), ..
+    } = current()
+    else {
         return false;
     };
     let mut parts = version.split('.').map(|part| part.parse::<u32>().unwrap_or(0));
@@ -115,17 +122,17 @@ fn install_route(health: &GitHealth) -> InstallRoute {
 }
 
 fn report(health: GitHealth) -> GitReport {
-    GitReport { install: install_route(&health), health }
+    GitReport {
+        install: install_route(&health),
+        health,
+    }
 }
 
 pub fn run(cmd: &mut Command) -> Result<Output, String> {
     run_with(cmd, current)
 }
 
-pub(crate) fn run_with(
-    cmd: &mut Command,
-    health: impl FnOnce() -> GitHealth,
-) -> Result<Output, String> {
+pub(crate) fn run_with(cmd: &mut Command, health: impl FnOnce() -> GitHealth) -> Result<Output, String> {
     if !matches!(health(), GitHealth::Ready { .. }) {
         return Err(MISSING.into());
     }
@@ -192,8 +199,11 @@ mod tests {
     #[test]
     fn a_stale_developer_dir_is_missing_tools() {
         let note = "xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools), missing xcrun at: /Library/Developer/CommandLineTools/usr/bin/xcrun\n";
-        let health =
-            probe(|| Some(PathBuf::from(APPLE_SHIM)), || true, |_| Some(recorded(1, "", note)));
+        let health = probe(
+            || Some(PathBuf::from(APPLE_SHIM)),
+            || true,
+            |_| Some(recorded(1, "", note)),
+        );
         assert_eq!(health, GitHealth::ToolsMissing);
     }
 

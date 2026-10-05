@@ -4,7 +4,13 @@ import { listen } from "@tauri-apps/api/event";
 import { Group, Row, idsIn, rowLabelId, type PaneProps } from "../../components/paneKit";
 import styles from "../../Settings.module.css";
 import { settings } from "../../settingsStore";
-import { remoteStatus as status, setRemote, setRemoteStatus as setStatus, type Device, type RemoteStatus } from "../../../../utils/remoteAccess";
+import {
+  remoteStatus as status,
+  setRemote,
+  setRemoteStatus as setStatus,
+  type Device,
+  type RemoteStatus,
+} from "../../../../utils/remoteAccess";
 import Switch from "../../../../components/Switch/Switch";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import Button from "../../../../components/Button/Button";
@@ -73,7 +79,10 @@ export default function RemotePane(props: PaneProps) {
   const [ended, setEnded] = createSignal<Ended | null>(null);
   const [now, setNow] = createSignal(Date.now());
 
-  const loadDevices = () => void invoke<Device[]>("devices_list").then(setDevices).catch(() => {});
+  const loadDevices = () =>
+    void invoke<Device[]>("devices_list")
+      .then(setDevices)
+      .catch(() => {});
   const end = (why: Ended) => {
     setOffer(null);
     setEnded(why);
@@ -82,14 +91,20 @@ export default function RemotePane(props: PaneProps) {
   // Also on focus: the user leaves to install or sign in to Tailscale and
   // comes back, and its address joins the picker only then.
   const loadNetwork = () => {
-    void invoke<Interface[]>("remote_interfaces").then(setInterfaces).catch(() => {});
-    void invoke<Tailscale>("remote_tailscale").then(setTailscale).catch(() => {});
+    void invoke<Interface[]>("remote_interfaces")
+      .then(setInterfaces)
+      .catch(() => {});
+    void invoke<Tailscale>("remote_tailscale")
+      .then(setTailscale)
+      .catch(() => {});
   };
 
   onMount(() => {
     loadNetwork();
     window.addEventListener("focus", loadNetwork);
-    void invoke<RemoteStatus>("remote_status").then(setStatus).catch(() => {});
+    void invoke<RemoteStatus>("remote_status")
+      .then(setStatus)
+      .catch(() => {});
     loadDevices();
     const unlisten = listen<{ ended: Ended | null }>("remote://devices", (e) => {
       loadDevices();
@@ -148,7 +163,9 @@ export default function RemotePane(props: PaneProps) {
               <Show when={t().state !== "connected"}>
                 <Button
                   size="sm"
-                  onClick={() => void invoke("tailscale_open").catch((e) => pushToast(`Tailscale did not open: ${String(e)}`))}
+                  onClick={() =>
+                    void invoke("tailscale_open").catch((e) => pushToast(`Tailscale did not open: ${String(e)}`))
+                  }
                 >
                   {t().state === "missing" ? "Get Tailscale" : "Open Tailscale"}
                 </Button>
@@ -216,7 +233,13 @@ export default function RemotePane(props: PaneProps) {
             </div>
           )}
         </Show>
-        <Show when={ended()}>{(why) => <div class={styles.note} role="status">{ENDED[why()]}</div>}</Show>
+        <Show when={ended()}>
+          {(why) => (
+            <div class={styles.note} role="status">
+              {ENDED[why()]}
+            </div>
+          )}
+        </Show>
       </Show>
 
       <Row {...props} id="remote-devices" label="Paired devices">

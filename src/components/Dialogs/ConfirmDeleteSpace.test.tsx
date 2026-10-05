@@ -21,8 +21,7 @@ import ConfirmDeleteSpace from "./ConfirmDeleteSpace";
 // on. It is now named by `aria-labelledby` pointing at that same visible
 // "Type <name> to confirm" line, so the announcement and the instruction on
 // screen are the same words, and the rule override is gone.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -57,8 +56,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   return { onConfirm, onCancel, input, stat };
 }
 
-const del = (name = "Delete space") =>
-  screen.getByRole("button", { name }) as HTMLButtonElement;
+const del = (name = "Delete space") => screen.getByRole("button", { name }) as HTMLButtonElement;
 
 describe("ConfirmDeleteSpace", () => {
   describe("contract", () => {
@@ -69,9 +67,7 @@ describe("ConfirmDeleteSpace", () => {
       // The consequence names the folder, so the sentence is split across the
       // mono path span and cannot be found as one text node.
       expect(screen.getByText("~/code/work")).toBeTruthy();
-      expect(
-        screen.getByText(/and everything below it from disk\. It cannot be undone\./),
-      ).toBeTruthy();
+      expect(screen.getByText(/and everything below it from disk\. It cannot be undone\./)).toBeTruthy();
     });
 
     it("takes the caller's wording when the target is not a space", () => {

@@ -48,9 +48,7 @@ describe("mapExpandedPaths", () => {
   };
 
   it("follows a renamed folder, in every workspace holding it", () => {
-    const out = mapExpandedPaths(store, (p) =>
-      p.startsWith(`${A}/src`) ? p.replace(`${A}/src`, `${A}/lib`) : p,
-    );
+    const out = mapExpandedPaths(store, (p) => (p.startsWith(`${A}/src`) ? p.replace(`${A}/src`, `${A}/lib`) : p));
     expect(out[WS].dirs).toEqual([`${A}/lib`, `${A}/lib/utils`, `${B}/lib`]);
     expect(out["/w/other"].dirs).toEqual([`${A}/lib`]);
     // The section header travels the same way, so a member that moved is not

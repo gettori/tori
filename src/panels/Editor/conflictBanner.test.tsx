@@ -75,9 +75,8 @@ vi.mock("./CodeEditor", () => ({ default: () => null }));
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { emitWith, onWith, OPEN_IN_EDITOR, SET_RIGHT_MODE, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(
-  "../../utils/events"
-);
+const { emitWith, onWith, OPEN_IN_EDITOR, SET_RIGHT_MODE, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } =
+  await import("../../utils/events");
 const { enterRoots, refreshStatus } = await import("../../utils/gitActions");
 
 const selection = selectionFor(REPO);
@@ -90,11 +89,11 @@ let mounted: ReturnType<typeof render> | null = null;
 
 async function mountWith(path: string, sel: Partial<typeof withSession> = selection) {
   mounted = render(() => (
-      <>
-        <Editor selected={sel as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={sel as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
   emitWith(OPEN_IN_EDITOR, { path });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
@@ -213,9 +212,7 @@ describe("the conflict banner", () => {
     // A disabled button fires no pointer events of its own, so the reason is
     // reached through the `tooltipWhenDisabled` hover surface around it.
     fireEvent.pointerEnter(ask.closest("[data-tooltip-hover-surface]")!);
-    await waitFor(() =>
-      expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"),
-    );
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"));
   });
 
   it("says nothing once the store stops covering this workspace", async () => {

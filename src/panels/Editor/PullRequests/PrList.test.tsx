@@ -88,7 +88,21 @@ const noteAuth = (auth: AuthState) =>
   noteForgeAccounts(
     auth.kind === "signedOut"
       ? []
-      : [{ id: "personal", provider: "github", baseUrl: "https://github.com", login: "skarif2", label: "skarif2", expiresAt: null, rejectedAt: null, scopes: null, source: "token", orgAccess: [], auth }],
+      : [
+          {
+            id: "personal",
+            provider: "github",
+            baseUrl: "https://github.com",
+            login: "skarif2",
+            label: "skarif2",
+            expiresAt: null,
+            rejectedAt: null,
+            scopes: null,
+            source: "token",
+            orgAccess: [],
+            auth,
+          },
+        ],
   );
 
 const signIn = () => {
@@ -129,9 +143,7 @@ describe("the pull request list", () => {
     signIn();
 
     render(() => <PrList root={ROOT} onPick={() => {}} />);
-    await waitFor(() =>
-      expect(screen.queryByText(/more open pull requests than one listing can carry/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.queryByText(/more open pull requests than one listing can carry/)).toBeTruthy());
   });
 
   it("tells the four ways of being empty apart", async () => {
@@ -190,9 +202,7 @@ describe("the pull request list", () => {
     await waitFor(() => expect(screen.queryByText("No open pull requests.")).toBeTruthy());
 
     bridge.items = [pr(31)];
-    window.dispatchEvent(
-      new CustomEvent("tori:pr-opened", { detail: { projectPath: ROOT } }),
-    );
+    window.dispatchEvent(new CustomEvent("tori:pr-opened", { detail: { projectPath: ROOT } }));
     await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
   });
 
@@ -205,9 +215,7 @@ describe("the pull request list", () => {
     await waitFor(() => expect(screen.queryByText("pull request 1")).toBeTruthy());
 
     const before = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
-    window.dispatchEvent(
-      new CustomEvent("tori:pr-opened", { detail: { projectPath: "/root/work/other" } }),
-    );
+    window.dispatchEvent(new CustomEvent("tori:pr-opened", { detail: { projectPath: "/root/work/other" } }));
     await Promise.resolve();
     expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(before);
   });
@@ -236,14 +244,10 @@ describe("the pull request list", () => {
     const before = bridge.calls.length;
     await pollNow("manual");
 
-    await waitFor(() =>
-      expect(document.querySelector('[data-forge-checks="bad"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-forge-checks="bad"]')).toBeTruthy());
     expect(document.querySelector('[data-forge-review="bad"]')).toBeTruthy();
     // And the panel asked for none of it: every request since the row rendered
     // was the poller's.
-    expect(
-      bridge.calls.slice(before).filter((c) => c.cmd === "forge_list_prs"),
-    ).toHaveLength(0);
+    expect(bridge.calls.slice(before).filter((c) => c.cmd === "forge_list_prs")).toHaveLength(0);
   });
 });

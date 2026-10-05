@@ -106,10 +106,12 @@ impl PtyState {
         let guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let session = guard.get(tab)?;
         Some(crate::rpc::methods::Identity {
-            account: session
-                .agent
-                .as_ref()
-                .map(|_| session.profile.clone().unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string())),
+            account: session.agent.as_ref().map(|_| {
+                session
+                    .profile
+                    .clone()
+                    .unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string())
+            }),
             agent: session.agent.clone(),
             cwd: Some(session.cwd.clone()).filter(|cwd| !cwd.is_empty()),
         })
@@ -415,9 +417,12 @@ impl Seeder {
 }
 
 fn command_name(pid: i32) -> Option<String> {
-    let out = crate::env::output_with_timeout(
-        std::process::Command::new("ps").args(["-o", "ucomm=", "-p", &pid.to_string()]),
-    )?;
+    let out = crate::env::output_with_timeout(std::process::Command::new("ps").args([
+        "-o",
+        "ucomm=",
+        "-p",
+        &pid.to_string(),
+    ]))?;
     let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (!name.is_empty()).then_some(name)
 }
@@ -512,9 +517,9 @@ pub fn pty_spawn(
                 surface: Surface::PtyAgent,
                 tab_id: id.clone(),
                 agent: agent_id.clone(),
-                profile: profile.clone().unwrap_or_else(|| {
-                    crate::accounts::DEFAULT_PROFILE_ID.to_string()
-                }),
+                profile: profile
+                    .clone()
+                    .unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string()),
                 // A PTY agent tab's child is a login shell, not the agent, so
                 // its pid would never match the adapter's running pattern.
                 // Recording it would make the orphan check answer "gone" for a
@@ -530,7 +535,11 @@ pub fn pty_spawn(
             // it" or "end the leftover process" if it is told which tab and
             // which pid, and it cannot parse either back out of a message.
             // Nothing is spawned either way, so the corruption stays blocked.
-            refused => return Ok(PtySpawnResult { ownership: Some(refused) }),
+            refused => {
+                return Ok(PtySpawnResult {
+                    ownership: Some(refused),
+                })
+            }
         }
     }
 
@@ -567,7 +576,10 @@ pub fn pty_spawn(
     for (key, value) in crate::credential::spawn_env().into_iter().chain(rpc_env.clone()) {
         cmd.env(key, value);
     }
-    let path = cmd.get_env("PATH").map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let path = cmd
+        .get_env("PATH")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     cmd.env("PATH", crate::rpc::path_with_cli(&path));
 
     // Applied last, so a caller pointing an agent at a different home wins over
@@ -583,14 +595,19 @@ pub fn pty_spawn(
     if is_command && spawned.is_err() {
         // A command that never started has still ended, and `pty://exit` is the
         // only place its verdict is read; 127 is what a shell reports here.
-        let _ = app.emit("pty://exit", ExitEvent { id: id.clone(), code: Some(127) });
+        let _ = app.emit(
+            "pty://exit",
+            ExitEvent {
+                id: id.clone(),
+                code: Some(127),
+            },
+        );
     }
     let child: SharedChild = Arc::new(Mutex::new(spawned?));
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let writer: SharedWriter =
-        Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
+    let writer: SharedWriter = Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
     let master: SharedMaster = Arc::new(Mutex::new(pair.master));
 
     // An rc that attaches tmux or execs another program takes the terminal from
@@ -611,14 +628,33 @@ pub fn pty_spawn(
         let seed_id = id.clone();
         let seed_busy = busy.clone();
         thread::spawn(move || {
-            let live = || seed_app.state::<PtyState>().0.lock().map(|g| g.contains_key(&seed_id)).unwrap_or(false);
+            let live = || {
+                seed_app
+                    .state::<PtyState>()
+                    .0
+                    .lock()
+                    .map(|g| g.contains_key(&seed_id))
+                    .unwrap_or(false)
+            };
             match seeder.run(&live, &SEED_TIMINGS) {
                 Seeded::Refused(foreground) => {
                     seed_busy.store(false, Ordering::Relaxed);
-                    let _ = seed_app.emit("pty://init-refused", InitRefused { id: seed_id.clone(), foreground });
+                    let _ = seed_app.emit(
+                        "pty://init-refused",
+                        InitRefused {
+                            id: seed_id.clone(),
+                            foreground,
+                        },
+                    );
                 }
                 Seeded::Typed if track_busy => seeder.watch_busy(&live, &seed_busy, |busy| {
-                    let _ = seed_app.emit("pty://busy", BusyEvent { id: seed_id.clone(), busy });
+                    let _ = seed_app.emit(
+                        "pty://busy",
+                        BusyEvent {
+                            id: seed_id.clone(),
+                            busy,
+                        },
+                    );
                 }),
                 _ => {}
             }
@@ -631,7 +667,10 @@ pub fn pty_spawn(
     let emit_id = id.clone();
     let reader_child = child.clone();
 
-    let activity: SharedActivity = Arc::new(Mutex::new(Activity { last_output_at: Instant::now(), active: false }));
+    let activity: SharedActivity = Arc::new(Mutex::new(Activity {
+        last_output_at: Instant::now(),
+        active: false,
+    }));
     let reader_activity = activity.clone();
     let reader_activity_app = app.clone();
     let reader_activity_id = id.clone();
@@ -676,8 +715,13 @@ pub fn pty_spawn(
                     }
                     if let Ok(mut act) = reader_activity.lock() {
                         if let Some(state) = note_output(&mut act) {
-                            let _ = reader_activity_app
-                                .emit("pty://activity", ActivityEvent { id: reader_activity_id.clone(), state });
+                            let _ = reader_activity_app.emit(
+                                "pty://activity",
+                                ActivityEvent {
+                                    id: reader_activity_id.clone(),
+                                    state,
+                                },
+                            );
                             crate::rpc::note_pty_activity(&reader_activity_id, state);
                         }
                     }
@@ -722,7 +766,13 @@ pub fn pty_spawn(
             }
             if let Ok(mut act) = watch_activity.lock() {
                 if let Some(state) = check_quiet(&mut act, threshold) {
-                    let _ = watch_app.emit("pty://activity", ActivityEvent { id: watch_id.clone(), state });
+                    let _ = watch_app.emit(
+                        "pty://activity",
+                        ActivityEvent {
+                            id: watch_id.clone(),
+                            state,
+                        },
+                    );
                     crate::rpc::note_pty_activity(&watch_id, state);
                 }
             }
@@ -762,12 +812,7 @@ pub fn pty_write(state: State<PtyState>, id: String, data: String) -> Result<(),
 }
 
 #[tauri::command]
-pub fn pty_resize(
-    state: State<PtyState>,
-    id: String,
-    cols: u16,
-    rows: u16,
-) -> Result<(), String> {
+pub fn pty_resize(state: State<PtyState>, id: String, cols: u16, rows: u16) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(session) = guard.get(&id) {
         session
@@ -786,11 +831,7 @@ pub fn pty_resize(
 }
 
 #[tauri::command]
-pub fn pty_kill(
-    state: State<PtyState>,
-    chat: State<crate::chat::host::ChatState>,
-    id: String,
-) -> Result<(), String> {
+pub fn pty_kill(state: State<PtyState>, chat: State<crate::chat::host::ChatState>, id: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(session) = guard.remove(&id) {
         if let Ok(mut child) = session.child.lock() {
@@ -820,8 +861,11 @@ pub fn pty_live_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn pty_busy_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
-    let mut ids: Vec<String> =
-        guard.iter().filter(|(_, s)| s.busy.load(Ordering::Relaxed)).map(|(id, _)| id.clone()).collect();
+    let mut ids: Vec<String> = guard
+        .iter()
+        .filter(|(_, s)| s.busy.load(Ordering::Relaxed))
+        .map(|(id, _)| id.clone())
+        .collect();
     ids.sort();
     Ok(ids)
 }
@@ -831,7 +875,10 @@ mod tests {
     use super::*;
 
     fn fresh() -> Activity {
-        Activity { last_output_at: Instant::now(), active: false }
+        Activity {
+            last_output_at: Instant::now(),
+            active: false,
+        }
     }
 
     /// A writer that keeps what was written to it, standing in for the PTY's.
@@ -863,7 +910,12 @@ mod tests {
     /// A live tab, optionally on a named agent and account.
     fn agent_session(claimed_session: Option<&str>, agent: Option<&str>, profile: Option<&str>) -> Session {
         let pair = native_pty_system()
-            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .expect("openpty");
         let mut cmd = CommandBuilder::new("sleep");
         cmd.arg("30");
@@ -886,7 +938,12 @@ mod tests {
     /// order the reader thread does it in.
     fn ran(line: &str) -> Option<u32> {
         let pair = native_pty_system()
-            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .expect("openpty");
         let mut cmd = CommandBuilder::new("/bin/sh");
         cmd.arg("-c");
@@ -921,7 +978,10 @@ mod tests {
         }
 
         assert_eq!(ids, vec!["tab-agent", "tab-shell"], "sorted tab ids");
-        assert!(!ids.iter().any(|id| id == "s-claimed"), "a claimed session id must not appear in the tab listing");
+        assert!(
+            !ids.iter().any(|id| id == "s-claimed"),
+            "a claimed session id must not appear in the tab listing"
+        );
     }
 
     /// The removal guard's second table. A **fresh** agent tab holds no claim
@@ -933,10 +993,29 @@ mod tests {
         let state = PtyState::default();
         {
             let mut guard = state.0.lock().unwrap();
-            guard.insert("shell".into(), Session { cwd: "/p".into(), ..live_session(None) });
-            guard.insert("agent".into(), Session { cwd: "/p/wt".into(), ..agent_session(None, Some("claude"), None) });
+            guard.insert(
+                "shell".into(),
+                Session {
+                    cwd: "/p".into(),
+                    ..live_session(None)
+                },
+            );
+            guard.insert(
+                "agent".into(),
+                Session {
+                    cwd: "/p/wt".into(),
+                    ..agent_session(None, Some("claude"), None)
+                },
+            );
         }
-        assert_eq!(state.identity("shell"), Some(Identity { agent: None, account: None, cwd: Some("/p".into()) }));
+        assert_eq!(
+            state.identity("shell"),
+            Some(Identity {
+                agent: None,
+                account: None,
+                cwd: Some("/p".into())
+            })
+        );
         assert_eq!(
             state.identity("agent"),
             Some(Identity {
@@ -955,13 +1034,19 @@ mod tests {
             let mut guard = state.0.lock().unwrap();
             // A fresh globex agent tab: no claimed session, and the case this
             // whole accessor exists for.
-            guard.insert("tab-fresh-globex".into(), agent_session(None, Some("claude"), Some("globex")));
+            guard.insert(
+                "tab-fresh-globex".into(),
+                agent_session(None, Some("claude"), Some("globex")),
+            );
             guard.insert(
                 "tab-resumed-globex".into(),
                 agent_session(Some("s-1"), Some("claude"), Some("globex")),
             );
             guard.insert("tab-default".into(), agent_session(None, Some("claude"), None));
-            guard.insert("tab-other-agent".into(), agent_session(None, Some("codex"), Some("globex")));
+            guard.insert(
+                "tab-other-agent".into(),
+                agent_session(None, Some("codex"), Some("globex")),
+            );
             guard.insert("tab-shell".into(), live_session(None));
         }
 
@@ -1169,7 +1254,10 @@ mod tests {
         // A 60s window can only be beaten by the size rule.
         assert!(sends.len() >= 2, "size rule never fired, got {} send(s)", sends.len());
         assert_eq!(sends.concat().len(), 10 * 1024);
-        assert!(sends.iter().all(|s| s.len() <= max + 1024), "a send overran the ceiling");
+        assert!(
+            sends.iter().all(|s| s.len() <= max + 1024),
+            "a send overran the ceiling"
+        );
     }
 
     /// The tail matters: whatever is pending when the reader thread goes away
@@ -1198,9 +1286,18 @@ mod tests {
     #[test]
     fn a_command_tab_runs_on_the_login_path() {
         let pair = native_pty_system()
-            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .expect("openpty");
-        let cmd = command_tab("sh", &["-c".into(), "echo $PATH".into()], Some("/tori-login-only/bin:/usr/bin:/bin"));
+        let cmd = command_tab(
+            "sh",
+            &["-c".into(), "echo $PATH".into()],
+            Some("/tori-login-only/bin:/usr/bin:/bin"),
+        );
         let mut child = pair.slave.spawn_command(cmd).expect("spawn");
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().expect("reader");
@@ -1211,7 +1308,10 @@ mod tests {
         }
         let _ = child.wait();
         let out = String::from_utf8_lossy(&out);
-        assert!(out.contains("/tori-login-only/bin"), "the program saw another PATH: {out:?}");
+        assert!(
+            out.contains("/tori-login-only/bin"),
+            "the program saw another PATH: {out:?}"
+        );
     }
 
     const FAST: SeedTimings = SeedTimings {
@@ -1223,9 +1323,17 @@ mod tests {
 
     /// A seeder over a real PTY running `program args`, typing into a recorder
     /// so a test can see whether anything was typed at all.
-    fn seeded(program: &str, args: &[&str]) -> (Seeder, Arc<Mutex<Vec<u8>>>, Box<dyn portable_pty::Child + Send + Sync>) {
+    fn seeded(
+        program: &str,
+        args: &[&str],
+    ) -> (Seeder, Arc<Mutex<Vec<u8>>>, Box<dyn portable_pty::Child + Send + Sync>) {
         let pair = native_pty_system()
-            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .expect("openpty");
         let mut cmd = CommandBuilder::new(program);
         cmd.args(args);
@@ -1255,7 +1363,10 @@ mod tests {
             fg.is_some_and(|p| i64::from(p) != i64::from(seeder.shell_pid.unwrap()))
         };
         while !handed_on() {
-            assert!(Instant::now() < deadline, "sleep never took the terminal, so this proves nothing");
+            assert!(
+                Instant::now() < deadline,
+                "sleep never took the terminal, so this proves nothing"
+            );
             thread::sleep(Duration::from_millis(10));
         }
 
@@ -1283,7 +1394,11 @@ mod tests {
         let mut reader = seeder.master.lock().unwrap().try_clone_reader().expect("reader");
         let waiting = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let still = waiting.clone();
-        let slow = SeedTimings { silent: Duration::from_secs(60), settle: Duration::from_secs(60), ..FAST };
+        let slow = SeedTimings {
+            silent: Duration::from_secs(60),
+            settle: Duration::from_secs(60),
+            ..FAST
+        };
         let pending = thread::spawn(move || seeder.run(|| still.load(std::sync::atomic::Ordering::SeqCst), &slow));
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1304,8 +1419,7 @@ mod tests {
     #[test]
     fn a_child_outliving_the_poll_reports_no_code() {
         let session = live_session(None);
-        let code =
-            poll_exit_code(&session.child, Duration::from_millis(50), Duration::from_millis(10));
+        let code = poll_exit_code(&session.child, Duration::from_millis(50), Duration::from_millis(10));
         let _ = session.child.lock().unwrap().kill();
         assert_eq!(code, None);
     }
@@ -1325,7 +1439,10 @@ mod tests {
         let waited = start.elapsed();
         let code = poll.join().unwrap();
 
-        assert!(waited < Duration::from_millis(500), "the kill waited {waited:?} on the poll");
+        assert!(
+            waited < Duration::from_millis(500),
+            "the kill waited {waited:?} on the poll"
+        );
         assert!(code.is_some(), "the poll should reap the killed child, not time out");
     }
 }

@@ -23,11 +23,7 @@ import styles from "./StatusBubble.module.css";
  * `untitled` drops the per-state titles, for a bubble inside a control whose
  * own tooltip already says what it holds.
  */
-export default function StatusBubble(props: {
-  rollup: () => Rollup | null;
-  tile?: boolean;
-  untitled?: boolean;
-}) {
+export default function StatusBubble(props: { rollup: () => Rollup | null; tile?: boolean; untitled?: boolean }) {
   const r = createMemo(() => props.rollup());
   const tile = () => props.tile === true;
   const quiet = () => tile() || props.untitled === true;
@@ -43,7 +39,14 @@ export default function StatusBubble(props: {
         ? "Waiting for approval"
         : "Waiting for an answer";
   const counts = () => [waiting(), pr(), executing(), idle(), running()];
-  const shown = (at: number) => counts()[at] > 0 && !(tile() && counts().slice(0, at).some((n) => n > 0));
+  const shown = (at: number) =>
+    counts()[at] > 0 &&
+    !(
+      tile() &&
+      counts()
+        .slice(0, at)
+        .some((n) => n > 0)
+    );
   const tileTitle = () =>
     ["waiting for you", "with a pull request to look at", "executing", "idle", "running"]
       .map((label, at) => (counts()[at] ? `${counts()[at]} ${label}` : ""))
@@ -57,13 +60,19 @@ export default function StatusBubble(props: {
         title={tile() ? tileTitle() : undefined}
       >
         <Show when={shown(0)}>
-          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={quiet() ? undefined : waitingTitle()}>
+          <span
+            class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`}
+            title={quiet() ? undefined : waitingTitle()}
+          >
             <QuestionMark animate />
             <Show when={waiting() > 1}>{waiting()}</Show>
           </span>
         </Show>
         <Show when={shown(1)}>
-          <span class={`${styles.statusBubbleItem} ${styles.prAttention}`} title={quiet() ? undefined : "Pull request needs attention"}>
+          <span
+            class={`${styles.statusBubbleItem} ${styles.prAttention}`}
+            title={quiet() ? undefined : "Pull request needs attention"}
+          >
             <Icon icon={GitPullRequest} />
             <Show when={pr() > 1}>{pr()}</Show>
           </span>

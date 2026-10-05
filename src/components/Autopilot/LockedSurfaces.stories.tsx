@@ -95,7 +95,15 @@ export const HistoryRows: Story = {
       style={{ width: "360px", padding: "var(--tori-space-3)", background: "var(--canvas-card)" }}
       class={history.list}
     >
-      <HistoryRow label="Tidy the settings pane" agentId="claude" status="idle" when="3h" active={false} items={[]} onOpen={() => {}} />
+      <HistoryRow
+        label="Tidy the settings pane"
+        agentId="claude"
+        status="idle"
+        when="3h"
+        active={false}
+        items={[]}
+        onOpen={() => {}}
+      />
       <HistoryRow
         label="Cache avatar fetch"
         agentId="claude"
@@ -171,9 +179,20 @@ export const DrivenPane: Story = {
         <div style={{ position: "absolute", top: "var(--tori-space-4)", right: "var(--tori-space-4)" }}>
           <DrivingTag />
         </div>
-        <div style={{ flex: "1", display: "flex", "flex-direction": "column", "justify-content": "flex-end", gap: "var(--tori-space-5)" }}>
+        <div
+          style={{
+            flex: "1",
+            display: "flex",
+            "flex-direction": "column",
+            "justify-content": "flex-end",
+            gap: "var(--tori-space-5)",
+          }}
+        >
           <Message mine>Work on the login redirect loop, the ticket has the repro.</Message>
-          <Message>Reproduced it. The redirect guard reads the session before the cookie refresh lands. Fixing and running the auth tests now.</Message>
+          <Message>
+            Reproduced it. The redirect guard reads the session before the cookie refresh lands. Fixing and running the
+            auth tests now.
+          </Message>
         </div>
         <LockedBar now="running pnpm test auth" progress={0.6} />
       </div>

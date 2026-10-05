@@ -120,7 +120,12 @@ const text = (turnId: string, t: string, agentId: string | null = null): ChatEve
   text: t,
   agentId,
 });
-const started = (turnId: string, toolUseId: string, name = "Edit", input: unknown = { file_path: "/a" }): ChatEvent => ({
+const started = (
+  turnId: string,
+  toolUseId: string,
+  name = "Edit",
+  input: unknown = { file_path: "/a" },
+): ChatEvent => ({
   type: "toolCallStarted",
   sessionId: "s1",
   turnId,
@@ -389,7 +394,16 @@ describe("an ACP agent's answer to a switch", () => {
       type: "configOptions",
       sessionId: "s1",
       options: [
-        { id: "fast_mode", name: "Fast mode", description: "", category: "", disabled: false, note: "", kind: "boolean", value: false },
+        {
+          id: "fast_mode",
+          name: "Fast mode",
+          description: "",
+          category: "",
+          disabled: false,
+          note: "",
+          kind: "boolean",
+          value: false,
+        },
       ],
     });
     expect(modePending(s)).toBe(true);
@@ -462,8 +476,17 @@ describe("a compaction while it is running", () => {
     const s = replay([
       turnStarted("t1"),
       started,
-      { type: "toolCallStarted", sessionId: "s1", turnId: "t1", toolUseId: "toolu_after", name: "Bash",
-        input: {}, kind: "execute", locations: [], title: null },
+      {
+        type: "toolCallStarted",
+        sessionId: "s1",
+        turnId: "t1",
+        toolUseId: "toolu_after",
+        name: "Bash",
+        input: {},
+        kind: "execute",
+        locations: [],
+        title: null,
+      },
       turnDone("t1", "cancelled"),
     ]);
     const card = s.items[s.toolIndex["toolu_after"]];
@@ -874,7 +897,14 @@ describe("the composer queue", () => {
 
   it("queues an attachment on its own and flushes it as one turn carrying the file", () => {
     const s = replay([FIXTURE[0], turnStarted("t1")]);
-    const image = { type: "fileRef", path: "/tmp/a.png", startLine: null, endLine: null, text: null, label: "Image 1" } as const;
+    const image = {
+      type: "fileRef",
+      path: "/tmp/a.png",
+      startLine: null,
+      endLine: null,
+      text: null,
+      label: "Image 1",
+    } as const;
     enqueue(s, [image]);
     applyEvent(s, turnDone("t1", "completed"));
     expect(takeForSend(s)?.blocks).toEqual([image]);
@@ -1085,12 +1115,14 @@ describe("steering a running turn", () => {
     // rather than a dead end.
     resolveApproval(s, "toolu_1");
     expect(steerProbe(s)).toBe("ready");
-    expect(await sendWithProbeGate("stop, just summarise", {
-      probe: async () => steerProbe(s),
-      write: async (t) => void written.push(t),
-      now: () => 0,
-      sleep: async () => {},
-    })).toEqual({ kind: "sent" });
+    expect(
+      await sendWithProbeGate("stop, just summarise", {
+        probe: async () => steerProbe(s),
+        write: async (t) => void written.push(t),
+        now: () => 0,
+        sleep: async () => {},
+      }),
+    ).toEqual({ kind: "sent" });
     expect(written).toEqual(["stop, just summarise"]);
   });
 
@@ -1099,7 +1131,12 @@ describe("steering a running turn", () => {
     // "Steer" label on a message nothing recorded as one.
     const s = replay([
       FIXTURE[0],
-      { type: "userMessage", sessionId: "s1", turnId: "hist-turn-1", blocks: [{ type: "text", text: "from the transcript" }] },
+      {
+        type: "userMessage",
+        sessionId: "s1",
+        turnId: "hist-turn-1",
+        blocks: [{ type: "text", text: "from the transcript" }],
+      },
     ]);
     expect((s.items[s.items.length - 1] as UserItem).steer).toBe(false);
   });
@@ -1148,7 +1185,8 @@ describe("the permission mode control", () => {
     sessionId: "s1",
     turnId,
     model: "m",
-    permissionMode: mode, agentInitiated: false
+    permissionMode: mode,
+    agentInitiated: false,
   });
 
   it("shows a pick immediately and flags it as not yet in force", () => {
@@ -1836,7 +1874,12 @@ describe("resetTranscript", () => {
   it("leaves a chat reading as fresh, however much was in it", () => {
     const s = initialChat("s1");
     for (let i = 0; i < 3; i++) {
-      applyEvent(s, { type: "userMessage", sessionId: "s1", turnId: `t${i}`, blocks: [{ type: "text", text: `m${i}` }] });
+      applyEvent(s, {
+        type: "userMessage",
+        sessionId: "s1",
+        turnId: `t${i}`,
+        blocks: [{ type: "text", text: `m${i}` }],
+      });
       applyEvent(s, text(`t${i}`, "answer"));
       applyEvent(s, turnDone(`t${i}`, "completed"));
     }
@@ -1916,7 +1959,12 @@ describe("a user message that comes back from the transport", () => {
 describe("settleBackfill", () => {
   it("puts a replayed session at rest", () => {
     const s = initialChat("s1");
-    applyEvent(s, { type: "userMessage", sessionId: "s1", turnId: "hist-turn-1", blocks: [{ type: "text", text: "hi" }] });
+    applyEvent(s, {
+      type: "userMessage",
+      sessionId: "s1",
+      turnId: "hist-turn-1",
+      blocks: [{ type: "text", text: "hi" }],
+    });
     applyEvent(s, text("hist-turn-1", "finished answer"));
     expect(isRunning(s)).toBe(true);
     settleBackfill(s);
@@ -2042,8 +2090,7 @@ describe("a question the agent asked", () => {
     outputTruncated: false,
     patch: [],
   });
-  const question = (s: ChatState): QuestionItem =>
-    s.items.find((i): i is QuestionItem => i.kind === "question")!;
+  const question = (s: ChatState): QuestionItem => s.items.find((i): i is QuestionItem => i.kind === "question")!;
 
   const ANSWER =
     'Your questions have been answered: "Which answer channel?"="In protocol" selected preview:\nbehavior: deny. ' +
@@ -2079,7 +2126,10 @@ describe("a question the agent asked", () => {
   it("takes the form from whichever frame lands first, and does not let the other overwrite it", () => {
     // The control request and the assistant frame race on the wire, so both
     // orders have to end in the same place.
-    for (const order of [[startedQuestion(), asked()], [asked(), startedQuestion()]]) {
+    for (const order of [
+      [startedQuestion(), asked()],
+      [asked(), startedQuestion()],
+    ]) {
       const s = initialChat("s1");
       applyEvent(s, turnStarted("turn-1"));
       for (const e of order) applyEvent(s, e);
@@ -2121,7 +2171,9 @@ describe("a question the agent asked", () => {
     expect(answerable(question(s))).toBe(false);
     // A second send must not overwrite the first: the request behind it takes
     // exactly one answer.
-    pushQuestionAnswers(s, "toolu_q", [{ question: "Which answer channel?", picks: ["A dedicated hook"], freeText: null }]);
+    pushQuestionAnswers(s, "toolu_q", [
+      { question: "Which answer channel?", picks: ["A dedicated hook"], freeText: null },
+    ]);
     expect(question(s).submitted?.[0]?.picks).toEqual(["In protocol"]);
   });
 
@@ -2446,11 +2498,7 @@ describe("subagent lanes", () => {
     // A permission prompt carries the `task_id` and nothing else, and can beat
     // `task_started` to the panel. Without this the prompt has no lane to sit
     // in, and `task_started` would then open a second one for the same agent.
-    const s = replay([
-      turnStarted("t1"),
-      { ...prompt(NESTED, "r1"), agentId: AGENT } as ChatEvent,
-      laneStarted(),
-    ]);
+    const s = replay([turnStarted("t1"), { ...prompt(NESTED, "r1"), agentId: AGENT } as ChatEvent, laneStarted()]);
     expect(Object.keys(s.lanes)).toEqual([AGENT]);
     expect(laneStrip(s)).toHaveLength(1);
     expect(s.lanes[AGENT]!.description).toBe("Create sub-made.txt");
@@ -2507,11 +2555,7 @@ describe("subagent lanes", () => {
     // Measured: a backgrounded `Bash` rides the same `task_*` channel as a
     // subagent and says `local_bash`. It has no transcript, so it is not a lane.
     const TASK = "b1dk8xyca";
-    const s = replay([
-      turnStarted("t1"),
-      laneStarted(),
-      laneStarted(TASK, "toolu_bash", "local_bash"),
-    ]);
+    const s = replay([turnStarted("t1"), laneStarted(), laneStarted(TASK, "toolu_bash", "local_bash")]);
     expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT]);
     expect(backgroundTasks(s).map((l) => l.agentId)).toEqual([TASK]);
 
@@ -2708,7 +2752,14 @@ describe("a usage limit stop", () => {
 
   it("is not a stop when the reset is already behind the turn's end", () => {
     expect(limitStopOf(initialChat("s1").rateLimit, "t1", 0)).toBeNull();
-    const rl = { status: "rejected", resetsAt: RESET, limitType: null, utilization: null, windows: [], overageStatus: null };
+    const rl = {
+      status: "rejected",
+      resetsAt: RESET,
+      limitType: null,
+      utilization: null,
+      windows: [],
+      overageStatus: null,
+    };
     expect(limitStopOf(rl, "t1", RESET * 1000)).toBeNull();
     expect(limitStopOf(rl, "t1", RESET * 1000 - 1)).toEqual({ turnId: "t1", resetsAt: RESET });
   });

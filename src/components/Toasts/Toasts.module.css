@@ -19,13 +19,12 @@
   display: flex;
   align-items: flex-start;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(9px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(9px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  padding: calc(9px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(9px * var(--ui-scale))
+    calc(12px * var(--ui-scale));
   font-size: var(--tori-text-lg);
   line-height: 1.4;
   color: var(--fg-default);
-  background:
-    linear-gradient(to right, var(--toast-wash), transparent),
-    var(--canvas-card);
+  background: linear-gradient(to right, var(--toast-wash), transparent), var(--canvas-card);
   border: 0;
   /* The only edge drawn. A hairline on the other three turned the toast into a
      box with a bar stuck on one side, which is not what a selected row is; the

@@ -87,9 +87,7 @@ describe("ShortcutSheet", () => {
       // text: a group label ("View", "Search") can also be a binding's own
       // label, which would make a text query prove the wrong thing in both
       // directions.
-      const headings = [...document.querySelectorAll(`.${styles.groupTitle}`)].map(
-        (h) => h.textContent,
-      );
+      const headings = [...document.querySelectorAll(`.${styles.groupTitle}`)].map((h) => h.textContent);
 
       expect(headings).toEqual(bindingsByGroup().map((g) => GROUP_LABELS[g.group]));
     });

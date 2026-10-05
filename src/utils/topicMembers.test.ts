@@ -10,7 +10,13 @@ const bridge = vi.hoisted(() => ({
   calls: [] as string[],
   members: [
     { repoPath: "/w/api", displayName: "api", worktreePath: "/w/api/wt", state: { kind: "present" }, order: 1 },
-    { repoPath: "/tmp/scratch", displayName: "scratch", worktreePath: null, state: { kind: "worktree-missing" }, order: 0 },
+    {
+      repoPath: "/tmp/scratch",
+      displayName: "scratch",
+      worktreePath: null,
+      state: { kind: "worktree-missing" },
+      order: 0,
+    },
   ] as unknown[],
   spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }] }] as unknown[],
 }));
@@ -25,7 +31,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const handlers = vi.hoisted(() => ({} as Record<string, () => void>));
+const handlers = vi.hoisted(() => ({}) as Record<string, () => void>);
 // Never reset between tests: the module registers its listeners once for the
 // whole file, which is the property the last test here asserts.
 const listens = vi.hoisted(() => [] as string[]);
@@ -356,10 +362,7 @@ describe("the project a member's repo was discovered as", () => {
       {
         name: "web",
         path: "/w/web",
-        branchUnits: [
-          unit("/w/web/.tori/worktrees/auth", "worktree"),
-          unit("/w/web", "plain"),
-        ],
+        branchUnits: [unit("/w/web/.tori/worktrees/auth", "worktree"), unit("/w/web", "plain")],
       },
     ],
   };
@@ -375,18 +378,12 @@ describe("the project a member's repo was discovered as", () => {
   });
 
   it("reads a bare container as a worktree layout", () => {
-    const [m] = tintedMembers(
-      { members: [member("/w/api", "/w/api/auth")] } as never,
-      [CONTAINER] as never,
-    );
+    const [m] = tintedMembers({ members: [member("/w/api", "/w/api/auth")] } as never, [CONTAINER] as never);
     expect(m.kind).toBe("worktree");
   });
 
   it("resolves a repo outside every Space to no space name, without throwing", () => {
-    const [m] = tintedMembers(
-      { members: [member("/tmp/scratch", "/tmp/scratch/wt")] } as never,
-      [PLAIN] as never,
-    );
+    const [m] = tintedMembers({ members: [member("/tmp/scratch", "/tmp/scratch/wt")] } as never, [PLAIN] as never);
     expect(m.kind).toBeUndefined();
     // And it still tints neutrally rather than failing the whole list.
     expect(m.hue).toBeUndefined();
@@ -400,8 +397,6 @@ describe("the project a member's repo was discovered as", () => {
   });
 
   it("ignores a trailing slash on either side of the match", () => {
-    expect(projectUnitKind({ path: "/w/web/", branchUnits: [{ folderPath: "/w/web", kind: "plain" }] })).toBe(
-      "plain",
-    );
+    expect(projectUnitKind({ path: "/w/web/", branchUnits: [{ folderPath: "/w/web", kind: "plain" }] })).toBe("plain");
   });
 });

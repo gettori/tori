@@ -42,7 +42,10 @@ impl std::fmt::Debug for Secret {
 
 impl Secret {
     pub fn access(token: String) -> Self {
-        Self { access_token: token, refresh_token: None }
+        Self {
+            access_token: token,
+            refresh_token: None,
+        }
     }
 }
 
@@ -54,17 +57,19 @@ impl Secret {
 pub fn install_store() -> Result<(), ForgeError> {
     #[cfg(target_os = "macos")]
     {
-        keyring_core::set_default_store(
-            apple_native_keyring_store::keychain::Store::new().map_err(|e| {
-                ForgeError::Transport { message: format!("keychain unavailable: {e}") }
-            })?,
-        );
+        keyring_core::set_default_store(apple_native_keyring_store::keychain::Store::new().map_err(|e| {
+            ForgeError::Transport {
+                message: format!("keychain unavailable: {e}"),
+            }
+        })?);
         Ok(())
     }
     // Tori is macOS-only today. Rather than silently running with no store (so
     // every save fails at the point of use, far from the cause), say so here.
     #[cfg(not(target_os = "macos"))]
-    Err(ForgeError::Transport { message: "no credential store on this platform".into() })
+    Err(ForgeError::Transport {
+        message: "no credential store on this platform".into(),
+    })
 }
 
 fn account_entry(account_id: &str) -> Result<Entry, ForgeError> {
@@ -75,7 +80,9 @@ fn account_entry(account_id: &str) -> Result<Entry, ForgeError> {
 /// errors: from a caller's point of view a keychain that will not answer is the
 /// same class of problem as a network that will not.
 fn map_err(e: KeyringError) -> ForgeError {
-    ForgeError::Transport { message: format!("keychain: {e}") }
+    ForgeError::Transport {
+        message: format!("keychain: {e}"),
+    }
 }
 
 // --- pure core (entry explicit, no globals) ---
@@ -107,8 +114,9 @@ pub fn delete_from(entry: &Entry) -> Result<(), ForgeError> {
 }
 
 pub fn save_secret_to(entry: &Entry, secret: &Secret) -> Result<(), ForgeError> {
-    let text = serde_json::to_string(secret)
-        .map_err(|e| ForgeError::Malformed { message: format!("secret: {e}") })?;
+    let text = serde_json::to_string(secret).map_err(|e| ForgeError::Malformed {
+        message: format!("secret: {e}"),
+    })?;
     save_to(entry, &text)
 }
 
@@ -119,7 +127,9 @@ pub fn load_secret_from(entry: &Entry) -> Result<Option<Secret>, ForgeError> {
     // The serde error is dropped on purpose: its message can quote the input.
     serde_json::from_str(&text)
         .map(Some)
-        .map_err(|_| ForgeError::Malformed { message: "the stored secret is not readable".into() })
+        .map_err(|_| ForgeError::Malformed {
+            message: "the stored secret is not readable".into(),
+        })
 }
 
 // --- thin wrappers over the real entries ---
@@ -183,15 +193,18 @@ mod dev_file {
     fn write(all: &BTreeMap<String, Secret>) -> Result<(), ForgeError> {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
-        let fail = |e: std::io::Error| ForgeError::Transport { message: format!("dev secrets: {e}") };
+        let fail = |e: std::io::Error| ForgeError::Transport {
+            message: format!("dev secrets: {e}"),
+        };
         let path = path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(fail)?;
         }
         let tmp = path.with_extension("json.tmp");
         let _ = std::fs::remove_file(&tmp);
-        let text = serde_json::to_string(all)
-            .map_err(|e| ForgeError::Malformed { message: format!("secret: {e}") })?;
+        let text = serde_json::to_string(all).map_err(|e| ForgeError::Malformed {
+            message: format!("secret: {e}"),
+        })?;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -231,9 +244,7 @@ pub(crate) mod tests {
     /// distinct user so they do not share a credential.
     pub(crate) fn mock_entry_in(service: &str, user: &str) -> Entry {
         MOCK.call_once(|| {
-            keyring_core::set_default_store(
-                keyring_core::mock::Store::new().expect("the mock store always builds"),
-            );
+            keyring_core::set_default_store(keyring_core::mock::Store::new().expect("the mock store always builds"));
         });
         Entry::new(service, user).expect("mock store accepts any name")
     }
@@ -296,7 +307,10 @@ pub(crate) mod tests {
         save_secret_to(&e, &Secret::access("gho_only".into())).unwrap();
         assert_eq!(load_secret_from(&e).unwrap(), Some(Secret::access("gho_only".into())));
 
-        let pair = Secret { access_token: "glpat_a".into(), refresh_token: Some("glrt_r".into()) };
+        let pair = Secret {
+            access_token: "glpat_a".into(),
+            refresh_token: Some("glrt_r".into()),
+        };
         save_secret_to(&e, &pair).unwrap();
         assert_eq!(load_secret_from(&e).unwrap(), Some(pair.clone()));
         assert!(!format!("{pair:?}").contains("glpat_a"), "Debug must not print a token");

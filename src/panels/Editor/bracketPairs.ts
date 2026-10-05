@@ -19,13 +19,7 @@
 
 import { syntaxTree } from "@codemirror/language";
 import { countColumn, Prec, type EditorState, type Range } from "@codemirror/state";
-import {
-  Decoration,
-  EditorView,
-  ViewPlugin,
-  type DecorationSet,
-  type ViewUpdate,
-} from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 const OPEN = "([{";
 const CLOSE = ")]}";
@@ -85,10 +79,7 @@ function delimited(state: EditorState, from: number, to: number): boolean {
  */
 const walked = new WeakMap<EditorState, { key: string; pairs: BracketPair[] }>();
 
-export function visiblePairs(
-  state: EditorState,
-  ranges: readonly { from: number; to: number }[],
-): BracketPair[] {
+export function visiblePairs(state: EditorState, ranges: readonly { from: number; to: number }[]): BracketPair[] {
   const key = ranges.map((r) => `${r.from}:${r.to}`).join(",");
   const cached = walked.get(state);
   if (cached?.key === key) return cached.pairs;
@@ -97,10 +88,7 @@ export function visiblePairs(
   return pairs;
 }
 
-function walkPairs(
-  state: EditorState,
-  ranges: readonly { from: number; to: number }[],
-): BracketPair[] {
+function walkPairs(state: EditorState, ranges: readonly { from: number; to: number }[]): BracketPair[] {
   const tree = syntaxTree(state);
   const pairs: BracketPair[] = [];
   const seen = new Set<number>();
@@ -145,10 +133,7 @@ export type LineGuide = {
  * and closes on one line gets nothing: the two brackets are already side by
  * side, and a line between them would have nowhere to go.
  */
-export function pairGuides(
-  state: EditorState,
-  ranges: readonly { from: number; to: number }[],
-): LineGuide[] {
+export function pairGuides(state: EditorState, ranges: readonly { from: number; to: number }[]): LineGuide[] {
   const guides: LineGuide[] = [];
   for (const pair of visiblePairs(state, ranges)) {
     const open = state.doc.lineAt(pair.from);
@@ -176,8 +161,7 @@ const colorOf = (depth: number) => marks[depth % marks.length];
 
 function bracketMarks(view: EditorView): DecorationSet {
   const ranges: Range<Decoration>[] = [];
-  const onScreen = (pos: number) =>
-    view.visibleRanges.some((r) => pos >= r.from && pos < r.to);
+  const onScreen = (pos: number) => view.visibleRanges.some((r) => pos >= r.from && pos < r.to);
   for (const pair of visiblePairs(view.state, view.visibleRanges)) {
     const mark = colorOf(pair.depth);
     // A pair enclosing the viewport belongs to the pass (its guide crosses the

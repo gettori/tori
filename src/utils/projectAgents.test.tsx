@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string, args: { settings?: unknown }) =>
-    Promise.resolve(cmd === "set_settings" ? args.settings : null),
+  invoke: (cmd: string, args: { settings?: unknown }) => Promise.resolve(cmd === "set_settings" ? args.settings : null),
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}), emit: () => Promise.resolve() }));
 
@@ -27,7 +26,14 @@ describe("agentRefusal in a Topic's home folder", () => {
       order,
     });
     noteTopics([
-      { id: "x", name: "X", branch: "x", createdAt: 1, home: "/cfg/topics/x", members: [member("/w/api", 0), member("/w/web", 1)] },
+      {
+        id: "x",
+        name: "X",
+        branch: "x",
+        createdAt: 1,
+        home: "/cfg/topics/x",
+        members: [member("/w/api", 0), member("/w/web", 1)],
+      },
     ]);
 
     const refused = agentRefusal("/cfg/topics/x", "claude", "default");

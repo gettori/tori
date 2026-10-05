@@ -13,14 +13,7 @@
 import { createEffect, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
-import {
-  isKindHome,
-  paneActiveId,
-  paneHostIds,
-  paneRefusal,
-  paneTabs,
-  reorderPane,
-} from "./paneTabs";
+import { isKindHome, paneActiveId, paneHostIds, paneRefusal, paneTabs, reorderPane } from "./paneTabs";
 import { stageHost } from "./stageHost";
 import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./tabDrag";
 import { setPaneActive } from "../layout/tabPlacement";
@@ -120,8 +113,7 @@ export default function PaneView(props: {
   /** A tab's whole box. `data-tab-id` rides the trigger, which stops short of
    *  the close button, so the midpoint that picks an anchor and the caret drawn
    *  at a tab's edge both have to come from the pill around it. */
-  const pillRect = (el: HTMLElement) =>
-    (el.closest<HTMLElement>("[data-tab-pill]") ?? el).getBoundingClientRect();
+  const pillRect = (el: HTMLElement) => (el.closest<HTMLElement>("[data-tab-pill]") ?? el).getBoundingClientRect();
 
   /** The zone under the pointer, or null when this pane is not a target at all
    *  (no tree, or nothing in flight). */

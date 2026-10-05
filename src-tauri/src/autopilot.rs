@@ -164,7 +164,11 @@ pub struct ContractPatch {
 pub enum Target {
     Id(String),
     // Matched among open items only, so a retry after a crash finds the item it made.
-    Key { kind: Kind, source: Source, project: String },
+    Key {
+        kind: Kind,
+        source: Source,
+        project: String,
+    },
 }
 
 #[derive(Debug, Default, Clone)]
@@ -256,11 +260,19 @@ pub struct Observed {
     pub prs: HashMap<String, HashMap<PrKey, PrState>>,
 }
 
-fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: impl FnOnce() -> String) -> Result<Item, UpdateError> {
+fn apply(
+    items: &mut Vec<Item>,
+    target: Target,
+    patch: Patch,
+    now: u64,
+    mint: impl FnOnce() -> String,
+) -> Result<Item, UpdateError> {
     let at = match target {
         Target::Id(id) => items.iter().position(|i| i.id == id).ok_or(UpdateError::NoItem(id))?,
         Target::Key { kind, source, project } => {
-            let open = items.iter().position(|i| !i.state.terminal() && i.kind == kind && i.source == source && same_folder(&i.project, &project));
+            let open = items.iter().position(|i| {
+                !i.state.terminal() && i.kind == kind && i.source == source && same_folder(&i.project, &project)
+            });
             match open {
                 Some(at) => at,
                 None => {
@@ -306,13 +318,25 @@ fn apply(items: &mut Vec<Item>, target: Target, patch: Patch, now: u64, mint: im
     Ok(item.clone())
 }
 
-fn set_contract(projects: &mut BTreeMap<String, Contract>, project: String, patch: ContractPatch) -> (String, Contract) {
-    let key = projects.keys().find(|known| same_folder(known, &project)).cloned().unwrap_or(project);
+fn set_contract(
+    projects: &mut BTreeMap<String, Contract>,
+    project: String,
+    patch: ContractPatch,
+) -> (String, Contract) {
+    let key = projects
+        .keys()
+        .find(|known| same_folder(known, &project))
+        .cloned()
+        .unwrap_or(project);
     let contract = projects.entry(key.clone()).or_default();
     contract.ships = patch.ships.unwrap_or(contract.ships);
     contract.autonomy = patch.autonomy.unwrap_or(contract.autonomy);
     contract.pickup = patch.pickup.unwrap_or(contract.pickup);
-    for (field, value) in [(&mut contract.agent, patch.agent), (&mut contract.account, patch.account), (&mut contract.model, patch.model)] {
+    for (field, value) in [
+        (&mut contract.agent, patch.agent),
+        (&mut contract.account, patch.account),
+        (&mut contract.model, patch.model),
+    ] {
         if value.is_some() {
             *field = value;
         }
@@ -334,8 +358,13 @@ fn pr_key(item: &Item) -> Option<PrKey> {
 fn pr_key_of_url(url: &str) -> Option<PrKey> {
     let url = url.trim_end_matches('/');
     let (rest, number) = url.rsplit_once('/')?;
-    let repo_url = rest.strip_suffix("/pull").or_else(|| rest.strip_suffix("/-/merge_requests"))?;
-    let (_host, repo) = repo_url.split_once("://").map_or(repo_url, |(_, path)| path).split_once('/')?;
+    let repo_url = rest
+        .strip_suffix("/pull")
+        .or_else(|| rest.strip_suffix("/-/merge_requests"))?;
+    let (_host, repo) = repo_url
+        .split_once("://")
+        .map_or(repo_url, |(_, path)| path)
+        .split_once('/')?;
     Some((repo.to_lowercase(), number.parse().ok()?))
 }
 
@@ -343,7 +372,10 @@ fn pr_key_of_url(url: &str) -> Option<PrKey> {
 // open pull request or a pending approval is what the merge or the answer closes.
 fn fail_closed_by_hand(items: &mut [Item], session: &str, held: &HashSet<String>, now: u64) -> Vec<Item> {
     let mut changed = Vec::new();
-    for item in items.iter_mut().filter(|i| matches!(i.state, State::Running | State::WaitingOnYou)) {
+    for item in items
+        .iter_mut()
+        .filter(|i| matches!(i.state, State::Running | State::WaitingOnYou))
+    {
         if item.session.as_deref() != Some(session) || item.pr_url.is_some() || held.contains(&item.id) {
             continue;
         }
@@ -359,7 +391,9 @@ fn fail_closed_by_hand(items: &mut [Item], session: &str, held: &HashSet<String>
 fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, now: u64) -> Vec<Item> {
     let mut changed = Vec::new();
     for item in items.iter_mut().filter(|i| !i.state.terminal()) {
-        let Some(state) = pr_key(item).and_then(|key| prs.get(&item.project)?.get(&key)) else { continue };
+        let Some(state) = pr_key(item).and_then(|key| prs.get(&item.project)?.get(&key)) else {
+            continue;
+        };
         match state {
             PrState::Merged => item.state = State::Done,
             PrState::Closed if item.note.as_deref() != Some(CLOSED_NOTE) => item.note = Some(CLOSED_NOTE.to_string()),
@@ -374,8 +408,18 @@ fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, no
 // An issue compares by label, since a hand-made item may key it by its url.
 fn same_work(item: &Item, row: &IssueRef, repo: &str) -> bool {
     match (&item.source, row.kind) {
-        (Source::Issue { .. }, IssueKind::Issue) => label_of(&item.source) == label_of(&Source::Issue { key: row.key.clone(), project: String::new() }),
-        (Source::Pr { .. }, IssueKind::ReviewRequest) => row.key.parse().ok().is_some_and(|n: u64| pr_key(item) == Some((repo.to_lowercase(), n))),
+        (Source::Issue { .. }, IssueKind::Issue) => {
+            label_of(&item.source)
+                == label_of(&Source::Issue {
+                    key: row.key.clone(),
+                    project: String::new(),
+                })
+        }
+        (Source::Pr { .. }, IssueKind::ReviewRequest) => row
+            .key
+            .parse()
+            .ok()
+            .is_some_and(|n: u64| pr_key(item) == Some((repo.to_lowercase(), n))),
         _ => false,
     }
 }
@@ -405,19 +449,29 @@ pub fn plan_pickup(
 ) -> Vec<Item> {
     let here = |i: &Item| same_folder(&i.project, project);
     let first = !items.iter().any(|i| here(i) && i.picked_by.is_some());
-    let start = if first || pickup == Pickup::Ask { State::Proposed } else { State::Queued };
+    let start = if first || pickup == Pickup::Ask {
+        State::Proposed
+    } else {
+        State::Queued
+    };
     let complete = |kind: IssueKind| rows.iter().filter(|r| r.kind == kind).count() < cap;
     let mut changed = Vec::new();
-    for item in items.iter_mut().filter(|i| here(i) && !i.state.terminal() && i.picked_by.as_deref() == Some(account)) {
+    for item in items
+        .iter_mut()
+        .filter(|i| here(i) && !i.state.terminal() && i.picked_by.as_deref() == Some(account))
+    {
         if !complete(kind_of(item)) || rows.iter().any(|r| same_work(item, r, repo)) {
             continue;
         }
         item.state = State::Done;
         item.gone_upstream = true;
-        item.note = Some(match kind_of(item) {
-            IssueKind::Issue => GONE_UPSTREAM,
-            IssueKind::ReviewRequest => REVIEW_CLEARED,
-        }.to_string());
+        item.note = Some(
+            match kind_of(item) {
+                IssueKind::Issue => GONE_UPSTREAM,
+                IssueKind::ReviewRequest => REVIEW_CLEARED,
+            }
+            .to_string(),
+        );
         item.updated = now;
         changed.push(item.clone());
     }
@@ -427,9 +481,21 @@ pub fn plan_pickup(
             continue;
         }
         let (kind, source) = match row.kind {
-            IssueKind::Issue => (Kind::Ship, Source::Issue { key: row.key.clone(), project: project.to_string() }),
+            IssueKind::Issue => (
+                Kind::Ship,
+                Source::Issue {
+                    key: row.key.clone(),
+                    project: project.to_string(),
+                },
+            ),
             IssueKind::ReviewRequest => match row.key.parse() {
-                Ok(number) => (Kind::Review, Source::Pr { number, repo: repo.to_string() }),
+                Ok(number) => (
+                    Kind::Review,
+                    Source::Pr {
+                        number,
+                        repo: repo.to_string(),
+                    },
+                ),
                 Err(_) => continue,
             },
         };
@@ -487,12 +553,25 @@ impl PrStates {
         fetch: impl FnOnce(&[u64]) -> Result<Vec<(PrKey, PrState)>, crate::forge::ForgeError>,
     ) -> Option<HashMap<PrKey, PrState>> {
         let fresh = |f: &Fetched| f.at.elapsed() < PR_STATES_TTL && numbers.iter().all(|n| f.asked.contains(n));
-        if let Some(hit) = self.fetched.lock().unwrap_or_else(|e| e.into_inner()).get(project).filter(|f| fresh(f)) {
+        if let Some(hit) = self
+            .fetched
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(project)
+            .filter(|f| fresh(f))
+        {
             return Some(hit.states.clone());
         }
         let states: HashMap<PrKey, PrState> = fetch(numbers).ok()?.into_iter().collect();
-        let entry = Fetched { at: Instant::now(), states: states.clone(), asked: numbers.iter().copied().collect() };
-        self.fetched.lock().unwrap_or_else(|e| e.into_inner()).insert(project.to_string(), entry);
+        let entry = Fetched {
+            at: Instant::now(),
+            states: states.clone(),
+            asked: numbers.iter().copied().collect(),
+        };
+        self.fetched
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(project.to_string(), entry);
         Some(states)
     }
 }
@@ -501,7 +580,12 @@ fn canon(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-pub fn reconcile(items: &[Item], live: &HashSet<String>, worktrees: &HashMap<String, Option<Vec<Listed>>>, root: Option<&Path>) -> Vec<Row> {
+pub fn reconcile(
+    items: &[Item],
+    live: &HashSet<String>,
+    worktrees: &HashMap<String, Option<Vec<Listed>>>,
+    root: Option<&Path>,
+) -> Vec<Row> {
     items
         .iter()
         .map(|item| Row {
@@ -518,7 +602,9 @@ pub fn reconcile(items: &[Item], live: &HashSet<String>, worktrees: &HashMap<Str
 }
 
 fn name_of(path: &Path) -> String {
-    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn is_number(s: &str) -> bool {
@@ -527,7 +613,8 @@ fn is_number(s: &str) -> bool {
 
 // `ENG-123`, as Linear and Jira spell a key.
 fn is_tracker_key(s: &str) -> bool {
-    s.split_once('-').is_some_and(|(team, n)| !team.is_empty() && team.bytes().all(|b| b.is_ascii_uppercase()) && is_number(n))
+    s.split_once('-')
+        .is_some_and(|(team, n)| !team.is_empty() && team.bytes().all(|b| b.is_ascii_uppercase()) && is_number(n))
 }
 
 // An issue key may arrive as `12`, `#12`, `ENG-123` or the issue's url, whose
@@ -537,7 +624,11 @@ fn label_of(source: &Source) -> String {
         Source::Pr { number, .. } => return format!("#{number}"),
         Source::Issue { key, .. } => key.trim().trim_start_matches('#'),
     };
-    let found = key.trim_end_matches('/').rsplit('/').find(|s| is_number(s) || is_tracker_key(s)).unwrap_or(key);
+    let found = key
+        .trim_end_matches('/')
+        .rsplit('/')
+        .find(|s| is_number(s) || is_tracker_key(s))
+        .unwrap_or(key);
     if is_number(found) {
         format!("#{found}")
     } else {
@@ -548,16 +639,28 @@ fn label_of(source: &Source) -> String {
 // Tori lays folders out as <root>/<space>/<project>, so the names are the path's.
 fn place(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, root: Option<&Path>) -> Vec<String> {
     let project = Path::new(&item.project);
-    let Some(space) = project.parent() else { return Vec::new() };
-    let under_root = space.parent().zip(root).is_some_and(|(at, root)| same_folder(&at.to_string_lossy(), &root.to_string_lossy()));
+    let Some(space) = project.parent() else {
+        return Vec::new();
+    };
+    let under_root = space
+        .parent()
+        .zip(root)
+        .is_some_and(|(at, root)| same_folder(&at.to_string_lossy(), &root.to_string_lossy()));
     if !under_root {
         return Vec::new();
     }
     let mut place = vec![name_of(space), name_of(project)];
     if let Some(wt) = item.worktree.as_deref() {
         let wt_path = canon(Path::new(wt));
-        let listed = worktrees.get(&item.project).and_then(|l| l.as_ref()).and_then(|l| l.iter().find(|(p, _)| canon(p) == wt_path));
-        place.push(listed.and_then(|(_, branch)| branch.clone()).unwrap_or_else(|| name_of(Path::new(wt))));
+        let listed = worktrees
+            .get(&item.project)
+            .and_then(|l| l.as_ref())
+            .and_then(|l| l.iter().find(|(p, _)| canon(p) == wt_path));
+        place.push(
+            listed
+                .and_then(|(_, branch)| branch.clone())
+                .unwrap_or_else(|| name_of(Path::new(wt))),
+        );
     }
     place
 }
@@ -579,7 +682,12 @@ pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, 
     };
     let url = item.url.clone().or(key_url);
     let pr = match &item.source {
-        Source::Issue { .. } => item.pr_url.as_ref().and_then(|u| Some(Link { label: format!("PR #{}", pr_key_of_url(u)?.1), url: u.clone() })),
+        Source::Issue { .. } => item.pr_url.as_ref().and_then(|u| {
+            Some(Link {
+                label: format!("PR #{}", pr_key_of_url(u)?.1),
+                url: u.clone(),
+            })
+        }),
         Source::Pr { .. } => None,
     };
     let place = place(item, worktrees, root);
@@ -589,27 +697,53 @@ pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, 
         None => label.clone(),
     };
     if !place.is_empty() {
-        let session = item.session.as_deref().map(|s| format!("&session={}", encode(s))).unwrap_or_default();
-        markdown += &format!(" ([{}](tori://open?folder={}{session}))", place.join(" -> "), encode(&folder));
+        let session = item
+            .session
+            .as_deref()
+            .map(|s| format!("&session={}", encode(s)))
+            .unwrap_or_default();
+        markdown += &format!(
+            " ([{}](tori://open?folder={}{session}))",
+            place.join(" -> "),
+            encode(&folder)
+        );
     }
     if let Some(pr) = &pr {
         markdown += &format!(", [{}]({})", pr.label, pr.url);
     }
-    let target = NavTarget { folder: Some(folder), session: item.session.clone() };
-    Reference { label, url, pr, place, target, markdown }
+    let target = NavTarget {
+        folder: Some(folder),
+        session: item.session.clone(),
+    };
+    Reference {
+        label,
+        url,
+        pr,
+        place,
+        target,
+        markdown,
+    }
 }
 
 // `list_worktrees_body` answers an empty list for an unreadable repo, so
 // readability is asked first: "git failed" must not read as "every worktree is gone".
 pub fn list_worktrees(items: &[Item]) -> HashMap<String, Option<Vec<Listed>>> {
-    let projects: HashSet<&str> = items.iter().filter(|i| i.worktree.is_some()).map(|i| i.project.as_str()).collect();
+    let projects: HashSet<&str> = items
+        .iter()
+        .filter(|i| i.worktree.is_some())
+        .map(|i| i.project.as_str())
+        .collect();
     projects
         .into_iter()
         .map(|project| {
             let listed = crate::worktree::repo_readable(project)
                 .then(|| crate::worktree::list_worktrees_body(project.to_string()).ok())
                 .flatten()
-                .map(|all| all.into_iter().map(|w| (PathBuf::from(w.path), Some(w.branch).filter(|b| !b.is_empty()))).collect());
+                .map(|all| {
+                    all.into_iter()
+                        .map(|w| (PathBuf::from(w.path), Some(w.branch).filter(|b| !b.is_empty())))
+                        .collect()
+                });
             (project.to_string(), listed)
         })
         .collect()
@@ -623,14 +757,22 @@ pub fn dir() -> PathBuf {
 fn tail_lines(path: &Path, limit: usize) -> Vec<String> {
     use std::io::{Read, Seek, SeekFrom};
     const CHUNK: u64 = 8192;
-    let Ok(mut file) = std::fs::File::open(path) else { return Vec::new() };
-    let Ok(mut start) = file.seek(SeekFrom::End(0)) else { return Vec::new() };
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+    let Ok(mut start) = file.seek(SeekFrom::End(0)) else {
+        return Vec::new();
+    };
     let mut buf = Vec::new();
     while start > 0 && buf.iter().filter(|&&b| b == b'\n').count() <= limit {
         let step = CHUNK.min(start);
         start -= step;
         let mut chunk = vec![0; step as usize];
-        if file.seek(SeekFrom::Start(start)).and_then(|_| file.read_exact(&mut chunk)).is_err() {
+        if file
+            .seek(SeekFrom::Start(start))
+            .and_then(|_| file.read_exact(&mut chunk))
+            .is_err()
+        {
             return Vec::new();
         }
         chunk.extend(buf);
@@ -639,7 +781,10 @@ fn tail_lines(path: &Path, limit: usize) -> Vec<String> {
     let text = String::from_utf8_lossy(&buf);
     // Mid-file, the first line read is a fragment.
     let lines: Vec<&str> = text.lines().skip(usize::from(start > 0)).collect();
-    lines[lines.len().saturating_sub(limit)..].iter().map(|l| l.to_string()).collect()
+    lines[lines.len().saturating_sub(limit)..]
+        .iter()
+        .map(|l| l.to_string())
+        .collect()
 }
 
 type Publish = Box<dyn Fn(Value) + Send + Sync>;
@@ -691,7 +836,10 @@ impl AutopilotStore {
             unreadable.insert(PROJECTS, e);
             Projects::default()
         });
-        let held = Held { items: queue.items, projects: projects.projects };
+        let held = Held {
+            items: queue.items,
+            projects: projects.projects,
+        };
         Self {
             dir,
             held: Mutex::new(held),
@@ -717,7 +865,10 @@ impl AutopilotStore {
 
     fn save(&self, file: &'static str, value: Value) -> Result<(), UpdateError> {
         if let Some(e) = self.unreadable.get(file) {
-            return Err(UpdateError::Write(format!("{} does not parse, so it is left as it is: {e}", self.dir.join(file).display())));
+            return Err(UpdateError::Write(format!(
+                "{} does not parse, so it is left as it is: {e}",
+                self.dir.join(file).display()
+            )));
         }
         let text = serde_json::to_string_pretty(&value).map_err(|e| UpdateError::Write(e.to_string()))?;
         write_atomically(&self.dir.join(file), &text).map_err(UpdateError::Write)
@@ -726,12 +877,18 @@ impl AutopilotStore {
     pub fn update(&self, target: Target, patch: Patch) -> Result<Item, UpdateError> {
         let mint = || format!("item-{}", crate::chat::approval::random_token());
         let changed = self.write(|items| apply(items, target, patch, now_ms(), mint).map(|item| vec![item]))?;
-        changed.into_iter().next().ok_or_else(|| UpdateError::Write("the update changed nothing".into()))
+        changed
+            .into_iter()
+            .next()
+            .ok_or_else(|| UpdateError::Write("the update changed nothing".into()))
     }
 
     // One save for every item `change` returns, then, with the lock released,
     // their events and the `closed` hook for each that just became terminal.
-    fn write(&self, change: impl FnOnce(&mut Vec<Item>) -> Result<Vec<Item>, UpdateError>) -> Result<Vec<Item>, UpdateError> {
+    fn write(
+        &self,
+        change: impl FnOnce(&mut Vec<Item>) -> Result<Vec<Item>, UpdateError>,
+    ) -> Result<Vec<Item>, UpdateError> {
         let (changed, closed) = {
             let mut held = self.lock();
             let mut next = held.items.clone();
@@ -739,8 +896,17 @@ impl AutopilotStore {
             if changed.is_empty() {
                 return Ok(changed);
             }
-            let was_open = |id: &str| held.items.iter().find(|i| i.id == id).is_none_or(|i| !i.state.terminal());
-            let closed: Vec<String> = changed.iter().filter(|i| i.state.terminal() && was_open(&i.id)).map(|i| i.id.clone()).collect();
+            let was_open = |id: &str| {
+                held.items
+                    .iter()
+                    .find(|i| i.id == id)
+                    .is_none_or(|i| !i.state.terminal())
+            };
+            let closed: Vec<String> = changed
+                .iter()
+                .filter(|i| i.state.terminal() && was_open(&i.id))
+                .map(|i| i.id.clone())
+                .collect();
             self.save(QUEUE, json!({ "items": next }))?;
             held.items = next;
             for item in &changed {
@@ -773,14 +939,37 @@ impl AutopilotStore {
 
     /// Applies one tick of the assigned list; see [`plan_pickup`]. Answers the
     /// items it made or closed.
-    pub fn pickup(&self, project: &str, repo: &str, account: &str, rows: &[IssueRef], cap: usize) -> Result<Vec<Item>, UpdateError> {
+    pub fn pickup(
+        &self,
+        project: &str,
+        repo: &str,
+        account: &str,
+        rows: &[IssueRef],
+        cap: usize,
+    ) -> Result<Vec<Item>, UpdateError> {
         let pickup = self.contract(project).unwrap_or_default().pickup;
         let mint = || format!("item-{}", crate::chat::approval::random_token());
-        self.write(|items| Ok(plan_pickup(items, project, repo, account, rows, cap, pickup, now_ms(), mint)))
+        self.write(|items| {
+            Ok(plan_pickup(
+                items,
+                project,
+                repo,
+                account,
+                rows,
+                cap,
+                pickup,
+                now_ms(),
+                mint,
+            ))
+        })
     }
 
     pub fn contract(&self, project: &str) -> Option<Contract> {
-        self.lock().projects.iter().find(|(known, _)| same_folder(known, project)).map(|(_, c)| c.clone())
+        self.lock()
+            .projects
+            .iter()
+            .find(|(known, _)| same_folder(known, project))
+            .map(|(_, c)| c.clone())
     }
 
     // The file write already succeeded, so a failed log line is not a failed write.
@@ -800,7 +989,10 @@ impl AutopilotStore {
     }
 
     pub fn recent_log(&self, limit: usize) -> Vec<Value> {
-        tail_lines(&self.dir.join(LOG), limit).iter().filter_map(|l| serde_json::from_str(l).ok()).collect()
+        tail_lines(&self.dir.join(LOG), limit)
+            .iter()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect()
     }
 
     // `observe` runs unlocked, since it shells out to git and later the forge;
@@ -819,19 +1011,29 @@ impl AutopilotStore {
             eprintln!("tori: merged pull requests not recorded: {e}");
         }
         let held = self.lock();
-        Snapshot { items: reconcile(&held.items, &seen.live, &seen.worktrees, root.as_deref()), projects: held.projects.clone() }
+        Snapshot {
+            items: reconcile(&held.items, &seen.live, &seen.worktrees, root.as_deref()),
+            projects: held.projects.clone(),
+        }
     }
 
     /// The open item `session` works on.
     pub fn item_for_session(&self, session: &str) -> Option<String> {
-        self.lock().items.iter().find(|i| !i.state.terminal() && i.session.as_deref() == Some(session)).map(|i| i.id.clone())
+        self.lock()
+            .items
+            .iter()
+            .find(|i| !i.state.terminal() && i.session.as_deref() == Some(session))
+            .map(|i| i.id.clone())
     }
 
     /// The state of the item that names `session`, an open one over a closed one.
     pub fn state_for_session(&self, session: &str) -> Option<State> {
         let items = &self.lock().items;
         let named = || items.iter().filter(|i| i.session.as_deref() == Some(session));
-        named().find(|i| !i.state.terminal()).or_else(|| named().next_back()).map(|i| i.state)
+        named()
+            .find(|i| !i.state.terminal())
+            .or_else(|| named().next_back())
+            .map(|i| i.state)
     }
 
     /// A person closed `session`'s tab; `held` are the items with a pending approval.
@@ -855,14 +1057,22 @@ impl AutopilotStore {
             .filter(|i| !i.state.terminal())
             .filter(|i| {
                 (key.is_some() && pr_key(i) == key)
-                    || worktree.zip(i.worktree.as_deref()).is_some_and(|(a, b)| same_folder(a, b))
+                    || worktree
+                        .zip(i.worktree.as_deref())
+                        .is_some_and(|(a, b)| same_folder(a, b))
             })
             .map(|i| (i.id.clone(), i.session.clone()))
             .collect()
     }
 
     pub fn session_ended(&self, session: &str) {
-        let ended: Vec<Item> = self.lock().items.iter().filter(|i| i.session.as_deref() == Some(session)).cloned().collect();
+        let ended: Vec<Item> = self
+            .lock()
+            .items
+            .iter()
+            .filter(|i| i.session.as_deref() == Some(session))
+            .cloned()
+            .collect();
         for item in ended {
             self.changed(&item, Some(false));
         }
@@ -873,7 +1083,10 @@ impl AutopilotStore {
         let reference = {
             let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
             let listed = seen.worktrees.get(&item.project).and_then(|l| l.as_ref());
-            let known = item.worktree.as_deref().is_none_or(|wt| listed.is_some_and(|l| l.iter().any(|(p, _)| canon(p) == canon(Path::new(wt)))));
+            let known = item
+                .worktree
+                .as_deref()
+                .is_none_or(|wt| listed.is_some_and(|l| l.iter().any(|(p, _)| canon(p) == canon(Path::new(wt)))));
             if !known {
                 seen.worktrees.extend(list_worktrees(std::slice::from_ref(item)));
             }
@@ -882,7 +1095,12 @@ impl AutopilotStore {
             }
             reference(item, &seen.worktrees, seen.root.as_deref())
         };
-        let row = Row { item: item.clone(), session_live, worktree_gone: None, reference };
+        let row = Row {
+            item: item.clone(),
+            session_live,
+            worktree_gone: None,
+            reference,
+        };
         (self.publish)(json!({ "kind": "autopilot.changed", "item": row, "ts": now_ms() }));
     }
 }
@@ -901,7 +1119,14 @@ pub mod tests {
     }
 
     fn issue(key: &str) -> Target {
-        Target::Key { kind: Kind::Ship, source: Source::Issue { key: key.into(), project: "/p".into() }, project: "/p".into() }
+        Target::Key {
+            kind: Kind::Ship,
+            source: Source::Issue {
+                key: key.into(),
+                project: "/p".into(),
+            },
+            project: "/p".into(),
+        }
     }
 
     fn quiet(dir: &Path) -> AutopilotStore {
@@ -909,14 +1134,20 @@ pub mod tests {
     }
 
     fn state(state: State) -> Patch {
-        Patch { state: Some(state), ..Patch::default() }
+        Patch {
+            state: Some(state),
+            ..Patch::default()
+        }
     }
 
     fn item(id: &str, state: State) -> Item {
         Item {
             id: id.into(),
             kind: Kind::Ship,
-            source: Source::Pr { number: 7, repo: "o/r".into() },
+            source: Source::Pr {
+                number: 7,
+                repo: "o/r".into(),
+            },
             project: "/p".into(),
             state,
             worktree: None,
@@ -935,15 +1166,32 @@ pub mod tests {
 
     #[test]
     fn a_hand_close_fails_only_work_that_has_not_left_the_worker() {
-        let on = |id: &str, state: State| Item { session: Some(format!("s-{id}")), ..item(id, state) };
-        let shipped = Item { pr_url: Some("https://github.com/o/r/pull/7".into()), ..on("shipped", State::Running) };
-        let mut items =
-            vec![on("working", State::Running), on("waiting", State::WaitingOnYou), on("held", State::WaitingOnYou), shipped, on("done", State::Done)];
+        let on = |id: &str, state: State| Item {
+            session: Some(format!("s-{id}")),
+            ..item(id, state)
+        };
+        let shipped = Item {
+            pr_url: Some("https://github.com/o/r/pull/7".into()),
+            ..on("shipped", State::Running)
+        };
+        let mut items = vec![
+            on("working", State::Running),
+            on("waiting", State::WaitingOnYou),
+            on("held", State::WaitingOnYou),
+            shipped,
+            on("done", State::Done),
+        ];
         let held: HashSet<String> = ["held".to_string()].into();
         for id in ["working", "waiting", "held", "shipped", "done"] {
             fail_closed_by_hand(&mut items, &format!("s-{id}"), &held, 9);
         }
-        let state = |id: &str| items.iter().find(|i| i.id == id).map(|i| (i.state, i.note.clone())).unwrap();
+        let state = |id: &str| {
+            items
+                .iter()
+                .find(|i| i.id == id)
+                .map(|i| (i.state, i.note.clone()))
+                .unwrap()
+        };
         assert_eq!(state("working"), (State::Failed, Some(CLOSED_BY_HAND.into())));
         assert_eq!(state("waiting"), (State::Failed, Some(CLOSED_BY_HAND.into())));
         assert_eq!(state("held").0, State::WaitingOnYou, "a pending approval closes it");
@@ -968,12 +1216,27 @@ pub mod tests {
         assert_eq!(made.title.as_deref(), Some("Fix the login redirect"));
         let old = r#"{"id": "i1", "kind": "ship", "source": {"type": "pr", "number": 7, "repo": "o/r"}, "project": "/p", "state": "queued", "created": 1, "updated": 1}"#;
         let old: Item = serde_json::from_str(old).unwrap();
-        assert_eq!((old.title, old.contract, old.url), (None, None, None), "an item written before these fields still loads");
+        assert_eq!(
+            (old.title, old.contract, old.url),
+            (None, None, None),
+            "an item written before these fields still loads"
+        );
         let log = std::fs::read_to_string(dir.join(LOG)).unwrap();
         assert_eq!(log.lines().count(), 1, "one line per write");
-        assert_eq!(again.update(Target::Id("nope".into()), Patch::default()), Err(UpdateError::NoItem("nope".into())));
+        assert_eq!(
+            again.update(Target::Id("nope".into()), Patch::default()),
+            Err(UpdateError::NoItem("nope".into()))
+        );
         let url = Some("https://github.com/o/r/issues/12".to_string());
-        again.update(Target::Id(made.id.clone()), Patch { url: url.clone(), ..Patch::default() }).unwrap();
+        again
+            .update(
+                Target::Id(made.id.clone()),
+                Patch {
+                    url: url.clone(),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
         assert_eq!(quiet(&dir).state(|_| Observed::default()).items[0].item.url, url);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -997,8 +1260,16 @@ pub mod tests {
         store.update(Target::Id(id.clone()), state(State::Running)).unwrap();
         updated.send(()).unwrap();
         let rows = read.join().unwrap().items;
-        assert_eq!(rows[0].item.state, State::Running, "the rows are built after the update");
-        assert_eq!(quiet(&dir).lock().items[0].state, State::Running, "and the read wrote nothing back over it");
+        assert_eq!(
+            rows[0].item.state,
+            State::Running,
+            "the rows are built after the update"
+        );
+        assert_eq!(
+            quiet(&dir).lock().items[0].state,
+            State::Running,
+            "and the read wrote nothing back over it"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1017,7 +1288,11 @@ pub mod tests {
         std::thread::sleep(Duration::from_millis(50));
         let start = Instant::now();
         store.update(Target::Id(id), state(State::Queued)).unwrap();
-        assert!(start.elapsed() < Duration::from_millis(250), "the update waited {:?} on the lookup", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_millis(250),
+            "the update waited {:?} on the lookup",
+            start.elapsed()
+        );
         read.join().unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1025,7 +1300,14 @@ pub mod tests {
     #[test]
     fn a_contract_missing_fields_reads_them_as_the_cautious_defaults() {
         let old: Contract = serde_json::from_str(r#"{"ships": "local", "agent": "codex"}"#).unwrap();
-        assert_eq!(old, Contract { ships: Ships::Local, agent: Some("codex".into()), ..Contract::default() });
+        assert_eq!(
+            old,
+            Contract {
+                ships: Ships::Local,
+                agent: Some("codex".into()),
+                ..Contract::default()
+            }
+        );
         assert_eq!((old.autonomy, old.pickup), (Autonomy::AskEverything, Pickup::Ask));
         let empty: Projects = serde_json::from_str("{}").unwrap();
         assert!(empty.projects.is_empty());
@@ -1035,11 +1317,35 @@ pub mod tests {
     fn a_set_contract_comes_back_in_state_and_after_a_reopen() {
         let dir = temp_dir("contract");
         let store = quiet(&dir);
-        store.set_project("/p".into(), ContractPatch { autonomy: Some(Autonomy::AutoUntilOutward), ..ContractPatch::default() }).unwrap();
-        let set = store.set_project("/p/".into(), ContractPatch { model: Some("opus".into()), ..ContractPatch::default() }).unwrap();
-        assert_eq!((set.autonomy, set.model.as_deref()), (Autonomy::AutoUntilOutward, Some("opus")), "a second set patches the first");
+        store
+            .set_project(
+                "/p".into(),
+                ContractPatch {
+                    autonomy: Some(Autonomy::AutoUntilOutward),
+                    ..ContractPatch::default()
+                },
+            )
+            .unwrap();
+        let set = store
+            .set_project(
+                "/p/".into(),
+                ContractPatch {
+                    model: Some("opus".into()),
+                    ..ContractPatch::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            (set.autonomy, set.model.as_deref()),
+            (Autonomy::AutoUntilOutward, Some("opus")),
+            "a second set patches the first"
+        );
         let reopened = quiet(&dir).state(|_| Observed::default());
-        assert_eq!(reopened.projects, BTreeMap::from([("/p".to_string(), set)]), "one project, however it is spelled");
+        assert_eq!(
+            reopened.projects,
+            BTreeMap::from([("/p".to_string(), set)]),
+            "one project, however it is spelled"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1048,14 +1354,48 @@ pub mod tests {
         let dir = temp_dir("merged");
         let (closed_tx, closed) = channel();
         let closed_tx = Mutex::new(closed_tx);
-        let store = quiet(&dir).on_closed(Box::new(move |id| closed_tx.lock().unwrap().send(id.to_string()).unwrap()));
-        let review = |number| Target::Key { kind: Kind::Review, source: Source::Pr { number, repo: "o/r".into() }, project: "/p".into() };
+        let store = quiet(&dir).on_closed(Box::new(move |id| {
+            closed_tx.lock().unwrap().send(id.to_string()).unwrap()
+        }));
+        let review = |number| Target::Key {
+            kind: Kind::Review,
+            source: Source::Pr {
+                number,
+                repo: "o/r".into(),
+            },
+            project: "/p".into(),
+        };
         let merged = store.update(review(1), state(State::Running)).unwrap().id;
         let shut = store.update(review(2), state(State::Running)).unwrap().id;
         let open = store.update(review(3), state(State::Running)).unwrap().id;
-        let shipped = store.update(issue("9"), Patch { pr_url: Some("https://github.com/o/r/pull/4".into()), ..state(State::WaitingOnYou) }).unwrap().id;
-        let unknown = store.update(issue("10"), Patch { pr_url: Some("https://github.com/o/r/pull/5".into()), ..state(State::Running) }).unwrap().id;
-        let fork = Target::Key { kind: Kind::Review, source: Source::Pr { number: 6, repo: "Someone/Else".into() }, project: "/p".into() };
+        let shipped = store
+            .update(
+                issue("9"),
+                Patch {
+                    pr_url: Some("https://github.com/o/r/pull/4".into()),
+                    ..state(State::WaitingOnYou)
+                },
+            )
+            .unwrap()
+            .id;
+        let unknown = store
+            .update(
+                issue("10"),
+                Patch {
+                    pr_url: Some("https://github.com/o/r/pull/5".into()),
+                    ..state(State::Running)
+                },
+            )
+            .unwrap()
+            .id;
+        let fork = Target::Key {
+            kind: Kind::Review,
+            source: Source::Pr {
+                number: 6,
+                repo: "Someone/Else".into(),
+            },
+            project: "/p".into(),
+        };
         let elsewhere = store.update(fork, state(State::Running)).unwrap().id;
         let key = |n| ("o/r".to_string(), n);
         let states = HashMap::from([
@@ -1067,25 +1407,63 @@ pub mod tests {
         ]);
         let prs = HashMap::from([("/p".to_string(), states)]);
 
-        let rows = store.state(|_| Observed { prs: prs.clone(), ..Observed::default() }).items;
+        let rows = store
+            .state(|_| Observed {
+                prs: prs.clone(),
+                ..Observed::default()
+            })
+            .items;
         let by_id = |id: &str| rows.iter().find(|r| r.item.id == id).unwrap().item.clone();
-        assert_eq!((by_id(&merged).state, by_id(&shipped).state), (State::Done, State::Done));
-        assert_eq!((by_id(&shut).state, by_id(&shut).note.as_deref()), (State::Running, Some(CLOSED_NOTE)));
-        assert_eq!((by_id(&open).state, by_id(&unknown).state), (State::Running, State::Running));
-        assert_eq!(by_id(&elsewhere).state, State::Running, "o/r#6 merging says nothing about someone/else#6");
+        assert_eq!(
+            (by_id(&merged).state, by_id(&shipped).state),
+            (State::Done, State::Done)
+        );
+        assert_eq!(
+            (by_id(&shut).state, by_id(&shut).note.as_deref()),
+            (State::Running, Some(CLOSED_NOTE))
+        );
+        assert_eq!(
+            (by_id(&open).state, by_id(&unknown).state),
+            (State::Running, State::Running)
+        );
+        assert_eq!(
+            by_id(&elsewhere).state,
+            State::Running,
+            "o/r#6 merging says nothing about someone/else#6"
+        );
         let mut hooked: Vec<String> = closed.try_iter().collect();
         hooked.sort();
         let mut expected = vec![merged.clone(), shipped.clone()];
         expected.sort();
         assert_eq!(hooked, expected, "the merged items' holds get dropped");
 
-        store.state(|_| Observed { prs, ..Observed::default() });
+        store.state(|_| Observed {
+            prs,
+            ..Observed::default()
+        });
         let lines = std::fs::read_to_string(dir.join(LOG)).unwrap().lines().count();
         assert_eq!(lines, 6 + 3, "a second read with the same answer writes nothing");
-        assert_eq!(quiet(&dir).lock().items.iter().filter(|i| i.state == State::Done).count(), 2, "and the first was persisted");
+        assert_eq!(
+            quiet(&dir)
+                .lock()
+                .items
+                .iter()
+                .filter(|i| i.state == State::Done)
+                .count(),
+            2,
+            "and the first was persisted"
+        );
 
         let forge_down = quiet(&dir).state(|_| Observed::default());
-        assert_eq!(forge_down.items.iter().filter(|r| r.item.state == State::Running).count(), 4, "no answer changes nothing");
+        assert_eq!(
+            forge_down
+                .items
+                .iter()
+                .filter(|r| r.item.state == State::Running)
+                .count(),
+            4,
+            "no answer changes nothing"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1095,39 +1473,71 @@ pub mod tests {
         let calls = std::cell::Cell::new(0);
         let fetch = |numbers: &[u64]| {
             calls.set(calls.get() + 1);
-            Ok(numbers.iter().map(|n| (("o/r".to_string(), *n), PrState::Open)).collect())
+            Ok(numbers
+                .iter()
+                .map(|n| (("o/r".to_string(), *n), PrState::Open))
+                .collect())
         };
         assert!(cache.get("/p", &[1, 2], fetch).is_some());
         assert!(cache.get("/p", &[2], fetch).is_some());
         assert_eq!(calls.get(), 1);
-        assert!(cache.get("/p", &[3], fetch).is_some(), "a number not asked before is asked for");
+        assert!(
+            cache.get("/p", &[3], fetch).is_some(),
+            "a number not asked before is asked for"
+        );
         assert_eq!(calls.get(), 2);
-        assert!(cache.get("/q", &[1], |_| Err(crate::forge::ForgeError::NoRemote)).is_none());
+        assert!(cache
+            .get("/q", &[1], |_| Err(crate::forge::ForgeError::NoRemote))
+            .is_none());
         assert!(cache.get("/q", &[1], fetch).is_some(), "a failure is not cached");
         assert_eq!(calls.get(), 3);
     }
 
     #[test]
     fn a_dead_session_leaves_a_running_item_running() {
-        let running = Item { session: Some("gone".into()), ..item("a", State::Running) };
+        let running = Item {
+            session: Some("gone".into()),
+            ..item("a", State::Running)
+        };
         let rows = reconcile(&[running], &HashSet::new(), &HashMap::new(), None);
         assert_eq!(rows[0].item.state, State::Running);
         assert_eq!(rows[0].session_live, Some(false));
         assert_eq!(rows[0].worktree_gone, None, "no worktree, nothing to say");
-        let live = reconcile(&[Item { session: Some("s".into()), ..item("a", State::Running) }], &HashSet::from(["s".to_string()]), &HashMap::new(), None);
+        let live = reconcile(
+            &[Item {
+                session: Some("s".into()),
+                ..item("a", State::Running)
+            }],
+            &HashSet::from(["s".to_string()]),
+            &HashMap::new(),
+            None,
+        );
         assert_eq!(live[0].session_live, Some(true));
     }
 
     #[test]
     fn a_worktree_git_no_longer_lists_is_gone_and_an_unreadable_repo_says_nothing() {
-        let with = |wt: &str| Item { worktree: Some(wt.into()), ..item("a", State::Running) };
+        let with = |wt: &str| Item {
+            worktree: Some(wt.into()),
+            ..item("a", State::Running)
+        };
         let listed = HashMap::from([("/p".to_string(), Some(vec![(PathBuf::from("/p/wt-1"), None)]))]);
         let rows = reconcile(&[with("/p/wt-1"), with("/p/wt-2")], &HashSet::new(), &listed, None);
-        assert_eq!((rows[0].worktree_gone, rows[1].worktree_gone), (Some(false), Some(true)));
-        assert_eq!(rows[1].item.state, State::Running, "a missing worktree is reported, never stored");
+        assert_eq!(
+            (rows[0].worktree_gone, rows[1].worktree_gone),
+            (Some(false), Some(true))
+        );
+        assert_eq!(
+            rows[1].item.state,
+            State::Running,
+            "a missing worktree is reported, never stored"
+        );
 
         let unreadable = HashMap::from([("/p".to_string(), None)]);
-        assert_eq!(reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable, None)[0].worktree_gone, None);
+        assert_eq!(
+            reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable, None)[0].worktree_gone,
+            None
+        );
     }
 
     #[test]
@@ -1135,44 +1545,108 @@ pub mod tests {
         let root = Path::new("/r");
         let project = "/r/personal/tori";
         let ship = |key: &str| Item {
-            source: Source::Issue { key: key.into(), project: project.into() },
+            source: Source::Issue {
+                key: key.into(),
+                project: project.into(),
+            },
             project: project.into(),
             url: Some("https://github.com/o/tori/issues/212".into()),
             ..item("a", State::Running)
         };
-        let listed = HashMap::from([(project.to_string(), Some(vec![(PathBuf::from("/r/personal/tori/wt"), Some("y-test".to_string()))]))]);
-        let worker = Item { worktree: Some("/r/personal/tori/wt".into()), session: Some("s 1".into()), ..ship("212") };
+        let listed = HashMap::from([(
+            project.to_string(),
+            Some(vec![(PathBuf::from("/r/personal/tori/wt"), Some("y-test".to_string()))]),
+        )]);
+        let worker = Item {
+            worktree: Some("/r/personal/tori/wt".into()),
+            session: Some("s 1".into()),
+            ..ship("212")
+        };
         let r = reference(&worker, &listed, Some(root));
-        assert_eq!((r.label.as_str(), r.place.clone()), ("#212", vec!["personal".to_string(), "tori".into(), "y-test".into()]));
+        assert_eq!(
+            (r.label.as_str(), r.place.clone()),
+            ("#212", vec!["personal".to_string(), "tori".into(), "y-test".into()])
+        );
         assert_eq!(
             r.markdown,
             "[#212](https://github.com/o/tori/issues/212) ([personal -> tori -> y-test](tori://open?folder=/r/personal/tori/wt&session=s%201))"
         );
 
         let proposed = reference(&ship("#212"), &HashMap::new(), Some(root));
-        assert_eq!((proposed.label.as_str(), proposed.place.len()), ("#212", 2), "no worktree yet, so project only");
-        assert_eq!(proposed.target, NavTarget { folder: Some(project.into()), session: None });
+        assert_eq!(
+            (proposed.label.as_str(), proposed.place.len()),
+            ("#212", 2),
+            "no worktree yet, so project only"
+        );
+        assert_eq!(
+            proposed.target,
+            NavTarget {
+                folder: Some(project.into()),
+                session: None
+            }
+        );
 
-        let orphan = Item { project: "/elsewhere/tori".into(), ..ship("https://github.com/o/tori/issues/212") };
+        let orphan = Item {
+            project: "/elsewhere/tori".into(),
+            ..ship("https://github.com/o/tori/issues/212")
+        };
         let r = reference(&Item { url: None, ..orphan }, &HashMap::new(), Some(root));
         assert_eq!(r.place, Vec::<String>::new(), "a folder no space holds");
-        assert_eq!(r.markdown, "[#212](https://github.com/o/tori/issues/212)", "a url key is its own link");
+        assert_eq!(
+            r.markdown, "[#212](https://github.com/o/tori/issues/212)",
+            "a url key is its own link"
+        );
 
-        let spaced = Item { project: "/r/Initech News/app".into(), worktree: Some("/r/Initech News/app/my wt".into()), ..ship("ENG-9") };
+        let spaced = Item {
+            project: "/r/Initech News/app".into(),
+            worktree: Some("/r/Initech News/app/my wt".into()),
+            ..ship("ENG-9")
+        };
         let r = reference(&spaced, &HashMap::new(), Some(root));
-        assert_eq!(r.place, vec!["Initech News".to_string(), "app".into(), "my wt".into()], "an unlisted worktree reads by its folder");
-        assert!(r.markdown.ends_with("(tori://open?folder=/r/Initech%20News/app/my%20wt))"), "{}", r.markdown);
-        assert!(r.markdown.starts_with("[ENG-9]("), "a key that is not a number reads as it is");
-        let linear = Item { url: None, ..ship("https://linear.app/x/issue/ENG-9/fix-login") };
-        assert_eq!(reference(&linear, &HashMap::new(), Some(root)).label, "ENG-9", "the key, not the slug after it");
+        assert_eq!(
+            r.place,
+            vec!["Initech News".to_string(), "app".into(), "my wt".into()],
+            "an unlisted worktree reads by its folder"
+        );
+        assert!(
+            r.markdown
+                .ends_with("(tori://open?folder=/r/Initech%20News/app/my%20wt))"),
+            "{}",
+            r.markdown
+        );
+        assert!(
+            r.markdown.starts_with("[ENG-9]("),
+            "a key that is not a number reads as it is"
+        );
+        let linear = Item {
+            url: None,
+            ..ship("https://linear.app/x/issue/ENG-9/fix-login")
+        };
+        assert_eq!(
+            reference(&linear, &HashMap::new(), Some(root)).label,
+            "ENG-9",
+            "the key, not the slug after it"
+        );
 
-        let shipped = Item { pr_url: Some("https://github.com/o/tori/pull/230".into()), ..ship("212") };
+        let shipped = Item {
+            pr_url: Some("https://github.com/o/tori/pull/230".into()),
+            ..ship("212")
+        };
         let pr = reference(&shipped, &HashMap::new(), Some(root)).pr.unwrap();
-        assert_eq!((pr.label.as_str(), pr.url.as_str()), ("PR #230", "https://github.com/o/tori/pull/230"));
+        assert_eq!(
+            (pr.label.as_str(), pr.url.as_str()),
+            ("PR #230", "https://github.com/o/tori/pull/230")
+        );
     }
 
     fn row(key: &str, kind: IssueKind) -> IssueRef {
-        IssueRef { key: key.into(), display: format!("#{key}"), title: format!("t{key}"), url: format!("https://github.com/o/r/issues/{key}"), kind }
+        IssueRef {
+            key: key.into(),
+            display: format!("#{key}"),
+            title: format!("t{key}"),
+            url: format!("https://github.com/o/r/issues/{key}"),
+            kind,
+        }
     }
 
     fn tick(items: &mut Vec<Item>, account: &str, rows: &[IssueRef], cap: usize, pickup: Pickup) -> Vec<Item> {
@@ -1186,13 +1660,62 @@ pub mod tests {
     #[test]
     fn an_assigned_row_becomes_an_item_once_and_a_first_tick_only_proposes() {
         let mut items = Vec::new();
-        let made = tick(&mut items, "me", &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest)], 50, Pickup::Auto);
-        assert_eq!(made.iter().map(|i| (i.kind, i.state)).collect::<Vec<_>>(), vec![(Kind::Ship, State::Proposed), (Kind::Review, State::Proposed)]);
-        assert_eq!(made[1].source, Source::Pr { number: 2, repo: "o/r".into() });
-        assert_eq!((made[0].title.as_deref(), made[0].picked_by.as_deref()), (Some("t1"), Some("me")));
-        let later = tick(&mut items, "me", &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest), row("3", IssueKind::Issue)], 50, Pickup::Auto);
-        assert_eq!(later.iter().map(|i| (i.source.clone(), i.state)).collect::<Vec<_>>(), vec![(Source::Issue { key: "3".into(), project: "/p".into() }, State::Queued)]);
-        assert_eq!(tick(&mut Vec::from([items[0].clone()]), "me", &[row("4", IssueKind::Issue)], 50, Pickup::Ask).last().unwrap().state, State::Proposed);
+        let made = tick(
+            &mut items,
+            "me",
+            &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest)],
+            50,
+            Pickup::Auto,
+        );
+        assert_eq!(
+            made.iter().map(|i| (i.kind, i.state)).collect::<Vec<_>>(),
+            vec![(Kind::Ship, State::Proposed), (Kind::Review, State::Proposed)]
+        );
+        assert_eq!(
+            made[1].source,
+            Source::Pr {
+                number: 2,
+                repo: "o/r".into()
+            }
+        );
+        assert_eq!(
+            (made[0].title.as_deref(), made[0].picked_by.as_deref()),
+            (Some("t1"), Some("me"))
+        );
+        let later = tick(
+            &mut items,
+            "me",
+            &[
+                row("1", IssueKind::Issue),
+                row("2", IssueKind::ReviewRequest),
+                row("3", IssueKind::Issue),
+            ],
+            50,
+            Pickup::Auto,
+        );
+        assert_eq!(
+            later.iter().map(|i| (i.source.clone(), i.state)).collect::<Vec<_>>(),
+            vec![(
+                Source::Issue {
+                    key: "3".into(),
+                    project: "/p".into()
+                },
+                State::Queued
+            )]
+        );
+        assert_eq!(
+            tick(
+                &mut Vec::from([items[0].clone()]),
+                "me",
+                &[row("4", IssueKind::Issue)],
+                50,
+                Pickup::Ask
+            )
+            .last()
+            .unwrap()
+            .state,
+            State::Proposed
+        );
     }
 
     #[test]
@@ -1200,33 +1723,100 @@ pub mod tests {
         let mut items = Vec::new();
         tick(&mut items, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask);
         items[0].state = State::Failed;
-        assert!(tick(&mut items, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask).is_empty(), "declined, still assigned");
-        let dropped = Item { state: State::Done, gone_upstream: true, ..items[0].clone() };
+        assert!(
+            tick(&mut items, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask).is_empty(),
+            "declined, still assigned"
+        );
+        let dropped = Item {
+            state: State::Done,
+            gone_upstream: true,
+            ..items[0].clone()
+        };
         let mut back = vec![dropped];
-        assert_eq!(tick(&mut back, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask).len(), 1, "reassigned after it left");
+        assert_eq!(
+            tick(&mut back, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Ask).len(),
+            1,
+            "reassigned after it left"
+        );
     }
 
     #[test]
     fn an_item_started_from_the_issue_url_is_the_same_issue() {
-        let by_hand = Item { source: Source::Issue { key: "https://github.com/o/r/issues/7".into(), project: "/p".into() }, ..item("h", State::Running) };
+        let by_hand = Item {
+            source: Source::Issue {
+                key: "https://github.com/o/r/issues/7".into(),
+                project: "/p".into(),
+            },
+            ..item("h", State::Running)
+        };
         let mut items = vec![by_hand];
-        assert!(tick(&mut items, "me", &[row("7", IssueKind::Issue), row("#8", IssueKind::Issue)], 50, Pickup::Auto).len() == 1);
-        assert!(tick(&mut items, "me", &[row("#7", IssueKind::Issue), row("8", IssueKind::Issue)], 50, Pickup::Auto).is_empty());
+        assert!(
+            tick(
+                &mut items,
+                "me",
+                &[row("7", IssueKind::Issue), row("#8", IssueKind::Issue)],
+                50,
+                Pickup::Auto
+            )
+            .len()
+                == 1
+        );
+        assert!(tick(
+            &mut items,
+            "me",
+            &[row("#7", IssueKind::Issue), row("8", IssueKind::Issue)],
+            50,
+            Pickup::Auto
+        )
+        .is_empty());
     }
 
     #[test]
     fn only_a_complete_list_from_the_picking_account_closes_what_it_picked() {
-        let mut items = vec![Item { source: Source::Issue { key: "9".into(), project: "/p".into() }, ..item("h", State::Running) }];
-        tick(&mut items, "me", &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest)], 50, Pickup::Ask);
-        assert!(tick(&mut items, "other", &[], 50, Pickup::Ask).is_empty(), "another account's list closes nothing");
+        let mut items = vec![Item {
+            source: Source::Issue {
+                key: "9".into(),
+                project: "/p".into(),
+            },
+            ..item("h", State::Running)
+        }];
+        tick(
+            &mut items,
+            "me",
+            &[row("1", IssueKind::Issue), row("2", IssueKind::ReviewRequest)],
+            50,
+            Pickup::Ask,
+        );
+        assert!(
+            tick(&mut items, "other", &[], 50, Pickup::Ask).is_empty(),
+            "another account's list closes nothing"
+        );
         let cut = tick(&mut items, "me", &[row("5", IssueKind::Issue)], 1, Pickup::Ask);
         let closed = |changed: &[Item]| -> Vec<(String, Option<String>)> {
-            changed.iter().filter(|i| i.state.terminal() && i.gone_upstream).map(|i| (i.id.clone(), i.note.clone())).collect()
+            changed
+                .iter()
+                .filter(|i| i.state.terminal() && i.gone_upstream)
+                .map(|i| (i.id.clone(), i.note.clone()))
+                .collect()
         };
-        assert_eq!(closed(&cut), vec![("p3".to_string(), Some(REVIEW_CLEARED.to_string()))], "issues hit the cap, so only the review search is whole");
+        assert_eq!(
+            closed(&cut),
+            vec![("p3".to_string(), Some(REVIEW_CLEARED.to_string()))],
+            "issues hit the cap, so only the review search is whole"
+        );
         let rest = tick(&mut items, "me", &[], 50, Pickup::Ask);
-        assert_eq!(closed(&rest), vec![("p2".to_string(), Some(GONE_UPSTREAM.to_string())), ("p4".to_string(), Some(GONE_UPSTREAM.to_string()))]);
-        assert_eq!(items.iter().find(|i| i.id == "h").unwrap().state, State::Running, "an item made by hand is never closed");
+        assert_eq!(
+            closed(&rest),
+            vec![
+                ("p2".to_string(), Some(GONE_UPSTREAM.to_string())),
+                ("p4".to_string(), Some(GONE_UPSTREAM.to_string()))
+            ]
+        );
+        assert_eq!(
+            items.iter().find(|i| i.id == "h").unwrap().state,
+            State::Running,
+            "an item made by hand is never closed"
+        );
     }
 
     #[test]
@@ -1234,11 +1824,19 @@ pub mod tests {
         let dir = temp_dir("pickup");
         let (tx, rx) = channel();
         let tx = Mutex::new(tx);
-        let store = AutopilotStore::open(dir.clone(), Box::new(move |event| tx.lock().unwrap().send(event).unwrap()));
-        store.pickup("/p", "o/r", "me", &[row("1", IssueKind::Issue)], 50).unwrap();
+        let store = AutopilotStore::open(
+            dir.clone(),
+            Box::new(move |event| tx.lock().unwrap().send(event).unwrap()),
+        );
+        store
+            .pickup("/p", "o/r", "me", &[row("1", IssueKind::Issue)], 50)
+            .unwrap();
         store.pickup("/p", "o/r", "me", &[], 50).unwrap();
         let events: Vec<Value> = rx.try_iter().collect();
-        assert_eq!(events.iter().map(|e| e["item"]["state"].clone()).collect::<Vec<_>>(), vec![json!("proposed"), json!("done")]);
+        assert_eq!(
+            events.iter().map(|e| e["item"]["state"].clone()).collect::<Vec<_>>(),
+            vec![json!("proposed"), json!("done")]
+        );
         let back = quiet(&dir).lock().items[0].clone();
         assert_eq!((back.picked_by.as_deref(), back.gone_upstream), (Some("me"), true));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1249,14 +1847,28 @@ pub mod tests {
         let dir = temp_dir("publish");
         let (tx, rx) = channel();
         let tx = Mutex::new(tx);
-        let store = AutopilotStore::open(dir.clone(), Box::new(move |event| tx.lock().unwrap().send(event).unwrap()));
-        store.update(issue("1"), Patch { session: Some("s1".into()), ..Patch::default() }).unwrap();
+        let store = AutopilotStore::open(
+            dir.clone(),
+            Box::new(move |event| tx.lock().unwrap().send(event).unwrap()),
+        );
+        store
+            .update(
+                issue("1"),
+                Patch {
+                    session: Some("s1".into()),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
         assert_eq!(rx.try_recv().unwrap()["kind"], "autopilot.changed");
         store.session_ended("other");
         assert!(rx.try_recv().is_err(), "a session no item names moves nothing");
         store.session_ended("s1");
         let event = rx.try_recv().unwrap();
-        assert_eq!((event["item"]["session"].clone(), event["item"]["session_live"].clone()), (json!("s1"), json!(false)));
+        assert_eq!(
+            (event["item"]["session"].clone(), event["item"]["session_live"].clone()),
+            (json!("s1"), json!(false))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -119,7 +119,9 @@ export function BranchRow(props: {
   rowProps?: Partial<DragRowProps> & { [data: `data-${string}`]: string | undefined };
 }) {
   const glyph = () => (
-    <span class={styles.rowIcon} title={props.iconLabel}>{props.icon}</span>
+    <span class={styles.rowIcon} title={props.iconLabel}>
+      {props.icon}
+    </span>
   );
   const name = () => (
     <>
@@ -146,7 +148,16 @@ export function BranchRow(props: {
             only ever approximates the label's line box - which has no stated
             line-height to compute from. In here `.rowTop` IS a single-line
             row, so the two shapes cannot drift apart. */}
-        <Show when={props.meta} fallback={<>{glyph()}{name()}{end()}</>}>
+        <Show
+          when={props.meta}
+          fallback={
+            <>
+              {glyph()}
+              {name()}
+              {end()}
+            </>
+          }
+        >
           {(meta) => (
             <span class={styles.rowStack}>
               <span class={styles.rowTop}>
@@ -181,10 +192,7 @@ export function MoreRow(props: {
 }) {
   return (
     <div class={`node ${styles.branchNode}`}>
-      <div
-        class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`}
-        onClick={() => props.onClick?.()}
-      >
+      <div class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`} onClick={() => props.onClick?.()}>
         <span class={styles.rowIcon}>
           <Icon icon={props.open ? ChevronUp : Ellipsis} />
         </span>
@@ -210,15 +218,13 @@ export function GroupRow(props: {
 }) {
   return (
     <div class={`node ${styles.branchNode}`}>
-      <div
-        class={`${styles.row} ${styles.branch} ${styles.sub1}`}
-        onClick={() => props.onClick?.()}
-        title={props.goal}
-      >
+      <div class={`${styles.row} ${styles.branch} ${styles.sub1}`} onClick={() => props.onClick?.()} title={props.goal}>
         {/* Layers, not a fork: the row names the shared goal, and the forks are
             the attempt rows nested under it. It carries an icon at all so every
             branch-level row lines its label up on the same x. */}
-        <span class={styles.rowIcon}><Icon icon={Layers} /></span>
+        <span class={styles.rowIcon}>
+          <Icon icon={Layers} />
+        </span>
         <span class={styles.label}>{props.goal}</span>
         <span
           class={`${styles.badge} ${styles.hint}`}

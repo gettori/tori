@@ -119,8 +119,7 @@ export const pinRulesFor = (ws: string, kind: string) => ({
 });
 
 /** Which kind a pane takes, or null for one that takes anything. */
-export const paneLock = (ws: string, paneId: string): string | null =>
-  wsOf(ws).locks[paneId] ?? null;
+export const paneLock = (ws: string, paneId: string): string | null => wsOf(ws).locks[paneId] ?? null;
 
 /** Lock a pane to one kind, or clear it. */
 export function setPaneLock(ws: string, paneId: string, kind: string | null) {
@@ -174,12 +173,7 @@ export function stampOrder(ws: string, ids: string[]) {
  * could split. The pane's own last pick only breaks a tie between two kinds, or
  * speaks for a pane no kind is pointing at.
  */
-export function activeIdInPane(
-  ws: string,
-  paneId: string,
-  idsInPane: string[],
-  claimed: string[],
-): string | null {
+export function activeIdInPane(ws: string, paneId: string, idsInPane: string[], claimed: string[]): string | null {
   const stored = wsOf(ws).active[paneId];
   const here = claimed.filter((id) => idsInPane.includes(id));
   if (stored && here.includes(stored)) return stored;
@@ -233,9 +227,7 @@ export function moveTabToPane(a: {
   const tabs = { ...p.tabs, [a.tab.id]: a.targetPaneId };
   const groupLeft =
     !!from &&
-    !a.tabsInWs.some(
-      (t) => t.kind === a.tab.kind && t.id !== a.tab.id && paneOfTab(a.ws, t, a.root) === from,
-    );
+    !a.tabsInWs.some((t) => t.kind === a.tab.kind && t.id !== a.tab.id && paneOfTab(a.ws, t, a.root) === from);
   const kinds = groupLeft ? { ...p.kinds, [a.tab.kind]: a.targetPaneId } : p.kinds;
   write(a.ws, { ...p, tabs, kinds, active: { ...p.active, [a.targetPaneId]: a.tab.id } });
   stampOrder(a.ws, [a.tab.id]);
@@ -267,13 +259,7 @@ export function pinCurrentPlacements(ws: string, root: PaneNode, tabsInWs: TabRe
 /** Close-pane merge (plan phase 8 task 3): every tab in `from` lands in `to`,
  *  appended after what `to` already holds. Runs before the tree edit, while
  *  `from` still exists to resolve against. */
-export function mergePaneInto(a: {
-  ws: string;
-  from: string;
-  to: string;
-  root: PaneNode;
-  tabsInWs: TabRef[];
-}) {
+export function mergePaneInto(a: { ws: string; from: string; to: string; root: PaneNode; tabsInWs: TabRef[] }) {
   const moving = orderInPane(
     a.ws,
     a.tabsInWs.filter((t) => paneOfTab(a.ws, t, a.root) === a.from),
@@ -290,7 +276,10 @@ export function mergePaneInto(a: {
   delete active[a.from];
   delete locks[a.from];
   write(a.ws, { ...p, tabs, kinds, active, locks });
-  stampOrder(a.ws, moving.map((t) => t.id));
+  stampOrder(
+    a.ws,
+    moving.map((t) => t.id),
+  );
 }
 
 /**

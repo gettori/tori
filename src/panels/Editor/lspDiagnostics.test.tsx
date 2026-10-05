@@ -35,7 +35,9 @@ describe("publishFrom", () => {
     const none = ChangeSet.empty(state.doc.length).desc;
     const peers = ["typescript", "eslint"];
     const say = (serverId: string, raw: { range: ReturnType<typeof range>; message: string }[]) => {
-      state = state.update(publishFrom(state, serverId, toEditorDiagnostics(raw, state.doc, none, serverId), peers)).state;
+      state = state.update(
+        publishFrom(state, serverId, toEditorDiagnostics(raw, state.doc, none, serverId), peers),
+      ).state;
     };
 
     say("typescript", [{ range: range(0, 4, 0, 5), message: "type" }]);
@@ -87,7 +89,11 @@ describe("a publish for an older version", () => {
     await client.initializing;
     const publish = (version: number, diagnostics: unknown[]) =>
       receive?.(
-        JSON.stringify({ jsonrpc: "2.0", method: "textDocument/publishDiagnostics", params: { uri: URI, version, diagnostics } }),
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "textDocument/publishDiagnostics",
+          params: { uri: URI, version, diagnostics },
+        }),
       );
     return { client, view, publish };
   }

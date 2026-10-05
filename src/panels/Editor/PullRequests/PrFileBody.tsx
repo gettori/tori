@@ -29,12 +29,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../../utils/diffHunks";
 import { buildRows, hunkGaps, type DiffRow, type Gap } from "../../../utils/diffView";
 import { fileSkip, fileLabel, type FileSkip } from "../../../utils/prFiles";
-import {
-  groupThreads,
-  newSideLines,
-  oldSideLines,
-  splitByRenderedLines,
-} from "../../../utils/reviewThreads";
+import { groupThreads, newSideLines, oldSideLines, splitByRenderedLines } from "../../../utils/reviewThreads";
 import { anchorFor, anchorLabel } from "../../../utils/pendingReview";
 import { forgeCapabilities } from "../../../utils/forgeStatus";
 import {
@@ -51,7 +46,13 @@ import {
   setGapOpen,
   type DraftAnchor,
 } from "../../../utils/prReviewStore";
-import { forgeErrorMessage, type DraftComment, type PrFile, type PullRequest, type ReviewThread } from "../../../utils/forgeTypes";
+import {
+  forgeErrorMessage,
+  type DraftComment,
+  type PrFile,
+  type PullRequest,
+  type ReviewThread,
+} from "../../../utils/forgeTypes";
 import DiffRows, { diffRowClasses, rovingHunk } from "../DiffRows";
 import PrThreadCard from "./PrThreadCard";
 import Button from "../../../components/Button/Button";
@@ -101,7 +102,13 @@ export default function PrFileBody(props: {
 
   // A different file means a different set of rows, so a selection made against
   // the old one names lines that are not there.
-  createEffect(on(() => props.file.path, () => setPicked(null), { defer: true }));
+  createEffect(
+    on(
+      () => props.file.path,
+      () => setPicked(null),
+      { defer: true },
+    ),
+  );
 
   // Reveal an unchanged stretch, read from the PR's head rather than from the
   // working tree: the head is usually not checked out, so the file on disk would
@@ -128,7 +135,12 @@ export default function PrFileBody(props: {
         });
         // Rendered as context, so they carry the leading space a context line
         // in a real diff would have.
-        noteGapLines(props.root, props.pr.number, key, lines.map((l) => ` ${l}`));
+        noteGapLines(
+          props.root,
+          props.pr.number,
+          key,
+          lines.map((l) => ` ${l}`),
+        );
       } catch (e) {
         // A click that visibly does nothing is the worst way to report this.
         setFailure(forgeErrorMessage(e));
@@ -145,10 +157,7 @@ export default function PrFileBody(props: {
       <Show
         when={gapOpen(props.root, props.pr.number, key)}
         fallback={
-          <div
-            class={`${diffRowClasses.line} ${styles.diffGap}`}
-            onClick={() => void expandGap(key, gap)}
-          >
+          <div class={`${diffRowClasses.line} ${styles.diffGap}`} onClick={() => void expandGap(key, gap)}>
             {`⋯ ${count} unchanged line${count === 1 ? "" : "s"}`}
           </div>
         }
@@ -202,9 +211,7 @@ export default function PrFileBody(props: {
    *  one starts again rather than spanning the two. */
   function startComment(hunk: number, index: number, extend: boolean) {
     setPicked((was) =>
-      extend && was && was.hunk === hunk
-        ? { hunk, from: was.from, to: index }
-        : { hunk, from: index, to: index },
+      extend && was && was.hunk === hunk ? { hunk, from: was.from, to: index } : { hunk, from: index, to: index },
     );
   }
 
@@ -348,9 +355,7 @@ export default function PrFileBody(props: {
       </Show>
 
       <Show when={!skip()}>
-        <For each={gaps().filter((g) => g.afterHunk === -1)}>
-          {(gap) => gapRow(gap, `${props.file.path}:-1`)}
-        </For>
+        <For each={gaps().filter((g) => g.afterHunk === -1)}>{(gap) => gapRow(gap, `${props.file.path}:-1`)}</For>
         <For each={hunks()}>
           {(hunk, hi) => {
             // Both memoised, and for different reasons. `buildRows` does the
@@ -425,9 +430,7 @@ export default function PrFileBody(props: {
                           return true;
                         }}
                       />
-                      <For each={seg.after}>
-                        {(t) => <PrThreadCard root={props.root} pr={props.pr} thread={t} />}
-                      </For>
+                      <For each={seg.after}>{(t) => <PrThreadCard root={props.root} pr={props.pr} thread={t} />}</For>
                     </>
                   )}
                 </For>
@@ -444,9 +447,7 @@ export default function PrFileBody(props: {
                         ref={(el) => queueMicrotask(() => el.focus())}
                         aria-label={`Comment on ${anchorLabel(a())}`}
                         value={composerText(props.root, props.pr.number, a())}
-                        onInput={(e) =>
-                          setComposerText(props.root, props.pr.number, a(), e.currentTarget.value)
-                        }
+                        onInput={(e) => setComposerText(props.root, props.pr.number, a(), e.currentTarget.value)}
                         onKeyDown={(e: KeyboardEvent) => {
                           // Closes the composer and keeps what is in it: the
                           // text lives in the store under this anchor, so
@@ -468,11 +469,7 @@ export default function PrFileBody(props: {
                         <Show when={capabilities()?.singleComment ?? false}>
                           <Button
                             variant="ghost"
-                            disabled={
-                              posting() ||
-                              drifted() ||
-                              !composerText(props.root, props.pr.number, a()).trim()
-                            }
+                            disabled={posting() || drifted() || !composerText(props.root, props.pr.number, a()).trim()}
                             tooltipWhenDisabled
                             tooltip={
                               drifted()

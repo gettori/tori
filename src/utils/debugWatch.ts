@@ -12,15 +12,7 @@ import { createEffect, createRoot, createSignal, on } from "solid-js";
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
 import { sanitizeOutput } from "./debugStore";
-import {
-  addWatch,
-  loadWatches,
-  moveWatch,
-  removeWatch,
-  saveWatches,
-  watchesFor,
-  type WatchStore,
-} from "./watches";
+import { addWatch, loadWatches, moveWatch, removeWatch, saveWatches, watchesFor, type WatchStore } from "./watches";
 
 /** One row of the watch list. */
 export type WatchRow = {

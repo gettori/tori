@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  CONTRAST_RULES,
-  checkPalette,
-  composite,
-  contrastRatio,
-  formatReport,
-  parseColor,
-  ratioOn,
-} from "./contrast";
+import { CONTRAST_RULES, checkPalette, composite, contrastRatio, formatReport, parseColor, ratioOn } from "./contrast";
 import { listThemes } from "./bundled";
 import toriDark from "./palettes/tori-dark.json";
 import toriLight from "./palettes/tori-light.json";
@@ -135,9 +127,7 @@ describe("the bundled palettes", () => {
   // gate would wave the regression straight back in.
   it("fails on gold-600 as the light brand, on both of its historic misses", () => {
     const report = checkPalette(planted(light, "brand", "#c9a227"));
-    const surfaces = report.failures
-      .filter((f) => f.role === "brand.default")
-      .map((f) => f.surface);
+    const surfaces = report.failures.filter((f) => f.role === "brand.default").map((f) => f.surface);
     expect(surfaces).toContain("canvas.head");
     expect(surfaces).toContain("accent.subtle");
   });

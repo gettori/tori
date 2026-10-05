@@ -84,14 +84,11 @@ interface Kept {
 // Reasons shared by a family of files. A named constant rather than the same
 // sentence copied forty times: when the rule changes, it changes once, and two
 // files claiming the same exemption visibly claim the *same* one.
-const HEADING =
-  "the `title` *prop* of a dialog-shaped component - the heading it renders, never hover text";
-const GROUP_HEADING =
-  "the `title` prop of a Settings `Group` - a section heading, rendered as visible text";
+const HEADING = "the `title` *prop* of a dialog-shaped component - the heading it renders, never hover text";
+const GROUP_HEADING = "the `title` prop of a Settings `Group` - a section heading, rendered as visible text";
 const TRUNCATION =
   "non-interactive `title` on a raw element: the full text behind a truncated label, on an element no keyboard can reach. issue 102 keeps these deliberately - a tooltip per row of a dense list is the waste the ticket declines to add";
-const FIXTURE =
-  "a test fixture passing a component's `title` prop, or an attribute selector asserting on one";
+const FIXTURE = "a test fixture passing a component's `title` prop, or an attribute selector asserting on one";
 const ROW_ONCLICK =
   "a row-level `div` with an `onClick` and no keyboard path, so its `title` shows the full text of a line no Tab reaches. Making these real controls is its own ticket; sweeping them onto `Tooltip` here would only put keyboard-openable hover text on something the keyboard still cannot select";
 
@@ -128,10 +125,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/PromptModal.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/SpaceDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PromptModal.tsx", { count: 1, reason: HEADING }],
-  [
-    "components/Dialogs/WorktreeRemoveDialog.tsx",
-    { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` },
-  ],
+  ["components/Dialogs/WorktreeRemoveDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
   ["components/Dialogs/stackedDialogs.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/ForgeChip/ForgeChip.tsx", { count: 3, reason: TRUNCATION }],
   ["components/Menu/ContextMenu.test.tsx", { count: 1, reason: FIXTURE }],
@@ -161,7 +155,10 @@ const KEPT = new Map<string, Kept>([
   ["panels/Chat/resumeAtReset.chat.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/resumedPick.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],
-  ["panels/Autopilot/Cockpit.tsx", { count: 1, reason: "the title *prop* of ChatView, the session name it shows; not hover text" }],
+  [
+    "panels/Autopilot/Cockpit.tsx",
+    { count: 1, reason: "the title *prop* of ChatView, the session name it shows; not hover text" },
+  ],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/CallsPanel.tsx", { count: 1, reason: ROW_ONCLICK }],
@@ -172,15 +169,15 @@ const KEPT = new Map<string, Kept>([
   ["panels/Editor/FileTree/FileTree.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/Editor/FilesPanel/FilesPanel.tsx",
-    { count: 1, reason: "the `title` prop of a `PanelSection`: the section heading it renders as visible text, never hover text" },
+    {
+      count: 1,
+      reason: "the `title` prop of a `PanelSection`: the section heading it renders as visible text, never hover text",
+    },
   ],
   ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: ROW_ONCLICK }],
   ["panels/Editor/PullRequests/PrList.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Editor/PullRequests/PullsPanel.tsx", { count: 1, reason: TRUNCATION }],
-  [
-    "panels/Editor/CheckpointTimeline.tsx",
-    { count: 1, reason: `one ${HEADING}` },
-  ],
+  ["panels/Editor/CheckpointTimeline.tsx", { count: 1, reason: `one ${HEADING}` }],
   [
     "panels/Editor/Editor.tsx",
     {
@@ -188,18 +185,9 @@ const KEPT = new Map<string, Kept>([
       reason: `one ${TRUNCATION}, and three of ${HEADING}. Was two truncations until the tab registry deduplicated the strip's touched-dot span into the shared fileDots helper (written once, rendered in both the tab and its overflow row). Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
     },
   ],
-  [
-    "panels/Editor/ProblemsPanel.tsx",
-    { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` },
-  ],
-  [
-    "panels/Editor/TodoPanel.tsx",
-    { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` },
-  ],
-  [
-    "panels/Editor/ConflictView.tsx",
-    { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` },
-  ],
+  ["panels/Editor/ProblemsPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
+  ["panels/Editor/TodoPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
+  ["panels/Editor/ConflictView.tsx", { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` }],
   [
     "panels/Editor/DebugPanel.tsx",
     {
@@ -211,14 +199,8 @@ const KEPT = new Map<string, Kept>([
     "panels/Editor/ReviewPanel.tsx",
     { count: 5, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
-  [
-    "panels/Editor/SessionPanel.tsx",
-    { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
-  ],
-  [
-    "panels/Editor/SharedFilesView.tsx",
-    { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` },
-  ],
+  ["panels/Editor/SessionPanel.tsx", { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
+  ["panels/Editor/SharedFilesView.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` }],
   ["panels/FirstRun/FirstRun.tsx", { count: 1, reason: `${HEADING} - the setup window's` }],
   ["panels/FirstRun/FirstRun.stories.tsx", { count: 1, reason: FIXTURE }],
   ["panels/FirstRun/intro/Intro.tsx", { count: 1, reason: `${HEADING} - the intro's` }],
@@ -412,9 +394,7 @@ describe("the title= guard", () => {
   });
 
   it("names every file holding a title=", () => {
-    const unlisted = [...scan().keys()].filter(
-      (path) => !KEPT.has(path),
-    );
+    const unlisted = [...scan().keys()].filter((path) => !KEPT.has(path));
 
     // The whole point of failing open: an unknown file, or a known file that
     // grew a `title=` under a component this guard has never heard of, lands
@@ -560,7 +540,6 @@ describe("the title= guard", () => {
     // the moment the number moves and nobody notices.
     expect(rows.length).toBe(ROW_ONCLICK_ROWS);
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -658,10 +637,7 @@ function tagRegions(source: string): [number, number, string][] {
  *  first match therefore reads the *parent's* attributes, which is how a
  *  `<Tab aria-label=…>` nested in an `<OverflowTabBar>` came out looking like
  *  the tab bar's own. */
-function regionAt(
-  regions: [number, number, string][],
-  offset: number,
-): [number, number, string] | null {
+function regionAt(regions: [number, number, string][], offset: number): [number, number, string] | null {
   let best: [number, number, string] | null = null;
   for (const region of regions) {
     if (offset >= region[0] && offset < region[1] && (!best || region[0] > best[0])) {

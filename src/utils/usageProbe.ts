@@ -14,12 +14,7 @@ import { liveChats } from "./chatSessions";
 import type { QuotaReading } from "./chatRateLimit";
 import { usageRungFor } from "./usageSettings";
 import type { UsageSource } from "../panels/Settings/settingsStore";
-import {
-  accountKey,
-  recordReadings,
-  type AccountKey,
-  type UsageSource as StoreSource,
-} from "./usageStore";
+import { accountKey, recordReadings, type AccountKey, type UsageSource as StoreSource } from "./usageStore";
 import { backoffUntil, mayPoll, type PollClock, type Trigger } from "./usagePoll";
 
 export type ProbeCredits = { hasCredits: boolean; unlimited: boolean; balance: string | null };
@@ -118,13 +113,7 @@ function clockFor(key: AccountKey): PollClock {
   return (clocks[key] ??= { lastPollAt: null, blockedUntil: null });
 }
 
-async function runProbe(
-  key: AccountKey,
-  agentId: string,
-  profile: string | null,
-  command: string,
-  rung: StoreSource,
-) {
+async function runProbe(key: AccountKey, agentId: string, profile: string | null, command: string, rung: StoreSource) {
   const clock = clockFor(key);
   try {
     const answer = await invoke<ProbeAnswer>(command, { profile });
@@ -210,11 +199,7 @@ export function watchUsageProbe() {
 
 /** Put one account's identity on record without a probe. Test and story
  *  support, following `seedUsageStoreForTests`. */
-export function seedUsageIdentityForTests(
-  agentId: string,
-  profile: string | null,
-  identity: Partial<ProbeIdentity>,
-) {
+export function seedUsageIdentityForTests(agentId: string, profile: string | null, identity: Partial<ProbeIdentity>) {
   setIdentities((prev) => ({
     ...prev,
     [accountKey(agentId, profile)]: {

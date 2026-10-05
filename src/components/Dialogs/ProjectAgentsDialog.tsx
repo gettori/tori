@@ -77,8 +77,7 @@ export default function ProjectAgentsDialog(props: {
 
   const only = () => mode() === "only";
   const isOn = (key: string) => checked().includes(key);
-  const toggle = (key: string, on: boolean) =>
-    setChecked((now) => (on ? [...now, key] : now.filter((k) => k !== key)));
+  const toggle = (key: string, on: boolean) => setChecked((now) => (on ? [...now, key] : now.filter((k) => k !== key)));
 
   const canSave = () => !only() || checked().length > 0;
   const summary = () => {
@@ -90,11 +89,7 @@ export default function ProjectAgentsDialog(props: {
   const confirm = () => {
     if (!canSave()) return;
     props.onConfirm(
-      only()
-        ? props.rows
-            .filter((r) => isOn(r.key))
-            .map((r) => ({ agent: r.agent, profile: r.profile }))
-        : [],
+      only() ? props.rows.filter((r) => isOn(r.key)).map((r) => ({ agent: r.agent, profile: r.profile })) : [],
     );
   };
 
@@ -141,11 +136,7 @@ export default function ProjectAgentsDialog(props: {
             door. `aria-hidden` with it, since a list nothing can reach is not
             something to announce, and every box inside is `disabled` so the
             hidden subtree holds nothing the keyboard could still land on. */}
-        <div
-          class={styles.agentList}
-          classList={{ [styles.agentsIdle]: !only() }}
-          aria-hidden={!only() || undefined}
-        >
+        <div class={styles.agentList} classList={{ [styles.agentsIdle]: !only() }} aria-hidden={!only() || undefined}>
           <For each={props.rows}>
             {(row) => (
               <Checkbox

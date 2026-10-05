@@ -174,12 +174,7 @@ export function contextWindowFor(
   reported: Readonly<Record<string, number>> = {},
   stated: number | null = null,
 ): number | null {
-  return (
-    reported[resolvedModel] ??
-    stated ??
-    rememberedWindows()[resolvedModel] ??
-    foreignWindow(resolvedModel)
-  );
+  return reported[resolvedModel] ?? stated ?? rememberedWindows()[resolvedModel] ?? foreignWindow(resolvedModel);
 }
 
 /**
@@ -309,10 +304,7 @@ export function selectedModel(
     // the very same model. Prefer the entry that names the model: an exact
     // value/id match first, then any value that is not the generic alias.
     return (
-      matches.find((m) => m.value === resolvedModel) ??
-      matches.find((m) => m.value !== "default") ??
-      matches[0] ??
-      null
+      matches.find((m) => m.value === resolvedModel) ?? matches.find((m) => m.value !== "default") ?? matches[0] ?? null
     );
   }
   return null;
@@ -452,10 +444,7 @@ export function capabilitiesFor(
  * does run tools unattended and nothing on the wire says so, so the row renders
  * without the caution instead of with a claim nobody measured.
  */
-export function pickableModes(
-  live: readonly ChatModeInfo[],
-  chat: ChatConfig | null,
-): ChatMode[] {
+export function pickableModes(live: readonly ChatModeInfo[], chat: ChatConfig | null): ChatMode[] {
   if (live.length > 0) {
     return live.map((m) => ({ id: m.id, label: m.label || m.id, hint: m.hint, args: [] }));
   }
@@ -578,11 +567,7 @@ export function defaultMode(chat: ChatConfig | null): ChatMode | null {
  * exactly that boundary. What must never happen is the inverse: comparing the
  * picked *value* against init's model, which would report every pick as failed.
  */
-export function pickLanded(
-  models: readonly PickableModel[],
-  picked: string,
-  reportedResolvedModel: string,
-): boolean {
+export function pickLanded(models: readonly PickableModel[], picked: string, reportedResolvedModel: string): boolean {
   const entry = models.find((m) => m.value === picked);
   // An unknown value cannot be confirmed against anything, so the pending
   // marker stays up rather than clearing on a coincidence.

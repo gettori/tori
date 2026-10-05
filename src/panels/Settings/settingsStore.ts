@@ -436,7 +436,17 @@ export const DEFAULT_SETTINGS: Settings = {
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },
-  autopilot: { available: false, enabled: false, agent: "claude", profile: null, model: null, effort: null, stallMinutes: 20, compactAt: null, maxWorkers: 2 },
+  autopilot: {
+    available: false,
+    enabled: false,
+    agent: "claude",
+    profile: null,
+    model: null,
+    effort: null,
+    stallMinutes: 20,
+    compactAt: null,
+    maxWorkers: 2,
+  },
   remote: { enabled: false, address: null, port: 47821 },
   worktree: {},
 };
@@ -550,7 +560,10 @@ function reportThemeProblems(problems: string[]) {
   }
   const rest = problems.length - MAX_THEME_TOASTS;
   if (rest > 0) {
-    emitWith<ToastEvent>(TOAST, { message: `...and ${rest} more theme problem${rest === 1 ? "" : "s"}.`, kind: "error" });
+    emitWith<ToastEvent>(TOAST, {
+      message: `...and ${rest} more theme problem${rest === 1 ? "" : "s"}.`,
+      kind: "error",
+    });
   }
 }
 
@@ -758,10 +771,7 @@ export function vimModeOn(): boolean {
  * Swallowed on failure for the same reason a chat pick is: the choice has
  * already taken effect on screen.
  */
-export function setEditorDefault<K extends keyof EditorDefaults>(
-  key: K,
-  on: EditorDefaults[K],
-): void {
+export function setEditorDefault<K extends keyof EditorDefaults>(key: K, on: EditorDefaults[K]): void {
   if (editorOrigin()[key] === "workspace") {
     void setWorkspaceOverride(key, on);
     return;
@@ -815,7 +825,10 @@ export function setDebuggerDisabled(adapterId: string, disabled: boolean): Promi
 /** Add a formatter to your `format.disabled`, or take it off. */
 export function setFormatterDisabled(formatterId: string, disabled: boolean): Promise<void> {
   const rest = (settings.format?.disabled ?? []).filter((id) => id !== formatterId);
-  return saveSettings({ ...settings, format: { ...settings.format, disabled: disabled ? [...rest, formatterId] : rest } });
+  return saveSettings({
+    ...settings,
+    format: { ...settings.format, disabled: disabled ? [...rest, formatterId] : rest },
+  });
 }
 
 /** Remember this project's format-on-save answer. Swallowed on failure for the

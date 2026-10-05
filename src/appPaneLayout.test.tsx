@@ -53,12 +53,9 @@ const LEGACY = {
 };
 
 const chord = (code: string) =>
-  window.dispatchEvent(
-    new KeyboardEvent("keydown", { metaKey: true, altKey: true, code, bubbles: true }),
-  );
+  window.dispatchEvent(new KeyboardEvent("keydown", { metaKey: true, altKey: true, code, bubbles: true }));
 
-const pane = (root: HTMLElement, which: "terminal" | "editor") =>
-  root.querySelector<HTMLElement>(`.pane.${which}`)!;
+const pane = (root: HTMLElement, which: "terminal" | "editor") => root.querySelector<HTMLElement>(`.pane.${which}`)!;
 
 beforeEach(() => {
   localStorage.clear();

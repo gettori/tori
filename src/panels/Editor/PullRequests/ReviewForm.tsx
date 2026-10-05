@@ -11,12 +11,7 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
 import { prDiffTabId } from "../../../utils/syntheticTabs";
-import {
-  forgeCapabilities,
-  forgeViewer,
-  pollNow,
-  unitStatusForPr,
-} from "../../../utils/forgeStatus";
+import { forgeCapabilities, forgeViewer, pollNow, unitStatusForPr } from "../../../utils/forgeStatus";
 import { anchorLabel, isSelfAuthored, reviewBlock, submitBlock } from "../../../utils/pendingReview";
 import {
   clearDraft,
@@ -53,9 +48,7 @@ const VERDICTS: { value: ReviewEvent; label: string; description: string }[] = [
 
 export default function ReviewForm(props: { workspace: string; number: number }) {
   const entry = createMemo(() => prEntry(props.workspace, props.number));
-  const pr = createMemo(
-    () => unitStatusForPr(props.workspace, props.number)?.pullRequest ?? entry().pr,
-  );
+  const pr = createMemo(() => unitStatusForPr(props.workspace, props.number)?.pullRequest ?? entry().pr);
 
   const pending = () => entry().pending;
   const staleCount = () => pending().filter((c) => c.anchor !== "ok").length;
@@ -157,9 +150,7 @@ export default function ReviewForm(props: { workspace: string; number: number })
     <div class={styles.review}>
       <Show
         when={pending().length}
-        fallback={
-          <p class={styles.quiet}>No line comments yet. A summary on its own is a review too.</p>
-        }
+        fallback={<p class={styles.quiet}>No line comments yet. A summary on its own is a review too.</p>}
       >
         <p class={styles.pendingCount}>
           {plural(pending().length, "pending comment")} in {plural(filesWithPending(), "file")}
@@ -169,20 +160,13 @@ export default function ReviewForm(props: { workspace: string; number: number })
             rows rather than a line of text about nothing. */}
         <For each={pending()}>
           {(c) => (
-            <button
-              type="button"
-              class={styles.jump}
-              data-anchor-state={c.anchor}
-              onClick={() => jumpTo(c.path)}
-            >
+            <button type="button" class={styles.jump} data-anchor-state={c.anchor} onClick={() => jumpTo(c.path)}>
               <span class={styles.jumpAnchor}>{anchorLabel(c)}</span>
               <span class={styles.jumpBody}>{c.body}</span>
               {/* Said on the comment itself, not only in the refusal under the
                   button: the reader has to know which one to go and fix. */}
               <Show when={c.anchor !== "ok"}>
-                <span class={styles.jumpFlag}>
-                  {c.anchor === "stale" ? "line is gone" : "line has changed"}
-                </span>
+                <span class={styles.jumpFlag}>{c.anchor === "stale" ? "line is gone" : "line has changed"}</span>
               </Show>
             </button>
           )}

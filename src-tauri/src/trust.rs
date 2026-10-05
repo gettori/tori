@@ -65,7 +65,11 @@ fn covers(store: &TrustStore, project: &Path) -> bool {
     }
     // An empty entry is a prefix of every path, so a hand-edited one must not
     // trust the whole disk.
-    store.trusted.iter().filter(|t| !t.is_empty()).any(|t| project.starts_with(t))
+    store
+        .trusted
+        .iter()
+        .filter(|t| !t.is_empty())
+        .any(|t| project.starts_with(t))
 }
 
 // Trust goes to the discovered `<root>/<space>/<project>`, not to the worktree a
@@ -153,7 +157,12 @@ fn trusted_folder_at(owned: &Path, trusted: impl FnOnce(&Path) -> bool, folder: 
 /// project.
 pub fn trusted_folder(folder: &Path) -> bool {
     // Tests build their folders under the temp dir, which no store covers.
-    cfg!(test) || trusted_folder_at(&crate::owned_state::config_dir(), |folder| gate_project(folder).is_ok(), folder)
+    cfg!(test)
+        || trusted_folder_at(
+            &crate::owned_state::config_dir(),
+            |folder| gate_project(folder).is_ok(),
+            folder,
+        )
 }
 
 /// Whether git may open `repo`.
@@ -256,7 +265,10 @@ mod tests {
              [launch]\nkind = \"project_bin\"\nprogram = \"biome\"\n",
             "biome",
         );
-        assert_eq!(gate_at(&dir.join("trusted.json"), Vec::new, &biome, &project), Err(UNTRUSTED.to_string()));
+        assert_eq!(
+            gate_at(&dir.join("trusted.json"), Vec::new, &biome, &project),
+            Err(UNTRUSTED.to_string())
+        );
     }
 
     #[test]
@@ -274,20 +286,30 @@ mod tests {
             (include_str!("../lsp/yaml.toml"), "yaml", false),
         ] {
             let expected = if gated { Err(UNTRUSTED.to_string()) } else { Ok(()) };
-            assert_eq!(gate_at(&store, Vec::new, &bundled(text, id), &worktree), expected, "{id}");
+            assert_eq!(
+                gate_at(&store, Vec::new, &bundled(text, id), &worktree),
+                expected,
+                "{id}"
+            );
         }
 
         let trusted = trust_at(&store, Vec::new, Some(&root), &worktree).unwrap();
         assert_eq!(trusted, root.join("work/repo").to_string_lossy());
         assert_eq!(gate_at(&store, Vec::new, &typescript(), &worktree), Ok(()));
-        assert_eq!(gate_at(&store, Vec::new, &typescript(), &root.join("work/repo/main")), Ok(()));
+        assert_eq!(
+            gate_at(&store, Vec::new, &typescript(), &root.join("work/repo/main")),
+            Ok(())
+        );
         assert_eq!(
             gate_at(&store, Vec::new, &typescript(), &root.join("work/repo-two")),
             Err(UNTRUSTED.to_string())
         );
 
         revoke_at(&store, Vec::new, &trusted).unwrap();
-        assert_eq!(gate_at(&store, Vec::new, &typescript(), &worktree), Err(UNTRUSTED.to_string()));
+        assert_eq!(
+            gate_at(&store, Vec::new, &typescript(), &worktree),
+            Err(UNTRUSTED.to_string())
+        );
     }
 
     #[test]
@@ -310,7 +332,11 @@ mod tests {
     fn git_opens_toris_own_state_and_trusted_projects_and_nothing_else() {
         let owned = Path::new("/Users/me/.config/tori");
         let trusted = |repo: &Path| repo.starts_with("/code/mine");
-        assert!(trusted_folder_at(owned, trusted, Path::new("/Users/me/.config/tori/autopilot/s1")));
+        assert!(trusted_folder_at(
+            owned,
+            trusted,
+            Path::new("/Users/me/.config/tori/autopilot/s1")
+        ));
         assert!(trusted_folder_at(owned, trusted, Path::new("/code/mine/wt")));
         assert!(!trusted_folder_at(owned, trusted, Path::new("/Downloads/unpacked")));
     }
@@ -321,12 +347,18 @@ mod tests {
         let store = dir.join("trusted.json");
         let project = dir.join("projects/work/repo");
         std::fs::create_dir_all(project.join(".tori")).unwrap();
-        std::fs::write(project.join(".tori/settings.json"), r#"{ "trusted": true, "lsp": { "trusted": true } }"#)
-            .unwrap();
+        std::fs::write(
+            project.join(".tori/settings.json"),
+            r#"{ "trusted": true, "lsp": { "trusted": true } }"#,
+        )
+        .unwrap();
         let claim = serde_json::json!({ "trusted": [project.to_string_lossy()] });
         std::fs::write(project.join(".tori/trusted.json"), claim.to_string()).unwrap();
 
-        assert_eq!(gate_at(&store, Vec::new, &typescript(), &project), Err(UNTRUSTED.to_string()));
+        assert_eq!(
+            gate_at(&store, Vec::new, &typescript(), &project),
+            Err(UNTRUSTED.to_string())
+        );
     }
 
     #[test]

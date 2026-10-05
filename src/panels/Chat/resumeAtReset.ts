@@ -25,7 +25,8 @@ export const FIRE_GRACE_MS = 45_000;
 export const RESUME_TEXT = "Your usage limit has reset. Continue where you left off.";
 export const RESUME_ARMED = "Tori will continue this chat when it resets.";
 export const RESUME_BUSY = "The usage limit reset while a turn was running, so Tori did not continue this chat.";
-export const RESUME_STOPPED = "The usage limit reset, but this chat is over its spend ceiling, so Tori did not continue it.";
+export const RESUME_STOPPED =
+  "The usage limit reset, but this chat is over its spend ceiling, so Tori did not continue it.";
 
 const [armed, setArmed] = createStore<Record<string, Arm | undefined>>({});
 const spent = new Set<string>();
@@ -44,7 +45,10 @@ export function arm(a: Arm): boolean {
   spent.add(identity);
   setArmed(a.sessionId, a);
   const delay = Math.max(0, a.resetsAt * 1000 + FIRE_GRACE_MS - Date.now());
-  timers.set(a.sessionId, setTimeout(() => becomeDue(a), delay));
+  timers.set(
+    a.sessionId,
+    setTimeout(() => becomeDue(a), delay),
+  );
   return true;
 }
 
@@ -55,7 +59,11 @@ export function cancel(sessionId: string) {
   if (!a) return;
   setArmed(sessionId, undefined);
   const waiting = due.get(a.accountKey);
-  if (waiting) due.set(a.accountKey, waiting.filter((id) => id !== sessionId));
+  if (waiting)
+    due.set(
+      a.accountKey,
+      waiting.filter((id) => id !== sessionId),
+    );
 }
 
 // Unregistering cancels: a chat view goes away only when its session does.

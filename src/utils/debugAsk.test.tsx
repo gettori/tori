@@ -110,9 +110,7 @@ describe("composing the frame", () => {
     // the cwd relative, outside it absolute, because a relative path the agent
     // cannot resolve points at nothing.
     const outside = frame("boot", "/other/repo/src/boot.ts", 3, "boot.ts");
-    expect(composeFrame(TARGET, STOP, outside, [outside], [LOCALS])).toContain(
-      "at @/other/repo/src/boot.ts#L3.",
-    );
+    expect(composeFrame(TARGET, STOP, outside, [outside], [LOCALS])).toContain("at @/other/repo/src/boot.ts#L3.");
   });
 
   it("names a frame with no file rather than mentioning one", () => {
@@ -234,9 +232,7 @@ describe("asking about whatever is selected", () => {
     // The tree's own unfetched count, which `rows` cannot show.
     moreByKey.set("sc:1", 900);
 
-    expect(frameAsk(TARGET)).toBe(
-      composeFrame(TARGET, STOP, TOP, [TOP, CALLER], [{ ...LOCALS, more: 900 }]),
-    );
+    expect(frameAsk(TARGET)).toBe(composeFrame(TARGET, STOP, TOP, [TOP, CALLER], [{ ...LOCALS, more: 900 }]));
     expect(frameAsk(TARGET)).toContain("and 900 more.");
   });
 

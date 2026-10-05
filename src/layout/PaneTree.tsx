@@ -35,8 +35,7 @@ export type PaneRoles = {
   onCommit: () => void;
 };
 
-const hiddenNode = (n: PaneNode): boolean =>
-  n.type === "pane" ? n.hidden : leaves(n).every((l) => l.hidden);
+const hiddenNode = (n: PaneNode): boolean => (n.type === "pane" ? n.hidden : leaves(n).every((l) => l.hidden));
 
 const asSplit = (n: PaneNode) => (n.type === "split" ? n : null);
 
@@ -55,9 +54,7 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
   const dim = () => (row() ? "width" : "height");
   onMount(() => {
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) =>
-      setBox(row() ? entry.contentRect.width : entry.contentRect.height),
-    );
+    const ro = new ResizeObserver(([entry]) => setBox(row() ? entry.contentRect.width : entry.contentRect.height));
     ro.observe(el);
     onCleanup(() => ro.disconnect());
   });
@@ -72,8 +69,7 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
   // share of all of them, so a drag in a split with a hidden sibling has to be
   // scaled back into the model's frame before it is written.
   const visibleShare = () => visible().reduce((s, c) => s + Math.max(0, c.size), 0);
-  const toModelPercent = (v: number) =>
-    avail() > 0 ? (v / avail()) * (visibleShare() || 100) : 50;
+  const toModelPercent = (v: number) => (avail() > 0 ? (v / avail()) * (visibleShare() || 100) : 50);
   // The same clamp-at-render the two-pane shell used: the stored share is what
   // the user chose, so a narrower window squeezes a pane and widening it restores
   // the choice.
@@ -140,12 +136,7 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
   );
 }
 
-function Leaf(props: {
-  node: PaneNode;
-  roles: PaneRoles;
-  filler: boolean;
-  style?: Record<string, string>;
-}) {
+function Leaf(props: { node: PaneNode; roles: PaneRoles; filler: boolean; style?: Record<string, string> }) {
   const pin = () => props.roles.pinKindOf(props.node.id);
   return (
     <div

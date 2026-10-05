@@ -30,7 +30,12 @@ type Pending = { kind: "change"; path: string } | { kind: "forget" };
  */
 export default function AdvancedPane(props: PaneProps) {
   const [home, setHome] = createSignal("/");
-  onMount(() => void homeDir().then(setHome).catch(() => {}));
+  onMount(
+    () =>
+      void homeDir()
+        .then(setHome)
+        .catch(() => {}),
+  );
 
   const root = () => firstRunConfig()?.roots?.[0] ?? null;
   const spaces = () => firstRunConfig()?.spaces ?? [];
@@ -131,14 +136,10 @@ export default function AdvancedPane(props: PaneProps) {
               </Show>
             </div>
             <div class={styles.cardStatus}>
-              <Show
-                when={root()}
-                fallback="Tori has nowhere to keep spaces, so it is showing first-run setup instead."
-              >
-                Holding {count(spaces().length, "space", "spaces")} and{" "}
-                {count(projects(), "project", "projects")}. Every space is a folder inside this
-                one, and every project lives inside a space. Tori reads it and writes new spaces
-                into it; it never moves what is already there.
+              <Show when={root()} fallback="Tori has nowhere to keep spaces, so it is showing first-run setup instead.">
+                Holding {count(spaces().length, "space", "spaces")} and {count(projects(), "project", "projects")}.
+                Every space is a folder inside this one, and every project lives inside a space. Tori reads it and
+                writes new spaces into it; it never moves what is already there.
               </Show>
             </div>
           </div>
@@ -161,9 +162,8 @@ export default function AdvancedPane(props: PaneProps) {
               >
                 {(f) => (
                   <>
-                    {count(crashFiles().length, "crash file", "crash files")}, the newest{" "}
-                    {ago(f().at)} ago: <code>{f().headline}</code>. Nothing is sent anywhere
-                    until you report it.
+                    {count(crashFiles().length, "crash file", "crash files")}, the newest {ago(f().at)} ago:{" "}
+                    <code>{f().headline}</code>. Nothing is sent anywhere until you report it.
                   </>
                 )}
               </Show>
@@ -185,11 +185,10 @@ export default function AdvancedPane(props: PaneProps) {
             <div>
               <div class={styles.dangerTitle}>Change base folder</div>
               <div class={styles.dangerNote}>
-                Tori keeps one base folder, so a new one replaces this one. Nothing on disk moves
-                or is deleted: your spaces and projects stay exactly where they are, Tori just
-                stops listing them and lists whatever it finds under the new folder instead.
-                Chats and terminals already open keep running against their own folders, and
-                pointing Tori back here brings the old list straight back.
+                Tori keeps one base folder, so a new one replaces this one. Nothing on disk moves or is deleted: your
+                spaces and projects stay exactly where they are, Tori just stops listing them and lists whatever it
+                finds under the new folder instead. Chats and terminals already open keep running against their own
+                folders, and pointing Tori back here brings the old list straight back.
               </div>
             </div>
             <Button disabled={busy()} onClick={() => void pickFolder()}>
@@ -203,16 +202,12 @@ export default function AdvancedPane(props: PaneProps) {
             <div>
               <div class={styles.dangerTitle}>Forget base folder</div>
               <div class={styles.dangerNote}>
-                Tori drops its record of the folder and starts over at first-run setup, as if
-                this machine had never been set up. Nothing on disk is deleted: the folder, its
-                spaces, your projects and their worktrees all stay. Use it to hand Tori a clean
-                slate, or before moving your work somewhere else.
+                Tori drops its record of the folder and starts over at first-run setup, as if this machine had never
+                been set up. Nothing on disk is deleted: the folder, its spaces, your projects and their worktrees all
+                stay. Use it to hand Tori a clean slate, or before moving your work somewhere else.
               </div>
             </div>
-            <Button
-              disabled={busy() || !root()}
-              onClick={() => setPending({ kind: "forget" })}
-            >
+            <Button disabled={busy() || !root()} onClick={() => setPending({ kind: "forget" })}>
               Forget
             </Button>
           </div>

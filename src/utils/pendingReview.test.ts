@@ -16,14 +16,7 @@ import type { DraftComment, PullRequest } from "./forgeTypes";
 // A hunk covering base lines 10..13 and head lines 10..13, with one line
 // replaced. The two numberings agree here only because nothing above changed,
 // which is exactly the coincidence a line-only anchor mistakes for a rule.
-const HUNK = [
-  "@@ -10,4 +10,4 @@ fn main() {",
-  " ten",
-  "-eleven",
-  "+eleven edited",
-  " twelve",
-  " thirteen",
-].join("\n");
+const HUNK = ["@@ -10,4 +10,4 @@ fn main() {", " ten", "-eleven", "+eleven edited", " twelve", " thirteen"].join("\n");
 
 const anchorIn = (selected: number[], text = HUNK) => {
   const [hunk] = parseDiffHunks(text);
@@ -174,7 +167,13 @@ describe("submitBlock", () => {
       submitBlock({ event: "requestChanges", body: "   ", comments: [], selfAuthored: false, supported: true }),
     ).toBe(EMPTY_BODY_REASON);
     expect(
-      submitBlock({ event: "requestChanges", body: "fix the leak", comments: [], selfAuthored: false, supported: true }),
+      submitBlock({
+        event: "requestChanges",
+        body: "fix the leak",
+        comments: [],
+        selfAuthored: false,
+        supported: true,
+      }),
     ).toBeNull();
     // Line comments do not substitute: the verdict's own summary is what says
     // what the whole review is asking for.
@@ -189,7 +188,9 @@ describe("submitBlock", () => {
     expect(
       submitBlock({ event: "comment", body: "", comments: [comment()], selfAuthored: true, supported: true }),
     ).toBeNull();
-    expect(submitBlock({ event: "comment", body: "nit", comments: [], selfAuthored: true, supported: true })).toBeNull();
+    expect(
+      submitBlock({ event: "comment", body: "nit", comments: [], selfAuthored: true, supported: true }),
+    ).toBeNull();
   });
 
   it("lets an approval carry no words at all", () => {

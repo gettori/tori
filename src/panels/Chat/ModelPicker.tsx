@@ -121,11 +121,7 @@ export default function ModelPicker(props: {
    *  multi-account install the model alone no longer says what would run: the
    *  same name under two logins is two different subscriptions. */
   const named = () =>
-    current()
-      ? pillLabel(props.models, current()!)
-      : props.models.length === 0
-        ? "No models"
-        : "Default";
+    current() ? pillLabel(props.models, current()!) : props.models.length === 0 ? "No models" : "Default";
   const shown = () => (props.profileLabel ? `${named()} / ${props.profileLabel}` : named());
 
   return (
@@ -139,11 +135,7 @@ export default function ModelPicker(props: {
         // sibling's shorter name; then the account it would run on, then the
         // description.
         tooltip={
-          [
-            current()?.label,
-            props.profileLabel && `on ${props.profileLabel}`,
-            current()?.description,
-          ]
+          [current()?.label, props.profileLabel && `on ${props.profileLabel}`, current()?.description]
             .filter(Boolean)
             .join(" · ") || "Model"
         }

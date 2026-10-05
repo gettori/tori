@@ -200,7 +200,12 @@ async function loadChildren(key: string, reference: number, indexed: number): Pr
     // it never fetched.
     if (at !== generation) return;
     notePaging(key, page);
-    setRows(new Map(rows()).set(key, raw.map((v, i) => rowOf(v, key, reference, i))));
+    setRows(
+      new Map(rows()).set(
+        key,
+        raw.map((v, i) => rowOf(v, key, reference, i)),
+      ),
+    );
   } catch (e: unknown) {
     console.warn("variables failed", key, e);
   } finally {

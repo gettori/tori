@@ -17,8 +17,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     bridge.invoked.push(cmd);
-    if (cmd === "list_sessions" || cmd === "sessions_running" || cmd === "chat_orphans")
-      return Promise.resolve([]);
+    if (cmd === "list_sessions" || cmd === "sessions_running" || cmd === "chat_orphans") return Promise.resolve([]);
     if (cmd === "refresh_agent_health" || cmd === "list_agents") return Promise.resolve([]);
     if (cmd === "session_running") return Promise.resolve(false);
     return Promise.resolve(null);
@@ -40,7 +39,13 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 // where the environment can be read without a live terminal.
 vi.mock("./TerminalView", () => ({
   default: (props: { id: string; env?: Record<string, string>; args: string[]; kind: string; autoFocus?: boolean }) => {
-    bridge.spawned.push({ id: props.id, env: props.env, args: props.args, kind: props.kind, autoFocus: props.autoFocus });
+    bridge.spawned.push({
+      id: props.id,
+      env: props.env,
+      args: props.args,
+      kind: props.kind,
+      autoFocus: props.autoFocus,
+    });
     return <div data-testid="pty" data-id={props.id} />;
   },
 }));

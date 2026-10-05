@@ -22,7 +22,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-
 import Settings from "./Settings";
 import { loadWorkspaceSettings } from "./settingsStore";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -30,15 +29,13 @@ import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   invoke.mockReset();
-  invoke.mockImplementation(
-    async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : unstubbed(cmd),
+  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+    cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   await loadWorkspaceSettings(null);
 });
 
-const type = (q: string) =>
-  fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+const type = (q: string) => fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
 
 describe("the Settings panel's accessibility", () => {
   it("passes on the category it opens to", async () => {
@@ -75,40 +72,38 @@ describe("the Settings panel's accessibility", () => {
   // no agents in it. This is the one that actually renders a card, and then
   // the page behind it.
   it("passes on a agent card and the page it opens", async () => {
-    invoke.mockImplementation(
-      async (cmd: string, args: Record<string, unknown>) => {
-        if (cmd === "agent_health")
-          return [
-            {
-              id: "claude",
-              label: "Claude",
-              program: "claude",
-              status: "versionDrift",
-              signIn: "signedIn",
-              account: "a@b.c",
-              apiKeySource: null,
-              path: "/usr/bin/claude",
-              version: "2.1.232",
-              verifiedAgainst: "claude 2.1.231",
-              sessionsDir: "/home/me/.claude/projects",
-              sessionsDirExists: true,
-              hooks: true,
-              needsYou: true,
-              overridePath: null,
-            },
-          ];
-        if (cmd === "agent_accounts")
-          return {
-            adapterId: "claude",
-            declared: true,
-            canAdd: true,
-            canSignOut: true,
-            defaultPresent: true,
-            profiles: [],
-          };
-        return cmd === "set_settings" ? args.settings : unstubbed(cmd);
-      },
-    );
+    invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "agent_health")
+        return [
+          {
+            id: "claude",
+            label: "Claude",
+            program: "claude",
+            status: "versionDrift",
+            signIn: "signedIn",
+            account: "a@b.c",
+            apiKeySource: null,
+            path: "/usr/bin/claude",
+            version: "2.1.232",
+            verifiedAgainst: "claude 2.1.231",
+            sessionsDir: "/home/me/.claude/projects",
+            sessionsDirExists: true,
+            hooks: true,
+            needsYou: true,
+            overridePath: null,
+          },
+        ];
+      if (cmd === "agent_accounts")
+        return {
+          adapterId: "claude",
+          declared: true,
+          canAdd: true,
+          canSignOut: true,
+          defaultPresent: true,
+          profiles: [],
+        };
+      return cmd === "set_settings" ? args.settings : unstubbed(cmd);
+    });
     render(() => <Settings onClose={() => {}} />);
     const card = await screen.findByRole("button", { name: /Claude/ });
     await expectNoAxeViolations(document.body);

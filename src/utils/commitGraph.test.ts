@@ -50,12 +50,7 @@ describe("lane layout", () => {
   });
 
   it("brings two lanes back together at a shared ancestor", () => {
-    const rows = buildGraph([
-      c("m", ["a", "b"]),
-      c("a", ["base"]),
-      c("b", ["base"]),
-      c("base", []),
-    ]).rows;
+    const rows = buildGraph([c("m", ["a", "b"]), c("a", ["base"]), c("b", ["base"]), c("base", [])]).rows;
 
     // base is the last row, and both lines end there: a merge of two branches
     // off one ancestor must not leave a lane hanging.

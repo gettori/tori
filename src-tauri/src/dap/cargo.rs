@@ -29,7 +29,9 @@ pub struct Built {
 
 fn tool(program: &str, root: &Path) -> Command {
     let mut cmd = Command::new(crate::env::resolve_binary(program).unwrap_or_else(|| program.into()));
-    cmd.current_dir(root).env("PATH", crate::env::augmented_path()).stdin(Stdio::null());
+    cmd.current_dir(root)
+        .env("PATH", crate::env::augmented_path())
+        .stdin(Stdio::null());
     cmd
 }
 
@@ -45,7 +47,11 @@ pub fn bins_in(metadata: &str, manifest: &Path) -> Result<Vec<String>, String> {
         .find(|p| p["manifest_path"].as_str().map(Path::new) == Some(manifest));
     let targets = package.and_then(|p| p["targets"].as_array()).into_iter().flatten();
     Ok(targets
-        .filter(|t| t["kind"].as_array().is_some_and(|kinds| kinds.iter().any(|k| k == "bin")))
+        .filter(|t| {
+            t["kind"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|k| k == "bin"))
+        })
         .filter_map(|t| t["name"].as_str().map(str::to_string))
         .collect())
 }
@@ -89,7 +95,11 @@ pub fn build(root: &Path, bin: &str, id: &str, mut on_line: impl FnMut(&str)) ->
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("could not run cargo: {e}"))?;
-    BUILDS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(id.into(), child.id());
+    BUILDS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .insert(id.into(), child.id());
 
     let stdout = child.stdout.take().ok_or("cargo has no stdout")?;
     let name = bin.to_string();
@@ -112,23 +122,33 @@ pub fn build(root: &Path, bin: &str, id: &str, mut on_line: impl FnMut(&str)) ->
         return Err(CANCELLED.into());
     }
     match (status?.success(), executable) {
-        (true, Some(executable)) => Ok(Built { executable, sysroot: sysroot(root) }),
+        (true, Some(executable)) => Ok(Built {
+            executable,
+            sysroot: sysroot(root),
+        }),
         (true, None) => Err(format!("cargo built `{bin}` but named no executable for it")),
-        (false, _) => Err(first_error(printed.iter().map(String::as_str))
-            .unwrap_or_else(|| format!("cargo could not build `{bin}`"))),
+        (false, _) => {
+            Err(first_error(printed.iter().map(String::as_str))
+                .unwrap_or_else(|| format!("cargo could not build `{bin}`")))
+        }
     }
 }
 
 fn executable_in(stdout: impl Read, name: &str) -> Option<String> {
-    BufReader::new(stdout).lines().map_while(Result::ok).fold(None, |found, line| {
-        let msg: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
-        let is_bin = msg["target"]["kind"].as_array().is_some_and(|k| k.iter().any(|k| k == "bin"));
-        if msg["reason"] == "compiler-artifact" && is_bin && msg["target"]["name"] == name {
-            msg["executable"].as_str().map(str::to_string).or(found)
-        } else {
-            found
-        }
-    })
+    BufReader::new(stdout)
+        .lines()
+        .map_while(Result::ok)
+        .fold(None, |found, line| {
+            let msg: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
+            let is_bin = msg["target"]["kind"]
+                .as_array()
+                .is_some_and(|k| k.iter().any(|k| k == "bin"));
+            if msg["reason"] == "compiler-artifact" && is_bin && msg["target"]["name"] == name {
+                msg["executable"].as_str().map(str::to_string).or(found)
+            } else {
+                found
+            }
+        })
 }
 
 fn sysroot(root: &Path) -> Option<String> {
@@ -139,7 +159,11 @@ fn sysroot(root: &Path) -> Option<String> {
 
 /// Stop the build the editor started as `id`, if it is still running.
 pub fn cancel(id: &str) {
-    let pid = BUILDS.lock().unwrap_or_else(|e| e.into_inner()).as_mut().and_then(|b| b.remove(id));
+    let pid = BUILDS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+        .and_then(|b| b.remove(id));
     if let Some(pid) = pid {
         // The negative pid is the group, as `dap::stop` kills an adapter's.
         let _ = Command::new("kill")
@@ -173,7 +197,10 @@ mod tests {
 
     #[test]
     fn lists_the_bins_of_the_package_at_the_root_and_no_others() {
-        assert_eq!(bins_in(METADATA, Path::new("/w/app/Cargo.toml")).unwrap(), ["app", "migrate"]);
+        assert_eq!(
+            bins_in(METADATA, Path::new("/w/app/Cargo.toml")).unwrap(),
+            ["app", "migrate"]
+        );
         assert_eq!(bins_in(METADATA, Path::new("/w/cli/Cargo.toml")).unwrap(), ["cli"]);
         // The virtual workspace manifest has no package, so no binaries.
         assert!(bins_in(METADATA, Path::new("/w/Cargo.toml")).unwrap().is_empty());
@@ -185,13 +212,27 @@ mod tests {
             eprintln!("skipping: cargo is not on your login PATH");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("tori-cargo-{}-{}", std::process::id(), crate::dap::next_id("t")));
+        let dir = std::env::temp_dir().join(format!(
+            "tori-cargo-{}-{}",
+            std::process::id(),
+            crate::dap::next_id("t")
+        ));
         std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"broken\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
-        std::fs::write(dir.join("src/main.rs"), "fn main() {\n    let n: u32 = \"three\";\n    println!(\"{n}\");\n}\n").unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"broken\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "fn main() {\n    let n: u32 = \"three\";\n    println!(\"{n}\");\n}\n",
+        )
+        .unwrap();
 
         let mut printed = Vec::new();
-        let result = build(&dir, "broken", &crate::dap::next_id("b"), |line| printed.push(line.to_string()));
+        let result = build(&dir, "broken", &crate::dap::next_id("b"), |line| {
+            printed.push(line.to_string())
+        });
         std::fs::remove_dir_all(&dir).ok();
 
         let error = result.expect_err("the build fails");

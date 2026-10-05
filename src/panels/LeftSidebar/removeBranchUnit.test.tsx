@@ -82,8 +82,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
-    if (cmd === "worktree_status")
-      return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: true });
+    if (cmd === "worktree_status") return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: true });
     if (cmd === "branch_status") return Promise.resolve({ unpushed: false, hasRemote: true });
     return Promise.resolve(null);
   },
@@ -128,8 +127,7 @@ async function mounted() {
   return r;
 }
 
-const ask = (projectPath: string, branch: string) =>
-  emitWith(REMOVE_BRANCH_UNIT, { projectPath, branch });
+const ask = (projectPath: string, branch: string) => emitWith(REMOVE_BRANCH_UNIT, { projectPath, branch });
 
 describe("a branch removal raised from the Pull Requests panel", () => {
   beforeEach(() => {

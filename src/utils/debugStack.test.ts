@@ -345,9 +345,7 @@ describe("when the pause ends", () => {
 });
 
 describe("a frame with no file on disk", () => {
-  const BUNDLED = [
-    { id: 4, name: "require", source: { name: "node:internal/modules", sourceReference: 12 }, line: 3 },
-  ];
+  const BUNDLED = [{ id: 4, name: "require", source: { name: "node:internal/modules", sourceReference: 12 }, line: 3 }];
 
   it("fetches the source and opens it as a tab of its own", async () => {
     frames = BUNDLED;
@@ -423,9 +421,7 @@ describe("a frame with no file on disk", () => {
     expect(stack.debugStops()[0].frames[0].sourceName).toBe("index.ts");
     // A name that is not a path is left alone: these are already short, and
     // taking the prefix off `<node_internals>/…` leaves `loader`.
-    expect(stack.debugStops()[0].frames[1].sourceName).toBe(
-      "<node_internals>/internal/modules/cjs/loader",
-    );
+    expect(stack.debugStops()[0].frames[1].sourceName).toBe("<node_internals>/internal/modules/cjs/loader");
     // And the full path is still there for anything that needs to open it.
     expect(stack.debugStops()[0].frames[0].path).toBe(FILE);
   });

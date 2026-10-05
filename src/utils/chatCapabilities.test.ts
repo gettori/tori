@@ -57,9 +57,7 @@ describe("chatPlugins", () => {
   });
 
   it("accepts a bare string, the shape skills and agents already use", () => {
-    expect(chatPlugins({ plugins: ["plain"] })).toEqual([
-      { name: "plain", version: null, source: null, path: null },
-    ]);
+    expect(chatPlugins({ plugins: ["plain"] })).toEqual([{ name: "plain", version: null, source: null, path: null }]);
   });
 
   it("drops an entry with no name, since it cannot be listed usefully", () => {
@@ -68,9 +66,7 @@ describe("chatPlugins", () => {
 
   it("leaves absent optional fields null rather than undefined", () => {
     // A `null` renders as "unknown"; an `undefined` would read as a bug.
-    expect(chatPlugins({ plugins: [{ name: "p" }] })).toEqual([
-      { name: "p", version: null, source: null, path: null },
-    ]);
+    expect(chatPlugins({ plugins: [{ name: "p" }] })).toEqual([{ name: "p", version: null, source: null, path: null }]);
   });
 });
 
@@ -127,9 +123,9 @@ describe("the chat tier", () => {
   it("omits a feature that did not ship rather than publishing it as none", () => {
     // A listing is a promise; an entry reading "rewind: none" invites reading
     // the key and skipping the value.
-    expect(
-      publishedCapabilities({ ...NO_CHAT_TIER, approvals: "in-protocol" }).map((c) => c.label),
-    ).toEqual(["approvals: in-protocol"]);
+    expect(publishedCapabilities({ ...NO_CHAT_TIER, approvals: "in-protocol" }).map((c) => c.label)).toEqual([
+      "approvals: in-protocol",
+    ]);
   });
 
   // The one that would have been hidden by the old single flag: a agent whose

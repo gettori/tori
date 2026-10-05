@@ -128,8 +128,9 @@ function layOut(container: HTMLElement, width: number, height: number) {
  * string under vitest, so the layer's own class is not a handle; a `span` under
  * a page is, because nothing else in a page draws one.
  */
-const spansOn = (container: HTMLElement, page: number) =>
-  [...container.querySelectorAll<HTMLElement>(`[data-pdf-page="${page}"] span`)];
+const spansOn = (container: HTMLElement, page: number) => [
+  ...container.querySelectorAll<HTMLElement>(`[data-pdf-page="${page}"] span`),
+];
 
 /** Select from the first word of one page to the last of another, the way a
  *  drag (or a click then a shift-click) leaves the selection. jsdom fires no
@@ -413,9 +414,7 @@ describe("PdfView", () => {
       selectAcross(container, 1, 2);
 
       fireEvent.click(screen.getByRole("button", { name: "Quote" }));
-      await waitFor(() =>
-        expect(onQuote).toHaveBeenCalledWith(expect.stringContaining("page 1 text"), 1, 2),
-      );
+      await waitFor(() => expect(onQuote).toHaveBeenCalledWith(expect.stringContaining("page 1 text"), 1, 2));
     });
 
     it("waits for a page the selection only just reached before reading the quote", async () => {

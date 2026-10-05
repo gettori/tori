@@ -70,7 +70,16 @@ pub struct Presence {
 
 impl Default for Presence {
     fn default() -> Self {
-        Self { attended: HashMap::new(), last: HashMap::new(), announced: HashMap::new(), worked: HashSet::new(), selected: None, focused: true, tray: None, badge: None }
+        Self {
+            attended: HashMap::new(),
+            last: HashMap::new(),
+            announced: HashMap::new(),
+            worked: HashSet::new(),
+            selected: None,
+            focused: true,
+            tray: None,
+            badge: None,
+        }
     }
 }
 
@@ -207,8 +216,15 @@ fn tray_entries(live: &[Live]) -> Vec<TrayEntry> {
         .into_iter()
         .map(|l| {
             let mark = if l.dot == Dot::NeedsYou { "\u{26a0} " } else { "" };
-            let project = if l.project.is_empty() { String::new() } else { format!(" ({})", l.project) };
-            TrayEntry { id: l.id.clone(), label: format!("{mark}{}{project}", l.name) }
+            let project = if l.project.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", l.project)
+            };
+            TrayEntry {
+                id: l.id.clone(),
+                label: format!("{mark}{}{project}", l.name),
+            }
         })
         .collect()
 }
@@ -219,9 +235,8 @@ pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result
     tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
 
     let menu = if entries.is_empty() {
-        let placeholder =
-            MenuItem::with_id(app, "no-sessions", "No active sessions", false, None::<&str>)
-                .map_err(|e| e.to_string())?;
+        let placeholder = MenuItem::with_id(app, "no-sessions", "No active sessions", false, None::<&str>)
+            .map_err(|e| e.to_string())?;
         Menu::with_items(app, &[&placeholder]).map_err(|e| e.to_string())?
     } else {
         let items: Vec<MenuItem<tauri::Wry>> = entries
@@ -229,8 +244,7 @@ pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result
             .map(|e| MenuItem::with_id(app, &e.id, &e.label, true, None::<&str>))
             .collect::<Result<_, _>>()
             .map_err(|e| e.to_string())?;
-        let refs: Vec<&dyn IsMenuItem<tauri::Wry>> =
-            items.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
+        let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
         Menu::with_items(app, &refs).map_err(|e| e.to_string())?
     };
     tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
@@ -247,11 +261,19 @@ pub fn handle_tray_menu_event(app: &AppHandle, id: &str) {
 }
 
 pub fn needs_you_body(live: &Live) -> String {
-    if live.project.is_empty() { "Needs you".to_string() } else { format!("{} needs you", live.project) }
+    if live.project.is_empty() {
+        "Needs you".to_string()
+    } else {
+        format!("{} needs you", live.project)
+    }
 }
 
 pub fn finished_body(live: &Live) -> String {
-    if live.project.is_empty() { "Finished".to_string() } else { format!("{} finished", live.project) }
+    if live.project.is_empty() {
+        "Finished".to_string()
+    } else {
+        format!("{} finished", live.project)
+    }
 }
 
 /// Shows a notification about a session. With `click`, a click brings the
@@ -261,7 +283,10 @@ pub fn finished_body(live: &Live) -> String {
 /// plugin's, with no click.
 pub fn notify_session(app: AppHandle, live: &Live, body: String, click: bool) {
     let title = live.name.clone();
-    let target = crate::autopilot::NavTarget { folder: Some(live.folder.clone()), session: Some(live.id.clone()) };
+    let target = crate::autopilot::NavTarget {
+        folder: Some(live.folder.clone()),
+        session: Some(live.id.clone()),
+    };
     #[cfg(target_os = "macos")]
     {
         let session = live.id.clone();
@@ -272,12 +297,20 @@ pub fn notify_session(app: AppHandle, live: &Live, body: String, click: bool) {
         std::thread::spawn(move || {
             // An unbundled dev binary has no identifier of its own, so it borrows
             // Terminal's, as the plugin does; the first call wins for both.
-            let bundle = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
+            let bundle = if tauri::is_dev() {
+                "com.apple.Terminal".to_string()
+            } else {
+                app.config().identifier.clone()
+            };
             let _ = mac_notification_sys::set_application(&bundle);
             // With a click wait this blocks until the notification is clicked or
             // gone, and without one only until it is delivered.
-            let answer =
-                mac_notification_sys::Notification::new().title(&title).message(&body).identifier(id).wait_for_click(click).send();
+            let answer = mac_notification_sys::Notification::new()
+                .title(&title)
+                .message(&body)
+                .identifier(id)
+                .wait_for_click(click)
+                .send();
             if click {
                 needs_you_notes(|notes| {
                     if notes.get(&session) == Some(&id) {
@@ -315,7 +348,9 @@ fn needs_you_notes<T>(f: impl FnOnce(&mut HashMap<String, [u8; 16]>) -> T) -> T 
 pub fn withdraw_notification(app: &AppHandle, session: &str) {
     #[cfg(target_os = "macos")]
     {
-        let Some(id) = needs_you_notes(|notes| notes.remove(session)) else { return };
+        let Some(id) = needs_you_notes(|notes| notes.remove(session)) else {
+            return;
+        };
         let identifier = uuid::Uuid::from_bytes(id).hyphenated().to_string();
         let _ = app.run_on_main_thread(move || {
             // NSUserNotification is the API mac-notification-sys sends with,
@@ -325,7 +360,10 @@ pub fn withdraw_notification(app: &AppHandle, session: &str) {
                 use objc2_foundation::NSUserNotificationCenter;
                 let center = NSUserNotificationCenter::defaultUserNotificationCenter();
                 for note in center.deliveredNotifications().iter() {
-                    if note.identifier().is_some_and(|i| i.to_string().eq_ignore_ascii_case(&identifier)) {
+                    if note
+                        .identifier()
+                        .is_some_and(|i| i.to_string().eq_ignore_ascii_case(&identifier))
+                    {
                         center.removeDeliveredNotification(&note);
                     }
                 }
@@ -338,7 +376,9 @@ pub fn withdraw_notification(app: &AppHandle, session: &str) {
 
 pub fn set_badge_count(app: &AppHandle, count: usize) -> Result<(), String> {
     let window = app.get_webview_window("main").ok_or("no main window")?;
-    window.set_badge_count((count > 0).then_some(count as i64)).map_err(|e| e.to_string())
+    window
+        .set_badge_count((count > 0).then_some(count as i64))
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -380,7 +420,11 @@ mod tests {
     }
 
     fn chat(id: &str, dot: Dot, done_at: u64) -> Live {
-        Live { chat: true, done_at, ..live(id, dot) }
+        Live {
+            chat: true,
+            done_at,
+            ..live(id, dot)
+        }
     }
 
     #[test]
@@ -408,7 +452,10 @@ mod tests {
         // A session with no completion to report: a terminal, or a chat whose
         // history is replaying.
         p.step(&[live("pty", Dot::Working), chat("replay", Dot::Working, 0)]);
-        assert!(p.step(&[live("pty", Dot::Solid), chat("replay", Dot::Solid, 0)]).finished.is_empty());
+        assert!(p
+            .step(&[live("pty", Dot::Solid), chat("replay", Dot::Solid, 0)])
+            .finished
+            .is_empty());
         // A turn that ended with a message queued behind it, or was cancelled:
         // idle shows for a moment and the last completion is the old one.
         p.step(&[chat("c", Dot::Working, 0)]);
@@ -431,14 +478,24 @@ mod tests {
     fn switches(needs_you: (bool, bool), finished: (bool, bool)) -> crate::settings::Notifications {
         use crate::settings::Alert;
         crate::settings::Notifications {
-            needs_you: Alert { notify: needs_you.0, sound: needs_you.1 },
-            turn_finished: Alert { notify: finished.0, sound: finished.1 },
+            needs_you: Alert {
+                notify: needs_you.0,
+                sound: needs_you.1,
+            },
+            turn_finished: Alert {
+                notify: finished.0,
+                sound: finished.1,
+            },
         }
     }
 
     fn edges(rose: &[&str], finished: &[&str]) -> Edges {
         let own = |ids: &[&str]| ids.iter().map(|id| id.to_string()).collect();
-        Edges { rose: own(rose), finished: own(finished), cleared: vec![] }
+        Edges {
+            rose: own(rose),
+            finished: own(finished),
+            cleared: vec![],
+        }
     }
 
     #[test]
@@ -446,27 +503,68 @@ mod tests {
         let none = HashSet::new();
         let both = || edges(&["a"], &["b"]);
         let banner = decide(both(), &none, &switches((true, false), (false, false)));
-        assert_eq!(banner, Alerts { needs_you: vec!["a".into()], ..Alerts::default() });
+        assert_eq!(
+            banner,
+            Alerts {
+                needs_you: vec!["a".into()],
+                ..Alerts::default()
+            }
+        );
         let sound = decide(both(), &none, &switches((false, true), (false, false)));
-        assert_eq!(sound, Alerts { needs_you_sound: true, ..Alerts::default() });
+        assert_eq!(
+            sound,
+            Alerts {
+                needs_you_sound: true,
+                ..Alerts::default()
+            }
+        );
         let done = decide(both(), &none, &switches((false, false), (true, false)));
-        assert_eq!(done, Alerts { finished: vec!["b".into()], ..Alerts::default() });
+        assert_eq!(
+            done,
+            Alerts {
+                finished: vec!["b".into()],
+                ..Alerts::default()
+            }
+        );
         let chime = decide(both(), &none, &switches((false, false), (false, true)));
-        assert_eq!(chime, Alerts { finished_sound: true, ..Alerts::default() });
-        assert_eq!(decide(both(), &none, &switches((false, false), (false, false))), Alerts::default());
+        assert_eq!(
+            chime,
+            Alerts {
+                finished_sound: true,
+                ..Alerts::default()
+            }
+        );
+        assert_eq!(
+            decide(both(), &none, &switches((false, false), (false, false))),
+            Alerts::default()
+        );
     }
 
     #[test]
     fn a_watched_or_relayed_session_neither_notifies_nor_sounds() {
         let quiet: HashSet<String> = ["a".to_string(), "b".to_string()].into();
-        assert_eq!(decide(edges(&["a"], &["b"]), &quiet, &switches((true, true), (true, true))), Alerts::default());
+        assert_eq!(
+            decide(edges(&["a"], &["b"]), &quiet, &switches((true, true), (true, true))),
+            Alerts::default()
+        );
     }
 
     #[test]
     fn several_chats_finishing_at_once_are_one_sound() {
         let quiet: HashSet<String> = ["x".to_string()].into();
-        let got = decide(edges(&[], &["x", "y", "z"]), &quiet, &switches((true, true), (true, true)));
-        assert_eq!(got, Alerts { finished: vec!["y".into(), "z".into()], finished_sound: true, ..Alerts::default() });
+        let got = decide(
+            edges(&[], &["x", "y", "z"]),
+            &quiet,
+            &switches((true, true), (true, true)),
+        );
+        assert_eq!(
+            got,
+            Alerts {
+                finished: vec!["y".into(), "z".into()],
+                finished_sound: true,
+                ..Alerts::default()
+            }
+        );
     }
 
     #[test]
@@ -482,7 +580,10 @@ mod tests {
     fn tracks_sessions_independently() {
         let mut p = Presence::default();
         assert_eq!(p.step(&[live("a", Dot::NeedsYou), live("b", Dot::Working)]).rose, ["a"]);
-        assert_eq!(p.step(&[live("a", Dot::NeedsYou), live("b", Dot::NeedsYou)]).rose, ["b"]);
+        assert_eq!(
+            p.step(&[live("a", Dot::NeedsYou), live("b", Dot::NeedsYou)]).rose,
+            ["b"]
+        );
     }
 
     #[test]
@@ -498,7 +599,11 @@ mod tests {
     #[test]
     fn counts_only_blocked_sessions_nobody_has_looked_at() {
         let mut p = Presence::default();
-        let all = [live("a", Dot::NeedsYou), live("b", Dot::NeedsYou), live("c", Dot::Working)];
+        let all = [
+            live("a", Dot::NeedsYou),
+            live("b", Dot::NeedsYou),
+            live("c", Dot::Working),
+        ];
         p.step(&all);
         let count = |p: &Presence| all.iter().filter(|l| p.unattended(&l.id, l.dot)).count();
         assert_eq!(count(&p), 2);
@@ -537,7 +642,11 @@ mod tests {
     }
 
     fn named(id: &str, dot: Dot, name: &str, project: &str) -> Live {
-        Live { name: name.into(), project: project.into(), ..live(id, dot) }
+        Live {
+            name: name.into(),
+            project: project.into(),
+            ..live(id, dot)
+        }
     }
 
     #[test]
@@ -560,6 +669,9 @@ mod tests {
 
     #[test]
     fn omits_the_project_suffix_when_there_is_no_project() {
-        assert_eq!(tray_entries(&[named("chat-1", Dot::NeedsYou, "chat A", "")])[0].label, "\u{26a0} chat A");
+        assert_eq!(
+            tray_entries(&[named("chat-1", Dot::NeedsYou, "chat A", "")])[0].label,
+            "\u{26a0} chat A"
+        );
     }
 }

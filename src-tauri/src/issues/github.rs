@@ -32,7 +32,8 @@ const GET: &str = "query($owner: String!, $name: String!, $number: Int!) {
   }
 }";
 
-const LINK_PLAN: &str = "query($owner: String!, $name: String!, $number: Int!, $base: String!, $head: String!, $named: Boolean!) {
+const LINK_PLAN: &str =
+    "query($owner: String!, $name: String!, $number: Int!, $base: String!, $head: String!, $named: Boolean!) {
   repository(owner: $owner, name: $name) {
     id
     defaultBranchRef { target { oid } }
@@ -57,7 +58,9 @@ fn number_of(key: &str) -> Result<u64, ForgeError> {
         .parse()
         .ok()
         .filter(|n| *n > 0)
-        .ok_or_else(|| ForgeError::Invalid { message: format!("\"{key}\" is not an issue number") })
+        .ok_or_else(|| ForgeError::Invalid {
+            message: format!("\"{key}\" is not an issue number"),
+        })
 }
 
 fn refs_from(data: &Value, alias: &str, kind: IssueKind) -> Vec<IssueRef> {
@@ -84,15 +87,17 @@ fn only_not_found(body: &str) -> bool {
         return false;
     };
     match v.get("errors").and_then(Value::as_array) {
-        Some(errors) if !errors.is_empty() => {
-            errors.iter().all(|e| e.get("type").and_then(Value::as_str) == Some("NOT_FOUND"))
-        }
+        Some(errors) if !errors.is_empty() => errors
+            .iter()
+            .all(|e| e.get("type").and_then(Value::as_str) == Some("NOT_FOUND")),
         _ => false,
     }
 }
 
 fn not_an_issue(number: u64, repo: &RepoRef, what: &str) -> ForgeError {
-    ForgeError::Invalid { message: format!("#{number} is {what} in {}/{}", repo.owner, repo.repo) }
+    ForgeError::Invalid {
+        message: format!("#{number} is {what} in {}/{}", repo.owner, repo.repo),
+    }
 }
 
 fn qualified(branch: &str) -> String {
@@ -117,10 +122,7 @@ impl IssueSource for GitHubForge {
 
     fn get(&self, repo: &RepoRef, key: &str) -> Result<Issue, ForgeError> {
         let number = number_of(key)?;
-        let resp = self.graphql_response(
-            GET,
-            json!({ "owner": repo.owner, "name": repo.repo, "number": number }),
-        )?;
+        let resp = self.graphql_response(GET, json!({ "owner": repo.owner, "name": repo.repo, "number": number }))?;
         if resp.status == 200 && only_not_found(&resp.body) {
             return Err(not_an_issue(number, repo, "not an issue"));
         }
@@ -154,7 +156,9 @@ impl IssueSource for GitHubForge {
         let number = number_of(key)?;
         let name = branch.trim().trim_start_matches("refs/heads/");
         if name.is_empty() {
-            return Err(ForgeError::Invalid { message: "Branch name is empty".into() });
+            return Err(ForgeError::Invalid {
+                message: "Branch name is empty".into(),
+            });
         }
         let base = base.map(str::trim).filter(|b| !b.is_empty());
         let resp = self.graphql_response(
@@ -172,7 +176,10 @@ impl IssueSource for GitHubForge {
             return Err(not_an_issue(number, repo, "not an issue"));
         }
         let plan = graphql_data(&resp)?;
-        let repository = plan.get("repository").filter(|r| !r.is_null()).ok_or(ForgeError::NotFound)?;
+        let repository = plan
+            .get("repository")
+            .filter(|r| !r.is_null())
+            .ok_or(ForgeError::NotFound)?;
         let issue = repository
             .get("issue")
             .filter(|i| !i.is_null())
@@ -189,15 +196,22 @@ impl IssueSource for GitHubForge {
         if repository.get("head").is_some_and(|h| !h.is_null()) {
             return Ok(LinkOutcome::Unlinked);
         }
-        let from = if base.is_some() { "/base/target/oid" } else { "/defaultBranchRef/target/oid" };
-        let oid = repository.pointer(from).and_then(Value::as_str).ok_or_else(|| ForgeError::Invalid {
-            message: format!(
-                "{} is not on {}/{}, push it first",
-                base.unwrap_or("The default branch"),
-                repo.owner,
-                repo.repo
-            ),
-        })?;
+        let from = if base.is_some() {
+            "/base/target/oid"
+        } else {
+            "/defaultBranchRef/target/oid"
+        };
+        let oid = repository
+            .pointer(from)
+            .and_then(Value::as_str)
+            .ok_or_else(|| ForgeError::Invalid {
+                message: format!(
+                    "{} is not on {}/{}, push it first",
+                    base.unwrap_or("The default branch"),
+                    repo.owner,
+                    repo.repo
+                ),
+            })?;
         let str_at = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
         self.graphql(
             LINK,
@@ -221,13 +235,21 @@ mod tests {
 
     fn forge(responses: Vec<HttpResponse>) -> (GitHubForge, Arc<StubTransport>) {
         let stub = Arc::new(StubTransport::new(responses));
-        let f = GitHubForge::new(Box::new(stub.clone()), "https://github.com", Some("gho_test".into()), None)
-            .with_base("https://api.test");
+        let f = GitHubForge::new(
+            Box::new(stub.clone()),
+            "https://github.com",
+            Some("gho_test".into()),
+            None,
+        )
+        .with_base("https://api.test");
         (f, stub)
     }
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "gettori".into(), repo: "tori".into() }
+        RepoRef {
+            owner: "gettori".into(),
+            repo: "tori".into(),
+        }
     }
 
     fn vars(stub: &StubTransport, i: usize) -> Value {
@@ -247,7 +269,10 @@ mod tests {
         let list = f.list_assigned(&repo()).unwrap();
         assert_eq!(stub.request_count(), 1);
         assert_eq!(list.len(), 2);
-        assert_eq!((list[0].key.as_str(), list[0].display.as_str(), list[0].kind), ("202", "#202", IssueKind::Issue));
+        assert_eq!(
+            (list[0].key.as_str(), list[0].display.as_str(), list[0].kind),
+            ("202", "#202", IssueKind::Issue)
+        );
         assert_eq!((list[1].key.as_str(), list[1].kind), ("45", IssueKind::ReviewRequest));
         let v = vars(&stub, 0);
         assert_eq!(v["issues"], "repo:gettori/tori is:open is:issue assignee:@me");
@@ -272,7 +297,10 @@ mod tests {
             r#"{"data":{"repository":{"issueOrPullRequest":{"__typename":"PullRequest"}}}}"#,
         )]);
         let err = f.get(&repo(), "45").unwrap_err();
-        assert!(matches!(&err, ForgeError::Invalid { message } if message.contains("pull request")), "{err:?}");
+        assert!(
+            matches!(&err, ForgeError::Invalid { message } if message.contains("pull request")),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -282,7 +310,10 @@ mod tests {
             r#"{"data":{"repository":{"issueOrPullRequest":null}},"errors":[{"type":"NOT_FOUND","message":"Could not resolve"}]}"#,
         )]);
         let err = f.get(&repo(), "999999").unwrap_err();
-        assert!(matches!(&err, ForgeError::Invalid { message } if message.contains("not an issue")), "{err:?}");
+        assert!(
+            matches!(&err, ForgeError::Invalid { message } if message.contains("not an issue")),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -312,9 +343,15 @@ mod tests {
         let out = f.link_branch(&repo(), "202", "202-issues", Some("main")).unwrap();
         assert_eq!(out, LinkOutcome::Created);
         let asked = vars(&stub, 0);
-        assert_eq!((asked["base"].as_str(), asked["head"].as_str()), (Some("refs/heads/main"), Some("refs/heads/202-issues")));
+        assert_eq!(
+            (asked["base"].as_str(), asked["head"].as_str()),
+            (Some("refs/heads/main"), Some("refs/heads/202-issues"))
+        );
         let made = vars(&stub, 1);
-        assert_eq!(made, json!({ "issueId": "I_1", "oid": "ba5e", "name": "202-issues", "repositoryId": "R_1" }));
+        assert_eq!(
+            made,
+            json!({ "issueId": "I_1", "oid": "ba5e", "name": "202-issues", "repositoryId": "R_1" })
+        );
     }
 
     #[test]
@@ -330,15 +367,24 @@ mod tests {
 
     #[test]
     fn a_branch_already_linked_is_not_made_twice() {
-        let (f, stub) = forge(vec![plan(r#"{"ref":{"name":"202-issues"}}"#, r#"{"name":"202-issues"}"#)]);
-        assert_eq!(f.link_branch(&repo(), "202", "202-issues", Some("main")).unwrap(), LinkOutcome::AlreadyLinked);
+        let (f, stub) = forge(vec![plan(
+            r#"{"ref":{"name":"202-issues"}}"#,
+            r#"{"name":"202-issues"}"#,
+        )]);
+        assert_eq!(
+            f.link_branch(&repo(), "202", "202-issues", Some("main")).unwrap(),
+            LinkOutcome::AlreadyLinked
+        );
         assert_eq!(stub.request_count(), 1);
     }
 
     #[test]
     fn a_branch_already_on_the_host_is_reported_unlinked_not_made() {
         let (f, stub) = forge(vec![plan("", r#"{"name":"202-issues"}"#)]);
-        assert_eq!(f.link_branch(&repo(), "202", "202-issues", Some("main")).unwrap(), LinkOutcome::Unlinked);
+        assert_eq!(
+            f.link_branch(&repo(), "202", "202-issues", Some("main")).unwrap(),
+            LinkOutcome::Unlinked
+        );
         assert_eq!(stub.request_count(), 1);
     }
 
@@ -350,7 +396,10 @@ mod tests {
                "errors":[{"type":"NOT_FOUND","message":"Could not resolve to an Issue"}]}"#,
         )]);
         let err = f.link_branch(&repo(), "193", "193-x", None).unwrap_err();
-        assert!(matches!(&err, ForgeError::Invalid { message } if message.contains("not an issue")), "{err:?}");
+        assert!(
+            matches!(&err, ForgeError::Invalid { message } if message.contains("not an issue")),
+            "{err:?}"
+        );
         assert_eq!(stub.request_count(), 1);
     }
 
@@ -361,8 +410,13 @@ mod tests {
             r#"{"data":{"repository":{"id":"R_1","defaultBranchRef":null,"base":null,"head":null,
                "issue":{"id":"I_1","linkedBranches":{"nodes":[]}}}}}"#,
         )]);
-        let err = f.link_branch(&repo(), "202", "202-issues", Some("local-only")).unwrap_err();
-        assert!(matches!(&err, ForgeError::Invalid { message } if message.contains("local-only")), "{err:?}");
+        let err = f
+            .link_branch(&repo(), "202", "202-issues", Some("local-only"))
+            .unwrap_err();
+        assert!(
+            matches!(&err, ForgeError::Invalid { message } if message.contains("local-only")),
+            "{err:?}"
+        );
         assert_eq!(stub.request_count(), 1);
     }
 }

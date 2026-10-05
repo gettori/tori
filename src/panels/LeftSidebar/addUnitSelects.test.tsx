@@ -128,11 +128,7 @@ const cmds = () => bridge.calls.map((c) => c.cmd);
 
 async function mounted() {
   const r = render(() => (
-    <LeftSidebar
-      selected={null}
-      onSelect={(s: unknown) => selections.push(s as Selection)}
-      liveTabs={[]}
-    />
+    <LeftSidebar selected={null} onSelect={(s: unknown) => selections.push(s as Selection)} liveTabs={[]} />
   ));
   await waitFor(() => expect(screen.queryByText("proj")).toBeTruthy());
   bridge.calls.length = 0;

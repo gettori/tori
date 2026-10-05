@@ -42,8 +42,7 @@ mod tests {
 
         let broken = dir.join("broken.md");
         std::os::unix::fs::symlink(dir.join("nowhere.md"), &broken).unwrap();
-        check_reveal_target(&broken.to_string_lossy())
-            .expect("a dangling link is still an entry Finder can show");
+        check_reveal_target(&broken.to_string_lossy()).expect("a dangling link is still an entry Finder can show");
 
         std::fs::remove_dir_all(&dir).ok();
     }

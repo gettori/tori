@@ -58,7 +58,8 @@ const liveTabs = [
     workspace: folderOf(HIDDEN_LABEL),
     kind: "agent" as const,
     sessionId: onHidden.id,
-    agent: "claude" as const, state: "live" as const,
+    agent: "claude" as const,
+    state: "live" as const,
   },
 ];
 
@@ -113,9 +114,7 @@ type Selection = Parameters<typeof LeftSidebar>[0]["selected"];
 /** Mounted with the project already open, since truncation only exists there. */
 const mount = (selected: Selection = null) => {
   localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/big"]));
-  return render(() => (
-    <LeftSidebar selected={selected} onSelect={() => {}} liveTabs={liveTabs} />
-  ));
+  return render(() => <LeftSidebar selected={selected} onSelect={() => {}} liveTabs={liveTabs} />);
 };
 
 /** The branch labels on screen, in DOM order. */
@@ -193,9 +192,7 @@ describe("a project card truncates a long branch list", () => {
     });
 
     await waitFor(() => expect(screen.getByText("wt-09")).toBeTruthy());
-    expect(visibleLabels()).toEqual([
-      "wt-01", "wt-02", "wt-03", "wt-04", "wt-05", "wt-06", "wt-09",
-    ]);
+    expect(visibleLabels()).toEqual(["wt-01", "wt-02", "wt-03", "wt-04", "wt-05", "wt-06", "wt-09"]);
     // wt-09 no longer counts as hidden, so the tally drops with it.
     expect(screen.getByText("3 more branches")).toBeTruthy();
   });

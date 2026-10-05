@@ -2,17 +2,10 @@ import { splitProps, type JSX } from "solid-js";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./Button.module.css";
 
-export type ButtonVariant =
-  | "default"
-  | "primary"
-  | "success"
-  | "warn"
-  | "danger"
-  | "ghost";
+export type ButtonVariant = "default" | "primary" | "success" | "warn" | "danger" | "ghost";
 export type ButtonSize = "md" | "sm" | "xs";
 
-export interface ButtonProps
-  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "title"> {
+export interface ButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Nothing in Tori passes it. */
   type?: "submit" | "reset" | "button";
@@ -58,13 +51,10 @@ export default function Button(props: ButtonProps) {
   const iconOnly = () => local.icon != null && local.children == null;
   // Explicit aria-label wins; for an icon-only button the tooltip backfills the
   // name, so the text a mouse user hovers for doubles as the accessible name.
-  const ariaLabel = () =>
-    local["aria-label"] ?? (iconOnly() ? local.tooltip : undefined);
+  const ariaLabel = () => local["aria-label"] ?? (iconOnly() ? local.tooltip : undefined);
 
   if (import.meta.env.DEV && iconOnly() && ariaLabel() == null) {
-    console.warn(
-      "[Button] icon-only button is missing an accessible name; pass `aria-label` (or a `tooltip`).",
-    );
+    console.warn("[Button] icon-only button is missing an accessible name; pass `aria-label` (or a `tooltip`).");
   }
 
   return (
@@ -85,9 +75,7 @@ export default function Button(props: ButtonProps) {
       }}
     >
       {local.icon}
-      {local.children != null && (
-        <span class={styles.label}>{local.children}</span>
-      )}
+      {local.children != null && <span class={styles.label}>{local.children}</span>}
       {local.iconRight}
     </Tooltip>
   );

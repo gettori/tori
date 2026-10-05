@@ -35,9 +35,7 @@ describe("recording a query", () => {
     // The whole reason an entry is a pair and not a string: recalling "needle"
     // without its regex flag hands back a search nobody ran.
     const s = noteQuery({}, WS, "needle", opts({ regex: true, include: "src/**" }));
-    expect(recallAt(historyFor(s, WS), 0)?.options).toEqual(
-      opts({ regex: true, include: "src/**" }),
-    );
+    expect(recallAt(historyFor(s, WS), 0)?.options).toEqual(opts({ regex: true, include: "src/**" }));
   });
 
   it("moves a repeated query to the front instead of duplicating it", () => {
@@ -140,9 +138,7 @@ describe("reading a stored history back", () => {
     const raw = JSON.stringify({
       [WS]: [{ query: 7 }, { options: opts() }, { query: "ok", options: { regex: "yes" } }],
     });
-    expect(historyFor(parseHistoryStore(raw), WS)).toEqual([
-      { query: "ok", options: DEFAULT_SEARCH_OPTIONS },
-    ]);
+    expect(historyFor(parseHistoryStore(raw), WS)).toEqual([{ query: "ok", options: DEFAULT_SEARCH_OPTIONS }]);
   });
 
   it("keeps the first of a duplicated query, so recall cannot show it twice", () => {
@@ -164,19 +160,17 @@ describe("reading a stored history back", () => {
     // "Restricted to nothing" is a state that would search no member and report
     // no matches, so nothing in storage is allowed to spell it.
     const raw = JSON.stringify({
-      [WS]: [{ query: "a", repos: [] }, { query: "b", repos: "/repos/api" }, { query: "c", repos: [7, ""] }],
+      [WS]: [
+        { query: "a", repos: [] },
+        { query: "b", repos: "/repos/api" },
+        { query: "c", repos: [7, ""] },
+      ],
     });
-    expect(historyFor(parseHistoryStore(raw), WS).map((h) => h.repos)).toEqual([
-      undefined,
-      undefined,
-      undefined,
-    ]);
+    expect(historyFor(parseHistoryStore(raw), WS).map((h) => h.repos)).toEqual([undefined, undefined, undefined]);
   });
 
   it("caps a file that grew past the limit", () => {
     const entries = Array.from({ length: MAX_HISTORY + 10 }, (_, i) => ({ query: `q${i}` }));
-    expect(historyFor(parseHistoryStore(JSON.stringify({ [WS]: entries })), WS).length).toBe(
-      MAX_HISTORY,
-    );
+    expect(historyFor(parseHistoryStore(JSON.stringify({ [WS]: entries })), WS).length).toBe(MAX_HISTORY);
   });
 });

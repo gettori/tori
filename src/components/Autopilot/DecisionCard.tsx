@@ -60,7 +60,12 @@ export default function DecisionCard(props: DecisionCardProps) {
         <Show when={props.ticket}>
           {(ticket) => (
             <span class={styles.ref} title={[ticket().label, ...ticket().place].join(" -> ")}>
-              <TicketLink ticket={ticket()} prefix={prefix()} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />
+              <TicketLink
+                ticket={ticket()}
+                prefix={prefix()}
+                onOpenLink={props.onOpenLink}
+                onNavigate={props.onNavigate}
+              />
             </span>
           )}
         </Show>

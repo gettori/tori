@@ -128,12 +128,7 @@ export function filterByTags(items: readonly TodoItem[], selected: ReadonlySet<s
  *  repeating a number they are looking at tells them nothing. The cap is also
  *  the one figure a chip selection does not change, so the notice stays true
  *  while the list above it is filtered. */
-export function todoSummary(
-  items: readonly TodoItem[],
-  files: number,
-  truncated: boolean,
-  cap = 0,
-): string {
+export function todoSummary(items: readonly TodoItem[], files: number, truncated: boolean, cap = 0): string {
   const n = items.length;
   const head = `${n} ${n === 1 ? "item" : "items"} in ${files} ${files === 1 ? "file" : "files"}`;
   return truncated ? `${head} (capped at ${cap}, narrow the tags to see the rest)` : head;

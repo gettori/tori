@@ -108,9 +108,7 @@ fn entry_for_home(entry: &ConfigEntry, home: &Path) -> EntryView {
         // symlink row (that is what is at the path), but refusing to look
         // through it would hide every skill of anybody who keeps them in a
         // dotfiles repo, which is the common case rather than the exotic one.
-        EntryState::Present | EntryState::Symlink => {
-            children_of(&path, entry.new_path.as_deref())
-        }
+        EntryState::Present | EntryState::Symlink => children_of(&path, entry.new_path.as_deref()),
         EntryState::Missing | EntryState::Dangling => Vec::new(),
     };
     EntryView {
@@ -138,7 +136,11 @@ fn state_of(path: &Path) -> (EntryState, Option<String>) {
     }
     let target = std::fs::read_link(path).map(|t| t.to_string_lossy().into_owned());
     // `exists()` follows the link, which is exactly the question here.
-    let state = if path.exists() { EntryState::Symlink } else { EntryState::Dangling };
+    let state = if path.exists() {
+        EntryState::Symlink
+    } else {
+        EntryState::Dangling
+    };
     (state, target.ok())
 }
 
@@ -166,7 +168,10 @@ fn children_of(path: &Path, new_path: Option<&str>) -> Vec<ChildView> {
             } else {
                 Some(child)
             };
-            ChildView { name, path: opens.map(|f| f.to_string_lossy().into_owned()) }
+            ChildView {
+                name,
+                path: opens.map(|f| f.to_string_lossy().into_owned()),
+            }
         })
         .collect();
     children.sort_by(|a, b| a.name.cmp(&b.name));
@@ -204,11 +209,7 @@ pub fn check_new_name(name: &str) -> Result<String, String> {
 /// Refuses to overwrite and refuses a dangling entry. Both refusals are the same
 /// rule stated twice: this writes files a person will edit by hand, so the one
 /// outcome it must never have is silently replacing one.
-pub fn create_in_home(
-    entry: &ConfigEntry,
-    home: &Path,
-    name: &str,
-) -> Result<PathBuf, String> {
+pub fn create_in_home(entry: &ConfigEntry, home: &Path, name: &str) -> Result<PathBuf, String> {
     let root = home.join(&entry.path);
     let (state, target) = state_of(&root);
     if state == EntryState::Dangling {
@@ -244,8 +245,7 @@ pub fn create_in_home(
         return Err(format!("{} already exists", file.display()));
     }
     if let Some(parent) = file.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
     let body = entry.template.as_deref().unwrap_or("").replace("{name}", &stem);
     std::fs::write(&file, body).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
@@ -299,8 +299,7 @@ pub fn delete_in_home(entry: &ConfigEntry, home: &Path, name: &str) -> Result<Pa
 
     // `symlink_metadata`, so a link is seen as a link rather than as whatever
     // it points at.
-    let meta = std::fs::symlink_metadata(&child)
-        .map_err(|e| format!("cannot remove {}: {e}", child.display()))?;
+    let meta = std::fs::symlink_metadata(&child).map_err(|e| format!("cannot remove {}: {e}", child.display()))?;
 
     // Belt and braces over `check_new_name`: that rules out the spellings, this
     // rules out the filesystem. A `root` reached through a link is fine (its
@@ -358,7 +357,11 @@ pub(crate) fn homes_for(adapter: &AgentAdapter) -> Vec<(String, String, PathBuf)
 pub async fn agent_config_files(adapter_id: String) -> Result<ConfigFilesView, String> {
     let adapter = adapter(&adapter_id)?;
     let Some(config) = adapter.config.as_ref() else {
-        return Ok(ConfigFilesView { adapter_id, declared: false, profiles: Vec::new() });
+        return Ok(ConfigFilesView {
+            adapter_id,
+            declared: false,
+            profiles: Vec::new(),
+        });
     };
     let homes = homes_for(adapter);
     crate::exec::blocking("agent_config_files", move || {
@@ -371,7 +374,11 @@ pub async fn agent_config_files(adapter_id: String) -> Result<ConfigFilesView, S
                 entries: entries_for_home(&config.entries, &home),
             })
             .collect();
-        Ok(ConfigFilesView { adapter_id, declared: true, profiles })
+        Ok(ConfigFilesView {
+            adapter_id,
+            declared: true,
+            profiles,
+        })
     })
     .await
 }
@@ -478,10 +485,26 @@ mod tests {
     fn every_state_is_reported_from_an_explicit_home() {
         let home = tmp_home();
         let entries = vec![
-            ConfigEntry { id: "gone".into(), path: "gone.md".into(), ..file_entry() },
-            ConfigEntry { id: "here".into(), path: "here.md".into(), ..file_entry() },
-            ConfigEntry { id: "linked".into(), path: "linked.md".into(), ..file_entry() },
-            ConfigEntry { id: "broken".into(), path: "broken.md".into(), ..file_entry() },
+            ConfigEntry {
+                id: "gone".into(),
+                path: "gone.md".into(),
+                ..file_entry()
+            },
+            ConfigEntry {
+                id: "here".into(),
+                path: "here.md".into(),
+                ..file_entry()
+            },
+            ConfigEntry {
+                id: "linked".into(),
+                path: "linked.md".into(),
+                ..file_entry()
+            },
+            ConfigEntry {
+                id: "broken".into(),
+                path: "broken.md".into(),
+                ..file_entry()
+            },
         ];
         std::fs::write(home.join("here.md"), "x").unwrap();
         std::os::unix::fs::symlink(home.join("here.md"), home.join("linked.md")).unwrap();
@@ -515,7 +538,10 @@ mod tests {
         let views = entries_for_home(&[dir_entry()], &home);
         assert_eq!(views[0].state, EntryState::Present);
         let kids = &views[0].children;
-        assert_eq!(kids.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["alpha", "beta"]);
+        assert_eq!(
+            kids.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["alpha", "beta"]
+        );
         assert!(kids[0].path.as_deref().unwrap().ends_with("skills/alpha/SKILL.md"));
         // `beta` is a folder with no SKILL.md in it. Nothing there is the
         // skill, and picking some other file would open the wrong one exactly
@@ -598,7 +624,10 @@ mod tests {
         std::os::unix::fs::symlink(home.join("gone-elsewhere"), home.join("skills")).unwrap();
 
         let err = create_in_home(&dir_entry(), &home, "anything").unwrap_err();
-        assert!(err.contains("gone-elsewhere"), "the error should name the target: {err}");
+        assert!(
+            err.contains("gone-elsewhere"),
+            "the error should name the target: {err}"
+        );
         assert!(!home.join("gone-elsewhere").exists());
 
         std::fs::remove_dir_all(&home).ok();
@@ -673,7 +702,10 @@ mod tests {
         std::fs::write(home.join("bystander.md"), "x").unwrap();
 
         for bad in ["../bystander.md", "a/b", "..", "", "   "] {
-            assert!(delete_in_home(&dir_entry(), &home, bad).is_err(), "`{bad}` was accepted");
+            assert!(
+                delete_in_home(&dir_entry(), &home, bad).is_err(),
+                "`{bad}` was accepted"
+            );
         }
         assert!(home.join("bystander.md").exists());
 

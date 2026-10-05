@@ -149,9 +149,7 @@ describe("a draft's option picks, once it has a session", () => {
     goLive();
 
     await waitFor(() =>
-      expect(sets().map((i) => i.args)).toEqual([
-        { sessionId: SESSION, configId: "web_search", value: true },
-      ]),
+      expect(sets().map((i) => i.args)).toEqual([{ sessionId: SESSION, configId: "web_search", value: true }]),
     );
   });
 

@@ -221,11 +221,7 @@ export default function IconGrid(props: IconGridProps) {
           [styles.group]: true,
           [styles[props.variant ?? "grid"]]: true,
         }}
-        style={
-          props.variant === "swatch"
-            ? undefined
-            : { "grid-template-columns": `repeat(${COLUMNS}, 1fr)` }
-        }
+        style={props.variant === "swatch" ? undefined : { "grid-template-columns": `repeat(${COLUMNS}, 1fr)` }}
       >
         <Show when={props.leading}>{(spec) => tile(LEADING, spec)}</Show>
         <For each={tiles()}>{(spec) => tile(spec.value, () => spec)}</For>

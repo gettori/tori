@@ -72,7 +72,7 @@ describe("package.json scripts", () => {
   });
 
   it("reads a package.json mid-edit as having no scripts yet, not as an error", () => {
-    expect(parsePackageScripts("{ \"scripts\": {", "npm")).toEqual([]);
+    expect(parsePackageScripts('{ "scripts": {', "npm")).toEqual([]);
     expect(parsePackageScripts("{}", "npm")).toEqual([]);
     expect(parsePackageScripts('{"scripts":[]}', "npm")).toEqual([]);
   });
@@ -167,7 +167,10 @@ describe("the tab a task runs in", () => {
 });
 
 describe("reading a workspace", () => {
-  const dir = (...names: string[]) => async () => names.map((name) => ({ name }));
+  const dir =
+    (...names: string[]) =>
+    async () =>
+      names.map((name) => ({ name }));
   const files = (map: Record<string, string>) => async (path: string) => {
     const hit = map[path];
     if (hit === undefined) throw new Error(`ENOENT ${path}`);
@@ -195,14 +198,10 @@ describe("reading a workspace", () => {
     // A project with no Makefile should cost no failed read and no swallowed
     // error, so the listing is what decides rather than a read that throws.
     const asked: string[] = [];
-    await loadTasks(
-      "/proj",
-      dir("package.json"),
-      async (path) => {
-        asked.push(path);
-        return '{"scripts":{"dev":"vite"}}';
-      },
-    );
+    await loadTasks("/proj", dir("package.json"), async (path) => {
+      asked.push(path);
+      return '{"scripts":{"dev":"vite"}}';
+    });
     expect(asked).toEqual(["/proj/package.json"]);
   });
 

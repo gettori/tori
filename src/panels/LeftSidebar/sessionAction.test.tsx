@@ -99,8 +99,7 @@ async function mounted(onSelect: (s: unknown) => void = () => {}) {
   return r;
 }
 
-const act = (action: "open" | "rename" | "delete") =>
-  emitWith(SESSION_ACTION, { sessionId: "s1", action });
+const act = (action: "open" | "rename" | "delete") => emitWith(SESSION_ACTION, { sessionId: "s1", action });
 
 describe("a session action raised from outside the tree", () => {
   beforeEach(() => {
@@ -121,11 +120,11 @@ describe("a session action raised from outside the tree", () => {
     await mounted((s) => picked.push(s));
 
     act("open");
-    await waitFor(() => expect(screen.getByText('Switch repo to “feat”?')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Switch repo to “feat”?")).toBeTruthy());
 
     // Cancelled: nothing was checked out and the selection did not move.
     fireEvent.click(screen.getByText("Cancel"));
-    await waitFor(() => expect(screen.queryByText('Switch repo to “feat”?')).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Switch repo to “feat”?")).toBeNull());
     expect(cmds()).not.toContain("git_checkout");
     expect(picked).toHaveLength(0);
   });

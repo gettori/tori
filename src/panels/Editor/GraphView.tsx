@@ -92,8 +92,7 @@ export default function GraphView(props: { workspace: string }) {
    *  and the trunk it came off share one lane, and the line only changes
    *  meaning at the commit the base branch starts containing. Colouring the
    *  lane would paint the feature orange along with the trunk under it. */
-  const rowHue = (row: GraphRow) =>
-    row.entry.off_base ? LANE_HUES[row.lane % LANE_HUES.length] : TRUNK_HUE;
+  const rowHue = (row: GraphRow) => (row.entry.off_base ? LANE_HUES[row.lane % LANE_HUES.length] : TRUNK_HUE);
 
   async function load(skip: number) {
     if (loading()) return;
@@ -186,11 +185,7 @@ export default function GraphView(props: { workspace: string }) {
               // trunk turns orange at the row the base branch starts containing
               // rather than at whatever lane it happens to run in. A line only
               // passing through keeps its own lane's colour.
-              stroke={
-                edge.to === row.lane
-                  ? rowHue(row)
-                  : LANE_HUES[Math.max(edge.from, edge.to) % LANE_HUES.length]
-              }
+              stroke={edge.to === row.lane ? rowHue(row) : LANE_HUES[Math.max(edge.from, edge.to) % LANE_HUES.length]}
               stroke-width="1.5"
             />
           )}
@@ -201,11 +196,7 @@ export default function GraphView(props: { workspace: string }) {
           cx={x(row.lane)}
           cy={ROW_H / 2}
           r={isHead(row) ? HEAD_DOT_R : DOT_R}
-          fill={
-            isHead(row) || row.entry.unpushed || row.merge
-              ? "var(--canvas-default)"
-              : rowHue(row)
-          }
+          fill={isHead(row) || row.entry.unpushed || row.merge ? "var(--canvas-default)" : rowHue(row)}
           stroke={rowHue(row)}
           stroke-width="2"
         />
@@ -253,7 +244,11 @@ export default function GraphView(props: { workspace: string }) {
       </Show>
       <Show
         when={entries().length}
-        fallback={<Show when={!loading()}><div class="tree-empty">No commits yet.</div></Show>}
+        fallback={
+          <Show when={!loading()}>
+            <div class="tree-empty">No commits yet.</div>
+          </Show>
+        }
       >
         <OverlayScroll class={styles.scroll}>
           <For each={graph().rows}>
@@ -275,10 +270,7 @@ export default function GraphView(props: { workspace: string }) {
                   </span>
                   <For each={foldPills(row.entry.refs, base())}>
                     {(pill) => (
-                      <span
-                        class={`${styles.ref} ${styles[pill.kind]}`}
-                        classList={{ [styles.base]: pill.base }}
-                      >
+                      <span class={`${styles.ref} ${styles[pill.kind]}`} classList={{ [styles.base]: pill.base }}>
                         {pill.label}
                       </span>
                     )}

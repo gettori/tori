@@ -88,7 +88,10 @@ export default function TodoPanel(props: {
   const headed = () => memberSectionsHeaded(props.roots);
   // The identity of the set, so the rescan effect fires when the members change
   // and not when the array is merely rebuilt. NUL because no path contains one.
-  const rootsKey = () => searchRoots().map((r) => r.path).join("\u0000");
+  const rootsKey = () =>
+    searchRoots()
+      .map((r) => r.path)
+      .join("\u0000");
 
   const tags = () => todoTags(editorDefaults().todoPatterns);
   const sectionOf = (root: string) => sections().find((s) => s.root === root);
@@ -112,10 +115,7 @@ export default function TodoPanel(props: {
     // one nobody reads twice.
     const options = { ...DEFAULT_SEARCH_OPTIONS, regex: true, case: true };
     try {
-      const r = await invoke<GrepResult>(
-        "grep_project",
-        grepArgs(root, todoQuery(list), options, MAX_RESULTS),
-      );
+      const r = await invoke<GrepResult>("grep_project", grepArgs(root, todoQuery(list), options, MAX_RESULTS));
       return { root, items: todoItems(r.matches), truncated: r.truncated };
     } catch (e) {
       return { root, items: [], truncated: false, error: String(e) };
@@ -253,11 +253,7 @@ export default function TodoPanel(props: {
     <div class={styles.todoPanel}>
       <Show
         when={tags().length}
-        fallback={
-          <div class="tree-empty">
-            No TODO tags configured. Set them in Settings under “TODO tags”.
-          </div>
-        }
+        fallback={<div class="tree-empty">No TODO tags configured. Set them in Settings under “TODO tags”.</div>}
       >
         <div class={styles.tagRow}>
           <For each={tags()}>
@@ -279,9 +275,7 @@ export default function TodoPanel(props: {
         {/* Not gated on a failure any more: with several members, one repo's
             grep exploding says nothing about the hits the others returned. */}
         <Show when={items().length}>
-          <div class={styles.summary}>
-            {todoSummary(shown(), shownFiles(), summaryTruncated(), MAX_RESULTS)}
-          </div>
+          <div class={styles.summary}>{todoSummary(shown(), shownFiles(), summaryTruncated(), MAX_RESULTS)}</div>
         </Show>
       </Show>
       {/* "Nothing tagged" is a claim about a project, so it must not be made
@@ -306,9 +300,7 @@ export default function TodoPanel(props: {
                     rather than in the summary above, which is the whole
                     Topic's count. */}
                 <Show when={headed() && found()?.truncated}>
-                  <div class={styles.summary}>
-                    Capped at {MAX_RESULTS}, narrow the tags to see the rest.
-                  </div>
+                  <div class={styles.summary}>Capped at {MAX_RESULTS}, narrow the tags to see the rest.</div>
                 </Show>
                 <For each={groups()}>
                   {(group) => (
@@ -319,11 +311,7 @@ export default function TodoPanel(props: {
                       </div>
                       <For each={group.items}>
                         {(item) => (
-                          <div
-                            class={styles.todoRow}
-                            onClick={() => jumpTo(member.path, item)}
-                            title={item.text}
-                          >
+                          <div class={styles.todoRow} onClick={() => jumpTo(member.path, item)} title={item.text}>
                             <span class={styles.tag}>{item.tag}</span>
                             <span class={styles.loc}>{item.line}</span>
                             <span class={styles.text}>{item.text}</span>

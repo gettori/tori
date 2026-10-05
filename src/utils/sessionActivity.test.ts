@@ -40,9 +40,12 @@ type SessionDot = import("./sessionStatus").SessionDot;
 type SessionHome = import("./sessionStatus").SessionHome;
 
 // What Rust sends on `sessions://dots`.
-const rust = (id: string, dot: SessionDot, home: SessionHome | null = null, certainty: "exact" | "inferred" = "inferred") =>
-  noteDots([{ id, dot, certainty, home }]);
-
+const rust = (
+  id: string,
+  dot: SessionDot,
+  home: SessionHome | null = null,
+  certainty: "exact" | "inferred" = "inferred",
+) => noteDots([{ id, dot, certainty, home }]);
 
 const meta = (id: string, branch: string, agent = "claude", home?: SessionHome) => ({
   id,
@@ -62,7 +65,8 @@ const tab = (id: string, sessionId: string) => ({
   workspace: FOLDER,
   kind: "agent" as const,
   sessionId,
-  agent: "claude" as const, state: "live" as const,
+  agent: "claude" as const,
+  state: "live" as const,
 });
 
 // Fill the session store the way a real scan would, so the memos below see the
@@ -276,7 +280,15 @@ describe("a failing check on the branch a session owns", () => {
     expect(sessionFacts()).toEqual({
       tabs: [{ id: "t1", session: "pty", live: true, workspace: FOLDER, agent: "claude" }],
       chats: [
-        { session: "c-idle", status: "idle", folder: FOLDER, visible: false, spawner: undefined, name: "the idle chat", doneAt: 0 },
+        {
+          session: "c-idle",
+          status: "idle",
+          folder: FOLDER,
+          visible: false,
+          spawner: undefined,
+          name: "the idle chat",
+          doneAt: 0,
+        },
       ],
       forge: [{ folderPath: FOLDER, kind: "worktree", branch: "main", isCurrent: false, attention: true }],
     });
@@ -355,7 +367,11 @@ describe("the session that speaks for a branch", () => {
     // about.
     const wt = `${FOLDER}/.worktrees/feat`;
     bridge.listing = [
-      { ...meta("in-wt", "feat", "claude", { project: FOLDER, folder: wt, branch: "feat" }), cwd: wt, path: `${wt}/.t/in-wt.jsonl` },
+      {
+        ...meta("in-wt", "feat", "claude", { project: FOLDER, folder: wt, branch: "feat" }),
+        cwd: wt,
+        path: `${wt}/.t/in-wt.jsonl`,
+      },
     ];
     await trackFolders([wt]);
     noteForgeUnits([

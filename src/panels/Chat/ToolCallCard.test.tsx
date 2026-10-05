@@ -182,9 +182,7 @@ describe("ToolCallCard", () => {
   it("fetches the rest once per open, and only when asked", async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     vi.mocked(invoke).mockResolvedValue("the whole thing");
-    const { getByRole, getByText, findByText } = mount(
-      card({ output: "the extra", outputTruncated: true }),
-    );
+    const { getByRole, getByText, findByText } = mount(card({ output: "the extra", outputTruncated: true }));
 
     const row = getByRole("button", { name: /Bash/ });
     fireEvent.click(row);
@@ -210,9 +208,7 @@ describe("ToolCallCard", () => {
   it("says so when the rest is no longer held", async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     vi.mocked(invoke).mockResolvedValue(null);
-    const { getByRole, getByText, findByText } = mount(
-      card({ output: "the extract", outputTruncated: true }),
-    );
+    const { getByRole, getByText, findByText } = mount(card({ output: "the extract", outputTruncated: true }));
     fireEvent.click(getByRole("button", { name: /Bash/ }));
     fireEvent.click(getByText("Show full output"));
     expect(await findByText("The rest of this output is no longer held.")).toBeTruthy();
@@ -250,9 +246,7 @@ describe("the row a write gets", () => {
   });
 
   it("leaves a path outside the workspace absolute", () => {
-    const { container } = mount(
-      card({ name: "Read", toolKind: "read", input: { file_path: "/etc/hosts" } }),
-    );
+    const { container } = mount(card({ name: "Read", toolKind: "read", input: { file_path: "/etc/hosts" } }));
     expect(container.textContent).toContain("/etc/hosts");
   });
 });

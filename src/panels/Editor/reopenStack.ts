@@ -31,12 +31,7 @@ export const MAX_REOPENABLE = 20;
  * than leaving two entries, or Cmd+Shift+T pressed twice would reopen the same
  * file and then appear to do nothing the second time.
  */
-export function rememberClosedTab(
-  store: ClosedStore,
-  ws: string,
-  path: string,
-  cap = MAX_REOPENABLE,
-): ClosedStore {
+export function rememberClosedTab(store: ClosedStore, ws: string, path: string, cap = MAX_REOPENABLE): ClosedStore {
   const kept = (store[ws] ?? []).filter((p) => p !== path);
   kept.push(path);
   return { ...store, [ws]: kept.slice(Math.max(0, kept.length - cap)) };

@@ -232,7 +232,10 @@ export default function SessionPanel(props: {
             {displayPath(f.path)}
           </span>
           <Show when={collision > 0}>
-            <span class={styles.collisionBadge} title={`Also touched by ${collision} other running session${collision === 1 ? "" : "s"}`}>
+            <span
+              class={styles.collisionBadge}
+              title={`Also touched by ${collision} other running session${collision === 1 ? "" : "s"}`}
+            >
               {collision + 1}
             </span>
           </Show>
@@ -253,7 +256,9 @@ export default function SessionPanel(props: {
                     />
                   </div>
                   <For each={hunk.lines}>
-                    {(line) => <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>}
+                    {(line) => (
+                      <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>
+                    )}
                   </For>
                 </div>
               )}
@@ -282,12 +287,7 @@ export default function SessionPanel(props: {
           </div>
         )}
       </Show>
-      <Switch
-        class={styles.readsToggle}
-        checked={showReads()}
-        onChange={setShowReads}
-        label="Show reads"
-      />
+      <Switch class={styles.readsToggle} checked={showReads()} onChange={setShowReads} label="Show reads" />
       <div class={styles.touchList}>
         <Show
           when={visible().length}

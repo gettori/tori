@@ -376,6 +376,10 @@ describe("the editor layout's breadcrumbs", () => {
     writeDiffEditorLayout(true);
     render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);
     const bar = await screen.findByRole("navigation", { name: "Breadcrumbs" });
-    expect(bar.textContent).toBe(pathCrumbs("/proj", "/proj/src/a.ts").map((c) => c.name).join(""));
+    expect(bar.textContent).toBe(
+      pathCrumbs("/proj", "/proj/src/a.ts")
+        .map((c) => c.name)
+        .join(""),
+    );
   });
 });

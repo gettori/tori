@@ -76,9 +76,7 @@ export default function BranchRemoveDialog(props: {
       </div>
 
       <Show when={props.unpushed}>
-        <div class={styles.warning}>
-          This branch has commits not on its remote. Deleting it loses them.
-        </div>
+        <div class={styles.warning}>This branch has commits not on its remote. Deleting it loses them.</div>
       </Show>
 
       <Checkbox
@@ -98,9 +96,7 @@ export default function BranchRemoveDialog(props: {
       </Show>
 
       <Show when={!deleteLocal()}>
-        <div class={styles.msg}>
-          The branch stays in git; it is only removed from Tori’s list (detach).
-        </div>
+        <div class={styles.msg}>The branch stays in git; it is only removed from Tori’s list (detach).</div>
       </Show>
     </Dialog>
   );

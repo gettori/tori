@@ -219,8 +219,7 @@
    selected row in this app depends on. */
 .row.branch.sel::before {
   background:
-    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-      var(--tori-border-thick) 100% no-repeat,
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
     linear-gradient(to right, var(--brand-subtle), transparent);
 }
 
@@ -228,8 +227,7 @@
    brand's place, so it still reads as done while it is the one on screen. */
 .row.branch.done.sel::before {
   background:
-    linear-gradient(var(--done-bar), var(--done-bar)) left center /
-      var(--tori-border-thick) 100% no-repeat,
+    linear-gradient(var(--done-bar), var(--done-bar)) left center / var(--tori-border-thick) 100% no-repeat,
     linear-gradient(to right, var(--done-selected), transparent);
 }
 

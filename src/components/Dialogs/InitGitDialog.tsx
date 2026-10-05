@@ -40,8 +40,7 @@ export default function InitGitDialog(props: {
       ? "A standard git repository with one working tree in this folder."
       : "A .bare repo in this folder, with each branch checked out as its own sibling folder.";
 
-  const confirm = () =>
-    props.onConfirm({ branch: branch().trim(), url: url().trim(), bare: layout() === "bare" });
+  const confirm = () => props.onConfirm({ branch: branch().trim(), url: url().trim(), bare: layout() === "bare" });
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Enter") return;

@@ -17,7 +17,11 @@ pub const PROMOTE_TOOL: &str = "mcp__tori__topic_member_promote";
 
 /// Beside the record, so a store in a temp dir gets its homes there too.
 pub fn home_dir(store_path: &Path, topic_id: &str) -> PathBuf {
-    store_path.parent().unwrap_or(Path::new(".")).join("topics").join(topic_id)
+    store_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("topics")
+        .join(topic_id)
 }
 
 /// Bring every Topic's note up to date. Best effort: a note that cannot be
@@ -59,8 +63,14 @@ fn read_json(path: &Path) -> Option<Value> {
 pub fn member_config(root: &Path) -> MemberConfig {
     let mut out = MemberConfig::default();
     for file in ["settings.json", "settings.local.json"] {
-        let Some(json) = read_json(&root.join(".claude").join(file)) else { continue };
-        for (key, into) in [("allow", &mut out.allow), ("deny", &mut out.deny), ("ask", &mut out.ask)] {
+        let Some(json) = read_json(&root.join(".claude").join(file)) else {
+            continue;
+        };
+        for (key, into) in [
+            ("allow", &mut out.allow),
+            ("deny", &mut out.deny),
+            ("ask", &mut out.ask),
+        ] {
             let rules = json.pointer(&format!("/permissions/{key}")).and_then(Value::as_array);
             for rule in rules.into_iter().flatten().filter_map(Value::as_str) {
                 let anchored = anchor(rule, root);
@@ -69,12 +79,19 @@ pub fn member_config(root: &Path) -> MemberConfig {
                 }
             }
         }
-        if json.get("hooks").and_then(Value::as_object).is_some_and(|h| !h.is_empty()) {
+        if json
+            .get("hooks")
+            .and_then(Value::as_object)
+            .is_some_and(|h| !h.is_empty())
+        {
             out.hooks = true;
         }
     }
     if let Some(servers) = read_json(&root.join(".mcp.json")).and_then(|j| j.get("mcpServers").cloned()) {
-        out.mcp_servers = servers.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+        out.mcp_servers = servers
+            .as_object()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
     }
     out
 }
@@ -86,8 +103,12 @@ const WRITE_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit", "NotebookEdit"];
 /// folder absolutely (`//abs`). Left relative it would resolve against the home
 /// folder, where a deny guarding `./.env` protects nothing.
 pub fn anchor(rule: &str, root: &Path) -> String {
-    let Some((tool, rest)) = rule.split_once('(') else { return rule.to_string() };
-    let Some(spec) = rest.strip_suffix(')') else { return rule.to_string() };
+    let Some((tool, rest)) = rule.split_once('(') else {
+        return rule.to_string();
+    };
+    let Some(spec) = rest.strip_suffix(')') else {
+        return rule.to_string();
+    };
     if !PATH_TOOLS.contains(&tool) || spec.starts_with("//") || spec.starts_with('~') {
         return rule.to_string();
     }
@@ -151,7 +172,14 @@ fn body(topic: &Topic) -> String {
                 gone.push("project hooks".to_string());
             }
             if !cfg.mcp_servers.is_empty() {
-                gone.push(format!("MCP servers {}", cfg.mcp_servers.iter().map(|s| format!("`{s}`")).collect::<Vec<_>>().join(", ")));
+                gone.push(format!(
+                    "MCP servers {}",
+                    cfg.mcp_servers
+                        .iter()
+                        .map(|s| format!("`{s}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
             }
             if !gone.is_empty() {
                 unavailable.push(format!("- {}: {}", m.display_name, gone.join(", ")));
@@ -159,8 +187,12 @@ fn body(topic: &Topic) -> String {
         }
     }
     let promote = match topic.promotion {
-        Promotion::Ask => format!("To change one, call `{PROMOTE_TOOL}` with its name; the user is asked to create its worktree."),
-        Promotion::Auto => format!("To change one, call `{PROMOTE_TOOL}` with its name; its worktree is created at once."),
+        Promotion::Ask => {
+            format!("To change one, call `{PROMOTE_TOOL}` with its name; the user is asked to create its worktree.")
+        }
+        Promotion::Auto => {
+            format!("To change one, call `{PROMOTE_TOOL}` with its name; its worktree is created at once.")
+        }
         Promotion::Never => "This Topic does not let a chat create worktrees. Ask the user to create one.".to_string(),
     };
     out.push_str(&format!(
@@ -194,10 +226,13 @@ pub fn launch_for(store: &crate::topics::Store, cwd: &str) -> Option<HomeLaunch>
     if target.parent() != Some(homes.as_path()) {
         return None;
     }
-    let topic = crate::topics::list_topics(store).into_iter().find(|t| {
-        std::fs::canonicalize(home_dir(store.path(), &t.id)).ok().as_ref() == Some(&target)
-    })?;
-    let mut out = HomeLaunch { note: crate::rpc::events::from_tori("topic", None, &note(&topic)), ..Default::default() };
+    let topic = crate::topics::list_topics(store)
+        .into_iter()
+        .find(|t| std::fs::canonicalize(home_dir(store.path(), &t.id)).ok().as_ref() == Some(&target))?;
+    let mut out = HomeLaunch {
+        note: crate::rpc::events::from_tori("topic", None, &note(&topic)),
+        ..Default::default()
+    };
     let mut members: Vec<&Member> = topic.members.iter().collect();
     members.sort_by_key(|m| m.order);
     for m in members {
@@ -206,9 +241,17 @@ pub fn launch_for(store: &crate::topics::Store, cwd: &str) -> Option<HomeLaunch>
         let mut cfg = member_config(Path::new(root));
         // A reference is read only: its own rules may not open it to writes.
         if m.mode == MemberMode::Reference {
-            cfg.allow.retain(|rule| !WRITE_TOOLS.iter().any(|t| rule == t || rule.starts_with(&format!("{t}("))));
+            cfg.allow.retain(|rule| {
+                !WRITE_TOOLS
+                    .iter()
+                    .any(|t| rule == t || rule.starts_with(&format!("{t}(")))
+            });
         }
-        for (from, into) in [(cfg.allow, &mut out.allow), (cfg.deny, &mut out.deny), (cfg.ask, &mut out.ask)] {
+        for (from, into) in [
+            (cfg.allow, &mut out.allow),
+            (cfg.deny, &mut out.deny),
+            (cfg.ask, &mut out.ask),
+        ] {
             for rule in from {
                 if !into.contains(&rule) {
                     into.push(rule);
@@ -226,7 +269,9 @@ pub fn topic_at_home<'a>(topics: &'a [Topic], at: &str) -> Option<&'a Topic> {
         return topics.iter().find(|t| t.id == id);
     }
     let at = at.trim_end_matches('/');
-    topics.iter().find(|t| t.home.as_deref().is_some_and(|h| h.trim_end_matches('/') == at))
+    topics
+        .iter()
+        .find(|t| t.home.as_deref().is_some_and(|h| h.trim_end_matches('/') == at))
 }
 
 /// Why a chat running for a Topic may not write `target`, or `None` when it
@@ -237,7 +282,9 @@ pub fn write_refusal(topics: &[Topic], cwd: &str, target: &str) -> Option<String
     use crate::sessions::cwd_matches;
     let topic = crate::unit_home::topic_of(topics, cwd)?;
     let path = lexical(&Path::new(cwd).join(target));
-    let own = |m: &&Member| m.mode == MemberMode::Worktree && m.worktree_path.as_deref().is_some_and(|w| cwd_matches(&path, w));
+    let own = |m: &&Member| {
+        m.mode == MemberMode::Worktree && m.worktree_path.as_deref().is_some_and(|w| cwd_matches(&path, w))
+    };
     if topic.members.iter().any(|m| own(&m)) {
         return None;
     }
@@ -282,7 +329,10 @@ fn lexical(path: &Path) -> String {
 pub fn roots_of(topic: &Topic) -> Vec<String> {
     let mut members: Vec<&Member> = topic.members.iter().collect();
     members.sort_by_key(|m| m.order);
-    members.into_iter().filter_map(|m| member_root(m).map(str::to_string)).collect()
+    members
+        .into_iter()
+        .filter_map(|m| member_root(m).map(str::to_string))
+        .collect()
 }
 
 /// What a home chat was last told, taken before a change so the change can be
@@ -294,7 +344,10 @@ pub struct Told {
 }
 
 pub fn told(topic: &Topic) -> Told {
-    Told { roots: roots_of(topic), note: note(topic) }
+    Told {
+        roots: roots_of(topic),
+        note: note(topic),
+    }
 }
 
 /// After the Topic changed in a way its note shows: every live chat running in
@@ -313,7 +366,10 @@ pub fn tell_home_chats(
     if now == before.note {
         return;
     }
-    let added: Vec<String> = roots_of(topic).into_iter().filter(|r| !before.roots.contains(r)).collect();
+    let added: Vec<String> = roots_of(topic)
+        .into_iter()
+        .filter(|r| !before.roots.contains(r))
+        .collect();
     let text = format!("The Topic {} changed. This is how it stands now.\n\n{now}", topic.name);
     let home = std::fs::canonicalize(home).unwrap_or_else(|_| PathBuf::from(home));
     for (session, cwd) in live {
@@ -353,12 +409,21 @@ mod tests {
         let refused = |target: &str| write_refusal(&topics, home, target);
 
         let reference = refused("/p/web/src/app.ts").expect("a reference root is refused");
-        assert!(reference.contains(PROMOTE_TOOL) && reference.contains("\"web\""), "{reference}");
+        assert!(
+            reference.contains(PROMOTE_TOOL) && reference.contains("\"web\""),
+            "{reference}"
+        );
         let promoted = refused("/p/api/src/lib.rs").expect("a promoted member's own checkout is refused");
         assert!(promoted.contains("/p/api/.tori/worktrees/auth"), "{promoted}");
         assert_eq!(refused("/p/api/.tori/worktrees/auth/src/lib.rs"), None);
-        assert!(refused("/p/api/.tori/worktrees/auth/../../../../web/x.ts").is_some(), "climbing out of the worktree lands in web");
-        assert!(refused("/p/api/.tori/worktrees/other/x.rs").is_some(), "another Topic's worktree is not this chat's");
+        assert!(
+            refused("/p/api/.tori/worktrees/auth/../../../../web/x.ts").is_some(),
+            "climbing out of the worktree lands in web"
+        );
+        assert!(
+            refused("/p/api/.tori/worktrees/other/x.rs").is_some(),
+            "another Topic's worktree is not this chat's"
+        );
         assert_eq!(refused("TOPIC.md"), None);
         assert_eq!(refused("/tmp/scratch.txt"), None);
         assert_eq!(write_refusal(&topics, "/elsewhere", "/p/web/src/app.ts"), None);

@@ -270,7 +270,8 @@ describe("selectedModel", () => {
           supportsFastMode: false,
           supportsAdaptiveThinking: false,
         },
-      ], [],
+      ],
+      [],
     );
     expect(selectedModel(withExact, null, "claude-sonnet-5")?.value).toBe("claude-sonnet-5");
     // An explicit pick still wins over both, including picking the alias.
@@ -368,14 +369,10 @@ describe("restoredPicks", () => {
     chat.modes = [];
     const agentModes = pickableModes([{ id: "plan", label: "Plan", hint: "" }], chat);
     const models = pickableModels(live(), []);
-    expect(restoredPicks(models, { model: "sonnet", mode: "plan" }, chat, agentModes).mode).toBe(
-      "plan",
-    );
+    expect(restoredPicks(models, { model: "sonnet", mode: "plan" }, chat, agentModes).mode).toBe("plan");
     // And the drop still happens for a mode nothing on offer names, which is
     // what keeps this a check rather than a passthrough.
-    expect(
-      restoredPicks(models, { model: "sonnet", mode: "read-only" }, chat, agentModes).mode,
-    ).toBeNull();
+    expect(restoredPicks(models, { model: "sonnet", mode: "read-only" }, chat, agentModes).mode).toBeNull();
   });
 });
 
@@ -397,10 +394,7 @@ describe("resumedPicks", () => {
   it("never names a model", () => {
     const chat = adapter();
     chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
-    expect(Object.keys(resumedPicks({ mode: "plan", effort: "high" }, chat)).sort()).toEqual([
-      "effort",
-      "mode",
-    ]);
+    expect(Object.keys(resumedPicks({ mode: "plan", effort: "high" }, chat)).sort()).toEqual(["effort", "mode"]);
   });
 
   it("drops a mode the adapter does not declare", () => {
@@ -439,11 +433,7 @@ describe("pickableModes", () => {
   it("takes the agent's own modes over the adapter table", () => {
     const chat = adapter();
     chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
-    expect(pickableModes(liveModes(), chat).map((m) => m.id)).toEqual([
-      "read-only",
-      "agent",
-      "agent-full-access",
-    ]);
+    expect(pickableModes(liveModes(), chat).map((m) => m.id)).toEqual(["read-only", "agent", "agent-full-access"]);
   });
 
   // Not a merge, on the same rule as `pickableModels`: folding the TOML in
@@ -487,9 +477,7 @@ describe("pickableModes", () => {
     const chat = adapter();
     chat.modes = [];
     const model = pickableModels(live(), [])[0];
-    expect(modeAfterModelSwitch(model, chat, "read-only", pickableModes(liveModes(), chat))).toBe(
-      null,
-    );
+    expect(modeAfterModelSwitch(model, chat, "read-only", pickableModes(liveModes(), chat))).toBe(null);
   });
 });
 
@@ -706,9 +694,9 @@ describe("contextTokens", () => {
   it("counts everything the model was given, and not what it produced", () => {
     // Output is left out because it becomes input on the next turn; counting it
     // here would count it twice.
-    expect(contextTokens(usage({ inputTokens: 100, cacheReadTokens: 20, cacheWriteTokens: 5, outputTokens: 900 }))).toBe(
-      125,
-    );
+    expect(
+      contextTokens(usage({ inputTokens: 100, cacheReadTokens: 20, cacheWriteTokens: 5, outputTokens: 900 })),
+    ).toBe(125);
   });
 
   it("is null before any turn reported usage, so the meter stays hidden", () => {

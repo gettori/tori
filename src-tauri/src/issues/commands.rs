@@ -13,7 +13,9 @@ use crate::forge::{Forge, ForgeError};
 use tauri::{AppHandle, Emitter};
 
 fn source_of(f: &dyn Forge) -> Result<&dyn IssueSource, ForgeError> {
-    f.issues().ok_or_else(|| ForgeError::Invalid { message: "This host has no issue source in Tori yet".into() })
+    f.issues().ok_or_else(|| ForgeError::Invalid {
+        message: "This host has no issue source in Tori yet".into(),
+    })
 }
 
 /// A refusal on an issue call is nearly always the token, so it says which.
@@ -49,7 +51,9 @@ pub fn offered(project_path: &str) -> bool {
 
 fn fetch_assigned(c: &Client, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
     gate()
-        .assigned(&c.account_id, &c.repo, refresh, || attempt(c, |f| source_of(f)?.list_assigned(&c.repo)))
+        .assigned(&c.account_id, &c.repo, refresh, || {
+            attempt(c, |f| source_of(f)?.list_assigned(&c.repo))
+        })
         .map_err(named_access)
 }
 
@@ -66,17 +70,25 @@ pub struct Assigned {
 
 // `None` where `offered` says no; one client resolve, since the poll tick calls it per project.
 pub fn assigned_if_offered(project_path: &str) -> Result<Option<Assigned>, ForgeError> {
-    let Ok(c) = issue_client(project_path) else { return Ok(None) };
+    let Ok(c) = issue_client(project_path) else {
+        return Ok(None);
+    };
     if !offers(&c) {
         return Ok(None);
     }
     let rows = fetch_assigned(&c, false)?;
-    Ok(Some(Assigned { repo: format!("{}/{}", c.repo.owner, c.repo.repo), account: c.account_id, rows }))
+    Ok(Some(Assigned {
+        repo: format!("{}/{}", c.repo.owner, c.repo.repo),
+        account: c.account_id,
+        rows,
+    }))
 }
 
 pub fn get(project_path: &str, key: &str) -> Result<Issue, ForgeError> {
     let c = issue_client(project_path)?;
-    gate().call(&c.account_id, || attempt(&c, |f| source_of(f)?.get(&c.repo, key))).map_err(named_access)
+    gate()
+        .call(&c.account_id, || attempt(&c, |f| source_of(f)?.get(&c.repo, key)))
+        .map_err(named_access)
 }
 
 /// Links, then fetches the branch so a local one can track it. A retry after a
@@ -84,7 +96,9 @@ pub fn get(project_path: &str, key: &str) -> Result<Issue, ForgeError> {
 pub fn link(project_path: &str, key: &str, branch: &str, base: Option<&str>) -> Result<LinkOutcome, ForgeError> {
     let c = issue_client(project_path)?;
     let outcome = gate()
-        .call(&c.account_id, || attempt(&c, |f| source_of(f)?.link_branch(&c.repo, key, branch, base)))
+        .call(&c.account_id, || {
+            attempt(&c, |f| source_of(f)?.link_branch(&c.repo, key, branch, base))
+        })
         .map_err(named_access)?;
     crate::git::fetch_branch_quiet(project_path, branch).map_err(|e| ForgeError::Transport {
         message: format!("{branch} is on GitHub, but fetching it failed: {e}"),

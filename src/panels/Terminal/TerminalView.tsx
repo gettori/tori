@@ -8,7 +8,16 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { WriteOnlyClipboard } from "./writeOnlyClipboard";
 import { acquireWebgl, type WebglSlot } from "./webglLru";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
+import {
+  on as onEvent,
+  emitWith,
+  FOCUS_TERMINAL,
+  THEME_APPLIED,
+  REFIT_PANES,
+  OPEN_IN_EDITOR,
+  DRAG_PATH_MIME,
+  DRAG_ABS_PATH_MIME,
+} from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
 import { initRefusal } from "./initRefusal";
 import { traceMark } from "../../utils/perfTrace";
@@ -168,8 +177,7 @@ export default function TerminalView(props: {
       term?.focus();
       return;
     }
-    const path =
-      e.dataTransfer?.getData(DRAG_PATH_MIME) || e.dataTransfer?.getData("text/plain") || "";
+    const path = e.dataTransfer?.getData(DRAG_PATH_MIME) || e.dataTransfer?.getData("text/plain") || "";
     if (!path) return;
     const rel = path.startsWith(props.cwd + "/") ? path.slice(props.cwd.length + 1) : path;
     invoke("pty_write", { id: props.id, data: `@${rel} ` }).catch(() => {});
@@ -194,9 +202,7 @@ export default function TerminalView(props: {
     }
     fit.fit();
     traceMark("term:fitted");
-    invoke("pty_resize", { id: props.id, cols: term.cols, rows: term.rows }).catch(
-      () => {},
-    );
+    invoke("pty_resize", { id: props.id, cols: term.cols, rows: term.rows }).catch(() => {});
   }
 
   // A single fit + pty_resize reflows the whole xterm buffer and round-trips to
@@ -450,9 +456,15 @@ export default function TerminalView(props: {
               }
             }}
           />
-          <Button variant="ghost" size="xs" aria-label="Previous" tooltip="Previous" onClick={() => find(false)}>↑</Button>
-          <Button variant="ghost" size="xs" aria-label="Next" tooltip="Next" onClick={() => find(true)}>↓</Button>
-          <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={closeSearch}>×</Button>
+          <Button variant="ghost" size="xs" aria-label="Previous" tooltip="Previous" onClick={() => find(false)}>
+            ↑
+          </Button>
+          <Button variant="ghost" size="xs" aria-label="Next" tooltip="Next" onClick={() => find(true)}>
+            ↓
+          </Button>
+          <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={closeSearch}>
+            ×
+          </Button>
         </div>
       </Show>
       <Show when={!refusalDismissed() && initRefusal(props.id)}>

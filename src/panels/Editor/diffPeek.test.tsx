@@ -56,9 +56,7 @@ const peekLines = () => [...peek()!.querySelectorAll(".cm-peek-source .cm-line")
 // Dropping the first: CodeMirror's line-number gutter leads with a hidden
 // spacer element holding the widest number it expects to draw.
 const peekNumbers = () =>
-  [...peek()!.querySelectorAll(".cm-peek-source .cm-lineNumbers .cm-gutterElement")]
-    .slice(1)
-    .map((n) => n.textContent);
+  [...peek()!.querySelectorAll(".cm-peek-source .cm-lineNumbers .cm-gutterElement")].slice(1).map((n) => n.textContent);
 
 // Read off the DOM rather than the decoration set, because where the widget
 // lands on screen is the claim.

@@ -10,10 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 const bench = vi.hoisted(() => ({
   focused: false,
   enabled: new Set<string>(["claude"]),
-  usage: {} as Record<
-    string,
-    { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }
-  >,
+  usage: {} as Record<string, { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }>,
   /** What the backend would hand back on the next load. */
   stored: null as unknown,
 }));
@@ -45,7 +42,11 @@ vi.mock("./agentEnabled", () => ({ agentEnabled: (id: string) => bench.enabled.h
 const adapters = [{ id: "claude", label: "Claude", usage: { sources: ["sessions"] }, usage_reason: null }];
 vi.mock("./agents", async (orig) => {
   const actual = await orig<typeof import("./agents")>();
-  return { ...actual, agents: () => adapters, findAdapter: (id: string) => adapters.find((a) => a.id === id) ?? { id, label: id } };
+  return {
+    ...actual,
+    agents: () => adapters,
+    findAdapter: (id: string) => adapters.find((a) => a.id === id) ?? { id, label: id },
+  };
 });
 
 vi.mock("./agentHealth", async (orig) => ({

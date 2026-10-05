@@ -25,13 +25,7 @@ function open(props: Partial<Omit<PromptProps, "onSubmit" | "onCancel">> = {}) {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
   render(() => (
-    <PromptModal
-      title="Rename branch"
-      initial="feature-x"
-      onSubmit={onSubmit}
-      onCancel={onCancel}
-      {...props}
-    />
+    <PromptModal title="Rename branch" initial="feature-x" onSubmit={onSubmit} onCancel={onCancel} {...props} />
   ));
   const input = document.querySelector<HTMLInputElement>(`.${styles.input}`)!;
   return { onSubmit, onCancel, input };

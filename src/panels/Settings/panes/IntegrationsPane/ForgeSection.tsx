@@ -20,11 +20,7 @@ import {
   type SignInRoutes,
   type SignInStart,
 } from "../../../../utils/forgeTypes";
-import {
-  forgeAccountOrgNotices,
-  noteForgeAccounts,
-  resetForgeResolutions,
-} from "../../../../utils/forgeStatus";
+import { forgeAccountOrgNotices, noteForgeAccounts, resetForgeResolutions } from "../../../../utils/forgeStatus";
 import {
   began,
   CLOUDS,
@@ -165,8 +161,7 @@ export default function ForgeSection() {
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
-  const askConfirm = (opts: ConfirmOpts) =>
-    new Promise<boolean>((resolve) => setConfirmReq({ ...opts, resolve }));
+  const askConfirm = (opts: ConfirmOpts) => new Promise<boolean>((resolve) => setConfirmReq({ ...opts, resolve }));
   const answerConfirm = (ok: boolean) => {
     const req = confirmReq();
     setConfirmReq(null);
@@ -211,7 +206,11 @@ export default function ForgeSection() {
   // shows what Rust actually recorded for it.
   const grantedAccount = () => {
     const id = grantedStep()?.accountId;
-    return id ? (hosts().flatMap((h) => h.accounts).find((a) => a.id === id) ?? null) : null;
+    return id
+      ? (hosts()
+          .flatMap((h) => h.accounts)
+          .find((a) => a.id === id) ?? null)
+      : null;
   };
   const waitingStep = () => {
     const f = flow();
@@ -231,7 +230,9 @@ export default function ForgeSection() {
     setError(null);
     setFlow(next);
     // Keyboard focus follows the card, so Escape lands on it and not on the panel.
-    queueMicrotask(() => (flowEl?.querySelector<HTMLElement>("input:not([type=radio]), input:checked") ?? flowEl)?.focus());
+    queueMicrotask(() =>
+      (flowEl?.querySelector<HTMLElement>("input:not([type=radio]), input:checked") ?? flowEl)?.focus(),
+    );
     switch (next?.step) {
       case "host-url":
         setUrl("");
@@ -273,8 +274,7 @@ export default function ForgeSection() {
 
   const connectHost = (host: ForgeHost, accountId: string | null = null, preferCli = false) => {
     const first = host.accounts.find((a) => a.id === accountId) ?? host.accounts[0];
-    if (first)
-      void connect({ provider: first.provider, baseUrl: first.baseUrl, accountId }, undefined, preferCli);
+    if (first) void connect({ provider: first.provider, baseUrl: first.baseUrl, accountId }, undefined, preferCli);
   };
 
   const continuePicker = () => {
@@ -426,10 +426,8 @@ export default function ForgeSection() {
     enter({ step: "product" });
   };
 
-  const setEnabled = (enabled: boolean) =>
-    saveSettings({ ...settings, forge: { ...settings.forge, enabled } });
-  const setPrWatch = (prWatch: boolean) =>
-    saveSettings({ ...settings, forge: { ...settings.forge, prWatch } });
+  const setEnabled = (enabled: boolean) => saveSettings({ ...settings, forge: { ...settings.forge, enabled } });
+  const setPrWatch = (prWatch: boolean) => saveSettings({ ...settings, forge: { ...settings.forge, prWatch } });
 
   return (
     <section class={styles.section}>
@@ -450,8 +448,7 @@ export default function ForgeSection() {
           <div class={cards.empty}>
             <div class={cards.emptyTitle}>No hosts connected</div>
             <div class={cards.emptyBody}>
-              Connect a host and its pull requests, merge requests and checks show up beside the branch
-              they belong to.
+              Connect a host and its pull requests, merge requests and checks show up beside the branch they belong to.
             </div>
             <div class={cards.emptyActions}>
               <Button variant="primary" onClick={connectGithub}>
@@ -471,7 +468,10 @@ export default function ForgeSection() {
               <div class={cards.card} data-testid="forge-host">
                 <div class={cards.head}>
                   <span class={cards.logo} aria-hidden="true">
-                    <Show when={family(host) === "GitLab"} fallback={<GitHubLogo size="calc(16px * var(--ui-scale))" />}>
+                    <Show
+                      when={family(host) === "GitLab"}
+                      fallback={<GitHubLogo size="calc(16px * var(--ui-scale))" />}
+                    >
                       <GitLabLogo size="calc(16px * var(--ui-scale))" />
                     </Show>
                   </span>
@@ -481,19 +481,11 @@ export default function ForgeSection() {
                   </span>
                   <span class={cards.spacer} />
                   <Show when={family(host) === "GitLab" && host.host !== "gitlab.com"}>
-                    <Button
-                      variant="ghost"
-                      aria-expanded={appIdHost() === host.host}
-                      onClick={() => toggleAppId(host)}
-                    >
+                    <Button variant="ghost" aria-expanded={appIdHost() === host.host} onClick={() => toggleAppId(host)}>
                       Application ID
                     </Button>
                   </Show>
-                  <Button
-                    variant="ghost"
-                    aria-label={`Add account on ${host.host}`}
-                    onClick={() => connectHost(host)}
-                  >
+                  <Button variant="ghost" aria-label={`Add account on ${host.host}`} onClick={() => connectHost(host)}>
                     Add account
                   </Button>
                 </div>
@@ -512,8 +504,8 @@ export default function ForgeSection() {
                       </Button>
                     </div>
                     <div class={cards.hint}>
-                      A public OAuth application on {host.host} with the api scope, and "Device authorization
-                      grant" ticked if the form has it. Once one is saved, adding an account here opens the browser.
+                      A public OAuth application on {host.host} with the api scope, and "Device authorization grant"
+                      ticked if the form has it. Once one is saved, adding an account here opens the browser.
                     </div>
                   </div>
                 </Show>
@@ -642,8 +634,8 @@ export default function ForgeSection() {
                       </Show>
                     </div>
                     <div class={cards.footerNote}>
-                      Covers Tori's own git, terminal tabs and agents. Tabs and agents already open need reopening
-                      after you turn it on.
+                      Covers Tori's own git, terminal tabs and agents. Tabs and agents already open need reopening after
+                      you turn it on.
                     </div>
                   </div>
                   <Switch
@@ -676,13 +668,7 @@ export default function ForgeSection() {
         </For>
 
         <Show when={flow()}>
-          <div
-            ref={flowEl}
-            class={cards.flow}
-            tabindex="-1"
-            data-testid="add-flow"
-            onKeyDown={onFlowKeyDown}
-          >
+          <div ref={flowEl} class={cards.flow} tabindex="-1" data-testid="add-flow" onKeyDown={onFlowKeyDown}>
             <Show when={flow()?.step === "product"}>
               <div class={cards.card}>
                 <div class={cards.body}>
@@ -763,9 +749,9 @@ export default function ForgeSection() {
                   <Show when={state().product === "self-managed" && !appIdLater()}>
                     <div class={cards.footer}>
                       <span class={cards.footNote}>
-                        Browser sign-in for this instance needs its OAuth Application ID, from a public app with
-                        the api scope and "Device authorization grant" ticked if the form has it. Optional: once one
-                        is saved on the host card, adding an account there opens the browser.
+                        Browser sign-in for this instance needs its OAuth Application ID, from a public app with the api
+                        scope and "Device authorization grant" ticked if the form has it. Optional: once one is saved on
+                        the host card, adding an account there opens the browser.
                       </span>
                       <Button variant="ghost" size="xs" onClick={() => setAppIdLater(true)}>
                         Add later
@@ -803,11 +789,7 @@ export default function ForgeSection() {
                         onInput={(e) => setToken(e.currentTarget.value)}
                         onKeyDown={(e) => e.key === "Enter" && token().trim() && void submitToken()}
                       />
-                      <Button
-                        variant="primary"
-                        disabled={busy() || !token().trim()}
-                        onClick={() => void submitToken()}
-                      >
+                      <Button variant="primary" disabled={busy() || !token().trim()} onClick={() => void submitToken()}>
                         Sign in
                       </Button>
                       <Button variant="ghost" onClick={() => enter(null)}>
@@ -873,8 +855,8 @@ export default function ForgeSection() {
                           </div>
                           <Show when={missingScopes(account(), r().scopes).length > 0}>
                             <div class={cards.hint} data-testid="missing-scopes">
-                              {r().host} did not grant {missingScopes(account(), r().scopes).join(", ")}. Make a
-                              token with them ticked and paste it here to replace this one.
+                              {r().host} did not grant {missingScopes(account(), r().scopes).join(", ")}. Make a token
+                              with them ticked and paste it here to replace this one.
                             </div>
                           </Show>
                         </>

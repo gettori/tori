@@ -114,9 +114,7 @@ export default function DebugPanel(props: { root: string | null; selected: Selec
         when={debugTree().length > 0}
         fallback={
           <Show when={!debugBuild()}>
-            <div class={styles.empty}>
-              Nothing is being debugged. Start a run to see its sessions and output here.
-            </div>
+            <div class={styles.empty}>Nothing is being debugged. Start a run to see its sessions and output here.</div>
           </Show>
         }
       >
@@ -144,9 +142,7 @@ export default function DebugPanel(props: { root: string | null; selected: Selec
                   fallback={<div class={styles.empty}>No frames for this pause.</div>}
                 >
                   <For each={stop.frames}>
-                    {(frame) => (
-                      <FrameRow session={stop.id} frame={frame} selected={props.selected} />
-                    )}
+                    {(frame) => <FrameRow session={stop.id} frame={frame} selected={props.selected} />}
                   </For>
                 </Show>
               </>
@@ -174,9 +170,7 @@ export default function DebugPanel(props: { root: string | null; selected: Selec
                   type="button"
                   class={`${styles.varRow} ${styles.scopeRow}`}
                   aria-expanded={isVariableExpanded(scope.key)}
-                  onClick={() =>
-                    toggleVariables(scope.key, scope.variablesReference, scope.indexedVariables)
-                  }
+                  onClick={() => toggleVariables(scope.key, scope.variablesReference, scope.indexedVariables)}
                 >
                   <Twisty open={isVariableExpanded(scope.key)} />
                   <span class={styles.scopeName}>{scope.name}</span>
@@ -208,10 +202,7 @@ export default function DebugPanel(props: { root: string | null; selected: Selec
           "No output yet" under it says the same thing twice. */}
       <Show when={debugTree().length > 0 || consoleLines().length > 0}>
         <div class={styles.console}>
-          <Show
-            when={consoleLines().length > 0}
-            fallback={<div class={styles.empty}>No output yet.</div>}
-          >
+          <Show when={consoleLines().length > 0} fallback={<div class={styles.empty}>No output yet.</div>}>
             <For each={consoleLines()}>
               {(line) => (
                 <div class={`${styles.line} ${styles[line.category]}`}>
@@ -269,18 +260,13 @@ function Watches(props: { root: string }) {
         />
         <IconButton size="xs" icon={<Icon icon={Plus} />} tooltip="Add watch" type="submit" />
       </form>
-      <Show
-        when={rows().length > 0}
-        fallback={<div class={styles.varNote}>Nothing is being watched.</div>}
-      >
+      <Show when={rows().length > 0} fallback={<div class={styles.varNote}>Nothing is being watched.</div>}>
         {/* `Index` rather than `For`: the rows are rebuilt on every answer, so
             keying by identity would re-create all of them N times per stop and
             take the focus out of anything being clicked. Keyed by position,
             only the fields that changed are written. */}
         <Index each={rows()}>
-          {(row, i) => (
-            <WatchRowView root={props.root} row={row()} index={i} last={rows().length - 1} />
-          )}
+          {(row, i) => <WatchRowView root={props.root} row={row()} index={i} last={rows().length - 1} />}
         </Index>
       </Show>
     </div>
@@ -295,9 +281,7 @@ function WatchRowView(props: { root: string; row: WatchRow; index: number; last:
         when={props.row.error}
         fallback={
           <span class={styles.varValue}>
-            {props.row.pending
-              ? "reading…"
-              : (props.row.value ?? (watchesLive() ? "" : "not running"))}
+            {props.row.pending ? "reading…" : (props.row.value ?? (watchesLive() ? "" : "not running"))}
           </span>
         }
       >
@@ -401,21 +385,9 @@ function Controls() {
     <div class={styles.controls} role="toolbar" aria-label="Debug controls">
       <Show
         when={paused()}
-        fallback={
-          <IconButton
-            size="xs"
-            icon={<Icon icon={Pause} />}
-            tooltip="Pause"
-            onClick={() => pauseDebug()}
-          />
-        }
+        fallback={<IconButton size="xs" icon={<Icon icon={Pause} />} tooltip="Pause" onClick={() => pauseDebug()} />}
       >
-        <IconButton
-          size="xs"
-          icon={<Icon icon={Play} />}
-          tooltip="Continue"
-          onClick={() => continueDebug()}
-        />
+        <IconButton size="xs" icon={<Icon icon={Play} />} tooltip="Continue" onClick={() => continueDebug()} />
       </Show>
       <IconButton
         size="xs"
@@ -438,18 +410,8 @@ function Controls() {
         disabled={!paused()}
         onClick={() => stepOut()}
       />
-      <IconButton
-        size="xs"
-        icon={<Icon icon={RotateCcw} />}
-        tooltip="Restart"
-        onClick={() => emit(DEBUG_RESTART)}
-      />
-      <IconButton
-        size="xs"
-        icon={<Icon icon={Square} />}
-        tooltip="Stop"
-        onClick={() => emit(DEBUG_STOP)}
-      />
+      <IconButton size="xs" icon={<Icon icon={RotateCcw} />} tooltip="Restart" onClick={() => emit(DEBUG_RESTART)} />
+      <IconButton size="xs" icon={<Icon icon={Square} />} tooltip="Stop" onClick={() => emit(DEBUG_STOP)} />
     </div>
   );
 }
@@ -460,8 +422,7 @@ function Controls() {
  *  only the selected row carries one, because that is the frame the message
  *  would describe. */
 function FrameRow(props: { session: string; frame: StackFrame; selected: Selection | null }) {
-  const isCurrent = () =>
-    selectedFrame()?.session === props.session && selectedFrame()?.frameId === props.frame.id;
+  const isCurrent = () => selectedFrame()?.session === props.session && selectedFrame()?.frameId === props.frame.id;
   return (
     <div class={styles.frameRow} classList={{ [styles.selected]: isCurrent() }}>
       {/* No `aria-label`: the two spans below are the frame's name and where it
@@ -553,9 +514,7 @@ function VarRows(props: { parent: string; depth: number }) {
   const indent = () => varIndent(props.depth);
   return (
     <>
-      <For each={variableRows(props.parent)}>
-        {(row) => <VariableRow row={row} depth={props.depth} />}
-      </For>
+      <For each={variableRows(props.parent)}>{(row) => <VariableRow row={row} depth={props.depth} />}</For>
       {/* A container mid-fetch reads as slow rather than as empty, which are
           the same thing to anyone looking at a scope that has not answered. */}
       <Show when={isVariablesBusy(props.parent)}>
@@ -572,8 +531,7 @@ function VarRows(props: { parent: string; depth: number }) {
           style={{ "padding-left": indent() }}
           onClick={() => void loadMoreVariables(props.parent)}
         >
-          Show {Math.min(VARIABLE_PAGE, variableMore(props.parent))} more of{" "}
-          {variableMore(props.parent)}
+          Show {Math.min(VARIABLE_PAGE, variableMore(props.parent))} more of {variableMore(props.parent)}
         </button>
       </Show>
     </>
@@ -604,18 +562,13 @@ function VariableRow(props: { row: VarRow; depth: number }) {
   return (
     <>
       <div class={styles.varRow} style={{ "padding-left": indent() }}>
-        <Show
-          when={props.row.variablesReference > 0}
-          fallback={<span class={styles.twisty} aria-hidden="true" />}
-        >
+        <Show when={props.row.variablesReference > 0} fallback={<span class={styles.twisty} aria-hidden="true" />}>
           <button
             type="button"
             class={styles.varToggle}
             aria-expanded={isVariableExpanded(key())}
             aria-label={`Expand ${props.row.name}`}
-            onClick={() =>
-              toggleVariables(key(), props.row.variablesReference, props.row.indexedVariables)
-            }
+            onClick={() => toggleVariables(key(), props.row.variablesReference, props.row.indexedVariables)}
           >
             <Twisty open={isVariableExpanded(key())} />
           </button>
@@ -627,10 +580,7 @@ function VariableRow(props: { row: VarRow; depth: number }) {
         <Show
           when={editing()}
           fallback={
-            <Show
-              when={canSetVariable()}
-              fallback={<span class={styles.varValue}>{props.row.value}</span>}
-            >
+            <Show when={canSetVariable()} fallback={<span class={styles.varValue}>{props.row.value}</span>}>
               {/* `aria-label` here, unlike the frame row: the visible text is
                   the variable's *value*, so the name a screen reader would
                   otherwise read out is "42". The action is what to call it. */}

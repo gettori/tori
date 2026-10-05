@@ -75,17 +75,7 @@ describe("buildRows", () => {
     // clicked, and the backend reads them against the raw hunk body. Pairing
     // reorders nothing, and this is what says so: if it ever did, the wrong
     // lines would be staged with no error anywhere.
-    const lines = [
-      " keep",
-      "-a",
-      "-b",
-      "+A",
-      "+B",
-      " middle",
-      "+lone",
-      "-orphan",
-      "\\ No newline at end of file",
-    ];
+    const lines = [" keep", "-a", "-b", "+A", "+B", " middle", "+lone", "-orphan", "\\ No newline at end of file"];
     const rows = buildRows(lines);
     expect(rows.map((r) => ("text" in r ? r.text : null))).toEqual(lines);
   });

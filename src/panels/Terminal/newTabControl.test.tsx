@@ -2,13 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { installAnimationFrame } from "../../test/frames";
 import { pointerClick } from "../../test/menus";
-import {
-  COMPOSE_DRAFT,
-  TOAST,
-  emitWith,
-  type ComposeDraft,
-  type ToastEvent,
-} from "../../utils/events";
+import { COMPOSE_DRAFT, TOAST, emitWith, type ComposeDraft, type ToastEvent } from "../../utils/events";
 
 // The tab strip's launch control, after the draft-first change: the main half
 // makes a chat rather than a shell, and every route the main half no longer
@@ -152,9 +146,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 vi.mock("./TerminalView", () => ({
-  default: (props: { id: string; program: string }) => (
-    <div data-testid="pty" data-program={props.program} />
-  ),
+  default: (props: { id: string; program: string }) => <div data-testid="pty" data-program={props.program} />,
 }));
 vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
 vi.mock("../Chat/ChatDraft", () => ({
@@ -332,7 +324,14 @@ describe("a draft handed over from Settings", () => {
   it("opens one on the selected branch unit with the blocks already attached", async () => {
     await mountLoaded();
     const blocks = [
-      { type: "fileRef", path: "/home/me/.claude/CLAUDE.md", startLine: null, endLine: null, text: null, label: "Instructions" },
+      {
+        type: "fileRef",
+        path: "/home/me/.claude/CLAUDE.md",
+        startLine: null,
+        endLine: null,
+        text: null,
+        label: "Instructions",
+      },
       { type: "text", text: "Write my Claude instructions." },
     ];
 
@@ -419,11 +418,9 @@ describe("which account a new session opens on", () => {
     await menuItem("Claude (yolo)");
 
     await waitFor(() =>
-      expect(
-        bridge.calls.some(
-          ({ cmd, args }) => cmd === "profile_spawn_env" && args?.profileId === "globex",
-        ),
-      ).toBe(true),
+      expect(bridge.calls.some(({ cmd, args }) => cmd === "profile_spawn_env" && args?.profileId === "globex")).toBe(
+        true,
+      ),
     );
   });
 

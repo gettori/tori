@@ -110,11 +110,7 @@ export default function SpaceDialog(props: {
       actions={
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={props.busy || !canConfirm()}
-            onClick={() => confirm()}
-          >
+          <Button variant="primary" disabled={props.busy || !canConfirm()} onClick={() => confirm()}>
             {props.busy ? "Working…" : isNew() ? "Create space" : "Save"}
           </Button>
         </>
@@ -131,7 +127,9 @@ export default function SpaceDialog(props: {
             {/* Only where it can still be set: in "edit" the name is already
                 on disk, so nothing about it is outstanding. */}
             <Show when={isNew()}>
-              <span class={styles.spaceRequired} aria-hidden="true">Required</span>
+              <span class={styles.spaceRequired} aria-hidden="true">
+                Required
+              </span>
             </Show>
           </div>
           <Show
@@ -163,11 +161,7 @@ export default function SpaceDialog(props: {
               spellcheck={false}
             />
           </Show>
-          <div
-            id={NAME_HELP}
-            class={styles.spaceHelp}
-            classList={{ [styles.helpError]: !!nameError() }}
-          >
+          <div id={NAME_HELP} class={styles.spaceHelp} classList={{ [styles.helpError]: !!nameError() }}>
             <Show
               when={isNew()}
               fallback="The folder on disk carries this name, so it can’t change here. Colour and icon can."
@@ -179,18 +173,12 @@ export default function SpaceDialog(props: {
 
         <div class={styles.spaceField}>
           <div class={styles.spaceLabel}>Appearance</div>
-          <SpaceAppearance
-            name={isNew() ? name() : props.name}
-            value={look()}
-            onChange={setLook}
-          />
+          <SpaceAppearance name={isNew() ? name() : props.name} value={look()} onChange={setLook} />
           {/* Only in "new": the locked-name help above already established that
               this is where the help for a group sits, and saying it twice in a
               dialog this short reads as a warning rather than a caption. */}
           <Show when={isNew()}>
-            <div class={styles.spaceHelp}>
-              Picked for you. Click a chip to choose your own, or reroll both.
-            </div>
+            <div class={styles.spaceHelp}>Picked for you. Click a chip to choose your own, or reroll both.</div>
           </Show>
         </div>
       </div>

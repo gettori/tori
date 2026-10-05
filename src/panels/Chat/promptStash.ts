@@ -103,7 +103,8 @@ export async function stashDraft(key: ComposerKey): Promise<boolean> {
 }
 
 function verdictFor(block: ContentBlock, count: number, sources: StashSources, dir: string | null): AttachCheck | null {
-  if (block.type === "image") return checkAttachment({ name: "", mediaType: block.mediaType, bytes: null }, count, sources.uploads);
+  if (block.type === "image")
+    return checkAttachment({ name: "", mediaType: block.mediaType, bytes: null }, count, sources.uploads);
   if (block.type !== "fileRef" || !block.label) return null;
   const upload = dir !== null && block.path.startsWith(`${dir}/`);
   const name = block.path.split("/").pop() || block.path;

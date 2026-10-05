@@ -42,7 +42,11 @@ vi.mock("@tauri-apps/api/core", () => ({
     invokes.push({ cmd, args });
     switch (cmd) {
       case "chat_spawn":
-        return Promise.resolve({ ownership: { type: "granted", contested: false }, spawned: "started", profileId: spawnProfile });
+        return Promise.resolve({
+          ownership: { type: "granted", contested: false },
+          spawned: "started",
+          profileId: spawnProfile,
+        });
       case "chat_history":
         return Promise.resolve(wholeHistory([]));
       case "list_agents":
@@ -310,9 +314,7 @@ describe("the controls of a tab whose pick rode argv", () => {
     const { getByLabelText } = mount(true);
 
     await waitFor(() => expect(channels.length).toBeGreaterThan(0));
-    channels[channels.length - 1].onmessage?.(
-      initFrame({ model: "claude-opus-5", permissionMode: "acceptEdits" }),
-    );
+    channels[channels.length - 1].onmessage?.(initFrame({ model: "claude-opus-5", permissionMode: "acceptEdits" }));
 
     await waitFor(() => expect(getByLabelText("Permission mode").textContent).toContain("Accept edits"));
     expect(getByLabelText("Model").textContent).toContain("Opus");

@@ -178,7 +178,10 @@ for (const s of switches) {
 
 // The summary the baseline table is filled from.
 const stat = (list, pick) => {
-  const v = list.map(pick).filter((n) => n != null).sort((a, b) => a - b);
+  const v = list
+    .map(pick)
+    .filter((n) => n != null)
+    .sort((a, b) => a - b);
   if (!v.length) return "n/a";
   const p = (q) => v[Math.min(v.length - 1, Math.floor(v.length * q))];
   return `n=${v.length} median ${p(0.5).toFixed(1)}ms  p90 ${p(0.9).toFixed(1)}ms  max ${v[v.length - 1].toFixed(1)}ms`;
@@ -216,9 +219,7 @@ for (let i = 1; i < switches.length; i++) {
 }
 const stalled = [...gapByPass].filter(([, g]) => g.gap > STALL_MS);
 console.log("\nvalidity");
-console.log(
-  `  null paints       ${nulls.length}${nulls.length ? ` (${nulls.map((s) => s.key).join(", ")})` : ""}`,
-);
+console.log(`  null paints       ${nulls.length}${nulls.length ? ` (${nulls.map((s) => s.key).join(", ")})` : ""}`);
 for (const [p, g] of gapByPass) {
   console.log(`  max gap ${p.padEnd(18)} ${g.gap.toFixed(0)}ms before ${g.key}`);
 }
@@ -227,7 +228,12 @@ console.log(`  verdict           ${!nulls.length && !stalled.length ? "valid" : 
 const waits = [...backById.values()]
   .map((b) => (jsById.has(b.id) ? b.enter - jsById.get(b.id).call : null))
   .filter((n) => n != null);
-console.log(`  queue wait        ${stat(waits.map((w) => ({ w })), (x) => x.w)}`);
+console.log(
+  `  queue wait        ${stat(
+    waits.map((w) => ({ w })),
+    (x) => x.w,
+  )}`,
+);
 
 // Main-thread work, from `TORI_RECIPE=work` or any traced run: one row per
 // seam. A task pushes the next paint out by about its own length, so a frame
@@ -278,7 +284,8 @@ if (works.length) {
       row.block.push(Math.max(ms <= w.frame ? ms : 0, share));
     }
   }
-  const pct = (v, q) => (v.length ? v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * q))] : null);
+  const pct = (v, q) =>
+    v.length ? v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * q))] : null;
   console.log(`\nmain-thread work (block = a dropped frame's gap, or the seam itself; gate ${GATE_MS}ms)`);
   for (const [p, v] of controls) console.log(`  control ${p.padEnd(14)} median frame ${pct(v, 0.5).toFixed(1)}ms`);
   for (const [name, r] of [...bySeam].sort()) {

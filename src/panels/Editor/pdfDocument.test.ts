@@ -201,9 +201,7 @@ describe("pdfFailureMessage", () => {
 
   it("says so for a password-protected file", () => {
     const err = Object.assign(new Error("password"), { name: "PasswordException" });
-    expect(pdfFailureMessage(A, err)).toBe(
-      "a.pdf is password-protected, and Tori cannot open protected PDFs.",
-    );
+    expect(pdfFailureMessage(A, err)).toBe("a.pdf is password-protected, and Tori cannot open protected PDFs.");
   });
 
   it("falls back to naming the file for anything else, including a text file renamed .pdf", () => {

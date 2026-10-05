@@ -212,10 +212,7 @@ function memberFolder(member: Member): string | null {
 }
 
 /** Every member of a Topic, in member order, tinted. */
-export function tintedMembers(
-  topic: Pick<Topic, "members"> | null | undefined,
-  spaces: SpaceTint[],
-): TintedMember[] {
+export function tintedMembers(topic: Pick<Topic, "members"> | null | undefined, spaces: SpaceTint[]): TintedMember[] {
   if (!topic) return [];
   return [...topic.members].sort((a, b) => a.order - b.order).map((m) => tintedMember(m, spaces));
 }

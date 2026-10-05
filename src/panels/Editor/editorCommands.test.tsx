@@ -65,15 +65,8 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvicted
 
 const { default: Editor } = await import("./Editor");
 const { enterRoots } = await import("../../utils/gitActions");
-const {
-  emitWith,
-  OPEN_IN_EDITOR,
-  EDITOR_CLOSE_TAB,
-  EDITOR_GOTO_LINE,
-  GIT_STAGE_ACTIVE,
-  GIT_COMMIT,
-  TOAST,
-} = await import("../../utils/events");
+const { emitWith, OPEN_IN_EDITOR, EDITOR_CLOSE_TAB, EDITOR_GOTO_LINE, GIT_STAGE_ACTIVE, GIT_COMMIT, TOAST } =
+  await import("../../utils/events");
 
 const selection = {
   spaceName: "space",
@@ -254,9 +247,7 @@ describe("commands the editor answers", () => {
     const on = (e: Event) => toasts.push((e as CustomEvent<{ message: string }>).detail.message);
     window.addEventListener(TOAST, on);
     emitWith(GIT_STAGE_ACTIVE, null);
-    await waitFor(() =>
-      expect(invokedWith("git_stage")).toEqual([{ projectPath: MEMBER_B, paths: ["src/b.ts"] }]),
-    );
+    await waitFor(() => expect(invokedWith("git_stage")).toEqual([{ projectPath: MEMBER_B, paths: ["src/b.ts"] }]));
     window.removeEventListener(TOAST, on);
 
     expect(toasts).toEqual([]);

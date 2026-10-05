@@ -5,13 +5,7 @@ import { createMemo, getOwner, onCleanup, runWithOwner, type Owner } from "solid
 import { layoutRoot } from "../layout/layoutStore";
 import { visibleLeaves } from "../layout/paneLayout";
 import type { MenuItem } from "../components/Menu/rows";
-import {
-  emitWith,
-  MOVE_TAB_TO_PANE,
-  type MoveTabToPane,
-  SPLIT_PANE,
-  type SplitPane,
-} from "../utils/events";
+import { emitWith, MOVE_TAB_TO_PANE, type MoveTabToPane, SPLIT_PANE, type SplitPane } from "../utils/events";
 import {
   activeIdInPane,
   homePane,
@@ -148,7 +142,12 @@ export function paneActiveId(ws: string, paneId: string): string | null {
   const tabs = paneTabs(ws, paneId);
   // The terminal kinds claim the workspace's tab, which is never the dock's.
   const claimed = isShellsKey(ws) ? [dockActiveId()].filter((id): id is string => !!id) : claimedIds(tabs);
-  return activeIdInPane(ws, paneId, tabs.map((t) => t.id), claimed);
+  return activeIdInPane(
+    ws,
+    paneId,
+    tabs.map((t) => t.id),
+    claimed,
+  );
 }
 
 /** Does this pane speak for the kind: is it where the kind's tabs land, and so
@@ -206,8 +205,7 @@ export function paneMenuItems(ws: string, tab: TabRef): MenuItem[] {
   return [
     ...others.map((l) => ({
       label: `Move to pane ${order.indexOf(l.id) + 1}`,
-      onClick: () =>
-        emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: tab.id, kind: tab.kind, paneId: l.id }),
+      onClick: () => emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: tab.id, kind: tab.kind, paneId: l.id }),
     })),
     ...(others.length ? [{ separator: true } as MenuItem] : []),
     // The lock is a property of the box rather than of a tab, so it is written
@@ -239,7 +237,10 @@ export function paneMenuItems(ws: string, tab: TabRef): MenuItem[] {
  * the other panes' tabs where they were.
  */
 export function reorderPane(ws: string, next: UnifiedTab[]) {
-  stampOrder(ws, next.map((t) => t.id));
+  stampOrder(
+    ws,
+    next.map((t) => t.id),
+  );
   const done = new Set<unknown>();
   for (const t of next) {
     const entry = maybeKindEntry(t.kind);

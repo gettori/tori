@@ -30,8 +30,8 @@
 //! `cfg(test)`. The real Codex and ACP transports replace them wholesale.
 
 use super::model::{
-    ChatCommand, ChatEvent, FileEditKind, PermissionMode, PlanItem, PlanItemStatus, ToolKind, ToolStatus,
-    TurnOutcome, Usage,
+    ChatCommand, ChatEvent, FileEditKind, PermissionMode, PlanItem, PlanItemStatus, ToolKind, ToolStatus, TurnOutcome,
+    Usage,
 };
 
 // ---------------------------------------------------------------------------
@@ -375,8 +375,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
         // confirmed by the `set_config_option` answer, which no measured agent skips.
         AcpSessionUpdate::CurrentModeUpdate => ChatEvent::SessionError {
             session_id: sid(),
-            message: "acp current_mode_update is dropped; a mode is confirmed by the config option answer"
-                .into(),
+            message: "acp current_mode_update is dropped; a mode is confirmed by the config option answer".into(),
             fatal: false,
         },
     }
@@ -619,7 +618,11 @@ mod tests {
             // Across serde too, since the frontend reads these and a rename or
             // a case convention there would be just as silent.
             let wire = serde_json::to_string(&mode).expect("a mode serializes");
-            assert_eq!(wire, format!("\"{id}\""), "a mode must cross the boundary as its own id");
+            assert_eq!(
+                wire,
+                format!("\"{id}\""),
+                "a mode must cross the boundary as its own id"
+            );
             let back: PermissionMode = serde_json::from_str(&wire).expect("a mode deserializes");
             assert_eq!(back, mode);
         }
@@ -674,16 +677,26 @@ mod tests {
     /// neutral, an unaskable one is not.
     #[test]
     fn every_command_is_answerable_by_a_agent_that_is_not_claude() {
-        let steer = ChatCommand::Steer { session_id: "s1".into(), blocks: vec![] };
+        let steer = ChatCommand::Steer {
+            session_id: "s1".into(),
+            blocks: vec![],
+        };
         assert_eq!(codex_support(&steer), Support::Refuses);
         assert_eq!(acp_support(&steer), Support::Refuses);
 
         // Not every verb may refuse, or the trait would describe nothing two
         // agents share. Send, interrupt and close are the floor.
         for cmd in [
-            ChatCommand::SendTurn { session_id: "s1".into(), blocks: vec![] },
-            ChatCommand::Interrupt { session_id: "s1".into() },
-            ChatCommand::Close { session_id: "s1".into() },
+            ChatCommand::SendTurn {
+                session_id: "s1".into(),
+                blocks: vec![],
+            },
+            ChatCommand::Interrupt {
+                session_id: "s1".into(),
+            },
+            ChatCommand::Close {
+                session_id: "s1".into(),
+            },
         ] {
             assert_eq!(codex_support(&cmd), Support::Native, "{cmd:?} is the shared floor");
             assert_eq!(acp_support(&cmd), Support::Native, "{cmd:?} is the shared floor");

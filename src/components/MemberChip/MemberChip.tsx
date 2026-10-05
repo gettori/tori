@@ -6,8 +6,7 @@ import type { ChipStyle, TintedMember } from "../../utils/topicMembers";
 import { isReference } from "../../utils/topics";
 import styles from "./MemberChip.module.css";
 
-export interface MemberChipProps
-  extends Omit<JSX.HTMLAttributes<HTMLSpanElement>, "style" | "children"> {
+export interface MemberChipProps extends Omit<JSX.HTMLAttributes<HTMLSpanElement>, "style" | "children"> {
   icon: ProjectIconSource;
   /** The Space hue on its own, for callers holding a `MemberRoot`. */
   tint?: string;

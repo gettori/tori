@@ -8,9 +8,12 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, UNITS_GIT_MAX, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams,
-    HoldResolveParams, IssueGetParams, MintParams, PrGetParams, PrWatchParams, PendingParams, SessionAnswerParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, WaitParams, WorktreeParams,
+    params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams,
+    CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
+    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
+    ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
+    ProjectIconParams, ProjectSetParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,14 +46,29 @@ impl CallerKind {
     }
 }
 
-const ANYONE: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker];
+const ANYONE: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Worker,
+];
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
 // A person at a shell, an outside client or a paired phone; no agent session can start a spend.
 const NOT_SESSIONS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Device];
 // A paired device reads and drives chats; it spawns only a plain chat and never writes or acts outward.
-const ANYONE_AND_DEVICES: &[CallerKind] =
-    &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Worker, CallerKind::Device];
-const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat, CallerKind::Device];
+const ANYONE_AND_DEVICES: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Worker,
+    CallerKind::Device,
+];
+const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Device,
+];
 // What a phone's screens read and switch, kept off every agent's tool list.
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
 const CHATS: &[CallerKind] = &[CallerKind::Chat];
@@ -547,6 +565,9 @@ mod tests {
             assert!(!offered_with(row, false), "{name} off");
             assert!(offered_with(row, true), "{name} on");
         }
-        assert!(offered_with(find("pr.get").unwrap(), false), "other rows ignore the setting");
+        assert!(
+            offered_with(find("pr.get").unwrap(), false),
+            "other rows ignore the setting"
+        );
     }
 }

@@ -393,13 +393,7 @@ function PdfDocumentView(props: {
     });
   }
 
-  async function render(
-    d: PDFDocumentProxy,
-    canvas: HTMLCanvasElement,
-    i: number,
-    s: number,
-    size: PageSize,
-  ) {
+  async function render(d: PDFDocumentProxy, canvas: HTMLCanvasElement, i: number, s: number, size: PageSize) {
     tasks.get(i)?.cancel();
     tasks.delete(i);
     const page = await d.getPage(i + 1);

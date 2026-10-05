@@ -51,7 +51,8 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   // happens to use for Claude: `before-state` is Tori reading the file ahead of
   // the write, `agent-supplied` is the agent sending it, and a reader on an ACP
   // agent needs to know theirs depends on which agent they picked.
-  diffs: "A tool card can show what a write changed, either because Tori recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
+  diffs:
+    "A tool card can show what a write changed, either because Tori recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
   budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
   attachmentMentions:
     "What the agent can open when handed a path it already has: a file dragged from the tree or mentioned with @. Each becomes a labelled path like [Image 1] the message can name.",
@@ -131,10 +132,7 @@ function ModelsPane(props: {
   const rowText = (m: CatalogModel) => ({
     name: m.displayName || m.value,
     id: m.value,
-    effort:
-      m.supportsEffort && m.supportedEffortLevels.length
-        ? m.supportedEffortLevels.join(" · ")
-        : "",
+    effort: m.supportsEffort && m.supportedEffortLevels.length ? m.supportedEffortLevels.join(" · ") : "",
   });
   /** Fuzzy, per field, marks included: `fuzzyMatch` is the same subsequence
    *  walk the palette and the settings search run, and returning the ranges
@@ -160,8 +158,7 @@ function ModelsPane(props: {
    *  catalogue that never carried one, which renders as nothing rather than as
    *  a tier Tori guessed. */
   const plan = () => catalogue()?.account?.subscriptionType.trim() ?? "";
-  const fact = () =>
-    props.account ? [plan(), modelCount()].filter(Boolean).join(", ") : modelCount();
+  const fact = () => (props.account ? [plan(), modelCount()].filter(Boolean).join(", ") : modelCount());
 
   return (
     <>
@@ -233,44 +230,42 @@ function ModelsPane(props: {
                     them, so the effort ladders keep the full width. */}
                 <OverlayScroll class={styles.modelScroll}>
                   <ul class={styles.modelList}>
-                  <For each={visibleModels()}>
-                    {(m) => {
-                      // The same call that kept the row on screen, so what is
-                      // marked is the actual reason it is here.
-                      const hit = () => rowHit(m) ?? { name: [], id: [], effort: [] };
-                      return (
-                        <li class={styles.modelRow}>
-                          <span class={styles.modelName}>
-                            <Mark text={rowText(m).name} ranges={hit().name} />
-                          </span>
-                          <code class={styles.modelId}>
-                            <Mark text={m.value} ranges={hit().id} />
-                          </code>
-                          {/* Said out loud, because its provenance differs: the
+                    <For each={visibleModels()}>
+                      {(m) => {
+                        // The same call that kept the row on screen, so what is
+                        // marked is the actual reason it is here.
+                        const hit = () => rowHit(m) ?? { name: [], id: [], effort: [] };
+                        return (
+                          <li class={styles.modelRow}>
+                            <span class={styles.modelName}>
+                              <Mark text={rowText(m).name} ranges={hit().name} />
+                            </span>
+                            <code class={styles.modelId}>
+                              <Mark text={m.value} ranges={hit().id} />
+                            </code>
+                            {/* Said out loud, because its provenance differs: the
                               user wrote this id in the agent's own settings and
                               Tori passes it through unresolved. */}
-                          <Show when={m.userConfigured}>
-                            <span class={styles.chip}>yours</span>
-                          </Show>
-                          <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
-                            <span class={styles.modelEffort}>
-                              <Mark text={rowText(m).effort} ranges={hit().effort} />
-                            </span>
-                          </Show>
-                        </li>
-                      );
-                    }}
-                  </For>
-                </ul>
+                            <Show when={m.userConfigured}>
+                              <span class={styles.chip}>yours</span>
+                            </Show>
+                            <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
+                              <span class={styles.modelEffort}>
+                                <Mark text={rowText(m).effort} ranges={hit().effort} />
+                              </span>
+                            </Show>
+                          </li>
+                        );
+                      }}
+                    </For>
+                  </ul>
                   <Show when={models().length && !visibleModels().length}>
                     <div class={styles.modelsNone}>No model matches "{modelQuery().trim()}".</div>
                   </Show>
                 </OverlayScroll>
               </div>
               <Show when={!cat().models.length}>
-                <div class={styles.cardMeta}>
-                  {props.agentLabel} answered, and named no models it can run.
-                </div>
+                <div class={styles.cardMeta}>{props.agentLabel} answered, and named no models it can run.</div>
               </Show>
               {/* No footnotes under the list - not the probe date, not the
                   account it answered for, not the staleness flag. All were
@@ -291,9 +286,7 @@ function ModelsPane(props: {
                     {(o) => (
                       <li class={styles.modelRow}>
                         <span class={styles.modelName}>{o.name}</span>
-                        <code class={styles.modelId}>
-                          {o.kind === "select" ? o.current : o.value ? "on" : "off"}
-                        </code>
+                        <code class={styles.modelId}>{o.kind === "select" ? o.current : o.value ? "on" : "off"}</code>
                         {/* A lever the agent has and will not take reads the
                             same here as in a chat: shown, with its reason. */}
                         <Show when={o.disabled && o.note}>
@@ -307,8 +300,7 @@ function ModelsPane(props: {
                   </For>
                 </ul>
                 <div class={styles.hint}>
-                  Set these in a chat with {props.agentLabel}, where they mirror the agent's own
-                  controls.
+                  Set these in a chat with {props.agentLabel}, where they mirror the agent's own controls.
                 </div>
               </Show>
             </>
@@ -349,8 +341,7 @@ export default function AgentDetail(props: {
   const installed = () => a().status !== "notFound";
   // The one drift direction worth surfacing: strictly older than the version
   // the adapter was measured against. Ahead of it is the steady state.
-  const behind = () =>
-    a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
+  const behind = () => a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
   // The page has two shapes. An agent that is not usable yet gets the setup
   // steps; one that is gets its accounts. Never both. Any signed-in account
   // makes it usable, and a signed-out default then signs in from its own row.
@@ -373,9 +364,7 @@ export default function AgentDetail(props: {
   const [modelsAccount, setModelsAccount] = createSignal<string | null>(null);
   // The picked one while it is still there, the first otherwise, which is also
   // what a switch to another agent lands on.
-  const shownAccount = () =>
-    accounts().find((p) => p.id === modelsAccount()) ?? accounts()[0];
-
+  const shownAccount = () => accounts().find((p) => p.id === modelsAccount()) ?? accounts()[0];
 
   // All of these are reads of the adapter file, no probe behind any, which is
   // what allows fetching them on every page open. Errors collapse to null: a
@@ -404,8 +393,7 @@ export default function AgentDetail(props: {
     (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }).catch(() => null),
   );
   const inheritedHome = () => accountsView()?.inheritedHome ?? null;
-  const terminal = (r: InstallRoute | null | undefined) =>
-    r && r.type === "terminal" ? r : null;
+  const terminal = (r: InstallRoute | null | undefined) => (r && r.type === "terminal" ? r : null);
   const installCmd = () => terminal(installRoute());
   const updateCmd = () => terminal(updateRoute());
   const uninstallCmd = () => terminal(uninstallRoute());
@@ -444,8 +432,7 @@ export default function AgentDetail(props: {
   const verdict = () => {
     if (!installed()) return { label: "Not installed", cls: "" };
     if (signedOutEverywhere(a())) return { label: "Sign in", cls: styles.statePillWarn };
-    if (a().chatProgramMissing)
-      return { label: `Chat needs ${a().chatProgramMissing}`, cls: styles.statePillWarn };
+    if (a().chatProgramMissing) return { label: `Chat needs ${a().chatProgramMissing}`, cls: styles.statePillWarn };
     return { label: "Ready", cls: styles.statePillOk };
   };
 
@@ -487,9 +474,7 @@ export default function AgentDetail(props: {
             <Show when={a().version}>{(v) => <span class={styles.detailVersion}>{v()}</span>}</Show>
           </div>
           <div class={styles.detailProgram}>
-            <code>
-              {installed() ? (a().path ?? a().program) : "not found on your login shell"}
-            </code>
+            <code>{installed() ? (a().path ?? a().program) : "not found on your login shell"}</code>
           </div>
         </div>
         <span class={`${styles.statePill} ${verdict().cls}`}>{verdict().label}</span>
@@ -503,10 +488,7 @@ export default function AgentDetail(props: {
             checked={agentChosen(a().id)}
             disabled={enableBlockedReason(a().id) !== null && !agentChosen(a().id)}
             aria-label={`Offer ${a().label} in Tori`}
-            tooltip={
-              enableBlockedReason(a().id) ??
-              (agentChosen(a().id) ? "Disable in Tori" : "Enable in Tori")
-            }
+            tooltip={enableBlockedReason(a().id) ?? (agentChosen(a().id) ? "Disable in Tori" : "Enable in Tori")}
             onChange={(next) => setAgentEnabled(a().id, next)}
           />
         </span>
@@ -524,8 +506,7 @@ export default function AgentDetail(props: {
           <div class={styles.bannerBody}>
             <div class={styles.bannerTitle}>Update available</div>
             <div class={styles.bannerText}>
-              You are running {a().label} {a().version} and {verifiedVersion(a().verifiedAgainst)}{" "}
-              is available.
+              You are running {a().label} {a().version} and {verifiedVersion(a().verifiedAgainst)} is available.
             </div>
             <Show when={updateCmd()}>
               {(cmd) => (
@@ -549,8 +530,8 @@ export default function AgentDetail(props: {
       <Show when={a().chatProgramMissing}>
         {(program) => (
           <div class={styles.hint}>
-            Chat runs through <code>{program()}</code>, which is not on your login shell's PATH.
-            The terminal works without it.
+            Chat runs through <code>{program()}</code>, which is not on your login shell's PATH. The terminal works
+            without it.
           </div>
         )}
       </Show>
@@ -560,8 +541,8 @@ export default function AgentDetail(props: {
       <Show when={a().apiKeySource}>
         {(source) => (
           <div class={styles.hint}>
-            <code>{source()}</code> is set in this environment, so {a().label} bills against that
-            API key rather than the subscription it is signed in with.
+            <code>{source()}</code> is set in this environment, so {a().label} bills against that API key rather than
+            the subscription it is signed in with.
           </div>
         )}
       </Show>
@@ -584,14 +565,10 @@ export default function AgentDetail(props: {
         <div class={styles.setupSteps}>
           {/* Step 1: the binary. */}
           <div class={styles.setupStep} classList={{ [styles.stepDone]: installed() }}>
-            <span class={styles.stepBadge}>
-              {installed() ? <Icon icon={Check} size={12} /> : "1"}
-            </span>
+            <span class={styles.stepBadge}>{installed() ? <Icon icon={Check} size={12} /> : "1"}</span>
             <div class={styles.stepBody}>
               <div class={styles.stepHead}>
-                <span class={styles.stepTitle}>
-                  {installed() ? "Installed" : `Install the ${a().program} binary`}
-                </span>
+                <span class={styles.stepTitle}>{installed() ? "Installed" : `Install the ${a().program} binary`}</span>
                 <Show when={installed()}>
                   <span class={styles.stepState}>done</span>
                 </Show>
@@ -605,21 +582,16 @@ export default function AgentDetail(props: {
                 </Match>
                 <Match when={installCmd()}>
                   <div class={styles.stepDesc}>
-                    Tori opens a terminal and runs the install for you. Come back here when it
-                    finishes.
+                    Tori opens a terminal and runs the install for you. Come back here when it finishes.
                   </div>
                 </Match>
                 {/* No [install] table means instructions, never a guessed
                     package manager. */}
                 <Match when={installRoute()}>
-                  {(route) => (
-                    <div class={styles.stepDesc}>{installNote(a().label, a().program, route())}</div>
-                  )}
+                  {(route) => <div class={styles.stepDesc}>{installNote(a().label, a().program, route())}</div>}
                 </Match>
               </Switch>
-              <Show when={installCmd()}>
-                {(cmd) => <CmdLine text={[cmd().program, ...cmd().args].join(" ")} />}
-              </Show>
+              <Show when={installCmd()}>{(cmd) => <CmdLine text={[cmd().program, ...cmd().args].join(" ")} />}</Show>
               <Show when={!installed() && installCmd()}>
                 <div class={styles.stepActions}>
                   <Button size="sm" onClick={() => void runVerb("install", installCmd())}>
@@ -672,9 +644,8 @@ export default function AgentDetail(props: {
               <Show when={inheritedHome()}>
                 {(inherited) => (
                   <div class={styles.hint}>
-                    Tori started with the home variable set to <code>{inherited()}</code>, so this
-                    step is about that folder's login, not your own. Start Tori from a shell
-                    without it to get yours back.
+                    Tori started with the home variable set to <code>{inherited()}</code>, so this step is about that
+                    folder's login, not your own. Start Tori from a shell without it to get yours back.
                   </div>
                 )}
               </Show>
@@ -721,9 +692,7 @@ export default function AgentDetail(props: {
             list would be whichever of them probed last. */}
         <Show
           when={accounts().length > 1}
-          fallback={
-            <ModelsPane agentId={a().id} agentLabel={a().label} profile={null} account={null} />
-          }
+          fallback={<ModelsPane agentId={a().id} agentLabel={a().label} profile={null} account={null} />}
         >
           {/* Keyed, so switching accounts builds a fresh pane: the filter box
               holds a query about the list that was on screen. */}
@@ -847,12 +816,9 @@ export default function AgentDetail(props: {
         onChange={(e) => savePath(e.currentTarget.value)}
       />
       <div class={styles.hint}>
-        Overrides the discovered binary for new chat sessions. Leave empty to use the one found
-        above.
+        Overrides the discovered binary for new chat sessions. Leave empty to use the one found above.
       </div>
-      <Show when={a().overridePath}>
-        {(path) => <div class={styles.hint}>Overridden by {path()}</div>}
-      </Show>
+      <Show when={a().overridePath}>{(path) => <div class={styles.hint}>Overridden by {path()}</div>}</Show>
       {/* Only when there is a binary to remove and a declared command to do it
           with: an uninstall section for an agent that is not installed, or with
           no verified command, would be a button that can only guess. Danger
@@ -869,8 +835,7 @@ export default function AgentDetail(props: {
               <span class={styles.sectionRule} />
             </div>
             <div class={styles.cardMeta}>
-              Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the
-              vendor's own update.
+              Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the vendor's own update.
             </div>
             <div class={styles.cardActions}>
               <Button size="sm" onClick={() => void runVerb("update", cmd())}>
@@ -888,8 +853,8 @@ export default function AgentDetail(props: {
               <span class={styles.sectionRule} />
             </div>
             <div class={styles.cardMeta}>
-              Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the
-              vendor's own removal. Your sign-in and settings stay wherever the agent keeps them.
+              Opens a terminal running <code>{[cmd().program, ...cmd().args].join(" ")}</code>, the vendor's own
+              removal. Your sign-in and settings stay wherever the agent keeps them.
             </div>
             <div class={styles.cardActions}>
               <Button size="sm" variant="danger" onClick={() => void runVerb("uninstall", cmd())}>

@@ -108,8 +108,8 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
             Ready, running the bundled adapter {a().adapterVersion} on {a().program} {a().version}.
           </Match>
           <Match when={a().adapterVersion}>
-            Ready, running the bundled adapter {a().adapterVersion}. {a().program} does not report a
-            version, so Tori cannot check it.
+            Ready, running the bundled adapter {a().adapterVersion}. {a().program} does not report a version, so Tori
+            cannot check it.
           </Match>
           <Match when={a().version}>Installed, version {a().version}.</Match>
           <Match when={true}>Installed. It does not report a version, so Tori cannot check it.</Match>
@@ -150,9 +150,8 @@ export default function DapSection() {
             </For>
           </div>
           <div class={styles.note}>
-            A language with no adapter still opens, edits and runs normally, it just cannot be
-            debugged from here. Add one with a TOML file in <code>~/.config/tori/dap/</code>; see
-            DEBUGGERS.md.
+            A language with no adapter still opens, edits and runs normally, it just cannot be debugged from here. Add
+            one with a TOML file in <code>~/.config/tori/dap/</code>; see DEBUGGERS.md.
           </div>
         </Match>
       </Switch>

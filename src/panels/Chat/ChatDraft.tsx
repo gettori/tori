@@ -140,8 +140,7 @@ export default function ChatDraft(props: {
       version: agentVersion,
     }),
   );
-  const mine = () =>
-    providers().find((p) => p.agentId === props.agentId && p.profile === props.profile) ?? null;
+  const mine = () => providers().find((p) => p.agentId === props.agentId && p.profile === props.profile) ?? null;
   const models = () => mine()?.models ?? [];
   const pick = () => draftPick(props.tabId);
   // The palette drops the options on its way to `PickableModel`, so the mirror
@@ -185,12 +184,7 @@ export default function ChatDraft(props: {
    */
   createEffect(() => {
     if (!models().length || hasPick(untrack(() => draftPick(props.tabId)))) return;
-    const restored = restoredPicks(
-      models(),
-      chatPrefs(props.workspace),
-      chatConfig(),
-      agentModes().modes,
-    );
+    const restored = restoredPicks(models(), chatPrefs(props.workspace), chatConfig(), agentModes().modes);
     const model = restored.model ?? models()[0];
     if (!model) return;
     setDraftPick(props.tabId, {
@@ -243,12 +237,7 @@ export default function ChatDraft(props: {
     // picking `auto` on a model that has it and then switching to one that does
     // not leaves the draft still asking for `auto`, which the CLI accepts, exits
     // 0 on, and silently runs as something else.
-    const mode = modeAfterModelSwitch(
-      picked,
-      findAdapter(props.agentId).chat ?? null,
-      shownMode(),
-      agentModes().modes,
-    );
+    const mode = modeAfterModelSwitch(picked, findAdapter(props.agentId).chat ?? null, shownMode(), agentModes().modes);
     setDraftPick(props.tabId, { model: picked.value, ...(mode !== null ? { mode } : {}) });
   }
 
@@ -373,9 +362,7 @@ export default function ChatDraft(props: {
               onSet={(configId, value) => setDraftOption(props.tabId, configId, value)}
             />
             <FollowToggle />
-            <Show when={blocked()}>
-              {(reason) => <span class={styles.barNote}>{reason()}</span>}
-            </Show>
+            <Show when={blocked()}>{(reason) => <span class={styles.barNote}>{reason()}</span>}</Show>
           </>
         }
       />

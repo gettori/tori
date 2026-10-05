@@ -81,15 +81,15 @@ const MAX_TURNS: usize = 40;
 /// session's checkpoint trees, this is the whole schedule. Kept separate from
 /// the diffing so the ordering rules (which are the part that goes wrong) test
 /// without a repo.
-pub fn work_plan(
-    turns: &[AgentTurn],
-    trees: &HashMap<String, Vec<(u64, String)>>,
-    live: &str,
-) -> Vec<Step> {
+pub fn work_plan(turns: &[AgentTurn], trees: &HashMap<String, Vec<(u64, String)>>, live: &str) -> Vec<Step> {
     let mut ordered: Vec<&AgentTurn> = turns.iter().collect();
     // By time across sessions: two chats in one worktree write the same file in
     // whatever order they ran, and the later write is the one that survives.
-    ordered.sort_by(|a, b| a.prompt_ts.cmp(&b.prompt_ts).then_with(|| a.session_id.cmp(&b.session_id)));
+    ordered.sort_by(|a, b| {
+        a.prompt_ts
+            .cmp(&b.prompt_ts)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
     if ordered.len() > MAX_TURNS {
         ordered.drain(..ordered.len() - MAX_TURNS);
     }
@@ -114,18 +114,30 @@ pub fn work_plan(
             .unwrap_or_else(|| live.to_string());
         if let Some(prev) = &at {
             if *prev != before {
-                plan.push(Step { turn: None, before: prev.clone(), after: before.clone() });
+                plan.push(Step {
+                    turn: None,
+                    before: prev.clone(),
+                    after: before.clone(),
+                });
             }
         }
         at = Some(after.clone());
-        plan.push(Step { turn: Some(turn.clone()), before, after });
+        plan.push(Step {
+            turn: Some(turn.clone()),
+            before,
+            after,
+        });
     }
     // The tail: whatever moved after the last recorded turn (the user's own
     // typing, another session's write) belongs to nobody, but the lines it
     // added still have to be counted or every line below them is off.
     if let Some(prev) = at {
         if prev != live {
-            plan.push(Step { turn: None, before: prev, after: live.to_string() });
+            plan.push(Step {
+                turn: None,
+                before: prev,
+                after: live.to_string(),
+            });
         }
     }
     plan
@@ -155,7 +167,11 @@ fn parse_hunks(diff: &str) -> Vec<Hunk> {
             };
             let (old_start, old_count) = field(old)?;
             let (_, new_count) = field(new)?;
-            Some(Hunk { old_start, old_count, new_count })
+            Some(Hunk {
+                old_start,
+                old_count,
+                new_count,
+            })
         })
         .collect()
 }
@@ -170,7 +186,11 @@ fn apply_hunks(attr: &mut Vec<i32>, hunks: &[Hunk], value: i32) {
     for h in hunks {
         // A pure insertion is `-a,0`, and git's `a` there is the line it comes
         // *after*, not the line it lands on.
-        let start = if h.old_count == 0 { h.old_start as isize } else { h.old_start as isize - 1 };
+        let start = if h.old_count == 0 {
+            h.old_start as isize
+        } else {
+            h.old_start as isize - 1
+        };
         let start = (start + delta).clamp(0, attr.len() as isize) as usize;
         let end = (start + h.old_count).min(attr.len());
         attr.splice(start..end, std::iter::repeat(value).take(h.new_count));
@@ -180,7 +200,9 @@ fn apply_hunks(attr: &mut Vec<i32>, hunks: &[Hunk], value: i32) {
 
 fn capture(repo: &str, args: &[&str]) -> Option<String> {
     let out = crate::exec::git_in(repo).args(args).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// How many lines the file has in a given tree. Zero when it is not in it at
@@ -189,7 +211,9 @@ fn line_count(repo: &str, tree: &str, file: &str) -> usize {
     let spec = format!("{tree}:{file}");
     // Untrimmed, deliberately: a file whose last line is blank would otherwise
     // come back one line short, and every line below the first hunk with it.
-    capture(repo, &["show", &spec]).map(|text| text.split_inclusive('\n').count()).unwrap_or(0)
+    capture(repo, &["show", &spec])
+        .map(|text| text.split_inclusive('\n').count())
+        .unwrap_or(0)
 }
 
 /// Walk the plan and stamp each line with the turn that wrote it.
@@ -226,7 +250,10 @@ pub fn resolve_lines(repo: &str, file: &str, plan: &[Step]) -> Vec<i32> {
 /// carries a stat cache for the files of one worktree; sharing one across repos
 /// would make every snapshot a full re-hash.
 fn live_index_path(repo: &str) -> PathBuf {
-    let slug: String = repo.chars().map(|c| if c == '/' || c == '\\' { '_' } else { c }).collect();
+    let slug: String = repo
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+        .collect();
     crate::owned_state::config_dir().join("agent-lines-index").join(slug)
 }
 
@@ -251,13 +278,23 @@ pub fn agent_lines(project_path: String, file: String, sessions: Vec<String>) ->
         }));
     }
     if turns.is_empty() {
-        return Ok(AgentLines { lines: Vec::new(), turns: Vec::new() });
+        return Ok(AgentLines {
+            lines: Vec::new(),
+            turns: Vec::new(),
+        });
     }
     let Ok(live) = write_tree_scratch(&project_path, &live_index_path(&project_path)) else {
-        return Ok(AgentLines { lines: Vec::new(), turns: Vec::new() });
+        return Ok(AgentLines {
+            lines: Vec::new(),
+            turns: Vec::new(),
+        });
     };
     let mut trees: HashMap<String, Vec<(u64, String)>> = HashMap::new();
-    for session in turns.iter().map(|t| t.session_id.clone()).collect::<std::collections::HashSet<_>>() {
+    for session in turns
+        .iter()
+        .map(|t| t.session_id.clone())
+        .collect::<std::collections::HashSet<_>>()
+    {
         let list = checkpoint_trees(&project_path, &session);
         trees.insert(session, list);
     }
@@ -267,7 +304,10 @@ pub fn agent_lines(project_path: String, file: String, sessions: Vec<String>) ->
     // payload naming turns that nothing points at invites a reader of it to
     // conclude something about the file.
     if lines.is_empty() {
-        return Ok(AgentLines { lines, turns: Vec::new() });
+        return Ok(AgentLines {
+            lines,
+            turns: Vec::new(),
+        });
     }
     // In plan order, which is the order `resolve_lines` numbered them in.
     let named: Vec<AgentTurn> = plan.iter().filter_map(|s| s.turn.clone()).collect();
@@ -276,18 +316,25 @@ pub fn agent_lines(project_path: String, file: String, sessions: Vec<String>) ->
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
+    use std::process::Command;
 
     fn turn(session: &str, ts: u64, ordinal: usize) -> AgentTurn {
-        AgentTurn { session_id: session.into(), prompt_ts: ts, ordinal }
+        AgentTurn {
+            session_id: session.into(),
+            prompt_ts: ts,
+            ordinal,
+        }
     }
 
     fn trees_of(pairs: &[(&str, &[(u64, &str)])]) -> HashMap<String, Vec<(u64, String)>> {
         pairs
             .iter()
             .map(|(s, list)| {
-                (s.to_string(), list.iter().map(|(ts, tree)| (*ts, tree.to_string())).collect())
+                (
+                    s.to_string(),
+                    list.iter().map(|(ts, tree)| (*ts, tree.to_string())).collect(),
+                )
             })
             .collect()
     }
@@ -304,7 +351,11 @@ mod tests {
 
         let plan = work_plan(&turns, &trees, "live");
 
-        let named: Vec<u64> = plan.iter().filter_map(|s| s.turn.as_ref()).map(|t| t.prompt_ts).collect();
+        let named: Vec<u64> = plan
+            .iter()
+            .filter_map(|s| s.turn.as_ref())
+            .map(|t| t.prompt_ts)
+            .collect();
         assert_eq!(named, vec![30, 700, 1990]);
         // Three named turns, two crossings between them, one tail. Not 200.
         assert_eq!(plan.len(), 6);
@@ -320,8 +371,7 @@ mod tests {
 
         let plan = work_plan(&turns, &trees, "live");
 
-        let chain: Vec<(&str, &str)> =
-            plan.iter().map(|s| (s.before.as_str(), s.after.as_str())).collect();
+        let chain: Vec<(&str, &str)> = plan.iter().map(|s| (s.before.as_str(), s.after.as_str())).collect();
         assert_eq!(chain, vec![("t3", "t4"), ("t4", "t9"), ("t9", "live")]);
         // The crossing between the two recorded turns is claimed by nobody.
         assert!(plan[1].turn.is_none(), "a gap belongs to no turn");
@@ -340,8 +390,7 @@ mod tests {
 
         let plan = work_plan(&turns, &by_session, "live");
 
-        let named: Vec<usize> =
-            plan.iter().filter_map(|s| s.turn.as_ref()).map(|t| t.ordinal).collect();
+        let named: Vec<usize> = plan.iter().filter_map(|s| s.turn.as_ref()).map(|t| t.ordinal).collect();
         assert_eq!(named.len(), MAX_TURNS);
         assert_eq!(named.first(), Some(&61), "the oldest kept, not the oldest written");
         assert_eq!(named.last(), Some(&100), "and the newest turn is always in");
@@ -373,7 +422,14 @@ mod tests {
             .map(|t| (t.session_id.as_str(), t.prompt_ts))
             .collect();
         assert_eq!(named, vec![("a", 20), ("b", 50)]);
-        assert_eq!(plan[1], Step { turn: None, before: "a2".into(), after: "b1".into() });
+        assert_eq!(
+            plan[1],
+            Step {
+                turn: None,
+                before: "a2".into(),
+                after: "b1".into()
+            }
+        );
     }
 
     #[test]
@@ -393,9 +449,21 @@ mod tests {
         assert_eq!(
             parse_hunks(diff),
             vec![
-                Hunk { old_start: 1, old_count: 2, new_count: 3 },
-                Hunk { old_start: 7, old_count: 1, new_count: 0 },
-                Hunk { old_start: 0, old_count: 0, new_count: 4 },
+                Hunk {
+                    old_start: 1,
+                    old_count: 2,
+                    new_count: 3
+                },
+                Hunk {
+                    old_start: 7,
+                    old_count: 1,
+                    new_count: 0
+                },
+                Hunk {
+                    old_start: 0,
+                    old_count: 0,
+                    new_count: 4
+                },
             ]
         );
     }
@@ -442,7 +510,12 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "t@t.test")
             .output()
             .unwrap();
-        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn tmp_repo() -> (PathBuf, String) {
@@ -459,8 +532,9 @@ mod tests {
     fn cleanup(dir: &Path, session: &str) {
         std::fs::remove_dir_all(dir).ok();
         std::fs::remove_file(live_index_path(&dir.to_string_lossy())).ok();
-        let touched =
-            crate::owned_state::config_dir().join("checkpoint-touched").join(session);
+        let touched = crate::owned_state::config_dir()
+            .join("checkpoint-touched")
+            .join(session);
         std::fs::remove_dir_all(touched).ok();
         crate::checkpoint::remove_indexes(session);
     }
@@ -491,7 +565,13 @@ mod tests {
 
         ran_turn(&dir, &session, 100, "f.txt", "one\nfrom-turn-one\ntwo\n");
         ran_turn(&dir, &session, 200, "f.txt", "one\nfrom-turn-one\ntwo\nfrom-turn-two\n");
-        ran_turn(&dir, &session, 300, "f.txt", "one\nfrom-turn-one\ntwo\nfrom-turn-two\nfrom-turn-three\n");
+        ran_turn(
+            &dir,
+            &session,
+            300,
+            "f.txt",
+            "one\nfrom-turn-one\ntwo\nfrom-turn-two\nfrom-turn-three\n",
+        );
 
         let out = agent_lines(
             dir.to_string_lossy().into_owned(),
@@ -528,12 +608,19 @@ mod tests {
         checkpoint_note_touched(session.clone(), 200, "Bash".into(), vec![]).unwrap();
         std::fs::write(dir.join("f.txt"), "mine\none\nagent\n").unwrap();
 
-        let out =
-            agent_lines(dir.to_string_lossy().into_owned(), "f.txt".into(), vec![session.clone()]).unwrap();
+        let out = agent_lines(
+            dir.to_string_lossy().into_owned(),
+            "f.txt".into(),
+            vec![session.clone()],
+        )
+        .unwrap();
 
         assert_eq!(out.lines[0], -1, "the user's own line is claimed by no turn");
         assert_eq!(out.lines[1], -1, "still the committed line");
-        assert_eq!(out.turns[out.lines[2] as usize].ordinal, 1, "and the agent's line moved down with it");
+        assert_eq!(
+            out.turns[out.lines[2] as usize].ordinal, 1,
+            "and the agent's line moved down with it"
+        );
         cleanup(&dir, &session);
     }
 
@@ -554,8 +641,12 @@ mod tests {
         std::fs::write(dir.join("f.txt"), "mine\none\nagent\n").unwrap();
         ran_turn(&dir, &session, 200, "f.txt", "mine\none\nagent\nagent-again\n");
 
-        let out =
-            agent_lines(dir.to_string_lossy().into_owned(), "f.txt".into(), vec![session.clone()]).unwrap();
+        let out = agent_lines(
+            dir.to_string_lossy().into_owned(),
+            "f.txt".into(),
+            vec![session.clone()],
+        )
+        .unwrap();
 
         assert_eq!(out.turns[out.lines[0] as usize].ordinal, 1, "inside turn 1's interval");
         assert_eq!(out.turns[out.lines[3] as usize].ordinal, 2);
@@ -581,11 +672,18 @@ mod tests {
         )
         .unwrap();
 
-        let out =
-            agent_lines(dir.to_string_lossy().into_owned(), "f.bin".into(), vec![session.clone()]).unwrap();
+        let out = agent_lines(
+            dir.to_string_lossy().into_owned(),
+            "f.bin".into(),
+            vec![session.clone()],
+        )
+        .unwrap();
 
         assert!(out.lines.is_empty());
-        assert!(out.turns.is_empty(), "and no turns pointing at lines that are not there");
+        assert!(
+            out.turns.is_empty(),
+            "and no turns pointing at lines that are not there"
+        );
         cleanup(&dir, &session);
     }
 
@@ -594,8 +692,12 @@ mod tests {
         let (dir, session) = tmp_repo();
         std::fs::write(dir.join("f.txt"), "one\n").unwrap();
 
-        let out =
-            agent_lines(dir.to_string_lossy().into_owned(), "f.txt".into(), vec![session.clone()]).unwrap();
+        let out = agent_lines(
+            dir.to_string_lossy().into_owned(),
+            "f.txt".into(),
+            vec![session.clone()],
+        )
+        .unwrap();
 
         assert!(out.lines.is_empty());
         assert!(out.turns.is_empty());

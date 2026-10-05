@@ -23,7 +23,15 @@ function account(host: string, login: string, auth: AuthState, provider: ForgePr
 }
 
 function host(name: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
-  return { host: name, accounts, gitCredentials: false, gitEverywhere: false, defaultAccount: null, appId: null, ...extra };
+  return {
+    host: name,
+    accounts,
+    gitCredentials: false,
+    gitEverywhere: false,
+    defaultAccount: null,
+    appId: null,
+    ...extra,
+  };
 }
 
 function routes(baseUrl: string, provider: ForgeProvider): SignInRoutes {
@@ -116,7 +124,10 @@ export const State03TwoHosts: Story = {
     stubHost([
       host(
         "github.com",
-        [account("github.com", "octocat", signedIn("octocat")), account("github.com", "octocat-review", signedIn("octocat-review"))],
+        [
+          account("github.com", "octocat", signedIn("octocat")),
+          account("github.com", "octocat-review", signedIn("octocat-review")),
+        ],
         { gitCredentials: true, defaultAccount: "github-com-octocat" },
       ),
       host("gitlab.com", [account("gitlab.com", "a.mehta", signedIn("a.mehta"), "gitlab")]),
@@ -156,9 +167,7 @@ export const State06BlockedOrg: Story = {
       host("github.com", [
         {
           ...account("github.com", "octocat", signedIn("octocat")),
-          orgAccess: [
-            { org: "acme", url: "https://github.com/orgs/acme/sso?authorization_request=AR_kgD" },
-          ],
+          orgAccess: [{ org: "acme", url: "https://github.com/orgs/acme/sso?authorization_request=AR_kgD" }],
         },
       ]),
     ]);

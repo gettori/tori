@@ -107,7 +107,7 @@
 /* The shared icon button draws the rest of it. Only the open state is this
    button's own, and it hangs off `aria-expanded` rather than the toggle's
    `aria-pressed`: what a menu trigger is, is open. */
-.stripMenuButton[aria-expanded='true'] {
+.stripMenuButton[aria-expanded="true"] {
   color: var(--fg-default);
   border-color: var(--brand-default);
 }
@@ -1709,11 +1709,11 @@ button.diffHunkHeader:hover {
 }
 
 .noticeDetails > summary::before {
-  content: '▸ ';
+  content: "▸ ";
 }
 
 .noticeDetails[open] > summary::before {
-  content: '▾ ';
+  content: "▾ ";
 }
 
 /* Wraps and stays readable at length: the summary is prose, not a status line,
@@ -2857,7 +2857,8 @@ button.attachmentBody:hover {
   max-width: calc(260px * var(--ui-scale));
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-pill);
-  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
   background: var(--canvas-input);
   color: var(--fg-muted);
   font-size: var(--tori-text-md);
@@ -3000,7 +3001,9 @@ button.attachmentBody:hover {
 .chat[data-cockpit] .composerBox {
   border-color: var(--progress-border);
   border-radius: calc(22px * var(--ui-scale));
-  box-shadow: 0 0 0 calc(4px * var(--ui-scale)) var(--progress-subtle), var(--shadow-md);
+  box-shadow:
+    0 0 0 calc(4px * var(--ui-scale)) var(--progress-subtle),
+    var(--shadow-md);
 }
 
 .chat[data-cockpit] .sendButton {

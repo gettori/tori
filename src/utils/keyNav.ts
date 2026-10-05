@@ -55,12 +55,7 @@ export function stepFocus(container: Element, selector: string, delta: 1 | -1): 
   const all = [...container.querySelectorAll<HTMLElement>(selector)];
   if (!all.length) return false;
   const from = all.indexOf(document.activeElement as HTMLElement);
-  const to =
-    from < 0
-      ? delta === 1
-        ? 0
-        : all.length - 1
-      : Math.max(0, Math.min(all.length - 1, from + delta));
+  const to = from < 0 ? (delta === 1 ? 0 : all.length - 1) : Math.max(0, Math.min(all.length - 1, from + delta));
   if (to === from) return false;
   all[to].focus();
   return true;

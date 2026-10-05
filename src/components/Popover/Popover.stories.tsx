@@ -55,12 +55,7 @@ export const Anchored: Story = {
                 gap: "var(--tori-space-3)",
               }}
             >
-              <input
-                ref={field}
-                type="text"
-                placeholder="Search sessions"
-                aria-label="Search sessions"
-              />
+              <input ref={field} type="text" placeholder="Search sessions" aria-label="Search sessions" />
               <div style={{ color: "var(--fg-muted)", "font-size": "var(--tori-text-sm)" }}>
                 The wrapper draws the surface; this box is the caller's layout.
               </div>

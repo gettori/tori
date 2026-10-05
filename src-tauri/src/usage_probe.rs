@@ -107,7 +107,10 @@ pub fn parse(account: Option<&Value>, limits: Option<&Value>) -> UsageProbe {
     let Some(rl) = limits.and_then(|l| l.get("rateLimits")) else {
         return out;
     };
-    out.reached_type = rl.get("rateLimitReachedType").and_then(Value::as_str).map(str::to_string);
+    out.reached_type = rl
+        .get("rateLimitReachedType")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     if out.plan_type.is_none() {
         out.plan_type = rl.get("planType").and_then(Value::as_str).map(str::to_string);
     }
@@ -180,11 +183,7 @@ fn quoting(error: String, said: Stderr) -> String {
 }
 
 /// The client half of one JSON-RPC session, to the point of both answers.
-fn exchange(
-    mut stdin: impl Write,
-    stdout: impl BufRead,
-    methods: &[&str],
-) -> Result<Vec<Value>, String> {
+fn exchange(mut stdin: impl Write, stdout: impl BufRead, methods: &[&str]) -> Result<Vec<Value>, String> {
     let mut lines = stdout.lines();
     let mut send = |v: Value| -> Result<(), String> {
         writeln!(stdin, "{v}").map_err(|e| format!("codex app-server closed its input: {e}"))?;
@@ -262,7 +261,11 @@ pub fn probe_with(program: &str, args: &[String], deadline: Duration) -> Result<
     // when the kill below closes the pipe, so joining it would wait out the
     // hang the deadline exists to cut short.
     thread::spawn(move || {
-        let answers = exchange(stdin, BufReader::new(stdout), &["account/read", "account/rateLimits/read"]);
+        let answers = exchange(
+            stdin,
+            BufReader::new(stdout),
+            &["account/read", "account/rateLimits/read"],
+        );
         let _ = tx.send(answers);
     });
 
@@ -271,7 +274,10 @@ pub fn probe_with(program: &str, args: &[String], deadline: Duration) -> Result<
     match answered {
         Ok(Ok(answers)) => Ok(parse(answers.first(), answers.get(1))),
         Ok(Err(e)) => Err(quoting(e, said)),
-        Err(_) => Err(format!("codex app-server did not answer within {}s", deadline.as_secs())),
+        Err(_) => Err(format!(
+            "codex app-server did not answer within {}s",
+            deadline.as_secs()
+        )),
     }
 }
 
@@ -320,7 +326,10 @@ mod tests {
         assert_eq!(probe.windows[0].utilization, Some(0.03));
         assert_eq!(probe.windows[0].resets_at, Some(1_788_665_968));
         assert_eq!(probe.windows[1].resets_at, Some(1_788_955_629));
-        assert!(probe.windows.iter().all(|w| w.reached_type.is_none()), "nothing was hit");
+        assert!(
+            probe.windows.iter().all(|w| w.reached_type.is_none()),
+            "nothing was hit"
+        );
     }
 
     #[test]
@@ -348,7 +357,11 @@ mod tests {
         let probe = parse(None, Some(&limits));
 
         assert_eq!(probe.reached_type.as_deref(), Some("workspace_owner_credits_depleted"));
-        assert!(probe.windows.iter().all(|w| w.reached_type.is_some()), "{:?}", probe.windows);
+        assert!(
+            probe.windows.iter().all(|w| w.reached_type.is_some()),
+            "{:?}",
+            probe.windows
+        );
     }
 
     #[test]
@@ -374,8 +387,8 @@ mod tests {
             read -r _limits
             printf '%s\n' '{"jsonrpc":"2.0","id":3,"error":{"code":401,"message":"not logged in"}}'
         "#;
-        let err = probe_with("/bin/sh", &sh(script), Duration::from_secs(5))
-            .expect_err("a refused read is not a reading");
+        let err =
+            probe_with("/bin/sh", &sh(script), Duration::from_secs(5)).expect_err("a refused read is not a reading");
         assert!(err.contains("not logged in"), "{err}");
     }
 
@@ -410,7 +423,10 @@ mod tests {
             .expect_err("a server that never answers has said nothing");
 
         assert!(err.contains("did not answer"), "{err}");
-        assert!(started.elapsed() < Duration::from_secs(5), "it returned on its own deadline");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "it returned on its own deadline"
+        );
     }
 
     /// A server that dies before answering explains itself on stderr and
@@ -446,7 +462,13 @@ mod tests {
             ["five_hour", "seven_day"],
             "the committed capture in dev/fixtures/usage/ names 300 and 10080 minutes: {probe:?}"
         );
-        assert!(probe.windows.iter().all(|w| w.utilization.is_some_and(|u| (0.0..=1.0).contains(&u))));
-        assert!(probe.plan_type.is_some(), "the plan rides on the same exchange: {probe:?}");
+        assert!(probe
+            .windows
+            .iter()
+            .all(|w| w.utilization.is_some_and(|u| (0.0..=1.0).contains(&u))));
+        assert!(
+            probe.plan_type.is_some(),
+            "the plan rides on the same exchange: {probe:?}"
+        );
     }
 }

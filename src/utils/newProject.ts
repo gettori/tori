@@ -25,7 +25,11 @@ git clone --bare -- "$url" "$proj/.bare" &&
 
 /** The folder name a clone of `url` would get. */
 export const nameFromUrl = (url: string) =>
-  url.replace(/\/+$/, "").split("/").pop()?.replace(/\.git$/, "") ?? "";
+  url
+    .replace(/\/+$/, "")
+    .split("/")
+    .pop()
+    ?.replace(/\.git$/, "") ?? "";
 
 /** Why a job cannot create `name` in the space, or null once the target is
  *  free. `add_folder` checks for itself; a clone only fails once it has run. */

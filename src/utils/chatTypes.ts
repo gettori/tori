@@ -250,10 +250,7 @@ export type ChatConfigOption = {
   disabled: boolean;
   /// Why it is disabled, in the agent's own words. Empty when nothing is.
   note: string;
-} & (
-  | { kind: "select"; current: string; choices: ChatConfigChoice[] }
-  | { kind: "boolean"; value: boolean }
-);
+} & ({ kind: "select"; current: string; choices: ChatConfigChoice[] } | { kind: "boolean"; value: boolean });
 
 export type ChatConfigChoice = { value: string; label: string; description: string };
 

@@ -146,8 +146,7 @@ describe("the agents table", () => {
       }),
     ]);
     await findByText("Outdated");
-    const pill = (id: string) =>
-      container.querySelector(`[data-agent="${id}"] .${styles.statePill}`)?.textContent;
+    const pill = (id: string) => container.querySelector(`[data-agent="${id}"] .${styles.statePill}`)?.textContent;
     expect(pill("claude")).toBe("Outdated");
     expect(pill("copilot")).toBe("Ready");
   });
@@ -187,9 +186,7 @@ describe("the agents table", () => {
   it("re-runs the sweep from the title row's reload button", async () => {
     const r = await mount();
     fireEvent.click(await r.findByLabelText("Check again"));
-    await waitFor(() =>
-      expect(invoked.mock.calls.some((c) => c[0] === "refresh_agent_health")).toBe(true),
-    );
+    await waitFor(() => expect(invoked.mock.calls.some((c) => c[0] === "refresh_agent_health")).toBe(true));
   });
 
   // The chat palette's "Fix" row sends the reader here. The ask survives the
@@ -209,9 +206,7 @@ describe("the agents table", () => {
   // about the switch, so a usable agent nobody has turned on still reads Ready.
   it("keeps the state column health-only, whichever way the switch is set", async () => {
     const off = await mount(undefined, undefined, {});
-    expect(
-      (await off.findByText("Ready")).textContent,
-    ).toBe("Ready");
+    expect((await off.findByText("Ready")).textContent).toBe("Ready");
     off.unmount();
     const on = await mount();
     expect((await on.findByText("Ready")).textContent).toBe("Ready");
@@ -255,9 +250,7 @@ describe("the agents table", () => {
   // which is what says the machinery landed on the visible track.
   it("describes the switch on hover", async () => {
     const r = await mount(undefined, undefined, { claude: true });
-    const track = r.container.querySelector(
-      `[data-agent="claude"] ~ .${switchStyles.root} .${switchStyles.control}`,
-    );
+    const track = r.container.querySelector(`[data-agent="claude"] ~ .${switchStyles.root} .${switchStyles.control}`);
     expect(track?.hasAttribute("data-closed")).toBe(true);
   });
 
@@ -266,8 +259,9 @@ describe("the agents table", () => {
     fireEvent.click(await r.findByLabelText("Offer Claude in Tori"));
     await waitFor(() => {
       const call = invoked.mock.calls.find((c) => c[0] === "set_settings");
-      expect((call?.[1] as { settings: { agent: { enabled: Record<string, boolean> } } })?.settings.agent.enabled)
-        .toEqual({ claude: true });
+      expect(
+        (call?.[1] as { settings: { agent: { enabled: Record<string, boolean> } } })?.settings.agent.enabled,
+      ).toEqual({ claude: true });
     });
   });
 

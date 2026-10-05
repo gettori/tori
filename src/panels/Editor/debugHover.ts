@@ -92,7 +92,12 @@ const hoverTheme = EditorView.baseTheme({
     fontSize: "var(--editor-font-size, 13px)",
   },
   ".cm-debug-hover-type": { flex: "none", color: "var(--fg-subtle)" },
-  ".cm-debug-hover-value": { minWidth: "0", color: "var(--fg-default)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+  ".cm-debug-hover-value": {
+    minWidth: "0",
+    color: "var(--fg-default)",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
 });
 
 /**
@@ -123,9 +128,5 @@ export async function debugTooltipAt(state: EditorState, pos: number): Promise<T
 }
 
 export function debugHover(path: string): Extension {
-  return [
-    debugHoverFile.of(path),
-    hoverTooltip((view, pos) => debugTooltipAt(view.state, pos)),
-    hoverTheme,
-  ];
+  return [debugHoverFile.of(path), hoverTooltip((view, pos) => debugTooltipAt(view.state, pos)), hoverTheme];
 }

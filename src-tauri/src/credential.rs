@@ -156,8 +156,15 @@ pub(crate) fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Res
     let _ = std::fs::remove_file(&tmp);
     // Created 0600 rather than narrowed after, so the token is never readable
     // by anyone else, not even between two calls.
-    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
-    let text = serde_json::to_string(&BridgeFile { sock: sock.to_string(), token: token.to_string() })?;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)?;
+    let text = serde_json::to_string(&BridgeFile {
+        sock: sock.to_string(),
+        token: token.to_string(),
+    })?;
     file.write_all(text.as_bytes())?;
     std::fs::rename(tmp, path)
 }
@@ -174,16 +181,26 @@ pub fn spawn_env() -> Vec<(String, String)> {
     let Some((sock, token)) = SOCKET.get() else {
         return Vec::new();
     };
-    let inherited = std::env::var("GIT_CONFIG_COUNT").ok().and_then(|n| n.parse().ok()).unwrap_or(0);
+    let inherited = std::env::var("GIT_CONFIG_COUNT")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0);
     git_env(&accounts::load(), &helper_config(), sock, token, inherited)
 }
 
 fn git_env(file: &AccountsFile, helper: &str, sock: &str, token: &str, inherited: usize) -> Vec<(String, String)> {
-    let hosts: Vec<&String> = file.hosts.keys().filter(|host| accounts::git_credentials(file, host)).collect();
+    let hosts: Vec<&String> = file
+        .hosts
+        .keys()
+        .filter(|host| accounts::git_credentials(file, host))
+        .collect();
     if hosts.is_empty() {
         return Vec::new();
     }
-    let mut env = vec![(ENV_SOCK.to_string(), sock.to_string()), (ENV_TOKEN.to_string(), token.to_string())];
+    let mut env = vec![
+        (ENV_SOCK.to_string(), sock.to_string()),
+        (ENV_TOKEN.to_string(), token.to_string()),
+    ];
     // Numbered on from whatever list the process inherited, which renumbering
     // from zero would silently cut short.
     let mut n = inherited;
@@ -212,10 +229,19 @@ fn helper_entries(host: &str, helper: &str) -> [(String, String); 3] {
 /// includes, so turning the last one off never has to tell Tori's values apart
 /// from the user's.
 pub fn sync_global_config(file: &AccountsFile) -> Result<(), String> {
-    let hosts: Vec<&str> =
-        file.hosts.keys().map(String::as_str).filter(|host| accounts::git_everywhere(file, host)).collect();
+    let hosts: Vec<&str> = file
+        .hosts
+        .keys()
+        .map(String::as_str)
+        .filter(|host| accounts::git_everywhere(file, host))
+        .collect();
     let home = dirs::home_dir().unwrap_or_default();
-    sync_config(&hosts, &helper_config(), &crate::owned_state::config_dir().join("gitconfig"), &global_config_path(&home))
+    sync_config(
+        &hosts,
+        &helper_config(),
+        &crate::owned_state::config_dir().join("gitconfig"),
+        &global_config_path(&home),
+    )
 }
 
 fn global_config_path(home: &Path) -> PathBuf {
@@ -223,7 +249,9 @@ fn global_config_path(home: &Path) -> PathBuf {
         return path.into();
     }
     let dotfile = home.join(".gitconfig");
-    let xdg = std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from).join("git/config");
+    let xdg = std::env::var_os("XDG_CONFIG_HOME")
+        .map_or_else(|| home.join(".config"), PathBuf::from)
+        .join("git/config");
     if !dotfile.exists() && xdg.exists() {
         xdg
     } else {
@@ -264,7 +292,10 @@ fn sync_config(hosts: &[&str], helper: &str, own: &Path, global: &Path) -> Resul
         // and `store` there would save Tori's token in plain text.
         let ends_open = std::fs::read(global).is_ok_and(|text| text.last().is_some_and(|b| *b != b'\n'));
         let quoted = include.replace('\\', "\\\\").replace('"', "\\\"");
-        let section = format!("{}[include]\n\tpath = \"{quoted}\"\n", if ends_open { "\n" } else { "" });
+        let section = format!(
+            "{}[include]\n\tpath = \"{quoted}\"\n",
+            if ends_open { "\n" } else { "" }
+        );
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -401,7 +432,9 @@ fn socket_in_env(sock: &str, token: &str) -> Option<(String, String)> {
 
 /// One `key=value` line out of git's request block.
 fn field(input: &str, key: &str) -> Option<String> {
-    input.lines().find_map(|line| Some(line.strip_prefix(key)?.strip_prefix('=')?.to_string()))
+    input
+        .lines()
+        .find_map(|line| Some(line.strip_prefix(key)?.strip_prefix('=')?.to_string()))
 }
 
 #[cfg(test)]
@@ -426,7 +459,10 @@ mod tests {
     #[test]
     fn the_helper_config_survives_a_path_with_spaces() {
         let value = helper_config();
-        assert!(value.starts_with("!'"), "a shell command, so the path can carry the mode: {value}");
+        assert!(
+            value.starts_with("!'"),
+            "a shell command, so the path can carry the mode: {value}"
+        );
         assert!(value.ends_with(&format!("' {ARG}")), "got {value}");
         assert_eq!(quoted("/Apps/My App/tori"), "'/Apps/My App/tori'");
         assert_eq!(quoted("/it's/here"), r"'/it'\''s/here'");
@@ -439,7 +475,10 @@ mod tests {
         let path = dir.join("askpass.json");
         write_bridge(&path, "/tmp/tori-akp-1/s", "credential-token").unwrap();
 
-        assert_eq!(socket_in_file(&path), Some(("/tmp/tori-akp-1/s".to_string(), "credential-token".to_string())));
+        assert_eq!(
+            socket_in_file(&path),
+            Some(("/tmp/tori-akp-1/s".to_string(), "credential-token".to_string()))
+        );
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -477,7 +516,16 @@ mod tests {
         let mut file = AccountsFile::default();
         for (input, provider) in [("github.com", Provider::Github), ("gitlab.com", Provider::Gitlab)] {
             let (base_url, host) = accounts::normalize_base_url(input).unwrap();
-            accounts::add_account(&mut file, provider, &base_url, &host, "skarif2", accounts::Source::Token, None).unwrap();
+            accounts::add_account(
+                &mut file,
+                provider,
+                &base_url,
+                &host,
+                "skarif2",
+                accounts::Source::Token,
+                None,
+            )
+            .unwrap();
         }
         accounts::set_git_credentials(&mut file, "gitlab.com", true);
 
@@ -485,7 +533,12 @@ mod tests {
         let env: HashMap<String, String> = git_env(&file, helper, "/tmp/s", "tok", 2).into_iter().collect();
         assert_eq!(env["GIT_CONFIG_COUNT"], "5", "three entries after the two inherited");
         let entries: Vec<(&str, &str)> = (2..5)
-            .map(|n| (env[&format!("GIT_CONFIG_KEY_{n}")].as_str(), env[&format!("GIT_CONFIG_VALUE_{n}")].as_str()))
+            .map(|n| {
+                (
+                    env[&format!("GIT_CONFIG_KEY_{n}")].as_str(),
+                    env[&format!("GIT_CONFIG_VALUE_{n}")].as_str(),
+                )
+            })
             .collect();
         assert_eq!(
             entries,
@@ -517,7 +570,10 @@ mod tests {
             .output()
             .unwrap();
         let mut ssh = Command::new("git");
-        assert!(bridge(&mut ssh, &repo, "origin", "op-ssh").is_none(), "a key, not a token");
+        assert!(
+            bridge(&mut ssh, &repo, "origin", "op-ssh").is_none(),
+            "a key, not a token"
+        );
         assert_eq!(ssh.get_args().count(), 0);
 
         assert!(!answers_fetch(&repo));

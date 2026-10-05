@@ -6,9 +6,7 @@ import { providerIcon } from "./ProviderIcon";
 /** The brand marks are filled paths; every Lucide glyph is `fill="none"` and
  *  stroked. That one attribute is the whole difference, and it is stable. */
 function isBrandMark(model: string | null, agentId?: string): boolean {
-  const { container, unmount } = render(() => (
-    <Dynamic component={providerIcon(model, agentId)} />
-  ));
+  const { container, unmount } = render(() => <Dynamic component={providerIcon(model, agentId)} />);
   const fill = container.querySelector("svg")?.getAttribute("fill");
   unmount();
   return fill === "currentColor";

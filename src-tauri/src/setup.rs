@@ -72,7 +72,10 @@ static PUBLISH: OnceLock<Publish> = OnceLock::new();
 // Git lists worktrees by canonical path and a caller may not, so both sides of
 // every lookup are canonicalized ([[gotcha_git_worktree_list_reports_canonical_paths]]).
 fn canonical(path: &Path) -> String {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()).to_string_lossy().into_owned()
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn kill_group(pid: u32) {
@@ -99,8 +102,15 @@ impl Runs {
     pub fn start(&'static self, spec: Spec, publish: Publish) -> Report {
         let worktree = canonical(spec.worktree);
         let _ = std::fs::create_dir_all(spec.log_dir);
-        let stem = spec.worktree.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+        let stem = spec
+            .worktree
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
         let log = spec.log_dir.join(format!("{stem}-{nanos}.log"));
 
         let spawned = File::create(&log).and_then(|out| {
@@ -123,15 +133,31 @@ impl Runs {
             Ok(child) => child,
             Err(e) => {
                 note(&log, &format!("setup did not start: {e}"));
-                let report = Report { worktree, state: State::Failed, code: None, log: log_str };
-                self.put(Entry { report: report.clone(), pid: 0 });
+                let report = Report {
+                    worktree,
+                    state: State::Failed,
+                    code: None,
+                    log: log_str,
+                };
+                self.put(Entry {
+                    report: report.clone(),
+                    pid: 0,
+                });
                 publish(&report);
                 return report;
             }
         };
         let pid = child.id();
-        let report = Report { worktree: worktree.clone(), state: State::Running, code: None, log: log_str };
-        self.put(Entry { report: report.clone(), pid });
+        let report = Report {
+            worktree: worktree.clone(),
+            state: State::Running,
+            code: None,
+            log: log_str,
+        };
+        self.put(Entry {
+            report: report.clone(),
+            pid,
+        });
         publish(&report);
 
         let limit = spec.limit;
@@ -168,7 +194,9 @@ impl Runs {
 
     fn finish(&self, pid: u32, state: State, code: Option<i32>) -> Option<Report> {
         let mut entries = self.lock();
-        let entry = entries.iter_mut().find(|e| e.pid == pid && e.report.state == State::Running)?;
+        let entry = entries
+            .iter_mut()
+            .find(|e| e.pid == pid && e.report.state == State::Running)?;
         entry.report.state = state;
         entry.report.code = code;
         let report = entry.report.clone();
@@ -178,18 +206,29 @@ impl Runs {
 
     pub fn status(&self, worktree: &Path) -> Option<Report> {
         let key = canonical(worktree);
-        self.lock().iter().find(|e| same_folder(&e.report.worktree, &key)).map(|e| e.report.clone())
+        self.lock()
+            .iter()
+            .find(|e| same_folder(&e.report.worktree, &key))
+            .map(|e| e.report.clone())
     }
 
     /// The folder's report once its run has exited, or still running at `cap`.
     pub fn wait(&self, worktree: &Path, cap: Duration) -> Option<Report> {
         let key = canonical(worktree);
         let running = |entries: &mut Vec<Entry>| {
-            entries.iter().any(|e| same_folder(&e.report.worktree, &key) && e.report.state == State::Running)
+            entries
+                .iter()
+                .any(|e| same_folder(&e.report.worktree, &key) && e.report.state == State::Running)
         };
         let entries = self.lock();
-        let (entries, _) = self.changed.wait_timeout_while(entries, cap, running).unwrap_or_else(PoisonError::into_inner);
-        entries.iter().find(|e| same_folder(&e.report.worktree, &key)).map(|e| e.report.clone())
+        let (entries, _) = self
+            .changed
+            .wait_timeout_while(entries, cap, running)
+            .unwrap_or_else(PoisonError::into_inner);
+        entries
+            .iter()
+            .find(|e| same_folder(&e.report.worktree, &key))
+            .map(|e| e.report.clone())
     }
 
     /// Kill the folder's run, if one is running, and wait briefly for it to
@@ -227,7 +266,10 @@ fn settings_and_logs() -> (HashMap<String, WorktreePrefs>, PathBuf) {
     if let Some(seam) = TEST_SEAM.with(|s| s.borrow().clone()) {
         return seam;
     }
-    (crate::settings::get_settings().worktree, crate::owned_state::config_dir().join("setup"))
+    (
+        crate::settings::get_settings().worktree,
+        crate::owned_state::config_dir().join("setup"),
+    )
 }
 
 /// The project's setup, when it has a command.
@@ -249,13 +291,23 @@ pub fn set_publisher(app: AppHandle) {
 /// Run the project's setup in a worktree Tori has just created for it.
 pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
     let (prefs, log_dir) = settings_and_logs();
-    let prefs = prefs.into_iter().find(|(key, _)| same_folder(key, project)).map(|(_, p)| p)?;
+    let prefs = prefs
+        .into_iter()
+        .find(|(key, _)| same_folder(key, project))
+        .map(|(_, p)| p)?;
     if prefs.setup_command.trim().is_empty() {
         return None;
     }
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
     let publish = PUBLISH.get().cloned().unwrap_or_else(|| Arc::new(|_: &Report| {}));
-    let spec = Spec { command: &prefs.setup_command, project, worktree, path_env: &path_env, log_dir: &log_dir, limit: LIMIT };
+    let spec = Spec {
+        command: &prefs.setup_command,
+        project,
+        worktree,
+        path_env: &path_env,
+        log_dir: &log_dir,
+        limit: LIMIT,
+    };
     Some(RUNS.start(spec, publish))
 }
 
@@ -308,7 +360,12 @@ mod tests {
     fn exit_0_ends_done_and_the_log_holds_the_output_and_both_vars() {
         let dir = tmp();
         let runs = runs();
-        let started = run(runs, &dir, r#"echo "root=$TORI_PROJECT_ROOT wt=$TORI_WORKTREE_PATH""#, LIMIT);
+        let started = run(
+            runs,
+            &dir,
+            r#"echo "root=$TORI_PROJECT_ROOT wt=$TORI_WORKTREE_PATH""#,
+            LIMIT,
+        );
         assert_eq!(started.state, State::Running);
         let done = settled(runs, &dir);
         assert_eq!((done.state, done.code), (State::Done, Some(0)));
@@ -340,10 +397,17 @@ mod tests {
         let dir = tmp();
         let runs = runs();
         let marker = dir.join("survived");
-        run(runs, &dir, &format!("(sleep 2; touch '{}') & sleep 30", marker.display()), Duration::from_millis(300));
+        run(
+            runs,
+            &dir,
+            &format!("(sleep 2; touch '{}') & sleep 30", marker.display()),
+            Duration::from_millis(300),
+        );
         let report = settled(runs, &dir);
         assert_eq!(report.state, State::Failed);
-        assert!(std::fs::read_to_string(&report.log).unwrap().contains("setup killed after"));
+        assert!(std::fs::read_to_string(&report.log)
+            .unwrap()
+            .contains("setup killed after"));
         thread::sleep(Duration::from_secs(3));
         assert!(!marker.exists(), "a child of the killed setup kept running");
     }
@@ -361,7 +425,13 @@ mod tests {
     fn an_empty_command_starts_nothing() {
         let dir = tmp();
         let mut prefs = HashMap::new();
-        prefs.insert("/the/project".to_string(), WorktreePrefs { setup_command: "  ".into(), setup_wait: true });
+        prefs.insert(
+            "/the/project".to_string(),
+            WorktreePrefs {
+                setup_command: "  ".into(),
+                setup_wait: true,
+            },
+        );
         seam(prefs, dir.join("logs"));
         assert!(on_created("/the/project", &dir.join("wt")).is_none());
         assert!(configured("/the/project").is_none());

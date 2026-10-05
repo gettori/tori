@@ -31,14 +31,7 @@ type Pane = (typeof PANES)[number]["value"];
 function mountPanes(initial: Pane = "files") {
   const [value, setValue] = createSignal<Pane>(initial);
   const onChange = vi.fn((v: Pane) => setValue(v));
-  render(() => (
-    <SegmentedControl
-      options={PANES}
-      value={value()}
-      onChange={onChange}
-      aria-label="Right panel"
-    />
-  ));
+  render(() => <SegmentedControl options={PANES} value={value()} onChange={onChange} aria-label="Right panel" />);
   const seg = (name: string) => screen.getByRole("button", { name });
   return { value, onChange, seg };
 }
@@ -46,12 +39,7 @@ function mountPanes(initial: Pane = "files") {
 describe("SegmentedControl accessibility", () => {
   it("has no violations as a named group of named segments", async () => {
     const { container } = render(() => (
-      <SegmentedControl
-        options={VIEWS}
-        value="list"
-        onChange={() => {}}
-        aria-label="View mode"
-      />
+      <SegmentedControl options={VIEWS} value="list" onChange={() => {}} aria-label="View mode" />
     ));
 
     await expectNoAxeViolations(container);
@@ -165,12 +153,7 @@ describe("SegmentedControl keyboard", () => {
     const [value, setValue] = createSignal<Pane>("files");
     render(() => (
       <div onKeyDown={onFormKeyDown}>
-        <SegmentedControl
-          options={PANES}
-          value={value()}
-          onChange={setValue}
-          aria-label="Right panel"
-        />
+        <SegmentedControl options={PANES} value={value()} onChange={setValue} aria-label="Right panel" />
         <input aria-label="Name" />
       </div>
     ));

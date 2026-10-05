@@ -48,8 +48,7 @@ const bridge: {
 };
 
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
-const readsOf = (path: string) =>
-  sent("fs_read_dir_compact").filter((c) => c.args.path === path);
+const readsOf = (path: string) => sent("fs_read_dir_compact").filter((c) => c.args.path === path);
 
 const listeners = vi.hoisted(() => ({}) as Record<string, ((e: { payload: unknown }) => void)[]>);
 vi.mock("@tauri-apps/api/event", () => ({
@@ -70,23 +69,21 @@ const fsChanged = (root: string, paths: string[]) =>
 vi.mock("@tauri-apps/api/core", async () => {
   const { compactRows } = await import("../../../test/compactDirs");
   return {
-  invoke: (cmd: string, args: Record<string, unknown>) => {
-    bridge.calls.push({ cmd, args });
-    if (cmd === "fs_read_dir_compact")
-      return Promise.resolve(
-        compactRows(bridge.dirs, args as { path: string; compact: boolean; hidden: string[] }),
-      );
-    if (cmd === "fs_read_dir") return Promise.resolve(bridge.dirs[args.path as string] ?? []);
-    if (cmd === "list_project_files")
-      return Promise.resolve(bridge.filesByRoot[args.projectPath as string] ?? bridge.projectFiles);
-    if (cmd === "file_exists") return Promise.resolve(bridge.existing.has(args.path as string));
-    if (cmd === "fs_rename" && bridge.failRename)
-      return Promise.reject("A file or folder with that name already exists.");
-    // The per-workspace overlay. Empty unless a test says otherwise, so every
-    // other case here runs on the user layer exactly as it always did.
-    if (cmd === "get_workspace_settings") return Promise.resolve({ editor: bridge.overlay });
-    return Promise.resolve(null);
-  },
+    invoke: (cmd: string, args: Record<string, unknown>) => {
+      bridge.calls.push({ cmd, args });
+      if (cmd === "fs_read_dir_compact")
+        return Promise.resolve(compactRows(bridge.dirs, args as { path: string; compact: boolean; hidden: string[] }));
+      if (cmd === "fs_read_dir") return Promise.resolve(bridge.dirs[args.path as string] ?? []);
+      if (cmd === "list_project_files")
+        return Promise.resolve(bridge.filesByRoot[args.projectPath as string] ?? bridge.projectFiles);
+      if (cmd === "file_exists") return Promise.resolve(bridge.existing.has(args.path as string));
+      if (cmd === "fs_rename" && bridge.failRename)
+        return Promise.reject("A file or folder with that name already exists.");
+      // The per-workspace overlay. Empty unless a test says otherwise, so every
+      // other case here runs on the user layer exactly as it always did.
+      if (cmd === "get_workspace_settings") return Promise.resolve({ editor: bridge.overlay });
+      return Promise.resolve(null);
+    },
   };
 });
 

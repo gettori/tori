@@ -57,9 +57,7 @@ const config = {
           path: NOTES,
           // A plain-dir project: one unit, no branch, and its project row IS the
           // unit row.
-          branchUnits: [
-            { label: "notes", folderPath: NOTES, branch: null, kind: "plain-dir", isCurrent: false },
-          ],
+          branchUnits: [{ label: "notes", folderPath: NOTES, branch: null, kind: "plain-dir", isCurrent: false }],
         },
       ],
     },
@@ -146,7 +144,22 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve(
         auth.kind === "signedOut"
           ? []
-          : [{ host: "github.com", accounts: [{ id: "personal", provider: "github", baseUrl: "https://github.com", login: "skarif2", label: "skarif2", expiresAt: null, auth }] }],
+          : [
+              {
+                host: "github.com",
+                accounts: [
+                  {
+                    id: "personal",
+                    provider: "github",
+                    baseUrl: "https://github.com",
+                    login: "skarif2",
+                    label: "skarif2",
+                    expiresAt: null,
+                    auth,
+                  },
+                ],
+              },
+            ],
       );
     }
     if (cmd === "forge_repo_account")
@@ -189,8 +202,7 @@ const row = async (label: string) => (await screen.findByText(label)).parentElem
 
 /** A project's own row, which is where the forge's one-door-per-repo lives. */
 const projectRow = async (name: string) => (await screen.findByText(name)).parentElement!;
-const statusAsks = () =>
-  bridge.calls.filter((c) => c.cmd === "forge_unit_statuses").map((c) => c.args.projectPath);
+const statusAsks = () => bridge.calls.filter((c) => c.cmd === "forge_unit_statuses").map((c) => c.args.projectPath);
 
 describe("the forge chip on a branch row", () => {
   beforeEach(() => {
@@ -204,10 +216,7 @@ describe("the forge chip on a branch row", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem(
-      "tori.expanded.v1",
-      JSON.stringify(["p:work/gh", "p:work/gl", "p:work/solo"]),
-    );
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/gh", "p:work/gl", "p:work/solo"]));
   });
 
   it("draws each PR state the poller can report, on the row's second line", async () => {
@@ -273,9 +282,7 @@ describe("the forge chip on a branch row", () => {
     // dropping the no-PR marker chose. The distinction is still real and still
     // pinned, in `forgeChip.test.ts` and by the door asserted just below:
     // `readyForPr` is the half of no-PR that still draws, and inert never can.
-    await waitFor(async () =>
-      expect((await row("shipped")).querySelector("[data-pr-line]")).toBeTruthy(),
-    );
+    await waitFor(async () => expect((await row("shipped")).querySelector("[data-pr-line]")).toBeTruthy());
 
     // gitlab.com has an adapter, so a repo there with no account is offered one
     // rather than left blank. The offer is the repo's, so it is on the repo's
@@ -369,7 +376,14 @@ describe("a failing check reaching the session that owns the branch", () => {
     home: { project: GH, folder: BROKEN, branch: "broken" },
   };
   const liveTabs = [
-    { id: "t1", workspace: BROKEN, kind: "agent" as const, sessionId: "s-broken", agent: "claude" as const, state: "live" as const },
+    {
+      id: "t1",
+      workspace: BROKEN,
+      kind: "agent" as const,
+      sessionId: "s-broken",
+      agent: "claude" as const,
+      state: "live" as const,
+    },
   ];
 
   beforeEach(() => {
@@ -401,9 +415,7 @@ describe("a failing check reaching the session that owns the branch", () => {
 
     // The existing rollup badge, unchanged: the CI failure arrives as a
     // needs-you dot and rides the surface that was already there.
-    await waitFor(() =>
-      expect(broken.querySelector('[title="Waiting for approval"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(broken.querySelector('[title="Waiting for approval"]')).toBeTruthy());
 
     // And only that branch. `shipped` is green and `fresh` has no PR at all.
     const shipped = await row("shipped");

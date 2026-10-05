@@ -27,9 +27,7 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      projects: [
-        { name: "proj", path: WORK, branchUnits: [unit("main", MAIN), unit("wave-3", WAVE)] },
-      ],
+      projects: [{ name: "proj", path: WORK, branchUnits: [unit("main", MAIN), unit("wave-3", WAVE)] }],
     },
   ],
 };

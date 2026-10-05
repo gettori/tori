@@ -61,7 +61,8 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
@@ -93,8 +94,7 @@ async function mountEditor(first: string) {
     />
   ));
   await waitFor(() => expect(dirty.length).toBeGreaterThan(0));
-  const view = () =>
-    EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement)!;
+  const view = () => EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement)!;
 
   /** Close every tab, then open `path`, the way the tab strip would. */
   const close = async (paths: string[]) => {
@@ -279,9 +279,7 @@ describe("what closing takes with it regardless", () => {
     // The Problems list is a list of open files. A closed one still appearing
     // there is a row whose click has nowhere to go.
     const ed = await mountEditor(FILE);
-    publishDiagnostics(FILE, [
-      { line: 1, endLine: 1, column: 1, severity: "error", message: "boom" },
-    ]);
+    publishDiagnostics(FILE, [{ line: 1, endLine: 1, column: 1, severity: "error", message: "boom" }]);
     expect(diagnostics()[FILE]).toHaveLength(1);
 
     await ed.close([FILE]);
@@ -289,4 +287,3 @@ describe("what closing takes with it regardless", () => {
     expect(diagnostics()[FILE]).toBeUndefined();
   });
 });
-

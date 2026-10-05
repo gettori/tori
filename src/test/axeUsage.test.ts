@@ -22,9 +22,7 @@ const CALL = "expectNoAxeViolations(";
 
 /** Comments mention the helper by name, and a mention is not a call. */
 function withoutComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^[ \t]*\/\/.*$/gm, "");
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
 /** The call sites in one file, each with the code immediately before it. */

@@ -14,8 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { adoptSync, resyncRoot, rollupSync, syncFor, syncMarks, syncState, syncUnits } =
-  await import("./branchSync");
+const { adoptSync, resyncRoot, rollupSync, syncFor, syncMarks, syncState, syncUnits } = await import("./branchSync");
 
 const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
@@ -27,7 +26,9 @@ const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
 });
 
 const upstream = (over: Partial<BranchSync["upstream"]>) =>
-  sync({ upstream: { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false, ...over } });
+  sync({
+    upstream: { ahead: 0, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false, ...over },
+  });
 
 const base = (over: Partial<NonNullable<BranchSync["base"]>>) =>
   sync({ base: { name: "main", ahead: 0, behind: 0, conflicts: [], ...over } });
@@ -86,20 +87,24 @@ describe("what a branch's sync facts are worth saying", () => {
   });
 
   it("counts commits unique to the base as work to publish before the first push", () => {
-    const state = syncState(sync({
-      upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false },
-      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
-    }));
+    const state = syncState(
+      sync({
+        upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false },
+        base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+      }),
+    );
     expect(state.level).toBe("unpushed");
     expect(state.label).toBe("↑3");
     expect(state.detail).toContain("3 commits to publish");
   });
 
   it("says a pruned upstream was deleted rather than never pushed", () => {
-    const state = syncState(sync({
-      upstream: { ahead: 0, behind: 0, has_upstream: false, gone: true, rewritten: false, superseded: false },
-      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
-    }));
+    const state = syncState(
+      sync({
+        upstream: { ahead: 0, behind: 0, has_upstream: false, gone: true, rewritten: false, superseded: false },
+        base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+      }),
+    );
     expect(state.label).toBe("deleted");
     expect(state.detail).toContain("remote branch was deleted");
   });
@@ -130,7 +135,14 @@ describe("what a branch's sync facts are worth saying", () => {
   });
 
   it("says nothing for a detached HEAD, or for a branch nothing has answered for", () => {
-    expect(syncState(sync({ detached: true, upstream: { ahead: 0, behind: 4, has_upstream: true, gone: false, rewritten: false, superseded: false } })).level).toBe("none");
+    expect(
+      syncState(
+        sync({
+          detached: true,
+          upstream: { ahead: 0, behind: 4, has_upstream: true, gone: false, rewritten: false, superseded: false },
+        }),
+      ).level,
+    ).toBe("none");
     expect(syncState(null).level).toBe("none");
     expect(syncState(undefined).level).toBe("none");
   });
@@ -177,19 +189,23 @@ describe("the marks a row draws for its remote", () => {
   });
 
   it("counts unpublished commits against the base before an upstream exists", () => {
-    const never = syncMarks(sync({
-      upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false },
-      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
-    }));
+    const never = syncMarks(
+      sync({
+        upstream: { ahead: 0, behind: 0, has_upstream: false, gone: false, rewritten: false, superseded: false },
+        base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+      }),
+    );
     expect(never.map((m) => `${m.kind}${m.count ?? ""}`)).toEqual(["push3"]);
     expect(never[0].title).toBe("3 commits to publish");
   });
 
   it("marks a deleted upstream without counting commits to publish", () => {
-    const gone = syncMarks(sync({
-      upstream: { ahead: 0, behind: 0, has_upstream: false, gone: true, rewritten: false, superseded: false },
-      base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
-    }));
+    const gone = syncMarks(
+      sync({
+        upstream: { ahead: 0, behind: 0, has_upstream: false, gone: true, rewritten: false, superseded: false },
+        base: { name: "main", ahead: 3, behind: 0, conflicts: [] },
+      }),
+    );
     expect(gone.map((m) => `${m.kind}${m.count ?? ""}`)).toEqual(["push"]);
     expect(gone[0].title).toContain("remote branch was deleted");
   });

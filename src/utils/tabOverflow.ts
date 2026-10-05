@@ -42,12 +42,7 @@ export function computeVisibleCount(extents: number[], barWidth: number, r: Rese
  * array unchanged (same ref, a no-op for the signal) when the id is missing or
  * already at the target slot.
  */
-export function moveIntoView<T>(
-  items: T[],
-  id: string,
-  toIndex: number,
-  idOf: (t: T) => string,
-): T[] {
+export function moveIntoView<T>(items: T[], id: string, toIndex: number, idOf: (t: T) => string): T[] {
   const from = items.findIndex((t) => idOf(t) === id);
   if (from < 0) return items;
   const to = Math.max(0, Math.min(toIndex, items.length - 1));

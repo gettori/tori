@@ -37,12 +37,17 @@ export default function SettingsSheet(props: { client: RemoteClient; onDone: () 
               </div>
             </li>
             <li>
-              <button class={`${styles.item} ${styles.setting} ${styles.disconnect}`} onClick={() => props.onDisconnect()}>
+              <button
+                class={`${styles.item} ${styles.setting} ${styles.disconnect}`}
+                onClick={() => props.onDisconnect()}
+              >
                 Disconnect
               </button>
             </li>
           </ul>
-          <p class={styles.footnote}>Disconnect forgets this Tori on the phone. Remove the phone under Settings, Remote on the Mac too.</p>
+          <p class={styles.footnote}>
+            Disconnect forgets this Tori on the phone. Remove the phone under Settings, Remote on the Mac too.
+          </p>
 
           <h2 class={styles.label}>Appearance</h2>
           <ul class={styles.group}>
@@ -74,7 +79,9 @@ export default function SettingsSheet(props: { client: RemoteClient; onDone: () 
               </button>
             </li>
           </ul>
-          <p class={styles.footnote}>Shows the wheel in the bottom bar. Tap it to open the autopilot chat and turn it on or off.</p>
+          <p class={styles.footnote}>
+            Shows the wheel in the bottom bar. Tap it to open the autopilot chat and turn it on or off.
+          </p>
         </div>
       </section>
     </>

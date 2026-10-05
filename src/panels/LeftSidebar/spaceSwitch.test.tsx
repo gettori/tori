@@ -141,10 +141,7 @@ describe("switching spaces", () => {
     // The bookmark is re-read against the tree by folder, and a plain repo's
     // branches all answer to the same one. Without the branch, coming back lands
     // on whichever branch happens to be listed first, and the row lights up there.
-    localStorage.setItem(
-      "tori.expanded.v1",
-      JSON.stringify(["p:work/proj", "p:side/lab", "p:side/repo"]),
-    );
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/proj", "p:side/lab", "p:side/repo"]));
     localStorage.setItem(
       "tori.selection-memory.v1",
       JSON.stringify({

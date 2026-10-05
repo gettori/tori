@@ -90,7 +90,6 @@ describe("the states that render nothing", () => {
     ]);
     expect(chip({ origin: ghe, hosts: registered }).kind).toBe("pr");
   });
-
 });
 
 describe("the door a repo needs before any of it means anything", () => {
@@ -159,24 +158,18 @@ describe("the pull request badge", () => {
       label: "#12",
       title: "Pull request · Let a branch wear its pull request",
     });
-    expect(chip({ status: status({ pullRequest: pull({ isDraft: true }) }) }).pr?.state).toBe(
-      "draft",
-    );
+    expect(chip({ status: status({ pullRequest: pull({ isDraft: true }) }) }).pr?.state).toBe("draft");
   });
 
   it("keeps merged and closed apart from open", () => {
     // The poller only asks for open PRs today, so these arrive from the lookup
     // path. Folding them into "open" would show a green chip on a branch whose
     // PR is gone, which is worse than the extra two cases cost.
-    expect(chip({ status: status({ pullRequest: pull({ state: "merged" }) }) }).pr?.state).toBe(
+    expect(chip({ status: status({ pullRequest: pull({ state: "merged" }) }) }).pr?.state).toBe("merged");
+    expect(chip({ status: status({ pullRequest: pull({ state: "closed" }) }) }).pr?.state).toBe("closed");
+    expect(chip({ status: status({ pullRequest: pull({ state: "merged", isDraft: true }) }) }).pr?.state).toBe(
       "merged",
     );
-    expect(chip({ status: status({ pullRequest: pull({ state: "closed" }) }) }).pr?.state).toBe(
-      "closed",
-    );
-    expect(
-      chip({ status: status({ pullRequest: pull({ state: "merged", isDraft: true }) }) }).pr?.state,
-    ).toBe("merged");
   });
 });
 
@@ -202,7 +195,9 @@ describe("the checks badge", () => {
   });
 
   it("has nothing to report on a branch with no pull request", () => {
-    const c = chip({ status: status({ pullRequest: null, checks: { state: "failure", total: 1, failing: 1, contexts: [] } }) });
+    const c = chip({
+      status: status({ pullRequest: null, checks: { state: "failure", total: 1, failing: 1, contexts: [] } }),
+    });
     expect(c.checks).toBeNull();
     expect(c.review).toBeNull();
   });

@@ -1,6 +1,12 @@
 import { Show, createEffect, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { agentHealth, agentHealthFor, agentReady, ensureAgentHealthLoaded, refreshAgentHealth } from "../../utils/agentHealth";
+import {
+  agentHealth,
+  agentHealthFor,
+  agentReady,
+  ensureAgentHealthLoaded,
+  refreshAgentHealth,
+} from "../../utils/agentHealth";
 import { agents, ensureAdaptersLoaded } from "../../utils/agents";
 import { copyText } from "../../utils/clipboard";
 import type { OpenJob } from "../../utils/events";

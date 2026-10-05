@@ -17,7 +17,10 @@ export default function PhoneIndicator() {
   const [open, setOpen] = createSignal(false);
   let anchor: HTMLButtonElement | undefined;
 
-  const load = () => void invoke<Device[]>("devices_list").then(setDevices).catch(() => {});
+  const load = () =>
+    void invoke<Device[]>("devices_list")
+      .then(setDevices)
+      .catch(() => {});
   onMount(() => {
     load();
     const unlisten = listen("remote://devices", load);

@@ -55,7 +55,8 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
@@ -106,9 +107,7 @@ describe("switching a preference on mid-session", () => {
 
     await setEditorPref({ minimap: true });
 
-    await waitFor(() =>
-      expect(mounted!.container.querySelector(`.${MINIMAP_CLASS}`)).toBeTruthy(),
-    );
+    await waitFor(() => expect(mounted!.container.querySelector(`.${MINIMAP_CLASS}`)).toBeTruthy());
   });
 
   it("takes it away again when the preference goes off", async () => {

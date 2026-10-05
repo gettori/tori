@@ -234,7 +234,10 @@ function reask(wanted: (file: string, projectPath: string) => boolean): void {
 /** `lsp.disabled` changed, in the user's settings or a workspace's: every open
  *  file may now get different servers. */
 export function lspSettingsChanged(): void {
-  void reresolve(() => true, () => forgetResolutions());
+  void reresolve(
+    () => true,
+    () => forgetResolutions(),
+  );
 }
 
 onLspDisabledChange(lspSettingsChanged);
@@ -332,12 +335,7 @@ async function restart(server: LspServer, origin: Origin, live?: Session): Promi
   await queueStart(server, origin.path, origin.projectPath, startedAt);
 }
 
-async function startFor(
-  server: LspServer,
-  path: string,
-  projectPath: string,
-  startedAt: number,
-): Promise<void> {
+async function startFor(server: LspServer, path: string, projectPath: string, startedAt: number): Promise<void> {
   // Torn down before this call reached the front of its server's queue. The
   // project it was opened for is gone, so starting its server now would spawn
   // one nothing will ever use.
@@ -642,8 +640,7 @@ function workspaceDeps(server: LspServer) {
     // edits, so the filesystem is the wrong answer for exactly the files the
     // user is working on.
     bufferText: (path: string) => liveBufferText(path),
-    diskText: (path: string) =>
-      invoke<string>("fs_read_file", { path }).catch(() => null),
+    diskText: (path: string) => invoke<string>("fs_read_file", { path }).catch(() => null),
     languageId: (path: string) => languageIdFor(server, path),
     requestOpen: (path: string) => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path }),
   };
@@ -727,15 +724,12 @@ const serverRequests = createRequestRouter<LspHandle>({
     codeLensRefresh.fire(handle.root);
   },
   [APPLY_EDIT]: (params, handle) =>
-    answerApplyEdit(params, applyDepsFor(handle), (message) =>
-      emitWith<ToastEvent>(TOAST, { message, kind: "error" }),
-    ),
+    answerApplyEdit(params, applyDepsFor(handle), (message) => emitWith<ToastEvent>(TOAST, { message, kind: "error" })),
   // Synchronous, which the router requires and this can honour: the answer is
   // a lookup in a config that was loaded at startup. A session that has gone
   // answers null for every section rather than throwing, since the request can
   // outlive the project it was asked about.
-  [CONFIGURATION]: (params, handle) =>
-    configurationFor(sessions.get(key(handle))?.server.settings ?? null, params),
+  [CONFIGURATION]: (params, handle) => configurationFor(sessions.get(key(handle))?.server.settings ?? null, params),
   // Nothing to set up: a token is tracked from its `begin`.
   [WORK_DONE_CREATE]: () => {},
   // A session already dropped has nobody left to clear its question.
@@ -786,7 +780,9 @@ function secondaryApplyDeps(client: SecondaryClient, userEvent: string): ApplyDe
       const path = uriToPath(uri);
       if (!path) return null;
       const feed = feedFor(path);
-      const text = feed ? null : (liveBufferText(path) ?? (await invoke<string>("fs_read_file", { path }).catch(() => null)));
+      const text = feed
+        ? null
+        : (liveBufferText(path) ?? (await invoke<string>("fs_read_file", { path }).catch(() => null)));
       const doc = feed?.doc ?? (text === null ? null : toDoc(text));
       if (!doc) return null;
       landing.set(path, doc);
@@ -856,7 +852,10 @@ export function notifyLspFileChanged(path: string): void {
   }
   if (isActivationMarker(path)) {
     const dir = path.slice(0, path.lastIndexOf("/"));
-    void reresolve((file) => isUnderPath(file, dir), () => forgetResolutions(dir));
+    void reresolve(
+      (file) => isUnderPath(file, dir),
+      () => forgetResolutions(dir),
+    );
   } else if (path.endsWith("/.tori/settings.json")) {
     lspSettingsChanged();
   }
@@ -960,11 +959,7 @@ export function lspTargets(): LspTarget[] {
  * "asked and refused" that the symbol surfaces return, so a caller can tell it
  * apart from a command that genuinely answered nothing.
  */
-export async function executeServerCommand(
-  target: LspTarget,
-  command: string,
-  args?: unknown[],
-): Promise<unknown> {
+export async function executeServerCommand(target: LspTarget, command: string, args?: unknown[]): Promise<unknown> {
   await target.ready;
   if (!target.supports("executeCommandProvider")) return null;
   return target.request("workspace/executeCommand", { command, arguments: args });

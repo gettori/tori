@@ -61,9 +61,7 @@ describe("ConfirmDialog", () => {
     it("omits the explanation when there is none", () => {
       // Rendered directly rather than through `open`: a spread cannot un-set a
       // prop the helper already named.
-      render(() => (
-        <ConfirmDialog title="Delete branch" onConfirm={vi.fn()} onCancel={vi.fn()} />
-      ));
+      render(() => <ConfirmDialog title="Delete branch" onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
       expect(screen.getByText("Delete branch")).toBeTruthy();
       expect(document.querySelector(`.${styles.msg}`)).toBeNull();

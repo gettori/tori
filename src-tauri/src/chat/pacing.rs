@@ -74,9 +74,21 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// "same stream" would eventually disagree about which run a fragment joins.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Stream {
-    Text { session_id: String, turn_id: String, agent_id: Option<String> },
-    Thinking { session_id: String, turn_id: String, agent_id: Option<String> },
-    ToolInput { session_id: String, turn_id: String, tool_use_id: String },
+    Text {
+        session_id: String,
+        turn_id: String,
+        agent_id: Option<String>,
+    },
+    Thinking {
+        session_id: String,
+        turn_id: String,
+        agent_id: Option<String>,
+    },
+    ToolInput {
+        session_id: String,
+        turn_id: String,
+        tool_use_id: String,
+    },
 }
 
 impl Stream {
@@ -85,15 +97,36 @@ impl Stream {
     /// which is what lets every consumer stay unaware that pacing exists.
     pub(super) fn rejoin(self, text: String) -> ChatEvent {
         match self {
-            Stream::Text { session_id, turn_id, agent_id } => {
-                ChatEvent::TextDelta { session_id, turn_id, text, agent_id }
-            }
-            Stream::Thinking { session_id, turn_id, agent_id } => {
-                ChatEvent::ThinkingDelta { session_id, turn_id, text, agent_id }
-            }
-            Stream::ToolInput { session_id, turn_id, tool_use_id } => {
-                ChatEvent::ToolCallProgress { session_id, turn_id, tool_use_id, partial_input: text }
-            }
+            Stream::Text {
+                session_id,
+                turn_id,
+                agent_id,
+            } => ChatEvent::TextDelta {
+                session_id,
+                turn_id,
+                text,
+                agent_id,
+            },
+            Stream::Thinking {
+                session_id,
+                turn_id,
+                agent_id,
+            } => ChatEvent::ThinkingDelta {
+                session_id,
+                turn_id,
+                text,
+                agent_id,
+            },
+            Stream::ToolInput {
+                session_id,
+                turn_id,
+                tool_use_id,
+            } => ChatEvent::ToolCallProgress {
+                session_id,
+                turn_id,
+                tool_use_id,
+                partial_input: text,
+            },
         }
     }
 }
@@ -106,7 +139,12 @@ impl Stream {
 /// here, not silently unthrottled.
 pub(super) fn split(event: &ChatEvent) -> Option<(Stream, String)> {
     match event {
-        ChatEvent::TextDelta { session_id, turn_id, text, agent_id } => Some((
+        ChatEvent::TextDelta {
+            session_id,
+            turn_id,
+            text,
+            agent_id,
+        } => Some((
             Stream::Text {
                 session_id: session_id.clone(),
                 turn_id: turn_id.clone(),
@@ -114,7 +152,12 @@ pub(super) fn split(event: &ChatEvent) -> Option<(Stream, String)> {
             },
             text.clone(),
         )),
-        ChatEvent::ThinkingDelta { session_id, turn_id, text, agent_id } => Some((
+        ChatEvent::ThinkingDelta {
+            session_id,
+            turn_id,
+            text,
+            agent_id,
+        } => Some((
             Stream::Thinking {
                 session_id: session_id.clone(),
                 turn_id: turn_id.clone(),
@@ -122,7 +165,12 @@ pub(super) fn split(event: &ChatEvent) -> Option<(Stream, String)> {
             },
             text.clone(),
         )),
-        ChatEvent::ToolCallProgress { session_id, turn_id, tool_use_id, partial_input } => Some((
+        ChatEvent::ToolCallProgress {
+            session_id,
+            turn_id,
+            tool_use_id,
+            partial_input,
+        } => Some((
             Stream::ToolInput {
                 session_id: session_id.clone(),
                 turn_id: turn_id.clone(),
@@ -161,7 +209,11 @@ impl Pacer {
             listener,
             interval_ms,
             clock,
-            state: Mutex::new(State { visible, held: None, last_release_ms: now }),
+            state: Mutex::new(State {
+                visible,
+                held: None,
+                last_release_ms: now,
+            }),
         }
     }
 
@@ -325,7 +377,10 @@ mod tests {
         for i in 0..200 {
             pacer.deliver(text_delta("t1", &format!("{i} ")));
         }
-        assert!(seen.events().is_empty(), "a burst inside one interval should release nothing");
+        assert!(
+            seen.events().is_empty(),
+            "a burst inside one interval should release nothing"
+        );
 
         // Four intervals' worth of wall clock, but each release needs a delta to
         // carry it, so the count is bounded by the intervals rather than by the
@@ -336,7 +391,11 @@ mod tests {
                 pacer.deliver(text_delta("t1", &format!("{i} ")));
             }
         }
-        assert_eq!(seen.events().len(), 4, "one release per elapsed interval, not one per delta");
+        assert_eq!(
+            seen.events().len(),
+            4,
+            "one release per elapsed interval, not one per delta"
+        );
     }
 
     /// The other half of the same claim: the chat somebody is reading pays the
@@ -479,7 +538,10 @@ mod tests {
         pacer.set_visible(false);
         pacer.deliver(text_delta("t1", "first hidden fragment"));
 
-        assert!(seen.events().is_empty(), "the minute it spent visible must not buy an immediate release");
+        assert!(
+            seen.events().is_empty(),
+            "the minute it spent visible must not buy an immediate release"
+        );
         hand.advance(HIDDEN_RELEASE_MS);
         pacer.deliver(text_delta("t1", "!"));
         assert_eq!(seen.events(), vec![text_delta("t1", "first hidden fragment!")]);
@@ -494,7 +556,10 @@ mod tests {
         let pacer = paced(&seen, &hand, false);
 
         pacer.deliver(text_delta("t1", "last words"));
-        let ended = ChatEvent::SessionEnded { session_id: "s1".into(), reason: None };
+        let ended = ChatEvent::SessionEnded {
+            session_id: "s1".into(),
+            reason: None,
+        };
         pacer.deliver(ended.clone());
 
         assert_eq!(seen.events(), vec![text_delta("t1", "last words"), ended]);

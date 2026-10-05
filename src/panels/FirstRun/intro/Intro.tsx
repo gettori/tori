@@ -59,11 +59,7 @@ export const SLIDES: Slide[] = [
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-export default function Intro(props: {
-  slide: number;
-  onSlide: (index: number) => void;
-  onDone: () => void;
-}) {
+export default function Intro(props: { slide: number; onSlide: (index: number) => void; onDone: () => void }) {
   const last = () => props.slide === SLIDES.length - 1;
   const current = () => SLIDES[props.slide];
   const back = () => props.onSlide(Math.max(0, props.slide - 1));

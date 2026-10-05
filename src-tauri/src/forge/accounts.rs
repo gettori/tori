@@ -124,12 +124,18 @@ pub struct AccountsFile {
 
 impl Default for AccountsFile {
     fn default() -> Self {
-        Self { version: FILE_VERSION, hosts: BTreeMap::new(), legacy_migrated: false }
+        Self {
+            version: FILE_VERSION,
+            hosts: BTreeMap::new(),
+            legacy_migrated: false,
+        }
     }
 }
 
 pub fn all_accounts(file: &AccountsFile) -> impl Iterator<Item = (&str, &Account)> {
-    file.hosts.iter().flat_map(|(host, r)| r.accounts.iter().map(move |a| (host.as_str(), a)))
+    file.hosts
+        .iter()
+        .flat_map(|(host, r)| r.accounts.iter().map(move |a| (host.as_str(), a)))
 }
 
 pub fn find<'a>(file: &'a AccountsFile, id: &str) -> Option<(&'a str, &'a Account)> {
@@ -139,15 +145,21 @@ pub fn find<'a>(file: &'a AccountsFile, id: &str) -> Option<(&'a str, &'a Accoun
 pub fn normalize_base_url(input: &str) -> Result<(String, String), ForgeError> {
     let trimmed = input.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return Err(ForgeError::Invalid { message: "Enter the host's URL.".into() });
+        return Err(ForgeError::Invalid {
+            message: "Enter the host's URL.".into(),
+        });
     }
-    let invalid = || ForgeError::Invalid { message: format!("{trimmed} is not a host URL.") };
+    let invalid = || ForgeError::Invalid {
+        message: format!("{trimmed} is not a host URL."),
+    };
     let (scheme, rest) = match trimmed.split_once("://") {
         Some((scheme, rest)) => (scheme.to_ascii_lowercase(), rest),
         None => ("https".to_string(), trimmed),
     };
     if scheme == "http" {
-        return Err(ForgeError::Invalid { message: "Tori signs in to hosts over https only.".into() });
+        return Err(ForgeError::Invalid {
+            message: "Tori signs in to hosts over https only.".into(),
+        });
     }
     if scheme != "https" {
         return Err(invalid());
@@ -177,7 +189,11 @@ pub fn add_account(
 ) -> Result<String, ForgeError> {
     let mut taken: Vec<String> = all_accounts(file).map(|(_, a)| a.id.clone()).collect();
     taken.push(MIGRATED_GITHUB_ID.to_string());
-    if let Some(other) = file.hosts.get(host).and_then(|r| r.accounts.iter().find(|a| a.provider != provider)) {
+    if let Some(other) = file
+        .hosts
+        .get(host)
+        .and_then(|r| r.accounts.iter().find(|a| a.provider != provider))
+    {
         return Err(ForgeError::Invalid {
             message: format!("{host} is already added as {}.", other.provider.label()),
         });
@@ -240,7 +256,15 @@ pub fn backfill_source(file: &mut AccountsFile, read: impl Fn(&str) -> Option<St
 /// Readable rather than random, so the keychain entry names who it is for.
 fn mint_id(taken: &[String], host: &str, login: &str) -> String {
     let slug = |s: &str| -> String {
-        s.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect()
+        s.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect()
     };
     let base = format!("{}-{}", slug(host), slug(login));
     if !taken.contains(&base) {
@@ -280,7 +304,11 @@ pub fn note_expiry(file: &mut AccountsFile, id: &str, expires_at: Option<u64>) {
 pub fn note_rejection(file: &mut AccountsFile, id: &str, suspect: bool, now: u64) {
     for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
         if account.id == id {
-            account.rejected_at = if suspect { account.rejected_at.or(Some(now)) } else { None };
+            account.rejected_at = if suspect {
+                account.rejected_at.or(Some(now))
+            } else {
+                None
+            };
         }
     }
 }
@@ -374,7 +402,9 @@ pub fn migrate_legacy(
 pub enum Resolution {
     Account(String),
     /// More than one account on the host and no pick for this repo.
-    Pick { candidates: Vec<String> },
+    Pick {
+        candidates: Vec<String>,
+    },
     NoAccount,
 }
 
@@ -392,19 +422,26 @@ pub fn resolve(file: &AccountsFile, picks: &BTreeMap<String, String>, remote: &R
     match accounts {
         [] => Resolution::NoAccount,
         [only] => Resolution::Account(only.id.clone()),
-        many => Resolution::Pick { candidates: many.iter().map(|a| a.id.clone()).collect() },
+        many => Resolution::Pick {
+            candidates: many.iter().map(|a| a.id.clone()).collect(),
+        },
     }
 }
 
 fn default_account(record: &HostRecord) -> Option<String> {
-    record.default_account.clone().filter(|id| record.accounts.iter().any(|a| &a.id == id))
+    record
+        .default_account
+        .clone()
+        .filter(|id| record.accounts.iter().any(|a| &a.id == id))
 }
 
 pub fn set_default_account(file: &mut AccountsFile, host: &str, id: Option<&str>) -> Result<bool, ForgeError> {
     let record = file.hosts.get_mut(host);
     if let Some(id) = id {
         if !record.as_ref().is_some_and(|r| r.accounts.iter().any(|a| a.id == id)) {
-            return Err(ForgeError::Invalid { message: format!("That account is not on {host}.") });
+            return Err(ForgeError::Invalid {
+                message: format!("That account is not on {host}."),
+            });
         }
     }
     let Some(record) = record else {
@@ -472,7 +509,9 @@ pub fn set_app_id(file: &mut AccountsFile, host: &str, app_id: &str) -> bool {
 /// exists to hand git *an account's* token, so a host with none cannot be on,
 /// which is also what turns it off when the last account goes.
 pub fn git_credentials(file: &AccountsFile, host: &str) -> bool {
-    file.hosts.get(host).is_some_and(|r| r.git_credentials && !r.accounts.is_empty())
+    file.hosts
+        .get(host)
+        .is_some_and(|r| r.git_credentials && !r.accounts.is_empty())
 }
 
 pub fn set_git_credentials(file: &mut AccountsFile, host: &str, on: bool) -> bool {
@@ -531,7 +570,10 @@ pub fn sign_in_routes(
         (Provider::Gitlab, true) => vec!["api", "write_repository"],
     };
     let token_url = match provider {
-        Provider::Github => format!("{base_url}/settings/tokens/new?scopes={}&description=Tori", scopes.join(",")),
+        Provider::Github => format!(
+            "{base_url}/settings/tokens/new?scopes={}&description=Tori",
+            scopes.join(",")
+        ),
         Provider::Gitlab => format!(
             "{base_url}/-/user_settings/personal_access_tokens?name=Tori&scopes={}",
             scopes.join(",")
@@ -576,7 +618,10 @@ pub struct HostView {
 }
 
 pub fn account_view(account: &Account, auth: impl Fn(&str) -> AuthState) -> AccountView {
-    AccountView { account: account.clone(), auth: auth(&account.id) }
+    AccountView {
+        account: account.clone(),
+        auth: auth(&account.id),
+    }
 }
 
 pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostView> {
@@ -589,7 +634,9 @@ pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostVi
             git_credentials: git_credentials(file, host),
             git_everywhere: git_everywhere(file, host),
             default_account: default_account(record),
-            app_id: (host != GITLAB_COM && host != GITHUB_COM).then(|| app_id(file, host)).flatten(),
+            app_id: (host != GITLAB_COM && host != GITHUB_COM)
+                .then(|| app_id(file, host))
+                .flatten(),
         })
         .collect()
 }
@@ -607,17 +654,14 @@ pub fn load() -> AccountsFile {
 }
 
 /// Load, change, save, under one lock so two sign-ins cannot mint one id twice.
-pub fn update<R>(
-    change: impl FnOnce(&mut AccountsFile) -> Result<R, ForgeError>,
-) -> Result<R, ForgeError> {
+pub fn update<R>(change: impl FnOnce(&mut AccountsFile) -> Result<R, ForgeError>) -> Result<R, ForgeError> {
     let lock = crate::exec::named_lock("forge_accounts");
     let _guard = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut file = load();
     let before = file.clone();
     let out = change(&mut file)?;
     if file != before {
-        let text = serde_json::to_string_pretty(&file)
-            .map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
+        let text = serde_json::to_string_pretty(&file).map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
         crate::owned_state::write_atomically(&accounts_path(), &text)
             .map_err(|message| ForgeError::Transport { message })?;
     }
@@ -640,14 +684,21 @@ mod tests {
     fn a_saml_refusal_names_the_org_from_its_own_url_and_is_filed_once() {
         use super::super::http::{sso_challenge, test_support::StubTransport};
         let refusal = |value: &str| {
-            StubTransport::with_headers(403, &[("X-GitHub-SSO", value)], r#"{"message":"Resource protected by organization SAML enforcement."}"#)
+            StubTransport::with_headers(
+                403,
+                &[("X-GitHub-SSO", value)],
+                r#"{"message":"Resource protected by organization SAML enforcement."}"#,
+            )
         };
         let first = sso_challenge(&refusal(
             "required; url=https://github.com/orgs/acme/sso?authorization_request=AR_one",
         ))
         .expect("a required challenge names its org");
         assert_eq!(first.org, "acme");
-        assert_eq!(first.url, "https://github.com/orgs/acme/sso?authorization_request=AR_one");
+        assert_eq!(
+            first.url,
+            "https://github.com/orgs/acme/sso?authorization_request=AR_one"
+        );
 
         // The other form of the header lists numeric ids and no URL, so there is
         // no login in it to record.
@@ -660,7 +711,10 @@ mod tests {
             !note_org_access(
                 &mut file,
                 &id,
-                OrgAccess { org: "acme".into(), url: "https://github.com/orgs/acme/sso?authorization_request=AR_two".into() },
+                OrgAccess {
+                    org: "acme".into(),
+                    url: "https://github.com/orgs/acme/sso?authorization_request=AR_two".into()
+                },
             ),
             "the same org again changes nothing, so the caller skips the save"
         );
@@ -669,7 +723,10 @@ mod tests {
         // a newest-wins rule would rewrite the file for as long as the block
         // lasted, and a spent challenge lands on the page that issues a new one.
         assert_eq!(account.org_access.len(), 1);
-        assert_eq!(account.org_access[0].url, "https://github.com/orgs/acme/sso?authorization_request=AR_one");
+        assert_eq!(
+            account.org_access[0].url,
+            "https://github.com/orgs/acme/sso?authorization_request=AR_one"
+        );
 
         // Signing in again mints a new SSO session, so what the old token was
         // refused says nothing about the new one.
@@ -734,8 +791,21 @@ mod tests {
         let mut file = AccountsFile::default();
         let id = signed_in(&mut file, "skarif2");
         assert_eq!(find(&file, &id).unwrap().1.source, Source::Token);
-        add_account(&mut file, Provider::Github, GH, GITHUB_COM, "skarif2", Source::Cli, None).unwrap();
-        assert_eq!(find(&file, &id).unwrap().1.source, Source::Cli, "the same account, re-sourced");
+        add_account(
+            &mut file,
+            Provider::Github,
+            GH,
+            GITHUB_COM,
+            "skarif2",
+            Source::Cli,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            find(&file, &id).unwrap().1.source,
+            Source::Cli,
+            "the same account, re-sourced"
+        );
     }
 
     #[test]
@@ -773,7 +843,10 @@ mod tests {
         migrate_legacy(&mut file, read_legacy, store).unwrap();
         assert_eq!(file.hosts[GITHUB_COM].accounts.len(), 1);
         let moved = mock_entry_in("com.tori.forge.migration-test", MIGRATED_GITHUB_ID);
-        assert_eq!(token::load_secret_from(&moved).unwrap(), Some(Secret::access("gho_legacy".into())));
+        assert_eq!(
+            token::load_secret_from(&moved).unwrap(),
+            Some(Secret::access("gho_legacy".into()))
+        );
         let restored = super::super::auth::AuthStore::restored(
             vec![super::super::auth::Restored {
                 id: MIGRATED_GITHUB_ID.into(),
@@ -810,7 +883,11 @@ mod tests {
 
         picks.insert(tori().key(), work.clone());
         let https = remote::parse("https://github.com/skarif2/tori").unwrap();
-        assert_eq!(resolve(&file, &picks, &https), Resolution::Account(work), "ssh to https keeps the pick");
+        assert_eq!(
+            resolve(&file, &picks, &https),
+            Resolution::Account(work),
+            "ssh to https keeps the pick"
+        );
     }
 
     #[test]
@@ -855,8 +932,16 @@ mod tests {
         let mut file = AccountsFile::default();
         signed_in(&mut file, "a");
         signed_in(&mut file, "b");
-        let elsewhere =
-            add_account(&mut file, Provider::Gitlab, "https://gitlab.com", GITLAB_COM, "arif", Source::Token, None).unwrap();
+        let elsewhere = add_account(
+            &mut file,
+            Provider::Gitlab,
+            "https://gitlab.com",
+            GITLAB_COM,
+            "arif",
+            Source::Token,
+            None,
+        )
+        .unwrap();
         assert!(matches!(
             set_default_account(&mut file, GITHUB_COM, Some(&elsewhere)),
             Err(ForgeError::Invalid { .. })
@@ -866,7 +951,10 @@ mod tests {
 
         // A hand-edited file can still name a stranger, and resolution must not act as it.
         file.hosts.get_mut(GITHUB_COM).unwrap().default_account = Some("gone".into());
-        assert!(matches!(resolve(&file, &BTreeMap::new(), &tori()), Resolution::Pick { .. }));
+        assert!(matches!(
+            resolve(&file, &BTreeMap::new(), &tori()),
+            Resolution::Pick { .. }
+        ));
     }
 
     #[test]
@@ -914,8 +1002,13 @@ mod tests {
         assert!(github.token_url.contains("scopes=repo,workflow"));
         assert!(github.token_url.starts_with("https://github.com/settings/tokens/new"));
 
-        let ghe =
-            sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", Some("Ov23test"), false);
+        let ghe = sign_in_routes(
+            Provider::Github,
+            "https://ghe.example.com",
+            "ghe.example.com",
+            Some("Ov23test"),
+            false,
+        );
         assert!(!ghe.device_flow);
         assert_eq!(ghe.scopes, ["repo", "workflow"]);
         assert!(ghe.token_url.starts_with("https://ghe.example.com/"));
@@ -927,11 +1020,26 @@ mod tests {
 
     #[test]
     fn gitlab_com_offers_the_browser_without_exposing_tori_s_application_id() {
-        let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, Some("tori-app"), false);
+        let gitlab = sign_in_routes(
+            Provider::Gitlab,
+            "https://gitlab.com",
+            GITLAB_COM,
+            Some("tori-app"),
+            false,
+        );
         assert!(gitlab.device_flow);
-        assert_eq!(gitlab.app_id, None, "an id the card would show is an id the user would try to edit");
+        assert_eq!(
+            gitlab.app_id, None,
+            "an id the card would show is an id the user would try to edit"
+        );
 
-        let own = sign_in_routes(Provider::Gitlab, "https://git.example.com", "git.example.com", Some("app-123"), false);
+        let own = sign_in_routes(
+            Provider::Gitlab,
+            "https://git.example.com",
+            "git.example.com",
+            Some("app-123"),
+            false,
+        );
         assert_eq!(own.app_id.as_deref(), Some("app-123"));
     }
 
@@ -956,11 +1064,23 @@ mod tests {
 
         let remote = remote::parse("https://gitlab.example.com/acme/widgets.git").unwrap();
         let mut picks = BTreeMap::new();
-        assert!(serves_git(&file, &picks, &remote), "one account, so git can be answered");
+        assert!(
+            serves_git(&file, &picks, &remote),
+            "one account, so git can be answered"
+        );
 
         // An unanswered pick is not an account to act as, so git keeps whatever
         // helper it had rather than being handed an arbitrary one.
-        let second = add_account(&mut file, Provider::Gitlab, base, host, "arif-work", Source::Token, None).unwrap();
+        let second = add_account(
+            &mut file,
+            Provider::Gitlab,
+            base,
+            host,
+            "arif-work",
+            Source::Token,
+            None,
+        )
+        .unwrap();
         assert!(!serves_git(&file, &picks, &remote));
         picks.insert(remote.key(), second.clone());
         assert!(serves_git(&file, &picks, &remote));
@@ -980,13 +1100,15 @@ mod tests {
         let mut file = AccountsFile::default();
         let host = "git.example.com";
         let base = "https://git.example.com";
-        let routes = |file: &AccountsFile| {
-            sign_in_routes(Provider::Gitlab, base, host, app_id(file, host).as_deref(), false)
-        };
+        let routes =
+            |file: &AccountsFile| sign_in_routes(Provider::Gitlab, base, host, app_id(file, host).as_deref(), false);
         assert!(!routes(&file).device_flow);
 
         assert!(set_app_id(&mut file, host, "app-123"));
-        assert!(routes(&file).device_flow, "a registered application unlocks the browser");
+        assert!(
+            routes(&file).device_flow,
+            "a registered application unlocks the browser"
+        );
         assert_eq!(routes(&file).app_id.as_deref(), Some("app-123"));
 
         // Clearing it puts the host back on paste, and takes the record with it:

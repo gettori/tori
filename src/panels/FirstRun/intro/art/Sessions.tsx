@@ -53,12 +53,27 @@ const WEBHOOKS_PR: UnitStatus = {
 };
 
 function rollup(r: Partial<Rollup>): () => Rollup {
-  return () => ({ waitingForApproval: 0, waitingForAnswer: 0, prAttention: 0, executing: 0, idle: 0, running: 0, ...r });
+  return () => ({
+    waitingForApproval: 0,
+    waitingForAnswer: 0,
+    prAttention: 0,
+    executing: 0,
+    idle: 0,
+    running: 0,
+    ...r,
+  });
 }
 
 const bubble = (r: Partial<Rollup>) => <StatusBubble rollup={rollup(r)} />;
 
-function tool(id: string, name: string, toolKind: ToolItem["toolKind"], input: unknown, summary: ToolSummary | null, running = false): ToolItem {
+function tool(
+  id: string,
+  name: string,
+  toolKind: ToolItem["toolKind"],
+  input: unknown,
+  summary: ToolSummary | null,
+  running = false,
+): ToolItem {
   return {
     kind: "tool",
     id,
@@ -110,7 +125,13 @@ function Sidebar() {
           <span class={sidebar.spaceHeaderName}>work</span>
           <span class={sidebar.spaceHeaderKind}>{"\u00b7 Spaces"}</span>
         </div>
-        <Button class={sidebar.searchToggle} variant="ghost" size="md" aria-label="Filter" icon={<Icon icon={Search} />} />
+        <Button
+          class={sidebar.searchToggle}
+          variant="ghost"
+          size="md"
+          aria-label="Filter"
+          icon={<Icon icon={Search} />}
+        />
       </div>
       <div class={`${sidebar.treeScroll} ${styles.treeScroll}`}>
         <ProjectRow name="api" icon={<ProjectIcon seed={API} />} disclosure open>
@@ -121,7 +142,10 @@ function Sidebar() {
             selected
             end={
               <>
-                <SyncMarks marks={[{ kind: "push", count: 2, tone: "muted", title: "2 commits to push" }]} label="2 commits to push" />
+                <SyncMarks
+                  marks={[{ kind: "push", count: 2, tone: "muted", title: "2 commits to push" }]}
+                  label="2 commits to push"
+                />
                 {bubble({ executing: 1 })}
               </>
             }
@@ -132,13 +156,23 @@ function Sidebar() {
             meta={<BranchLine status={WEBHOOKS_PR} />}
             end={
               <>
-                <IconButton size="xs" class={rows.topicChip} icon={<Icon icon={Tag} />} aria-label="Open Topic Webhooks" />
+                <IconButton
+                  size="xs"
+                  class={rows.topicChip}
+                  icon={<Icon icon={Tag} />}
+                  aria-label="Open Topic Webhooks"
+                />
                 {bubble({ waitingForApproval: 1 })}
               </>
             }
           />
         </ProjectRow>
-        <ProjectRow name="web" icon={<ProjectIcon seed="~/Projects/work/web" />} disclosure end={bubble({ waitingForAnswer: 1, executing: 1, idle: 1 })} />
+        <ProjectRow
+          name="web"
+          icon={<ProjectIcon seed="~/Projects/work/web" />}
+          disclosure
+          end={bubble({ waitingForAnswer: 1, executing: 1, idle: 1 })}
+        />
         <ProjectRow name="infra" icon={<ProjectIcon seed="~/Projects/work/infra" />} disclosure open>
           <BranchRow label="main" icon={<BranchMark active={false} current />} end={bubble({ idle: 1 })} />
         </ProjectRow>
@@ -147,7 +181,12 @@ function Sidebar() {
         <div class={sidebar.stripNav}>
           <div class={sidebar.spaceScroll}>
             <SpaceTile name="work" color="Sky" active />
-            <SpaceTile name="personal" icon="House" color="Emerald" rollup={rollup({ waitingForApproval: 1, executing: 1 })} />
+            <SpaceTile
+              name="personal"
+              icon="House"
+              color="Emerald"
+              rollup={rollup({ waitingForApproval: 1, executing: 1 })}
+            />
           </div>
           <div class={sidebar.spaceDivider} />
           <ModeTile label="Topics" glyph={Tags} />

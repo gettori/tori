@@ -61,10 +61,18 @@ pub enum Launch {
         readiness: String,
     },
     /// DAP over the adapter's own stdin and stdout, like a language server.
-    Stdio { program: String, args: Vec<String>, resolve: Resolve },
+    Stdio {
+        program: String,
+        args: Vec<String>,
+        resolve: Resolve,
+    },
     /// The adapter listens on the port Tori passes as `{port}` in `args`, and
     /// Tori dials in.
-    Tcp { program: String, args: Vec<String>, resolve: Resolve },
+    Tcp {
+        program: String,
+        args: Vec<String>,
+        resolve: Resolve,
+    },
 }
 
 impl Launch {
@@ -115,7 +123,11 @@ pub enum Resolve {
 pub enum Install {
     /// Text only, for an adapter its own toolchain installs. `update` and
     /// `uninstall` are that toolchain's commands for the other two jobs.
-    Hint { text: String, update: Option<String>, uninstall: Option<String> },
+    Hint {
+        text: String,
+        update: Option<String>,
+        uninstall: Option<String>,
+    },
     /// A venv Tori creates with the PATH `python3` and installs `package` into,
     /// at an exact version.
     Pip { package: String, version: String },
@@ -236,8 +248,11 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
                 eprintln!("tori: debug adapter {source}: unknown field `{key}`, ignoring");
             }
         }
-        let missing: Vec<&str> =
-            REQUIRED_TOP_LEVEL.iter().filter(|k| !table.contains_key(**k)).copied().collect();
+        let missing: Vec<&str> = REQUIRED_TOP_LEVEL
+            .iter()
+            .filter(|k| !table.contains_key(**k))
+            .copied()
+            .collect();
         if !missing.is_empty() {
             return Err(format!("{source}: missing required field(s): {}", missing.join(", ")));
         }
@@ -306,14 +321,18 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
     // adapter has one pipe pair and a TCP one is dialled once, so neither can
     // take the second connection a child session is.
     if raw.child_sessions && !matches!(launch, Launch::BundledNodeSocket { .. }) {
-        return Err(format!("{source}: child_sessions = true needs launch.kind = \"bundled_node_socket\""));
+        return Err(format!(
+            "{source}: child_sessions = true needs launch.kind = \"bundled_node_socket\""
+        ));
     }
 
     let install = raw
         .install
         .map(|table| match table.kind.as_str() {
             "hint" => Ok(Install::Hint {
-                text: table.text.ok_or_else(|| format!("{source}: [install] kind = \"hint\" requires `text`"))?,
+                text: table
+                    .text
+                    .ok_or_else(|| format!("{source}: [install] kind = \"hint\" requires `text`"))?,
                 update: table.update,
                 uninstall: table.uninstall,
             }),
@@ -325,19 +344,25 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
                     .version
                     .ok_or_else(|| format!("{source}: [install] kind = \"pip\" requires `version`"))?,
             }),
-            other => Err(format!("{source}: unknown [install] kind `{other}` (tori implements: hint, pip)")),
+            other => Err(format!(
+                "{source}: unknown [install] kind `{other}` (tori implements: hint, pip)"
+            )),
         })
         .transpose()?;
 
     // A pip install lands in a venv no PATH lookup reaches, and a managed
     // program has nowhere to come from but Tori's own install.
     if (launch.resolve() == Resolve::Managed) != matches!(install, Some(Install::Pip { .. })) {
-        return Err(format!("{source}: launch.resolve = \"managed\" and [install] kind = \"pip\" go together"));
+        return Err(format!(
+            "{source}: launch.resolve = \"managed\" and [install] kind = \"pip\" go together"
+        ));
     }
     // Only `python -m` survives the move out of staging: a venv's console
     // scripts carry the staging path in their shebangs.
     if matches!(install, Some(Install::Pip { .. })) && launch.module().is_none() {
-        return Err(format!("{source}: [install] kind = \"pip\" needs launch.args to run a module (`-m <module>`)"));
+        return Err(format!(
+            "{source}: [install] kind = \"pip\" needs launch.args to run a module (`-m <module>`)"
+        ));
     }
 
     // Matched lowercase and without a dot, so normalise once here.
@@ -495,7 +520,12 @@ mod tests {
     #[test]
     fn the_registry_is_built_from_the_installers_manifest() {
         let js = find("js-debug").expect("js-debug is registered");
-        let Launch::BundledNodeSocket { entry, version, readiness } = &js.launch else {
+        let Launch::BundledNodeSocket {
+            entry,
+            version,
+            readiness,
+        } = &js.launch
+        else {
             panic!("js-debug should be bundled_node_socket, got {:?}", js.launch);
         };
         // Not a hard-coded copy: these are the installer's own values, so a

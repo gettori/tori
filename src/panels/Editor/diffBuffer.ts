@@ -13,7 +13,15 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
-import { StateEffect, StateField, type EditorState, type Extension, type Range, type StateCommand, type Text } from "@codemirror/state";
+import {
+  StateEffect,
+  StateField,
+  type EditorState,
+  type Extension,
+  type Range,
+  type StateCommand,
+  type Text,
+} from "@codemirror/state";
 import type { Language } from "@codemirror/language";
 import { HIGHLIGHT_MAX } from "../Chat/highlight";
 import type { DiffHunk } from "../../utils/diffHunks";
@@ -61,7 +69,8 @@ class RemovedLines extends WidgetType {
     return (
       other.rows.length === this.rows.length &&
       other.rows.every(
-        (r, i) => r.text === this.rows[i].text && r.oldLine === this.rows[i].oldLine && !other.spans[i] === !this.spans[i],
+        (r, i) =>
+          r.text === this.rows[i].text && r.oldLine === this.rows[i].oldLine && !other.spans[i] === !this.spans[i],
       )
     );
   }
@@ -443,7 +452,11 @@ class OverviewRuler {
     this.strips.new.replaceChildren();
     const isText = (b: BlockInfo) => b.type === BlockType.Text;
     for (const span of changeSpans(this.view.state)) {
-      const first = partAt(this.view, span.from, span.side === "old" ? (b) => b.widget instanceof RemovedLines : isText);
+      const first = partAt(
+        this.view,
+        span.from,
+        span.side === "old" ? (b) => b.widget instanceof RemovedLines : isText,
+      );
       const last = span.side === "old" ? first : partAt(this.view, span.to, isText);
       const mark = document.createElement("div");
       mark.className = "cm-diff-overview-mark";

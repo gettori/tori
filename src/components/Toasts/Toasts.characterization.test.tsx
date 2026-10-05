@@ -27,10 +27,8 @@ function mount(): Agent {
     push: (message) => pushToast(message, "info"),
     // Kobalte pauses on pointermove anywhere in the list and resumes when the
     // pointer leaves the list, so the events target the toast and the list.
-    hover: (message) =>
-      fireEvent.pointerMove(screen.getByText(message).closest('[role="status"]')!),
-    unhover: (message) =>
-      fireEvent.pointerLeave(screen.getByText(message).closest('[role="status"]')!.parentElement!),
+    hover: (message) => fireEvent.pointerMove(screen.getByText(message).closest('[role="status"]')!),
+    unhover: (message) => fireEvent.pointerLeave(screen.getByText(message).closest('[role="status"]')!.parentElement!),
   };
 }
 

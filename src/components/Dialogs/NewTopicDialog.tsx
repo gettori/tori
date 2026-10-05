@@ -328,10 +328,15 @@ export default function NewTopicDialog(props: {
             <Show when={spanned().length > 1}>
               <div class={styles.spaceWarning} role="note">
                 <Icon icon={TriangleAlert} class={styles.collisionIcon} />
-                <span>Repositories from {spanned().length} Spaces: {spanned().join(", ")}</span>
+                <span>
+                  Repositories from {spanned().length} Spaces: {spanned().join(", ")}
+                </span>
               </div>
             </Show>
-            <Show when={checked().length > 0} fallback={<div class={styles.pickedEmpty}>Pick repositories on the left.</div>}>
+            <Show
+              when={checked().length > 0}
+              fallback={<div class={styles.pickedEmpty}>Pick repositories on the left.</div>}
+            >
               <ul class={styles.pickedList}>
                 <For each={checked()}>
                   {(repoPath) => (

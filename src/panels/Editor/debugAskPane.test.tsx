@@ -86,8 +86,7 @@ function bodyFor(command: string, args: Record<string, unknown>): unknown {
         { id: 2, name: "run", source: { path: `${REPO}/src/main.ts`, name: "main.ts" }, line: 12 },
       ],
     };
-  if (command === "scopes")
-    return { scopes: [{ name: "Locals", variablesReference: 100, expensive: false }] };
+  if (command === "scopes") return { scopes: [{ name: "Locals", variablesReference: 100, expensive: false }] };
   if (command === "variables") {
     if (args.variablesReference !== 100) return { variables: [] };
     return {
@@ -105,9 +104,7 @@ function bodyFor(command: string, args: Record<string, unknown>): unknown {
 const { default: DebugPanel } = await import("./DebugPanel");
 const dap = await import("../../utils/dapSessions");
 const { sanitizeForSend } = await import("../../utils/safeSend");
-const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, TOAST } = await import(
-  "../../utils/events"
-);
+const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, TOAST } = await import("../../utils/events");
 
 type SendRequest = { requestId: string; text: string; sessionId: string };
 
@@ -188,9 +185,7 @@ describe("asking the agent about the paused frame", () => {
       const control = button.closest("button")!;
       expect(control.getAttribute("title")).toBeNull();
       fireEvent.focus(control);
-      await waitFor(() =>
-        expect(screen.getByRole("tooltip").textContent).toBe("Ask the agent about this frame"),
-      );
+      await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Ask the agent about this frame"));
       fireEvent.blur(control);
       await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
     }

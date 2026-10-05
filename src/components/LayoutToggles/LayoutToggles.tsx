@@ -26,12 +26,7 @@ export default function LayoutToggles(props: { showSidebar: boolean }) {
   const shown = () => (props.showSidebar ? ["sidebar"] : []);
 
   return (
-    <ToggleGroup.Root
-      multiple
-      value={shown()}
-      onChange={() => emit(TOGGLE_SIDEBAR)}
-      class={styles.cluster}
-    >
+    <ToggleGroup.Root multiple value={shown()} onChange={() => emit(TOGGLE_SIDEBAR)} class={styles.cluster}>
       <ToggleGroup.Item
         as={IconButton}
         value="sidebar"

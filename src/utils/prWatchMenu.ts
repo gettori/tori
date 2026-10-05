@@ -14,7 +14,9 @@ export function prWatchMenu(
   act: { watch: (sessionId: string) => void; unwatch: (sessionId: string) => void },
 ): MenuItem[] {
   if (chats.length === 0) {
-    return [{ label: "Watch with this session", onClick: () => {}, refusing: true, note: "No chat is open in this worktree" }];
+    return [
+      { label: "Watch with this session", onClick: () => {}, refusing: true, note: "No chat is open in this worktree" },
+    ];
   }
   const watching = (id: string) => watches.some((w) => w.session === id && w.url === url);
   return chats.map((c) => {

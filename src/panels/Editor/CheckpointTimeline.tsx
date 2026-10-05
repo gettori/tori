@@ -20,12 +20,7 @@ import { findSession } from "../../utils/sessionStore";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isWorking } from "../../utils/sessionStatus";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
-import {
-  checkpointClock,
-  checkpointDiffTabId,
-  WORKTREE_SOURCE,
-  type CheckpointScope,
-} from "../../utils/syntheticTabs";
+import { checkpointClock, checkpointDiffTabId, WORKTREE_SOURCE, type CheckpointScope } from "../../utils/syntheticTabs";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
 import Button from "../../components/Button/Button";
@@ -534,7 +529,12 @@ export default function CheckpointTimeline(props: {
       void loadList();
     }),
   );
-  createEffect(on(() => props.root, () => void loadBackstops()));
+  createEffect(
+    on(
+      () => props.root,
+      () => void loadBackstops(),
+    ),
+  );
   createEffect(on(open, () => void loadFiles()));
   // A checkpoint pruned while its detail is open has nothing left to show or
   // to revert to.
@@ -664,10 +664,7 @@ export default function CheckpointTimeline(props: {
         </div>
         <Show when={expanded() === f.path}>
           <div class={styles.fileDiff}>
-            <For
-              each={parseDiffHunks(diff())}
-              fallback={<div class={styles.note}>No line changes to show.</div>}
-            >
+            <For each={parseDiffHunks(diff())} fallback={<div class={styles.note}>No line changes to show.</div>}>
               {(hunk) => (
                 <div>
                   <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>

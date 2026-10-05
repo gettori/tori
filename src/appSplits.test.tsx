@@ -33,8 +33,7 @@ vi.mock("./panels/Terminal/Terminal", async () => {
           renderMenuItem: (u) => <span>{u.id}</span>,
           activate: (u) => store.focusTab(u.workspace, u.id),
           close: () => {},
-          stripItems: () =>
-            unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
+          stripItems: () => unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
           stripActiveId: store.visibleId,
           stripReorder: () => {},
           hostIds: () => store.open().map((t) => t.id),
@@ -62,8 +61,7 @@ vi.mock("./panels/Editor/Editor", async () => {
         stripReorder: () => {},
         // The real panel's shape (phase 9): one stage host per pane holding
         // file tabs, so two panes can each hold an editor view.
-        hostIds: (paneId, tabs) =>
-          paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : [],
+        hostIds: (paneId, tabs) => (paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : []),
       });
       return null;
     },
@@ -109,7 +107,10 @@ const term = (id: string) => ({
 // The sidebar is a `.pane` too; the work card's own are what these are about.
 const pane = (n: number) => document.querySelectorAll<HTMLElement>(".work-split .pane")[n];
 const panes = () => document.querySelectorAll(".work-split .pane").length;
-const tabsIn = (el: HTMLElement) => within(el).queryAllByRole("tab").map((t) => t.textContent ?? "");
+const tabsIn = (el: HTMLElement) =>
+  within(el)
+    .queryAllByRole("tab")
+    .map((t) => t.textContent ?? "");
 
 function seedTabs() {
   setOpen([term("sh:1"), term("sh:2")]);
@@ -232,7 +233,7 @@ describe("moving a tab", () => {
 
     await waitFor(() => expect(tabsIn(pane(1))).toEqual([`${REPO}/a.ts`]));
     // The editor's stage went with it: that is the pane holding it now.
-    expect(pane(1).querySelector('[data-stage-host]')).toBeTruthy();
+    expect(pane(1).querySelector("[data-stage-host]")).toBeTruthy();
   });
 
   it("says so rather than nothing when there is nowhere to move to", async () => {

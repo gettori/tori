@@ -1,11 +1,4 @@
-import {
-  createSignal,
-  onCleanup,
-  Show,
-  splitProps,
-  type Component,
-  type JSX,
-} from "solid-js";
+import { createSignal, onCleanup, Show, splitProps, type Component, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { Tooltip as Primitive } from "../../lib/tooltip";
 import { useDialogSurface } from "../Dialog/surface";
@@ -57,97 +50,97 @@ const GUTTER = 4;
  *  required props required here - see the `as` field below. `as` and `children`
  *  are dropped from `P` because this component owns both: the host's `as` would
  *  otherwise intersect with this one's and admit nothing. */
-export type TooltipProps<
-  T extends HTMLElement = HTMLButtonElement,
-  P extends Record<string, any> = {},
-> = Omit<JSX.ButtonHTMLAttributes<T>, "type" | "title"> &
+export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Record<string, any> = {}> = Omit<
+  JSX.ButtonHTMLAttributes<T>,
+  "type" | "title"
+> &
   Omit<P, "as" | "children"> & {
-  /** Narrower than the native attribute, which Solid still types with the
-   *  long-dead `"menu"` value. Kobalte's trigger accepts the three real ones,
-   *  and nothing in Tori passes the fourth. */
-  type?: "submit" | "reset" | "button";
-  /** The tooltip text. Rendered as the control's *description*
-   *  (`aria-describedby`), never as its name - see the module comment.
-   *
-   *  Absent renders the bare control and no tooltip machinery at all, which is
-   *  what lets `Button`, `IconButton` and `Tab` pass their own optional
-   *  `tooltip` prop straight through instead of carrying two render paths and
-   *  the drift between them. */
-  label?: JSX.Element;
-  /** Hold the tooltip shut while something else is speaking for this control.
-   *
-   *  For a trigger that also opens a menu or a panel: the surface it opened is
-   *  the answer to "what is this", and a tooltip sitting over it is the same
-   *  sentence twice, on top of the thing the user is reading. The usual case is
-   *  not a tooltip arriving late but one **already up** - the pointer rested
-   *  long enough to open it, and the click that opens the menu comes after.
-   *
-   *  Not `label={undefined}`: that path renders the bare control with none of
-   *  Kobalte's context around it, so toggling it would unmount and rebuild the
-   *  trigger at the moment it is being clicked.
-   *
-   *  Not Kobalte's `disabled` alone either, which only gates *opening*
-   *  (`isDisabled()` is read by the trigger before it calls `openTooltip`) and
-   *  leaves an open one open. Passing this at all therefore moves the tooltip
-   *  onto the controlled path below, the same one `whenDisabled` uses, and
-   *  costs the same thing: a controlled tooltip does not take part in Kobalte's
-   *  module-global warm-up grouping. Worth it on a pill, which is not one of a
-   *  row of icons being swept past. */
-  suppressed?: boolean;
-  placement?: TooltipPlacement;
-  openDelay?: number;
-  closeDelay?: number;
-  /** What element the tooltip portals into.
-   *
-   *  Defaults to the enclosing dialog's panel when there is one, and to
-   *  `document.body` otherwise, so an in-dialog tooltip needs nothing at the
-   *  call site. Kobalte's `Dialog.Content` calls `createHideOutside`, which sets
-   *  `aria-hidden` on everything outside the panel while the dialog is open, so
-   *  a body-portalled tooltip would be painted on screen and invisible to a
-   *  screen reader at the same time. See `../Dialog/surface.ts`.
-   *
-   *  Pass this explicitly only for a surface that hides outside content without
-   *  being a `Dialog`. */
-  mount?: HTMLElement;
-  /** Opt in to a tooltip that also opens while the control is `disabled`.
-   *
-   *  Off by default, and deliberately so: it wraps the control in a hover
-   *  surface, which changes the DOM shape at the call site. See the section on
-   *  it in the module comment for why it cannot be the default and what no test
-   *  here can prove about it. */
-  whenDisabled?: boolean;
-  /** The element the trigger renders as. Either a tag name, or a component
-   *  whose props then have to be passed here too.
-   *
-   *  Whichever it is, the trigger has to *be* the control (see the module
-   *  comment), so this is a host to render, never a child to wrap. Tori's own
-   *  controls still compose this from the inside rather than passing themselves
-   *  in; the component form exists for the case they cannot cover, a control
-   *  that is itself a headless primitive's part. `IconGrid`'s tiles are the
-   *  first: the control is a `ToggleGroup.Item`, which only the toggle group's
-   *  context can supply, so `Button`'s trick of wrapping a plain `button` from
-   *  the inside is not available.
-   *
-   *  **A component host's own props are required here.** `P` is inferred from
-   *  this field, so `<Tooltip as={ToggleGroup.ButtonItem}>` without the `value`
-   *  that item needs is a type error. Without that, `ButtonHTMLAttributes` would
-   *  quietly satisfy it - it declares an optional `value` of its own - and the
-   *  grid would compile and then register every tile under the same undefined
-   *  key. Inference needs a *concrete* component, which is why `toggle-group.ts`
-   *  hands out a pinned `ButtonItem` beside the generic `Item`.
-   *
-   *  **Button-shaped tags only, in practice.** These props extend
-   *  `ButtonHTMLAttributes`, so an attribute belonging to some other element -
-   *  an `input`'s `placeholder`, a `label`'s `for` - is a type error here. The
-   *  two sets cannot simply be merged either: a type combining both
-   *  `ButtonHTMLAttributes` and `InputHTMLAttributes` declares the same names at
-   *  different types and admits nothing. A non-button control that wants a
-   *  description is usually better served by `aria-describedby` and a
-   *  visually-hidden hint - which is what the search box does, and why it reads
-   *  better there than a tooltip would. */
-  as?: keyof JSX.HTMLElementTags | Component<P>;
-  children?: JSX.Element;
-};
+    /** Narrower than the native attribute, which Solid still types with the
+     *  long-dead `"menu"` value. Kobalte's trigger accepts the three real ones,
+     *  and nothing in Tori passes the fourth. */
+    type?: "submit" | "reset" | "button";
+    /** The tooltip text. Rendered as the control's *description*
+     *  (`aria-describedby`), never as its name - see the module comment.
+     *
+     *  Absent renders the bare control and no tooltip machinery at all, which is
+     *  what lets `Button`, `IconButton` and `Tab` pass their own optional
+     *  `tooltip` prop straight through instead of carrying two render paths and
+     *  the drift between them. */
+    label?: JSX.Element;
+    /** Hold the tooltip shut while something else is speaking for this control.
+     *
+     *  For a trigger that also opens a menu or a panel: the surface it opened is
+     *  the answer to "what is this", and a tooltip sitting over it is the same
+     *  sentence twice, on top of the thing the user is reading. The usual case is
+     *  not a tooltip arriving late but one **already up** - the pointer rested
+     *  long enough to open it, and the click that opens the menu comes after.
+     *
+     *  Not `label={undefined}`: that path renders the bare control with none of
+     *  Kobalte's context around it, so toggling it would unmount and rebuild the
+     *  trigger at the moment it is being clicked.
+     *
+     *  Not Kobalte's `disabled` alone either, which only gates *opening*
+     *  (`isDisabled()` is read by the trigger before it calls `openTooltip`) and
+     *  leaves an open one open. Passing this at all therefore moves the tooltip
+     *  onto the controlled path below, the same one `whenDisabled` uses, and
+     *  costs the same thing: a controlled tooltip does not take part in Kobalte's
+     *  module-global warm-up grouping. Worth it on a pill, which is not one of a
+     *  row of icons being swept past. */
+    suppressed?: boolean;
+    placement?: TooltipPlacement;
+    openDelay?: number;
+    closeDelay?: number;
+    /** What element the tooltip portals into.
+     *
+     *  Defaults to the enclosing dialog's panel when there is one, and to
+     *  `document.body` otherwise, so an in-dialog tooltip needs nothing at the
+     *  call site. Kobalte's `Dialog.Content` calls `createHideOutside`, which sets
+     *  `aria-hidden` on everything outside the panel while the dialog is open, so
+     *  a body-portalled tooltip would be painted on screen and invisible to a
+     *  screen reader at the same time. See `../Dialog/surface.ts`.
+     *
+     *  Pass this explicitly only for a surface that hides outside content without
+     *  being a `Dialog`. */
+    mount?: HTMLElement;
+    /** Opt in to a tooltip that also opens while the control is `disabled`.
+     *
+     *  Off by default, and deliberately so: it wraps the control in a hover
+     *  surface, which changes the DOM shape at the call site. See the section on
+     *  it in the module comment for why it cannot be the default and what no test
+     *  here can prove about it. */
+    whenDisabled?: boolean;
+    /** The element the trigger renders as. Either a tag name, or a component
+     *  whose props then have to be passed here too.
+     *
+     *  Whichever it is, the trigger has to *be* the control (see the module
+     *  comment), so this is a host to render, never a child to wrap. Tori's own
+     *  controls still compose this from the inside rather than passing themselves
+     *  in; the component form exists for the case they cannot cover, a control
+     *  that is itself a headless primitive's part. `IconGrid`'s tiles are the
+     *  first: the control is a `ToggleGroup.Item`, which only the toggle group's
+     *  context can supply, so `Button`'s trick of wrapping a plain `button` from
+     *  the inside is not available.
+     *
+     *  **A component host's own props are required here.** `P` is inferred from
+     *  this field, so `<Tooltip as={ToggleGroup.ButtonItem}>` without the `value`
+     *  that item needs is a type error. Without that, `ButtonHTMLAttributes` would
+     *  quietly satisfy it - it declares an optional `value` of its own - and the
+     *  grid would compile and then register every tile under the same undefined
+     *  key. Inference needs a *concrete* component, which is why `toggle-group.ts`
+     *  hands out a pinned `ButtonItem` beside the generic `Item`.
+     *
+     *  **Button-shaped tags only, in practice.** These props extend
+     *  `ButtonHTMLAttributes`, so an attribute belonging to some other element -
+     *  an `input`'s `placeholder`, a `label`'s `for` - is a type error here. The
+     *  two sets cannot simply be merged either: a type combining both
+     *  `ButtonHTMLAttributes` and `InputHTMLAttributes` declares the same names at
+     *  different types and admits nothing. A non-button control that wants a
+     *  description is usually better served by `aria-describedby` and a
+     *  visually-hidden hint - which is what the search box does, and why it reads
+     *  better there than a tooltip would. */
+    as?: keyof JSX.HTMLElementTags | Component<P>;
+    children?: JSX.Element;
+  };
 
 /**
  * The one tooltip surface: Kobalte's tooltip behind Tori's chrome and Tori's
@@ -205,10 +198,9 @@ export type TooltipProps<
  * its handlers exist when asked for, and the behaviour itself rests on the
  * manual walk recorded with the ticket.
  */
-export default function Tooltip<
-  T extends HTMLElement = HTMLButtonElement,
-  P extends Record<string, any> = {},
->(props: TooltipProps<T, P>) {
+export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P extends Record<string, any> = {}>(
+  props: TooltipProps<T, P>,
+) {
   const [local, trigger] = splitProps(props, [
     "label",
     "suppressed",
@@ -258,9 +250,7 @@ export default function Tooltip<
   // same props object whatever it is typed as.
   const triggerProps = trigger as TooltipProps<HTMLButtonElement>;
 
-  const control = () => (
-    <Primitive.Trigger as={local.as ?? "button"} {...triggerProps} />
-  );
+  const control = () => <Primitive.Trigger as={local.as ?? "button"} {...triggerProps} />;
 
   return (
     <Show
@@ -305,9 +295,7 @@ export default function Tooltip<
           control()
         )}
         <Primitive.Portal mount={mount()}>
-          <Primitive.Content class={styles.content}>
-            {local.label}
-          </Primitive.Content>
+          <Primitive.Content class={styles.content}>{local.label}</Primitive.Content>
         </Primitive.Portal>
       </Primitive.Root>
     </Show>

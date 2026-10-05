@@ -88,8 +88,7 @@ export function diagnosticContextCapture(serverId: string) {
   };
 }
 
-const before = (a: LspPosition, b: LspPosition) =>
-  a.line < b.line || (a.line === b.line && a.character < b.character);
+const before = (a: LspPosition, b: LspPosition) => a.line < b.line || (a.line === b.line && a.character < b.character);
 
 /**
  * What `serverId` published overlapping `range` in `uri`, in the shape it

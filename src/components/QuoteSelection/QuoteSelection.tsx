@@ -33,7 +33,10 @@ export function selectionWithin(root: HTMLElement, sel: Selection | null): Range
  * document-wide listener that did not check containment would draw a button
  * under every hidden chat as well.
  */
-export default function QuoteSelection(props: { root: () => HTMLElement | undefined; onQuote: (text: string) => void }) {
+export default function QuoteSelection(props: {
+  root: () => HTMLElement | undefined;
+  onQuote: (text: string) => void;
+}) {
   const [range, setRange] = createSignal<Range | null>(null);
   const [pos, setPos] = createSignal({ x: 0, y: 0 });
 

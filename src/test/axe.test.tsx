@@ -6,17 +6,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import axe, { type Result } from "axe-core";
-import {
-  runAxe,
-  expectNoAxeViolations,
-  formatAxeFailure,
-} from "./axe";
+import { runAxe, expectNoAxeViolations, formatAxeFailure } from "./axe";
 
 /** A button with a real accessible name: nothing for the gate to find. */
 function labeled() {
-  const { container } = render(() => (
-    <button type="button">Save changes</button>
-  ));
+  const { container } = render(() => <button type="button">Save changes</button>);
   return container;
 }
 

@@ -187,8 +187,7 @@ const stickyPlugin = ViewPlugin.fromClass(
       // Scrolls without moving the caret: this is a way of looking somewhere,
       // not of going there, and taking the selection with it would lose the
       // place the reader was actually working in.
-      row.onclick = () =>
-        this.view.dispatch({ effects: EditorView.scrollIntoView(header.from, { y: "start" }) });
+      row.onclick = () => this.view.dispatch({ effects: EditorView.scrollIntoView(header.from, { y: "start" }) });
       return row;
     }
   },

@@ -44,10 +44,7 @@ const TOPICS = [
     name: "Auth",
     branch: "feat/auth",
     createdAt: 3,
-    members: [
-      member("/r/api", "api", A, 0),
-      { ...member("/r/web", "web", B, 1), state: { kind: "worktree-missing" } },
-    ],
+    members: [member("/r/api", "api", A, 0), { ...member("/r/web", "web", B, 1), state: { kind: "worktree-missing" } }],
   },
   // A second record rather than a second mock: `topicMembers` reads once per
   // generation module-wide, so a swapped payload would be served from the cache.
@@ -100,8 +97,7 @@ const open = (sel: unknown, prefix = "") => {
   ));
 };
 
-const rowLabels = () =>
-  [...document.querySelectorAll('[class*="itemLabel"]')].map((el) => el.textContent ?? "");
+const rowLabels = () => [...document.querySelectorAll('[class*="itemLabel"]')].map((el) => el.textContent ?? "");
 
 /** Click a row and hand back what it put on the bus. */
 function fire(label: string): unknown {
@@ -133,11 +129,7 @@ describe("quick-open inside a Topic", () => {
     open(topicSel("f1", [A, B]));
     // Every present member listed, not only the active one.
     await waitFor(() => expect(bridge.listed).toEqual([A, B]));
-    await waitFor(() =>
-      expect(rowLabels()).toEqual(
-        expect.arrayContaining(["api/package.json", "web/package.json"]),
-      ),
-    );
+    await waitFor(() => expect(rowLabels()).toEqual(expect.arrayContaining(["api/package.json", "web/package.json"])));
   });
 
   it("opens the row's own member, not the active root", async () => {

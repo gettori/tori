@@ -70,11 +70,7 @@ export type SaveText =
  * usually a syntax error at a line number, which is the one useful thing to
  * know about a save that did not format.
  */
-export async function formatForSave(
-  deps: FormatDeps,
-  path: string,
-  before: Snapshot,
-): Promise<SaveText> {
+export async function formatForSave(deps: FormatDeps, path: string, before: Snapshot): Promise<SaveText> {
   let result: FormatResult;
   try {
     result = await deps.format(path, before.text);

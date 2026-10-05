@@ -119,9 +119,9 @@ fn record_in(file: &Path, repo: &str, branch: &str, issue: UnitIssue) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
     use crate::config::ProjectKind;
+    use std::process::Command;
 
     fn issue(key: &str) -> UnitIssue {
         UnitIssue {
@@ -151,7 +151,14 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let ok = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap().status.success();
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap()
+            .status
+            .success();
         assert!(ok, "git {args:?}");
     }
 
@@ -159,7 +166,20 @@ mod tests {
     fn a_record_round_trips_and_lands_on_its_unit() {
         let dir = scratch("round");
         git(&dir, &["init", "-q", "-b", "main"]);
-        git(&dir, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "i"]);
+        git(
+            &dir,
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "i",
+            ],
+        );
         git(&dir, &["branch", "202-issues"]);
         let file = dir.join("unit_issues.json");
         let repo = dir.to_string_lossy().into_owned();

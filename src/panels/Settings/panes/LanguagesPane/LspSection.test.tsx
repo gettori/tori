@@ -100,7 +100,9 @@ describe("LspSection", () => {
   });
 
   it("tells the user how to fix a genuinely missing server", async () => {
-    health = [server({ id: "rust", label: "Rust", program: "rust-analyzer", status: "notFound", path: null, version: null })];
+    health = [
+      server({ id: "rust", label: "Rust", program: "rust-analyzer", status: "notFound", path: null, version: null }),
+    ];
     render(() => <LspSection />);
 
     await waitFor(() => expect(screen.getByText(/Not installed\./)).toBeTruthy());
@@ -126,9 +128,7 @@ describe("LspSection", () => {
     health = [server({ overridePath: "/home/me/.config/tori/lsp/typescript.toml" })];
     render(() => <LspSection />);
 
-    await waitFor(() =>
-      expect(screen.getByText(/\/home\/me\/.config\/tori\/lsp\/typescript.toml/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/\/home\/me\/.config\/tori\/lsp\/typescript.toml/)).toBeTruthy());
   });
 
   it("says a server named in lsp.disabled is disabled", async () => {
@@ -159,7 +159,15 @@ describe("LspSection", () => {
 
   it("calls a server launched from the project's own install per project, not missing", async () => {
     health = [
-      server({ id: "biome", label: "Biome", program: "biome", status: "notFound", path: null, version: null, runsPerProject: true }),
+      server({
+        id: "biome",
+        label: "Biome",
+        program: "biome",
+        status: "notFound",
+        path: null,
+        version: null,
+        runsPerProject: true,
+      }),
     ];
     render(() => <LspSection />);
 
@@ -175,7 +183,14 @@ describe("LspSection", () => {
     expect(screen.getByText(/Available, not installed/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
 
-    health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.414", installedVersion: "1.1.414" })];
+    health = [
+      pyright({
+        status: "versionUnknown",
+        path: "/p/pyright-langserver",
+        version: "1.1.414",
+        installedVersion: "1.1.414",
+      }),
+    ];
     install.click();
 
     await waitFor(() => expect(screen.getByText(/Installed by Tori, version 1.1.414\./)).toBeTruthy());
@@ -184,7 +199,14 @@ describe("LspSection", () => {
   });
 
   it("offers Remove, and no Update, for a current install", async () => {
-    health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.414", installedVersion: "1.1.414" })];
+    health = [
+      pyright({
+        status: "versionUnknown",
+        path: "/p/pyright-langserver",
+        version: "1.1.414",
+        installedVersion: "1.1.414",
+      }),
+    ];
     render(() => <LspSection />);
 
     const remove = await screen.findByRole("button", { name: "Remove Python (pyright)" });
@@ -195,7 +217,14 @@ describe("LspSection", () => {
   });
 
   it("offers Update beside Remove when Tori now pins a newer version", async () => {
-    health = [pyright({ status: "versionUnknown", path: "/p/pyright-langserver", version: "1.1.400", installedVersion: "1.1.400" })];
+    health = [
+      pyright({
+        status: "versionUnknown",
+        path: "/p/pyright-langserver",
+        version: "1.1.400",
+        installedVersion: "1.1.400",
+      }),
+    ];
     render(() => <LspSection />);
 
     const update = await screen.findByRole("button", { name: "Update Python (pyright)" });

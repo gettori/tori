@@ -24,13 +24,27 @@ beforeEach(async () => {
 });
 
 const saved = (): NotificationSettings[] =>
-  invoke.mock.calls.filter(([cmd]) => cmd === "set_settings").map(([, args]) => (args as { settings: Stored }).settings.notifications);
+  invoke.mock.calls
+    .filter(([cmd]) => cmd === "set_settings")
+    .map(([, args]) => (args as { settings: Stored }).settings.notifications);
 
 const ROWS: [string, NotificationSettings][] = [
-  ["Notify when a session needs you", { needsYou: { notify: false, sound: false }, turnFinished: { notify: false, sound: false } }],
-  ["Play a sound when a session needs you", { needsYou: { notify: true, sound: true }, turnFinished: { notify: false, sound: false } }],
-  ["Notify when a chat finishes its turn", { needsYou: { notify: true, sound: false }, turnFinished: { notify: true, sound: false } }],
-  ["Play a sound when a chat finishes its turn", { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: true } }],
+  [
+    "Notify when a session needs you",
+    { needsYou: { notify: false, sound: false }, turnFinished: { notify: false, sound: false } },
+  ],
+  [
+    "Play a sound when a session needs you",
+    { needsYou: { notify: true, sound: true }, turnFinished: { notify: false, sound: false } },
+  ],
+  [
+    "Notify when a chat finishes its turn",
+    { needsYou: { notify: true, sound: false }, turnFinished: { notify: true, sound: false } },
+  ],
+  [
+    "Play a sound when a chat finishes its turn",
+    { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: true } },
+  ],
 ];
 
 describe("the Notifications settings group", () => {

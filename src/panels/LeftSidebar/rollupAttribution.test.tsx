@@ -54,7 +54,8 @@ const liveTabs = [
     workspace: REPO,
     kind: "agent" as const,
     sessionId: "on-feat",
-    agent: "claude" as const, state: "live" as const,
+    agent: "claude" as const,
+    state: "live" as const,
   },
 ];
 

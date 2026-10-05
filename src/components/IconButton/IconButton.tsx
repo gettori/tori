@@ -3,8 +3,7 @@ import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./IconButton.module.css";
 import type { ControlSize } from "../controls";
 
-export interface IconButtonProps
-  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "title"> {
+export interface IconButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Nothing in Tori passes it. */
   type?: "submit" | "reset" | "button";
@@ -48,9 +47,7 @@ export default function IconButton(props: IconButtonProps) {
   const ariaPressed = () => local["aria-pressed"] ?? local.active;
 
   if (import.meta.env.DEV && ariaLabel() == null) {
-    console.warn(
-      "[IconButton] is missing an accessible name; pass `aria-label` (or a `tooltip`).",
-    );
+    console.warn("[IconButton] is missing an accessible name; pass `aria-label` (or a `tooltip`).");
   }
 
   return (

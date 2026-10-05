@@ -38,8 +38,7 @@ vi.mock("@tauri-apps/api/core", () => ({
           const command = frame.command as string;
           const requestArgs = (frame.arguments ?? {}) as Record<string, unknown>;
           sent.push({ command, args: requestArgs });
-          const answer =
-            command === "evaluate" ? evaluations.get(requestArgs.expression as string) : undefined;
+          const answer = command === "evaluate" ? evaluations.get(requestArgs.expression as string) : undefined;
           const failed = Boolean(answer?.fail);
           void Promise.resolve().then(() =>
             deliver(handle.session, {
@@ -250,8 +249,6 @@ describe("the console's input", () => {
 
     type("Evaluate in the debug console", "count");
 
-    await waitFor(() =>
-      expect(screen.queryByText(/No debug session\. Start one with F5/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.queryByText(/No debug session\. Start one with F5/)).toBeTruthy());
   });
 });

@@ -11,9 +11,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 // opinion about, so nothing here asserts on appearance.
 function renderControlled(over: Partial<Parameters<typeof Checkbox>[0]> = {}) {
   const [checked, setChecked] = createSignal(false);
-  const r = render(() => (
-    <Checkbox checked={checked()} onChange={setChecked} label="Include untracked" {...over} />
-  ));
+  const r = render(() => <Checkbox checked={checked()} onChange={setChecked} label="Include untracked" {...over} />);
   return { ...r, checked };
 }
 

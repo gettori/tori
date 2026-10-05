@@ -58,8 +58,7 @@ pub fn events_and_prompts(
     // order a single-threaded agent produces them in.
     let mut open_calls: Vec<(String, String)> = Vec::new();
     let mut seq = 0usize;
-    let by_call: HashMap<&str, &SubagentTranscript> =
-        subagents.iter().map(|s| (s.tool_use_id.as_str(), s)).collect();
+    let by_call: HashMap<&str, &SubagentTranscript> = subagents.iter().map(|s| (s.tool_use_id.as_str(), s)).collect();
     let mut expanding = HashSet::new();
 
     for (at, turn) in turns.iter().enumerate() {
@@ -159,7 +158,15 @@ pub fn events_and_prompts(
                     // The lane this call opened, replayed inside the turn that
                     // launched it.
                     if let Some(sub) = opened.as_deref().and_then(|id| by_call.get(id)) {
-                        expand_subagent(&mut events, session_id, &turn_id, sub, &by_call, &mut seq, &mut expanding);
+                        expand_subagent(
+                            &mut events,
+                            session_id,
+                            &turn_id,
+                            sub,
+                            &by_call,
+                            &mut seq,
+                            &mut expanding,
+                        );
                     }
                 }
                 _ => {}
@@ -250,7 +257,11 @@ fn push_block(
                 session_id: session_id.to_string(),
                 turn_id: turn_id.to_string(),
                 tool_use_id,
-                status: if block.is_error == Some(true) { ToolStatus::Error } else { ToolStatus::Ok },
+                status: if block.is_error == Some(true) {
+                    ToolStatus::Error
+                } else {
+                    ToolStatus::Ok
+                },
                 // Whole, and cut by the host afterwards through the same
                 // cache a live event goes through. Cutting here instead
                 // would leave a replayed card offering to fetch a
@@ -316,8 +327,15 @@ fn expand_subagent(
     let mut open_calls: Vec<(String, String)> = Vec::new();
     for turn in &sub.turns {
         for block in &turn.blocks {
-            let opened =
-                push_block(events, session_id, turn_id, Some(&sub.agent_id), block, &mut open_calls, seq);
+            let opened = push_block(
+                events,
+                session_id,
+                turn_id,
+                Some(&sub.agent_id),
+                block,
+                &mut open_calls,
+                seq,
+            );
             if let Some(nested) = opened.as_deref().and_then(|id| by_call.get(id)) {
                 expand_subagent(events, session_id, turn_id, nested, by_call, seq, expanding);
             }
@@ -340,12 +358,7 @@ fn is_compaction(turn: &TranscriptTurn) -> bool {
 /// into, or a `/clear`) and is not a row, so it returns `None` and the caller
 /// drops it. Output with no invocation before it is the head of a transcript
 /// read from partway in, worth showing unlabelled rather than losing.
-fn local_command(
-    turns: &[TranscriptTurn],
-    at: usize,
-    session_id: &str,
-    turn_id: &str,
-) -> Option<ChatEvent> {
+fn local_command(turns: &[TranscriptTurn], at: usize, session_id: &str, turn_id: &str) -> Option<ChatEvent> {
     let block = turns[at].blocks.first()?;
     let (command, output) = match block.kind.as_str() {
         "command" => {
@@ -452,9 +465,7 @@ pub fn prompt_boundary(turns: &[TranscriptTurn], prompt_ts: u64) -> Option<usize
     turns
         .iter()
         .enumerate()
-        .filter(|(at, t)| {
-            t.role == "user" && !turns.get(at.wrapping_sub(1)).is_some_and(is_compaction)
-        })
+        .filter(|(at, t)| t.role == "user" && !turns.get(at.wrapping_sub(1)).is_some_and(is_compaction))
         .min_by_key(|(_, t)| t.ts.abs_diff(prompt_ts))
         .map(|(at, _)| at)
 }
@@ -492,9 +503,12 @@ mod tests {
     use std::path::PathBuf;
 
     fn turn(role: &str, blocks: Vec<TranscriptBlock>) -> TranscriptTurn {
-        TranscriptTurn { role: role.into(), ts: 0, blocks }
+        TranscriptTurn {
+            role: role.into(),
+            ts: 0,
+            blocks,
+        }
     }
-
 
     /// Captured stream frames, rewritten as the transcript records the CLI
     /// writes for the same run. Only two things actually change: the timestamp
@@ -649,7 +663,10 @@ mod tests {
     #[test]
     fn a_replayed_image_keeps_its_place_in_the_prompt() {
         let turns = vec![
-            turn("user", vec![image_block(), text_block("text", "what colour is this?".into())]),
+            turn(
+                "user",
+                vec![image_block(), text_block("text", "what colour is this?".into())],
+            ),
             turn("user", vec![image_block()]),
         ];
         let blocks: Vec<Vec<ContentBlock>> = events_from_turns("s1", &turns, &[])
@@ -663,7 +680,12 @@ mod tests {
         // In front of the text, which is where it was sent.
         assert_eq!(
             blocks[0],
-            vec![ContentBlock::ImageRef, ContentBlock::Text { text: "what colour is this?".into() }]
+            vec![
+                ContentBlock::ImageRef,
+                ContentBlock::Text {
+                    text: "what colour is this?".into()
+                }
+            ]
         );
         // An image-only prompt still replays as a prompt. It used to produce no
         // user message at all, so a reopened chat lost the question entirely.
@@ -693,7 +715,9 @@ mod tests {
                 text: None,
                 label: Some("[Image 1]".into()),
             },
-            ContentBlock::Text { text: "what colour is [Image 1]?".into() },
+            ContentBlock::Text {
+                text: "what colour is [Image 1]?".into(),
+            },
             // A name that merely looks ranged keeps every character it had,
             // and a real range comes back as a range rather than as a path
             // with `#L2-4` buried in it.
@@ -768,15 +792,32 @@ mod tests {
                 vec![
                     text_block("thinking", "considering".into()),
                     text_block("text", "on it".into()),
-                    tool_call_block("Edit".into(), serde_json::json!({ "file_path": "/a" }), Some("toolu_1".into())),
+                    tool_call_block(
+                        "Edit".into(),
+                        serde_json::json!({ "file_path": "/a" }),
+                        Some("toolu_1".into()),
+                    ),
                 ],
             ),
-            turn("user", vec![tool_result_block(None, "done".into(), false, Some("toolu_1".into()), None, Vec::new())]),
+            turn(
+                "user",
+                vec![tool_result_block(
+                    None,
+                    "done".into(),
+                    false,
+                    Some("toolu_1".into()),
+                    None,
+                    Vec::new(),
+                )],
+            ),
             turn("assistant", vec![text_block("text", "fixed".into())]),
         ];
 
         let events = events_from_turns("s1", &turns, &[]);
-        assert_eq!(kinds(&events), ["user", "thinking", "text", "started", "completed", "text"]);
+        assert_eq!(
+            kinds(&events),
+            ["user", "thinking", "text", "started", "completed", "text"]
+        );
         // Every event carries the session, since a shared channel routes on it.
         assert!(events.iter().all(|e| matches!(e,
             ChatEvent::UserMessage { session_id, .. }
@@ -811,9 +852,12 @@ mod tests {
         let completed: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::ToolCallCompleted { tool_use_id, output, status, .. } => {
-                    Some((tool_use_id.as_str(), output.clone().unwrap_or_default(), *status))
-                }
+                ChatEvent::ToolCallCompleted {
+                    tool_use_id,
+                    output,
+                    status,
+                    ..
+                } => Some((tool_use_id.as_str(), output.clone().unwrap_or_default(), *status)),
                 _ => None,
             })
             .collect();
@@ -825,8 +869,21 @@ mod tests {
     fn a_transcript_without_ids_pairs_by_order() {
         // A transcript recording no tool ids at all still has to pair up.
         let turns = vec![
-            turn("assistant", vec![tool_call_block("Read".into(), serde_json::json!({}), None)]),
-            turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None, None, Vec::new())]),
+            turn(
+                "assistant",
+                vec![tool_call_block("Read".into(), serde_json::json!({}), None)],
+            ),
+            turn(
+                "tool",
+                vec![tool_result_block(
+                    Some("Read".into()),
+                    "out".into(),
+                    false,
+                    None,
+                    None,
+                    Vec::new(),
+                )],
+            ),
         ];
         let events = events_from_turns("s1", &turns, &[]);
         let started = match &events[0] {
@@ -844,7 +901,14 @@ mod tests {
         // The first half of a resumed conversation lives in another file.
         let turns = vec![turn(
             "user",
-            vec![tool_result_block(None, "orphan".into(), false, Some("toolu_gone".into()), None, Vec::new())],
+            vec![tool_result_block(
+                None,
+                "orphan".into(),
+                false,
+                Some("toolu_gone".into()),
+                None,
+                Vec::new(),
+            )],
         )];
         assert!(events_from_turns("s1", &turns, &[]).is_empty());
     }
@@ -895,7 +959,12 @@ mod tests {
         // what a question about it later would be answered from.
         match &events[0] {
             ChatEvent::UserMessage { blocks, .. } => {
-                assert_eq!(blocks, &[ContentBlock::Text { text: "the deploy key is DEPLOY-77".into() }]);
+                assert_eq!(
+                    blocks,
+                    &[ContentBlock::Text {
+                        text: "the deploy key is DEPLOY-77".into()
+                    }]
+                );
             }
             other => panic!("expected a user message, got {other:?}"),
         }
@@ -984,7 +1053,10 @@ mod tests {
         });
         assert_eq!(
             command,
-            Some((Some("/model haiku".into()), "Set model to haiku (claude-haiku-4-5-20251001)".into()))
+            Some((
+                Some("/model haiku".into()),
+                "Set model to haiku (claude-haiku-4-5-20251001)".into()
+            ))
         );
         let texts: Vec<_> = events
             .iter()
@@ -996,8 +1068,12 @@ mod tests {
         assert_eq!(
             texts,
             vec![
-                vec![ContentBlock::Text { text: "start the migration".into() }],
-                vec![ContentBlock::Text { text: "carry on".into() }],
+                vec![ContentBlock::Text {
+                    text: "start the migration".into()
+                }],
+                vec![ContentBlock::Text {
+                    text: "carry on".into()
+                }],
             ]
         );
         let _ = std::fs::remove_file(&path);
@@ -1053,14 +1129,23 @@ mod tests {
         // The continuation preamble is *not* a second user turn.
         assert_eq!(kinds(&events), ["user", "other", "text"]);
         match &events[1] {
-            ChatEvent::Compacted { trigger, pre_tokens, post_tokens, summary, .. } => {
+            ChatEvent::Compacted {
+                trigger,
+                pre_tokens,
+                post_tokens,
+                summary,
+                ..
+            } => {
                 assert_eq!(trigger.as_deref(), Some("manual"));
                 // The reclaim is the checkable half of "compaction reduces
                 // reported context usage".
                 assert_eq!(*pre_tokens, Some(247408));
                 assert_eq!(*post_tokens, Some(9444));
                 assert!(post_tokens < pre_tokens);
-                assert!(summary.as_deref().unwrap().contains("continued from a previous conversation"));
+                assert!(summary
+                    .as_deref()
+                    .unwrap()
+                    .contains("continued from a previous conversation"));
             }
             other => panic!("expected a compaction, got {other:?}"),
         }
@@ -1069,7 +1154,14 @@ mod tests {
 
     #[test]
     fn a_compaction_with_no_following_turn_reports_no_summary() {
-        let turns = vec![turn("compaction", vec![crate::sessions::compaction_block(Some("auto".into()), Some(100), Some(10))])];
+        let turns = vec![turn(
+            "compaction",
+            vec![crate::sessions::compaction_block(
+                Some("auto".into()),
+                Some(100),
+                Some(10),
+            )],
+        )];
         match &events_from_turns("s1", &turns, &[])[0] {
             // A session compacted and then closed has no summary message yet,
             // and inventing one would be worse than saying nothing.
@@ -1088,9 +1180,23 @@ mod tests {
         let turns = vec![
             turn(
                 "assistant",
-                vec![tool_call_block("Edit".into(), serde_json::json!({ "file_path": "/a" }), Some("t1".into()))],
+                vec![tool_call_block(
+                    "Edit".into(),
+                    serde_json::json!({ "file_path": "/a" }),
+                    Some("t1".into()),
+                )],
             ),
-            turn("user", vec![tool_result_block(None, "ok".into(), false, Some("t1".into()), None, Vec::new())]),
+            turn(
+                "user",
+                vec![tool_result_block(
+                    None,
+                    "ok".into(),
+                    false,
+                    Some("t1".into()),
+                    None,
+                    Vec::new(),
+                )],
+            ),
         ];
         match &events_from_turns("s1", &turns, &[])[1] {
             ChatEvent::ToolCallCompleted { files, duration_ms, .. } => {
@@ -1102,7 +1208,11 @@ mod tests {
     }
 
     fn stamped(role: &str, ts: u64, text: &str) -> TranscriptTurn {
-        TranscriptTurn { role: role.into(), ts, blocks: vec![text_block("text", text.into())] }
+        TranscriptTurn {
+            role: role.into(),
+            ts,
+            blocks: vec![text_block("text", text.into())],
+        }
     }
 
     #[test]
@@ -1212,7 +1322,10 @@ mod tests {
     fn lane_shapes(events: &[ChatEvent]) -> BTreeMap<String, Vec<&'static str>> {
         let mut lane_of_call: HashMap<&str, &str> = HashMap::new();
         for ev in events {
-            if let ChatEvent::SubagentCall { agent_id, tool_use_id, .. } = ev {
+            if let ChatEvent::SubagentCall {
+                agent_id, tool_use_id, ..
+            } = ev
+            {
                 lane_of_call.insert(tool_use_id, agent_id);
             }
         }
@@ -1222,7 +1335,10 @@ mod tests {
                 ChatEvent::SubagentStarted { agent_id, .. } => {
                     out.entry(agent_id.clone()).or_default();
                 }
-                ChatEvent::TextDelta { agent_id: Some(agent_id), .. } => {
+                ChatEvent::TextDelta {
+                    agent_id: Some(agent_id),
+                    ..
+                } => {
                     let rows = out.entry(agent_id.clone()).or_default();
                     if rows.last() != Some(&"text") {
                         rows.push("text");
@@ -1263,19 +1379,29 @@ mod tests {
             );
             for (lane, rows) in &live {
                 let mine = replayed.get(lane).expect("the lane is there");
-                assert_eq!(&mine[..rows.len()], &rows[..], "{session}: lane {lane} kept the rows it showed live");
+                assert_eq!(
+                    &mine[..rows.len()],
+                    &rows[..],
+                    "{session}: lane {lane} kept the rows it showed live"
+                );
             }
         }
 
         // The one row the two disagree on, named rather than left to a count.
         assert_eq!(
-            lane_shapes(&replay_session("subagent-foreground")).get("acb01121756a92ca0").map(Vec::as_slice),
+            lane_shapes(&replay_session("subagent-foreground"))
+                .get("acb01121756a92ca0")
+                .map(Vec::as_slice),
             Some(["tool", "text"].as_slice()),
             "its call, then the closing report only the sidecar has"
         );
         assert_eq!(
-            lane_shapes(&live_events("subagent-background")).get("ad7048d25dc5e778a").map(Vec::as_slice),
-            lane_shapes(&replay_session("subagent-background")).get("ad7048d25dc5e778a").map(Vec::as_slice),
+            lane_shapes(&live_events("subagent-background"))
+                .get("ad7048d25dc5e778a")
+                .map(Vec::as_slice),
+            lane_shapes(&replay_session("subagent-background"))
+                .get("ad7048d25dc5e778a")
+                .map(Vec::as_slice),
             "a backgrounded lane does send its report, so its two shapes match exactly"
         );
     }
@@ -1288,21 +1414,31 @@ mod tests {
         let launcher = events
             .iter()
             .find_map(|e| match e {
-                ChatEvent::ToolCallStarted { tool_use_id, name, turn_id, .. } if name == "Agent" => {
-                    Some((tool_use_id.clone(), turn_id.clone()))
-                }
+                ChatEvent::ToolCallStarted {
+                    tool_use_id,
+                    name,
+                    turn_id,
+                    ..
+                } if name == "Agent" => Some((tool_use_id.clone(), turn_id.clone())),
                 _ => None,
             })
             .expect("the Agent call");
         let laned: Vec<&String> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::TextDelta { agent_id: Some(_), turn_id, .. } => Some(turn_id),
+                ChatEvent::TextDelta {
+                    agent_id: Some(_),
+                    turn_id,
+                    ..
+                } => Some(turn_id),
                 _ => None,
             })
             .collect();
         assert!(!laned.is_empty(), "the lane produced rows to attribute");
-        assert!(laned.iter().all(|t| **t == launcher.1), "every laned row sits in the launching turn");
+        assert!(
+            laned.iter().all(|t| **t == launcher.1),
+            "every laned row sits in the launching turn"
+        );
         assert_eq!(launcher.0, "toolu_01Ec9PYYDVBe9S6DjXp4RM1s");
     }
 
@@ -1315,9 +1451,11 @@ mod tests {
         let statuses: Vec<&str> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::SubagentUpdate { agent_id, status: Some(s), .. } if agent_id == "ad7048d25dc5e778a" => {
-                    Some(s.as_str())
-                }
+                ChatEvent::SubagentUpdate {
+                    agent_id,
+                    status: Some(s),
+                    ..
+                } if agent_id == "ad7048d25dc5e778a" => Some(s.as_str()),
                 _ => None,
             })
             .collect();
@@ -1327,7 +1465,11 @@ mod tests {
             .iter()
             .rev()
             .find_map(|e| match e {
-                ChatEvent::SubagentUpdate { usage: Some(u), summary, .. } => Some((*u, summary.clone())),
+                ChatEvent::SubagentUpdate {
+                    usage: Some(u),
+                    summary,
+                    ..
+                } => Some((*u, summary.clone())),
                 _ => None,
             })
             .expect("a terminal update");
@@ -1367,7 +1509,9 @@ mod tests {
             "no lane is invented for a session that never fanned out"
         );
         assert!(
-            events.iter().all(|e| !matches!(e, ChatEvent::TextDelta { agent_id: Some(_), .. })),
+            events
+                .iter()
+                .all(|e| !matches!(e, ChatEvent::TextDelta { agent_id: Some(_), .. })),
             "and no row is laned"
         );
     }

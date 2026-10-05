@@ -46,7 +46,8 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
@@ -76,8 +77,7 @@ describe("the buffer the editor built", () => {
       />
     ));
 
-    const viewNow = () =>
-      EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement);
+    const viewNow = () => EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement);
     // The buffer's own extensions arrive with the file, not with the mount.
     await waitFor(() => expect(viewNow()?.state.doc.toString()).toBe(DISK));
     const view = viewNow();

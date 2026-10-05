@@ -9,7 +9,8 @@ import toriMark from "../../../src-tauri/icons/tray.png";
 import styles from "./Chat.module.css";
 
 // A wake line is `item <id>: <what>, session <sid>` or `session <sid>: <what>`.
-const wakeWhat = (line: string) => /^item [^:]+: (.+), session \S+$/.exec(line)?.[1] ?? /^session [^:]+: (.+)$/.exec(line)?.[1];
+const wakeWhat = (line: string) =>
+  /^item [^:]+: (.+), session \S+$/.exec(line)?.[1] ?? /^session [^:]+: (.+)$/.exec(line)?.[1];
 // Each watched pull request opens its block with `pull request <url>:`.
 const watchedPrs = (body: string) =>
   body.split("\n").flatMap((line) => /^pull request \S+\/pull\/(\d+):$/.exec(line)?.[1] ?? []);
@@ -23,7 +24,10 @@ export function toriLabel(note: ToriNote, sessionName: (id: string) => string | 
     case "compacted":
       return "Tori gave the autopilot its brief again after compacting";
     case "wake": {
-      const whats = note.body.split("\n").map(wakeWhat).filter((w): w is string => !!w);
+      const whats = note.body
+        .split("\n")
+        .map(wakeWhat)
+        .filter((w): w is string => !!w);
       return whats.length ? `Tori: a worker reports ${whats.join("; ")}` : "Tori woke the autopilot";
     }
     case "pr_watch": {

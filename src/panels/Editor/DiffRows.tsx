@@ -48,9 +48,7 @@ function lineContent(r: DiffRow, spans: Span[] | null) {
     );
   }
   if (!segs) return "text" in r ? r.text || " " : " ";
-  return (
-    <For each={segs}>{(s) => (s.changed ? <span class={styles.wordChanged}>{s.text}</span> : <>{s.text}</>)}</For>
-  );
+  return <For each={segs}>{(s) => (s.changed ? <span class={styles.wordChanged}>{s.text}</span> : <>{s.text}</>)}</For>;
 }
 
 /** Classes for a caller composing a row of its own that must line up with real
@@ -192,11 +190,7 @@ export default function DiffRows(allProps: {
         data-new={only === "old" ? undefined : (row?.newLine ?? undefined)}
         style={digits() > 4 ? { "--diff-num-digits": digits() } : undefined}
         onClick={selectable ? toggle : undefined}
-        onFocusIn={
-          props.keyboard === "roving" && index !== null
-            ? () => hunk.setAt(props.offset + index)
-            : undefined
-        }
+        onFocusIn={props.keyboard === "roving" && index !== null ? () => hunk.setAt(props.offset + index) : undefined}
         // A line is in the selection or it is not, which is what a checkbox
         // is. Reachable by keyboard for the same reason the conflicted row is
         // a button: a control only the mouse can reach is half a control.
@@ -253,10 +247,7 @@ export default function DiffRows(allProps: {
   }
 
   return (
-    <Show
-      when={props.twoColumn}
-      fallback={<For each={props.rows}>{(r, i) => cell(r, i())}</For>}
-    >
+    <Show when={props.twoColumn} fallback={<For each={props.rows}>{(r, i) => cell(r, i())}</For>}>
       {/* Side-by-side: one scroll container holding both columns, so the two
           sides scroll together by construction rather than by syncing. */}
       <div class={styles.sideBySide}>

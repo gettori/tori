@@ -99,9 +99,7 @@ export default function RadioGroup(props: {
               <div class={styles.text}>
                 <Primitive.ItemLabel class={styles.label}>{option.label}</Primitive.ItemLabel>
                 <Show when={option.description !== undefined}>
-                  <Primitive.ItemDescription class={styles.description}>
-                    {option.description}
-                  </Primitive.ItemDescription>
+                  <Primitive.ItemDescription class={styles.description}>{option.description}</Primitive.ItemDescription>
                 </Show>
               </div>
             </Primitive.Item>

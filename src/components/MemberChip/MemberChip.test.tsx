@@ -33,9 +33,7 @@ describe("MemberChip", () => {
     expect(one.style.getPropertyValue("--chip-hue")).toBe("oklch(0.7 0.1 250)");
     expect(two.style.getPropertyValue("--chip-rgb")).toBe("220 80 40");
     // Two members, two different tints: the whole point of the chip.
-    expect(one.style.getPropertyValue("--chip-hue")).not.toBe(
-      two.style.getPropertyValue("--chip-hue"),
-    );
+    expect(one.style.getPropertyValue("--chip-hue")).not.toBe(two.style.getPropertyValue("--chip-hue"));
     expect(container).toBeTruthy();
   });
 

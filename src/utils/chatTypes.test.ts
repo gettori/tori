@@ -420,9 +420,7 @@ describe("chatTypes mirrors the Rust chat model", () => {
 
     // Every variant is present, so a Rust sample that stopped being emitted
     // cannot leave its entry silently unchecked.
-    expect(summaries.map((s) => s.type).sort()).toEqual(
-      (Object.keys(keysFor) as ToolSummary["type"][]).sort(),
-    );
+    expect(summaries.map((s) => s.type).sort()).toEqual((Object.keys(keysFor) as ToolSummary["type"][]).sort());
     for (const summary of summaries) {
       expect(sorted(summary)).toEqual([...keysFor[summary.type]].sort());
     }

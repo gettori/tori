@@ -14,10 +14,7 @@ import { fuzzyScore } from "../../utils/fuzzy";
  *  Three states rather than a count and two flags: a row shows exactly one of
  *  them, and a shape that cannot express "probing, 5 models, needs fixing" is
  *  what stops the row from trying to. */
-export type ProviderHealth =
-  | { kind: "count"; count: number }
-  | { kind: "probing" }
-  | { kind: "fix"; reason: string };
+export type ProviderHealth = { kind: "count"; count: number } | { kind: "probing" } | { kind: "fix"; reason: string };
 
 export type PaletteProvider = {
   /** This row's identity. An agent with two accounts is two rows, so `agentId`
@@ -146,9 +143,7 @@ export function paletteProviders(input: {
    *  the version the probe recorded, which is the list's own vintage. */
   version?: (id: string) => string | null;
 }): PaletteProvider[] {
-  const byPair = new Map(
-    (input.catalogs ?? []).map((c) => [catalogKey(c.agentId, c.profileId), c] as const),
-  );
+  const byPair = new Map((input.catalogs ?? []).map((c) => [catalogKey(c.agentId, c.profileId), c] as const));
   return input.adapters.filter(chatCapable).flatMap((adapter) => {
     // `[null]` is the single-account install: one row, named after the agent
     // alone, which is what it was before accounts existed.
@@ -223,10 +218,7 @@ export function lockedProvider(
  * Ranking is the shared fuzzy score, on the model's label and its value, since
  * `claude-sonnet-5` is what a user types as often as `Sonnet`.
  */
-export function filterProviders(
-  providers: readonly PaletteProvider[],
-  query: string,
-): PaletteProvider[] {
+export function filterProviders(providers: readonly PaletteProvider[], query: string): PaletteProvider[] {
   const q = query.trim();
   if (!q) return [...providers];
   const out: PaletteProvider[] = [];

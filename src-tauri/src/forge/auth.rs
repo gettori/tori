@@ -36,7 +36,12 @@ pub struct AuthCore {
 
 impl Default for AuthCore {
     fn default() -> Self {
-        Self { token: None, login: None, suspect: false, enabled: true }
+        Self {
+            token: None,
+            login: None,
+            suspect: false,
+            enabled: true,
+        }
     }
 }
 
@@ -44,14 +49,23 @@ impl AuthCore {
     /// Restores from what the keychain held at startup.
     pub fn restored(token: Option<String>, login: Option<String>, suspect: bool, enabled: bool) -> Self {
         let suspect = suspect && token.is_some();
-        Self { token, login, suspect, enabled }
+        Self {
+            token,
+            login,
+            suspect,
+            enabled,
+        }
     }
 
     pub fn state(&self) -> AuthState {
         match (&self.token, self.suspect) {
             (None, _) => AuthState::SignedOut,
-            (Some(_), true) => AuthState::Suspect { login: self.login.clone() },
-            (Some(_), false) => AuthState::SignedIn { login: self.login.clone().unwrap_or_default() },
+            (Some(_), true) => AuthState::Suspect {
+                login: self.login.clone(),
+            },
+            (Some(_), false) => AuthState::SignedIn {
+                login: self.login.clone().unwrap_or_default(),
+            },
         }
     }
 
@@ -157,7 +171,10 @@ pub struct AuthStore {
 
 impl Default for AuthStore {
     fn default() -> Self {
-        Self { accounts: BTreeMap::new(), enabled: true }
+        Self {
+            accounts: BTreeMap::new(),
+            enabled: true,
+        }
     }
 }
 
@@ -339,7 +356,12 @@ mod tests {
 
         a.note_unauthorized();
         assert!(!a.may_call(), "polling pauses");
-        assert_eq!(a.state(), AuthState::Suspect { login: Some("skarif2".into()) });
+        assert_eq!(
+            a.state(),
+            AuthState::Suspect {
+                login: Some("skarif2".into())
+            }
+        );
         // The whole point: the credential is still there. Deleting it would
         // cost a full device-flow re-auth to recover from a maybe-transient
         // failure, while keeping it costs one stalled poll cycle.
@@ -356,7 +378,12 @@ mod tests {
         // the user did fixed this, and nothing they do should have to.
         a.note_success();
         assert!(a.may_call(), "recovered by itself");
-        assert_eq!(a.state(), AuthState::SignedIn { login: "skarif2".into() });
+        assert_eq!(
+            a.state(),
+            AuthState::SignedIn {
+                login: "skarif2".into()
+            }
+        );
         assert_eq!(a.token(), Some("gho_x"), "the same token, never re-fetched");
     }
 
@@ -400,7 +427,12 @@ mod tests {
         a.set_enabled(false);
         assert!(!a.may_call());
         assert_eq!(a.token(), Some("gho_x"), "still signed in, just quiet");
-        assert_eq!(a.state(), AuthState::SignedIn { login: "skarif2".into() });
+        assert_eq!(
+            a.state(),
+            AuthState::SignedIn {
+                login: "skarif2".into()
+            }
+        );
 
         a.set_enabled(true);
         assert!(a.may_call());
@@ -429,9 +461,13 @@ mod tests {
                 retry_after_secs: None,
                 reset_at_secs: None,
             },
-            ForgeError::Transport { message: "offline".into() },
+            ForgeError::Transport {
+                message: "offline".into(),
+            },
             ForgeError::NotFound,
-            ForgeError::Forbidden { message: "scope".into() },
+            ForgeError::Forbidden {
+                message: "scope".into(),
+            },
         ] {
             a.note_result(&Err::<(), _>(harmless.clone()));
             assert!(a.may_call(), "{harmless:?} must not read as a rejected token");
@@ -461,16 +497,22 @@ mod tests {
         // polling.
         let cases = [
             (AuthCore::default(), "no token"),
-            ({
-                let mut a = signed_in();
-                a.note_unauthorized();
-                a
-            }, "suspect"),
-            ({
-                let mut a = signed_in();
-                a.set_enabled(false);
-                a
-            }, "disabled"),
+            (
+                {
+                    let mut a = signed_in();
+                    a.note_unauthorized();
+                    a
+                },
+                "suspect",
+            ),
+            (
+                {
+                    let mut a = signed_in();
+                    a.set_enabled(false);
+                    a
+                },
+                "disabled",
+            ),
         ];
         for (a, why) in cases {
             assert!(!a.may_call(), "{why} must stop the caller");
@@ -478,7 +520,12 @@ mod tests {
     }
 
     fn restored(id: &str, token: Option<&str>, login: Option<&str>, rejected: bool) -> Restored {
-        Restored { id: id.into(), token: token.map(Into::into), login: login.map(Into::into), rejected }
+        Restored {
+            id: id.into(),
+            token: token.map(Into::into),
+            login: login.map(Into::into),
+            rejected,
+        }
     }
 
     #[test]
@@ -493,7 +540,12 @@ mod tests {
         store.note_result("work", &Err::<(), _>(super::super::ForgeError::CredentialSuspect));
         assert!(!store.may_call("work"));
         assert!(store.may_call("personal"));
-        assert_eq!(store.state("personal"), AuthState::SignedIn { login: "skarif2".into() });
+        assert_eq!(
+            store.state("personal"),
+            AuthState::SignedIn {
+                login: "skarif2".into()
+            }
+        );
 
         store.set_enabled(false);
         assert!(!store.may_call("personal"), "the kill switch reaches every account");
@@ -501,13 +553,25 @@ mod tests {
     }
 
     fn work(rejected: bool) -> AuthStore {
-        AuthStore::restored(vec![restored("work", Some("gho_b"), Some("globex-arif"), rejected)], true)
+        AuthStore::restored(
+            vec![restored("work", Some("gho_b"), Some("globex-arif"), rejected)],
+            true,
+        )
     }
 
     fn on_disk() -> (super::super::accounts::AccountsFile, String) {
         use super::super::accounts::{add_account, AccountsFile, Provider, Source, GITHUB_COM};
         let mut file = AccountsFile::default();
-        let id = add_account(&mut file, Provider::Github, "https://github.com", GITHUB_COM, "globex-arif", Source::Token, None).unwrap();
+        let id = add_account(
+            &mut file,
+            Provider::Github,
+            "https://github.com",
+            GITHUB_COM,
+            "globex-arif",
+            Source::Token,
+            None,
+        )
+        .unwrap();
         (file, id)
     }
 
@@ -548,7 +612,12 @@ mod tests {
     #[test]
     fn a_rejected_account_comes_back_suspect_after_a_restart() {
         let store = work(true);
-        assert_eq!(store.state("work"), AuthState::Suspect { login: Some("globex-arif".into()) });
+        assert_eq!(
+            store.state("work"),
+            AuthState::Suspect {
+                login: Some("globex-arif".into())
+            }
+        );
         assert!(!store.may_call("work"));
 
         let keychain_empty = AuthStore::restored(vec![restored("work", None, None, true)], true);
@@ -565,7 +634,10 @@ mod tests {
         assert_eq!(store.note_result(&id, &UNAUTHORIZED), None);
         assert!(!store.may_call(&id));
 
-        assert_eq!(store.note_result(&id, &Ok::<_, super::super::ForgeError>(())), Some(Flip::Recovered));
+        assert_eq!(
+            store.note_result(&id, &Ok::<_, super::super::ForgeError>(())),
+            Some(Flip::Recovered)
+        );
         accounts::note_rejection(&mut file, &id, suspect(&store, &id), 200);
         assert_eq!(accounts::find(&file, &id).unwrap().1.rejected_at, None);
         assert!(store.may_call(&id));

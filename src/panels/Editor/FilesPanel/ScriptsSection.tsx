@@ -8,13 +8,7 @@ import ContextMenu from "../../../components/Menu/ContextMenu";
 import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
 import FileIcon from "../../../seti/FileIcon";
 import { debounce } from "../../../utils/debounce";
-import {
-  emitWith,
-  OPEN_IN_EDITOR,
-  OPEN_TERMINAL,
-  type FsChanged,
-  type OpenInEditor,
-} from "../../../utils/events";
+import { emitWith, OPEN_IN_EDITOR, OPEN_TERMINAL, type FsChanged, type OpenInEditor } from "../../../utils/events";
 import { isTaskSource, loadTasks, taskTab, type Task } from "../../../utils/tasks";
 import { runTask } from "../../../utils/runTask";
 import { loadTaskRuns } from "../../../utils/taskRecents";
@@ -87,7 +81,12 @@ export default function ScriptsSection(props: { root: string | null }) {
   }
 
   const debouncedScan = debounce(() => void scan(), FS_CHANGE_DEBOUNCE_MS);
-  createEffect(on(() => props.root, () => void scan()));
+  createEffect(
+    on(
+      () => props.root,
+      () => void scan(),
+    ),
+  );
 
   const mark = (id: string, on: boolean) =>
     setBusy((prev) => {

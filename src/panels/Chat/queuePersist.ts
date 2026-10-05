@@ -22,9 +22,7 @@ function chained(sessionId: string, write: () => Promise<unknown>): Promise<void
 // `steering` is never written: a restored entry stuck in flight would be
 // skipped by the flush, the edit and every steer for good.
 function stored(queue: readonly QueuedInput[]): QueuedInput[] {
-  return queue.map(({ id, blocks, held }) =>
-    JSON.parse(JSON.stringify(held ? { id, blocks, held } : { id, blocks })),
-  );
+  return queue.map(({ id, blocks, held }) => JSON.parse(JSON.stringify(held ? { id, blocks, held } : { id, blocks })));
 }
 
 export function saveQueue(sessionId: string, queue: readonly QueuedInput[]): Promise<void> {

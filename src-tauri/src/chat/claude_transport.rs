@@ -38,8 +38,8 @@ use crate::agents::ChatEffortExtra;
 
 use super::claude::ClaudeMapper;
 use super::model::{
-    file_ref_locator, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision,
-    PermissionMode, PermissionScope, PermissionSuggestion, QuestionAnswer,
+    file_ref_locator, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision, PermissionMode,
+    PermissionScope, PermissionSuggestion, QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -116,7 +116,10 @@ enum Parked {
 impl Shared {
     /// Write one JSON frame plus its newline.
     fn write_frame(&self, frame: &Value) -> Result<(), String> {
-        let mut guard = self.stdin.lock().map_err(|_| "chat session stdin is poisoned".to_string())?;
+        let mut guard = self
+            .stdin
+            .lock()
+            .map_err(|_| "chat session stdin is poisoned".to_string())?;
         let stdin = guard.as_mut().ok_or("chat session is not running")?;
         writeln!(stdin, "{frame}").map_err(|e| e.to_string())?;
         stdin.flush().map_err(|e| e.to_string())
@@ -272,7 +275,10 @@ impl Shared {
     /// The form is read before `answer` claims the request, because claiming is
     /// what drops it.
     fn answer_question(&self, request_id: &str, answers: &[QuestionAnswer]) -> Result<bool, String> {
-        let questions = guarded(&self.parked_questions).get(request_id).cloned().unwrap_or_default();
+        let questions = guarded(&self.parked_questions)
+            .get(request_id)
+            .cloned()
+            .unwrap_or_default();
         let message = super::claude::answer_message(&questions, answers);
         self.answer(request_id, json!({ "behavior": "deny", "message": message }))
     }
@@ -374,7 +380,13 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
                 "type": "image",
                 "source": { "type": "base64", "media_type": media_type, "data": data },
             })),
-            ContentBlock::FileRef { path, start_line, end_line, text, label } => {
+            ContentBlock::FileRef {
+                path,
+                start_line,
+                end_line,
+                text,
+                label,
+            } => {
                 let mut rendered = file_ref_locator(path, *start_line, *end_line);
                 // `[Image 3]: @/abs/path`, the exact form `history.rs` reads
                 // back, so the label survives a reopen.
@@ -433,7 +445,9 @@ fn park(shared: &Arc<Shared>, request_id: String, kind: Parked, after: Option<Du
         let expires_at = Instant::now() + after;
         let mut pending = guarded(&shared.pending);
         while pending.contains_key(&request_id) {
-            let Some(left) = expires_at.checked_duration_since(Instant::now()) else { break };
+            let Some(left) = expires_at.checked_duration_since(Instant::now()) else {
+                break;
+            };
             if left.is_zero() {
                 break;
             }
@@ -551,7 +565,10 @@ fn grant_destination(scope: PermissionScope) -> Option<&'static str> {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn abandon(child: &mut Child) {
@@ -613,10 +630,9 @@ impl AgentTransport for ClaudeTransport {
         {
             let shared = self.shared.clone();
             let sink = sink.clone();
-            let mut mapper =
-                ClaudeMapper::new(shared.session_id.clone())
-                    .with_effort_extras(self.effort_extras.clone())
-                    .with_questions_as_permissions(self.questions_as_permissions);
+            let mut mapper = ClaudeMapper::new(shared.session_id.clone())
+                .with_effort_extras(self.effort_extras.clone())
+                .with_questions_as_permissions(self.questions_as_permissions);
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
@@ -638,11 +654,13 @@ impl AgentTransport for ClaudeTransport {
                                     // after this one is user-opened only if the
                                     // user opens it too.
                                     ChatEvent::TurnStarted { agent_initiated, .. } => {
-                                        *agent_initiated =
-                                            !shared.turn_expected.swap(false, Ordering::SeqCst);
+                                        *agent_initiated = !shared.turn_expected.swap(false, Ordering::SeqCst);
                                     }
                                     ChatEvent::PermissionRequest {
-                                        request_id, auto_deny_at_ms, suggestions, ..
+                                        request_id,
+                                        auto_deny_at_ms,
+                                        suggestions,
+                                        ..
                                     } => {
                                         shared.remember_grant(request_id, suggestions);
                                         *auto_deny_at_ms = park(
@@ -653,7 +671,9 @@ impl AgentTransport for ClaudeTransport {
                                         );
                                     }
                                     // Parked with no clock. See `park`.
-                                    ChatEvent::QuestionRequest { request_id, questions, .. } => {
+                                    ChatEvent::QuestionRequest {
+                                        request_id, questions, ..
+                                    } => {
                                         shared.remember_questions(request_id, questions);
                                         park(&shared, request_id.clone(), Parked::Question, None);
                                     }
@@ -695,7 +715,11 @@ impl AgentTransport for ClaudeTransport {
                     // wrote and exited at once. Bounded, because a grandchild holding
                     // stderr open would otherwise hold the death message forever.
                     let _ = stderr_done.recv_timeout(Duration::from_millis(500));
-                    let tail = shared.stderr_tail.lock().map(|t| t.trim().to_string()).unwrap_or_default();
+                    let tail = shared
+                        .stderr_tail
+                        .lock()
+                        .map(|t| t.trim().to_string())
+                        .unwrap_or_default();
                     let message = if tail.is_empty() {
                         "the claude process exited".to_string()
                     } else {
@@ -703,7 +727,11 @@ impl AgentTransport for ClaudeTransport {
                     };
                     emit(
                         &sink,
-                        ChatEvent::SessionError { session_id: shared.session_id.clone(), message, fatal: true },
+                        ChatEvent::SessionError {
+                            session_id: shared.session_id.clone(),
+                            message,
+                            fatal: true,
+                        },
                     );
                 }
             });
@@ -855,11 +883,7 @@ impl AgentTransport for ClaudeTransport {
     /// Claude's own levers are all published refused, so a set can only ever be
     /// a mistake. Named rather than swallowed: nothing reaches here without a
     /// control to click, so a quiet `Ok(())` would hide a routing bug.
-    fn set_config_option(
-        &mut self,
-        config_id: &str,
-        _value: &ChatConfigValue,
-    ) -> Result<(), String> {
+    fn set_config_option(&mut self, config_id: &str, _value: &ChatConfigValue) -> Result<(), String> {
         Err(format!("this agent cannot switch `{config_id}` from a session"))
     }
 
@@ -878,7 +902,8 @@ impl AgentTransport for ClaudeTransport {
         // tab is the commonest way to abandon a prompt, and a child left waiting
         // on a question nobody will answer is the hang this whole path exists to
         // rule out. Fail-closed: it is a denial, and it says why.
-        self.shared.deny_all_pending("Tori denied this: the chat was closed before anyone answered.");
+        self.shared
+            .deny_all_pending("Tori denied this: the chat was closed before anyone answered.");
         // Dropping stdin is the graceful half; the kill covers a child that is
         // mid-turn and not reading it.
         if let Ok(mut slot) = self.shared.stdin.lock() {
@@ -915,7 +940,10 @@ pub mod tests {
         // Tori writes a turn, so the one that follows is the user's, and
         // exactly one is: the flag is consumed, not merely read.
         shared.turn_expected.store(true, Ordering::SeqCst);
-        assert!(shared.turn_expected.swap(false, Ordering::SeqCst), "the turn the user sent");
+        assert!(
+            shared.turn_expected.swap(false, Ordering::SeqCst),
+            "the turn the user sent"
+        );
         assert!(
             !shared.turn_expected.swap(false, Ordering::SeqCst),
             "and the turn after it is not, or one send would excuse every later turn"
@@ -956,7 +984,12 @@ pub mod tests {
     /// measurement of the CLI; a rename here is a silent protocol break.
     #[test]
     fn a_permission_answer_is_the_envelope_the_cli_expects() {
-        let denied = permission_response(PermissionDecision::Deny, PermissionScope::Once, Some("not that file"), None);
+        let denied = permission_response(
+            PermissionDecision::Deny,
+            PermissionScope::Once,
+            Some("not that file"),
+            None,
+        );
         assert_eq!(denied["behavior"], "deny");
         assert_eq!(denied["message"], "not that file");
 
@@ -978,8 +1011,12 @@ pub mod tests {
     #[test]
     fn a_scoped_allow_echoes_the_agents_own_rule() {
         let rules = json!([{ "toolName": "Bash", "ruleContent": "touch a.txt" }]);
-        let granted =
-            permission_response(PermissionDecision::Allow, PermissionScope::Session, None, Some(rules.clone()));
+        let granted = permission_response(
+            PermissionDecision::Allow,
+            PermissionScope::Session,
+            None,
+            Some(rules.clone()),
+        );
         let update = &granted["updatedPermissions"][0];
         assert_eq!(update["type"], "addRules");
         assert_eq!(update["behavior"], "allow");
@@ -1010,7 +1047,12 @@ pub mod tests {
     fn a_request_the_transport_never_issued_is_disclaimed() {
         let shared = shared();
         let answered = shared
-            .answer_decision("from-the-hook-bridge", PermissionDecision::Allow, PermissionScope::Once, None)
+            .answer_decision(
+                "from-the-hook-bridge",
+                PermissionDecision::Allow,
+                PermissionScope::Once,
+                None,
+            )
             .expect("disclaiming is not an error");
         assert!(!answered, "an unknown request must route on to the bridge");
     }
@@ -1021,7 +1063,11 @@ pub mod tests {
     #[test]
     fn a_question_can_only_be_answered_once() {
         let shared = shared();
-        shared.pending.lock().unwrap().insert("req-1".into(), Parked::Permission);
+        shared
+            .pending
+            .lock()
+            .unwrap()
+            .insert("req-1".into(), Parked::Permission);
 
         assert!(shared.claim("req-1"), "the first answer should win");
         assert!(!shared.claim("req-1"), "a second answer must not be sent");
@@ -1043,8 +1089,14 @@ pub mod tests {
 
         shared.deny_all_pending("the chat was closed");
 
-        assert!(shared.pending.lock().unwrap().is_empty(), "nothing may stay pending after a teardown");
-        assert!(shared.granted_rules.lock().unwrap().is_empty(), "a settled question keeps no remembered grant");
+        assert!(
+            shared.pending.lock().unwrap().is_empty(),
+            "nothing may stay pending after a teardown"
+        );
+        assert!(
+            shared.granted_rules.lock().unwrap().is_empty(),
+            "a settled question keeps no remembered grant"
+        );
         assert!(!shared.claim("req-1"), "a late click after teardown must be a no-op");
         assert!(!shared.claim("req-2"));
     }
@@ -1055,11 +1107,22 @@ pub mod tests {
     #[test]
     fn a_settled_question_drops_its_remembered_grant() {
         let shared = shared();
-        shared.pending.lock().unwrap().insert("req-1".into(), Parked::Permission);
-        shared.granted_rules.lock().unwrap().insert("req-1".into(), json!([{ "toolName": "Bash" }]));
+        shared
+            .pending
+            .lock()
+            .unwrap()
+            .insert("req-1".into(), Parked::Permission);
+        shared
+            .granted_rules
+            .lock()
+            .unwrap()
+            .insert("req-1".into(), json!([{ "toolName": "Bash" }]));
 
         assert!(shared.claim("req-1"));
-        assert!(shared.granted_rules.lock().unwrap().is_empty(), "claiming must drop the grant with it");
+        assert!(
+            shared.granted_rules.lock().unwrap().is_empty(),
+            "claiming must drop the grant with it"
+        );
     }
 
     /// The deadline rides out on the event so the prompt counts down to the
@@ -1077,7 +1140,10 @@ pub mod tests {
         )
         .expect("a permission is parked with a clock");
 
-        assert!(shared.pending.lock().unwrap().contains_key("req-1"), "an armed question must be pending");
+        assert!(
+            shared.pending.lock().unwrap().contains_key("req-1"),
+            "an armed question must be pending"
+        );
         assert!(deadline >= before + DECIDE_TIMEOUT_SECS * 1000);
         assert!(DECIDE_TIMEOUT_SECS < super::super::approval::HOOK_TIMEOUT_SECS);
     }
@@ -1096,8 +1162,13 @@ pub mod tests {
         let shared = shared();
 
         // The control: with a clock, the same call expires and denies itself.
-        assert!(park(&shared, "with-clock".into(), Parked::Permission, Some(Duration::from_millis(40)))
-            .is_some());
+        assert!(park(
+            &shared,
+            "with-clock".into(),
+            Parked::Permission,
+            Some(Duration::from_millis(40))
+        )
+        .is_some());
         thread::sleep(Duration::from_millis(300));
         assert!(
             !guarded(&shared.pending).contains_key("with-clock"),
@@ -1105,7 +1176,11 @@ pub mod tests {
         );
 
         // The subject: no clock, nothing spawned, nothing to expire.
-        assert_eq!(park(&shared, "no-clock".into(), Parked::Question, None), None, "no deadline to report");
+        assert_eq!(
+            park(&shared, "no-clock".into(), Parked::Question, None),
+            None,
+            "no deadline to report"
+        );
         thread::sleep(Duration::from_millis(300));
         assert_eq!(
             guarded(&shared.pending).get("no-clock"),
@@ -1126,20 +1201,26 @@ pub mod tests {
         let shared = shared();
         park(&shared, "perm".into(), Parked::Permission, None);
         park(&shared, "quest".into(), Parked::Question, None);
-        shared.remember_questions("quest", &[ChatQuestion {
-            question: "Which?".into(),
-            header: "H".into(),
-            multi_select: false,
-            options: vec![ChatQuestionOption {
-                label: "A".into(),
-                description: String::new(),
-                preview: None,
+        shared.remember_questions(
+            "quest",
+            &[ChatQuestion {
+                question: "Which?".into(),
+                header: "H".into(),
+                multi_select: false,
+                options: vec![ChatQuestionOption {
+                    label: "A".into(),
+                    description: String::new(),
+                    preview: None,
+                }],
             }],
-        }]);
+        );
 
         shared.withdraw_questions("the user interrupted");
 
-        assert!(!guarded(&shared.pending).contains_key("quest"), "the question is withdrawn");
+        assert!(
+            !guarded(&shared.pending).contains_key("quest"),
+            "the question is withdrawn"
+        );
         assert!(
             guarded(&shared.parked_questions).is_empty(),
             "and its remembered form goes with it, or the map grows for the session"
@@ -1173,7 +1254,10 @@ pub mod tests {
         park(&shared, "q2".into(), Parked::Question, None);
         shared.remember_questions("q2", &[]);
         shared.withdraw_questions("the user interrupted");
-        assert!(guarded(&shared.pending).is_empty(), "an interrupt leaves nothing parked");
+        assert!(
+            guarded(&shared.pending).is_empty(),
+            "an interrupt leaves nothing parked"
+        );
         assert!(guarded(&shared.parked_questions).is_empty());
     }
 
@@ -1199,17 +1283,24 @@ pub mod tests {
 
         // No child, so the write fails after the claim. What is under test is
         // the claim and the message, and `answer` claims before it writes.
-        let _ = shared.answer_question("q", &[QuestionAnswer {
-            question: "Which colour do you want?".into(),
-            picks: vec!["Red".into()],
-            free_text: None,
-        }]);
+        let _ = shared.answer_question(
+            "q",
+            &[QuestionAnswer {
+                question: "Which colour do you want?".into(),
+                picks: vec!["Red".into()],
+                free_text: None,
+            }],
+        );
         assert!(!guarded(&shared.pending).contains_key("q"), "answering settles it");
         assert!(
             !shared
                 .answer_question(
                     "q",
-                    &[QuestionAnswer { question: "Which colour do you want?".into(), picks: vec![], free_text: None }]
+                    &[QuestionAnswer {
+                        question: "Which colour do you want?".into(),
+                        picks: vec![],
+                        free_text: None
+                    }]
                 )
                 .expect("a second answer is a no-op, not an error"),
             "one question, one answer"
@@ -1237,7 +1328,10 @@ pub mod tests {
             }],
         );
         assert!(message.contains("\"Which colour do you want?\"=\"Red\""), "{message}");
-        assert!(!message.contains("selected preview"), "no form, so no preview to echo: {message}");
+        assert!(
+            !message.contains("selected preview"),
+            "no form, so no preview to echo: {message}"
+        );
     }
 
     /// The timer must retire when its question is answered, not sleep out the
@@ -1254,7 +1348,9 @@ pub mod tests {
                 let expires_at = Instant::now() + Duration::from_secs(DECIDE_TIMEOUT_SECS);
                 let mut pending = guarded(&shared.pending);
                 while pending.contains_key("req-1") {
-                    let Some(left) = expires_at.checked_duration_since(Instant::now()) else { break };
+                    let Some(left) = expires_at.checked_duration_since(Instant::now()) else {
+                        break;
+                    };
                     pending = shared.settled.wait_timeout(pending, left).map(|(g, _)| g).unwrap();
                 }
             })
@@ -1288,7 +1384,10 @@ pub mod tests {
                 destination: "session".into(),
             }],
         );
-        assert!(shared.granted_rules.lock().unwrap().get("req-1").is_none(), "a deny rule must never become a grant");
+        assert!(
+            shared.granted_rules.lock().unwrap().get("req-1").is_none(),
+            "a deny rule must never become a grant"
+        );
 
         shared.remember_grant(
             "req-2",
@@ -1297,7 +1396,10 @@ pub mod tests {
                 destination: "session".into(),
             }],
         );
-        assert!(shared.granted_rules.lock().unwrap().get("req-2").is_none(), "a mode switch is not a rule");
+        assert!(
+            shared.granted_rules.lock().unwrap().get("req-2").is_none(),
+            "a mode switch is not a rule"
+        );
     }
 
     #[test]
@@ -1313,7 +1415,10 @@ pub mod tests {
     /// nested `source` shape, so the shape is pinned rather than described.
     #[test]
     fn an_image_rides_as_a_base64_source_block() {
-        let frame = turn_frame(&[ContentBlock::Image { media_type: "image/png".into(), data: "AAAA".into() }]);
+        let frame = turn_frame(&[ContentBlock::Image {
+            media_type: "image/png".into(),
+            data: "AAAA".into(),
+        }]);
         let block = &frame["message"]["content"][0];
         assert_eq!(block["type"], "image");
         assert_eq!(block["source"]["type"], "base64");
@@ -1409,7 +1514,9 @@ pub mod tests {
     /// `Display` for `Value` never emits one, and this pins that.
     #[test]
     fn a_multiline_turn_still_serializes_to_exactly_one_line() {
-        let frame = turn_frame(&[ContentBlock::Text { text: "line one\nline two".into() }]);
+        let frame = turn_frame(&[ContentBlock::Text {
+            text: "line one\nline two".into(),
+        }]);
         assert_eq!(frame.to_string().lines().count(), 1);
     }
 
@@ -1434,7 +1541,10 @@ pub mod tests {
         t.set_mode(PermissionMode::new("plan")).unwrap();
         t.set_model("claude-opus-5", Some("high".to_string())).unwrap();
         assert_eq!(t.pending_mode, Some(PermissionMode::new("plan")));
-        assert_eq!(t.pending_model, Some(("claude-opus-5".to_string(), Some("high".to_string()))));
+        assert_eq!(
+            t.pending_model,
+            Some(("claude-opus-5".to_string(), Some("high".to_string())))
+        );
     }
 
     /// A steer runs inside the current turn, so it must leave a queued switch
@@ -1451,9 +1561,18 @@ pub mod tests {
         t.set_mode(PermissionMode::new("plan")).unwrap();
         t.set_model("claude-opus-5", Some("high".to_string())).unwrap();
 
-        let blocks = [ContentBlock::Text { text: "stop reading, just summarise".to_string() }];
-        assert!(t.steer(&blocks).is_err(), "no child, so the write itself cannot succeed");
-        assert_eq!(t.pending_mode, Some(PermissionMode::new("plan")), "the steer must not spend the mode switch");
+        let blocks = [ContentBlock::Text {
+            text: "stop reading, just summarise".to_string(),
+        }];
+        assert!(
+            t.steer(&blocks).is_err(),
+            "no child, so the write itself cannot succeed"
+        );
+        assert_eq!(
+            t.pending_mode,
+            Some(PermissionMode::new("plan")),
+            "the steer must not spend the mode switch"
+        );
         assert_eq!(
             t.pending_model,
             Some(("claude-opus-5".to_string(), Some("high".to_string()))),
@@ -1517,13 +1636,21 @@ pub mod tests {
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
-            if seen.lock().unwrap().iter().any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })) {
+            if seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. }))
+            {
                 break;
             }
             thread::sleep(std::time::Duration::from_millis(20));
         }
         let events = seen.lock().unwrap().clone();
-        let fatal: Vec<_> = events.iter().filter(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })).collect();
+        let fatal: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. }))
+            .collect();
         assert_eq!(fatal.len(), 1, "exactly one fatal error, got {events:?}");
     }
 
@@ -1577,13 +1704,18 @@ pub mod tests {
             ..Default::default()
         };
         t.start(spec, sink).unwrap();
-        assert!(t.child_pid().is_some(), "a started transport must report a pid for the claim record");
+        assert!(
+            t.child_pid().is_some(),
+            "a started transport must report a pid for the claim record"
+        );
         t.close().unwrap();
 
         thread::sleep(std::time::Duration::from_millis(300));
         let events = seen.lock().unwrap().clone();
         assert!(
-            !events.iter().any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })),
+            !events
+                .iter()
+                .any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })),
             "a deliberate close must not look like a crash: {events:?}"
         );
     }
@@ -1639,7 +1771,10 @@ pub mod tests {
 
     #[cfg(test)]
     fn turns_completed(events: &[ChatEvent]) -> usize {
-        events.iter().filter(|e| matches!(e, ChatEvent::TurnCompleted { .. })).count()
+        events
+            .iter()
+            .filter(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+            .count()
     }
 
     /// **The measurement the whole design rests on**: one child serves many
@@ -1655,17 +1790,31 @@ pub mod tests {
         let session_id = uuid_like();
         let (mut t, seen) = live_session(&cwd, &session_id);
 
-        t.send(&[ContentBlock::Text { text: "Reply with exactly: one".into() }]).unwrap();
+        t.send(&[ContentBlock::Text {
+            text: "Reply with exactly: one".into(),
+        }])
+        .unwrap();
         wait_for(&seen, 120, |e| turns_completed(e) >= 1);
-        t.send(&[ContentBlock::Text { text: "Reply with exactly: two".into() }]).unwrap();
+        t.send(&[ContentBlock::Text {
+            text: "Reply with exactly: two".into(),
+        }])
+        .unwrap();
         let events = wait_for(&seen, 120, |e| turns_completed(e) >= 2);
 
-        let started = events.iter().filter(|e| matches!(e, ChatEvent::SessionStarted { .. })).count();
+        let started = events
+            .iter()
+            .filter(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+            .count();
         assert_eq!(started, 1, "the per-turn system/init must not read as a second session");
         assert_eq!(turns_completed(&events), 2, "two turns should complete on one child");
-        assert!(t.child_pid().is_some(), "the child should still be alive after both turns");
         assert!(
-            !events.iter().any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })),
+            t.child_pid().is_some(),
+            "the child should still be alive after both turns"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })),
             "the child must not have died: {events:?}"
         );
 
@@ -1684,15 +1833,22 @@ pub mod tests {
         let session_id = uuid_like();
         let (mut t, seen) = live_session(&cwd, &session_id);
 
-        t.send(&[ContentBlock::Text { text: "Count slowly from 1 to 500, one number per line.".into() }])
-            .unwrap();
+        t.send(&[ContentBlock::Text {
+            text: "Count slowly from 1 to 500, one number per line.".into(),
+        }])
+        .unwrap();
         // Let the turn genuinely start, or the interrupt lands on nothing.
-        wait_for(&seen, 60, |e| e.iter().any(|ev| matches!(ev, ChatEvent::TextDelta { .. })));
+        wait_for(&seen, 60, |e| {
+            e.iter().any(|ev| matches!(ev, ChatEvent::TextDelta { .. }))
+        });
 
         let before = std::time::Instant::now();
         t.interrupt().unwrap();
         let events = wait_for(&seen, 5, |e| turns_completed(e) >= 1);
-        assert!(before.elapsed() < std::time::Duration::from_secs(5), "the interrupt should land within 5s");
+        assert!(
+            before.elapsed() < std::time::Duration::from_secs(5),
+            "the interrupt should land within 5s"
+        );
 
         let outcome = events.iter().find_map(|e| match e {
             ChatEvent::TurnCompleted { outcome, .. } => Some(*outcome),
@@ -1704,9 +1860,16 @@ pub mod tests {
             "an interrupted turn is cancelled, not errored: {events:?}"
         );
 
-        t.send(&[ContentBlock::Text { text: "Reply with exactly: alive".into() }]).unwrap();
+        t.send(&[ContentBlock::Text {
+            text: "Reply with exactly: alive".into(),
+        }])
+        .unwrap();
         let events = wait_for(&seen, 120, |e| turns_completed(e) >= 2);
-        assert_eq!(turns_completed(&events), 2, "a further turn must run on the same child after an interrupt");
+        assert_eq!(
+            turns_completed(&events),
+            2,
+            "a further turn must run on the same child after an interrupt"
+        );
 
         t.close().unwrap();
         let _ = std::fs::remove_dir_all(&cwd);
@@ -1722,7 +1885,14 @@ pub mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let hex = format!("{:032x}", nanos ^ ((std::process::id() as u128) << 96));
-        format!("{}-{}-4{}-8{}-{}", &hex[0..8], &hex[8..12], &hex[13..16], &hex[17..20], &hex[20..32])
+        format!(
+            "{}-{}-4{}-8{}-{}",
+            &hex[0..8],
+            &hex[8..12],
+            &hex[13..16],
+            &hex[17..20],
+            &hex[20..32]
+        )
     }
 
     /// The steer reaches the child's stdin *while it is running*, which is the
@@ -1747,8 +1917,10 @@ pub mod tests {
             ..Default::default()
         };
         t.start(spec, new_sink(Box::new(|_| {}))).unwrap();
-        t.steer(&[ContentBlock::Text { text: "stop reading, just summarise".to_string() }])
-            .expect("the steer should reach a running child");
+        t.steer(&[ContentBlock::Text {
+            text: "stop reading, just summarise".to_string(),
+        }])
+        .expect("the steer should reach a running child");
 
         // Polled rather than slept on: `cat` writes as it reads, but when it gets
         // there is the OS's business.
@@ -1770,7 +1942,10 @@ pub mod tests {
             .unwrap_or_else(|| panic!("the steer never reached stdin; got: {written}"));
         // A `user` frame, the same shape a turn takes: the CLI has no separate
         // wire form for a steer, and inventing one would fail the turn.
-        assert!(steer.contains("\"type\":\"user\""), "the steer must ride the user frame: {steer}");
+        assert!(
+            steer.contains("\"type\":\"user\""),
+            "the steer must ride the user frame: {steer}"
+        );
     }
 
     /// Unparseable stdout is reported without killing the session, because one

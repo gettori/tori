@@ -100,8 +100,7 @@ async function mountEditor() {
 /** The pane strip's tabs, in the order it draws them. By `data-tab-id`, which
  *  only a unified tab carries: the right pane's own section tabs are `role=tab`
  *  too, and the bar's measuring ghosts are not tabs at all. */
-const strip = () =>
-  Array.from(document.querySelectorAll("[data-tab-id]")).map((t) => t.getAttribute("data-tab-id"));
+const strip = () => Array.from(document.querySelectorAll("[data-tab-id]")).map((t) => t.getAttribute("data-tab-id"));
 
 async function open(path: string, slot = false) {
   emitWith(OPEN_IN_EDITOR, slot ? { path, preview: true } : { path });

@@ -39,13 +39,18 @@ impl Devices {
                 Err(e) => (Vec::new(), Some(e.to_string())),
             },
         };
-        Self { path, list: Mutex::new(list), unreadable }
+        Self {
+            path,
+            list: Mutex::new(list),
+            unreadable,
+        }
     }
 
     /// Adds a device and returns it with its credential, the only time the
     /// credential is ever seen.
     pub fn mint(&self, name: &str) -> Result<(Device, String), String> {
-        self.mint_install(name, None).map(|(device, credential, _)| (device, credential))
+        self.mint_install(name, None)
+            .map(|(device, credential, _)| (device, credential))
     }
 
     /// `mint`, also dropping every device paired before from the same
@@ -62,7 +67,11 @@ impl Devices {
         };
         let mut list = self.lock();
         let before = list.clone();
-        let replaced: Vec<String> = list.iter().filter(|d| install.is_some() && d.install.as_deref() == install).map(|d| d.id.clone()).collect();
+        let replaced: Vec<String> = list
+            .iter()
+            .filter(|d| install.is_some() && d.install.as_deref() == install)
+            .map(|d| d.id.clone())
+            .collect();
         list.retain(|d| !replaced.contains(&d.id));
         list.push(device.clone());
         let text = serde_json::to_string_pretty(&*list).map_err(|e| e.to_string())?;
@@ -78,7 +87,9 @@ impl Devices {
     pub fn revoke(&self, id: &str) -> Result<bool, String> {
         self.writable()?;
         let mut list = self.lock();
-        let Some(at) = list.iter().position(|d| d.id == id) else { return Ok(false) };
+        let Some(at) = list.iter().position(|d| d.id == id) else {
+            return Ok(false);
+        };
         let removed = list.remove(at);
         let text = serde_json::to_string_pretty(&*list).map_err(|e| e.to_string())?;
         if let Err(e) = crate::owned_state::write_private(&self.path, &text) {
@@ -100,7 +111,10 @@ impl Devices {
     /// would drop every device it holds.
     pub fn writable(&self) -> Result<(), String> {
         match &self.unreadable {
-            Some(why) => Err(format!("{} could not be read ({why}); fix or remove it before changing devices", self.path.display())),
+            Some(why) => Err(format!(
+                "{} could not be read ({why}); fix or remove it before changing devices",
+                self.path.display()
+            )),
             None => Ok(()),
         }
     }
@@ -122,7 +136,9 @@ fn hash(credential: &str) -> String {
 
 fn random_hex<const N: usize>() -> Result<String, String> {
     let mut buf = [0u8; N];
-    std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf)).map_err(|e| e.to_string())?;
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut buf))
+        .map_err(|e| e.to_string())?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -133,7 +149,11 @@ mod tests {
     use std::sync::Arc;
 
     fn temp_path(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("tori-devices-{}-{name}-{}", std::process::id(), random_hex::<4>().unwrap()));
+        let dir = std::env::temp_dir().join(format!(
+            "tori-devices-{}-{name}-{}",
+            std::process::id(),
+            random_hex::<4>().unwrap()
+        ));
         dir.join("devices.json")
     }
 
@@ -142,10 +162,18 @@ mod tests {
         let manifest = include_str!("../../../mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml");
         assert!(manifest.contains(r#"android:allowBackup="false""#));
         assert!(manifest.contains(r#"android:dataExtractionRules="@xml/data_extraction_rules""#));
-        let rules = include_str!("../../../mobile/src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml");
+        let rules =
+            include_str!("../../../mobile/src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml");
         for section in ["cloud-backup", "device-transfer"] {
-            let body = rules.split(&format!("<{section}>")).nth(1).and_then(|r| r.split(&format!("</{section}>")).next()).expect(section);
-            assert!(body.contains(r#"<exclude domain="root" />"#), "{section} still carries the WebView's storage");
+            let body = rules
+                .split(&format!("<{section}>"))
+                .nth(1)
+                .and_then(|r| r.split(&format!("</{section}>")).next())
+                .expect(section);
+            assert!(
+                body.contains(r#"<exclude domain="root" />"#),
+                "{section} still carries the WebView's storage"
+            );
         }
     }
 

@@ -125,8 +125,7 @@ async function mount(opts: { matches?: ResultMatch[]; roots?: DocRoot[]; ws?: st
   return id;
 }
 
-const view = () =>
-  EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement)!;
+const view = () => EditorView.findFromDOM(mounted!.container.querySelector(".cm-editor") as HTMLElement)!;
 
 /** Retype one row's text, the way a keystroke inside it would. */
 function retype(id: string, row: number, text: string) {
@@ -399,10 +398,7 @@ describe("writing back across members", () => {
     expect(applyCalls.map((c) => c.root)).toEqual([API, WEB]);
     // One relative path, two files. A batch that sent both under one root would
     // write the same repo twice and leave the other untouched.
-    expect(applyCalls.map((c) => c.files.map((f) => f.path))).toEqual([
-      ["src/index.ts"],
-      ["src/index.ts"],
-    ]);
+    expect(applyCalls.map((c) => c.files.map((f) => f.path))).toEqual([["src/index.ts"], ["src/index.ts"]]);
     expect(disk[`${API}/src/index.ts`]).toBe("api pin");
     expect(disk[`${WEB}/src/index.ts`]).toBe("web pin");
     await screen.findByText(/Wrote 2 files/);

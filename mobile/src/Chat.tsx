@@ -3,7 +3,14 @@ import { createStore, produce } from "solid-js/store";
 import { ArrowUp, ChevronLeft, Ellipsis } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import MessageList from "../../src/panels/Chat/MessageList";
-import { applyEvent, initialChat, isRunning, settleBackfill, turnModel, type ChatState } from "../../src/panels/Chat/chatStore";
+import {
+  applyEvent,
+  initialChat,
+  isRunning,
+  settleBackfill,
+  turnModel,
+  type ChatState,
+} from "../../src/panels/Chat/chatStore";
 import { parseChatEvent, type ChatEvent } from "../../src/utils/chatTypes";
 import Pending, { type PendingRow } from "./Pending";
 import type { RemoteClient } from "./remote";
@@ -22,7 +29,13 @@ type Page = { events: unknown[]; next: unknown };
 
 // A prompt raised or settled moves one of these; none says which, so any of them
 // refetches the whole pending list.
-const PENDING_KINDS = new Set(["session.question", "session.permission", "session.needs_you", "session.state", "session.turn_ended"]);
+const PENDING_KINDS = new Set([
+  "session.question",
+  "session.permission",
+  "session.needs_you",
+  "session.state",
+  "session.turn_ended",
+]);
 
 const NEXT = "\u203a";
 
@@ -80,7 +93,8 @@ function Levers(props: {
       if (ev?.kind === "session.started" && ev.id === props.id) void refetch();
     }),
   );
-  const shown = (pick: Pick | null, confirmed: string | null) => (pick && pick.over === confirmed ? pick.value : confirmed);
+  const shown = (pick: Pick | null, confirmed: string | null) =>
+    pick && pick.over === confirmed ? pick.value : confirmed;
   const models = () => info()?.models ?? [];
   const modes = () => info()?.modes ?? [];
   const currentModel = () => {
@@ -107,7 +121,11 @@ function Levers(props: {
       <label class={shell.chip}>
         <AgentMark agent={props.agent} size={13} />
         {currentModel()?.displayName || modelValue() || "Model"}
-        <select value={modelValue()} disabled={models().length === 0} onChange={(e) => pick("session.model", e.currentTarget.value)}>
+        <select
+          value={modelValue()}
+          disabled={models().length === 0}
+          onChange={(e) => pick("session.model", e.currentTarget.value)}
+        >
           <Show when={!currentModel() && modelValue()}>
             <option value={modelValue()}>{modelValue()}</option>
           </Show>
@@ -176,7 +194,10 @@ export default function Chat(props: {
   levers?: boolean;
 }) {
   const id = props.session().id;
-  const [view, setView] = createStore<{ chat: ChatState; error: string | null }>({ chat: initialChat(id), error: null });
+  const [view, setView] = createStore<{ chat: ChatState; error: string | null }>({
+    chat: initialChat(id),
+    error: null,
+  });
   const [next, setNext] = createSignal<unknown>(null);
   const [paging, setPaging] = createSignal(false);
   const [pending, setPending] = createSignal<PendingRow[]>([]);
@@ -210,7 +231,10 @@ export default function Chat(props: {
     if (ev.type === "modeRefused") setView("error", ev.reason);
     if (parked) return void parked.push(ev);
     live.push(ev);
-    setView("chat", produce((chat) => applyEvent(chat, ev)));
+    setView(
+      "chat",
+      produce((chat) => applyEvent(chat, ev)),
+    );
   };
 
   const page = (before: unknown) =>

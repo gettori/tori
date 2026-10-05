@@ -43,7 +43,10 @@ describe("the Remote settings section", () => {
     expect(args).toEqual({ remote: { enabled: true, address: "100.101.7.9", port: 47821 } });
     expect(invoke).not.toHaveBeenCalledWith("set_settings", expect.anything());
     expect(await screen.findByText("Listening on ws://100.101.7.9:47821")).toBeTruthy();
-    expect(invoke.mock.calls.filter(([c]) => c === "remote_set"), "one click, one write").toHaveLength(1);
+    expect(
+      invoke.mock.calls.filter(([c]) => c === "remote_set"),
+      "one click, one write",
+    ).toHaveLength(1);
   });
 
   it("passes the accessibility gate", async () => {

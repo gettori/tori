@@ -68,7 +68,11 @@ fn sweep_at(dir: &Path) -> Option<RetiredRuleStore> {
     // problem, a file held open) must not produce a notice saying it did, or
     // the next run would sweep again and say it twice.
     std::fs::remove_dir_all(dir).ok()?;
-    Some(RetiredRuleStore { path: dir.to_string_lossy().into_owned(), files, project_rules })
+    Some(RetiredRuleStore {
+        path: dir.to_string_lossy().into_owned(),
+        files,
+        project_rules,
+    })
 }
 
 fn count_files(dir: &Path) -> usize {
@@ -128,7 +132,10 @@ mod tests {
 
         let report = sweep_at(&dir).expect("a populated store should be reported");
         assert_eq!(report.files, 4, "every file across all three kinds is counted");
-        assert_eq!(report.project_rules, 2, "only the durable project rules are the user's own");
+        assert_eq!(
+            report.project_rules, 2,
+            "only the durable project rules are the user's own"
+        );
         assert_eq!(report.path, dir.to_string_lossy());
         assert!(!dir.exists(), "the store must actually be gone, not merely reported");
     }
@@ -140,7 +147,10 @@ mod tests {
         seed(&dir);
 
         assert!(sweep_at(&dir).is_some());
-        assert!(sweep_at(&dir).is_none(), "there is nothing left to report, so nothing is said");
+        assert!(
+            sweep_at(&dir).is_none(),
+            "there is nothing left to report, so nothing is said"
+        );
     }
 
     /// An install that never turned the gate on has nothing to be told about.
@@ -170,7 +180,10 @@ mod tests {
 
         let report = sweep_at(&dir).expect("the file is still there to remove");
         assert_eq!(report.files, 1);
-        assert_eq!(report.project_rules, 0, "an unparseable file counts zero rather than failing");
+        assert_eq!(
+            report.project_rules, 0,
+            "an unparseable file counts zero rather than failing"
+        );
         assert!(!dir.exists());
     }
 }

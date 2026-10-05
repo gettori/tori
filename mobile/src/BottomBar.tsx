@@ -34,7 +34,9 @@ export default function BottomBar(props: {
               const glyph = () => resolveIcon(space.icon);
               return (
                 <button
-                  ref={(el) => createEffect(() => current() && el.scrollIntoView({ inline: "nearest", block: "nearest" }))}
+                  ref={(el) =>
+                    createEffect(() => current() && el.scrollIntoView({ inline: "nearest", block: "nearest" }))
+                  }
                   class={styles.barItem}
                   aria-current={current()}
                   aria-label={space.name}
@@ -55,7 +57,12 @@ export default function BottomBar(props: {
           </For>
         </div>
         <span class={styles.divider} />
-        <button class={styles.barItem} aria-current={props.tab === "topics"} aria-label="Topics" onClick={() => props.onTopics()}>
+        <button
+          class={styles.barItem}
+          aria-current={props.tab === "topics"}
+          aria-label="Topics"
+          onClick={() => props.onTopics()}
+        >
           <Icon icon={Tag} size={19} strokeWidth={1.9} />
           <Show when={props.tab === "topics"}>
             <span class={styles.spaceName}>Topics</span>

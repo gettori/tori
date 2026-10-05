@@ -113,7 +113,11 @@ function FileRow(props: { change: Change; staged: boolean; active?: boolean }) {
         <Show when={!props.staged}>
           <IconButton size="xs" icon={<Icon icon={Undo2} />} aria-label="Discard" />
         </Show>
-        <IconButton size="xs" icon={<Icon icon={props.staged ? Minus : Plus} />} aria-label={props.staged ? "Unstage" : "Stage"} />
+        <IconButton
+          size="xs"
+          icon={<Icon icon={props.staged ? Minus : Plus} />}
+          aria-label={props.staged ? "Unstage" : "Stage"}
+        />
       </span>
       <span class={`${review.reviewStatus} ${STATUS_CLASS[props.change.status]}`}>{props.change.status}</span>
     </div>
@@ -180,7 +184,12 @@ function ChangesPanel() {
                 <Button variant="primary" size="sm" class={review.commitButton}>
                   Commit
                 </Button>
-                <IconButton size="sm" class={review.splitMore} icon={<Icon icon={ChevronDown} />} aria-label="More commit actions" />
+                <IconButton
+                  size="sm"
+                  class={review.splitMore}
+                  icon={<Icon icon={ChevronDown} />}
+                  aria-label="More commit actions"
+                />
               </span>
             </div>
           </div>
@@ -268,7 +277,11 @@ function DiffPane() {
               <Button size="xs">Send</Button>
             </div>
           </div>
-          <DiffRows rows={buildRows(HUNK.lines, { old: HUNK.oldStart, new: HUNK.startLine })} path={FILE} twoColumn={false} />
+          <DiffRows
+            rows={buildRows(HUNK.lines, { old: HUNK.oldStart, new: HUNK.startLine })}
+            path={FILE}
+            twoColumn={false}
+          />
           {gap(38)}
         </div>
       </div>

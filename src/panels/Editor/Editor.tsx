@@ -1,4 +1,20 @@
-import { For, createSignal, createEffect, createMemo, ErrorBoundary, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
+import {
+  For,
+  createSignal,
+  createEffect,
+  createMemo,
+  ErrorBoundary,
+  on,
+  onCleanup,
+  onMount,
+  lazy,
+  untrack,
+  Match,
+  Show,
+  Suspense,
+  Switch,
+  type JSX,
+} from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -321,13 +337,7 @@ import { composeSelectionMention, requestSend, type SessionTarget } from "../../
 import { isLinkedScratch, selectionBlocks } from "../../utils/chatCompose";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite, markSelfWrite } from "../../utils/selfWrites";
-import {
-  defaultSaveName,
-  isScratchPath,
-  newScratchFile,
-  resolveSavePath,
-  scratchDirPath,
-} from "../../utils/scratch";
+import { defaultSaveName, isScratchPath, newScratchFile, resolveSavePath, scratchDirPath } from "../../utils/scratch";
 // The window onto CodeEditor's buffers, for the two things Save-as needs and
 // this pane cannot hold: the text of a buffer it does not own, and the way to
 // tell that buffer its file has been rewritten to match.
@@ -364,15 +374,7 @@ import patterns from "../../styles/patterns.module.css";
 // its `<For>` is referentially keyed, and fresh literals would tear down and
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
-type RightMode =
-  | "files"
-  | "changes"
-  | "pulls"
-  | "problems"
-  | "calls"
-  | "session"
-  | "search"
-  | "debug";
+type RightMode = "files" | "changes" | "pulls" | "problems" | "calls" | "session" | "search" | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
  *  the whole Topic (Changes, Search, Problems) or for the file in front
@@ -506,7 +508,8 @@ function tabTitle(t: FileTab): string {
   if (roots?.length) return roots.join("\n");
   const parsed = parseSyntheticId(t.path);
   // A diff tab's mode is only an icon on the tab, so the tooltip names it.
-  if (parsed?.kind === "diff") return `${parseDiffArg(parsed.arg).staged ? "Staged" : "Working tree"}\n${parsed.workspace}`;
+  if (parsed?.kind === "diff")
+    return `${parseDiffArg(parsed.arg).staged ? "Staged" : "Working tree"}\n${parsed.workspace}`;
   return parsed?.workspace ?? t.path;
 }
 
@@ -676,8 +679,7 @@ export default function Editor(props: {
   });
   // Unbounded until the pane has been measured, so a drag can never be pinned to
   // the floor by a width nothing has reported yet.
-  const rightMax = () =>
-    paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(CODE_MIN));
+  const rightMax = () => (paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(CODE_MIN)));
   // What the panel renders at. Clamped here rather than written back into the
   // stored width, so a narrowed editor pane or a raised UI scale squeezes it for
   // now and widening the pane again restores the width the user picked.
@@ -724,7 +726,10 @@ export default function Editor(props: {
         return true;
     }
   }
-  const rightTabs = () => modeOrder().filter(modeAvailable).map((m) => RIGHT_MODE_TABS[m]);
+  const rightTabs = () =>
+    modeOrder()
+      .filter(modeAvailable)
+      .map((m) => RIGHT_MODE_TABS[m]);
   // How many files the Changes panel would list, over the same roots it draws
   // sections for. Counted off `files` rather than off staged + unstaged, which
   // would count a partly staged file twice: porcelain v2 sends one entry per
@@ -754,9 +759,9 @@ export default function Editor(props: {
   const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
   // Per-tab soft-wrap overrides; the rule itself lives in `softWrapTabs.ts`.
   const [wrapById, setWrapById] = createSignal<WrapOverrides>({});
-  const [gotoTarget, setGotoTarget] = createSignal<
-    { path: string; line: number; col?: number; nonce: number } | null
-  >(null);
+  const [gotoTarget, setGotoTarget] = createSignal<{ path: string; line: number; col?: number; nonce: number } | null>(
+    null,
+  );
   let gotoNonce = 0;
   // Where you have been, per workspace, for the Back/Forward arrows. Bucketed
   // the same way the tab strip is, and for the same reason: a path open in one
@@ -1137,7 +1142,6 @@ export default function Editor(props: {
     writeBlamePref(!blameOn());
   }
 
-
   /** The file tabs this one shares a strip with, in the order they are drawn.
    *  Pane order rather than the workspace list, because "to the right" can only
    *  mean what the person right-clicking can see. */
@@ -1197,16 +1201,14 @@ export default function Editor(props: {
         ? [
             {
               label: "File history",
-              onClick: () =>
-                emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
+              onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("history", r, rel) }),
             },
             {
               // Beside it, not instead of it: git's list is what was committed,
               // this one is what was saved, and the version somebody is hunting
               // for is usually in exactly the half the other one never kept.
               label: "Local history",
-              onClick: () =>
-                emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", r, rel) }),
+              onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("localhistory", r, rel) }),
             },
           ]
         : [];
@@ -1226,11 +1228,7 @@ export default function Editor(props: {
   function MaybeTabMenu(p: { when: boolean; tab: FileTab; children: JSX.Element }) {
     if (!p.when) return p.children;
     return (
-      <ContextMenu
-        class={styles.tabMenu}
-        disabled={tabMenuItems(p.tab).length === 0}
-        items={tabMenuItems(p.tab)}
-      >
+      <ContextMenu class={styles.tabMenu} disabled={tabMenuItems(p.tab).length === 0} items={tabMenuItems(p.tab)}>
         {p.children}
       </ContextMenu>
     );
@@ -1386,8 +1384,7 @@ export default function Editor(props: {
     const remembered = lastTargetFor(lastTargets(), ws, adapterId);
     // A remembered file target whose tab is gone is not a target any more, and
     // silently launching it would be worse than asking again.
-    const stale =
-      !!remembered && "path" in remembered && !tabs().some((t) => t.path === remembered.path);
+    const stale = !!remembered && "path" in remembered && !tabs().some((t) => t.path === remembered.path);
     if (remembered && !stale) void runDebugTarget(remembered);
     else void openDebugPicker(choices, null);
   }
@@ -1651,8 +1648,7 @@ export default function Editor(props: {
   async function takePreviewSlot(path: string) {
     if (tabs().some((t) => t.path === path)) return openFile(path);
     const pane = focusedEditorPane();
-    const here =
-      pane && pane !== SOLO_PANE ? paneTabs(ws(), pane).map((t) => t.id) : tabs().map(tabId);
+    const here = pane && pane !== SOLO_PANE ? paneTabs(ws(), pane).map((t) => t.id) : tabs().map(tabId);
     const old = tabs().find((t) => t.transient && here.includes(t.path));
     const slot = old ? tabs().findIndex((t) => t.path === old.path) : -1;
     if (old) await closeTab(old.path);
@@ -1667,7 +1663,11 @@ export default function Editor(props: {
     const next = list.map((t) => (t.path === path ? { ...t, transient: true } : t));
     if (slot >= 0 && at >= 0 && at !== slot) next.splice(slot, 0, ...next.splice(at, 1));
     setTabs(next);
-    if (old) stampOrder(ws(), here.map((id) => (id === old.path ? path : id)));
+    if (old)
+      stampOrder(
+        ws(),
+        here.map((id) => (id === old.path ? path : id)),
+      );
   }
 
   function pinTab(id: string) {
@@ -2160,9 +2160,7 @@ export default function Editor(props: {
   // Dirty text and the stash go only for paths no other workspace still has
   // open: a member's file is usually open under the member's own unit as well.
   function purgeWorkspaceKey(ws: string) {
-    const elsewhere = new Set(
-      Object.entries(tabsByWs()).flatMap(([w, ts]) => (w === ws ? [] : ts.map((t) => t.path))),
-    );
+    const elsewhere = new Set(Object.entries(tabsByWs()).flatMap(([w, ts]) => (w === ws ? [] : ts.map((t) => t.path))));
     const removed = (tabsByWs()[ws] ?? []).map((t) => t.path).filter((p) => !elsewhere.has(p));
     setTabsByWs((s) => dropWorkspaceKey(s, ws));
     setActiveByWs((s) => dropWorkspaceKey(s, ws));
@@ -2335,7 +2333,8 @@ export default function Editor(props: {
   function gitWriteRoot(): string | null {
     return gitWriteRootFor(gitRoot());
   }
-  const referenceAt = (r: string | null) => (r ? members().find((m) => isReference(m.member) && m.root === r) : undefined);
+  const referenceAt = (r: string | null) =>
+    r ? members().find((m) => isReference(m.member) && m.root === r) : undefined;
   function gitWriteRootFor(r: string | null): string | null {
     const ref = referenceAt(r);
     if (!ref) return r;
@@ -2417,11 +2416,7 @@ export default function Editor(props: {
 
   /** A step that rewrites the worktree, behind the same guard as Discard: an
    *  agent mid-turn here would have its files replaced under it. */
-  async function rewriteHere(
-    verb: string,
-    run: (root: string) => Promise<IntegrateOutcome | null>,
-    quietDone = false,
-  ) {
+  async function rewriteHere(verb: string, run: (root: string) => Promise<IntegrateOutcome | null>, quietDone = false) {
     const r = gitWriteRoot();
     if (!r) return;
     const allowed = await mayRewrite(verb, r, {
@@ -2682,7 +2677,13 @@ export default function Editor(props: {
       if (d?.from && d.to) followRename(d.from, d.to);
     });
     offRootMoved = onWith<RootMoved>(ROOT_MOVED, ({ workspace, from, to }) => {
-      const next = retargetCleanTabs({ tabs: tabsByWs(), active: activeByWs() }, workspace, from, to, (p) => !!dirty()[p]);
+      const next = retargetCleanTabs(
+        { tabs: tabsByWs(), active: activeByWs() },
+        workspace,
+        from,
+        to,
+        (p) => !!dirty()[p],
+      );
       setTabsByWs(next.tabs);
       setActiveByWs(next.active);
     });
@@ -2940,9 +2941,7 @@ export default function Editor(props: {
     // scroll survive) but out of the way. The file home keeps it only while
     // nothing else is on screen there: two flex:1 stage children split the pane.
     const shown = () =>
-      !!fileId() ||
-      p.paneId === SOLO_PANE ||
-      (isKindHome(ws(), "file", p.paneId) && !paneActiveId(ws(), p.paneId));
+      !!fileId() || p.paneId === SOLO_PANE || (isKindHome(ws(), "file", p.paneId) && !paneActiveId(ws(), p.paneId));
     const filePath = () => fileTabOf(fileId())?.path ?? null;
     const conflictedHere = () => isConflicted(watchRoots(), filePath());
     /** This pane's file when it is one that renders, which is what earns the
@@ -2982,11 +2981,7 @@ export default function Editor(props: {
           trailing={
             <>
               <Show when={progressFor(filePath())}>
-                {(p) => (
-                  <span class={crumbStyles.progress}>
-                    {progressLabel(p())}
-                  </span>
-                )}
+                {(p) => <span class={crumbStyles.progress}>{progressLabel(p())}</span>}
               </Show>
               {/* Preview first, blame second, because the cluster is pinned to
                   the bar's right edge: the one that comes and goes has to be
@@ -3372,141 +3367,140 @@ export default function Editor(props: {
       </Show>
       <Portal mount={stageHost("editor-nav")}>{editorNav()}</Portal>
       <Portal mount={stageHost("editor-chrome")}>
-      <Show when={filetreeOn()}>
-        <Resizer
-          side="after"
-          variant="hairline"
-          value={rightWidth()}
-          min={px(RIGHT_W_MIN)}
-          max={rightMax()}
-          onInput={setRightW}
-          onCommit={persistRightW}
-        />
-      </Show>
-      <div
-        class={styles.rightPanel}
-        classList={{ [styles.hidden]: !filetreeOn() }}
-        style={{ width: `${rightWidth()}px` }}
-      >
-        <OverflowTabBar
-          class={styles.rightTabs}
-          items={rightTabs()}
-          activeId={rightMode()}
-          idOf={(t) => t.mode}
-          onActivate={(id) => setRightMode(id as RightMode)}
-          onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
-          trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
-          renderTab={(t) => {
-            const badge = () => (t.mode === "changes" ? changeCount() : 0);
-            const name = () =>
-              badge() ? `${t.label}, ${badge()} changed file${badge() === 1 ? "" : "s"}` : t.label;
-            return (
-              <Tab
-                value={t.mode}
-                icon={<Icon icon={t.icon} />}
-                tooltip={name()}
-                // The one `aria-label` on a tooltipped `Tab` in the app. A label
-                // normally *replaces* a tab's visible text as its name, which is
-                // why the guard forbids it - but this tab is icon-only, so the
-                // label is the only name it has.
-                aria-label={name()}
-                trailing={
-                  <Show when={badge()}>
-                    <span class={styles.tabCount}>{badge()}</span>
-                  </Show>
-                }
-              />
-            );
-          }}
-          renderMenuItem={(t) => (
-            <>
-              <Icon icon={t.icon} />
-              <span class="tab-name">{t.label}</span>
-            </>
-          )}
-        />
-        {/* Below the tab strip rather than inside a pane: the four modes it
+        <Show when={filetreeOn()}>
+          <Resizer
+            side="after"
+            variant="hairline"
+            value={rightWidth()}
+            min={px(RIGHT_W_MIN)}
+            max={rightMax()}
+            onInput={setRightW}
+            onCommit={persistRightW}
+          />
+        </Show>
+        <div
+          class={styles.rightPanel}
+          classList={{ [styles.hidden]: !filetreeOn() }}
+          style={{ width: `${rightWidth()}px` }}
+        >
+          <OverflowTabBar
+            class={styles.rightTabs}
+            items={rightTabs()}
+            activeId={rightMode()}
+            idOf={(t) => t.mode}
+            onActivate={(id) => setRightMode(id as RightMode)}
+            onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
+            trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
+            renderTab={(t) => {
+              const badge = () => (t.mode === "changes" ? changeCount() : 0);
+              const name = () => (badge() ? `${t.label}, ${badge()} changed file${badge() === 1 ? "" : "s"}` : t.label);
+              return (
+                <Tab
+                  value={t.mode}
+                  icon={<Icon icon={t.icon} />}
+                  tooltip={name()}
+                  // The one `aria-label` on a tooltipped `Tab` in the app. A label
+                  // normally *replaces* a tab's visible text as its name, which is
+                  // why the guard forbids it - but this tab is icon-only, so the
+                  // label is the only name it has.
+                  aria-label={name()}
+                  trailing={
+                    <Show when={badge()}>
+                      <span class={styles.tabCount}>{badge()}</span>
+                    </Show>
+                  }
+                />
+              );
+            }}
+            renderMenuItem={(t) => (
+              <>
+                <Icon icon={t.icon} />
+                <span class="tab-name">{t.label}</span>
+              </>
+            )}
+          />
+          {/* Below the tab strip rather than inside a pane: the four modes it
             serves each answer for one repo, and one row above all of them is
             one control to learn instead of four. Only alongside other members:
             one member is not a choice. */}
-        <Show when={ACTIVE_ROOT_MODES.includes(rightMode()) && topicId() && members().length > 1}>
-          <MemberTabs
-            members={members()}
-            activeKey={members().find((m) => !!m.root && m.root === root())?.key ?? null}
-            canPick={(m) => m.state.usable}
-            onPick={(m) => m.root && props.onActiveRoot?.(m.root)}
-          />
-        </Show>
-        <Switch>
-          <Match when={rightMode() === "files"}>
-            <FilesPanel
-              root={root()}
-              container={sharedContainer()}
-              members={topicId() ? members() : []}
-              activePath={shownFileId()}
-              outlinePath={activeId()}
-              askText={askText}
-              askConfirm={askConfirm}
-              onRepair={repairMember}
-              onActiveRoot={props.onActiveRoot}
-              selected={props.selected}
-              settleKey={ws()}
-              persistKey={ws()}
+          <Show when={ACTIVE_ROOT_MODES.includes(rightMode()) && topicId() && members().length > 1}>
+            <MemberTabs
+              members={members()}
+              activeKey={members().find((m) => !!m.root && m.root === root())?.key ?? null}
+              canPick={(m) => m.state.usable}
+              onPick={(m) => m.root && props.onActiveRoot?.(m.root)}
             />
-          </Match>
-          <Match when={rightMode() === "problems"}>
-            <ProblemsPanel selected={props.selected} roots={treeRoots()} />
-          </Match>
-          <Match when={rightMode() === "calls"}>
-            {focusMemberLine()}
-            <CallsPanel path={activeId()} />
-          </Match>
-          <Match when={rightMode() === "changes"}>
-            <ReviewPanel
-              root={root()}
-              roots={treeRoots()}
-              members={topicId() ? members() : []}
-              activePath={activeId()}
-              selected={props.selected}
-              onReverted={handleReverted}
-              onRepair={repairMember}
-            />
-          </Match>
-          <Match when={rightMode() === "pulls"}>
-            <PullsPanel root={root()} selected={props.selected} />
-          </Match>
-          <Match when={rightMode() === "search"}>
-            <SearchPanel
-              root={root()}
-              roots={treeRoots()}
-              members={topicId() ? members() : undefined}
-              openPaths={filePaths()}
-              workspace={ws()}
-              focusNonce={searchFocusNonce()}
-              scope={searchScope()}
-              onScoped={() => setSearchScope(null)}
-              dirty={dirty()}
-              confirm={askConfirm}
-            />
-          </Match>
-          <Match when={rightMode() === "debug"}>
-            {focusMemberLine()}
-            <DebugPanel root={focusRoot()} selected={props.selected} />
-          </Match>
-          <Match when={rightMode() === "session" && props.selected?.sessionId}>
-            {focusMemberLine()}
-            <SessionPanel
-              path={props.selected!.sessionPath ?? null}
-              agent={props.selected!.agent ?? "claude"}
-              profile={props.selected!.profile}
-              cwd={props.selected!.sessionCwd ?? null}
-              projectRoot={focusRoot()}
-              selfSessionId={props.selected!.sessionId ?? null}
-              liveTabs={props.liveTabs ?? []}
-            />
-          </Match>
-        </Switch>
-      </div>
+          </Show>
+          <Switch>
+            <Match when={rightMode() === "files"}>
+              <FilesPanel
+                root={root()}
+                container={sharedContainer()}
+                members={topicId() ? members() : []}
+                activePath={shownFileId()}
+                outlinePath={activeId()}
+                askText={askText}
+                askConfirm={askConfirm}
+                onRepair={repairMember}
+                onActiveRoot={props.onActiveRoot}
+                selected={props.selected}
+                settleKey={ws()}
+                persistKey={ws()}
+              />
+            </Match>
+            <Match when={rightMode() === "problems"}>
+              <ProblemsPanel selected={props.selected} roots={treeRoots()} />
+            </Match>
+            <Match when={rightMode() === "calls"}>
+              {focusMemberLine()}
+              <CallsPanel path={activeId()} />
+            </Match>
+            <Match when={rightMode() === "changes"}>
+              <ReviewPanel
+                root={root()}
+                roots={treeRoots()}
+                members={topicId() ? members() : []}
+                activePath={activeId()}
+                selected={props.selected}
+                onReverted={handleReverted}
+                onRepair={repairMember}
+              />
+            </Match>
+            <Match when={rightMode() === "pulls"}>
+              <PullsPanel root={root()} selected={props.selected} />
+            </Match>
+            <Match when={rightMode() === "search"}>
+              <SearchPanel
+                root={root()}
+                roots={treeRoots()}
+                members={topicId() ? members() : undefined}
+                openPaths={filePaths()}
+                workspace={ws()}
+                focusNonce={searchFocusNonce()}
+                scope={searchScope()}
+                onScoped={() => setSearchScope(null)}
+                dirty={dirty()}
+                confirm={askConfirm}
+              />
+            </Match>
+            <Match when={rightMode() === "debug"}>
+              {focusMemberLine()}
+              <DebugPanel root={focusRoot()} selected={props.selected} />
+            </Match>
+            <Match when={rightMode() === "session" && props.selected?.sessionId}>
+              {focusMemberLine()}
+              <SessionPanel
+                path={props.selected!.sessionPath ?? null}
+                agent={props.selected!.agent ?? "claude"}
+                profile={props.selected!.profile}
+                cwd={props.selected!.sessionCwd ?? null}
+                projectRoot={focusRoot()}
+                selfSessionId={props.selected!.sessionId ?? null}
+                liveTabs={props.liveTabs ?? []}
+              />
+            </Match>
+          </Switch>
+        </div>
       </Portal>
       <Show when={debugPick()}>
         {(pick) => (

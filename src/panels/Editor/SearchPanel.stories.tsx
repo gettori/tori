@@ -104,9 +104,7 @@ export const RestrictedToOneMember: Story = {
   render: (args) => {
     let host: HTMLDivElement | undefined;
     onMount(() =>
-      requestAnimationFrame(() =>
-        (host?.querySelector('[aria-label="Web App"]') as HTMLButtonElement | null)?.click(),
-      ),
+      requestAnimationFrame(() => (host?.querySelector('[aria-label="Web App"]') as HTMLButtonElement | null)?.click()),
     );
     return (
       <div ref={host} style={{ display: "flex", flex: 1, "min-width": 0 }}>
@@ -125,11 +123,7 @@ export const AllPresent: Story = {
  *  rather than looking like a repo with no hits. */
 export const MemberMissing: Story = {
   args: {
-    roots: [
-      MEMBERS[0],
-      MEMBERS[1],
-      { ...MEMBERS[2], state: memberState({ kind: "worktree-missing" }) },
-    ],
+    roots: [MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: memberState({ kind: "worktree-missing" }) }],
   },
 };
 

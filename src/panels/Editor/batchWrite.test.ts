@@ -16,8 +16,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd !== "fs_write_files") return Promise.resolve(null);
     const files = args!.files as { path: string; contents: string }[];
     calls.push(files);
-    const settle = () =>
-      refuse ? Promise.reject(new Error(refuse)) : Promise.resolve(files.map((f) => f.path));
+    const settle = () => (refuse ? Promise.reject(new Error(refuse)) : Promise.resolve(files.map((f) => f.path)));
     // A slow batch, when a test wants to interleave with it.
     return held ? new Promise<string[]>((res, rej) => (held = () => void settle().then(res, rej))) : settle();
   },
@@ -33,8 +32,7 @@ beforeEach(() => {
   vi.useRealTimers();
 });
 
-const batch = (n: number) =>
-  Array.from({ length: n }, (_, i) => ({ path: `/repo/f${i}.ts`, contents: "x" }));
+const batch = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `/repo/f${i}.ts`, contents: "x" }));
 
 describe("writeFilesSuppressingEcho", () => {
   it("sends the whole set as one call", async () => {

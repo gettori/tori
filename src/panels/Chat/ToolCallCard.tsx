@@ -212,9 +212,7 @@ export default function ToolCallCard(props: {
               </span>
             )}
           </Match>
-          <Match when={toolSummaryText(summary())}>
-            {(text) => <span class={styles.toolSummary}>{text()}</span>}
-          </Match>
+          <Match when={toolSummaryText(summary())}>{(text) => <span class={styles.toolSummary}>{text()}</span>}</Match>
         </Switch>
         <Show when={formatDuration(props.card.durationMs)}>
           {(d) => <span class={styles.toolDuration}>{d()}</span>}
@@ -275,18 +273,21 @@ export default function ToolCallCard(props: {
               Behind a control because it is a `git diff` per file and because
               the card's own diff already answered "what did this call do". */}
           <Show when={isEditCall(props.card) && settled()}>
-            <Show when={showTree()} fallback={
-              <button type="button" class={styles.toolMore} onClick={() => setShowTree(true)}>
-                Compare with the file on disk
-              </button>
-            }>
+            <Show
+              when={showTree()}
+              fallback={
+                <button type="button" class={styles.toolMore} onClick={() => setShowTree(true)}>
+                  Compare with the file on disk
+                </button>
+              }
+            >
               <Show when={!diffs.loading} fallback={<div class={styles.toolNote}>Reading what changed...</div>}>
                 <For
                   each={diffs()}
                   fallback={
                     <div class={styles.toolNote}>
-                      No before-state was captured for this call, so there is nothing to compare against. That is
-                      normal for a conversation reopened from history.
+                      No before-state was captured for this call, so there is nothing to compare against. That is normal
+                      for a conversation reopened from history.
                     </div>
                   }
                 >
@@ -349,12 +350,7 @@ export default function ToolCallCard(props: {
           <Show when={renderer() === "edit" && props.card.state === "ok" ? null : props.card.output}>
             {(output) => (
               <>
-                <ToolOutput
-                  card={props.card}
-                  renderer={renderer()}
-                  text={fullOutput() ?? output()}
-                  onOpen={openPath}
-                />
+                <ToolOutput card={props.card} renderer={renderer()} text={fullOutput() ?? output()} onOpen={openPath} />
                 {/* Absent unless there is more to show, so a card whose output
                     fitted looks exactly as it did before. */}
                 <Show when={props.card.outputTruncated}>

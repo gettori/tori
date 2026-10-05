@@ -53,10 +53,7 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     // Catches the case a per-type loop cannot: a type added in Rust that this
     // mirror never declared at all.
     const emitted = Object.keys(golden).sort();
-    const covered = [
-      ...Object.keys(FORGE_KEYS).filter((k) => !NESTED_ONLY.includes(k)),
-      ...NOT_OBJECTS,
-    ].sort();
+    const covered = [...Object.keys(FORGE_KEYS).filter((k) => !NESTED_ONLY.includes(k)), ...NOT_OBJECTS].sort();
     expect(emitted).toEqual(covered);
   });
 
@@ -115,9 +112,7 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     // The distinction the whole 401 story rests on: suspect still knows who the
     // token belonged to, which is what lets the prompt say "sign back in as X"
     // rather than dropping the user at a blank sign-in.
-    const byKind = Object.fromEntries(
-      (golden.authStates as AuthState[]).map((s) => [s.kind, s]),
-    );
+    const byKind = Object.fromEntries((golden.authStates as AuthState[]).map((s) => [s.kind, s]));
     expect(byKind.signedOut).toEqual({ kind: "signedOut" });
     expect(byKind.suspect).toMatchObject({ kind: "suspect", login: "skarif2" });
   });
@@ -187,9 +182,9 @@ describe("forgeErrorMessage", () => {
     // panels' `String(e)` renders that as "[object Object]", which is the least
     // informative string in the app for the failures the user most needs to act
     // on ("a pull request already exists", "no commits between").
-    expect(
-      forgeErrorMessage({ kind: "alreadyExists", message: "A pull request already exists." }),
-    ).toBe("A pull request already exists.");
+    expect(forgeErrorMessage({ kind: "alreadyExists", message: "A pull request already exists." })).toBe(
+      "A pull request already exists.",
+    );
   });
 
   it("falls back to stringifying anything that is not one", () => {

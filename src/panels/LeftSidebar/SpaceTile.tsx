@@ -107,7 +107,9 @@ export default function SpaceTile(props: {
           {(glyph) => <Icon icon={glyph()} />}
         </Show>
         {/* Always mounted; the 0fr track hides it. See .tileName. */}
-        <span class={styles.tileName}><span class={styles.tileNameText}>{props.name}</span></span>
+        <span class={styles.tileName}>
+          <span class={styles.tileNameText}>{props.name}</span>
+        </span>
         <Show when={props.rollup}>{(get) => <StatusBubble rollup={get()} tile />}</Show>
       </Tooltip>
     </ContextMenu>
@@ -141,7 +143,9 @@ export function ModeTile(props: {
       onClick={() => props.onClick?.()}
     >
       <Icon icon={props.glyph} />
-      <span class={styles.tileName}><span class={styles.tileNameText}>{props.label}</span></span>
+      <span class={styles.tileName}>
+        <span class={styles.tileNameText}>{props.label}</span>
+      </span>
     </Tooltip>
   );
 }
@@ -156,11 +160,7 @@ export function TileProbe(props: {
   textRef?: (el: HTMLSpanElement) => void;
 }) {
   return (
-    <span
-      class={`${styles.space} ${styles.titled} ${styles.tileProbe}`}
-      aria-hidden="true"
-      ref={props.ref}
-    >
+    <span class={`${styles.space} ${styles.titled} ${styles.tileProbe}`} aria-hidden="true" ref={props.ref}>
       <Icon icon={props.glyph} />
       <span class={styles.tileName} ref={props.nameRef}>
         <span class={styles.tileNameText} ref={props.textRef} />

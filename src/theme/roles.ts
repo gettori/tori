@@ -18,7 +18,11 @@ import type { Appearance, Palette, PaletteColors } from "./schema";
 /** Parse `#rgb` / `#rrggbb` / `#rrggbbaa` to channels. */
 function channels(hex: string): [number, number, number, number] {
   let body = hex.replace("#", "");
-  if (body.length === 3) body = body.split("").map((c) => c + c).join("");
+  if (body.length === 3)
+    body = body
+      .split("")
+      .map((c) => c + c)
+      .join("");
   const r = parseInt(body.slice(0, 2), 16);
   const g = parseInt(body.slice(2, 4), 16);
   const b = parseInt(body.slice(4, 6), 16);
@@ -80,7 +84,7 @@ export function mix(bottom: string, top: string, amount: number): string {
  *  genuinely differ in kind, not just in stop: light shadows are softer, light
  *  scrims are thinner, light borders are solid. */
 export function variants(appearance: Appearance) {
-  return <T,>(choices: { dark: T; light: T }): T => choices[appearance];
+  return <T>(choices: { dark: T; light: T }): T => choices[appearance];
 }
 
 // ---- The role table ----

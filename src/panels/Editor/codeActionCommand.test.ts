@@ -106,7 +106,10 @@ function io(answer = true) {
 /** An edit renaming `before` to `after` in each of the named files. */
 const editOver = (paths: string[]) => ({
   changes: Object.fromEntries(
-    paths.map((p) => [uri(p), [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } }, newText: "after" }]]),
+    paths.map((p) => [
+      uri(p),
+      [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } }, newText: "after" }],
+    ]),
   ),
 });
 

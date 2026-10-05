@@ -25,7 +25,11 @@ vi.mock("@tauri-apps/api/core", () => ({
     invokes.push({ cmd, args });
     switch (cmd) {
       case "chat_spawn":
-        return Promise.resolve({ ownership: { type: "granted", contested: false }, spawned: "started", profileId: "default" });
+        return Promise.resolve({
+          ownership: { type: "granted", contested: false },
+          spawned: "started",
+          profileId: "default",
+        });
       case "chat_history":
         return Promise.resolve(wholeHistory([]));
       case "chat_record_usage":
@@ -84,9 +88,8 @@ const { default: ChatView } = await import("./ChatView");
 const { ensureAdaptersLoaded } = await import("../../utils/agents");
 const { DEFAULT_SETTINGS, loadSettings } = await import("../Settings/settingsStore");
 const { resetUsageStoreForTests } = await import("../../utils/usageStore");
-const { FIRE_GRACE_MS, RESUME_ARMED, RESUME_STOPPED, armedFor, resetResumeAtResetForTests } = await import(
-  "./resumeAtReset"
-);
+const { FIRE_GRACE_MS, RESUME_ARMED, RESUME_STOPPED, armedFor, resetResumeAtResetForTests } =
+  await import("./resumeAtReset");
 
 // Spelled out in full: the settings store proxies `DEFAULT_SETTINGS` itself, so
 // one test's switch would otherwise carry into the next.
@@ -100,7 +103,14 @@ const HOURS = 3;
 let resetsAt = 0;
 
 const limited = (sessionId: string) => [
-  { type: "turnStarted", sessionId, turnId: "t1", model: "claude-opus-5", permissionMode: "default", agentInitiated: false },
+  {
+    type: "turnStarted",
+    sessionId,
+    turnId: "t1",
+    model: "claude-opus-5",
+    permissionMode: "default",
+    agentInitiated: false,
+  },
   {
     type: "rateLimit",
     sessionId,

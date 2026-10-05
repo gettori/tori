@@ -24,11 +24,7 @@ const MAX_LOSSES = 3;
  *  the host, because disposing the addon does not release their GL contexts. */
 type Handle = { dispose(): void; canvases: HTMLCanvasElement[] };
 
-export type WebglAttach = (
-  term: Terminal,
-  host: HTMLElement,
-  onLoss: () => void,
-) => Handle | null;
+export type WebglAttach = (term: Terminal, host: HTMLElement, onLoss: () => void) => Handle | null;
 
 export type WebglSlot = {
   /** This terminal is on screen: pin it, attach if it is not, and re-rank it. */

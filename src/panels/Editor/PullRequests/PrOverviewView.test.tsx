@@ -68,9 +68,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 
 const { default: PrOverviewView } = await import("./PrOverviewView");
 const { prTabId, prDiffTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
-const { addPending, prEntry, resetPrReviewStoreForTests } = await import(
-  "../../../utils/prReviewStore"
-);
+const { addPending, prEntry, resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
 const { onWith, OPEN_IN_EDITOR } = await import("../../../utils/events");
 const {
   noteForgeAccounts,
@@ -311,9 +309,7 @@ describe("the review submitted from the overview tab", () => {
     // to hand the whole set back.
     await waitFor(() => expect(prEntry(ROOT, 42).pending).toHaveLength(0));
     // Both parts the submit changed, and neither of the ones it did not.
-    await waitFor(() =>
-      expect(cmds("forge_review_threads").length).toBe(threadsBefore + 1),
-    );
+    await waitFor(() => expect(cmds("forge_review_threads").length).toBe(threadsBefore + 1));
     expect(cmds("forge_pr_summary").length).toBe(summaryBefore + 1);
   });
   it("hands the whole draft back when the one call is refused", async () => {
@@ -332,9 +328,7 @@ describe("the review submitted from the overview tab", () => {
 
     fireEvent.click(submit());
 
-    await waitFor(() =>
-      expect(screen.getByText("you cannot review this pull request")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText("you cannot review this pull request")).toBeTruthy());
     expect(prEntry(ROOT, 42).pending).toHaveLength(1);
   });
 
@@ -366,12 +360,8 @@ describe("the review submitted from the overview tab", () => {
     await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
 
     await waitFor(() =>
-      expect(
-        (screen.getByRole("radio", { name: /Request changes/ }) as HTMLInputElement).disabled,
-      ).toBe(true),
+      expect((screen.getByRole("radio", { name: /Request changes/ }) as HTMLInputElement).disabled).toBe(true),
     );
-    expect((screen.getByRole("radio", { name: /Comment/ }) as HTMLInputElement).disabled).toBe(
-      false,
-    );
+    expect((screen.getByRole("radio", { name: /Comment/ }) as HTMLInputElement).disabled).toBe(false);
   });
 });

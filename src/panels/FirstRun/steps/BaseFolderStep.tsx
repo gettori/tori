@@ -8,9 +8,8 @@ import styles from "../FirstRun.module.css";
 
 export const BASE_FOLDER_LEAD = (
   <>
-    Tori scans one folder and reads it as <code>&lt;base&gt;/&lt;space&gt;/&lt;project&gt;</code>. Pick the
-    folder you already keep repos in, like ~/Projects. Not your home folder, and not a single repo.
-    Nothing is moved or changed.
+    Tori scans one folder and reads it as <code>&lt;base&gt;/&lt;space&gt;/&lt;project&gt;</code>. Pick the folder you
+    already keep repos in, like ~/Projects. Not your home folder, and not a single repo. Nothing is moved or changed.
   </>
 );
 
@@ -57,15 +56,14 @@ export default function BaseFolderStep(props: {
               <>
                 <div class={styles.note}>Empty folder. Nothing to scan yet.</div>
                 <div class={styles.card}>
-                  That is fine. The next step creates a space inside it, which is all Tori needs to
-                  open.
+                  That is fine. The next step creates a space inside it, which is all Tori needs to open.
                 </div>
               </>
             }
           >
             <div class={styles.note}>
-              <span class={styles.found}>Found</span> {plural(found().length, "space")},{" "}
-              {plural(projects(), "project")}, so the space step is already answered
+              <span class={styles.found}>Found</span> {plural(found().length, "space")}, {plural(projects(), "project")}
+              , so the space step is already answered
             </div>
             <div class={`${styles.card} ${styles.scan}`}>
               <span class={styles.hint}>{shortHome(root(), props.home)}</span>

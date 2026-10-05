@@ -212,25 +212,44 @@ pub enum ToolSummary {
     /// mode reports `numFiles: 0` for a result whose own `content` spans two
     /// files. The count is simply not filled in that mode, and a row reading
     /// "2 hits in 0 files" is worse than one that declines to say.
-    Search { hits: u64, files: Option<u64> },
+    Search {
+        hits: u64,
+        files: Option<u64>,
+    },
     /// A search or glob that reports only which files matched.
-    Paths { count: u64 },
+    Paths {
+        count: u64,
+    },
     /// `total` is the file's length, not the end of the returned range: the end
     /// is `from + lines - 1` and needs no field, while the length cannot be
     /// recovered from the other two and is what makes "13 of 400" sayable.
-    Read { lines: u64, from: u64, total: Option<u64> },
+    Read {
+        lines: u64,
+        from: u64,
+        total: Option<u64>,
+    },
     /// `exit_code` is `Option` because Claude does not report one at all.
     /// Measured across every `Bash` result in the local transcript corpus
     /// (~20k), the shape carries `interrupted` and no exit status; the optional
     /// `returnCodeInterpretation` that appears on some of them is prose
     /// ("No matches found"), not a code. So `interrupted` plus the call's error
     /// status is the whole verdict available over that transport.
-    Execute { exit_code: Option<i32>, lines: u64 },
-    Edit { added: u64, removed: u64 },
+    Execute {
+        exit_code: Option<i32>,
+        lines: u64,
+    },
+    Edit {
+        added: u64,
+        removed: u64,
+    },
     /// `host` alone repeats the call's own argument. What a fetch actually
     /// *reports* is the status it came back with and how much it brought, so
     /// both are here, and both are `Option` because ACP publishes neither.
-    Fetch { host: String, status: Option<u16>, bytes: Option<u64> },
+    Fetch {
+        host: String,
+        status: Option<u16>,
+        bytes: Option<u64>,
+    },
 }
 
 /// How much of a tool's output rides on the event, in bytes.
@@ -818,7 +837,13 @@ impl ContentBlock {
             .filter(|(token, path)| is_label(token) && path.starts_with('/') && !path.contains('\n'))
             .map(|(token, rendered)| {
                 let (path, start_line, end_line) = split_range(rendered);
-                ContentBlock::FileRef { path, start_line, end_line, text: None, label: Some(format!("[{token}]")) }
+                ContentBlock::FileRef {
+                    path,
+                    start_line,
+                    end_line,
+                    text: None,
+                    label: Some(format!("[{token}]")),
+                }
             })
             .unwrap_or_else(|| ContentBlock::Text { text: text.to_string() })
     }
@@ -828,7 +853,9 @@ impl ContentBlock {
 /// part of the grammar, so a turn sent before the composer capitalised its
 /// labels still replays as the attachment it was.
 fn is_label(token: &str) -> bool {
-    let Some((kind, n)) = token.split_once(' ') else { return false };
+    let Some((kind, n)) = token.split_once(' ') else {
+        return false;
+    };
     ["image", "pdf", "file"].iter().any(|k| kind.eq_ignore_ascii_case(k))
         && !n.is_empty()
         && n.bytes().all(|b| b.is_ascii_digit())
@@ -866,7 +893,9 @@ pub fn file_ref_locator(path: &str, start_line: Option<u32>, end_line: Option<u3
 /// the rendering paid it first.
 fn split_range(rendered: &str) -> (String, Option<u32>, Option<u32>) {
     let whole = || (rendered.to_string(), None, None);
-    let Some((path, range)) = rendered.rsplit_once("#L") else { return whole() };
+    let Some((path, range)) = rendered.rsplit_once("#L") else {
+        return whole();
+    };
     if path.is_empty() {
         return whole();
     }
@@ -1674,7 +1703,9 @@ mod tests {
             ChatEvent::UserMessage {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
-                blocks: vec![ContentBlock::Text { text: "fix the bug".into() }],
+                blocks: vec![ContentBlock::Text {
+                    text: "fix the bug".into(),
+                }],
             },
             ChatEvent::Compacted {
                 session_id: "s1".into(),
@@ -1729,7 +1760,10 @@ mod tests {
                 name: "Bash".into(),
                 input: serde_json::json!({ "command": "echo hi" }),
                 kind: ToolKind::Execute,
-                locations: vec![ToolLocation { path: "/tmp/w/probe.txt".into(), line: Some(12) }],
+                locations: vec![ToolLocation {
+                    path: "/tmp/w/probe.txt".into(),
+                    line: Some(12),
+                }],
                 // Filled rather than `None`, so a mirror that dropped the field
                 // fails on the sample instead of agreeing with it by accident.
                 title: Some("Running echo hi".into()),
@@ -1912,7 +1946,11 @@ mod tests {
                 status: Some("completed".into()),
                 activity: Some("Writing sub-made.txt".into()),
                 last_tool_name: Some("Write".into()),
-                usage: Some(SubagentUsage { total_tokens: 10371, tool_uses: 1, duration_ms: 4844 }),
+                usage: Some(SubagentUsage {
+                    total_tokens: 10371,
+                    tool_uses: 1,
+                    duration_ms: 4844,
+                }),
                 summary: Some("Done. Created sub-made.txt containing the word sub.".into()),
             },
             ChatEvent::PlanUpdate {
@@ -2037,7 +2075,9 @@ mod tests {
             ChatCommand::SendTurn {
                 session_id: "s1".into(),
                 blocks: vec![
-                    ContentBlock::Text { text: "look at this".into() },
+                    ContentBlock::Text {
+                        text: "look at this".into(),
+                    },
                     ContentBlock::Image {
                         media_type: "image/png".into(),
                         data: "iVBORw0KGgo=".into(),
@@ -2053,9 +2093,13 @@ mod tests {
             },
             ChatCommand::Steer {
                 session_id: "s1".into(),
-                blocks: vec![ContentBlock::Text { text: "stop reading, just summarise".into() }],
+                blocks: vec![ContentBlock::Text {
+                    text: "stop reading, just summarise".into(),
+                }],
             },
-            ChatCommand::Interrupt { session_id: "s1".into() },
+            ChatCommand::Interrupt {
+                session_id: "s1".into(),
+            },
             ChatCommand::RespondPermission {
                 session_id: "s1".into(),
                 tool_use_id: "toolu_3".into(),
@@ -2102,7 +2146,9 @@ mod tests {
                 config_id: "web_search".into(),
                 value: ChatConfigValue::Flag(true),
             },
-            ChatCommand::Close { session_id: "s1".into() },
+            ChatCommand::Close {
+                session_id: "s1".into(),
+            },
         ]
     }
 
@@ -2110,8 +2156,7 @@ mod tests {
     fn every_event_variant_round_trips() {
         for ev in every_event() {
             let json = serde_json::to_string(&ev).expect("serialize");
-            let back: ChatEvent =
-                serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
+            let back: ChatEvent = serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
             assert_eq!(ev, back, "round trip changed the value: {json}");
         }
     }
@@ -2133,7 +2178,10 @@ mod tests {
         }"#;
         let model: ChatModelInfo = serde_json::from_str(stored).expect("an older cache still deserializes");
         assert_eq!(model.supported_effort_levels, ["low", "high"]);
-        assert!(model.effort_levels.is_empty(), "absent, so the reader falls back to the published list");
+        assert!(
+            model.effort_levels.is_empty(),
+            "absent, so the reader falls back to the published list"
+        );
     }
 
     /// The cap is in bytes and the text is not, so the cut lands on a character
@@ -2160,8 +2208,7 @@ mod tests {
     fn every_command_variant_round_trips() {
         for cmd in every_command() {
             let json = serde_json::to_string(&cmd).expect("serialize");
-            let back: ChatCommand =
-                serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
+            let back: ChatCommand = serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
             assert_eq!(cmd, back, "round trip changed the value: {json}");
         }
     }
@@ -2179,12 +2226,26 @@ mod tests {
             // mirror's own test. The absent halves are what the transports
             // permanently answer, so the samples carry the fuller shape that
             // has to survive a round trip and the mirror checks the other one.
-            ToolSummary::Search { hits: 12, files: Some(3) },
+            ToolSummary::Search {
+                hits: 12,
+                files: Some(3),
+            },
             ToolSummary::Paths { count: 7 },
-            ToolSummary::Read { lines: 40, from: 1, total: Some(400) },
-            ToolSummary::Execute { exit_code: Some(0), lines: 118 },
+            ToolSummary::Read {
+                lines: 40,
+                from: 1,
+                total: Some(400),
+            },
+            ToolSummary::Execute {
+                exit_code: Some(0),
+                lines: 118,
+            },
             ToolSummary::Edit { added: 4, removed: 2 },
-            ToolSummary::Fetch { host: "example.com".into(), status: Some(200), bytes: Some(559) },
+            ToolSummary::Fetch {
+                host: "example.com".into(),
+                status: Some(200),
+                bytes: Some(559),
+            },
         ]
     }
 
@@ -2192,8 +2253,7 @@ mod tests {
     fn every_tool_summary_variant_round_trips() {
         for summary in every_tool_summary() {
             let json = serde_json::to_string(&summary).expect("serialize");
-            let back: ToolSummary =
-                serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
+            let back: ToolSummary = serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
             assert_eq!(summary, back, "round trip changed the value: {json}");
         }
     }
@@ -2213,7 +2273,11 @@ mod tests {
                 ToolSummary::Fetch { .. } => "fetch",
             };
         }
-        assert_eq!(all.len(), 6, "every_tool_summary() must hold exactly one sample per variant");
+        assert_eq!(
+            all.len(),
+            6,
+            "every_tool_summary() must hold exactly one sample per variant"
+        );
     }
 
     /// An unknown kind folds into `Other` rather than failing the whole event.
@@ -2225,7 +2289,10 @@ mod tests {
             serde_json::from_str::<ToolKind>("\"somethingNewInV3\"").expect("parses"),
             ToolKind::Other
         );
-        assert_eq!(serde_json::from_str::<ToolKind>("\"switchMode\"").expect("parses"), ToolKind::SwitchMode);
+        assert_eq!(
+            serde_json::from_str::<ToolKind>("\"switchMode\"").expect("parses"),
+            ToolKind::SwitchMode
+        );
     }
 
     /// The round-trip tests above only cover the variants `every_event` lists,
@@ -2269,7 +2336,11 @@ mod tests {
             };
         }
         // A mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 29, "every_event() must hold exactly one sample per variant");
+        assert_eq!(
+            events.len(),
+            29,
+            "every_event() must hold exactly one sample per variant"
+        );
     }
 
     #[test]
@@ -2288,7 +2359,11 @@ mod tests {
                 ChatCommand::Close { .. } => "close",
             };
         }
-        assert_eq!(cmds.len(), 9, "every_command() must hold exactly one sample per variant");
+        assert_eq!(
+            cmds.len(),
+            9,
+            "every_command() must hold exactly one sample per variant"
+        );
     }
 
     /// The wire shape the TypeScript mirror is written against: tagged on
@@ -2340,13 +2415,7 @@ mod tests {
         let conversation: Vec<String> = every_event()
             .iter()
             .filter(|e| crate::chat::mirror::is_conversation(e))
-            .filter_map(|e| {
-                serde_json::to_value(e)
-                    .ok()?
-                    .get("type")?
-                    .as_str()
-                    .map(str::to_string)
-            })
+            .filter_map(|e| serde_json::to_value(e).ok()?.get("type")?.as_str().map(str::to_string))
             .collect();
         let conversation = serde_json::to_string_pretty(&conversation).expect("serialize set");
         std::fs::write(dir.join("conversationEvents.json"), format!("{conversation}\n"))
@@ -2366,7 +2435,10 @@ mod tests {
             permission_mode: PermissionMode::new("default"),
             extra: HashMap::from([
                 ("ttftMs".into(), serde_json::json!(1575)),
-                ("modelUsage".into(), serde_json::json!({ "claude-sonnet-5": { "outputTokens": 205 } })),
+                (
+                    "modelUsage".into(),
+                    serde_json::json!({ "claude-sonnet-5": { "outputTokens": 205 } }),
+                ),
             ]),
         };
         let back: ChatEvent = serde_json::from_str(&serde_json::to_string(&ev).unwrap()).unwrap();

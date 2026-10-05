@@ -41,18 +41,19 @@ describe("editingIndication", () => {
   });
 
   it("names an fs path only when the session is the sole live actor", () => {
-    expect(
-      editingIndication({ executing: true, fsPath: "/repo/b.ts", soleLiveActor: true }),
-    ).toEqual({ kind: "file", path: "/repo/b.ts" });
+    expect(editingIndication({ executing: true, fsPath: "/repo/b.ts", soleLiveActor: true })).toEqual({
+      kind: "file",
+      path: "/repo/b.ts",
+    });
   });
 
   it("degrades to a file-less pulse when another actor could be the author", () => {
     // The watcher reports that a file changed, not who changed it. With a
     // second agent live here, naming the file would be a coin flip presented
     // as fact, so the indicator keeps the pulse and drops the name.
-    expect(
-      editingIndication({ executing: true, fsPath: "/repo/b.ts", soleLiveActor: false }),
-    ).toEqual({ kind: "anonymous" });
+    expect(editingIndication({ executing: true, fsPath: "/repo/b.ts", soleLiveActor: false })).toEqual({
+      kind: "anonymous",
+    });
   });
 
   it("shows nothing while executing with no signal at all", () => {

@@ -65,9 +65,7 @@ export default function TabMark(props: {
       ? statusPresentation(
           props.status,
           props.certainty ?? "inferred",
-          props.status === "waitingOnBackground" && props.background
-            ? backgroundLabel(props.background)
-            : undefined,
+          props.status === "waitingOnBackground" && props.background ? backgroundLabel(props.background) : undefined,
         )
       : null;
 

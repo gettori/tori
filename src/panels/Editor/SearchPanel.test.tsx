@@ -62,10 +62,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         root: args.root as string | undefined,
       });
       return Promise.resolve(
-        bridge.previewResult(
-          args.replacement as string,
-          args.spans as { text: string; start: number; end: number }[],
-        ),
+        bridge.previewResult(args.replacement as string, args.spans as { text: string; start: number; end: number }[]),
       );
     }
     if (cmd === "replace_in_files") {
@@ -119,9 +116,22 @@ function mount(extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) {
 }
 
 const ONE_FILE = (path = "src/a.ts") =>
-  ok([match("ab cd ab", [[0, 2], [6, 8]], 1, path)], {
-    files: [{ path, digest: "d1" }],
-  });
+  ok(
+    [
+      match(
+        "ab cd ab",
+        [
+          [0, 2],
+          [6, 8],
+        ],
+        1,
+        path,
+      ),
+    ],
+    {
+      files: [{ path, digest: "d1" }],
+    },
+  );
 
 /** The Replace All inside the replace field; file and folder rows carry their own. */
 const replaceAllButton = () =>
@@ -199,7 +209,12 @@ describe("capability probe", () => {
     mount();
     openDetails();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
-    for (const label of ["Match Case", "Match Whole Word", "Use Regular Expression", "Use Exclude Settings and Ignore Files"]) {
+    for (const label of [
+      "Match Case",
+      "Match Whole Word",
+      "Use Regular Expression",
+      "Use Exclude Settings and Ignore Files",
+    ]) {
       expect((screen.getByLabelText(label) as HTMLButtonElement).disabled).toBe(false);
     }
   });
@@ -277,9 +292,7 @@ describe("glob inputs", () => {
 
     const include = screen.getByPlaceholderText("e.g. src/**/*.ts");
     fireEvent.input(include, { target: { value: "src/**/*.ts" } });
-    await waitFor(() =>
-      expect(searches()[searches().length - 1].options.include).toBe("src/**/*.ts"),
-    );
+    await waitFor(() => expect(searches()[searches().length - 1].options.include).toBe("src/**/*.ts"));
 
     fireEvent.input(include, { target: { value: "" } });
     await waitFor(() => expect(searches()[searches().length - 1].options.include).toBe(""));
@@ -397,7 +410,16 @@ describe("truncation notice", () => {
     // Two rows, three spans: the cap counts lines, a replace acts on spans, so
     // the notice must not use one number for both.
     bridge.respond = () =>
-      ok([match("ab cd ab", [[0, 2], [6, 8]]), match("ab", [[0, 2]], 2)], { truncated: true });
+      ok(
+        [
+          match("ab cd ab", [
+            [0, 2],
+            [6, 8],
+          ]),
+          match("ab", [[0, 2]], 2),
+        ],
+        { truncated: true },
+      );
     mount();
     await type("ab");
     await waitFor(() => expect(screen.getByText(/Refine your search/)).toBeTruthy());
@@ -420,10 +442,7 @@ describe("replace preview", () => {
       "FROM-BACKEND",
     ]);
     // The old span stays visible, struck through, beside the new text.
-    expect(Array.from(container.querySelectorAll("del")).map((n) => n.textContent)).toEqual([
-      "ab",
-      "ab",
-    ]);
+    expect(Array.from(container.querySelectorAll("del")).map((n) => n.textContent)).toEqual(["ab", "ab"]);
   });
 
   it("asks once per debounce rather than once per keystroke", async () => {
@@ -473,7 +492,15 @@ describe("replace scopes", () => {
   const TWO_FILES = () =>
     ok(
       [
-        match("ab cd ab", [[0, 2], [6, 8]], 1, "src/a.ts"),
+        match(
+          "ab cd ab",
+          [
+            [0, 2],
+            [6, 8],
+          ],
+          1,
+          "src/a.ts",
+        ),
         match("ab", [[0, 2]], 4, "src/b.ts"),
       ],
       {
@@ -522,9 +549,23 @@ describe("replace scopes", () => {
   it("per-match sends that line's spans and no other line's", async () => {
     // A match row is a line, so its Replace takes every span on it, as VS Code's does.
     bridge.respond = () =>
-      ok([match("ab cd ab", [[0, 2], [6, 8]], 1, "src/a.ts"), match("ab", [[0, 2]], 2, "src/a.ts")], {
-        files: [{ path: "src/a.ts", digest: "d1" }],
-      });
+      ok(
+        [
+          match(
+            "ab cd ab",
+            [
+              [0, 2],
+              [6, 8],
+            ],
+            1,
+            "src/a.ts",
+          ),
+          match("ab", [[0, 2]], 2, "src/a.ts"),
+        ],
+        {
+          files: [{ path: "src/a.ts", digest: "d1" }],
+        },
+      );
     mount();
     await type("ab");
     await typeReplacement("zz");
@@ -592,18 +633,12 @@ describe("replace confirmation", () => {
 describe("dirty buffers", () => {
   it("leaves a file with unsaved edits out of the targets and reports it skipped", async () => {
     bridge.respond = () =>
-      ok(
-        [
-          match("ab", [[0, 2]], 1, "src/a.ts"),
-          match("ab", [[0, 2]], 1, "src/b.ts"),
+      ok([match("ab", [[0, 2]], 1, "src/a.ts"), match("ab", [[0, 2]], 1, "src/b.ts")], {
+        files: [
+          { path: "src/a.ts", digest: "d1" },
+          { path: "src/b.ts", digest: "d2" },
         ],
-        {
-          files: [
-            { path: "src/a.ts", digest: "d1" },
-            { path: "src/b.ts", digest: "d2" },
-          ],
-        },
-      );
+      });
     bridge.replaceResult = () => ({ changed: ["src/b.ts"], skipped: [], occurrences: 1 });
     mount({
       confirm: () => Promise.resolve(true),
@@ -655,9 +690,7 @@ describe("replace outcome", () => {
     // The re-search is what shows on screen that the write landed.
     await waitFor(() => expect(searches().length).toBe(before + 1));
     await waitFor(() =>
-      expect(
-        screen.getByText("Replaced 2 occurrences in 1 file, 1 skipped (changed on disk)."),
-      ).toBeTruthy(),
+      expect(screen.getByText("Replaced 2 occurrences in 1 file, 1 skipped (changed on disk).")).toBeTruthy(),
     );
   });
 });
@@ -761,11 +794,16 @@ describe("concurrent replaces", () => {
 });
 
 describe("highlighting", () => {
-  const marks = (container: HTMLElement) =>
-    Array.from(container.querySelectorAll("mark")).map((m) => m.textContent);
+  const marks = (container: HTMLElement) => Array.from(container.querySelectorAll("mark")).map((m) => m.textContent);
 
   it("highlights every occurrence on a line", async () => {
-    bridge.respond = () => ok([match("ab cd ab", [[0, 2], [6, 8]])]);
+    bridge.respond = () =>
+      ok([
+        match("ab cd ab", [
+          [0, 2],
+          [6, 8],
+        ]),
+      ]);
     const { container } = mount();
     await type("ab");
     await waitFor(() => expect(marks(container).length).toBe(2));
@@ -904,10 +942,7 @@ describe("query history", () => {
     // The cursor indexes the history that was on screen, and the draft it would
     // restore is a query for the project you just left. Carried over, the first
     // arrow press in the new project types someone else's half-finished text.
-    localStorage.setItem(
-      "tori.searchHistory",
-      JSON.stringify({ "/other": [{ query: "elsewhere" }] }),
-    );
+    localStorage.setItem("tori.searchHistory", JSON.stringify({ "/other": [{ query: "elsewhere" }] }));
     const [root, setRoot] = createSignal<string | null>("/proj");
     render(() => <SearchPanel root={root()} focusNonce={0} />);
 
@@ -1119,9 +1154,7 @@ describe("multi-root search", () => {
   };
 
   const mountTopic = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
-    render(() => (
-      <SearchPanel root={API} roots={MEMBERS} workspace="topic:f1" focusNonce={0} {...extra} />
-    ));
+    render(() => <SearchPanel root={API} roots={MEMBERS} workspace="topic:f1" focusNonce={0} {...extra} />);
 
   const sectionEl = (root: string) => document.querySelector(`[data-root="${root}"]`) as HTMLElement;
   const rootsSearched = () => searches().map((c) => c.root);
@@ -1141,9 +1174,7 @@ describe("multi-root search", () => {
     let release: (() => void) | undefined;
     const held = new Promise<void>((r) => (release = r));
     bridge.respond = (query) =>
-      query === "slow"
-        ? held.then(() => ok([match("slow hit", [[0, 4]])]))
-        : ok([match("fast hit", [[0, 4]])]);
+      query === "slow" ? held.then(() => ok([match("slow hit", [[0, 4]])])) : ok([match("fast hit", [[0, 4]])]);
 
     mountTopic();
     await type("slow");
@@ -1160,9 +1191,7 @@ describe("multi-root search", () => {
     // A search that spans every member must not be spent by that click.
     const [active, setActive] = createSignal(API);
     bridge.respond = () => ONE_FILE();
-    render(() => (
-      <SearchPanel root={active()} roots={MEMBERS} workspace="topic:f1" focusNonce={0} />
-    ));
+    render(() => <SearchPanel root={active()} roots={MEMBERS} workspace="topic:f1" focusNonce={0} />);
     await type("ab");
     await waitFor(() => expect(sectionEl(API).textContent).toContain("ab cd ab"));
     const ran = searches().length;
@@ -1203,9 +1232,7 @@ describe("multi-root search", () => {
 
   it("skips a member with no usable worktree instead of grepping its repo", async () => {
     const roots = [MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }];
-    render(() => (
-      <SearchPanel root={API} roots={roots} workspace="topic:f1" focusNonce={0} />
-    ));
+    render(() => <SearchPanel root={API} roots={roots} workspace="topic:f1" focusNonce={0} />);
     await type("needle");
 
     expect(rootsSearched()).toEqual([API, WEB]);
@@ -1233,9 +1260,7 @@ describe("multi-root search", () => {
   it("follows a renamed and reordered roots prop", async () => {
     bridge.respond = () => ONE_FILE();
     const [roots, setRoots] = createSignal(MEMBERS);
-    render(() => (
-      <SearchPanel root={API} roots={roots()} workspace="topic:f1" focusNonce={0} />
-    ));
+    render(() => <SearchPanel root={API} roots={roots()} workspace="topic:f1" focusNonce={0} />);
     await type("ab");
     const order = () => Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"));
     expect(order()).toEqual([API, WEB, DOCS]);
@@ -1260,7 +1285,16 @@ describe("multi-root search", () => {
 
   it("reports truncation and failure per section, and keeps the rest", async () => {
     bridge.respond = (_q, _o, root) => {
-      if (root === API) return ok([match("ab cd ab", [[0, 2], [6, 8]])], { truncated: true });
+      if (root === API)
+        return ok(
+          [
+            match("ab cd ab", [
+              [0, 2],
+              [6, 8],
+            ]),
+          ],
+          { truncated: true },
+        );
       if (root === WEB) throw new Error("grep: permission denied");
       return ok([match("docs hit", [[0, 4]], 3, "README.md")]);
     };
@@ -1285,8 +1319,7 @@ describe("multi-root search", () => {
   });
 
   it("opens a hit against its own member's root", async () => {
-    bridge.respond = (_q, _o, root) =>
-      root === WEB ? ok([match("web hit", [[0, 3]], 12, "src/App.tsx")]) : ok([]);
+    bridge.respond = (_q, _o, root) => (root === WEB ? ok([match("web hit", [[0, 3]], 12, "src/App.tsx")]) : ok([]));
     mountTopic();
     await type("web");
 
@@ -1450,8 +1483,6 @@ describe("multi-root search", () => {
     await waitFor(() => expect(bridge.replaces.length).toBe(2));
     // "1 skipped (changed on disk)" over a Topic names neither the file you
     // can see twice on screen nor the repo to go and deal with it in.
-    await screen.findByText(
-      "Replaced 2 occurrences in 1 file, 1 skipped (changed on disk in Payments API).",
-    );
+    await screen.findByText("Replaced 2 occurrences in 1 file, 1 skipped (changed on disk in Payments API).");
   });
 });

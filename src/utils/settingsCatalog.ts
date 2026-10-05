@@ -120,13 +120,25 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "linters", label: "Linters", group: "Languages", icon: "list-checks", sections: ["lint"] },
   { id: "formatters", label: "Formatters", group: "Languages", icon: "wand-sparkles", sections: ["fmt"] },
   { id: "projects", label: "Projects", group: "Languages", icon: "shield-check", sections: ["trust"] },
-  { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
+  {
+    id: "appearance",
+    label: "Appearance",
+    group: "Application",
+    icon: "palette",
+    sections: ["appearance", "typography"],
+  },
   { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "forge"] },
   { id: "remote", label: "Remote", group: "Application", icon: "smartphone", sections: ["remote"] },
   // Last in the rail because it is the only tab whose contents are not
   // settings: the base folder every space sits in, and the two actions that
   // replace or forget it.
-  { id: "advanced", label: "Advanced", group: "Application", icon: "folder-cog", sections: ["root", "crashes", "danger"] },
+  {
+    id: "advanced",
+    label: "Advanced",
+    group: "Application",
+    icon: "folder-cog",
+    sections: ["root", "crashes", "danger"],
+  },
 ];
 
 /** Which tab a section is shown under. Derived from `SETTING_TABS` rather than

@@ -196,7 +196,9 @@ describe("steering a queued message", () => {
     await runningWithQueued("later");
     steerOldest();
     await waitFor(() => expect(steers()).toHaveLength(1));
-    await waitFor(() => expect((screen.getByRole("button", { name: "Steer now: later" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Steer now: later" }) as HTMLButtonElement).disabled).toBe(false),
+    );
     expect(screen.getByRole("button", { name: "Remove from the queue: later" })).toBeTruthy();
   });
 
@@ -252,7 +254,9 @@ describe("editing a queued message", () => {
 
   it("saves a chip added during the edit into the entry", async () => {
     await editing("later");
-    offerToComposer(TAB, [{ type: "fileRef", path: "/work/repo/a.ts", startLine: null, endLine: null, text: null, label: "File 1" }]);
+    offerToComposer(TAB, [
+      { type: "fileRef", path: "/work/repo/a.ts", startLine: null, endLine: null, text: null, label: "File 1" },
+    ]);
     fireEvent.keyDown(input(), { key: "Enter" });
     await waitFor(() => expect(row("later").textContent).toContain("File 1"));
   });
@@ -353,7 +357,12 @@ describe("a queue saved by an earlier run", () => {
   it("counts a saved entry's labels as spent", async () => {
     queueLoadReply = () =>
       Promise.resolve([
-        { id: "q1", blocks: [{ type: "fileRef", path: "/tmp/c.pdf", startLine: null, endLine: null, text: null, label: "[PDF 3]" }] },
+        {
+          id: "q1",
+          blocks: [
+            { type: "fileRef", path: "/tmp/c.pdf", startLine: null, endLine: null, text: null, label: "[PDF 3]" },
+          ],
+        },
       ]);
     mount();
     await screen.findByRole("button", { name: "Remove from the queue: [PDF 3]" });

@@ -94,14 +94,8 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 
 const { default: PrDiffView } = await import("./PrDiffView");
 const { prDiffTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
-const {
-  prEntry,
-  isViewed,
-  composerText,
-  notePr,
-  pendingFor,
-  resetPrReviewStoreForTests,
-} = await import("../../../utils/prReviewStore");
+const { prEntry, isViewed, composerText, notePr, pendingFor, resetPrReviewStoreForTests } =
+  await import("../../../utils/prReviewStore");
 const {
   noteForgeAccounts,
   noteForgeEnabled,
@@ -218,9 +212,7 @@ function openTab(path = "src/edit.ts") {
 }
 
 const rowFor = (text: string) =>
-  Array.from(document.querySelectorAll("[class*=commentable]")).find((r) =>
-    r.textContent?.includes(text),
-  )!;
+  Array.from(document.querySelectorAll("[class*=commentable]")).find((r) => r.textContent?.includes(text))!;
 
 /** A diff row's text is split across spans by the word-level highlighting, so
  *  it is never one text node to query for. */
@@ -275,9 +267,7 @@ describe("a pull request file as a tab in the stage", () => {
 
   it("says so rather than showing another file when the id names nothing", async () => {
     openTab("src/deleted-since.ts");
-    await waitFor(() =>
-      expect(screen.queryByText(/not in the pull request's diff any more/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.queryByText(/not in the pull request's diff any more/)).toBeTruthy());
     // And emphatically not the first file's diff under the missing one's name.
     expect(rowFor("+two edited")).toBeUndefined();
   });
@@ -293,9 +283,7 @@ describe("a pull request file as a tab in the stage", () => {
   });
 
   it("grows the anchor to a range when the second row is shift-clicked", async () => {
-    bridge.files = [
-      file({ patch: ["@@ -40,2 +40,4 @@", " forty", "+forty one", "+forty two"].join("\n") }),
-    ];
+    bridge.files = [file({ patch: ["@@ -40,2 +40,4 @@", " forty", "+forty one", "+forty two"].join("\n") })];
     openTab();
     await seeRow("+forty one");
 
@@ -367,9 +355,11 @@ describe("a pull request file as a tab in the stage", () => {
     // describes a version of the file that has moved on. This is one file, so
     // there is no pull-request-wide group to send it to: the strip or nowhere.
     bridge.threads = [
-      thread({ id: "PRRT_stale", isOutdated: true, comments: [
-        { id: "C2", author: "reviewer", body: "written against the old file", createdAt: "" },
-      ] }),
+      thread({
+        id: "PRRT_stale",
+        isOutdated: true,
+        comments: [{ id: "C2", author: "reviewer", body: "written against the old file", createdAt: "" }],
+      }),
     ];
     openTab();
     await waitFor(() => expect(screen.queryByText("written against the old file")).toBeTruthy());
@@ -423,8 +413,7 @@ describe("a pull request file as a tab in the stage", () => {
   it("offers the file in this worktree only where the branch is checked out", async () => {
     openTab();
     await seeRow("+two edited");
-    const named = (name: string) =>
-      screen.queryAllByRole("button").some((b) => b.getAttribute("aria-label") === name);
+    const named = (name: string) => screen.queryAllByRole("button").some((b) => b.getAttribute("aria-label") === name);
     // Nothing has this branch checked out, so the head is a commit in the
     // object store and there is no file on disk to open.
     expect(named("Open the file in this worktree")).toBe(false);
@@ -552,7 +541,11 @@ describe("moving between a diff's conversations", () => {
     ];
     bridge.threads = [
       thread({ id: "PRRT_a", line: 2 }),
-      thread({ id: "PRRT_b", line: 4, comments: [{ id: "C2", author: "reviewer", body: "and this one", createdAt: "" }] }),
+      thread({
+        id: "PRRT_b",
+        line: 4,
+        comments: [{ id: "C2", author: "reviewer", body: "and this one", createdAt: "" }],
+      }),
     ];
     bridge.report = null;
     bridge.addFails = null;

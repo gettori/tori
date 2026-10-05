@@ -34,11 +34,7 @@ export default function AgentGlyph(props: {
     return agentMark(declared) ?? agentMark(props.id);
   };
   return (
-    <span
-      class={styles.glyph}
-      style={{ "--glyph-size": `calc(${size()}px * var(--ui-scale))` }}
-      aria-hidden="true"
-    >
+    <span class={styles.glyph} style={{ "--glyph-size": `calc(${size()}px * var(--ui-scale))` }} aria-hidden="true">
       <Show when={mark()} fallback={<span class={styles.letter}>{props.label.slice(0, 1)}</span>}>
         {(Mark) => <Dynamic component={Mark()} size={`calc(${Math.round(size() * 0.7)}px * var(--ui-scale))`} />}
       </Show>

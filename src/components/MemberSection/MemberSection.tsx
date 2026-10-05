@@ -73,13 +73,7 @@ export default function MemberSection(props: {
 function chip(root: MemberRoot | null) {
   return (
     <Show when={root}>
-      {(r) => (
-        <MemberChip
-          icon={r().icon ?? { seed: r().repoPath }}
-          tint={r().tint}
-          decorative
-        />
-      )}
+      {(r) => <MemberChip icon={r().icon ?? { seed: r().repoPath }} tint={r().tint} decorative />}
     </Show>
   );
 }

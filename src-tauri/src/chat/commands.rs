@@ -21,15 +21,14 @@ use super::approval;
 use super::claude_transport::ClaudeTransport;
 use super::host::{ChatHost, ChatState, SessionBridge, Spawned};
 use super::mirror::Mirror;
-use super::usage;
-use super::snapshot::{self, SnapshotCache, CACHE_CAP};
-use super::tail::{page_before, HistoryCursor, HistoryPage, HistoryTail, PageCache, Parsed};
 use super::model::{
-    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
-    QuestionAnswer,
+    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
+use super::snapshot::{self, SnapshotCache, CACHE_CAP};
+use super::tail::{page_before, HistoryCursor, HistoryPage, HistoryTail, PageCache, Parsed};
 use super::transport::{AgentTransport, Emit, StartSpec};
+use super::usage;
 
 /// Build a transport for a declared wire protocol.
 ///
@@ -97,7 +96,11 @@ pub fn build_args(
             &[("from", from), ("id", session_id)],
         ));
     } else {
-        let id_template = if resume { &chat.resume_args } else { &chat.session_id_args };
+        let id_template = if resume {
+            &chat.resume_args
+        } else {
+            &chat.session_id_args
+        };
         args.extend(agents::apply_chat_template(id_template, &[("id", session_id)]));
     }
     if let Some(model) = model {
@@ -343,8 +346,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         .then(|| crate::sessions::transcript_of(source, &agent_id))
         .flatten();
     let profile_id = resolve_profile(profile.as_deref(), found.as_ref().map(|t| t.profile.as_str()))?;
-    let profile_env =
-        crate::accounts::profile_env(adapter, &crate::accounts::load(), Some(&profile_id))?;
+    let profile_env = crate::accounts::profile_env(adapter, &crate::accounts::load(), Some(&profile_id))?;
 
     let ownership = {
         let want = Claim {
@@ -357,7 +359,12 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
-            return Ok(SpawnResult { ownership: outcome, spawned: None, profile_id: None, untrusted: false });
+            return Ok(SpawnResult {
+                ownership: outcome,
+                spawned: None,
+                profile_id: None,
+                untrusted: false,
+            });
         }
         // Carried through rather than rebuilt: a granted-but-**contested** claim
         // means a `claude` we do not control is resuming this same id, and its
@@ -455,25 +462,18 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     // it gets `None` and pays one `if let Some` per event and nothing else.
     // Keyed on the transport rather than on the agent id, so a fifth ACP adapter
     // inherits this without a line of code.
-    let mirror = matches!(chat.transport, ChatTransport::Acp)
-        .then(|| Arc::new(Mirror::at(acp_sessions::log_path(&session_id))));
-    let spawned = host.spawn(
-        &session_id,
-        &tab_id,
-        emit,
-        spec,
-        mirror,
-        move || {
-            make_transport(
-                transport,
-                &id_for_factory,
-                &agent_for_factory,
-                acp_overrides.clone(),
-                effort_extras.clone(),
-                questions_as_permissions,
-            )
-        },
-    );
+    let mirror =
+        matches!(chat.transport, ChatTransport::Acp).then(|| Arc::new(Mirror::at(acp_sessions::log_path(&session_id))));
+    let spawned = host.spawn(&session_id, &tab_id, emit, spec, mirror, move || {
+        make_transport(
+            transport,
+            &id_for_factory,
+            &agent_for_factory,
+            acp_overrides.clone(),
+            effort_extras.clone(),
+            questions_as_permissions,
+        )
+    });
     let spawned = match spawned {
         Ok(s) => s,
         Err(e) => {
@@ -495,7 +495,10 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     // session works, but the user chose something it is not doing, and a
     // control silently showing the wrong mode is the failure this prevents.
     if let Some(asked) = mode.as_deref() {
-        if let Some(from) = chat.resolve_mode(Some(asked)).and_then(|r| r.downgraded_from.map(|f| (f, r.id))) {
+        if let Some(from) = chat
+            .resolve_mode(Some(asked))
+            .and_then(|r| r.downgraded_from.map(|f| (f, r.id)))
+        {
             let (asked, running) = from;
             host.emitter()(
                 &session_id,
@@ -511,7 +514,12 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         }
     }
 
-    Ok(SpawnResult { ownership, spawned: Some(spawned), profile_id: Some(profile_id), untrusted })
+    Ok(SpawnResult {
+        ownership,
+        spawned: Some(spawned),
+        profile_id: Some(profile_id),
+        untrusted,
+    })
 }
 
 #[tauri::command]
@@ -599,11 +607,7 @@ pub async fn chat_grant_dirs(
 }
 
 #[tauri::command]
-pub async fn chat_interrupt(
-    state: State<'_, ChatState>,
-    app: AppHandle,
-    session_id: String,
-) -> Result<(), String> {
+pub async fn chat_interrupt(state: State<'_, ChatState>, app: AppHandle, session_id: String) -> Result<(), String> {
     crate::rpc::refuse_locked(&app, &session_id)?;
     state.0.interrupt(&session_id)
 }
@@ -637,7 +641,14 @@ pub async fn chat_respond_permission(
     scope: PermissionScope,
     reason: Option<String>,
 ) -> Result<(), String> {
-    state.0.answer_permission(&session_id, &tool_use_id, &request_id, decision, scope, reason.as_deref())
+    state.0.answer_permission(
+        &session_id,
+        &tool_use_id,
+        &request_id,
+        decision,
+        scope,
+        reason.as_deref(),
+    )
 }
 
 /// Answer a question the agent asked the user.
@@ -655,7 +666,9 @@ pub async fn chat_answer_question(
     tool_use_id: String,
     answers: Vec<QuestionAnswer>,
 ) -> Result<bool, String> {
-    state.0.answer_question(&session_id, &tool_use_id, &request_id, &answers)
+    state
+        .0
+        .answer_question(&session_id, &tool_use_id, &request_id, &answers)
 }
 
 #[tauri::command]
@@ -679,7 +692,10 @@ pub async fn chat_record_usage(
 ) -> Result<UsageTotals, String> {
     let path = usage::usage_path(&cwd);
     let session = usage::record_turn(&path, &session_id, tokens, cost_usd)?;
-    Ok(UsageTotals { project: usage::project_total(&usage::load(&path)), session })
+    Ok(UsageTotals {
+        project: usage::project_total(&usage::load(&path)),
+        session,
+    })
 }
 
 /// How many human prompts this session's transcript holds.
@@ -720,8 +736,7 @@ fn prompt_count_path(session_id: &str, agent_id: &str) -> Option<String> {
     if let Some(path) = crate::sessions::transcript_path(session_id, agent_id) {
         return Some(path);
     }
-    (!keeps_a_transcript(agent_id))
-        .then(|| acp_sessions::locator_path(session_id).to_string_lossy().into_owned())
+    (!keeps_a_transcript(agent_id)).then(|| acp_sessions::locator_path(session_id).to_string_lossy().into_owned())
 }
 
 /// This chat session's figures, resolved from its id rather than from a path.
@@ -752,7 +767,10 @@ pub fn chat_session_detail(
 pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<UsageTotals, String> {
     let file = usage::load(&usage::usage_path(&cwd));
     let session = file.sessions.get(&session_id).cloned().unwrap_or_default();
-    Ok(UsageTotals { project: usage::project_total(&file), session })
+    Ok(UsageTotals {
+        project: usage::project_total(&file),
+        session,
+    })
 }
 
 #[derive(serde::Serialize, Debug, PartialEq)]
@@ -786,7 +804,10 @@ pub async fn chat_mcp_list(
     agent_id: String,
     profile: Option<String>,
 ) -> Result<Vec<super::mcp::McpEntry>, String> {
-    Ok(super::mcp::list_for(&cwd, profile_home(&agent_id, profile.as_deref()).as_deref()))
+    Ok(super::mcp::list_for(
+        &cwd,
+        profile_home(&agent_id, profile.as_deref()).as_deref(),
+    ))
 }
 
 #[tauri::command]
@@ -812,11 +833,7 @@ pub async fn chat_mcp_remove(
     agent_id: String,
     profile: Option<String>,
 ) -> Result<Vec<super::mcp::McpEntry>, String> {
-    super::mcp::remove_from_project(
-        &cwd,
-        &name,
-        profile_home(&agent_id, profile.as_deref()).as_deref(),
-    )
+    super::mcp::remove_from_project(&cwd, &name, profile_home(&agent_id, profile.as_deref()).as_deref())
 }
 
 /// The isolated home one account runs in, or `None` for the default account.
@@ -875,7 +892,9 @@ pub async fn chat_tool_before_state(
     tool_use_id: String,
     cwd: String,
 ) -> Result<Option<Vec<BeforeContent>>, String> {
-    let Some(cache) = state.0.snapshots(&session_id) else { return Ok(None) };
+    let Some(cache) = state.0.snapshots(&session_id) else {
+        return Ok(None);
+    };
     let captured = {
         let guard = cache.lock().map_err(|e| e.to_string())?;
         guard.get(&tool_use_id).cloned()
@@ -922,7 +941,9 @@ pub async fn chat_tool_diff(
     tool_use_id: String,
     cwd: String,
 ) -> Result<Vec<ToolDiff>, String> {
-    let Some(cache) = state.0.snapshots(&session_id) else { return Ok(Vec::new()) };
+    let Some(cache) = state.0.snapshots(&session_id) else {
+        return Ok(Vec::new());
+    };
     let captured = {
         let guard = cache.lock().map_err(|e| e.to_string())?;
         guard.get(&tool_use_id).cloned()
@@ -981,7 +1002,9 @@ pub async fn chat_session_diff(
     session_id: String,
     cwd: String,
 ) -> Result<Vec<SessionFileDiff>, String> {
-    let Some(cache) = state.0.snapshots(&session_id) else { return Ok(Vec::new()) };
+    let Some(cache) = state.0.snapshots(&session_id) else {
+        return Ok(Vec::new());
+    };
     let captures = {
         let guard = cache.lock().map_err(|e| e.to_string())?;
         guard.in_order()
@@ -1041,8 +1064,7 @@ pub async fn chat_revert_tool_hunk(
         .find(|c| c.path == path)
         .map(|c| c.before)
         .ok_or_else(|| "No before-state was captured for this call, so there is nothing to revert to.".to_string())?;
-    snapshot::revert_hunk(&PathBuf::from(&cwd), &before, &path, hunk_index, &fingerprint)
-        .map(str::to_string)
+    snapshot::revert_hunk(&PathBuf::from(&cwd), &before, &path, hunk_index, &fingerprint).map(str::to_string)
 }
 
 /// One file's before-state, resolved to content where there is content to
@@ -1068,7 +1090,9 @@ pub async fn chat_close(
     session_id: String,
     reason: Option<crate::rpc::events::EndReason>,
 ) -> Result<(), String> {
-    state.0.close(&session_id, reason.unwrap_or(crate::rpc::events::EndReason::Closed))
+    state
+        .0
+        .close(&session_id, reason.unwrap_or(crate::rpc::events::EndReason::Closed))
 }
 
 /// Replay a session's transcript as the events that rebuild it, bounded to
@@ -1124,8 +1148,10 @@ pub(crate) async fn history_reply(
     let id = session_id.clone();
     let traced = crate::trace::enabled();
     let enter = if traced { crate::trace::now_ms() } else { 0.0 };
-    let mut tail =
-        crate::exec::blocking("chat_history", move || read_tail(&id, &from(), &agent_id, up_to_prompt_ts)).await;
+    let mut tail = crate::exec::blocking("chat_history", move || {
+        read_tail(&id, &from(), &agent_id, up_to_prompt_ts)
+    })
+    .await;
     let read_ms = if traced { crate::trace::now_ms() - enter } else { 0.0 };
     // The cut a live event gets on its way through the sink wrapper. Applied
     // here because replay does not pass through it, and applied through the
@@ -1174,7 +1200,9 @@ pub(crate) fn read_page(
     cursor: &HistoryCursor,
     cache: &Mutex<PageCache>,
 ) -> Option<HistoryPage> {
-    let HistorySource::Transcript(path) = from else { return None };
+    let HistorySource::Transcript(path) = from else {
+        return None;
+    };
     let meta = std::fs::metadata(path).ok()?;
     let stamp = (meta.modified().ok()?, meta.len());
     let parsed = super::tail::cached(cache, &format!("{session_id}\n{path}"), stamp, || {
@@ -1258,7 +1286,11 @@ pub(crate) fn read_history(
 
 /// A session's whole conversation, uncut, with each prompt's timestamp and the
 /// index of its first event. A mirror log records no prompts, so it has none.
-pub(crate) fn read_with_prompts(session_id: &str, from: &HistorySource, agent_id: &str) -> (Vec<ChatEvent>, Vec<(u64, usize)>) {
+pub(crate) fn read_with_prompts(
+    session_id: &str,
+    from: &HistorySource,
+    agent_id: &str,
+) -> (Vec<ChatEvent>, Vec<(u64, usize)>) {
     let path = match from {
         HistorySource::Transcript(path) => path,
         HistorySource::Log(path) => return (history_from_log(session_id, path), Vec::new()),
@@ -1291,9 +1323,7 @@ fn history_from_log(session_id: &str, path: &std::path::Path) -> Vec<ChatEvent> 
     if skipped > 0 {
         events.push(ChatEvent::SessionError {
             session_id: session_id.to_string(),
-            message: format!(
-                "{skipped} line(s) of this session's saved history could not be read and were skipped."
-            ),
+            message: format!("{skipped} line(s) of this session's saved history could not be read and were skipped."),
             fatal: false,
         });
     }
@@ -1320,7 +1350,8 @@ pub struct OpenTurn {
 }
 
 fn open_turn_path(session_id: &str) -> PathBuf {
-    crate::owned_state::config_dir().join("chat-open-turn")
+    crate::owned_state::config_dir()
+        .join("chat-open-turn")
         .join(format!("{session_id}.json"))
 }
 
@@ -1351,8 +1382,11 @@ fn mark_turn(session_id: &str, turn_id: Option<String>) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let json = serde_json::to_string(&OpenTurn { session_id: session_id.to_string(), turn_id })
-        .map_err(|e| e.to_string())?;
+    let json = serde_json::to_string(&OpenTurn {
+        session_id: session_id.to_string(),
+        turn_id,
+    })
+    .map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 
@@ -1439,7 +1473,10 @@ mod tests {
     #[test]
     fn only_an_agent_that_keeps_no_transcript_reads_the_log() {
         assert!(keeps_a_transcript("claude"), "claude writes a transcript Tori reads");
-        assert!(!keeps_a_transcript("codex"), "an ACP agent keeps its conversation itself");
+        assert!(
+            !keeps_a_transcript("codex"),
+            "an ACP agent keeps its conversation itself"
+        );
         assert!(!keeps_a_transcript("opencode"));
         assert!(keeps_a_transcript("not-an-agent"), "an unknown agent is claude-shaped");
     }
@@ -1451,7 +1488,10 @@ mod tests {
     fn only_an_acp_session_falls_back_to_its_locator() {
         assert_eq!(prompt_count_path("no-such-session", "claude"), None);
         let acp = prompt_count_path("s-codex", "codex").expect("an ACP session has a locator");
-        assert!(acp.ends_with("s-codex.json"), "resolves to the locator, not the sidecar: {acp}");
+        assert!(
+            acp.ends_with("s-codex.json"),
+            "resolves to the locator, not the sidecar: {acp}"
+        );
     }
 
     /// The read path end to end: what the mirror wrote comes back as events, a
@@ -1500,13 +1540,18 @@ mod tests {
             "the lines before the torn one survive it: {events:?}"
         );
         let cut = events.iter().find_map(|e| match e {
-            ChatEvent::ToolCallCompleted { output, output_truncated, .. } => {
-                Some((output.clone(), *output_truncated))
-            }
+            ChatEvent::ToolCallCompleted {
+                output,
+                output_truncated,
+                ..
+            } => Some((output.clone(), *output_truncated)),
             _ => None,
         });
         let (output, truncated) = cut.expect("and the lines after it too");
-        assert!(output.unwrap_or_default().len() <= TOOL_OUTPUT_CAP, "an over-cap output is cut on read");
+        assert!(
+            output.unwrap_or_default().len() <= TOOL_OUTPUT_CAP,
+            "an over-cap output is cut on read"
+        );
         assert!(truncated, "and says it was");
         assert!(
             events.iter().any(|e| matches!(
@@ -1553,7 +1598,8 @@ mod tests {
         let args = build_args(
             claude_chat(),
             "s1",
-            false, None,
+            false,
+            None,
             Some("claude-opus-5"),
             Some("plan"),
             Some("high"),
@@ -1596,7 +1642,6 @@ mod tests {
         assert!(fresh.windows(2).any(|w| w == ["--session-id", "s1"]));
         assert!(!fresh.iter().any(|a| a == "--resume"));
     }
-
 
     /// Mid-turn quit recovery. The transcript cannot answer this: a killed turn
     /// and a finished one both just stop, so Tori records its own side.
@@ -1652,12 +1697,23 @@ mod tests {
     #[test]
     fn a_topic_home_chat_adds_every_member_and_carries_their_rules_but_not_their_hooks() {
         use crate::topics::{create_topic_with, MemberMode, NewMember, Store};
-        let tmp = std::fs::canonicalize(std::env::temp_dir())
-            .unwrap()
-            .join(format!("tori-home-spawn-{}-{}", std::process::id(), crate::owned_state::now_ms()));
+        let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap().join(format!(
+            "tori-home-spawn-{}-{}",
+            std::process::id(),
+            crate::owned_state::now_ms()
+        ));
         let root = tmp.join("api");
         std::fs::create_dir_all(root.join(".claude")).unwrap();
-        let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&root).args(args).output().unwrap().status.success());
+        let git = |args: &[&str]| {
+            assert!(std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap()
+                .status
+                .success())
+        };
         git(&["init", "-q"]);
         std::fs::write(
             root.join(".claude/settings.json"),
@@ -1667,7 +1723,10 @@ mod tests {
         .unwrap();
         let root_s = root.to_string_lossy().into_owned();
         let store = Store::at(tmp.join("topics.json"));
-        let members = [NewMember { repo_path: root_s.clone(), mode: MemberMode::Reference }];
+        let members = [NewMember {
+            repo_path: root_s.clone(),
+            mode: MemberMode::Reference,
+        }];
         let topic = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
         let home = topic.home.clone().unwrap();
 
@@ -1677,7 +1736,13 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["--add-dir", root_s.as_str()]));
         assert!(args.windows(2).any(|w| w == ["--add-dir", "/attachments"]));
 
-        let settings = approval::settings_json_with(std::path::Path::new("/bin/tori"), std::path::Path::new("/tmp/s"), "tok", false, Some(&launch));
+        let settings = approval::settings_json_with(
+            std::path::Path::new("/bin/tori"),
+            std::path::Path::new("/tmp/s"),
+            "tok",
+            false,
+            Some(&launch),
+        );
         assert!(settings.contains("Bash(npm test)"), "{settings}");
         assert!(settings.contains(&format!("Read(/{root_s}/.env)")), "{settings}");
         assert!(!settings.contains("member-hook"), "{settings}");
@@ -1693,7 +1758,8 @@ mod tests {
         let args = build_args(
             claude_chat(),
             "s1",
-            false, None,
+            false,
+            None,
             None,
             None,
             None,
@@ -1723,7 +1789,16 @@ mod tests {
 
         // And an id that no TOML mentions now reaches the argv, because the
         // catalogue it came from is what vouched for it.
-        let args = build_args(claude_chat(), "s1", false, None, Some("some-new-model"), None, None, &[]);
+        let args = build_args(
+            claude_chat(),
+            "s1",
+            false,
+            None,
+            Some("some-new-model"),
+            None,
+            None,
+            &[],
+        );
         assert!(args.windows(2).any(|w| w == ["--model", "some-new-model"]));
     }
 
@@ -1743,7 +1818,10 @@ mod tests {
             args.windows(2).any(|w| w == ["--permission-mode", "default"]),
             "expected the adapter's declared default in {args:?}"
         );
-        assert!(!args.iter().any(|a| a == "no-such-mode"), "the unresolvable mode must not reach the child");
+        assert!(
+            !args.iter().any(|a| a == "no-such-mode"),
+            "the unresolvable mode must not reach the child"
+        );
     }
 
     /// No pick stays no flag: Tori asserting a mode nobody chose would be a
@@ -1778,7 +1856,10 @@ mod tests {
     #[test]
     fn a_resume_naming_a_different_account_is_refused() {
         let err = resolve_profile(Some("default"), Some("globex")).unwrap_err();
-        assert!(err.contains("globex"), "the error names the account the session is actually in: {err}");
+        assert!(
+            err.contains("globex"),
+            "the error names the account the session is actually in: {err}"
+        );
         assert!(resolve_profile(Some("globex"), Some("default")).is_err());
     }
 
@@ -1801,7 +1882,10 @@ mod tests {
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "granted");
-        assert_eq!(json["ownership"]["contested"], true, "the warning must reach the frontend");
+        assert_eq!(
+            json["ownership"]["contested"], true,
+            "the warning must reach the frontend"
+        );
     }
 
     /// The resolved profile is what the tab has to store: a resume passing
@@ -1824,7 +1908,10 @@ mod tests {
     #[test]
     fn a_refusal_is_reported_as_a_value_with_nothing_spawned() {
         let result = SpawnResult {
-            ownership: ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-1".into() },
+            ownership: ClaimOutcome::HeldByOther {
+                surface: Surface::PtyAgent,
+                tab_id: "pty-1".into(),
+            },
             spawned: None,
             profile_id: None,
             untrusted: false,
@@ -1864,8 +1951,16 @@ mod tests {
 
         // And a model choice does not become a flag, because the switch is a
         // request. A `model_args` template here would silently win over it.
-        let with_model =
-            build_args(chat, "s", false, None, Some("github-copilot/claude-sonnet-4.6"), None, None, &[]);
+        let with_model = build_args(
+            chat,
+            "s",
+            false,
+            None,
+            Some("github-copilot/claude-sonnet-4.6"),
+            None,
+            None,
+            &[],
+        );
         assert_eq!(with_model, vec!["acp"]);
 
         let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new(), false);
@@ -1896,7 +1991,10 @@ mod tail_tests {
         let path = std::env::temp_dir().join(format!("tori-tail-{}-{name}.jsonl", std::process::id()));
         let mut out = String::new();
         for i in 0..turns {
-            for (role, text, at) in [("user", format!("p {i}"), 2 * i), ("assistant", format!("r {i}"), 2 * i + 1)] {
+            for (role, text, at) in [
+                ("user", format!("p {i}"), 2 * i),
+                ("assistant", format!("r {i}"), 2 * i + 1),
+            ] {
                 out += &serde_json::json!({
                     "type": role,
                     "uuid": format!("00000000-0000-4000-8000-{:012}", 2 * i + usize::from(role == "assistant")),
@@ -1929,7 +2027,10 @@ mod tail_tests {
         let turn_80 = turns[160].ts;
         let rewound = read_tail("s", &from, "claude", Some(turn_80));
         assert_eq!(last_text(&rewound.events), Some("r 79"));
-        assert!(rewound.cursor.is_some(), "the rewound history is still long enough to cut");
+        assert!(
+            rewound.cursor.is_some(),
+            "the rewound history is still long enough to cut"
+        );
         assert!(rewound.events.len() <= super::super::tail::TAIL_ROWS);
         std::fs::remove_file(path).ok();
     }
@@ -1941,8 +2042,14 @@ mod tail_tests {
         let cache = Mutex::new(PageCache::new(3));
         let open = read_tail("fork", &from, "claude", None);
         let page = read_page("fork", &from, "claude", &open.cursor.unwrap(), &cache).expect("a page");
-        assert!(page.events.iter().all(|e| serde_json::to_value(e).unwrap()["sessionId"] == "fork"));
-        assert_eq!(last_text(&page.events).map(|t| t.to_string()), Some(format!("r {}", 100 - 1 - open.events.len() / 2)));
+        assert!(page
+            .events
+            .iter()
+            .all(|e| serde_json::to_value(e).unwrap()["sessionId"] == "fork"));
+        assert_eq!(
+            last_text(&page.events).map(|t| t.to_string()),
+            Some(format!("r {}", 100 - 1 - open.events.len() / 2))
+        );
         std::fs::remove_file(path).ok();
     }
 

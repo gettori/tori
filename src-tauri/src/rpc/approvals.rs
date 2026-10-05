@@ -71,8 +71,15 @@ impl Draft {
 
     pub fn target(&self) -> String {
         match self {
-            Draft::PrCreate { head, base, head_sha, .. } => format!("a pull request from {head} at {head_sha} into {base}"),
-            Draft::ReviewSubmit { number, event, head_sha, .. } => format!("a {event:?} review on #{number} at {head_sha}"),
+            Draft::PrCreate {
+                head, base, head_sha, ..
+            } => format!("a pull request from {head} at {head_sha} into {base}"),
+            Draft::ReviewSubmit {
+                number,
+                event,
+                head_sha,
+                ..
+            } => format!("a {event:?} review on #{number} at {head_sha}"),
             Draft::PrMerge { number, head_sha, .. } => format!("merging #{number} at {head_sha}"),
         }
     }
@@ -100,14 +107,23 @@ pub struct Approvals {
 impl Approvals {
     pub fn grant(&self, session: &str, approval: Approval) -> String {
         let id = format!("appr-{}", crate::chat::approval::random_token());
-        self.granted().insert(id.clone(), Granted { session: session.to_string(), approval, in_use: false });
+        self.granted().insert(
+            id.clone(),
+            Granted {
+                session: session.to_string(),
+                approval,
+                in_use: false,
+            },
+        );
         id
     }
 
     pub fn reserve(&self, id: Option<&str>, session: &str, wanted: &Approval) -> Result<String, String> {
         let id = id.ok_or("no approval_id was passed")?;
         let mut granted = self.granted();
-        let held = granted.get_mut(id).ok_or_else(|| format!("approval {id} is unknown or already spent"))?;
+        let held = granted
+            .get_mut(id)
+            .ok_or_else(|| format!("approval {id} is unknown or already spent"))?;
         if held.session != session {
             return Err(format!("approval {id} was given to another session"));
         }
@@ -115,11 +131,21 @@ impl Approvals {
             return Err(format!("approval {id} is held by a call still running"));
         }
         let given = &held.approval;
-        if given.draft.action() != wanted.draft.action() || given.draft.target() != wanted.draft.target() || given.project != wanted.project {
-            return Err(format!("approval {id} was given for {} {} in {}", given.draft.action(), given.draft.target(), given.project));
+        if given.draft.action() != wanted.draft.action()
+            || given.draft.target() != wanted.draft.target()
+            || given.project != wanted.project
+        {
+            return Err(format!(
+                "approval {id} was given for {} {} in {}",
+                given.draft.action(),
+                given.draft.target(),
+                given.project
+            ));
         }
         if given.draft != wanted.draft {
-            return Err(format!("approval {id} was given for a different draft; ask again with the one you mean to post"));
+            return Err(format!(
+                "approval {id} was given for a different draft; ask again with the one you mean to post"
+            ));
         }
         held.in_use = true;
         Ok(id.to_string())
@@ -167,9 +193,15 @@ mod tests {
         let approvals = Approvals::default();
         let id = approvals.grant("s1", pr("b"));
         assert_eq!(approvals.reserve(Some(&id), "s1", &pr("b")), Ok(id.clone()));
-        assert!(approvals.reserve(Some(&id), "s1", &pr("b")).unwrap_err().contains("still running"));
+        assert!(approvals
+            .reserve(Some(&id), "s1", &pr("b"))
+            .unwrap_err()
+            .contains("still running"));
         approvals.spend(&id);
-        assert!(approvals.reserve(Some(&id), "s1", &pr("b")).unwrap_err().contains("unknown or already spent"));
+        assert!(approvals
+            .reserve(Some(&id), "s1", &pr("b"))
+            .unwrap_err()
+            .contains("unknown or already spent"));
     }
 
     #[test]
@@ -185,17 +217,42 @@ mod tests {
     fn an_approval_binds_the_session_the_action_the_target_and_the_draft() {
         let approvals = Approvals::default();
         let id = approvals.grant("s1", pr("b"));
-        assert!(approvals.reserve(None, "s1", &pr("b")).unwrap_err().contains("no approval_id"));
-        assert!(approvals.reserve(Some(&id), "s2", &pr("b")).unwrap_err().contains("another session"));
+        assert!(approvals
+            .reserve(None, "s1", &pr("b"))
+            .unwrap_err()
+            .contains("no approval_id"));
+        assert!(approvals
+            .reserve(Some(&id), "s2", &pr("b"))
+            .unwrap_err()
+            .contains("another session"));
         let merge = Approval {
             project: "/p".into(),
-            draft: Draft::PrMerge { number: 7, method: MergeMethod::Squash, head_sha: "abc".into() },
+            draft: Draft::PrMerge {
+                number: 7,
+                method: MergeMethod::Squash,
+                head_sha: "abc".into(),
+            },
         };
-        assert!(approvals.reserve(Some(&id), "s1", &merge).unwrap_err().contains("given for pr.create"));
-        let elsewhere = Approval { project: "/q".into(), ..pr("b") };
-        assert!(approvals.reserve(Some(&id), "s1", &elsewhere).unwrap_err().contains("in /p"));
-        assert!(approvals.reserve(Some(&id), "s1", &pr("changed")).unwrap_err().contains("different draft"));
-        assert!(approvals.reserve(Some(&id), "s1", &pr("b")).is_ok(), "none of the misses spent it");
+        assert!(approvals
+            .reserve(Some(&id), "s1", &merge)
+            .unwrap_err()
+            .contains("given for pr.create"));
+        let elsewhere = Approval {
+            project: "/q".into(),
+            ..pr("b")
+        };
+        assert!(approvals
+            .reserve(Some(&id), "s1", &elsewhere)
+            .unwrap_err()
+            .contains("in /p"));
+        assert!(approvals
+            .reserve(Some(&id), "s1", &pr("changed"))
+            .unwrap_err()
+            .contains("different draft"));
+        assert!(
+            approvals.reserve(Some(&id), "s1", &pr("b")).is_ok(),
+            "none of the misses spent it"
+        );
     }
 
     #[test]

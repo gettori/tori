@@ -1,12 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import {
-  lastRun,
-  noteRun,
-  parseRunStore,
-  runCount,
-  runsFor,
-  type TaskRunStore,
-} from "./taskRecents";
+import { lastRun, noteRun, parseRunStore, runCount, runsFor, type TaskRunStore } from "./taskRecents";
 import type { Task } from "./tasks";
 
 // A short list whose only job is "what I just did", so what is pinned is the

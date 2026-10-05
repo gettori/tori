@@ -34,9 +34,7 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
   /// them in and for the same reasons: the poll is fresher and already on
   /// screen, and the store's copy is what keeps a pull request on a branch this
   /// machine has no unit for from rendering as no pull request at all.
-  const pr = createMemo(
-    () => unitStatusForPr(props.workspace, number())?.pullRequest ?? entry().pr,
-  );
+  const pr = createMemo(() => unitStatusForPr(props.workspace, number())?.pullRequest ?? entry().pr);
   /// The size and the standing verdicts, where the host describes a pull
   /// request in one read. Null on GitLab, and null until the read lands.
   const counts = () => entry().summary?.counts ?? null;
@@ -56,10 +54,7 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
 
   return (
     <div class={styles.overview}>
-      <Show
-        when={pr()}
-        fallback={<div class="tree-empty">No pull request here carries that number.</div>}
-      >
+      <Show when={pr()} fallback={<div class="tree-empty">No pull request here carries that number.</div>}>
         {(p) => (
           <div class={styles.column}>
             <div class={styles.head}>
@@ -109,18 +104,10 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
                   <Show when={c().reviews}>
                     {(r) => (
                       <>
-                        <span
-                          class={styles.verdict}
-                          data-verdict="approved"
-                          data-count={r().approved}
-                        >
+                        <span class={styles.verdict} data-verdict="approved" data-count={r().approved}>
                           {plural(r().approved, "approval")}
                         </span>
-                        <span
-                          class={styles.verdict}
-                          data-verdict="changesRequested"
-                          data-count={r().changesRequested}
-                        >
+                        <span class={styles.verdict} data-verdict="changesRequested" data-count={r().changesRequested}>
                           {plural(r().changesRequested, "change request")}
                         </span>
                       </>

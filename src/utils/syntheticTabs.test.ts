@@ -64,9 +64,7 @@ describe("synthetic tab ids", () => {
     // A tab is a few characters wide: a sha is cut where it stops being
     // readable, and a file's history is known by the file's own name.
     expect(syntheticTabName(syntheticId("commit", WS, "a1b2c3d4e5f6a7b8"))).toBe("Commit a1b2c3d");
-    expect(syntheticTabName(syntheticId("history", WS, "src/panels/Editor/Editor.tsx"))).toBe(
-      "History: Editor.tsx",
-    );
+    expect(syntheticTabName(syntheticId("history", WS, "src/panels/Editor/Editor.tsx"))).toBe("History: Editor.tsx");
     // A path with no folders above it still names itself.
     expect(syntheticTabName(syntheticId("history", WS, "README.md"))).toBe("History: README.md");
     // A Search Editor's arg is a sequence number, not its query, so the id alone

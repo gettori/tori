@@ -105,7 +105,12 @@ describe("quotaState", () => {
 
   it("is approaching for the captured allowed_warning frame", () => {
     const warn = captured(readCall);
-    const r = reading({ kind: "seven_day", status: warn.status, utilization: warn.utilization, resetsAt: warn.resetsAt });
+    const r = reading({
+      kind: "seven_day",
+      status: warn.status,
+      utilization: warn.utilization,
+      resetsAt: warn.resetsAt,
+    });
     expect(quotaState(r, WARN_AT, warn.resetsAt * 1000 - 1000)).toBe("approaching");
   });
 
@@ -157,7 +162,12 @@ describe("windowSentence", () => {
   // (allowed_warning)" was two wrong things in one sentence.
   it("reports a level without leaking the wire's status token", () => {
     const warn = captured(readCall);
-    const r = reading({ kind: "seven_day", status: warn.status, utilization: warn.utilization, resetsAt: warn.resetsAt });
+    const r = reading({
+      kind: "seven_day",
+      status: warn.status,
+      utilization: warn.utilization,
+      resetsAt: warn.resetsAt,
+    });
     const msg = windowSentence(r, WARN_AT, warn.resetsAt * 1000 - 1000);
     expect(msg).toContain("88%");
     expect(msg).toContain("weekly all-model");
@@ -297,18 +307,17 @@ describe("readingsOf", () => {
 });
 
 describe("the store's rate-limit state", () => {
-  const event = (over: Partial<Extract<Parameters<typeof applyEvent>[1], { type: "rateLimit" }>> = {}) =>
-    ({
-      type: "rateLimit" as const,
-      sessionId: SESSION,
-      status: "allowed",
-      resetsAt: captured().resetsAt,
-      limitType: "five_hour",
-      utilization: null,
-      windows: [],
-      overageStatus: "rejected",
-      ...over,
-    });
+  const event = (over: Partial<Extract<Parameters<typeof applyEvent>[1], { type: "rateLimit" }>> = {}) => ({
+    type: "rateLimit" as const,
+    sessionId: SESSION,
+    status: "allowed",
+    resetsAt: captured().resetsAt,
+    limitType: "five_hour",
+    utilization: null,
+    windows: [],
+    overageStatus: "rejected",
+    ...over,
+  });
 
   it("records the captured frame without deciding anything about it", () => {
     const c = captured();

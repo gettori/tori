@@ -71,11 +71,7 @@ export type MapResult = PaneNode | PaneNode[] | null;
  * flattened into it, and sibling sizes renormalize to 100. Untouched subtrees
  * keep object identity, so a keyed renderer sees them as unchanged.
  */
-export function mapNode(
-  root: PaneNode,
-  id: string,
-  fn: (n: PaneNode) => MapResult,
-): PaneNode | null {
+export function mapNode(root: PaneNode, id: string, fn: (n: PaneNode) => MapResult): PaneNode | null {
   const r = walk(root, id, fn);
   if (r === null) return null;
   if (!Array.isArray(r)) return r;
@@ -144,11 +140,9 @@ export function leaves(root: PaneNode): PaneLeaf[] {
   return out;
 }
 
-export const visibleLeaves = (root: PaneNode): PaneLeaf[] =>
-  leaves(root).filter((l) => !l.hidden);
+export const visibleLeaves = (root: PaneNode): PaneLeaf[] => leaves(root).filter((l) => !l.hidden);
 
-export const findPane = (root: PaneNode, id: string): PaneLeaf | null =>
-  leaves(root).find((l) => l.id === id) ?? null;
+export const findPane = (root: PaneNode, id: string): PaneLeaf | null => leaves(root).find((l) => l.id === id) ?? null;
 
 /** Who inherits a closing pane's tabs: the pane to its right, else the one to
  *  its left (the reading order the tab-close policy already uses). */
@@ -199,8 +193,7 @@ export function splitPane(
   if (!findPane(root, paneId)) return null;
   if (leaves(root).some((l) => l.id === newLeaf.id)) return null;
   if (leaves(root).length >= MAX_PANES) return null;
-  const order = (target: PaneNode, added: PaneNode) =>
-    pos === "before" ? [added, target] : [target, added];
+  const order = (target: PaneNode, added: PaneNode) => (pos === "before" ? [added, target] : [target, added]);
   const parent = parentOf(root, paneId);
   if (parent && parent.dir === dir) {
     return mapNode(root, paneId, (t) =>
@@ -306,14 +299,9 @@ export function resolvePinPane(
   const ls = leaves(root);
   if (ls.length === 0) return null;
   const locks = rules?.locks ?? {};
-  const ordered = (rules?.side ?? (kind === "file" ? "rightmost" : "leftmost")) === "rightmost"
-    ? [...ls].reverse()
-    : ls;
-  return (
-    ordered.find((l) => locks[l.id] === kind) ??
-    ordered.find((l) => !locks[l.id]) ??
-    ordered[0]
-  );
+  const ordered =
+    (rules?.side ?? (kind === "file" ? "rightmost" : "leftmost")) === "rightmost" ? [...ls].reverse() : ls;
+  return ordered.find((l) => locks[l.id] === kind) ?? ordered.find((l) => !locks[l.id]) ?? ordered[0];
 }
 
 /** The pane a kind toggle acts on: the pane of the most recently focused

@@ -39,9 +39,8 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, DraftComment, Grant, OrgAccess, Paged, PrFile, PrSummary,
-    PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus,
-    Viewer,
+    AuthState, Capabilities, DraftComment, Grant, OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest,
+    RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -61,14 +60,18 @@ pub enum ForgeError {
     /// The remote is a host this provider does not serve (a GitLab URL reaching
     /// the GitHub provider). Distinct from `NoRemote` because the UI says
     /// something different for each, and neither should offer a create button.
-    UnsupportedRemote { host: String },
+    UnsupportedRemote {
+        host: String,
+    },
     /// No token stored. The caller falls back to the compare-URL path.
     NotAuthenticated,
     /// A 401 came back. The token is *suspect*, not deleted; see
     /// [`model::AuthState::Suspect`] for why that distinction matters.
     CredentialSuspect,
     /// Authenticated, but not allowed to do this (scope or repo permission).
-    Forbidden { message: String },
+    Forbidden {
+        message: String,
+    },
     /// Rate limited, with both deadlines the server offered.
     ///
     /// `retry_after_secs` is an explicit instruction and comes with a secondary
@@ -87,24 +90,41 @@ pub enum ForgeError {
     /// repo may well exist and simply be hidden from a token it has not
     /// approved. Its own variant because a missing repo and a blocked one look
     /// identical on the wire and need opposite answers from the user.
-    OrgUnapproved { org: String },
+    OrgUnapproved {
+        org: String,
+    },
     /// The mutation conflicts with existing state (a PR for this head already
     /// exists, a thread is already resolved).
-    AlreadyExists { message: String },
+    AlreadyExists {
+        message: String,
+    },
     /// The server refused a merge. Carries the server's own wording, because
     /// GitHub knows about branch protection that Tori cannot see.
-    NotMergeable { message: String },
+    NotMergeable {
+        message: String,
+    },
     /// The host has several accounts and this repo has not picked one.
-    AccountPickNeeded { host: String },
+    AccountPickNeeded {
+        host: String,
+    },
     /// Something the user typed cannot be used, with the sentence saying why.
-    Invalid { message: String },
+    Invalid {
+        message: String,
+    },
     /// Any other API-level failure, with the status kept for triage.
-    Api { status: u16, message: String },
+    Api {
+        status: u16,
+        message: String,
+    },
     /// The request never completed (DNS, TLS, timeout, offline).
-    Transport { message: String },
+    Transport {
+        message: String,
+    },
     /// A 2xx whose body was not the shape we expect. Its own variant because it
     /// means *our* mapping is wrong, not the user's setup.
-    Malformed { message: String },
+    Malformed {
+        message: String,
+    },
 }
 
 /// Which of GitHub's two rate limits was hit.
@@ -128,7 +148,9 @@ impl std::fmt::Display for ForgeError {
             Self::NotAuthenticated => write!(f, "not signed in"),
             Self::CredentialSuspect => write!(f, "the stored token was rejected"),
             Self::Forbidden { message } => write!(f, "{message}"),
-            Self::RateLimited { kind, retry_after_secs, .. } => match retry_after_secs {
+            Self::RateLimited {
+                kind, retry_after_secs, ..
+            } => match retry_after_secs {
                 Some(s) => write!(f, "{kind:?} rate limit, retry in {s}s"),
                 None => write!(f, "{kind:?} rate limit"),
             },
@@ -213,22 +235,14 @@ pub trait Forge: Send + Sync {
     ///
     /// Derived per query rather than stored: an association persisted anywhere
     /// can go stale, and there is nothing here worth the staleness.
-    fn pull_request_for_branch(
-        &self,
-        repo: &RepoRef,
-        branch: &str,
-    ) -> Result<Option<PullRequest>, ForgeError>;
+    fn pull_request_for_branch(&self, repo: &RepoRef, branch: &str) -> Result<Option<PullRequest>, ForgeError>;
 
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError>;
 
     /// One pull request by its number, whatever its state.
     fn pull_request(&self, repo: &RepoRef, number: u64) -> Result<PullRequest, ForgeError>;
 
-    fn create_pull_request(
-        &self,
-        repo: &RepoRef,
-        req: &CreatePr,
-    ) -> Result<PullRequest, ForgeError>;
+    fn create_pull_request(&self, repo: &RepoRef, req: &CreatePr) -> Result<PullRequest, ForgeError>;
 
     /// PR state, checks and review decision for **many branches at once**.
     ///
@@ -236,11 +250,7 @@ pub trait Forge: Send + Sync {
     /// project, and one request per unit per concern is what turns idle polling
     /// into a rate-limit exhaustion: the budget scales with unit count, so the
     /// per-unit cache that looks like the fix solves the wrong axis.
-    fn unit_statuses(
-        &self,
-        repo: &RepoRef,
-        branches: &[String],
-    ) -> Result<Vec<UnitStatus>, ForgeError>;
+    fn unit_statuses(&self, repo: &RepoRef, branches: &[String]) -> Result<Vec<UnitStatus>, ForgeError>;
 
     /// [`Forge::unit_statuses`] plus a read of each watched pull request by
     /// number, in the same request. A number the host does not answer for reads
@@ -264,17 +274,9 @@ pub trait Forge: Send + Sync {
     /// it computed, because that is what a review thread's anchor is measured
     /// against. A caller that recomputed the diff locally would get a document
     /// that reads the same and anchors differently.
-    fn pull_request_files(
-        &self,
-        repo: &RepoRef,
-        number: u64,
-    ) -> Result<Paged<PrFile>, ForgeError>;
+    fn pull_request_files(&self, repo: &RepoRef, number: u64) -> Result<Paged<PrFile>, ForgeError>;
 
-    fn review_threads(
-        &self,
-        repo: &RepoRef,
-        number: u64,
-    ) -> Result<Paged<ReviewThread>, ForgeError>;
+    fn review_threads(&self, repo: &RepoRef, number: u64) -> Result<Paged<ReviewThread>, ForgeError>;
 
     /// Post a reply and hand back **the comment the server stored**.
     ///
@@ -282,12 +284,7 @@ pub trait Forge: Send + Sync {
     /// round trip to see your own words is the slowest a text box can feel; but
     /// an optimistic comment is a guess about id, author and timestamp, and the
     /// only thing that can correct it is what the server actually wrote.
-    fn reply_to_thread(
-        &self,
-        repo: &RepoRef,
-        thread_id: &str,
-        body: &str,
-    ) -> Result<ReviewComment, ForgeError>;
+    fn reply_to_thread(&self, repo: &RepoRef, thread_id: &str, body: &str) -> Result<ReviewComment, ForgeError>;
 
     /// Resolve or unresolve a thread.
     ///
@@ -467,11 +464,7 @@ mod tests {
         fn viewer(&self) -> Result<Viewer, ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
-        fn pull_request_for_branch(
-            &self,
-            _repo: &RepoRef,
-            _branch: &str,
-        ) -> Result<Option<PullRequest>, ForgeError> {
+        fn pull_request_for_branch(&self, _repo: &RepoRef, _branch: &str) -> Result<Option<PullRequest>, ForgeError> {
             Ok(None)
         }
         fn list_pull_requests(&self, _repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
@@ -480,18 +473,10 @@ mod tests {
         fn pull_request(&self, _repo: &RepoRef, _number: u64) -> Result<PullRequest, ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
-        fn create_pull_request(
-            &self,
-            _repo: &RepoRef,
-            _req: &CreatePr,
-        ) -> Result<PullRequest, ForgeError> {
+        fn create_pull_request(&self, _repo: &RepoRef, _req: &CreatePr) -> Result<PullRequest, ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
-        fn unit_statuses(
-            &self,
-            _repo: &RepoRef,
-            branches: &[String],
-        ) -> Result<Vec<UnitStatus>, ForgeError> {
+        fn unit_statuses(&self, _repo: &RepoRef, branches: &[String]) -> Result<Vec<UnitStatus>, ForgeError> {
             Ok(branches
                 .iter()
                 .map(|b| UnitStatus {
@@ -505,26 +490,13 @@ mod tests {
         fn pull_request_states(&self, _repo: &RepoRef, _numbers: &[u64]) -> Result<Vec<(u64, PrState)>, ForgeError> {
             Ok(vec![])
         }
-        fn pull_request_files(
-            &self,
-            _repo: &RepoRef,
-            _number: u64,
-        ) -> Result<Paged<PrFile>, ForgeError> {
+        fn pull_request_files(&self, _repo: &RepoRef, _number: u64) -> Result<Paged<PrFile>, ForgeError> {
             Ok(Paged::complete(vec![]))
         }
-        fn review_threads(
-            &self,
-            _repo: &RepoRef,
-            _number: u64,
-        ) -> Result<Paged<ReviewThread>, ForgeError> {
+        fn review_threads(&self, _repo: &RepoRef, _number: u64) -> Result<Paged<ReviewThread>, ForgeError> {
             Ok(Paged::complete(vec![]))
         }
-        fn reply_to_thread(
-            &self,
-            _repo: &RepoRef,
-            _thread_id: &str,
-            _body: &str,
-        ) -> Result<ReviewComment, ForgeError> {
+        fn reply_to_thread(&self, _repo: &RepoRef, _thread_id: &str, _body: &str) -> Result<ReviewComment, ForgeError> {
             Err(ForgeError::NotAuthenticated)
         }
         fn set_thread_resolved(&self, _thread_id: &str, _resolved: bool) -> Result<(), ForgeError> {
@@ -578,7 +550,10 @@ mod tests {
 
         // The batched shape is part of the contract, not an optimisation the
         // GitHub impl happens to make: one call, many branches.
-        let repo = RepoRef { owner: "skarif2".into(), repo: "tori".into() };
+        let repo = RepoRef {
+            owner: "skarif2".into(),
+            repo: "tori".into(),
+        };
         let statuses = f
             .unit_statuses(&repo, &["wave-3".to_string(), "wave-4".to_string()])
             .expect("stub cannot fail");
@@ -595,12 +570,11 @@ mod tests {
             retry_after_secs: None,
             reset_at_secs: None,
         };
-        let secondary =
-            ForgeError::RateLimited {
-                kind: RateLimitKind::Secondary,
-                retry_after_secs: Some(60),
-                reset_at_secs: None,
-            };
+        let secondary = ForgeError::RateLimited {
+            kind: RateLimitKind::Secondary,
+            retry_after_secs: Some(60),
+            reset_at_secs: None,
+        };
         assert_ne!(primary, secondary);
     }
 }

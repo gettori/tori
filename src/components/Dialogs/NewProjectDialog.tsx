@@ -81,11 +81,7 @@ export default function NewProjectDialog(props: {
       actions={
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={props.busy || !canConfirm()}
-            onClick={() => confirm()}
-          >
+          <Button variant="primary" disabled={props.busy || !canConfirm()} onClick={() => confirm()}>
             {props.busy ? "Working…" : "Create"}
           </Button>
         </>
@@ -113,7 +109,9 @@ export default function NewProjectDialog(props: {
                 Required pill must stay out of the field's accessible name. */}
             <div class={styles.spaceLabel}>
               <span id={URL_LABEL}>Repository URL</span>
-              <span class={styles.spaceRequired} aria-hidden="true">Required</span>
+              <span class={styles.spaceRequired} aria-hidden="true">
+                Required
+              </span>
             </div>
             <input
               class={styles.spaceInput}
@@ -136,7 +134,9 @@ export default function NewProjectDialog(props: {
                 blank folder name is the placeholder's promise that the URL
                 supplies it rather than something left undone. */}
             <Show when={!needsUrl()}>
-              <span class={styles.spaceRequired} aria-hidden="true">Required</span>
+              <span class={styles.spaceRequired} aria-hidden="true">
+                Required
+              </span>
             </Show>
           </div>
           <input

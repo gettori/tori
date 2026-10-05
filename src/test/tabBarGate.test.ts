@@ -12,13 +12,7 @@ const BAR = Object.values(
 
 /** Ways to make a flag outlive the listener that set it. `requestAnimationFrame`
  *  is absent on purpose: the bar measures in one, which is a different job. */
-const DEFERRALS = [
-  "queueMicrotask",
-  "setTimeout",
-  "setInterval",
-  "requestIdleCallback",
-  "Promise.resolve()",
-];
+const DEFERRALS = ["queueMicrotask", "setTimeout", "setInterval", "requestIdleCallback", "Promise.resolve()"];
 
 describe("the tab bar's activation gate", () => {
   it("reads the file it is meant to police", () => {

@@ -124,7 +124,11 @@ export const toriTheme = EditorView.theme(
         fontFamily: editorFont,
       },
       "& .cm-lsp-active-parameter": { color: "var(--accent-fg)", fontWeight: "600" },
-      "& .cm-lsp-documentation": { marginTop: "var(--tori-space-1)", color: "var(--fg-muted)", fontSize: "var(--tori-text-sm)" },
+      "& .cm-lsp-documentation": {
+        marginTop: "var(--tori-space-1)",
+        color: "var(--fg-muted)",
+        fontSize: "var(--tori-text-sm)",
+      },
     },
 
     ".cm-tooltip.cm-tooltip-autocomplete": {
@@ -134,7 +138,11 @@ export const toriTheme = EditorView.theme(
         fontFamily: editorFont,
         fontSize: editorSize,
         "& > li": { padding: "var(--tori-space-1) var(--tori-space-3)", borderRadius: "var(--tori-radius-sm)" },
-        "& > completion-section": { borderBottom: "1px solid var(--border-default)", color: "var(--fg-muted)", opacity: "1" },
+        "& > completion-section": {
+          borderBottom: "1px solid var(--border-default)",
+          color: "var(--fg-muted)",
+          opacity: "1",
+        },
       },
     },
     ".cm-tooltip-autocomplete ul li[aria-selected]": { background: "var(--neutral-hover)", color: "var(--fg-default)" },
@@ -194,7 +202,11 @@ export const toriTheme = EditorView.theme(
       cursor: "pointer",
       "&:hover": { borderColor: "var(--brand-default)" },
       "&:active": { backgroundImage: "none" },
-      "&:focus-visible": { outline: "none", borderColor: "var(--brand-default)", boxShadow: "0 0 0 3px var(--brand-ring)" },
+      "&:focus-visible": {
+        outline: "none",
+        borderColor: "var(--brand-default)",
+        boxShadow: "0 0 0 3px var(--brand-ring)",
+      },
     },
     ".cm-dialog-close": {
       color: "var(--fg-muted)",

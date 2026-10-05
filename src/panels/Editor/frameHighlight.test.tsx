@@ -6,13 +6,7 @@
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import {
-  frameHighlight,
-  frameLineEffect,
-  frameLineIn,
-  setFrameLineMarker,
-  FRAME_LINE_CLASS,
-} from "./frameHighlight";
+import { frameHighlight, frameLineEffect, frameLineIn, setFrameLineMarker, FRAME_LINE_CLASS } from "./frameHighlight";
 
 const DOC = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n");
 

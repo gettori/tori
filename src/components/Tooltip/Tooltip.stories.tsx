@@ -66,9 +66,7 @@ export const DelayAndGrouping: Story = {
   render: () => (
     <div style={{ display: "flex", gap: "var(--tori-space-2)", padding: "80px" }}>
       <For each={["Save", "Format", "Run", "Debug", "Split", "Close"]}>
-        {(action) => (
-          <Button tooltip={`${action} the current file`}>{action}</Button>
-        )}
+        {(action) => <Button tooltip={`${action} the current file`}>{action}</Button>}
       </For>
     </div>
   ),
@@ -154,8 +152,7 @@ export const WhenDisabled: Story = {
  *  tooltips carrying a full path or a branch name are the ones that reach it. */
 export const LongLabel: Story = {
   args: {
-    label:
-      "src/panels/Editor/PullRequests/ReviewBar.module.css - modified on feature/tooltips, 3 commits behind main",
+    label: "src/panels/Editor/PullRequests/ReviewBar.module.css - modified on feature/tooltips, 3 commits behind main",
     children: "ReviewBar.module.css",
   },
 };

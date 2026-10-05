@@ -57,7 +57,13 @@ describe("bracketedPaste", () => {
 });
 
 describe("composeHunkComment", () => {
-  const target: SessionTarget = { sessionId: "s1", agent: "claude", profile: null, folderPath: "/repo", sessionCwd: "/repo" };
+  const target: SessionTarget = {
+    sessionId: "s1",
+    agent: "claude",
+    profile: null,
+    folderPath: "/repo",
+    sessionCwd: "/repo",
+  };
 
   it("relativizes a file inside the session's cwd", () => {
     expect(composeHunkComment(target, "/repo/src/foo.ts", 12, 15, "fix this")).toBe(
@@ -80,7 +86,13 @@ describe("composeHunkComment", () => {
 describe("composeSelectionMention", () => {
   // A worktree branch-unit cwd ("/repo/branch-a") is a sibling of the
   // project's ".shared" folder ("/repo/.shared"), not an ancestor of it.
-  const target: SessionTarget = { sessionId: "s1", agent: "claude", profile: null, folderPath: "/repo/branch-a", sessionCwd: "/repo/branch-a" };
+  const target: SessionTarget = {
+    sessionId: "s1",
+    agent: "claude",
+    profile: null,
+    folderPath: "/repo/branch-a",
+    sessionCwd: "/repo/branch-a",
+  };
 
   it("mentions a file inside the session's cwd relatively, with a line range", () => {
     expect(composeSelectionMention(target, "/repo/branch-a/src/foo.ts", 5, 9)).toBe("@src/foo.ts#L5-L9");
@@ -95,7 +107,9 @@ describe("composeSelectionMention", () => {
   // reader, where `#L3` names a third line of text that does not exist.
   it("spells a PDF out by page, singular or plural", () => {
     expect(composeSelectionMention(target, "/repo/branch-a/docs/manual.pdf", 3, 3)).toBe("@docs/manual.pdf (page 3)");
-    expect(composeSelectionMention(target, "/repo/branch-a/docs/manual.PDF", 3, 4)).toBe("@docs/manual.PDF (pages 3-4)");
+    expect(composeSelectionMention(target, "/repo/branch-a/docs/manual.PDF", 3, 4)).toBe(
+      "@docs/manual.PDF (pages 3-4)",
+    );
   });
 });
 
@@ -247,9 +261,7 @@ describe("composeTodo", () => {
   });
 
   it("carries the tag that matched, not a hard-coded one", () => {
-    expect(composeTodo(target, "/repo/a.ts", 3, "FIXME", "leaks")).toBe(
-      "@a.ts#L3 Fix this FIXME: leaks",
-    );
+    expect(composeTodo(target, "/repo/a.ts", 3, "FIXME", "leaks")).toBe("@a.ts#L3 Fix this FIXME: leaks");
   });
 
   it("flattens and trims, so the prompt is never submitted for you", () => {
@@ -259,8 +271,6 @@ describe("composeTodo", () => {
   });
 
   it("uses an absolute path outside the session cwd", () => {
-    expect(composeTodo(target, "/elsewhere/b.ts", 9, "XXX", "hm")).toBe(
-      "@/elsewhere/b.ts#L9 Fix this XXX: hm",
-    );
+    expect(composeTodo(target, "/elsewhere/b.ts", 9, "XXX", "hm")).toBe("@/elsewhere/b.ts#L9 Fix this XXX: hm");
   });
 });

@@ -8,13 +8,7 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import Toggle from "../../../../components/Switch/Switch";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
-import {
-  agents,
-  ensureAdaptersLoaded,
-  findAdapter,
-  type Adapter,
-  type ChatTransport,
-} from "../../../../utils/agents";
+import { agents, ensureAdaptersLoaded, findAdapter, type Adapter, type ChatTransport } from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
@@ -140,8 +134,7 @@ function rowState(h: AgentHealth | undefined): { label: string; cls: string } {
  *  direction the pill warns about. */
 function rowTone(h: AgentHealth): string {
   if (h.chatProgramMissing) return styles.dotWarn;
-  if (h.status === "versionDrift" && behindVerified(h.version, h.verifiedAgainst))
-    return styles.dotWarn;
+  if (h.status === "versionDrift" && behindVerified(h.version, h.verifiedAgainst)) return styles.dotWarn;
   return TONE[h.status];
 }
 
@@ -178,30 +171,24 @@ function AgentRow(props: {
   const state = () => rowState(h());
   return (
     <div class={styles.agentRowWrap}>
-    <button
-      type="button"
-      class={styles.agentRow}
-      data-agent={a().id}
-      aria-busy={!h()}
-      onClick={() => props.onOpen()}
-    >
-      <span class={styles.agentCell}>
-        {/* The logo keeps the leading slot, with the status dot on its corner:
+      <button type="button" class={styles.agentRow} data-agent={a().id} aria-busy={!h()} onClick={() => props.onOpen()}>
+        <span class={styles.agentCell}>
+          {/* The logo keeps the leading slot, with the status dot on its corner:
             the mark says which agent, the dot says whether it is usable. No dot
             before the sweep answers - an unlit one would read as a verdict. */}
-        <span class={styles.hcardGlyph}>
-          <AgentGlyph id={a().id} label={a().label} size={20} />
-          <Show when={h()}>{(row) => <span class={`${styles.dot} ${rowTone(row())}`} />}</Show>
-        </span>
-        <span class={styles.agentName}>{a().label}</span>
-        {/* Standing facts, not status: who ships it and how Tori drives it.
+          <span class={styles.hcardGlyph}>
+            <AgentGlyph id={a().id} label={a().label} size={20} />
+            <Show when={h()}>{(row) => <span class={`${styles.dot} ${rowTone(row())}`} />}</Show>
+          </span>
+          <span class={styles.agentName}>{a().label}</span>
+          {/* Standing facts, not status: who ships it and how Tori drives it.
             Who is signed in, what to install, which key bills - all of that
             lives on the agent's page, where there is room to say it in words;
             here the state cell already carries the verdict. */}
-        <span class={styles.agentNote}>{rowNote(a().id, a().program)}</span>
-      </span>
-      <span class={styles.agentVersion}>{h()?.version ?? "-"}</span>
-      {/* The count is a claim about what the installed binary can run for the
+          <span class={styles.agentNote}>{rowNote(a().id, a().program)}</span>
+        </span>
+        <span class={styles.agentVersion}>{h()?.version ?? "-"}</span>
+        {/* The count is a claim about what the installed binary can run for the
           **default account**, which is what a session started without choosing
           one runs as; the agent's page lists every account. It comes from the
           probe cache and nowhere else. A row nobody has asked
@@ -210,25 +197,25 @@ function AgentRow(props: {
           an older answer shows the answer, not the error: stale-but-real beats
           fresh-but-empty, and the detail page is where the failure is
           explained. */}
-      <span class={styles.agentModels}>
-        <Switch>
-          <Match when={isProbing(a().id)}>…</Match>
-          <Match when={catalog()?.catalogue}>{distinctModelCount(catalog())}</Match>
-          <Match when={catalog()?.state === "failed"}>
-            <span class={styles.agentModelsBad}>Error</span>
-          </Match>
-          <Match when={true}>-</Match>
-        </Switch>
-      </span>
-      {/* Stored profiles, counted off the accounts file with no probe: how
+        <span class={styles.agentModels}>
+          <Switch>
+            <Match when={isProbing(a().id)}>…</Match>
+            <Match when={catalog()?.catalogue}>{distinctModelCount(catalog())}</Match>
+            <Match when={catalog()?.state === "failed"}>
+              <span class={styles.agentModelsBad}>Error</span>
+            </Match>
+            <Match when={true}>-</Match>
+          </Switch>
+        </span>
+        {/* Stored profiles, counted off the accounts file with no probe: how
           many logins Tori holds, not whether any of them works. "-" for an
           adapter that declares no [accounts], because a default "1" would
           claim an account Tori has nothing true to say about. */}
-      <span class={styles.agentCount}>{props.accounts ?? "-"}</span>
-      <span class={styles.agentState}>
-        <span class={`${styles.statePill} ${state().cls}`}>{state().label}</span>
-      </span>
-    </button>
+        <span class={styles.agentCount}>{props.accounts ?? "-"}</span>
+        <span class={styles.agentState}>
+          <span class={`${styles.statePill} ${state().cls}`}>{state().label}</span>
+        </span>
+      </button>
       {/* Off is the default for every agent, so this is where a machine's set
           gets built rather than a rarely-touched override. Refused rather than
           hidden when the agent cannot run: a missing switch says nothing about
@@ -262,9 +249,7 @@ type CardRow = { adapter: CardAgent; health: AgentHealth | undefined };
  *  so the first paint is stable rather than a shuffle waiting to happen. */
 function orderRows(rows: CardRow[]): CardRow[] {
   const rank = (r: CardRow) => (r.health ? (r.health.status === "notFound" ? 2 : 0) : 1);
-  return [...rows]
-    .sort((x, y) => x.adapter.label.localeCompare(y.adapter.label))
-    .sort((x, y) => rank(x) - rank(y));
+  return [...rows].sort((x, y) => x.adapter.label.localeCompare(y.adapter.label)).sort((x, y) => rank(x) - rank(y));
 }
 
 export default function AgentsSection(props: { projectRoot?: string | null }) {
@@ -272,9 +257,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
   // Counts come from the stored accounts file, no subprocess behind them, so
   // fetching on every open is as cheap as the read it is.
   const [accountCounts, { refetch: refetchCounts }] = createResource(() =>
-    invoke<Record<string, number>>("agent_account_counts").catch(
-      () => ({}) as Record<string, number>,
-    ),
+    invoke<Record<string, number>>("agent_account_counts").catch(() => ({}) as Record<string, number>),
   );
   const [rechecking, setRechecking] = createSignal(false);
   // const [checkingAll, setCheckingAll] = createSignal(false);
@@ -349,9 +332,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
     // The page is where accounts get added and removed, so the count a reader
     // returns to has to be the count they just changed.
     void refetchCounts();
-    requestAnimationFrame(() =>
-      document.querySelector<HTMLButtonElement>(`[data-agent="${id}"]`)?.focus(),
-    );
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-agent="${id}"]`)?.focus());
   };
 
   /** Re-probe now. Goes through the shared store as well as this resource so

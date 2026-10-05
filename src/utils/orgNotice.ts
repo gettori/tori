@@ -35,11 +35,7 @@ export function orgRoute(source: ForgeSource | null, cliInstalled: boolean): Org
   return cliInstalled && source !== "cli" ? "cli" : "token";
 }
 
-export function orgNotice(
-  org: string,
-  source: ForgeSource | null,
-  cliInstalled: boolean,
-): OrgNotice {
+export function orgNotice(org: string, source: ForgeSource | null, cliInstalled: boolean): OrgNotice {
   const route = orgRoute(source, cliInstalled);
   return {
     org,

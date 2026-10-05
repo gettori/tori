@@ -45,11 +45,7 @@ describe("Dropdown", () => {
       pointerClick(screen.getByText("Open"));
 
       await screen.findByRole("menu");
-      expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual([
-        "Alpha",
-        "Beta",
-        "Gamma",
-      ]);
+      expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual(["Alpha", "Beta", "Gamma"]);
     });
 
     it("hides nothing and locks nothing, because it is not modal", async () => {
@@ -93,9 +89,7 @@ describe("Dropdown", () => {
     });
 
     it("opens from state alone, and renders no trigger to open it with", async () => {
-      render(() => (
-        <Dropdown open anchor={{ x: 120, y: 340 }} items={items()} />
-      ));
+      render(() => <Dropdown open anchor={{ x: 120, y: 340 }} items={items()} />);
 
       const menu = await screen.findByRole("menu");
       expect(menu).toBeTruthy();
@@ -103,9 +97,7 @@ describe("Dropdown", () => {
     });
 
     it("gives focus to the menu, since there is no trigger holding it", async () => {
-      render(() => (
-        <Dropdown open anchor={{ x: 120, y: 340 }} items={items()} />
-      ));
+      render(() => <Dropdown open anchor={{ x: 120, y: 340 }} items={items()} />);
       await screen.findByRole("menu");
       await macrotask();
 
@@ -120,14 +112,7 @@ describe("Dropdown", () => {
       editor.focus();
 
       const [open, setOpen] = createSignal(true);
-      render(() => (
-        <Dropdown
-          open={open()}
-          anchor={{ x: 120, y: 340 }}
-          items={items()}
-          onOpenChange={setOpen}
-        />
-      ));
+      render(() => <Dropdown open={open()} anchor={{ x: 120, y: 340 }} items={items()} onOpenChange={setOpen} />);
       await screen.findByRole("menu");
       await macrotask();
       expect(document.activeElement).not.toBe(editor);
@@ -195,9 +180,7 @@ describe("Dropdown", () => {
   describe("picking with the pointer", () => {
     it("runs the row's action and closes", async () => {
       const alpha = vi.fn();
-      render(() => (
-        <Dropdown items={[{ label: "Alpha", onClick: alpha }]}>Open</Dropdown>
-      ));
+      render(() => <Dropdown items={[{ label: "Alpha", onClick: alpha }]}>Open</Dropdown>);
       pointerClick(screen.getByText("Open"));
       await screen.findByRole("menu");
 
@@ -353,9 +336,7 @@ describe("Dropdown", () => {
     });
 
     it("has no violations while open at a point", async () => {
-      render(() => (
-        <Dropdown open anchor={{ x: 120, y: 340 }} items={items()} />
-      ));
+      render(() => <Dropdown open anchor={{ x: 120, y: 340 }} items={items()} />);
       await screen.findByRole("menu");
 
       await expectNoAxeViolations(document.body);

@@ -4,8 +4,26 @@ import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import DecisionCard from "./DecisionCard";
 import Wheel from "./Wheel";
-import { ComposerShell, ErrorBanner, KeyHints, OffNotice, SectionHead, StatusDot, Thread, TicketNumber, decisionHandlers } from "./ShellParts";
-import type { AutopilotError, AutopilotState, Decision, DecisionAction, InFlightRow, ThreadMessage, TicketHandlers } from "./autopilot";
+import {
+  ComposerShell,
+  ErrorBanner,
+  KeyHints,
+  OffNotice,
+  SectionHead,
+  StatusDot,
+  Thread,
+  TicketNumber,
+  decisionHandlers,
+} from "./ShellParts";
+import type {
+  AutopilotError,
+  AutopilotState,
+  Decision,
+  DecisionAction,
+  InFlightRow,
+  ThreadMessage,
+  TicketHandlers,
+} from "./autopilot";
 import styles from "./AutopilotPopup.module.css";
 
 export interface AutopilotPopupProps extends TicketHandlers {
@@ -82,12 +100,16 @@ export default function AutopilotPopup(props: AutopilotPopupProps) {
         <Show when={props.decisions.length}>
           <div class={styles.section}>
             <SectionHead label="Decisions" count={props.decisions.length}>
-              <KeyHints hints={[[["J", "K"], "move"], [["A"], "approve"], [["R"], "reply"]]} />
+              <KeyHints
+                hints={[
+                  [["J", "K"], "move"],
+                  [["A"], "approve"],
+                  [["R"], "reply"],
+                ]}
+              />
             </SectionHead>
             <For each={props.decisions}>
-              {(d, i) => (
-                <DecisionCard {...d} focused={i() === props.focused} {...decisionHandlers(d, props)} />
-              )}
+              {(d, i) => <DecisionCard {...d} focused={i() === props.focused} {...decisionHandlers(d, props)} />}
             </For>
           </div>
         </Show>
@@ -131,7 +153,13 @@ export default function AutopilotPopup(props: AutopilotPopupProps) {
             <ComposerShell
               dense
               disabled={muted()}
-              placeholder={off() ? "Start the autopilot to message it" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
+              placeholder={
+                off()
+                  ? "Start the autopilot to message it"
+                  : props.state === "error"
+                    ? "Reconnecting..."
+                    : "Tell the autopilot..."
+              }
             />
           }
         >

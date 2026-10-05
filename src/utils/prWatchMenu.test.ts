@@ -7,7 +7,11 @@ const label = (item: unknown) => (item as { label: string }).label;
 describe("the PR row's watch items", () => {
   it("with no chat in the worktree, says why it cannot watch", () => {
     const [only] = prWatchMenu([], [], URL, { watch: vi.fn(), unwatch: vi.fn() });
-    expect(only).toMatchObject({ label: "Watch with this session", refusing: true, note: "No chat is open in this worktree" });
+    expect(only).toMatchObject({
+      label: "Watch with this session",
+      refusing: true,
+      note: "No chat is open in this worktree",
+    });
   });
 
   it("with one chat, watches with this session, then offers to stop", () => {
@@ -18,7 +22,9 @@ describe("the PR row's watch items", () => {
     (item as { onClick: () => void }).onClick();
     expect(watch).toHaveBeenCalledWith("s1");
     const watched: PrWatchRow[] = [{ session: "s1", url: URL, project: "/p", branch: "fix" }];
-    expect(label(prWatchMenu(chats, watched, URL, { watch, unwatch: vi.fn() })[0])).toBe("Stop watching with this session");
+    expect(label(prWatchMenu(chats, watched, URL, { watch, unwatch: vi.fn() })[0])).toBe(
+      "Stop watching with this session",
+    );
   });
 
   it("with two chats, names each and marks only the one watching", () => {

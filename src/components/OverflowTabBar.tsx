@@ -1,14 +1,4 @@
-import {
-  createSignal,
-  createEffect,
-  createMemo,
-  onMount,
-  onCleanup,
-  children,
-  For,
-  Show,
-  type JSX,
-} from "solid-js";
+import { createSignal, createEffect, createMemo, onMount, onCleanup, children, For, Show, type JSX } from "solid-js";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import { tabGesture } from "../utils/tabGesture";
 import { Tabs } from "../lib/tabs";
@@ -79,9 +69,7 @@ export default function OverflowTabBar<T>(props: {
   function measure() {
     if (!bar || !ghost) return;
     measures++;
-    const children = Array.from(ghost.children).filter(
-      (c) => c !== countSample,
-    ) as HTMLElement[];
+    const children = Array.from(ghost.children).filter((c) => c !== countSample) as HTMLElement[];
     const ghostLeft = ghost.getBoundingClientRect().left;
     const extents = children.map((c) => c.getBoundingClientRect().right - ghostLeft);
     const cs = getComputedStyle(bar);
@@ -258,11 +246,7 @@ export default function OverflowTabBar<T>(props: {
           placement="bottom-start"
           menu={
             <For each={overflow()}>
-              {(t) => (
-                <MenuRow onClick={() => pickOverflow(props.idOf(t))}>
-                  {props.renderMenuItem(t)}
-                </MenuRow>
-              )}
+              {(t) => <MenuRow onClick={() => pickOverflow(props.idOf(t))}>{props.renderMenuItem(t)}</MenuRow>}
             </For>
           }
         >

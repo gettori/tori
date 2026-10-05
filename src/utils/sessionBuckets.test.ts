@@ -27,13 +27,7 @@ describe("bucketByLastActive", () => {
   });
 
   it("orders the eras newest first, and the sessions inside each one too", () => {
-    const list = [
-      at(NOON - 40 * DAY),
-      at(NOON - 2 * HOUR),
-      at(NOON - 3 * DAY),
-      at(NOON - HOUR),
-      at(NOON - DAY),
-    ];
+    const list = [at(NOON - 40 * DAY), at(NOON - 2 * HOUR), at(NOON - 3 * DAY), at(NOON - HOUR), at(NOON - DAY)];
     const bs = bucketByLastActive(list, NOON);
     expect(labels(bs)).toEqual(["Today", "Yesterday", "Previous 7 days", "Older"]);
     expect(bs[0].sessions.map((s) => s.last_active)).toEqual([NOON - HOUR, NOON - 2 * HOUR]);

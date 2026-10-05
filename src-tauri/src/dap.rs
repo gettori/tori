@@ -246,7 +246,9 @@ fn dial<T>(
             Ok(s) => return Ok(s),
             Err(e) => {
                 if let Some(status) = exited() {
-                    return Err(format!("the debug adapter exited before accepting a connection ({status})"));
+                    return Err(format!(
+                        "the debug adapter exited before accepting a connection ({status})"
+                    ));
                 }
                 if start.elapsed() >= timeout {
                     return Err(format!(
@@ -271,8 +273,8 @@ fn connect_retry(socket: &Path, timeout: Duration) -> Result<UnixStream, String>
 /// not reading the port out of the adapter's English stdout, which this host
 /// never waits on.
 fn free_port() -> Result<u16, String> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .map_err(|e| format!("could not pick a port for the debug adapter: {e}"))?;
+    let listener =
+        TcpListener::bind(("127.0.0.1", 0)).map_err(|e| format!("could not pick a port for the debug adapter: {e}"))?;
     listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
 }
 
@@ -291,8 +293,9 @@ struct Started {
 /// `bundled` is the one lookup that needs the app: where the bundled script is.
 fn locate(adapter: &DapAdapter, bundled: impl FnOnce(&str) -> Option<PathBuf>) -> Result<PathBuf, String> {
     match &adapter.launch {
-        Launch::BundledNodeSocket { entry, .. } => bundled(entry)
-            .ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id)),
+        Launch::BundledNodeSocket { entry, .. } => {
+            bundled(entry).ok_or_else(|| format!("{}: bundled adapter not found (run `pnpm dap:install`)", adapter.id))
+        }
         launch => find_program(adapter, &managed::debuggers_dir()).ok_or_else(|| {
             let program = launch.program();
             // A `managed` launch always has an install, so it never reaches the
@@ -316,40 +319,72 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
             let socket = socket_path()?;
             let mut child = spawn_adapter(Command::new("node").arg(located).arg(&socket), root, Stdio::null())?;
             log_stdout(&mut child);
-            let dialled = dial(|| UnixStream::connect(&socket), || child.try_wait().ok().flatten(), CONNECT_TIMEOUT)
-                .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
+            let dialled = dial(
+                || UnixStream::connect(&socket),
+                || child.try_wait().ok().flatten(),
+                CONNECT_TIMEOUT,
+            )
+            .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
             let (reader, stream) = match dialled {
                 Ok(pair) => pair,
                 Err(e) => {
                     // The adapter is up but unreachable; do not leak it.
-                    stop(&mut Server { child, socket: Some(socket), child_sessions: false, sessions: HashMap::new() });
+                    stop(&mut Server {
+                        child,
+                        socket: Some(socket),
+                        child_sessions: false,
+                        sessions: HashMap::new(),
+                    });
                     return Err(e);
                 }
             };
-            Ok(Started { child, reader: Box::new(reader), writer: Box::new(stream), socket: Some(socket) })
+            Ok(Started {
+                child,
+                reader: Box::new(reader),
+                writer: Box::new(stream),
+                socket: Some(socket),
+            })
         }
         Launch::Stdio { args, .. } => {
             let mut child = spawn_adapter(Command::new(located).args(args), root, Stdio::piped())?;
             let reader = child.stdout.take().ok_or("the debug adapter has no stdout")?;
             let writer = child.stdin.take().ok_or("the debug adapter has no stdin")?;
-            Ok(Started { child, reader: Box::new(reader), writer: Box::new(writer), socket: None })
+            Ok(Started {
+                child,
+                reader: Box::new(reader),
+                writer: Box::new(writer),
+                socket: None,
+            })
         }
         Launch::Tcp { args, .. } => {
             let port = free_port()?;
             let args = args.iter().map(|a| a.replace("{port}", &port.to_string()));
             let mut child = spawn_adapter(Command::new(located).args(args), root, Stdio::null())?;
             log_stdout(&mut child);
-            let dialled =
-                dial(|| TcpStream::connect(("127.0.0.1", port)), || child.try_wait().ok().flatten(), CONNECT_TIMEOUT)
-                    .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
+            let dialled = dial(
+                || TcpStream::connect(("127.0.0.1", port)),
+                || child.try_wait().ok().flatten(),
+                CONNECT_TIMEOUT,
+            )
+            .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
             let (reader, stream) = match dialled {
                 Ok(pair) => pair,
                 Err(e) => {
-                    stop(&mut Server { child, socket: None, child_sessions: false, sessions: HashMap::new() });
+                    stop(&mut Server {
+                        child,
+                        socket: None,
+                        child_sessions: false,
+                        sessions: HashMap::new(),
+                    });
                     return Err(e);
                 }
             };
-            Ok(Started { child, reader: Box::new(reader), writer: Box::new(stream), socket: None })
+            Ok(Started {
+                child,
+                reader: Box::new(reader),
+                writer: Box::new(stream),
+                socket: None,
+            })
         }
     }
 }
@@ -438,7 +473,10 @@ fn prepare(
 ) -> Result<(&'static DapAdapter, String, PathBuf), String> {
     let adapter = registry::find(adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
     if disabled.contains(&adapter.id) {
-        return Err(format!("the {} debugger is off. Turn it on in Settings > Debuggers.", adapter.label));
+        return Err(format!(
+            "the {} debugger is off. Turn it on in Settings > Debuggers.",
+            adapter.label
+        ));
     }
     let located = locate(adapter, bundled)?;
     gate(Path::new(project_path))?;
@@ -482,7 +520,9 @@ pub async fn dap_start(
         child_sessions: adapter.child_sessions,
         sessions: HashMap::new(),
     });
-    server.sessions.insert(handle.session.clone(), Session { writer: started.writer });
+    server
+        .sessions
+        .insert(handle.session.clone(), Session { writer: started.writer });
     Ok(handle)
 }
 
@@ -507,9 +547,16 @@ pub async fn dap_connect(
 ) -> Result<DapHandle, String> {
     let socket = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
-        let running = guard.get(&server).ok_or_else(|| format!("debug adapter {} is not running", server.0))?;
+        let running = guard
+            .get(&server)
+            .ok_or_else(|| format!("debug adapter {} is not running", server.0))?;
         child_socket(running)
-            .ok_or_else(|| format!("debug adapter {} runs one session per process and cannot open another", server.0))?
+            .ok_or_else(|| {
+                format!(
+                    "debug adapter {} runs one session per process and cannot open another",
+                    server.0
+                )
+            })?
             .clone()
     };
 
@@ -521,23 +568,27 @@ pub async fn dap_connect(
         let _ = on_message.send(body);
     });
 
-    let handle = DapHandle { server: server.clone(), session: next_id("sess") };
+    let handle = DapHandle {
+        server: server.clone(),
+        session: next_id("sess"),
+    };
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let Some(entry) = guard.get_mut(&server) else {
         // The server was stopped while we were connecting; drop the stream
         // rather than registering a session nothing can reach.
         return Err(format!("debug adapter {} stopped while connecting", server.0));
     };
-    entry.sessions.insert(handle.session.clone(), Session { writer: Box::new(stream) });
+    entry.sessions.insert(
+        handle.session.clone(),
+        Session {
+            writer: Box::new(stream),
+        },
+    );
     Ok(handle)
 }
 
 #[tauri::command]
-pub async fn dap_send(
-    state: State<'_, DapState>,
-    handle: DapHandle,
-    message: String,
-) -> Result<(), String> {
+pub async fn dap_send(state: State<'_, DapState>, handle: DapHandle, message: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let session = guard
         .get_mut(&handle.server)
@@ -580,11 +631,7 @@ pub fn dap_registry() -> Vec<DapAdapter> {
 /// alternative was re-deriving the walk in TypeScript, which is the thing the
 /// original note was against.
 #[tauri::command]
-pub async fn dap_root_for(
-    adapter_id: String,
-    file_path: String,
-    project_path: String,
-) -> Result<String, String> {
+pub async fn dap_root_for(adapter_id: String, file_path: String, project_path: String) -> Result<String, String> {
     root_for_adapter(&adapter_id, &file_path, &project_path)
 }
 
@@ -592,8 +639,7 @@ pub async fn dap_root_for(
 /// above stays `async` for the reason every filesystem-touching command here
 /// is: a synchronous one runs on the main thread.
 fn root_for_adapter(adapter_id: &str, file_path: &str, project_path: &str) -> Result<String, String> {
-    let adapter = registry::find(adapter_id)
-        .ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
+    let adapter = registry::find(adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
     let root = registry::root_for(
         adapter,
         std::path::Path::new(file_path),
@@ -677,9 +723,10 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
     // The package's version, and only once the module the launch runs imports:
     // `python --version` names Python, and says nothing about the adapter.
     let version = match (&adapter.install, resolved.as_deref()) {
-        (Some(Install::Pip { package, .. }), Some(python)) => {
-            adapter.launch.module().and_then(|module| managed::package_version(python, package, module))
-        }
+        (Some(Install::Pip { package, .. }), Some(python)) => adapter
+            .launch
+            .module()
+            .and_then(|module| managed::package_version(python, package, module)),
         (_, Some(path)) => crate::health::run_version(path),
         (_, None) => None,
     };
@@ -688,7 +735,10 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
     let detail = if entry_missing {
         Some("the bundled debug adapter is not installed (run `pnpm dap:install`)".to_string())
     } else if managed && resolved.is_some() && version.is_none() {
-        Some(format!("Tori's copy of {} no longer runs. Install it again.", adapter.label))
+        Some(format!(
+            "Tori's copy of {} no longer runs. Install it again.",
+            adapter.label
+        ))
     } else {
         None
     };
@@ -717,7 +767,11 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
         extensions: adapter.languages.keys().cloned().collect(),
         detail,
         disabled: false,
-        available_version: adapter.install.as_ref().and_then(Install::available_version).map(str::to_string),
+        available_version: adapter
+            .install
+            .as_ref()
+            .and_then(Install::available_version)
+            .map(str::to_string),
         installed_version: version.clone().filter(|_| managed),
         version,
         hint: match &adapter.install {
@@ -743,7 +797,10 @@ pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
                 Launch::BundledNodeSocket { entry, .. } => bundled_entry(&app, entry).is_none(),
                 Launch::Stdio { .. } | Launch::Tcp { .. } => false,
             };
-            DapHealth { disabled: disabled.contains(&adapter.id), ..check(adapter, entry_missing, &debuggers) }
+            DapHealth {
+                disabled: disabled.contains(&adapter.id),
+                ..check(adapter, entry_missing, &debuggers)
+            }
         })
         .collect()
 }
@@ -894,7 +951,10 @@ mod tests {
 
         let started = Instant::now();
         let mut stream = connect_retry(&socket, CONNECT_TIMEOUT).expect("retry connects");
-        assert!(started.elapsed() >= Duration::from_millis(400), "it did not actually wait");
+        assert!(
+            started.elapsed() >= Duration::from_millis(400),
+            "it did not actually wait"
+        );
 
         let (tx, rx) = mpsc::channel();
         pump_frames(stream.try_clone().unwrap(), move |b| {
@@ -920,7 +980,10 @@ mod tests {
         let started = Instant::now();
         let err = connect_retry(&socket, Duration::from_millis(300)).unwrap_err();
         assert!(err.contains("did not accept a connection"), "got {err}");
-        assert!(started.elapsed() < Duration::from_secs(5), "it hung instead of giving up");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "it hung instead of giving up"
+        );
     }
 
     /// Darwin's `sun_path` is 104 bytes and a GUI app's `$TMPDIR` already spends
@@ -929,7 +992,11 @@ mod tests {
     fn a_socket_path_stays_short_whatever_the_workspace_is_called() {
         let path = socket_path().expect("the real $TMPDIR fits");
         let len = path.as_os_str().len();
-        assert!(len < SUN_PATH_MAX, "{} is {len} bytes, at sun_path's limit", path.display());
+        assert!(
+            len < SUN_PATH_MAX,
+            "{} is {len} bytes, at sun_path's limit",
+            path.display()
+        );
 
         // Two calls never collide, which is what lets one Tori run many sessions.
         assert_ne!(socket_path().unwrap(), socket_path().unwrap());
@@ -966,9 +1033,16 @@ mod tests {
             .spawn()
             .expect("spawn group leader");
         let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
         let grandchild: u32 = line.trim().parse().expect("child pid");
-        let server = Server { child, socket: None, child_sessions: false, sessions: HashMap::new() };
+        let server = Server {
+            child,
+            socket: None,
+            child_sessions: false,
+            sessions: HashMap::new(),
+        };
         (server, grandchild)
     }
 
@@ -990,7 +1064,10 @@ mod tests {
             thread::sleep(Duration::from_millis(20));
         }
         assert!(!alive(adapter), "the adapter survived stop");
-        assert!(!alive(debuggee), "pid {debuggee} was launched by the adapter and outlived it");
+        assert!(
+            !alive(debuggee),
+            "pid {debuggee} was launched by the adapter and outlived it"
+        );
     }
 
     /// The attach case, which falls out of the same mechanism rather than
@@ -1011,7 +1088,10 @@ mod tests {
         stop(&mut server);
         thread::sleep(Duration::from_millis(200));
 
-        assert!(alive(target), "an attached target must survive the adapter being stopped");
+        assert!(
+            alive(target),
+            "an attached target must survive the adapter being stopped"
+        );
         let _ = independent.kill();
         let _ = independent.wait();
     }
@@ -1077,8 +1157,12 @@ mod tests {
 
         // A zombie still answers `kill -0`, so ask the process table what state
         // it is in rather than whether it is reachable.
-        let out = Command::new("ps").args(["-o", "state=", "-p", &pid.to_string()]).output();
-        let state = out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+        let out = Command::new("ps")
+            .args(["-o", "state=", "-p", &pid.to_string()])
+            .output();
+        let state = out
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
         assert!(!state.starts_with('Z'), "pid {pid} was left a zombie (state {state:?})");
     }
 
@@ -1109,14 +1193,24 @@ mod tests {
     }
 
     fn round_trip(started: Started) -> String {
-        let Started { child, reader, mut writer, socket } = started;
+        let Started {
+            child,
+            reader,
+            mut writer,
+            socket,
+        } = started;
         let (tx, rx) = mpsc::channel();
         pump_frames(reader, move |b| {
             let _ = tx.send(b);
         });
         write_frame(&mut writer, r#"{"seq":1,"type":"request"}"#).unwrap();
         let echoed = recv(&rx);
-        stop(&mut Server { child, socket, child_sessions: false, sessions: HashMap::new() });
+        stop(&mut Server {
+            child,
+            socket,
+            child_sessions: false,
+            sessions: HashMap::new(),
+        });
         echoed
     }
 
@@ -1148,7 +1242,9 @@ mod tests {
     fn a_tcp_adapter_that_exits_at_once_fails_well_inside_the_timeout() {
         let gone = adapter("kind = \"tcp\"\nprogram = \"false\"\nargs = [\"{port}\"]");
         let began = Instant::now();
-        let err = start_adapter(&gone, "/tmp", &locate(&gone, |_| None).unwrap()).err().expect("nothing ever listens");
+        let err = start_adapter(&gone, "/tmp", &locate(&gone, |_| None).unwrap())
+            .err()
+            .expect("nothing ever listens");
         assert!(err.contains("exited before accepting"), "got {err}");
         assert!(began.elapsed() < CONNECT_TIMEOUT / 5, "took {:?}", began.elapsed());
     }
@@ -1175,15 +1271,13 @@ mod tests {
     /// wiping the extracted tree, cannot lose it.
     #[test]
     fn the_adapter_has_a_commonjs_boundary_inside_this_esm_package() {
-        let root: serde_json::Value =
-            serde_json::from_str(include_str!("../../package.json")).unwrap();
+        let root: serde_json::Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
         // If Tori ever stops being an ESM package this guard is moot, but it is
         // one today and that is what breaks the adapter.
         assert_eq!(root["type"], "module", "this test exists because the repo is ESM");
 
-        let boundary: serde_json::Value =
-            serde_json::from_str(include_str!("../resources/dap/package.json"))
-                .expect("resources/dap/package.json parses");
+        let boundary: serde_json::Value = serde_json::from_str(include_str!("../resources/dap/package.json"))
+            .expect("resources/dap/package.json parses");
         assert_eq!(
             boundary["type"], "commonjs",
             "the adapter is CommonJS and will not load without this boundary"
@@ -1276,9 +1370,14 @@ mod tests {
             defined.len() >= 6,
             "the parse found no commands, so this test proves nothing: {defined:?}"
         );
-        let missing: Vec<&&str> =
-            defined.iter().filter(|name| !lib.contains(&format!("dap::{name},"))).collect();
-        assert!(missing.is_empty(), "add these to `generate_handler!` in lib.rs: {missing:?}");
+        let missing: Vec<&&str> = defined
+            .iter()
+            .filter(|name| !lib.contains(&format!("dap::{name},")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "add these to `generate_handler!` in lib.rs: {missing:?}"
+        );
     }
 
     /// The adapter has to be *bundled*, not merely present on this machine.
@@ -1290,7 +1389,9 @@ mod tests {
     fn the_debug_adapter_is_bundled_as_a_resource() {
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json parses");
-        let resources = conf["bundle"]["resources"].as_array().expect("bundle.resources is a list");
+        let resources = conf["bundle"]["resources"]
+            .as_array()
+            .expect("bundle.resources is a list");
         let listed: Vec<&str> = resources.iter().filter_map(|r| r.as_str()).collect();
         assert!(
             listed.iter().any(|r| r.starts_with("resources/dap/")),
@@ -1323,7 +1424,9 @@ mod tests {
         let installed = check(adapter, false, Path::new("/nonexistent"));
         assert!(installed.detail.is_none());
         assert_eq!(installed.program, "node");
-        let Launch::BundledNodeSocket { version, .. } = &adapter.launch else { panic!("{:?}", adapter.launch) };
+        let Launch::BundledNodeSocket { version, .. } = &adapter.launch else {
+            panic!("{:?}", adapter.launch)
+        };
         assert_eq!(installed.adapter_version.as_ref(), Some(version));
         assert!(installed.extensions.contains(&"ts".to_string()));
     }
@@ -1334,7 +1437,12 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let debugpy = registry::find("debugpy").expect("debugpy is registered");
-        let pinned = debugpy.install.as_ref().and_then(Install::available_version).unwrap().to_string();
+        let pinned = debugpy
+            .install
+            .as_ref()
+            .and_then(Install::available_version)
+            .unwrap()
+            .to_string();
         let dir = std::env::temp_dir().join(format!("tori-dap-health-{}-{}", std::process::id(), next_id("t")));
 
         let without = check(debugpy, false, &dir);
@@ -1349,7 +1457,10 @@ mod tests {
                 std::fs::create_dir_all(python.parent().unwrap()).unwrap();
                 std::fs::write(&python, format!("#!/bin/sh\n{script}\n")).unwrap();
                 std::fs::set_permissions(&python, std::fs::Permissions::from_mode(0o755)).unwrap();
-                Ok(crate::lsp::managed::Installed { version: pinned.clone(), bin: "venv/bin/python".into() })
+                Ok(crate::lsp::managed::Installed {
+                    version: pinned.clone(),
+                    bin: "venv/bin/python".into(),
+                })
             })
             .unwrap();
         };
@@ -1357,7 +1468,10 @@ mod tests {
         install(&format!("echo {pinned}"));
         let with = check(debugpy, false, &dir);
         assert!(matches!(with.status, BinaryStatus::VersionMatch), "{:?}", with.status);
-        assert_eq!(with.path, Some(dir.join("debugpy/venv/bin/python").to_string_lossy().into_owned()));
+        assert_eq!(
+            with.path,
+            Some(dir.join("debugpy/venv/bin/python").to_string_lossy().into_owned())
+        );
         assert_eq!(with.installed_version.as_deref(), Some(pinned.as_str()));
         assert!(with.detail.is_none());
 
@@ -1373,12 +1487,22 @@ mod tests {
     #[test]
     fn an_xcrun_adapter_reads_not_found_when_neither_xcrun_nor_the_path_has_it() {
         let mut lldb = registry::find("lldb").expect("lldb is registered").clone();
-        let Launch::Stdio { args, resolve, .. } = &lldb.launch else { panic!("{:?}", lldb.launch) };
+        let Launch::Stdio { args, resolve, .. } = &lldb.launch else {
+            panic!("{:?}", lldb.launch)
+        };
         assert_eq!(*resolve, Resolve::Xcrun);
-        lldb.launch = Launch::Stdio { program: "tori-no-such-lldb-dap".into(), args: args.clone(), resolve: Resolve::Xcrun };
+        lldb.launch = Launch::Stdio {
+            program: "tori-no-such-lldb-dap".into(),
+            args: args.clone(),
+            resolve: Resolve::Xcrun,
+        };
 
         let health = check(&lldb, false, Path::new("/nonexistent"));
-        assert!(matches!(health.status, crate::health::BinaryStatus::NotFound), "{:?}", health.status);
+        assert!(
+            matches!(health.status, crate::health::BinaryStatus::NotFound),
+            "{:?}",
+            health.status
+        );
         assert_eq!(health.path, None);
     }
 
@@ -1388,18 +1512,17 @@ mod tests {
         let path = env.get("PATH").expect("PATH");
         // The GUI process's own PATH is the minimal one; a debuggee that shells
         // out to `pnpm` needs the dirs a login shell would have.
-        assert!(path.contains("/.volta/bin") || path.contains("/opt/homebrew/bin"), "{path}");
+        assert!(
+            path.contains("/.volta/bin") || path.contains("/opt/homebrew/bin"),
+            "{path}"
+        );
     }
 
     /// `cwd` for a launch config comes from here, and in a monorepo the wrong
     /// answer costs module resolution and source-map location at once.
     #[test]
     fn the_root_command_answers_the_package_not_the_workspace() {
-        let tmp = std::env::temp_dir().join(format!(
-            "tori-dap-rootcmd-{}-{}",
-            std::process::id(),
-            next_id("t")
-        ));
+        let tmp = std::env::temp_dir().join(format!("tori-dap-rootcmd-{}-{}", std::process::id(), next_id("t")));
         let api = tmp.join("packages/api/src");
         std::fs::create_dir_all(&api).unwrap();
         std::fs::write(tmp.join("package.json"), "{}").unwrap();
@@ -1407,12 +1530,7 @@ mod tests {
         let file = api.join("x.ts");
         std::fs::write(&file, "").unwrap();
 
-        let root = root_for_adapter(
-            "js-debug",
-            &file.to_string_lossy(),
-            &tmp.to_string_lossy(),
-        )
-        .unwrap();
+        let root = root_for_adapter("js-debug", &file.to_string_lossy(), &tmp.to_string_lossy()).unwrap();
         assert_eq!(root, tmp.join("packages/api").to_string_lossy());
 
         assert!(root_for_adapter("nope", "/a", "/a").is_err());
@@ -1432,10 +1550,14 @@ mod tests {
         assert_eq!(refused.err().as_deref(), Some(crate::trust::UNTRUSTED));
         assert_eq!(gated.as_deref(), Some(Path::new("/p")));
 
-        let missing = prepare("js-debug", "/p/a.ts", "/p", &[], |_| None, untrusted).err().unwrap();
+        let missing = prepare("js-debug", "/p/a.ts", "/p", &[], |_| None, untrusted)
+            .err()
+            .unwrap();
         assert!(missing.contains("bundled adapter not found"), "got {missing}");
 
-        let off = prepare("js-debug", "/p/a.ts", "/p", &["js-debug".to_string()], found, untrusted).err().unwrap();
+        let off = prepare("js-debug", "/p/a.ts", "/p", &["js-debug".to_string()], found, untrusted)
+            .err()
+            .unwrap();
         assert!(off.contains("debugger is off"), "got {off}");
     }
 }

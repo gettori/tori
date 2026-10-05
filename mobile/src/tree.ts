@@ -18,7 +18,12 @@ export type UnitGit = { added: number; deleted: number; ahead: number | null; be
 
 export type Phase = "working" | "needs" | "idle" | "ended";
 
-export const PHASE_LABEL: Record<Phase, string> = { working: "Working", needs: "Needs you", idle: "Idle", ended: "Ended" };
+export const PHASE_LABEL: Record<Phase, string> = {
+  working: "Working",
+  needs: "Needs you",
+  idle: "Idle",
+  ended: "Ended",
+};
 
 export type Unit = {
   label: string;
@@ -79,7 +84,8 @@ export function inUnit(home: Home | undefined, unit: Unit): boolean {
   return home?.folder === unit.folder && home.branch === unit.branch;
 }
 
-const under = (path: string | undefined, folder: string) => !!path && (path === folder || path.startsWith(`${folder}/`));
+const under = (path: string | undefined, folder: string) =>
+  !!path && (path === folder || path.startsWith(`${folder}/`));
 
 // A Topic member's worktree is not a unit in the tree, so the Mac homes its
 // sessions nowhere, or under the repo it sits inside; the deeper folder wins.
@@ -106,7 +112,10 @@ export function phaseOf(row: SessionRow): Phase {
 }
 
 export function newest(rows: SessionRow[]): SessionRow | undefined {
-  return rows.reduce<SessionRow | undefined>((best, row) => (!best || row.last_active > best.last_active ? row : best), undefined);
+  return rows.reduce<SessionRow | undefined>(
+    (best, row) => (!best || row.last_active > best.last_active ? row : best),
+    undefined,
+  );
 }
 
 export function sessionLabel(row: SessionRow): string {

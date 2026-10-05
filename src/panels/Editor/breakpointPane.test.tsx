@@ -69,9 +69,7 @@ vi.mock("./CodeEditor", () => ({
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { emitWith, OPEN_IN_EDITOR, FILE_RENAMED, PURGE_UNDER_PATH } = await import(
-  "../../utils/events"
-);
+const { emitWith, OPEN_IN_EDITOR, FILE_RENAMED, PURGE_UNDER_PATH } = await import("../../utils/events");
 const { breakpointMarks } = await import("../../utils/debugBreakpoints");
 
 /** A workspace of its own per test: the store is a module singleton, and a
@@ -148,10 +146,12 @@ describe("the gutter click", () => {
     // report a line past its own end, and taking its answer as the whole truth
     // would delete by hand what was set by hand.
     code!.onBreakpointsMoved!(file, [12], 40);
-    await waitFor(() => expect(code!.breakpoints).toEqual([
-      { line: 12, state: "armed" },
-      { line: 90, state: "armed" },
-    ]));
+    await waitFor(() =>
+      expect(code!.breakpoints).toEqual([
+        { line: 12, state: "armed" },
+        { line: 90, state: "armed" },
+      ]),
+    );
   });
 });
 

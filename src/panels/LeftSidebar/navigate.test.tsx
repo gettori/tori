@@ -23,7 +23,11 @@ const config = {
       name: "work",
       path: "/root/work",
       projects: [
-        { name: "repo", path: "/root/work/repo", branchUnits: [unit("/root/work/repo/main", "main"), unit(WT, "feat")] },
+        {
+          name: "repo",
+          path: "/root/work/repo",
+          branchUnits: [unit("/root/work/repo/main", "main"), unit(WT, "feat")],
+        },
       ],
     },
     {
@@ -119,7 +123,9 @@ describe("navigating to a target", () => {
   it("selects the unit a folder names, in a space that was not showing", async () => {
     const picked = await mount();
     emitWith(NAVIGATE, { folder: WT });
-    await waitFor(() => expect(picked[picked.length - 1]).toMatchObject({ spaceName: "work", folderPath: WT, branch: "feat" }));
+    await waitFor(() =>
+      expect(picked[picked.length - 1]).toMatchObject({ spaceName: "work", folderPath: WT, branch: "feat" }),
+    );
     expect(localStorage.getItem("tori.active-space.v1")).toBe("work");
   });
 
@@ -132,7 +138,9 @@ describe("navigating to a target", () => {
   it("lands a worktree project's own folder on one of its worktrees", async () => {
     const picked = await mount();
     emitWith(NAVIGATE, { folder: "/root/work/repo" });
-    await waitFor(() => expect(picked[picked.length - 1]).toMatchObject({ spaceName: "work", folderPath: "/root/work/repo/main" }));
+    await waitFor(() =>
+      expect(picked[picked.length - 1]).toMatchObject({ spaceName: "work", folderPath: "/root/work/repo/main" }),
+    );
   });
 
   it("lands a plain repo's folder on the branch it has checked out", async () => {

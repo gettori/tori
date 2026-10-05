@@ -5,15 +5,7 @@
 // A mark also answers what the stripe can only hint at: which lines used to be
 // there. Clicking one opens a peek in the same `cm-peek*` shell peekView uses.
 
-import {
-  gutter,
-  GutterMarker,
-  Decoration,
-  EditorView,
-  WidgetType,
-  keymap,
-  lineNumbers,
-} from "@codemirror/view";
+import { gutter, GutterMarker, Decoration, EditorView, WidgetType, keymap, lineNumbers } from "@codemirror/view";
 import { EditorState, StateField, StateEffect, RangeSet, type Extension, type Range } from "@codemirror/state";
 import { peekTheme } from "./peekView";
 
@@ -159,7 +151,8 @@ class DiffPeekWidget extends WidgetType {
     const where = document.createElement("span");
     where.className = "cm-peek-where";
     const last = this.hunk.old_start + count - 1;
-    where.textContent = count === 1 ? `was line ${this.hunk.old_start}` : `were lines ${this.hunk.old_start} to ${last}`;
+    where.textContent =
+      count === 1 ? `was line ${this.hunk.old_start}` : `were lines ${this.hunk.old_start} to ${last}`;
     header.appendChild(where);
 
     const close = document.createElement("button");

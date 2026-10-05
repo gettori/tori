@@ -8,9 +8,7 @@
 //! to the frontend, because a `device_code` is a secret: whoever holds one can
 //! complete the exchange. The frontend gets a user code and a URL.
 
-use super::accounts::{
-    self, AccountView, AccountsFile, HostView, Provider, Resolution, SignInRoutes, Source,
-};
+use super::accounts::{self, AccountView, AccountsFile, HostView, Provider, Resolution, SignInRoutes, Source};
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
@@ -19,10 +17,7 @@ use super::model::{
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
-use super::{
-    auth, cli, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError,
-    MergeMethod,
-};
+use super::{auth, cli, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
 use crate::credential::Reach;
 use crate::rpc::pr_watch;
 use serde::Serialize;
@@ -79,7 +74,11 @@ pub struct ForgeErrorDto {
 impl From<ForgeError> for ForgeErrorDto {
     fn from(e: ForgeError) -> Self {
         let (rate_limit_kind, retry_after_secs, reset_at_secs) = match &e {
-            ForgeError::RateLimited { kind, retry_after_secs, reset_at_secs } => (
+            ForgeError::RateLimited {
+                kind,
+                retry_after_secs,
+                reset_at_secs,
+            } => (
                 Some(
                     match kind {
                         super::RateLimitKind::Primary => "primary",
@@ -131,11 +130,20 @@ impl From<ForgeError> for ForgeErrorDto {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum PollReport {
-    Authorized { account_id: String, login: String },
-    Pending { next_interval_secs: u64 },
+    Authorized {
+        account_id: String,
+        login: String,
+    },
+    Pending {
+        next_interval_secs: u64,
+    },
     /// `code` is the server's own `error` value, so the UI can quote the host.
-    Denied { code: String },
-    Expired { code: String },
+    Denied {
+        code: String,
+    },
+    Expired {
+        code: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -149,10 +157,20 @@ pub struct SignedIn {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum RepoAccount {
-    Account { account_id: String, host: String, auth: AuthState, capabilities: Capabilities },
-    Pick { host: String, candidates: Vec<AccountView> },
+    Account {
+        account_id: String,
+        host: String,
+        auth: AuthState,
+        capabilities: Capabilities,
+    },
+    Pick {
+        host: String,
+        candidates: Vec<AccountView>,
+    },
     /// No remote, or a host with no account. `host` is absent for the first.
-    NoAccount { host: Option<String> },
+    NoAccount {
+        host: Option<String>,
+    },
 }
 
 #[tauri::command(async)]
@@ -169,12 +187,20 @@ pub fn forge_accounts() -> Vec<HostView> {
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum SignInStart {
     /// `gh` already held a usable token, so nothing was asked of the user.
-    SignedIn { account_id: String, login: String },
+    SignedIn {
+        account_id: String,
+        login: String,
+    },
     /// A device flow is running; poll it with `forge_device_poll`. The routes
     /// ride along so a flow that fails can fall back to a token without asking
     /// again.
-    Browser { prompt: DevicePrompt, routes: SignInRoutes },
-    Token { routes: SignInRoutes },
+    Browser {
+        prompt: DevicePrompt,
+        routes: SignInRoutes,
+    },
+    Token {
+        routes: SignInRoutes,
+    },
 }
 
 /// Whether the user asked for the GitHub CLI by name, or just pressed sign in.
@@ -214,22 +240,13 @@ impl From<bool> for CliAsk {
 /// a pasted token is not a hijack: the login is the same person either way, and
 /// only the route to them changes. It is what the organisation notice presses,
 /// since an organisation refuses an application rather than a person.
-fn gh_may_answer(
-    file: &AccountsFile,
-    host: &str,
-    login: &str,
-    reauth: Option<&str>,
-    ask: CliAsk,
-) -> bool {
-    let same_login = |a: &accounts::Account| {
-        a.login.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(login))
-    };
+fn gh_may_answer(file: &AccountsFile, host: &str, login: &str, reauth: Option<&str>, ask: CliAsk) -> bool {
+    let same_login = |a: &accounts::Account| a.login.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(login));
     match reauth {
         // The host is checked too: ids are unique across hosts, so one from
         // another host would otherwise be judged against this host's accounts.
-        Some(id) => accounts::find(file, id).is_some_and(|(at, a)| {
-            at == host && same_login(a) && (a.source == Source::Cli || ask == CliAsk::Named)
-        }),
+        Some(id) => accounts::find(file, id)
+            .is_some_and(|(at, a)| at == host && same_login(a) && (a.source == Source::Cli || ask == CliAsk::Named)),
         None => !file
             .hosts
             .get(host)
@@ -250,12 +267,17 @@ pub fn forge_sign_in_start(
     let reauth = account_id.as_deref();
     if provider == Provider::Github {
         if let Some(signed) = cli_sign_in(&file, &base_url, &host, reauth, prefer_cli.into())? {
-            return Ok(SignInStart::SignedIn { account_id: signed.account_id, login: signed.login });
+            return Ok(SignInStart::SignedIn {
+                account_id: signed.account_id,
+                login: signed.login,
+            });
         }
         // GitHub's browser route is Tori's own application, which an
         // organisation can refuse to approve. A token the user makes themselves
         // is the route that survives that, so it is the only fallback offered.
-        return Ok(SignInStart::Token { routes: routes_in(&file, provider, &base_url, &host) });
+        return Ok(SignInStart::Token {
+            routes: routes_in(&file, provider, &base_url, &host),
+        });
     }
     let routes = routes_in(&file, provider, &base_url, &host);
     if routes.device_flow {
@@ -348,11 +370,7 @@ fn recover_cli(id: &str) -> Result<Option<SignedIn>, ForgeError> {
 // Per host, because only that instance can issue one: gitlab.com's is Tori's
 // own, and a company's server has whichever its admin created, or none.
 #[tauri::command(async)]
-pub fn forge_set_app_id(
-    provider: Provider,
-    base_url: String,
-    app_id: String,
-) -> Result<SignInRoutes, ForgeErrorDto> {
+pub fn forge_set_app_id(provider: Provider, base_url: String, app_id: String) -> Result<SignInRoutes, ForgeErrorDto> {
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
     if host == accounts::GITLAB_COM {
         return Err(ForgeError::Invalid {
@@ -405,20 +423,12 @@ pub fn resync_global_config() {
 }
 
 #[tauri::command(async)]
-pub fn forge_set_default_account(
-    host: String,
-    account_id: Option<String>,
-) -> Result<Vec<HostView>, ForgeErrorDto> {
+pub fn forge_set_default_account(host: String, account_id: Option<String>) -> Result<Vec<HostView>, ForgeErrorDto> {
     accounts::update(|file| accounts::set_default_account(file, &host, account_id.as_deref()))?;
     Ok(accounts::view(&accounts::load(), auth::state))
 }
 
-fn routes_in(
-    file: &AccountsFile,
-    provider: Provider,
-    base_url: &str,
-    host: &str,
-) -> SignInRoutes {
+fn routes_in(file: &AccountsFile, provider: Provider, base_url: &str, host: &str) -> SignInRoutes {
     accounts::sign_in_routes(
         provider,
         base_url,
@@ -438,8 +448,9 @@ fn routes_in(
 fn client_id_for(file: &AccountsFile, provider: Provider, host: &str) -> Option<String> {
     match provider {
         Provider::Github => None,
-        Provider::Gitlab if host == accounts::GITLAB_COM => (!device_flow::GITLAB_COM_CLIENT_ID.is_empty())
-            .then(|| device_flow::GITLAB_COM_CLIENT_ID.to_string()),
+        Provider::Gitlab if host == accounts::GITLAB_COM => {
+            (!device_flow::GITLAB_COM_CLIENT_ID.is_empty()).then(|| device_flow::GITLAB_COM_CLIENT_ID.to_string())
+        }
         Provider::Gitlab => accounts::app_id(file, host),
     }
 }
@@ -455,8 +466,7 @@ fn start_gitlab_device_flow(
     let provider = Provider::Gitlab;
     let client_id = client_id_for(file, provider, &host).ok_or(ForgeError::NotAuthenticated)?;
     let endpoints = device_flow::gitlab_endpoints(&base_url);
-    let (prompt, flow) =
-        device_flow::start_with(&UreqTransport::default(), &client_id, &endpoints)?;
+    let (prompt, flow) = device_flow::start_with(&UreqTransport::default(), &client_id, &endpoints)?;
     *state.0.lock().unwrap() = Some(PendingSignIn {
         flow,
         provider,
@@ -472,9 +482,7 @@ fn start_gitlab_device_flow(
 /// One poll turn. The frontend owns the waiting, using the interval reported
 /// back, so a `slow_down` actually slows the caller down.
 #[tauri::command(async)]
-pub fn forge_device_poll(
-    state: tauri::State<'_, DeviceFlowState>,
-) -> Result<PollReport, ForgeErrorDto> {
+pub fn forge_device_poll(state: tauri::State<'_, DeviceFlowState>) -> Result<PollReport, ForgeErrorDto> {
     let pending = state.0.lock().unwrap().clone();
     let Some(sign_in) = pending else {
         return Err(ForgeError::NotAuthenticated.into());
@@ -493,12 +501,18 @@ pub fn forge_device_poll(
                 sign_in.provider,
                 &sign_in.base_url,
                 &sign_in.host,
-                Secret { access_token: t.access_token, refresh_token: t.refresh_token },
+                Secret {
+                    access_token: t.access_token,
+                    refresh_token: t.refresh_token,
+                },
                 expires_at(t.expires_in_secs),
                 Source::Browser,
                 sign_in.reauth.as_deref(),
             )?;
-            PollReport::Authorized { account_id: signed.account_id, login: signed.login }
+            PollReport::Authorized {
+                account_id: signed.account_id,
+                login: signed.login,
+            }
         }
         // Both waiting outcomes report the interval to use next, so the caller
         // never has to know which one changed it.
@@ -510,11 +524,15 @@ pub fn forge_device_poll(
         }
         PollOutcome::Denied => {
             state.0.lock().unwrap().take();
-            PollReport::Denied { code: device_flow::ACCESS_DENIED.into() }
+            PollReport::Denied {
+                code: device_flow::ACCESS_DENIED.into(),
+            }
         }
         PollOutcome::Expired => {
             state.0.lock().unwrap().take();
-            PollReport::Expired { code: device_flow::EXPIRED_TOKEN.into() }
+            PollReport::Expired {
+                code: device_flow::EXPIRED_TOKEN.into(),
+            }
         }
     })
 }
@@ -540,7 +558,10 @@ pub fn forge_add_token(
 ) -> Result<SignedIn, ForgeErrorDto> {
     let token = token.trim();
     if token.is_empty() {
-        return Err(ForgeError::Invalid { message: "Paste a token first.".into() }.into());
+        return Err(ForgeError::Invalid {
+            message: "Paste a token first.".into(),
+        }
+        .into());
     }
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
     // A pasted token carries no expiry: whatever the user set on the host is
@@ -597,11 +618,16 @@ fn ask_viewer(
     let login = match forge.viewer() {
         Ok(viewer) => viewer.login,
         Err(ForgeError::CredentialSuspect) => {
-            return Err(ForgeError::Invalid { message: format!("{host} rejected that token.") })
+            return Err(ForgeError::Invalid {
+                message: format!("{host} rejected that token."),
+            })
         }
         Err(e) => return Err(e),
     };
-    Ok(Named { login, grant: reported_grant(provider, source, forge.as_ref()) })
+    Ok(Named {
+        login,
+        grant: reported_grant(provider, source, forge.as_ref()),
+    })
 }
 
 fn store_signed_in(
@@ -673,7 +699,12 @@ fn repo_account_in(
             let capabilities = accounts::find(file, &id)
                 .map(|(_, a)| forge_for(a.provider, &a.base_url, None, None).capabilities())
                 .unwrap_or_default();
-            RepoAccount::Account { auth: auth(&id), account_id: id, host, capabilities }
+            RepoAccount::Account {
+                auth: auth(&id),
+                account_id: id,
+                host,
+                capabilities,
+            }
         }
         Resolution::Pick { candidates } => RepoAccount::Pick {
             candidates: candidates
@@ -695,7 +726,10 @@ pub fn forge_pick_account(project_path: String, account_id: String) -> Result<()
         .get(&remote.host)
         .is_some_and(|r| r.accounts.iter().any(|a| a.id == account_id));
     if !on_host {
-        return Err(ForgeError::Invalid { message: format!("That account is not on {}.", remote.host) }.into());
+        return Err(ForgeError::Invalid {
+            message: format!("That account is not on {}.", remote.host),
+        }
+        .into());
     }
     crate::settings::edit_forge_picks(|picks| {
         picks.insert(remote.key(), account_id.clone()).as_ref() != Some(&account_id)
@@ -727,11 +761,7 @@ pub fn client_for(project_path: &str) -> Result<Client, ForgeError> {
     client_in(&accounts::load(), &crate::settings::get_settings().forge.picks, remote)
 }
 
-fn client_in(
-    file: &AccountsFile,
-    picks: &BTreeMap<String, String>,
-    remote: Remote,
-) -> Result<Client, ForgeError> {
+fn client_in(file: &AccountsFile, picks: &BTreeMap<String, String>, remote: Remote) -> Result<Client, ForgeError> {
     match accounts::resolve(file, picks, &remote) {
         Resolution::Account(id) => {
             let (host, account) = accounts::find(file, &id).ok_or(ForgeError::NotAuthenticated)?;
@@ -741,7 +771,11 @@ fn client_in(
                 fresh_token(file, host, account),
                 login_of(&id),
             );
-            Ok(Client { account_id: id, repo: remote.repo, forge })
+            Ok(Client {
+                account_id: id,
+                repo: remote.repo,
+                forge,
+            })
         }
         Resolution::Pick { .. } => Err(ForgeError::AccountPickNeeded { host: remote.host }),
         Resolution::NoAccount if remote.host == accounts::GITHUB_COM => Err(ForgeError::NotAuthenticated),
@@ -750,12 +784,7 @@ fn client_in(
 }
 
 /// The adapter for a provider at an account's base URL.
-fn forge_for(
-    provider: Provider,
-    base_url: &str,
-    token: Option<String>,
-    login: Option<String>,
-) -> Box<dyn Forge> {
+fn forge_for(provider: Provider, base_url: &str, token: Option<String>, login: Option<String>) -> Box<dyn Forge> {
     let transport = Box::new(UreqTransport::default());
     match provider {
         Provider::Github => Box::new(github::GitHubForge::new(transport, base_url, token, login)),
@@ -795,7 +824,11 @@ pub fn pr_head_ref(project_path: &str, number: u64) -> String {
             Resolution::Account(id) => accounts::find(&file, &id).map(|(_, a)| a.provider),
             // No pick, or no account at all: every account on a host shares its
             // provider, so the first one answers for the host.
-            _ => file.hosts.get(&remote.host).and_then(|r| r.accounts.first()).map(|a| a.provider),
+            _ => file
+                .hosts
+                .get(&remote.host)
+                .and_then(|r| r.accounts.first())
+                .map(|a| a.provider),
         }
     });
     head_ref(provider.unwrap_or(Provider::Github), number)
@@ -807,11 +840,7 @@ pub fn serves_git(project_path: &str, host: &str) -> bool {
         return false;
     };
     remote.host == host
-        && accounts::serves_git(
-            &accounts::load(),
-            &crate::settings::get_settings().forge.picks,
-            &remote,
-        )
+        && accounts::serves_git(&accounts::load(), &crate::settings::get_settings().forge.picks, &remote)
 }
 
 /// The account git should push and fetch as here, spelled the way git's helper
@@ -881,10 +910,7 @@ fn git_username(provider: Provider) -> &'static str {
 /// Inside the call that failed rather than on the next tick: a token that
 /// expired mid-session is one Tori can replace without the user, and making
 /// them watch a cycle fail first is a pause with nothing behind it.
-pub(crate) fn attempt<T>(
-    c: &Client,
-    run: impl Fn(&dyn Forge) -> Result<T, ForgeError>,
-) -> Result<T, ForgeError> {
+pub(crate) fn attempt<T>(c: &Client, run: impl Fn(&dyn Forge) -> Result<T, ForgeError>) -> Result<T, ForgeError> {
     let first = run(c.forge.as_ref());
     auth::note_result(&c.account_id, &first);
     note_org_access(&c.account_id, c.forge.as_ref());
@@ -922,7 +948,9 @@ fn named_org<T>(c: &Client, result: Result<T, ForgeError>) -> Result<T, ForgeErr
         return result;
     }
     match owner_is_org(c) {
-        true => Err(ForgeError::OrgUnapproved { org: c.repo.owner.clone() }),
+        true => Err(ForgeError::OrgUnapproved {
+            org: c.repo.owner.clone(),
+        }),
         false => result,
     }
 }
@@ -933,8 +961,7 @@ fn named_org<T>(c: &Client, result: Result<T, ForgeError>) -> Result<T, ForgeErr
 /// token can reach: a second account on the same host may be a member where the
 /// first is not.
 fn seen() -> &'static Mutex<std::collections::BTreeSet<String>> {
-    static SEEN: std::sync::OnceLock<Mutex<std::collections::BTreeSet<String>>> =
-        std::sync::OnceLock::new();
+    static SEEN: std::sync::OnceLock<Mutex<std::collections::BTreeSet<String>>> = std::sync::OnceLock::new();
     SEEN.get_or_init(|| Mutex::new(std::collections::BTreeSet::new()))
 }
 
@@ -997,7 +1024,12 @@ fn renewed_client(c: &Client) -> Option<Client> {
     Some(Client {
         account_id: c.account_id.clone(),
         repo: c.repo.clone(),
-        forge: forge_for(account.provider, &account.base_url, Some(token), login_of(&c.account_id)),
+        forge: forge_for(
+            account.provider,
+            &account.base_url,
+            Some(token),
+            login_of(&c.account_id),
+        ),
     })
 }
 
@@ -1148,16 +1180,19 @@ pub struct NewPr {
 
 impl From<NewPr> for CreatePr {
     fn from(n: NewPr) -> Self {
-        CreatePr { title: n.title, body: n.body, head: n.head, base: n.base, draft: n.draft }
+        CreatePr {
+            title: n.title,
+            body: n.body,
+            head: n.head,
+            base: n.base,
+            draft: n.draft,
+        }
     }
 }
 
 /// Opens a pull request, then makes it immediately visible to the next lookup.
 #[tauri::command(async)]
-pub fn forge_create_pr(
-    project_path: String,
-    new_pr: NewPr,
-) -> Result<PullRequest, ForgeErrorDto> {
+pub fn forge_create_pr(project_path: String, new_pr: NewPr) -> Result<PullRequest, ForgeErrorDto> {
     let c = client_for(&project_path)?;
     let req: CreatePr = new_pr.into();
     let pr = attempt(&c, |f| f.create_pull_request(&c.repo, &req))?;
@@ -1171,7 +1206,10 @@ pub fn pull_request_states(project_path: &str, numbers: &[u64]) -> Result<Vec<((
     let c = gated_client(project_path)?;
     let repo = format!("{}/{}", c.repo.owner, c.repo.repo).to_lowercase();
     let states = attempt(&c, |f| f.pull_request_states(&c.repo, numbers))?;
-    Ok(states.into_iter().map(|(n, state)| ((repo.clone(), n), state)).collect())
+    Ok(states
+        .into_iter()
+        .map(|(n, state)| ((repo.clone(), n), state))
+        .collect())
 }
 
 /// Opens a pull request for a socket caller, through the gated client since
@@ -1239,9 +1277,9 @@ pub(crate) fn adopt_pr_bases(app: &tauri::AppHandle, project_path: &str, statuse
     let moved: Vec<&UnitStatus> = statuses
         .iter()
         .filter(|s| {
-            s.pull_request
-                .as_ref()
-                .is_some_and(|pr| pr.state == PrState::Open && crate::git::record_base(project_path, &s.head_ref, &pr.base_ref))
+            s.pull_request.as_ref().is_some_and(|pr| {
+                pr.state == PrState::Open && crate::git::record_base(project_path, &s.head_ref, &pr.base_ref)
+            })
         })
         .collect();
     if moved.is_empty() {
@@ -1249,7 +1287,10 @@ pub(crate) fn adopt_pr_bases(app: &tauri::AppHandle, project_path: &str, statuse
     }
     let worktrees = crate::worktree::list_worktrees_body(project_path.to_string()).unwrap_or_default();
     for s in moved {
-        let folder = worktrees.iter().find(|w| w.branch == s.head_ref).map_or(project_path, |w| w.path.as_str());
+        let folder = worktrees
+            .iter()
+            .find(|w| w.branch == s.head_ref)
+            .map_or(project_path, |w| w.path.as_str());
         let _ = app.emit("git://base-changed", serde_json::json!({ "repo": folder }));
     }
 }
@@ -1298,9 +1339,9 @@ fn publish_moved(project_path: &str, statuses: &[UnitStatus]) {
     for s in moved {
         let worktree = worktrees.iter().find(|w| w.branch == s.head_ref);
         let folder = worktree.map_or(project_path, |w| w.path.as_str());
-        let pull_request = s.pull_request.as_ref().map(|pr| {
-            serde_json::json!({ "number": pr.number, "state": pr.state, "draft": pr.is_draft, "url": pr.url })
-        });
+        let pull_request = s.pull_request.as_ref().map(
+            |pr| serde_json::json!({ "number": pr.number, "state": pr.state, "draft": pr.is_draft, "url": pr.url }),
+        );
         crate::rpc::publish_pr(
             project_path,
             folder,
@@ -1340,10 +1381,7 @@ pub fn forge_list_prs(project_path: String) -> Result<Paged<PullRequest>, ForgeE
 /// recomputed diff would read identically and anchor differently, which puts
 /// comments on the wrong lines rather than failing outright.
 #[tauri::command(async)]
-pub fn forge_pr_files(
-    project_path: String,
-    number: u64,
-) -> Result<Paged<PrFile>, ForgeErrorDto> {
+pub fn forge_pr_files(project_path: String, number: u64) -> Result<Paged<PrFile>, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
     Ok(attempt(&c, |f| f.pull_request_files(&c.repo, number))?)
 }
@@ -1355,10 +1393,7 @@ pub fn forge_pr_files(
 /// takes a `PullRequestReviewThread` node id that no REST response ever
 /// produces. A thread read the REST way could be displayed and never resolved.
 #[tauri::command(async)]
-pub fn forge_review_threads(
-    project_path: String,
-    number: u64,
-) -> Result<Paged<ReviewThread>, ForgeErrorDto> {
+pub fn forge_review_threads(project_path: String, number: u64) -> Result<Paged<ReviewThread>, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
     Ok(attempt(&c, |f| f.review_threads(&c.repo, number))?)
 }
@@ -1387,11 +1422,7 @@ pub fn forge_reply_to_thread(
 /// still taken, so the command refuses on a repo the forge cannot serve for the
 /// same reason every other one does, and acts as that repo's account.
 #[tauri::command(async)]
-pub fn forge_set_thread_resolved(
-    project_path: String,
-    thread_id: String,
-    resolved: bool,
-) -> Result<(), ForgeErrorDto> {
+pub fn forge_set_thread_resolved(project_path: String, thread_id: String, resolved: bool) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
     Ok(attempt(&c, |f| f.set_thread_resolved(&thread_id, resolved))?)
 }
@@ -1457,7 +1488,9 @@ pub fn submit_review(
     head_sha: Option<&str>,
 ) -> Result<Option<String>, ForgeError> {
     let c = gated_client(project_path)?;
-    attempt(&c, |f| f.submit_review(&c.repo, number, event, body, comments, head_sha))
+    attempt(&c, |f| {
+        f.submit_review(&c.repo, number, event, body, comments, head_sha)
+    })
 }
 
 /// One pull request by its number, for a socket caller.
@@ -1491,7 +1524,9 @@ pub fn forge_add_review_comment(
     comment: DraftComment,
 ) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    Ok(attempt(&c, |f| f.add_review_comment(&c.repo, number, &commit_id, &comment))?)
+    Ok(attempt(&c, |f| {
+        f.add_review_comment(&c.repo, number, &commit_id, &comment)
+    })?)
 }
 
 /// Run a mutation that moves a branch, and drop the caches only if it worked.
@@ -1543,11 +1578,7 @@ pub fn forge_pr_summary(project_path: String, number: u64) -> Result<PrSummary, 
 /// Only on success. A refused merge changed nothing, and throwing the cache away
 /// would spend a fresh round of requests to re-learn what it already knew.
 #[tauri::command(async)]
-pub fn forge_merge(
-    project_path: String,
-    number: u64,
-    method: MergeMethod,
-) -> Result<(), ForgeErrorDto> {
+pub fn forge_merge(project_path: String, number: u64, method: MergeMethod) -> Result<(), ForgeErrorDto> {
     Ok(merge(&project_path, number, method, None)?)
 }
 
@@ -1559,7 +1590,9 @@ pub fn merge(
     expected_head: Option<&str>,
 ) -> Result<(), ForgeError> {
     let c = gated_client(project_path)?;
-    landing(&c.repo, || attempt(&c, |f| f.merge(&c.repo, number, method, expected_head)))
+    landing(&c.repo, || {
+        attempt(&c, |f| f.merge(&c.repo, number, method, expected_head))
+    })
 }
 
 /// Merge the base branch into this pull request's head, on the server.
@@ -1600,9 +1633,7 @@ pub fn restore_at_startup(enabled: bool) {
         accounts::migrate_legacy(file, token::load_legacy, token::save_secret)?;
         // After the migration, so the account it just wrote is read the same way
         // as every other one.
-        accounts::backfill_source(file, |id| {
-            token::load_secret(id).ok().flatten().map(|s| s.access_token)
-        });
+        accounts::backfill_source(file, |id| token::load_secret(id).ok().flatten().map(|s| s.access_token));
         Ok(())
     }) {
         log_startup(&format!("forge: {e}"));
@@ -1622,7 +1653,12 @@ pub fn restore_at_startup(enabled: bool) {
             if token.is_some() && (account.login.is_none() || rejected || unasked) {
                 probe.push(account.id.clone());
             }
-            auth::Restored { id: account.id.clone(), token, login: account.login.clone(), rejected }
+            auth::Restored {
+                id: account.id.clone(),
+                token,
+                login: account.login.clone(),
+                rejected,
+            }
         })
         .collect();
     auth::restore(entries, enabled);
@@ -1691,7 +1727,10 @@ fn reported_grant(provider: Provider, source: Source, forge: &dyn Forge) -> Gran
     match provider {
         Provider::Github => {
             let grant = forge.token_grant();
-            Grant { scopes: Some(grant.scopes.unwrap_or_default()), ..grant }
+            Grant {
+                scopes: Some(grant.scopes.unwrap_or_default()),
+                ..grant
+            }
         }
         // Passed through as it came: GitLab has no fine-grained tokens, so an
         // instance that would not answer leaves both halves genuinely unknown,
@@ -1736,10 +1775,17 @@ mod tests {
     fn a_refused_landing_keeps_the_caches_it_did_not_invalidate() {
         // Nothing moved on the server, so the cached answers are still true and
         // throwing them away spends a fresh round of requests to re-learn them.
-        let repo = RepoRef { owner: "skarif2".into(), repo: "refused".into() };
+        let repo = RepoRef {
+            owner: "skarif2".into(),
+            repo: "refused".into(),
+        };
         prs::record_created(&repo, pr(1, "wave-3"));
-        let err = landing(&repo, || Err(ForgeError::NotMergeable { message: "blocked".into() }))
-            .unwrap_err();
+        let err = landing(&repo, || {
+            Err(ForgeError::NotMergeable {
+                message: "blocked".into(),
+            })
+        })
+        .unwrap_err();
         assert!(matches!(err, ForgeError::NotMergeable { .. }));
 
         let served = prs::cached_lookup(&repo, "wave-3", false, || {
@@ -1755,8 +1801,14 @@ mod tests {
         // mergeability describes a commit that is no longer what it merges into.
         // Invalidating only the landed branch leaves the siblings confidently
         // stale, which is the failure the merge guard exists to prevent.
-        let repo = RepoRef { owner: "skarif2".into(), repo: "landed".into() };
-        let other = RepoRef { owner: "skarif2".into(), repo: "untouched".into() };
+        let repo = RepoRef {
+            owner: "skarif2".into(),
+            repo: "landed".into(),
+        };
+        let other = RepoRef {
+            owner: "skarif2".into(),
+            repo: "untouched".into(),
+        };
         prs::record_created(&repo, pr(1, "wave-3"));
         prs::record_created(&repo, pr(2, "sibling"));
         prs::record_created(&other, pr(3, "wave-3"));
@@ -1803,7 +1855,9 @@ mod tests {
         // A duplicated kind would collapse two states the UI must tell apart.
         let all = [
             ForgeError::NoRemote,
-            ForgeError::UnsupportedRemote { host: "gitlab.com".into() },
+            ForgeError::UnsupportedRemote {
+                host: "gitlab.com".into(),
+            },
             ForgeError::NotAuthenticated,
             ForgeError::CredentialSuspect,
             ForgeError::Forbidden { message: String::new() },
@@ -1815,14 +1869,18 @@ mod tests {
             ForgeError::NotFound,
             ForgeError::AlreadyExists { message: String::new() },
             ForgeError::NotMergeable { message: String::new() },
-            ForgeError::AccountPickNeeded { host: "github.com".into() },
+            ForgeError::AccountPickNeeded {
+                host: "github.com".into(),
+            },
             ForgeError::Invalid { message: String::new() },
-            ForgeError::Api { status: 500, message: String::new() },
+            ForgeError::Api {
+                status: 500,
+                message: String::new(),
+            },
             ForgeError::Transport { message: String::new() },
             ForgeError::Malformed { message: String::new() },
         ];
-        let mut kinds: Vec<String> =
-            all.iter().cloned().map(|e| ForgeErrorDto::from(e).kind).collect();
+        let mut kinds: Vec<String> = all.iter().cloned().map(|e| ForgeErrorDto::from(e).kind).collect();
         let total = kinds.len();
         kinds.sort();
         kinds.dedup();
@@ -1841,7 +1899,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tori_forge_repo_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         let git = |args: &[&str]| {
-            std::process::Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap()
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .unwrap()
         };
         git(&["init"]);
         if let Some(url) = origin {
@@ -1855,7 +1918,10 @@ mod tests {
     fn forge(status: u16, body: &str, headers: Vec<(&str, &str)>) -> super::super::github::GitHubForge {
         let resp = super::super::http::HttpResponse {
             status,
-            headers: headers.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            headers: headers
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             body: body.to_string(),
         };
         super::super::github::GitHubForge::new(
@@ -1868,7 +1934,10 @@ mod tests {
     }
 
     fn create(f: &super::super::github::GitHubForge) -> ForgeError {
-        let repo = RepoRef { owner: "skarif2".into(), repo: "tori".into() };
+        let repo = RepoRef {
+            owner: "skarif2".into(),
+            repo: "tori".into(),
+        };
         let req = CreatePr {
             title: "t".into(),
             body: "b".into(),
@@ -1880,8 +1949,16 @@ mod tests {
     }
 
     fn github_account(file: &mut AccountsFile, login: &str) -> String {
-        accounts::add_account(file, Provider::Github, "https://github.com", accounts::GITHUB_COM, login, accounts::Source::Token, None)
-            .unwrap()
+        accounts::add_account(
+            file,
+            Provider::Github,
+            "https://github.com",
+            accounts::GITHUB_COM,
+            login,
+            accounts::Source::Token,
+            None,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -1891,7 +1968,10 @@ mod tests {
         // remote, sign in again, wait, or just click through to a PR that is
         // already open.
         let no_remote = repo_at(None);
-        assert!(matches!(remote_of(no_remote.to_str().unwrap()), Err(ForgeError::NoRemote)));
+        assert!(matches!(
+            remote_of(no_remote.to_str().unwrap()),
+            Err(ForgeError::NoRemote)
+        ));
 
         let gitlab = repo_at(Some("git@gitlab.com:skarif2/tori.git"));
         let remote = remote_of(gitlab.to_str().unwrap()).unwrap();
@@ -1942,9 +2022,23 @@ mod tests {
     fn a_worktree_resolves_to_the_same_account_as_its_project() {
         let project = repo_at(Some("git@github.com:skarif2/tori.git"));
         let git = |args: &[&str]| {
-            std::process::Command::new("git").arg("-C").arg(&project).args(args).output().unwrap()
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&project)
+                .args(args)
+                .output()
+                .unwrap()
         };
-        git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "x"]);
+        git(&[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "x",
+        ]);
         let worktree = project.with_extension("wt");
         git(&["worktree", "add", "-b", "wave-3", worktree.to_str().unwrap()]);
 
@@ -1963,7 +2057,11 @@ mod tests {
 
         picks.insert(remote_of(project.to_str().unwrap()).unwrap().key(), work.clone());
         assert_eq!(resolve(&project, &picks).ok(), Some(work.clone()));
-        assert_eq!(resolve(&worktree, &picks).ok(), Some(work), "the worktree shares the pick");
+        assert_eq!(
+            resolve(&worktree, &picks).ok(),
+            Some(work),
+            "the worktree shares the pick"
+        );
 
         let _ = std::fs::remove_dir_all(&worktree);
         let _ = std::fs::remove_dir_all(&project);
@@ -1992,9 +2090,7 @@ mod tests {
             source: Source::Token,
             org_access: Vec::new(),
         };
-        let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| {
-            Some(1)
-        });
+        let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| Some(1));
         assert_eq!(token.as_deref(), Some("ghp_lapsed"));
 
         auth::sign_out(id).unwrap();
@@ -2021,8 +2117,10 @@ mod tests {
         assert_eq!(accounts::find(&file, id).unwrap().1.source, Source::Browser);
 
         // The old flow's pair, refresh half and all.
-        let pair =
-            Secret { access_token: "gho_retired".into(), refresh_token: Some("ghr_retired".into()) };
+        let pair = Secret {
+            access_token: "gho_retired".into(),
+            refresh_token: Some("ghr_retired".into()),
+        };
         auth::sign_in(id, &pair, Some("arif".into())).unwrap();
 
         let (_, account) = accounts::find(&file, id).unwrap();
@@ -2037,7 +2135,11 @@ mod tests {
         use super::super::http::test_support::StubTransport;
         let stub = |resp| Box::new(StubTransport::new(vec![resp]));
         let github = github::GitHubForge::new(
-            stub(StubTransport::with_headers(200, &[("X-OAuth-Scopes", "repo, workflow")], r#"{"login":"arif"}"#)),
+            stub(StubTransport::with_headers(
+                200,
+                &[("X-OAuth-Scopes", "repo, workflow")],
+                r#"{"login":"arif"}"#,
+            )),
             "https://github.com",
             Some("gho_test".into()),
             None,
@@ -2045,12 +2147,24 @@ mod tests {
         github.viewer().unwrap();
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("github.com").unwrap();
-        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", accounts::Source::Token, None).unwrap();
+        let id = accounts::add_account(
+            &mut file,
+            Provider::Github,
+            &base_url,
+            &host,
+            "arif",
+            accounts::Source::Token,
+            None,
+        )
+        .unwrap();
         let grant = reported_grant(Provider::Github, Source::Token, &github);
         accounts::note_scopes(&mut file, &id, grant.scopes.unwrap());
         let file: AccountsFile = serde_json::from_str(&serde_json::to_string(&file).unwrap()).unwrap();
         let (_, account) = accounts::find(&file, &id).unwrap();
-        assert_eq!(account.scopes.as_deref(), Some(&["repo".to_string(), "workflow".to_string()][..]));
+        assert_eq!(
+            account.scopes.as_deref(),
+            Some(&["repo".to_string(), "workflow".to_string()][..])
+        );
 
         // A fine-grained token sends no header. It still counts as asked, so the
         // startup probe does not ask again at every launch.
@@ -2061,7 +2175,10 @@ mod tests {
             None,
         );
         fine.viewer().unwrap();
-        assert_eq!(reported_grant(Provider::Github, Source::Token, &fine).scopes, Some(vec![]));
+        assert_eq!(
+            reported_grant(Provider::Github, Source::Token, &fine).scopes,
+            Some(vec![])
+        );
 
         let gitlab = gitlab::GitLabForge::new(
             stub(StubTransport::json(200, r#"{"username":"arif"}"#)),
@@ -2073,7 +2190,10 @@ mod tests {
         // The one GitLab source that is not asked: the browser flow already said
         // how long its token lives, and the endpoint is a personal access
         // token's own record anyway.
-        assert_eq!(reported_grant(Provider::Gitlab, Source::Browser, &gitlab), Grant::default());
+        assert_eq!(
+            reported_grant(Provider::Gitlab, Source::Browser, &gitlab),
+            Grant::default()
+        );
     }
 
     #[test]
@@ -2103,7 +2223,10 @@ mod tests {
         let gitlab = gitlab::GitLabForge::new(
             Box::new(StubTransport::new(vec![
                 StubTransport::json(200, r#"{"username":"arif"}"#),
-                StubTransport::json(200, r#"{"scopes":["api","write_repository"],"expires_at":"2027-03-01"}"#),
+                StubTransport::json(
+                    200,
+                    r#"{"scopes":["api","write_repository"],"expires_at":"2027-03-01"}"#,
+                ),
             ])),
             "https://gitlab.com",
             Some("glpat_dated".into()),
@@ -2112,18 +2235,27 @@ mod tests {
         gitlab.viewer().unwrap();
         let grant = reported_grant(Provider::Gitlab, Source::Token, &gitlab);
         assert_eq!(grant.expires_at, Some(1_803_859_200));
-        assert_eq!(grant.scopes.as_deref(), Some(&["api".to_string(), "write_repository".to_string()][..]));
+        assert_eq!(
+            grant.scopes.as_deref(),
+            Some(&["api".to_string(), "write_repository".to_string()][..])
+        );
 
         // The same instance from the browser: one queued response, and a second
         // request would exhaust it, so this also proves nothing was spent.
         let browser = gitlab::GitLabForge::new(
-            Box::new(StubTransport::new(vec![StubTransport::json(200, r#"{"username":"arif"}"#)])),
+            Box::new(StubTransport::new(vec![StubTransport::json(
+                200,
+                r#"{"username":"arif"}"#,
+            )])),
             "https://gitlab.com",
             Some("glpat_browser".into()),
             None,
         );
         browser.viewer().unwrap();
-        assert_eq!(reported_grant(Provider::Gitlab, Source::Browser, &browser), Grant::default());
+        assert_eq!(
+            reported_grant(Provider::Gitlab, Source::Browser, &browser),
+            Grant::default()
+        );
     }
 
     #[test]
@@ -2148,7 +2280,10 @@ mod tests {
         // Pressing add again with gh logged in as the account already held would
         // re-sign-in that one instead of adding the second identity asked for.
         assert!(!gh_may_answer(&file, host, "skarif2", None, CliAsk::Whoever));
-        assert!(gh_may_answer(&file, host, "globex-arif", None, CliAsk::Whoever), "a login Tori does not hold yet");
+        assert!(
+            gh_may_answer(&file, host, "globex-arif", None, CliAsk::Whoever),
+            "a login Tori does not hold yet"
+        );
 
         // Re-auth follows the account, not gh: only the account gh supplied.
         assert!(gh_may_answer(&file, host, "skarif2", Some(&personal), CliAsk::Whoever));
@@ -2159,8 +2294,20 @@ mod tests {
         );
         // gh switched accounts under a cli-sourced one: storing that token here
         // would file somebody else's credential under this account's id.
-        assert!(!gh_may_answer(&file, host, "globex-arif", Some(&personal), CliAsk::Whoever));
-        assert!(!gh_may_answer(&file, host, "skarif2", Some("no-such-account"), CliAsk::Whoever));
+        assert!(!gh_may_answer(
+            &file,
+            host,
+            "globex-arif",
+            Some(&personal),
+            CliAsk::Whoever
+        ));
+        assert!(!gh_may_answer(
+            &file,
+            host,
+            "skarif2",
+            Some("no-such-account"),
+            CliAsk::Whoever
+        ));
 
         // Pressed by hand, on a control that names the CLI: the pasted account
         // and gh are the same person, and an organisation that refused Tori's
@@ -2168,7 +2315,13 @@ mod tests {
         assert!(gh_may_answer(&file, host, "globex-arif", Some(&pasted), CliAsk::Named));
         // Still not somebody else. Asking for gh cannot move an account to a
         // login that is not the one it holds.
-        assert!(!gh_may_answer(&file, host, "globex-arif", Some(&personal), CliAsk::Named));
+        assert!(!gh_may_answer(
+            &file,
+            host,
+            "globex-arif",
+            Some(&personal),
+            CliAsk::Named
+        ));
     }
 
     #[test]
@@ -2189,8 +2342,14 @@ mod tests {
 
         // The ordinary rejection: gh rotated its token, same person behind it.
         assert!(switched_away(account(), "skarif2").is_none());
-        assert!(switched_away(account(), "SKARIF2").is_none(), "logins compare without case");
-        assert!(gh_may_answer(&file, host, "skarif2", Some(&id), CliAsk::Whoever), "so the fresh token is stored");
+        assert!(
+            switched_away(account(), "SKARIF2").is_none(),
+            "logins compare without case"
+        );
+        assert!(
+            gh_may_answer(&file, host, "skarif2", Some(&id), CliAsk::Whoever),
+            "so the fresh token is stored"
+        );
 
         // `gh auth switch` since: the account's id is already picked by repos,
         // so adopting this token would quietly re-point them at another person.
@@ -2217,7 +2376,10 @@ mod tests {
             client_id_for(&file, Provider::Gitlab, accounts::GITLAB_COM).as_deref(),
             Some(device_flow::GITLAB_COM_CLIENT_ID)
         );
-        assert_eq!(client_id_for(&file, Provider::Gitlab, "git.example.com").as_deref(), Some("company-app"));
+        assert_eq!(
+            client_id_for(&file, Provider::Gitlab, "git.example.com").as_deref(),
+            Some("company-app")
+        );
         assert_eq!(client_id_for(&file, Provider::Gitlab, "gitlab.acme.test"), None);
     }
 
@@ -2234,28 +2396,66 @@ mod tests {
     fn a_github_enterprise_remote_resolves_through_its_account() {
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("ghe.acme.test").unwrap();
-        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", accounts::Source::Token, None).unwrap();
+        let id = accounts::add_account(
+            &mut file,
+            Provider::Github,
+            &base_url,
+            &host,
+            "arif",
+            accounts::Source::Token,
+            None,
+        )
+        .unwrap();
         let remote = remote::parse("git@ghe.acme.test:acme/widgets.git").unwrap();
-        assert_eq!(client_in(&file, &BTreeMap::new(), remote).ok().map(|c| c.account_id), Some(id));
+        assert_eq!(
+            client_in(&file, &BTreeMap::new(), remote).ok().map(|c| c.account_id),
+            Some(id)
+        );
     }
 
     #[test]
     fn a_clone_resolves_its_account_from_the_host_and_path_git_sends() {
         let mut file = AccountsFile::default();
         let (base_url, host) = accounts::normalize_base_url("gitlab.com").unwrap();
-        let arif = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "skarif2", accounts::Source::Token, None).unwrap();
+        let arif = accounts::add_account(
+            &mut file,
+            Provider::Gitlab,
+            &base_url,
+            &host,
+            "skarif2",
+            accounts::Source::Token,
+            None,
+        )
+        .unwrap();
         let picks = BTreeMap::new();
         let path = "skarif2/masterchef.git";
 
         let tori = Reach::Tori;
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), None, "the switch is off");
+        assert_eq!(
+            git_account_at(&file, &picks, "gitlab.com", path, tori),
+            None,
+            "the switch is off"
+        );
         accounts::set_git_credentials(&mut file, "gitlab.com", true);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), Some(arif));
         assert_eq!(git_account_at(&file, &picks, "gitlab.com:8443", path, tori), None);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", "", tori), None);
 
-        let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "globex-arif", accounts::Source::Token, None).unwrap();
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), None, "two accounts, no pick, no default");
+        let work = accounts::add_account(
+            &mut file,
+            Provider::Gitlab,
+            &base_url,
+            &host,
+            "globex-arif",
+            accounts::Source::Token,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            git_account_at(&file, &picks, "gitlab.com", path, tori),
+            None,
+            "two accounts, no pick, no default"
+        );
         let picks = BTreeMap::from([("gitlab.com/skarif2/masterchef".to_string(), work.clone())]);
         assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), Some(work));
     }
@@ -2275,7 +2475,10 @@ mod tests {
             let dto = ForgeErrorDto::from(err.clone());
             let json = serde_json::to_string(&dto).unwrap();
             assert!(!json.contains(TOKEN), "token leaked into {json}");
-            assert!(!format!("{err:?}").contains(TOKEN), "token leaked into Debug of {err:?}");
+            assert!(
+                !format!("{err:?}").contains(TOKEN),
+                "token leaked into Debug of {err:?}"
+            );
         }
     }
 
@@ -2334,12 +2537,7 @@ mod tests {
         let not_a_repo = std::env::temp_dir().join("tori_forge_no_repo_here");
         switched_off();
 
-        let err = unit_statuses(
-            not_a_repo.to_string_lossy().into_owned(),
-            vec!["wave-3".into()],
-            false,
-        )
-        .unwrap_err();
+        let err = unit_statuses(not_a_repo.to_string_lossy().into_owned(), vec!["wave-3".into()], false).unwrap_err();
         assert_eq!(err.kind, "notAuthenticated", "a disabled integration reached the repo");
 
         auth::restore(vec![], true);
@@ -2356,7 +2554,10 @@ mod tests {
         switched_off();
 
         let err = forge_list_prs(not_a_repo.to_string_lossy().into_owned()).unwrap_err();
-        assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed pull requests");
+        assert_eq!(
+            err.kind, "notAuthenticated",
+            "a disabled integration listed pull requests"
+        );
 
         auth::restore(vec![], true);
     }
@@ -2370,7 +2571,10 @@ mod tests {
         switched_off();
 
         let err = forge_pr_files(not_a_repo.to_string_lossy().into_owned(), 12).unwrap_err();
-        assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed changed files");
+        assert_eq!(
+            err.kind, "notAuthenticated",
+            "a disabled integration listed changed files"
+        );
 
         auth::restore(vec![], true);
     }
@@ -2386,11 +2590,23 @@ mod tests {
         assert!(json.contains("\"accountId\""));
         assert!(!json.contains("gho_"), "a token reached the frontend: {json}");
         let pending = serde_json::to_string(&PollReport::Pending { next_interval_secs: 10 }).unwrap();
-        assert!(pending.contains("\"nextIntervalSecs\":10"), "the frontend reads camelCase: {pending}");
+        assert!(
+            pending.contains("\"nextIntervalSecs\":10"),
+            "the frontend reads camelCase: {pending}"
+        );
 
-        let denied = serde_json::to_value(PollReport::Denied { code: device_flow::ACCESS_DENIED.into() }).unwrap();
+        let denied = serde_json::to_value(PollReport::Denied {
+            code: device_flow::ACCESS_DENIED.into(),
+        })
+        .unwrap();
         assert_eq!(denied, serde_json::json!({ "kind": "denied", "code": "access_denied" }));
-        let expired = serde_json::to_value(PollReport::Expired { code: device_flow::EXPIRED_TOKEN.into() }).unwrap();
-        assert_eq!(expired, serde_json::json!({ "kind": "expired", "code": "expired_token" }));
+        let expired = serde_json::to_value(PollReport::Expired {
+            code: device_flow::EXPIRED_TOKEN.into(),
+        })
+        .unwrap();
+        assert_eq!(
+            expired,
+            serde_json::json!({ "kind": "expired", "code": "expired_token" })
+        );
     }
 }

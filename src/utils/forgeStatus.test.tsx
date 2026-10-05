@@ -41,9 +41,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (cmd === "forge_viewer") {
       viewerReads += 1;
-      return viewerAnswer
-        ? Promise.resolve(viewerAnswer)
-        : Promise.reject(new Error("not signed in"));
+      return viewerAnswer ? Promise.resolve(viewerAnswer) : Promise.reject(new Error("not signed in"));
     }
     if (cmd === "autopilot_pickup") {
       pickups.push(args?.projectPath as string);
@@ -260,7 +258,13 @@ describe("the viewer identity", () => {
 });
 
 describe("a Topic's members", () => {
-  const topic = (members: Topic["members"]): Topic => ({ id: "t", name: "Auth", branch: "auth", members, createdAt: 0 });
+  const topic = (members: Topic["members"]): Topic => ({
+    id: "t",
+    name: "Auth",
+    branch: "auth",
+    members,
+    createdAt: 0,
+  });
   const member = (repoPath: string, mode: "reference" | "worktree"): Topic["members"][number] => ({
     repoPath,
     displayName: repoPath,
@@ -272,7 +276,12 @@ describe("a Topic's members", () => {
 
   it("asks about the Topic branch in a plain repo, and never for a reference that was never promoted", async () => {
     const watched = topicProjects(
-      [{ topic: topic([member("/api", "worktree"), member("/web", "reference"), member("/docs", "reference")]), visible: true }],
+      [
+        {
+          topic: topic([member("/api", "worktree"), member("/web", "reference"), member("/docs", "reference")]),
+          visible: true,
+        },
+      ],
       (repo) => repo === "/docs",
     );
     signedInWith(mergeWatched([[project("/api", ["main"])], watched]));

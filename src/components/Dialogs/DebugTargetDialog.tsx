@@ -88,9 +88,7 @@ export default function DebugTargetDialog(props: {
     return props.filePath ? `${props.filePath} is not a file ${adapterLabel()} runs.` : "No file is open.";
   };
   const [kind, setKind] = createSignal<TargetKind | null>(
-    props.kind && kindsFor(adapterId()).includes(props.kind)
-      ? props.kind
-      : defaultKind(adapterId(), has()),
+    props.kind && kindsFor(adapterId()).includes(props.kind) ? props.kind : defaultKind(adapterId(), has()),
   );
   const [script, setScript] = createSignal(props.scripts[0] ?? "");
   const [port, setPort] = createSignal(String(props.port || DEFAULT_ATTACH_PORT));
@@ -117,9 +115,7 @@ export default function DebugTargetDialog(props: {
         if (!props.scripts.length) return "This project declares no package scripts.";
         return script() ? null : "Pick a script.";
       case "attach":
-        return isPort(portNumber())
-          ? null
-          : "Enter a port between 1024 and 65535 (node's default is 9229).";
+        return isPort(portNumber()) ? null : "Enter a port between 1024 and 65535 (node's default is 9229).";
       case "module":
         return isModuleName(module().trim()) ? null : "Enter a module name, like app.main.";
       case "cargo":
@@ -204,7 +200,9 @@ export default function DebugTargetDialog(props: {
       }
     >
       <Show when={props.adapters.length > 1}>
-        <div id={ADAPTER_LABEL} class={styles.label}>Debugger</div>
+        <div id={ADAPTER_LABEL} class={styles.label}>
+          Debugger
+        </div>
         <Select
           class={styles.fill}
           aria-labelledby={ADAPTER_LABEL}
@@ -215,15 +213,11 @@ export default function DebugTargetDialog(props: {
       </Show>
 
       <Show when={kind()}>
-        {(k) => (
-          <SegmentedControl aria-label="What to debug" options={segs()} value={k()} onChange={setKind} />
-        )}
+        {(k) => <SegmentedControl aria-label="What to debug" options={segs()} value={k()} onChange={setKind} />}
       </Show>
 
       <Show when={kind() === "file"}>
-        <div class={styles.msg}>
-          {fileMessage((f) => `Runs ${f} under ${runner()}, stopping on your breakpoints.`)}
-        </div>
+        <div class={styles.msg}>{fileMessage((f) => `Runs ${f} under ${runner()}, stopping on your breakpoints.`)}</div>
       </Show>
 
       <Show when={kind() === "pytest"}>
@@ -247,7 +241,9 @@ export default function DebugTargetDialog(props: {
           when={props.lldb.bins.length > 1}
           fallback={<div class={styles.msg}>Builds {bin()} with cargo, then debugs it.</div>}
         >
-          <div id={BIN_LABEL} class={styles.label}>Binary</div>
+          <div id={BIN_LABEL} class={styles.label}>
+            Binary
+          </div>
           <Select
             ref={(el) => (first = el)}
             class={styles.fill}
@@ -261,7 +257,9 @@ export default function DebugTargetDialog(props: {
       </Show>
 
       <Show when={kind() === "program"}>
-        <div id={PROGRAM_LABEL} class={styles.label}>Program</div>
+        <div id={PROGRAM_LABEL} class={styles.label}>
+          Program
+        </div>
         <div class={styles.fieldRow}>
           <input
             ref={(el) => (first = el)}
@@ -277,13 +275,14 @@ export default function DebugTargetDialog(props: {
           <Button onClick={() => void pickProgram()}>Choose</Button>
         </div>
         <div class={styles.msg}>
-          A program built with debug info (<code>-g</code>). A relative path starts from{" "}
-          <code>{props.lldb.root}</code>.
+          A program built with debug info (<code>-g</code>). A relative path starts from <code>{props.lldb.root}</code>.
         </div>
       </Show>
 
       <Show when={kind() === "module"}>
-        <div id={MODULE_LABEL} class={styles.label}>Module</div>
+        <div id={MODULE_LABEL} class={styles.label}>
+          Module
+        </div>
         <input
           ref={(el) => (first = el)}
           class={styles.input}
@@ -295,11 +294,15 @@ export default function DebugTargetDialog(props: {
           autocorrect="off"
           spellcheck={false}
         />
-        <div class={styles.msg}>Runs it the way <code>python -m</code> does, stopping on your breakpoints.</div>
+        <div class={styles.msg}>
+          Runs it the way <code>python -m</code> does, stopping on your breakpoints.
+        </div>
       </Show>
 
       <Show when={kind() === "script"}>
-        <div id={SCRIPT_LABEL} class={styles.label}>Script</div>
+        <div id={SCRIPT_LABEL} class={styles.label}>
+          Script
+        </div>
         <Show
           when={props.scripts.length}
           fallback={<div class={styles.msg}>No scripts in this project's package.json.</div>}
@@ -316,7 +319,9 @@ export default function DebugTargetDialog(props: {
       </Show>
 
       <Show when={kind() === "attach"}>
-        <div id={PORT_LABEL} class={styles.label}>Inspector port</div>
+        <div id={PORT_LABEL} class={styles.label}>
+          Inspector port
+        </div>
         <input
           ref={(el) => (first = el)}
           class={styles.input}
@@ -330,8 +335,8 @@ export default function DebugTargetDialog(props: {
           spellcheck={false}
         />
         <div class={styles.msg}>
-          The target must already be running with <code>--inspect</code>. Tori attaches to it and
-          leaves it running when you stop.
+          The target must already be running with <code>--inspect</code>. Tori attaches to it and leaves it running when
+          you stop.
         </div>
       </Show>
 

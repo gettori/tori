@@ -5,7 +5,14 @@
 // pure and unit-tested; `requestSend` is the cross-panel entry point other
 // panels call, routed to Terminal.tsx (the only owner of `pty_write` and
 // tab/session state) via the SEND_TO_SESSION event pair.
-import { emitWith, onWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, type SendToSession, type SendToSessionResult } from "./events";
+import {
+  emitWith,
+  onWith,
+  SEND_TO_SESSION,
+  SEND_TO_SESSION_RESULT,
+  type SendToSession,
+  type SendToSessionResult,
+} from "./events";
 import { isPdfPath, mentionPath } from "./pathScope";
 
 // The routing/resume fields every safe-send caller needs to name a target
@@ -17,7 +24,13 @@ export type SessionTarget = Omit<SendToSession, "requestId" | "text">;
 // `In @<file> lines <X>-<Y>: <comment>`, the hunk-comment wire format (plan
 // phase 1, task 2). Path relativity follows the drag-mention convention
 // (mentionPath): inside the target's cwd, relative; outside it, absolute.
-export function composeHunkComment(target: SessionTarget, filePath: string, startLine: number, endLine: number, comment: string): string {
+export function composeHunkComment(
+  target: SessionTarget,
+  filePath: string,
+  startLine: number,
+  endLine: number,
+  comment: string,
+): string {
   const cwd = target.sessionCwd || target.folderPath;
   const mention = mentionPath(filePath, cwd);
   return `In @${mention} lines ${startLine}-${endLine}: ${comment}`;
@@ -31,7 +44,12 @@ export function composeHunkComment(target: SessionTarget, filePath: string, star
 // because the chips and the jump list already speak in lines; to the agent it is
 // not, and `#L3` would send it looking for a third line of text in a file it
 // opens by page.
-export function composeSelectionMention(target: SessionTarget, filePath: string, startLine: number, endLine: number): string {
+export function composeSelectionMention(
+  target: SessionTarget,
+  filePath: string,
+  startLine: number,
+  endLine: number,
+): string {
   const cwd = target.sessionCwd || target.folderPath;
   const mention = mentionPath(filePath, cwd);
   if (isPdfPath(filePath)) {
@@ -100,13 +118,7 @@ export function composeDiagnosticWithFixes(
 // request is the sentence around it. Flattened for `composeDiagnostic`'s reason
 // - a raw newline submits the prompt on some agents, which would break the
 // insert-only contract this module exists to keep.
-export function composeTodo(
-  target: SessionTarget,
-  filePath: string,
-  line: number,
-  tag: string,
-  text: string,
-): string {
+export function composeTodo(target: SessionTarget, filePath: string, line: number, tag: string, text: string): string {
   const cwd = target.sessionCwd || target.folderPath;
   const mention = mentionPath(filePath, cwd);
   const flat = text.replace(/\s*\n\s*/g, " ").trim();

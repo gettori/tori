@@ -30,7 +30,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::{
-    count_lines, git_output, parse_name_status, parse_raw_change, write_blob_to_disk, write_tree_scratch, CheckpointFile,
+    count_lines, git_output, parse_name_status, parse_raw_change, write_blob_to_disk, write_tree_scratch,
+    CheckpointFile,
 };
 
 /// How many backstops one worktree keeps. Each costs a tree object and a ref,
@@ -232,8 +233,7 @@ fn find(repo: &str, dir: &Path, ts: u64) -> Found {
     if let Some(rec) = read_records(dir).into_iter().find(|r| r.ts == ts) {
         return Found::Mine(rec);
     }
-    let listed = git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])
-        .unwrap_or_default();
+    let listed = git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"]).unwrap_or_default();
     let suffix = format!("/{ts}");
     if listed.lines().any(|name| name.ends_with(&suffix)) {
         return Found::Foreign;
@@ -311,7 +311,10 @@ fn restore_from(repo: &str, target: &str, only: Option<&str>) -> Result<RestoreO
 /// returned nothing would let it write with no way back.
 #[tauri::command]
 pub async fn backstop_take(repo_path: String, label: String) -> Result<BackstopRecord, String> {
-    crate::exec::git_write("backstop_take", repo_path.clone(), move || backstop_take_body(repo_path, label)).await
+    crate::exec::git_write("backstop_take", repo_path.clone(), move || {
+        backstop_take_body(repo_path, label)
+    })
+    .await
 }
 
 pub(crate) fn backstop_take_body(repo_path: String, label: String) -> Result<BackstopRecord, String> {
@@ -348,7 +351,10 @@ pub fn backstop_list(repo_path: String) -> Result<Vec<BackstopRecord>, String> {
 /// held `index.lock` rather than waiting for it.
 #[tauri::command]
 pub async fn backstop_files(repo_path: String, ts: u64) -> Result<Vec<CheckpointFile>, String> {
-    crate::exec::git_write("backstop_files", repo_path.clone(), move || backstop_files_body(repo_path, ts)).await
+    crate::exec::git_write("backstop_files", repo_path.clone(), move || {
+        backstop_files_body(repo_path, ts)
+    })
+    .await
 }
 
 pub(crate) fn backstop_files_body(repo_path: String, ts: u64) -> Result<Vec<CheckpointFile>, String> {
@@ -357,7 +363,10 @@ pub(crate) fn backstop_files_body(repo_path: String, ts: u64) -> Result<Vec<Chec
     if current == rec.tree {
         return Ok(Vec::new());
     }
-    let mut files = parse_name_status(&git_capture(&repo_path, &["diff", "--name-status", &rec.tree, &current])?);
+    let mut files = parse_name_status(&git_capture(
+        &repo_path,
+        &["diff", "--name-status", &rec.tree, &current],
+    )?);
     count_lines(&repo_path, &rec.tree, &current, &mut files);
     Ok(files)
 }
@@ -365,7 +374,10 @@ pub(crate) fn backstop_files_body(repo_path: String, ts: u64) -> Result<Vec<Chec
 /// Unified diff text for one file, from a backstop to the working tree.
 #[tauri::command]
 pub async fn backstop_diff_file(repo_path: String, ts: u64, file: String) -> Result<String, String> {
-    crate::exec::git_write("backstop_diff_file", repo_path.clone(), move || backstop_diff_file_body(repo_path, ts, file)).await
+    crate::exec::git_write("backstop_diff_file", repo_path.clone(), move || {
+        backstop_diff_file_body(repo_path, ts, file)
+    })
+    .await
 }
 
 pub(crate) fn backstop_diff_file_body(repo_path: String, ts: u64, file: String) -> Result<String, String> {
@@ -382,7 +394,10 @@ pub(crate) fn backstop_diff_file_body(repo_path: String, ts: u64, file: String) 
 /// user could have meant.
 #[tauri::command]
 pub async fn backstop_restore_tree(repo_path: String, ts: u64) -> Result<RestoreOutcome, String> {
-    crate::exec::git_write("backstop_restore_tree", repo_path.clone(), move || backstop_restore_tree_body(repo_path, ts)).await
+    crate::exec::git_write("backstop_restore_tree", repo_path.clone(), move || {
+        backstop_restore_tree_body(repo_path, ts)
+    })
+    .await
 }
 
 pub(crate) fn backstop_restore_tree_body(repo_path: String, ts: u64) -> Result<RestoreOutcome, String> {
@@ -402,8 +417,16 @@ pub(crate) fn backstop_restore_tree_body(repo_path: String, ts: u64) -> Result<R
 /// wall: it refuses by default, and `force` goes ahead. That mirrors
 /// `checkpoint_revert_file`, where the same trade-off already lives.
 #[tauri::command]
-pub async fn backstop_restore_file(repo_path: String, ts: u64, file: String, force: Option<bool>) -> Result<RestoreOutcome, String> {
-    crate::exec::git_write("backstop_restore_file", repo_path.clone(), move || backstop_restore_file_body(repo_path, ts, file, force)).await
+pub async fn backstop_restore_file(
+    repo_path: String,
+    ts: u64,
+    file: String,
+    force: Option<bool>,
+) -> Result<RestoreOutcome, String> {
+    crate::exec::git_write("backstop_restore_file", repo_path.clone(), move || {
+        backstop_restore_file_body(repo_path, ts, file, force)
+    })
+    .await
 }
 
 pub(crate) fn backstop_restore_file_body(
@@ -414,7 +437,9 @@ pub(crate) fn backstop_restore_file_body(
 ) -> Result<RestoreOutcome, String> {
     let rec = resolve(&repo_path, ts)?;
     if rec.head != head_now(&repo_path) && !force.unwrap_or(false) {
-        return Err("The branch has moved since that backup, so this file's contents come from a different commit.".into());
+        return Err(
+            "The branch has moved since that backup, so this file's contents come from a different commit.".into(),
+        );
     }
     restore_from(&repo_path, &rec.tree, Some(&file))
 }
@@ -427,7 +452,10 @@ pub(crate) fn backstop_restore_file_body(
 /// worktree's sidecar still claims its id. Returns how many were removed.
 #[tauri::command]
 pub async fn backstop_prune(repo_path: String) -> Result<usize, String> {
-    crate::exec::git_write("backstop_prune", repo_path.clone(), move || backstop_prune_body(repo_path)).await
+    crate::exec::git_write("backstop_prune", repo_path.clone(), move || {
+        backstop_prune_body(repo_path)
+    })
+    .await
 }
 
 pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
@@ -446,10 +474,15 @@ pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
         .filter(|id| !id.is_empty())
         .collect();
 
-    let refs = git_capture(&repo_path, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])?;
+    let refs = git_capture(
+        &repo_path,
+        &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"],
+    )?;
     let mut removed = 0;
     for name in refs.lines() {
-        let Some(rest) = name.strip_prefix("refs/tori/discard/") else { continue };
+        let Some(rest) = name.strip_prefix("refs/tori/discard/") else {
+            continue;
+        };
         let Some((id, _)) = rest.rsplit_once('/') else { continue };
         if live.iter().any(|l| l == id) {
             continue;
@@ -463,8 +496,8 @@ pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
+    use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn git(dir: &Path, args: &[&str]) {
@@ -478,7 +511,12 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "t@t.test")
             .output()
             .unwrap();
-        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     /// A repo with one commit, so HEAD is born and `git worktree add` works.
@@ -526,7 +564,10 @@ mod tests {
         let listed = git_capture(&repo, &["for-each-ref", "--format=%(objectname)", "refs/tori/discard/"]).unwrap();
         assert_eq!(listed, rec.tree);
         let names = git_capture(&repo, &["ls-tree", "--name-only", "-r", &rec.tree]).unwrap();
-        assert!(names.contains("loose.txt"), "the snapshot spans the whole tree: {names}");
+        assert!(
+            names.contains("loose.txt"),
+            "the snapshot spans the whole tree: {names}"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -694,7 +735,11 @@ mod tests {
         assert_eq!(all(&main), 2);
 
         git(&dir, &["worktree", "remove", "--force", wt.to_str().unwrap()]);
-        assert_eq!(all(&main), 2, "the refs are shared, so removal alone leaves them behind");
+        assert_eq!(
+            all(&main),
+            2,
+            "the refs are shared, so removal alone leaves them behind"
+        );
 
         assert_eq!(backstop_prune_body(main.clone()).unwrap(), 1);
         assert_eq!(all(&main), 1, "only the departed worktree's ref went");

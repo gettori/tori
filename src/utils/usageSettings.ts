@@ -24,12 +24,7 @@ import { asProfileId } from "./agentHealth";
 import { MODEL_FAMILIES, scopedModel, weekQualifier } from "./chatRateLimit";
 import { catalogFor } from "./modelCatalog";
 import { windowsFor } from "./usageStore";
-import {
-  saveSettings,
-  settings,
-  type AccountUsage,
-  type UsageSource,
-} from "../panels/Settings/settingsStore";
+import { saveSettings, settings, type AccountUsage, type UsageSource } from "../panels/Settings/settingsStore";
 
 /**
  * The three chips, and the one that is not a window kind.
@@ -167,11 +162,7 @@ export function usageNotify(agentId: string, profile: string | null): boolean {
  * change to what the free rung reports would be frozen out by a decision the
  * user never made.
  */
-function patchAccount(
-  agentId: string,
-  profile: string | null,
-  patch: Partial<AccountUsage>,
-): Promise<void> {
+function patchAccount(agentId: string, profile: string | null, patch: Partial<AccountUsage>): Promise<void> {
   const id = asProfileId(profile);
   const usage = { ...(settings.agent?.usage ?? {}) };
   const forAgent = usage[agentId] ?? {};
@@ -191,26 +182,16 @@ export function setWindowShown(
   shown: boolean,
 ): Promise<void> {
   const held = accountWindows(agentId, profile);
-  const windows = shown
-    ? CHIPS.filter((c) => c === chip || held.includes(c))
-    : held.filter((c) => c !== chip);
+  const windows = shown ? CHIPS.filter((c) => c === chip || held.includes(c)) : held.filter((c) => c !== chip);
   return patchAccount(agentId, profile, { windows });
 }
 
 /** Move this account's threshold, or hand it back to the shared one with null. */
-export function setUsageWarnAt(
-  agentId: string,
-  profile: string | null,
-  fraction: number | null,
-): Promise<void> {
+export function setUsageWarnAt(agentId: string, profile: string | null, fraction: number | null): Promise<void> {
   return patchAccount(agentId, profile, { warnAt: fraction });
 }
 
-export function setUsageNotify(
-  agentId: string,
-  profile: string | null,
-  notify: boolean,
-): Promise<void> {
+export function setUsageNotify(agentId: string, profile: string | null, notify: boolean): Promise<void> {
   return patchAccount(agentId, profile, { notify });
 }
 

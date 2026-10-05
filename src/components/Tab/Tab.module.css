@@ -35,8 +35,7 @@
    grey as the hover and left the bar to carry the whole distinction. */
 .pill:has([data-selected]) {
   background:
-    linear-gradient(var(--brand-bar), var(--brand-bar)) center top / 100%
-      var(--tori-border-thick) no-repeat,
+    linear-gradient(var(--brand-bar), var(--brand-bar)) center top / 100% var(--tori-border-thick) no-repeat,
     linear-gradient(to bottom, var(--brand-subtle), transparent);
 }
 

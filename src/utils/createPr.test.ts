@@ -75,12 +75,8 @@ describe("submitBlockedReason", () => {
   it("catches a base that equals the branch before the server does", () => {
     // GitHub answers this with a 422 whose message is easy to miss, and no
     // amount of retrying fixes it: the user has to change the base.
-    expect(submitBlockedReason({ ...ok, base: "wave-3" })).toBe(
-      "The base and the branch are the same",
-    );
-    expect(submitBlockedReason({ ...ok, base: " wave-3 " })).toBe(
-      "The base and the branch are the same",
-    );
+    expect(submitBlockedReason({ ...ok, base: "wave-3" })).toBe("The base and the branch are the same");
+    expect(submitBlockedReason({ ...ok, base: " wave-3 " })).toBe("The base and the branch are the same");
   });
 });
 

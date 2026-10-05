@@ -53,9 +53,7 @@ export default function HistoryRow(props: {
       {/* The backend sends a label only when there is a second account to tell
           this one apart from, so a machine that never added one renders exactly
           the list it rendered before. */}
-      <Show when={props.profile}>
-        {(profile) => <span class={styles.rowProfile}>{profile()}</span>}
-      </Show>
+      <Show when={props.profile}>{(profile) => <span class={styles.rowProfile}>{profile()}</span>}</Show>
       <Show when={props.locked} fallback={<span class={styles.rowWhen}>{props.when}</span>}>
         <span class={styles.rowWhen}>{props.locked}</span>
       </Show>

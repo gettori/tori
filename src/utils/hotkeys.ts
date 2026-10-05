@@ -41,9 +41,7 @@ export type Binding = Command & {
  * read it, so a binding cannot be added, changed, or removed in one without the
  * other following - the drift that makes printed shortcut lists lie.
  */
-export const BINDINGS: Binding[] = COMMANDS.filter(
-  (c): c is Binding => !!c.keys && !!c.scope && !!c.match,
-);
+export const BINDINGS: Binding[] = COMMANDS.filter((c): c is Binding => !!c.keys && !!c.scope && !!c.match);
 
 /** Bindings for the sheet, grouped in `GROUP_LABELS` order. A group with no
  *  key-carrying command (Editor, Git) drops out rather than showing empty. */

@@ -297,11 +297,15 @@ export default function FirstRun() {
         }
       >
         <Switch>
-          <Match when={step() === "agents"}>
-            {agentsSetup.view()}
-          </Match>
+          <Match when={step() === "agents"}>{agentsSetup.view()}</Match>
           <Match when={step() === "base"}>
-            <BaseFolderStep root={root()} spaces={config()?.spaces ?? []} home={home()} busy={busy()} onChoose={() => void chooseFolder()} />
+            <BaseFolderStep
+              root={root()}
+              spaces={config()?.spaces ?? []}
+              home={home()}
+              busy={busy()}
+              onChoose={() => void chooseFolder()}
+            />
           </Match>
           <Match when={step() === "space" && root()}>
             {(r) => (

@@ -44,12 +44,7 @@ class BreakpointMarker extends GutterMarker {
   readonly elementClass: string;
   constructor(readonly state: BreakpointState) {
     super();
-    const extra =
-      state === "bound"
-        ? BREAKPOINT_BOUND_CLASS
-        : state === "pending"
-          ? BREAKPOINT_PENDING_CLASS
-          : "";
+    const extra = state === "bound" ? BREAKPOINT_BOUND_CLASS : state === "pending" ? BREAKPOINT_PENDING_CLASS : "";
     this.elementClass = extra ? `${BREAKPOINT_MARKER_CLASS} ${extra}` : BREAKPOINT_MARKER_CLASS;
   }
   toDOM() {
@@ -173,8 +168,7 @@ export function breakpointGutter(handlers: {
       // the `gutterLineClass` facet contributed too, and the active-line
       // highlight is one of those. Testing the length rather than the kind left
       // the caret's own line as the one line in the file with no hint on it.
-      lineMarker: (_view, _line, others) =>
-        others.some((marker) => marker instanceof BreakpointMarker) ? null : HINT,
+      lineMarker: (_view, _line, others) => (others.some((marker) => marker instanceof BreakpointMarker) ? null : HINT),
       initialSpacer: () => new SpacerMarker(),
       domEventHandlers: {
         mousedown: (view, block) => {

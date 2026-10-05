@@ -164,9 +164,7 @@ describe("the PDF toolbar", () => {
       commit(percentField(), "150");
       await waitFor(() =>
         expect(
-          ["Width", "Page", "100%"].map((n) =>
-            screen.getByRole("button", { name: n }).getAttribute("aria-pressed"),
-          ),
+          ["Width", "Page", "100%"].map((n) => screen.getByRole("button", { name: n }).getAttribute("aria-pressed")),
         ).toEqual(["false", "false", "false"]),
       );
     });

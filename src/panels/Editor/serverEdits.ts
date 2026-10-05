@@ -16,7 +16,14 @@
 // worse outcome for the edit and a far better one for the editor than a request
 // that never comes back.
 
-import { applyWorkspaceEdit, list, type ApplyDeps, type ApplyOutcome, type ApplyPolicy, type WorkspaceEdit } from "./workspaceEdit";
+import {
+  applyWorkspaceEdit,
+  list,
+  type ApplyDeps,
+  type ApplyOutcome,
+  type ApplyPolicy,
+  type WorkspaceEdit,
+} from "./workspaceEdit";
 
 /** `workspace/applyEdit`'s params and its response, as the spec has them. */
 export type ApplyEditParams = { label?: string; edit?: WorkspaceEdit };
@@ -97,11 +104,7 @@ export function serverEditPolicy(expired: () => boolean): ApplyPolicy {
  * before the first byte, rather than writing files behind an `applied: false`
  * this function already returned.
  */
-async function applyWithin(
-  edit: WorkspaceEdit | undefined,
-  deps: ApplyDeps,
-  ms: number,
-): Promise<ApplyOutcome> {
+async function applyWithin(edit: WorkspaceEdit | undefined, deps: ApplyDeps, ms: number): Promise<ApplyOutcome> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let expired = false;
   const deadline = new Promise<ApplyOutcome>((resolve) => {
@@ -114,9 +117,14 @@ async function applyWithin(
     return await Promise.race([
       // Caught rather than left to reject: an unanswered request is the one
       // outcome this whole module exists to prevent.
-      applyWorkspaceEdit(edit, deps, serverEditPolicy(() => expired)).catch(
-        (e: unknown): ApplyOutcome => ({ kind: "aborted", reason: `Tori could not apply this change: ${String(e)}` }),
-      ),
+      applyWorkspaceEdit(
+        edit,
+        deps,
+        serverEditPolicy(() => expired),
+      ).catch((e: unknown): ApplyOutcome => ({
+        kind: "aborted",
+        reason: `Tori could not apply this change: ${String(e)}`,
+      })),
       deadline,
     ]);
   } finally {

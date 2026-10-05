@@ -257,11 +257,7 @@ export function codeActionTarget(path: string, serverId: string | undefined): Ls
  * first, and a command named "Organize imports" has no way to ask the user
  * which organize-imports they meant.
  */
-export async function requestSourceAction(
-  path: string,
-  kind: string,
-  wholeFile: LspRange,
-): Promise<CodeAction | null> {
+export async function requestSourceAction(path: string, kind: string, wholeFile: LspRange): Promise<CodeAction | null> {
   const actions = await requestCodeActions(path, wholeFile, [kind]);
   if (!actions?.length) return null;
   // A server may answer a filtered request with kinds it thinks are close
@@ -415,10 +411,7 @@ export type RunCodeActionDeps = {
   runCommand: (command: LspCommand) => Promise<void>;
 };
 
-export type RunOutcome =
-  | { kind: "done" }
-  | { kind: "nothing" }
-  | { kind: "refused"; reason: string };
+export type RunOutcome = { kind: "done" } | { kind: "nothing" } | { kind: "refused"; reason: string };
 
 /**
  * Do what an action offers to do.
@@ -433,11 +426,7 @@ export type RunOutcome =
  * edit that happened, so running it anyway would tell the server a change
  * landed that Tori declined to make.
  */
-export async function runCodeAction(
-  path: string,
-  action: CodeAction,
-  deps: RunCodeActionDeps,
-): Promise<RunOutcome> {
+export async function runCodeAction(path: string, action: CodeAction, deps: RunCodeActionDeps): Promise<RunOutcome> {
   const full = await resolveCodeAction(path, action);
   if (full.edit) {
     const refused = await deps.applyEdit(full.edit, full.title);

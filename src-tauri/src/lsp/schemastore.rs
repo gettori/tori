@@ -85,7 +85,10 @@ pub fn associations_from_catalog(text: &str) -> Vec<SchemaAssociation> {
             if entry.file_match.is_empty() {
                 return None;
             }
-            Some(SchemaAssociation { uri, file_match: entry.file_match })
+            Some(SchemaAssociation {
+                uri,
+                file_match: entry.file_match,
+            })
         })
         .collect()
 }
@@ -153,13 +156,15 @@ static ASSOCIATIONS: OnceLock<Vec<SchemaAssociation>> = OnceLock::new();
 /// is also what makes the failure log a single line rather than one per server
 /// that starts.
 pub fn associations() -> &'static [SchemaAssociation] {
-    ASSOCIATIONS.get_or_init(|| match catalog_text(&cache_path(), CACHE_TTL, SystemTime::now(), fetch_catalog) {
-        Ok(text) => associations_from_catalog(&text),
-        Err(e) => {
-            eprintln!("tori: no JSON schema associations ({e}); JSON files will edit without validation");
-            Vec::new()
-        }
-    })
+    ASSOCIATIONS.get_or_init(
+        || match catalog_text(&cache_path(), CACHE_TTL, SystemTime::now(), fetch_catalog) {
+            Ok(text) => associations_from_catalog(&text),
+            Err(e) => {
+                eprintln!("tori: no JSON schema associations ({e}); JSON files will edit without validation");
+                Vec::new()
+            }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -187,8 +192,7 @@ mod tests {
     fn temp_dir(name: &str) -> PathBuf {
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir()
-            .join(format!("tori_schemastore_{}_{name}_{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori_schemastore_{}_{name}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -208,10 +212,7 @@ mod tests {
                 },
                 SchemaAssociation {
                     uri: "https://json.schemastore.org/github-workflow.json".into(),
-                    file_match: vec![
-                        ".github/workflows/*.yml".into(),
-                        ".github/workflows/*.yaml".into()
-                    ],
+                    file_match: vec![".github/workflows/*.yml".into(), ".github/workflows/*.yaml".into()],
                 },
             ]
         );
@@ -230,7 +231,10 @@ mod tests {
     #[test]
     fn a_malformed_catalog_yields_none_rather_than_panicking() {
         for text in ["", "not json at all", "{}", r#"{"schemas": "wrong type"}"#, "[]"] {
-            assert!(associations_from_catalog(text).is_empty(), "{text:?} should yield nothing");
+            assert!(
+                associations_from_catalog(text).is_empty(),
+                "{text:?} should yield nothing"
+            );
         }
     }
 
@@ -324,8 +328,7 @@ mod tests {
         let dir = temp_dir("offline_cold");
         let cache = dir.join("catalog.json");
 
-        let err = catalog_text(&cache, CACHE_TTL, SystemTime::now(), || Err("offline".into()))
-            .unwrap_err();
+        let err = catalog_text(&cache, CACHE_TTL, SystemTime::now(), || Err("offline".into())).unwrap_err();
 
         assert!(err.contains("offline"), "the reason survives into the log line: {err}");
         // And the association step yields an empty set rather than throwing,

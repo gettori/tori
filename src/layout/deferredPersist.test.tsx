@@ -2,13 +2,7 @@
 // the model now and pays for the JSON later. What the suite is about is the
 // safety half, since a deferred write that never lands is data loss.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vite-plus/test";
-import {
-  ensureEnvelope,
-  flushEnvelopes,
-  resetPaneLayoutModel,
-  seedTwoPane,
-  setFocusedPane,
-} from "./layoutStore";
+import { ensureEnvelope, flushEnvelopes, resetPaneLayoutModel, seedTwoPane, setFocusedPane } from "./layoutStore";
 import { flushTabPlacement, resetTabPlacement, setPaneActive } from "./tabPlacement";
 
 const WS = "/w/a";

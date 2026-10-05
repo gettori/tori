@@ -91,9 +91,7 @@ type Resolution = { primary: string | null; secondaries: string[] };
 
 function claimantOf(filePath: string): Resolution {
   const ext = filePath.slice(filePath.lastIndexOf(".") + 1);
-  const claimant = (registry as { id: string; languages: Record<string, string> }[]).find(
-    (s) => ext in s.languages,
-  );
+  const claimant = (registry as { id: string; languages: Record<string, string> }[]).find((s) => ext in s.languages);
   return { primary: claimant?.id ?? null, secondaries: [] };
 }
 let resolve: (filePath: string) => Resolution = claimantOf;
@@ -379,12 +377,7 @@ describe("lspPluginFor", () => {
     // buffer that also has the server's list, or in neither.
     const m = await freshModule();
     await m.ensureLspFor("/proj/l/src/a.ts", "/proj/l");
-    for (const path of [
-      "/proj/l/src/a.ts",
-      "/proj/l/notes.txt",
-      "/proj/l/main.py",
-      "/elsewhere/a.ts",
-    ]) {
+    for (const path of ["/proj/l/src/a.ts", "/proj/l/notes.txt", "/proj/l/main.py", "/elsewhere/a.ts"]) {
       expect(m.claimedByLsp(path), path).toBe(!Array.isArray(m.lspPluginFor(path)));
     }
   });
@@ -461,19 +454,13 @@ describe("lazy start", () => {
     // call lsp_start before either registered a session, and the backend
     // reuses by handle without wiring the second caller's Channel, leaving
     // that client attached to a transport no frame ever reaches.
-    await Promise.all([
-      m.ensureLspFor("/proj/n/a.ts", "/proj/n"),
-      m.ensureLspFor("/proj/n/b.ts", "/proj/n"),
-    ]);
+    await Promise.all([m.ensureLspFor("/proj/n/a.ts", "/proj/n"), m.ensureLspFor("/proj/n/b.ts", "/proj/n")]);
     expect(clientConfigs).toHaveLength(1);
   });
 
   it("starts different servers in parallel rather than queueing them", async () => {
     const m = await freshModule();
-    await Promise.all([
-      m.ensureLspFor("/proj/o/a.ts", "/proj/o"),
-      m.ensureLspFor("/proj/o/main.rs", "/proj/o"),
-    ]);
+    await Promise.all([m.ensureLspFor("/proj/o/a.ts", "/proj/o"), m.ensureLspFor("/proj/o/main.rs", "/proj/o")]);
     expect(started.map((s) => s.serverId).sort()).toEqual(["rust", "typescript"]);
   });
 
@@ -560,7 +547,9 @@ describe("workspace-edit capabilities", () => {
     const blocks = workspaceBlocks();
 
     expect(blocks.some((b) => b?.applyEdit === true)).toBe(true);
-    expect(blocks.some((b) => (b?.workspaceEdit as { documentChanges?: boolean })?.documentChanges === true)).toBe(true);
+    expect(blocks.some((b) => (b?.workspaceEdit as { documentChanges?: boolean })?.documentChanges === true)).toBe(
+      true,
+    );
     expect(blocks.some((b) => !!b?.executeCommand)).toBe(true);
   });
 
@@ -601,8 +590,8 @@ describe("code-action capabilities", () => {
     return (clientConfigs[0].extensions ?? [])
       .map(
         (e) =>
-          (e as { clientCapabilities?: { textDocument?: { codeAction?: Record<string, unknown> } } })
-            .clientCapabilities?.textDocument?.codeAction,
+          (e as { clientCapabilities?: { textDocument?: { codeAction?: Record<string, unknown> } } }).clientCapabilities
+            ?.textDocument?.codeAction,
       )
       .find(Boolean);
   };
@@ -611,8 +600,8 @@ describe("code-action capabilities", () => {
     // Without `codeActionLiteralSupport` a server may answer with bare
     // `Command`s, which carry no kind to group by and no edit to apply.
     const block = await codeActionBlock("/proj/ca");
-    const kinds = (block?.codeActionLiteralSupport as { codeActionKind?: { valueSet?: string[] } })
-      ?.codeActionKind?.valueSet;
+    const kinds = (block?.codeActionLiteralSupport as { codeActionKind?: { valueSet?: string[] } })?.codeActionKind
+      ?.valueSet;
 
     expect(kinds).toContain("quickfix");
     expect(kinds).toContain("source.organizeImports");
@@ -673,8 +662,7 @@ describe("work-done progress capability", () => {
 });
 
 describe("workspace/semanticTokens/refresh", () => {
-  const refresh = (id: unknown) =>
-    JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/semanticTokens/refresh" });
+  const refresh = (id: unknown) => JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/semanticTokens/refresh" });
 
   it("answers it rather than letting the library reject it", async () => {
     // `receiveMessage` replies -32601 to every server-initiated request, and
@@ -1123,7 +1111,12 @@ describe("lspTargets", () => {
     resolveRoot = (a) => (a.filePath.includes("/packages/a/") ? "/proj/x/packages/a" : "/proj/x");
     await m.ensureLspFor("/proj/x/index.ts", "/proj/x");
     await m.ensureLspFor("/proj/x/packages/a/index.ts", "/proj/x");
-    expect(m.lspTargets().map((t) => t.root).sort()).toEqual(["/proj/x", "/proj/x/packages/a"]);
+    expect(
+      m
+        .lspTargets()
+        .map((t) => t.root)
+        .sort(),
+    ).toEqual(["/proj/x", "/proj/x/packages/a"]);
   });
 
   it("is empty once the project is torn down", async () => {
@@ -1339,9 +1332,7 @@ describe("the workspace each client is given", () => {
     // does not have; an EventTarget is all it actually needs.
     const opened: string[] = [];
     const bus = new EventTarget();
-    bus.addEventListener(OPEN_IN_EDITOR, (e) =>
-      opened.push((e as CustomEvent<{ path: string }>).detail.path),
-    );
+    bus.addEventListener(OPEN_IN_EDITOR, (e) => opened.push((e as CustomEvent<{ path: string }>).detail.path));
     vi.stubGlobal("window", bus);
     try {
       const pending = ws.displayFile("file:///proj/y/dep.ts");
@@ -1547,7 +1538,8 @@ describe("activation markers", () => {
       await m.ensureLspFor("/proj/d/src/a.ts", "/proj/d");
       expect(started.map((s) => s.serverId)).toEqual(["typescript"]);
 
-      resolve = (filePath) => (filePath.startsWith("/proj/d/") ? { primary: "deno", secondaries: [] } : claimantOf(filePath));
+      resolve = (filePath) =>
+        filePath.startsWith("/proj/d/") ? { primary: "deno", secondaries: [] } : claimantOf(filePath);
       m.notifyLspFileChanged("/proj/d/deno.json");
 
       await vi.waitFor(() => expect(started.map((s) => s.serverId)).toEqual(["typescript", "deno"]));
@@ -1602,7 +1594,9 @@ describe("secondary servers", () => {
   });
 
   async function formatterFor(eslintFeatures: string[]) {
-    registry = registry.map((s) => ((s as { id: string }).id === "eslint" ? { ...(s as object), features: eslintFeatures } : s));
+    registry = registry.map((s) =>
+      (s as { id: string }).id === "eslint" ? { ...(s as object), features: eslintFeatures } : s,
+    );
     const m = await freshModule();
     const { formattingTarget } = await import("./lspFormatting");
     await m.ensureLspFor("/proj/a/a.ts", "/proj/a");

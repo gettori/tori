@@ -97,12 +97,7 @@ export type PollClock = {
   blockedUntil: number | null;
 };
 
-export function mayPoll(
-  clock: PollClock,
-  trigger: Trigger,
-  now: number,
-  pause: PauseReason | null,
-): boolean {
+export function mayPoll(clock: PollClock, trigger: Trigger, now: number, pause: PauseReason | null): boolean {
   if (pause !== null) return false;
   // A block outlasts a manual refresh on purpose: hitting refresh during a rate
   // limit is how a throttle becomes a longer throttle.
@@ -142,8 +137,7 @@ export function backoffAfter(err: unknown, now: number): Backoff | null {
       }
       // Neither. Which limit it was decides how long to wait, which is why the
       // kind rides on the error rather than being inferred from the sentence.
-      const fallback =
-        dto.rateLimitKind === "secondary" ? SECONDARY_BACKOFF_MS : PRIMARY_BACKOFF_MS;
+      const fallback = dto.rateLimitKind === "secondary" ? SECONDARY_BACKOFF_MS : PRIMARY_BACKOFF_MS;
       return { scope: "account", untilMs: now + fallback };
     }
     case "noRemote":

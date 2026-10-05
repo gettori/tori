@@ -69,7 +69,12 @@ export default function HistoryPanel(props: {
   // the panel on some other branch must never quietly adopt this one. An effect
   // rather than `onMount` because the panel is not re-created when the workspace
   // under it changes - only when it is closed and reopened.
-  createEffect(on(() => props.folder, (folder) => void checkHistorical(folder)));
+  createEffect(
+    on(
+      () => props.folder,
+      (folder) => void checkHistorical(folder),
+    ),
+  );
 
   // Arrow keys and Enter, so `role="option"` is a description of how the list
   // works rather than a claim about it. Bound at the document while the panel is
@@ -96,9 +101,7 @@ export default function HistoryPanel(props: {
     e.preventDefault();
     setActive((active() + by + n) % n);
     // The highlight is useless if it walks off the bottom of a 47-row list.
-    queueMicrotask(() =>
-      el?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" }),
-    );
+    queueMicrotask(() => el?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" }));
   }
   onMount(() => document.addEventListener("keydown", onKeyDown));
   onCleanup(() => document.removeEventListener("keydown", onKeyDown));
@@ -111,7 +114,10 @@ export default function HistoryPanel(props: {
   );
 
   const isOpen = (s: SessionMeta) => props.openSessionIds.includes(s.id);
-  const openNow = () => listed().filter(isOpen).sort((a, b) => b.last_active - a.last_active);
+  const openNow = () =>
+    listed()
+      .filter(isOpen)
+      .sort((a, b) => b.last_active - a.last_active);
   // Exactly the complement, so nothing is listed twice and nothing is dropped.
   const rest = () => listed().filter((s) => !isOpen(s));
   const buckets = () => bucketByLastActive(rest(), Math.floor(Date.now() / 1000));

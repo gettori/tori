@@ -61,15 +61,29 @@ function projectImage(client: RemoteClient, path: string, version: string): Acce
 
 /** The project's mark in the order the desktop sidebar uses: its image, a picked glyph, then one derived from the path. */
 export function ProjectMark(props: { client: RemoteClient; project: Project; big?: boolean }) {
-  const image = () => (props.project.image ? projectImage(props.client, props.project.path, props.project.image)() : undefined);
+  const image = () =>
+    props.project.image ? projectImage(props.client, props.project.path, props.project.image)() : undefined;
   const size = () => (props.big ? 24 : 19);
   return (
     <span class={props.big ? `${styles.tile} ${styles.bigTile}` : styles.tile}>
       <Show
         when={image()}
-        fallback={<Icon icon={resolveIcon(props.project.icon) ?? fallbackIcon(props.project.path)} size={size()} strokeWidth={1.9} />}
+        fallback={
+          <Icon
+            icon={resolveIcon(props.project.icon) ?? fallbackIcon(props.project.path)}
+            size={size()}
+            strokeWidth={1.9}
+          />
+        }
       >
-        {(src) => <img class={styles.tileImage} src={src()} alt="" style={{ width: `${size() + 4}px`, height: `${size() + 4}px` }} />}
+        {(src) => (
+          <img
+            class={styles.tileImage}
+            src={src()}
+            alt=""
+            style={{ width: `${size() + 4}px`, height: `${size() + 4}px` }}
+          />
+        )}
       </Show>
     </span>
   );

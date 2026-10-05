@@ -37,7 +37,16 @@
 // a probe that stopped reading, and "no ceiling" is the answer that decides
 // whether Tori's `ask_user` may block. A check that cannot fail is not a check.
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,7 +118,8 @@ function serve(name, mark) {
       case "tools/call": {
         const tool = msg.params?.name;
         if (tool === PING_TOOL) {
-          if (mark) for (const key of Object.keys(MARKER_ENV)) appendFileSync(mark, `env ${key}=${process.env[key] ?? ""}\n`);
+          if (mark)
+            for (const key of Object.keys(MARKER_ENV)) appendFileSync(mark, `env ${key}=${process.env[key] ?? ""}\n`);
           return ok(msg.id, text(`pong from ${name}`));
         }
         if (tool === SLEEP_TOOL) {
@@ -125,7 +135,11 @@ function serve(name, mark) {
             every > 0 && progressToken !== undefined
               ? setInterval(() => {
                   sent++;
-                  write({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken, progress: sent } });
+                  write({
+                    jsonrpc: "2.0",
+                    method: "notifications/progress",
+                    params: { progressToken, progress: sent },
+                  });
                 }, every)
               : null;
           await new Promise((r) => setTimeout(r, ms));
@@ -294,7 +308,11 @@ function openClaude({ cwd, argv, env = {} }) {
         child.stdin.write(
           `${JSON.stringify({
             type: "control_response",
-            response: { subtype: "success", request_id: ev.request_id, response: { behavior: "allow", updatedInput: ev.request.input ?? {} } },
+            response: {
+              subtype: "success",
+              request_id: ev.request_id,
+              response: { behavior: "allow", updatedInput: ev.request.input ?? {} },
+            },
           })}\n`,
         );
       }
@@ -531,7 +549,8 @@ async function injectionChecks(dir) {
       resolvedThroughPath: saw.includes("initialize") && withRule.ping.called && !withRule.ping.isError,
       envInherited: Object.entries(MARKER_ENV).every(([k, v]) => saw.includes(`env ${k}=${v}`)),
       calibrationAsked: calibration.asked.includes(namespaced),
-      allowRuleSilencesPrompt: calibration.asked.includes(namespaced) && withRule.ping.called && !withRule.asked.includes(namespaced),
+      allowRuleSilencesPrompt:
+        calibration.asked.includes(namespaced) && withRule.ping.called && !withRule.asked.includes(namespaced),
     },
     calibration,
     withRule,
@@ -687,7 +706,12 @@ function allowOption(params) {
 // ACP's stdio server shape: `env` is a required array of pairs, not a map.
 function acpServer(name, mark) {
   const spec = serverSpec(name, mark);
-  return { name, command: spec.command, args: spec.args, env: Object.entries(MARKER_ENV).map(([n, value]) => ({ name: n, value })) };
+  return {
+    name,
+    command: spec.command,
+    args: spec.args,
+    env: Object.entries(MARKER_ENV).map(([n, value]) => ({ name: n, value })),
+  };
 }
 
 // One process per attempt, so the populated run cannot inherit anything the
@@ -728,7 +752,11 @@ async function acpAttempt(spec, cwd, mcpServers, withTurn) {
     }
     const probeCalls = [...calls.values()].filter((c) => String(c.title ?? "").includes(PING_TOOL));
     out.toolCall = probeCalls.length
-      ? probeCalls.map((c) => ({ title: c.title ?? null, status: c.status ?? null, pong: JSON.stringify(c).includes("pong from") }))
+      ? probeCalls.map((c) => ({
+          title: c.title ?? null,
+          status: c.status ?? null,
+          pong: JSON.stringify(c).includes("pong from"),
+        }))
       : "(the turn completed without calling the tool)";
     out.otherToolCalls = calls.size - probeCalls.length;
     out.permissionRequests = acp.permissions;
@@ -793,7 +821,11 @@ async function ceiling() {
   const base = { mode: "ceiling", harness, sleepMs, progressEveryMs, env };
   try {
     if (harness !== "claude") {
-      return { ...base, ...(await acpCeiling(ACP_AGENTS[harness], dir, mark, prompt, sleepMs)), serverSaw: readMark(mark) };
+      return {
+        ...base,
+        ...(await acpCeiling(ACP_AGENTS[harness], dir, mark, prompt, sleepMs)),
+        serverSaw: readMark(mark),
+      };
     }
     const serverTimeout = has("--server-timeout") ? Number(val("--server-timeout")) : undefined;
     const config = writeConfig(dir, "toriprobe", { timeout: serverTimeout, mark });
@@ -806,7 +838,12 @@ async function ceiling() {
       claude.sendTurn(prompt);
       await claude.waitFor(isInit, 120_000);
       await claude.waitFor(isResult, sleepMs + 180_000);
-      return { ...base, serverTimeout: serverTimeout ?? null, outcome: findToolOutcome(claude, SLEEP_TOOL), serverSaw: readMark(mark) };
+      return {
+        ...base,
+        serverTimeout: serverTimeout ?? null,
+        outcome: findToolOutcome(claude, SLEEP_TOOL),
+        serverSaw: readMark(mark),
+      };
     } finally {
       claude.close();
     }
@@ -841,12 +878,17 @@ async function acpCeiling(spec, dir, mark, text, sleepMs) {
         startedAt = acp.arrivals[i];
       }
       if (u.toolCallId === callId && (u.status === "completed" || u.status === "failed")) {
-        last = { status: u.status, frame: JSON.stringify(u).slice(0, 600), elapsedMs: Math.round(acp.arrivals[i] - startedAt) };
+        last = {
+          status: u.status,
+          frame: JSON.stringify(u).slice(0, 600),
+          elapsedMs: Math.round(acp.arrivals[i] - startedAt),
+        };
       }
     }
     return {
       stopReason: prompt?.stopReason ?? null,
-      outcome: startedAt === null ? "(the model never called the tool)" : last ?? "(called, but no terminal status arrived)",
+      outcome:
+        startedAt === null ? "(the model never called the tool)" : (last ?? "(called, but no terminal status arrived)"),
     };
   } finally {
     acp.close();

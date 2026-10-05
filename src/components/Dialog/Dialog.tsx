@@ -80,10 +80,7 @@ export default function Dialog(props: DialogProps) {
     // Kobalte dispatches this *before* focusing anything, so the active element
     // is still whatever the dialog interrupted.
     const previous = document.activeElement;
-    restoreTo =
-      previous instanceof HTMLElement && previous !== document.body
-        ? previous
-        : null;
+    restoreTo = previous instanceof HTMLElement && previous !== document.body ? previous : null;
 
     e.preventDefault();
     (props.initialFocus?.() ?? panel)?.focus({ preventScroll: true });
@@ -136,22 +133,12 @@ export default function Dialog(props: DialogProps) {
           onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
         >
           <DialogSurface.Provider value={surface}>
-            <div
-              class={
-                props.titleHidden && !props.description
-                  ? styles.headHidden
-                  : styles.head
-              }
-            >
-              <Primitive.Title
-                class={props.titleHidden ? styles.titleHidden : styles.title}
-              >
+            <div class={props.titleHidden && !props.description ? styles.headHidden : styles.head}>
+              <Primitive.Title class={props.titleHidden ? styles.titleHidden : styles.title}>
                 {props.title}
               </Primitive.Title>
               <Show when={props.description}>
-                <Primitive.Description class={styles.description}>
-                  {props.description}
-                </Primitive.Description>
+                <Primitive.Description class={styles.description}>{props.description}</Primitive.Description>
               </Show>
             </div>
             <Show when={props.children != null}>

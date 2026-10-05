@@ -61,7 +61,8 @@ impl PrCache {
     /// change the answer for branches other than its own (a stacked PR's base
     /// moves), and re-asking is cheaper than reasoning about which.
     pub fn invalidate_repo(&mut self, repo: &RepoRef) {
-        self.entries.retain(|(owner, name, _), _| owner != &repo.owner || name != &repo.repo);
+        self.entries
+            .retain(|(owner, name, _), _| owner != &repo.owner || name != &repo.repo);
     }
 
     /// Records a PR that was just created, keyed by the branch it was opened
@@ -87,12 +88,7 @@ impl PrCache {
 ///
 /// Split out from the fetch so the two callers below can read, release the lock,
 /// and only then go to the network.
-pub fn cached_answer(
-    cache: &PrCache,
-    repo: &RepoRef,
-    branch: &str,
-    refresh: bool,
-) -> Option<Option<PullRequest>> {
+pub fn cached_answer(cache: &PrCache, repo: &RepoRef, branch: &str, refresh: bool) -> Option<Option<PullRequest>> {
     if refresh {
         return None;
     }
@@ -203,7 +199,10 @@ mod tests {
     use std::cell::Cell;
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "skarif2".into(), repo: "tori".into() }
+        RepoRef {
+            owner: "skarif2".into(),
+            repo: "tori".into(),
+        }
     }
 
     fn pr(number: u64, head: &str) -> PullRequest {
@@ -350,7 +349,10 @@ mod tests {
         // A merge can change the answer for branches other than its own, so the
         // repo goes rather than the branch. Another project's entries must
         // survive: the cache is shared across every open worktree.
-        let other = RepoRef { owner: "skarif2".into(), repo: "grimoire".into() };
+        let other = RepoRef {
+            owner: "skarif2".into(),
+            repo: "grimoire".into(),
+        };
         let mut c = PrCache::default();
         c.put(&repo(), "wave-3", Some(pr(12, "wave-3")));
         c.put(&repo(), "wave-4", None);
@@ -366,7 +368,10 @@ mod tests {
     fn two_repos_with_the_same_branch_name_never_collide() {
         // A single-window app switching between worktrees does this constantly,
         // and `main` is in every one of them.
-        let other = RepoRef { owner: "skarif2".into(), repo: "grimoire".into() };
+        let other = RepoRef {
+            owner: "skarif2".into(),
+            repo: "grimoire".into(),
+        };
         let mut c = PrCache::default();
         c.put(&repo(), "main", Some(pr(1, "main")));
         c.put(&other, "main", Some(pr(2, "main")));
@@ -388,8 +393,13 @@ mod tests {
             StubTransport::json(200, found),
             StubTransport::json(200, "[]"),
         ]));
-        let client = GitHubForge::new(Box::new(stub.clone()), "https://github.com", Some("gho_test".into()), None)
-            .with_base("https://api.test");
+        let client = GitHubForge::new(
+            Box::new(stub.clone()),
+            "https://github.com",
+            Some("gho_test".into()),
+            None,
+        )
+        .with_base("https://api.test");
 
         let mut c = PrCache::default();
 

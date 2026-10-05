@@ -103,8 +103,7 @@
   .stepCurrent,
   .stepCurrent:not(:disabled):hover {
     background:
-      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-        var(--tori-border-thick) 100% no-repeat,
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
       linear-gradient(to right, var(--brand-subtle), transparent);
     border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
     color: var(--fg-default);

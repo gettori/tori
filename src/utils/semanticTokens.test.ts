@@ -79,11 +79,7 @@ describe("decodeSemanticTokens", () => {
     //   function greet(name: string) {
     //     return name;
     //   }
-    const data = [
-      0, 9, 5, FUNCTION, DECLARATION,
-      0, 6, 4, PARAMETER, DECLARATION,
-      1, 9, 4, PARAMETER, 0,
-    ];
+    const data = [0, 9, 5, FUNCTION, DECLARATION, 0, 6, 4, PARAMETER, DECLARATION, 1, 9, 4, PARAMETER, 0];
     expect(decodeSemanticTokens(data, TS_LEGEND)).toEqual([
       { line: 0, char: 9, length: 5, type: "function", modifiers: ["declaration"] },
       { line: 0, char: 15, length: 4, type: "parameter", modifiers: ["declaration"] },
@@ -174,10 +170,7 @@ describe("tokenClasses", () => {
   it("marks a deprecated symbol without taking its colour away", () => {
     // Struck through, not recoloured: a deprecated method should still read as
     // a method.
-    expect(tokenClasses(token("method", ["deprecated"]))).toEqual([
-      "cm-sem-method",
-      "cm-sem-deprecated",
-    ]);
+    expect(tokenClasses(token("method", ["deprecated"]))).toEqual(["cm-sem-method", "cm-sem-deprecated"]);
   });
 
   it("ignores modifiers nothing renders differently", () => {

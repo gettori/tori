@@ -80,9 +80,7 @@ describe("which layer wins", () => {
     const user = { ...DEFAULTS, todoPatterns: "TODO,FIXME" };
     expect(resolveEditorDefaults(DEFAULTS, user, {}).todoPatterns).toBe("TODO,FIXME");
     // A repo that calls them something else says so, and wins.
-    expect(resolveEditorDefaults(DEFAULTS, user, { todoPatterns: "REVIEW" }).todoPatterns).toBe(
-      "REVIEW",
-    );
+    expect(resolveEditorDefaults(DEFAULTS, user, { todoPatterns: "REVIEW" }).todoPatterns).toBe("REVIEW");
     expect(editorOrigins(DEFAULTS, user, { todoPatterns: "REVIEW" }).todoPatterns).toBe("workspace");
     expect(editorOrigins(DEFAULTS, user, {}).todoPatterns).toBe("user");
   });
@@ -171,10 +169,7 @@ describe("where a value came from", () => {
 // second place to configure editor behaviour is the failure mode the ADR's split
 // exists to prevent, and it would arrive one key at a time.
 it("leaves tori.toml out of editor behaviour, so there is only one place to set it", () => {
-  const spellings = Object.keys(DEFAULTS).flatMap((key) => [
-    key,
-    key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`),
-  ]);
+  const spellings = Object.keys(DEFAULTS).flatMap((key) => [key, key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)]);
   const found = spellings.filter((s) => new RegExp(`\\b${s}\\b`).test(configSource));
   expect(found).toEqual([]);
 });

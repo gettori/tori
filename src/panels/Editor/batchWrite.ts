@@ -27,9 +27,7 @@ import { markSelfWrite } from "../../utils/selfWrites";
  * echo is coming, and holding the window open would swallow a genuine external
  * edit to one of those paths for the next second.
  */
-export async function writeFilesSuppressingEcho(
-  files: { path: string; contents: string }[],
-): Promise<string[]> {
+export async function writeFilesSuppressingEcho(files: { path: string; contents: string }[]): Promise<string[]> {
   for (const f of files) markSelfWrite(f.path);
   const written = await invoke<string[]>("fs_write_files", { files });
   for (const f of files) markSelfWrite(f.path);

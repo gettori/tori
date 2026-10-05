@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { FIRE_GRACE_MS, arm, armedFor, cancel, register, resetResumeAtResetForTests, type Arm } from "./resumeAtReset";
 
 const RESET = 1_788_779_400;
-const at = (a: Partial<Arm> = {}): Arm => ({ sessionId: "s1", accountKey: "claude/work", turnId: "t1", resetsAt: RESET, ...a });
+const at = (a: Partial<Arm> = {}): Arm => ({
+  sessionId: "s1",
+  accountKey: "claude/work",
+  turnId: "t1",
+  resetsAt: RESET,
+  ...a,
+});
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -70,7 +76,10 @@ describe("firing", () => {
 
   it("moves on when the first session closed before its turn", async () => {
     const second = vi.fn(async () => {});
-    const unregister = register("s1", vi.fn(async () => {}));
+    const unregister = register(
+      "s1",
+      vi.fn(async () => {}),
+    );
     register("s2", second);
     arm(at());
     arm(at({ sessionId: "s2" }));

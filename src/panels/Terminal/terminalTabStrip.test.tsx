@@ -127,10 +127,7 @@ describe("the terminal tab strip", () => {
     await openShell("two");
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(2));
-    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-selected"))).toEqual([
-      "false",
-      "true",
-    ]);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
   });
 
   it("brings a session forward when its tab is clicked", async () => {
@@ -178,4 +175,3 @@ describe("the terminal tab strip", () => {
     expect(tab("one").getAttribute("aria-selected")).toBe("true");
   });
 });
-

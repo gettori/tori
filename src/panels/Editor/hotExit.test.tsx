@@ -66,13 +66,12 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
-const { requestStash, loadPendingStash, clearPendingStash, pendingStashPaths } = await import(
-  "../../utils/hotExit"
-);
+const { requestStash, loadPendingStash, clearPendingStash, pendingStashPaths } = await import("../../utils/hotExit");
 
 let mounted: ReturnType<typeof render> | null = null;
 
@@ -218,9 +217,7 @@ describe("launching with a stash", () => {
 
   it("offers the disk version through the banner's Reload", async () => {
     const ed = await quitDirtyThenRelaunch("zero\n", "rewritten while the app was shut\n");
-    const reload = [...mounted!.container.querySelectorAll("button")].find(
-      (b) => b.textContent === "Reload",
-    )!;
+    const reload = [...mounted!.container.querySelectorAll("button")].find((b) => b.textContent === "Reload")!;
 
     reload.click();
 

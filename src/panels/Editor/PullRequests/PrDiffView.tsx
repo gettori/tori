@@ -41,9 +41,7 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
   /// read for a fact the app is displaying. The store's copy is the fallback
   /// that keeps a pull request on a branch this machine has no unit for from
   /// rendering as no pull request at all: its opener calls `notePr`.
-  const pr = createMemo(
-    () => unitStatusForPr(props.workspace, target().number)?.pullRequest ?? entry().pr,
-  );
+  const pr = createMemo(() => unitStatusForPr(props.workspace, target().number)?.pullRequest ?? entry().pr);
   const files = () => entry().files;
   const file = createMemo(() => files().find((f) => f.path === target().file) ?? null);
   const at = createMemo(() => files().findIndex((f) => f.path === target().file));
@@ -119,9 +117,7 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
           <input
             type="checkbox"
             checked={isViewed(props.workspace, target().number, target().file)}
-            onChange={(e) =>
-              setViewedFile(props.workspace, target().number, target().file, e.currentTarget.checked)
-            }
+            onChange={(e) => setViewedFile(props.workspace, target().number, target().file, e.currentTarget.checked)}
           />
           Viewed
         </label>
@@ -149,9 +145,7 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
               size="sm"
               icon={<Icon icon={FileCode} />}
               tooltip="Open the file in this worktree"
-              onClick={() =>
-                emitWith(OPEN_IN_EDITOR, { path: `${unit().folderPath}/${target().file}` })
-              }
+              onClick={() => emitWith(OPEN_IN_EDITOR, { path: `${unit().folderPath}/${target().file}` })}
             />
           )}
         </Show>
@@ -189,24 +183,17 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
       <Show when={drifted()}>
         <div class={styles.drift}>
           <span>This pull request has new commits since you read this.</span>
-          <Button
-            variant="ghost"
-            onClick={() => void refresh(props.workspace, target().number, "files")}
-          >
+          <Button variant="ghost" onClick={() => void refresh(props.workspace, target().number, "files")}>
             Reload the diff
           </Button>
         </div>
       </Show>
 
-      <Show when={entry().filesError}>
-        {(message) => <div class={styles.error}>{message()}</div>}
-      </Show>
+      <Show when={entry().filesError}>{(message) => <div class={styles.error}>{message()}</div>}</Show>
       {/* The conversations' own failure, from a read or from a refused reply or
           resolve. Its own line because a pull request whose threads will not
           load is still one worth reading, so this never replaces the diff. */}
-      <Show when={entry().threadsError}>
-        {(message) => <div class={styles.error}>{message()}</div>}
-      </Show>
+      <Show when={entry().threadsError}>{(message) => <div class={styles.error}>{message()}</div>}</Show>
       {/* Same shape as every other cap here: a partial answer rendered as a
           complete one is the failure nobody reports, because the page looks
           fine. Pull-request-wide rather than about this file, which is why it
@@ -237,13 +224,7 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
         }
       >
         <div class={styles.body}>
-          <PrFileBody
-            root={props.workspace}
-            pr={pr()!}
-            file={file()!}
-            twoColumn={twoColumn()}
-            outdated={outdated()}
-          />
+          <PrFileBody root={props.workspace} pr={pr()!} file={file()!} twoColumn={twoColumn()} outdated={outdated()} />
         </div>
       </Show>
     </div>

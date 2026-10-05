@@ -65,7 +65,13 @@ vi.mock("@tauri-apps/api/core", () => ({
       // actually started from.
       case "dap_registry":
         return Promise.resolve([
-          { id: "js-debug", label: "JavaScript", languages: { ts: "pwa-node", js: "pwa-node" }, childSessions: true, install: null },
+          {
+            id: "js-debug",
+            label: "JavaScript",
+            languages: { ts: "pwa-node", js: "pwa-node" },
+            childSessions: true,
+            install: null,
+          },
         ]);
       case "dap_root_for":
         return Promise.resolve(args!.projectPath);
@@ -197,8 +203,7 @@ const showMode = (mode: string) => emitWith(SET_RIGHT_MODE, { mode });
 const focusLine = () => document.querySelector<HTMLElement>("[data-focus-member]");
 
 /** The root a launch reached the backend with. */
-const launchedRoots = () =>
-  calls.filter((c) => c.cmd === "dap_root_for").map((c) => c.args.projectPath as string);
+const launchedRoots = () => calls.filter((c) => c.cmd === "dap_root_for").map((c) => c.args.projectPath as string);
 
 let warn: ReturnType<typeof vi.spyOn>;
 
@@ -290,9 +295,7 @@ describe("starting a run inside a Topic", () => {
     // Not `dev`: the Files tab's Scripts section lists it too, before the dialog
     // is up. The dialog is handed its scripts, so Start arrives with them.
     fireEvent.click(await screen.findByText("Start"));
-    await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}")).toHaveProperty(A),
-    );
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}")).toHaveProperty(A));
     // Under the member's own folder, not under `topic:f1`: two members of one
     // Topic debug two different programs.
     const stored = JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}");

@@ -67,7 +67,11 @@ function promptRefs(blocks: readonly ContentBlock[]): Map<string, string> {
  */
 function PromptText(props: { blocks: readonly ContentBlock[] }) {
   const refs = createMemo(() => promptRefs(props.blocks));
-  const parts = createMemo(() => blockText(props.blocks).split(TOKEN_SPLIT).filter((p) => p !== ""));
+  const parts = createMemo(() =>
+    blockText(props.blocks)
+      .split(TOKEN_SPLIT)
+      .filter((p) => p !== ""),
+  );
   return (
     <Index each={parts()}>
       {(part) => (
@@ -112,9 +116,7 @@ function PromptImages(props: { blocks: readonly ContentBlock[] }) {
         <For each={images()}>
           {(img) => (
             <Show when={img.src} fallback={<span class={styles.promptImageGone}>[Image #{img.nth}]</span>}>
-              {(src) => (
-                <img class={styles.promptImage} src={src()} alt={`attached image ${img.label ?? img.nth}`} />
-              )}
+              {(src) => <img class={styles.promptImage} src={src()} alt={`attached image ${img.label ?? img.nth}`} />}
             </Show>
           )}
         </For>
@@ -309,9 +311,7 @@ export default function MessageList(props: {
   const rows = () => grouped()?.rows ?? shown();
 
   const turnIdOf = (it: ChatItem) =>
-    it.kind === "text" || it.kind === "thinking" || it.kind === "tool" || it.kind === "question"
-      ? it.turnId
-      : null;
+    it.kind === "text" || it.kind === "thinking" || it.kind === "tool" || it.kind === "question" ? it.turnId : null;
 
   // The item ids that open their turn. There is no visible byline any more - a
   // reply is obviously the reply, and repeating "Claude" above every tool call
@@ -385,7 +385,7 @@ export default function MessageList(props: {
   // to include that turn's edits.
   const rewindTsForPrompt = (userItemId: string) => {
     const turnId = promptTurns().get(userItemId);
-    return turnId ? props.rewindTsFor?.(turnId) ?? null : null;
+    return turnId ? (props.rewindTsFor?.(turnId) ?? null) : null;
   };
 
   // Within a few pixels of the bottom counts as being at the bottom: sub-pixel
@@ -550,9 +550,7 @@ export default function MessageList(props: {
           it, and reading it as an ordinary prompt would suggest the reply
           below answers only that. It opens no turn group: `turnOpeners`
           counts assistant-side rows only. */}
-      <Match when={p.item.kind === "user" && toriNote(p.item.blocks)}>
-        {(note) => <ToriNoteRow note={note()} />}
-      </Match>
+      <Match when={p.item.kind === "user" && toriNote(p.item.blocks)}>{(note) => <ToriNoteRow note={note()} />}</Match>
       <Match when={p.item.kind === "user" && p.item}>
         {(it) => (
           <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
@@ -611,9 +609,7 @@ export default function MessageList(props: {
               {/* Only when a record named it. Live nothing does, and the
                   prompt that ran the command is the row directly above,
                   so a header there would just say it twice. */}
-              <Show when={it().command}>
-                {(name) => <div class={styles.commandName}>{name()}</div>}
-              </Show>
+              <Show when={it().command}>{(name) => <div class={styles.commandName}>{name()}</div>}</Show>
               <div class={styles.commandBody}>
                 <Markdown text={it().output} cwd={props.cwd} breaks />
               </div>
@@ -678,9 +674,7 @@ export default function MessageList(props: {
             <TurnAnchor itemId={it().id} off={p.unanchored} />
             <QuestionCard
               item={it()}
-              onAnswer={
-                props.onAnswerQuestion ? (answers) => props.onAnswerQuestion?.(it(), answers) : undefined
-              }
+              onAnswer={props.onAnswerQuestion ? (answers) => props.onAnswerQuestion?.(it(), answers) : undefined}
               inLane={props.blockedIn?.(it()) ?? null}
               onOpenLane={props.onOpenLane}
             />
