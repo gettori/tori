@@ -115,6 +115,13 @@ export default defineConfig(async ({ command }) => ({
     ],
   },
 
+  // rustfmt finds rustfmt.toml from each file's directory; vendor/ is left out
+  // because Cargo checksums those files.
+  staged: {
+    "*.{ts,tsx,js,mjs,css,html,json}": "vp check --fix",
+    "{src-tauri,mobile/src-tauri}/{build.rs,src/**/*.rs}": "rustfmt",
+  },
+
   lint: {
     rules: {
       // Every hit is a Solid `let el!: T` handed to `ref={el}`, which the Solid
