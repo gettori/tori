@@ -179,6 +179,13 @@ fn new_branch_start_point(repo: &str, branch: &str) -> Option<String> {
     }
 }
 
+/// The base the caller named, when it is a branch rather than a tag or a sha:
+/// the one thing worth remembering as what the new branch is measured against.
+pub(crate) fn base_branch(repo: &str, base: Option<&str>) -> Option<String> {
+    let base = base.map(str::trim).filter(|b| !b.is_empty())?;
+    (branch_exists(repo, base) || remote_branch_exists(repo, base)).then(|| base.to_string())
+}
+
 /// A base the caller named, as a ref a branch can start at: a local branch by
 /// its own name, a remote-only one through `origin/` (which is how the picker
 /// lists it, prefix stripped), and anything else - a tag, a sha - as written.
@@ -409,6 +416,9 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
         }
         let argrefs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         git_ok(repo, &argrefs)?;
+        if let Some(picked) = base_branch(repo, base) {
+            crate::git::record_base(repo, branch, &picked);
+        }
     }
 
     link_shared(container, &target);
