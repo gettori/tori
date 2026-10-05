@@ -1015,6 +1015,9 @@ pub fn new_branch(
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
+    if let Some(picked) = crate::worktree::base_branch(&repo, base.as_deref()) {
+        crate::git::record_base(&repo, name, &picked);
+    }
     let mut state = load_attached();
     state
         .0

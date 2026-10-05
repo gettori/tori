@@ -933,7 +933,8 @@ impl Backend for TauriBackend {
 
     // A PR body can run to kilobytes and no row draws it, so it stays off the wire.
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError> {
-        let mut report = crate::forge::commands::forge_unit_statuses(params.project, params.branches, false).map_err(|e| refused(e.message))?;
+        let mut report = crate::forge::commands::unit_statuses(params.project.clone(), params.branches, false).map_err(|e| refused(e.message))?;
+        crate::forge::commands::adopt_pr_bases(&self.app, &params.project, &report.statuses);
         for status in &mut report.statuses {
             if let Some(pr) = status.pull_request.as_mut() {
                 pr.body = None;

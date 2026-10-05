@@ -1220,6 +1220,41 @@ pub fn forge_push_and_create_pr(
 /// [`super::status`].
 #[tauri::command(async)]
 pub fn forge_unit_statuses(
+    app: tauri::AppHandle,
+    project_path: String,
+    branches: Vec<String>,
+    refresh: bool,
+) -> Result<StatusReport, ForgeErrorDto> {
+    let out = unit_statuses(project_path.clone(), branches, refresh)?;
+    adopt_pr_bases(&app, &project_path, &out.statuses);
+    Ok(out)
+}
+
+/// Record each open pull request's base as what its branch is measured
+/// against, and tell the sidebar to re-ask the rows whose base moved. A PR
+/// opened against something other than the default, or retargeted later, would
+/// otherwise keep counting against the default.
+pub(crate) fn adopt_pr_bases(app: &tauri::AppHandle, project_path: &str, statuses: &[UnitStatus]) {
+    use tauri::Emitter;
+    let moved: Vec<&UnitStatus> = statuses
+        .iter()
+        .filter(|s| {
+            s.pull_request
+                .as_ref()
+                .is_some_and(|pr| pr.state == PrState::Open && crate::git::record_base(project_path, &s.head_ref, &pr.base_ref))
+        })
+        .collect();
+    if moved.is_empty() {
+        return;
+    }
+    let worktrees = crate::worktree::list_worktrees_body(project_path.to_string()).unwrap_or_default();
+    for s in moved {
+        let folder = worktrees.iter().find(|w| w.branch == s.head_ref).map_or(project_path, |w| w.path.as_str());
+        let _ = app.emit("git://base-changed", serde_json::json!({ "repo": folder }));
+    }
+}
+
+pub fn unit_statuses(
     project_path: String,
     branches: Vec<String>,
     refresh: bool,
@@ -2299,7 +2334,7 @@ mod tests {
         let not_a_repo = std::env::temp_dir().join("tori_forge_no_repo_here");
         switched_off();
 
-        let err = forge_unit_statuses(
+        let err = unit_statuses(
             not_a_repo.to_string_lossy().into_owned(),
             vec!["wave-3".into()],
             false,

@@ -2855,16 +2855,58 @@ fn only_old_upstream(repo: &str, tracked: &str, tip: &str) -> bool {
 /// same reach as `REFLOG_DEPTH`, in lines rather than entries.
 const REFLOG_LINES: usize = 200;
 
-fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>, dirty: bool) -> Option<BaseSync> {
+/// Where Tori keeps the branch a branch is measured against, once it knows
+/// better than the remote's default: the base its pull request targets, or the
+/// one it was cut from. Branch config, so a rename carries it and a delete drops it.
+fn base_key(branch: &str) -> String {
+    format!("branch.{branch}.tori-base")
+}
+
+/// Remember `base` as what `branch` is measured against. True only when the
+/// recorded value changed, so a caller polling a pull request writes and
+/// announces nothing on the ticks where its base stood still.
+pub(crate) fn record_base(repo: &str, branch: &str, base: &str) -> bool {
+    let base = base.trim();
+    if base.is_empty() || base == branch || recorded_base(repo, branch).as_deref() == Some(base) {
+        return false;
+    }
+    if !resolves(repo, &format!("refs/heads/{branch}")) {
+        return false;
+    }
+    git_capture(repo, &["config", &base_key(branch), base]).is_ok()
+}
+
+fn recorded_base(repo: &str, branch: &str) -> Option<String> {
+    git_capture(repo, &["config", "--get", &base_key(branch)]).ok().filter(|b| !b.is_empty())
+}
+
+/// The base's name and the ref that stands for it. A recorded base is read off
+/// origin when origin has it, since that is what a pull request merges into,
+/// and off the local branch when it was never pushed. A recorded base that
+/// resolves to neither falls back to the default rather than to nothing.
+fn base_of(repo: &str, branch: Option<&str>) -> Option<(String, String)> {
+    if let Some(name) = branch.and_then(|b| recorded_base(repo, b)) {
+        let found = [format!("refs/remotes/origin/{name}"), format!("refs/heads/{name}")]
+            .into_iter()
+            .find(|r| resolves(repo, r));
+        if let Some(full) = found {
+            return Some((name, full));
+        }
+    }
     let base = git_default_base_branch(repo.to_string()).ok().flatten()?;
+    let full = format!("refs/remotes/origin/{base}");
+    Some((base, full))
+}
+
+fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>, dirty: bool) -> Option<BaseSync> {
+    let (base, base_ref) = base_of(repo, branch)?;
     // Two ways the base is already the question the upstream answers: standing
     // on it, or tracking it from somewhere else. Either way a second count of
     // the same distance would draw two chips saying one thing.
     if branch == Some(base.as_str()) {
         return None;
     }
-    let base_ref = format!("origin/{base}");
-    if tracked == Some(base_ref.as_str()) {
+    if tracked.is_some_and(|t| format!("refs/remotes/{t}") == base_ref) {
         return None;
     }
     // Both directions out of one process. Unrelated histories have no merge
@@ -2872,7 +2914,7 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>,
     // its own, nothing to catch up on, and `conflicts` left to say why.
     let counts = git_capture(
         repo,
-        &["rev-list", "--left-right", "--count", &format!("{tip}...refs/remotes/{base_ref}"), "--"],
+        &["rev-list", "--left-right", "--count", &format!("{tip}...{base_ref}"), "--"],
     )
     .unwrap_or_default();
     let mut counts = counts.split_whitespace();
@@ -2903,7 +2945,7 @@ fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32, dirty: bool) -> 
     if let Some(hit) = key.as_ref().and_then(|k| cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(k).cloned()) {
         return Some(hit);
     }
-    let fork = git_capture(repo, &["merge-base", &format!("refs/remotes/{base_ref}"), tip]).ok()?;
+    let fork = git_capture(repo, &["merge-base", base_ref, tip]).ok()?;
     // Against the working tree only where it is this branch's: a branch asked
     // about from somebody else's checkout has nothing uncommitted.
     let mut args = vec!["--no-optional-locks", "diff", "--numstat", fork.as_str()];
@@ -3006,7 +3048,7 @@ fn conflicts_with(
 /// be cached: an answer keyed on a sha nobody could read is keyed on nothing.
 fn conflict_key(repo: &str, base_ref: &str, tip: &str) -> Option<ConflictKey> {
     let head = git_capture(repo, &["rev-parse", tip]).ok()?;
-    let base = git_capture(repo, &["rev-parse", &format!("refs/remotes/{base_ref}")]).ok()?;
+    let base = git_capture(repo, &["rev-parse", base_ref]).ok()?;
     Some((crate::exec::common_dir(repo), head, base))
 }
 

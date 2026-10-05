@@ -2885,6 +2885,7 @@ export default function LeftSidebar(props: {
   let unlistenTopics: UnlistenFn | undefined;
   let unlistenPrWatches: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
+  let unlistenBaseChanged: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
   let offActivateSpace: (() => void) | undefined;
@@ -2959,6 +2960,7 @@ export default function LeftSidebar(props: {
       // same call would be one full rediscovery per container, on a timer.
       if (!e.payload.quiet) loadConfig();
     });
+    unlistenBaseChanged = await listen<{ repo: string }>("git://base-changed", (e) => void resyncRoot(e.payload.repo));
     unlistenFetchError = await listen<{ repo: string; error: string; quiet?: boolean }>(
       "git://fetch-error",
       (e) => {
@@ -2979,6 +2981,7 @@ export default function LeftSidebar(props: {
     unlistenTrayFocus?.();
     unlistenNavOpen?.();
     unlistenFetchDone?.();
+    unlistenBaseChanged?.();
     unlistenFetchError?.();
     offFocus?.();
     offActivateSpace?.();
