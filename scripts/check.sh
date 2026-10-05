@@ -3,10 +3,10 @@
 # calls one target of this script, so the list exists once and passing
 # `scripts/check.sh all` locally is passing CI.
 #
-#   scripts/check.sh ts      lockfile, type check (desktop and mobile), format
-#                            and lint (report only), token guard and vitest,
-#                            both vite builds
-#   scripts/check.sh rust    desktop crate tests, mobile crate check
+#   scripts/check.sh ts      lockfile, type check (desktop and mobile), format,
+#                            lint (report only), token guard and vitest, both
+#                            vite builds
+#   scripts/check.sh rust    format, desktop crate tests, mobile crate check
 #   scripts/check.sh audit   npm and crate advisories
 #   scripts/check.sh all     all three, in that order
 set -euo pipefail
@@ -26,10 +26,9 @@ ts() {
   pnpm exec tsc --noEmit
   step "type check (mobile)"
   pnpm --dir mobile typecheck
-  # Reported, not enforced, until the tree is formatted and the lint backlog
-  # is fixed.
-  step "format (report only)"
-  pnpm exec vp fmt --check || echo "warning: format issues above are not enforced yet" >&2
+  step "format"
+  pnpm exec vp fmt --check
+  # Reported, not enforced, until the lint backlog is fixed.
   step "lint (report only)"
   pnpm exec vp lint || echo "warning: lint errors above are not enforced yet" >&2
   step "token guard and vitest"
@@ -41,6 +40,9 @@ ts() {
 }
 
 rust() {
+  step "format"
+  cargo fmt --manifest-path src-tauri/Cargo.toml --check
+  cargo fmt --manifest-path mobile/src-tauri/Cargo.toml --check
   step "desktop crate tests"
   cargo test --manifest-path src-tauri/Cargo.toml
   step "mobile crate check"
