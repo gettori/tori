@@ -97,7 +97,27 @@ const traceCoreImports = () => ({
 
 // https://vite.dev/config/
 export default defineConfig(async ({ command }) => ({
-  fmt: { printWidth: 120 },
+  fmt: {
+    printWidth: 120,
+    // Markdown is prose (a reflow turned a changelog's "+ is gone" into a list
+    // item) and TOML belongs to Cargo; the rest is generated, vendored or
+    // captured, and has to stay byte for byte what produced it.
+    ignorePatterns: [
+      ".wiki/**",
+      "**/target/**",
+      "**/dist/**",
+      "**/*.md",
+      "**/*.toml",
+      "src-tauri/resources/**",
+      "src-tauri/gen/**",
+      "src-tauri/vendor/**",
+      "mobile/src-tauri/gen/**",
+      "dev/fixtures/**",
+      "**/*.golden.json",
+      "scripts/vs-seti-icon-theme.json",
+      "src/seti/mapping.ts",
+    ],
+  },
 
   plugins: lazyPlugins(() => [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])]),
 
