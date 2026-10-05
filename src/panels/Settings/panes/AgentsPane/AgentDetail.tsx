@@ -437,7 +437,7 @@ export default function AgentDetail(props: {
   };
 
   const savePath = (raw: string) => {
-    const paths = { ...(settings.agent.paths ?? {}) };
+    const paths = { ...settings.agent.paths };
     const trimmed = raw.trim();
     if (trimmed) paths[a().id] = trimmed;
     else delete paths[a().id];

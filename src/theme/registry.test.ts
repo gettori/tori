@@ -19,7 +19,7 @@ describe("bundled registry", () => {
     const ids = listSelectableBundled().map((t) => t.id);
     // Tori's own two lead the registry; the picker sorts by label on its own.
     expect(ids.slice(0, 2)).toEqual(["tori-dark", "tori-light"]);
-    expect(ids.slice(2)).toEqual([...ids.slice(2)].sort());
+    expect(ids.slice(2)).toEqual(ids.slice(2).sort());
     expect(ids).toHaveLength(22);
     expect(new Set(ids).size).toBe(22);
   });

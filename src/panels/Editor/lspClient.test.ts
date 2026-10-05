@@ -147,7 +147,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (cmd === "lsp_resolve") return Promise.resolve(resolve(args?.filePath as string));
     if (cmd === "lsp_stop_all") stopped.push("all");
-    if (cmd === "lsp_stop") stopped.push((args?.handle as { serverId: string }).serverId);
+    if (cmd === "lsp_stop") stopped.push((args!.handle as { serverId: string }).serverId);
     return Promise.resolve();
   },
   Channel: class {
@@ -1022,7 +1022,7 @@ describe("schema associations", () => {
     await m.ensureLspFor("/proj/js5/a.json", "/proj/js5");
     await settle();
 
-    const sent = (frames().find((f) => f.method === "json/schemaAssociations")?.params as unknown[])[0] as {
+    const sent = (frames().find((f) => f.method === "json/schemaAssociations")!.params as unknown[])[0] as {
       uri: string;
     }[];
     expect(sent.map((a) => a.uri)).toEqual([

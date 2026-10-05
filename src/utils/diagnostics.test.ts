@@ -53,7 +53,7 @@ describe("capDiagnostics", () => {
   it("restores document order after truncating", () => {
     const list = [p(50, "warning"), p(10, "error"), p(30, "warning"), p(20, "error")];
     const capped = capDiagnostics(list, 3);
-    expect(capped.map((d) => d.line)).toEqual([...capped.map((d) => d.line)].sort((a, b) => a - b));
+    expect(capped.map((d) => d.line)).toEqual(capped.map((d) => d.line).sort((a, b) => a - b));
   });
 
   it("breaks a line tie on column", () => {
