@@ -45,7 +45,20 @@ const calls = {
 };
 
 function account(id: string, auth: AuthState, login: string | null, extra: Partial<ForgeAccount> = {}): ForgeAccount {
-  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, scopes: null, source: "token", orgAccess: [], auth, ...extra };
+  return {
+    id,
+    provider: "github",
+    baseUrl: "https://github.com",
+    login,
+    label: login ?? "",
+    expiresAt: null,
+    rejectedAt: null,
+    scopes: null,
+    source: "token",
+    orgAccess: [],
+    auth,
+    ...extra,
+  };
 }
 
 function hostOf(host: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
@@ -233,7 +246,9 @@ describe("the forge accounts settings section", () => {
     expect(screen.getByText("Connect github.com")).toBeTruthy();
     expect(screen.getByText("Another host...")).toBeTruthy();
     expect(screen.getByText("Available once a host is connected.")).toBeTruthy();
-    await waitFor(() => expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(true));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(true),
+    );
   });
 
   it("gives one github.com account a card with its tag, status and one account's switch", async () => {
@@ -246,9 +261,7 @@ describe("the forge accounts settings section", () => {
     expect(card.textContent).toContain(
       "Covers Tori's own git, terminal tabs and agents. Tabs and agents already open need reopening after you turn it on.",
     );
-    expect(card.textContent).toContain(
-      "Tori has to be running: while it's closed, git on github.com asks you.",
-    );
+    expect(card.textContent).toContain("Tori has to be running: while it's closed, git on github.com asks you.");
     expect(screen.getByLabelText("Connect a host")).toBeTruthy();
     expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(false);
   });
@@ -264,7 +277,10 @@ describe("the forge accounts settings section", () => {
 
   it("lists two accounts under github.com and one under gitlab.com, each card tagged by family", async () => {
     hosts = [
-      hostOf("github.com", [on("octocat"), on("octocat-review")], { gitCredentials: true, defaultAccount: "github-com-octocat" }),
+      hostOf("github.com", [on("octocat"), on("octocat-review")], {
+        gitCredentials: true,
+        defaultAccount: "github-com-octocat",
+      }),
       hostOf("gitlab.com", [
         account("gitlab-com-a-mehta", { kind: "signedIn", login: "a.mehta" }, "a.mehta", {
           provider: "gitlab",
@@ -349,7 +365,9 @@ describe("the forge accounts settings section", () => {
     render(() => <ForgeSection />);
     const toggle = (await screen.findByLabelText("Use github.com for git push and fetch")) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
-    expect((screen.getByLabelText("Account github.com pushes and fetches as") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Account github.com pushes and fetches as") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it("asks before removing an account, and removes nothing on cancel", async () => {
@@ -442,7 +460,9 @@ describe("the forge accounts settings section", () => {
     expect(within(cloud).queryByText("Application ID")).toBeNull();
 
     fireEvent.click(within(own).getByText("Application ID"));
-    fireEvent.input(await screen.findByLabelText("Application ID for git.example.com"), { target: { value: "app-123" } });
+    fireEvent.input(await screen.findByLabelText("Application ID for git.example.com"), {
+      target: { value: "app-123" },
+    });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(appIds["git.example.com"]).toBe("app-123"));
 
@@ -510,9 +530,7 @@ describe("the forge accounts settings section", () => {
     const scopes = await screen.findByTestId("granted-scopes");
     expect(within(scopes).getByText("repo")).toBeTruthy();
     expect(within(scopes).queryByText("workflow")).toBeNull();
-    expect(screen.getByTestId("missing-scopes").textContent).toContain(
-      "ghe.example.com did not grant workflow",
-    );
+    expect(screen.getByTestId("missing-scopes").textContent).toContain("ghe.example.com did not grant workflow");
     expect(screen.getByTestId("granted-expiry").textContent).toContain("Expires on 3 Jan 2027");
   });
 

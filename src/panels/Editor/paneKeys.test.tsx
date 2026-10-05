@@ -63,9 +63,7 @@ const { default: Editor } = await import("./Editor");
 const { enterRoots } = await import("../../utils/gitActions");
 const { emitWith, emit, OPEN_IN_EDITOR, CLOSE_TAB, TAB_JUMP, TAB_CYCLE, GIT_STAGE_ACTIVE } =
   await import("../../utils/events");
-const { ensureEnvelope, resetPaneLayoutModel, seedTwoPane, setFocusedPane } = await import(
-  "../../layout/layoutStore"
-);
+const { ensureEnvelope, resetPaneLayoutModel, seedTwoPane, setFocusedPane } = await import("../../layout/layoutStore");
 
 const selection = {
   spaceName: "space",

@@ -28,9 +28,7 @@ describe("computeVisibleCount", () => {
   it("accounts for padding, trailing, and safety reserves", () => {
     // bar 300, padding 8, trailing 50, safety 4 -> usable 238; extents 100,200,300.
     // 300>238 so overflow; usable2 = 238 - count(40) = 198 -> only the 100 tab fits.
-    expect(
-      computeVisibleCount([100, 200, 300], 300, R({ padding: 8, trailing: 50, count: 40, safety: 4 })),
-    ).toBe(1);
+    expect(computeVisibleCount([100, 200, 300], 300, R({ padding: 8, trailing: 50, count: 40, safety: 4 }))).toBe(1);
   });
 
   it("never returns less than 1 when tabs exist, even if none fit", () => {

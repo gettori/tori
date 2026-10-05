@@ -3,14 +3,7 @@
 // session actually produces: one after a split, one after a close, one with a
 // pane hidden, and one where the user has locked a pane to a kind.
 import { describe, it, expect, beforeEach } from "vite-plus/test";
-import {
-  closePane,
-  leaves,
-  resolvePinPane,
-  splitPane,
-  type PaneLeaf,
-  type PaneNode,
-} from "./paneLayout";
+import { closePane, leaves, resolvePinPane, splitPane, type PaneLeaf, type PaneNode } from "./paneLayout";
 import { DEFAULT_PIN_SIDES, pinGroup, pinSideOf, resetPinRules, setPinSides } from "./pinRules";
 
 const leaf = (id: string, size = 50, hidden = false): PaneLeaf => ({
@@ -76,9 +69,7 @@ describe("resolving a pin", () => {
     // A tab has to go somewhere; the side's own end answers rather than the
     // resolver returning nothing and the tab having no pane at all.
     const two = twoPane();
-    expect(at(two, "file", { side: "rightmost", locks: { left: "shell", right: "chat" } })).toBe(
-      "right",
-    );
+    expect(at(two, "file", { side: "rightmost", locks: { left: "shell", right: "chat" } })).toBe("right");
   });
 
   it("keeps today's layout when it is asked with no rules at all", () => {

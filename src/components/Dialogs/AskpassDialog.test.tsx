@@ -100,9 +100,7 @@ describe("AskpassDialog", () => {
       fireEvent.input(input()!, { target: { value: "skarif2" } });
       fireEvent.keyDown(input()!, { key: "Enter" });
 
-      expect(respondCalls()).toEqual([
-        { cmd: "askpass_respond", args: { id: 1, value: "skarif2" } },
-      ]);
+      expect(respondCalls()).toEqual([{ cmd: "askpass_respond", args: { id: 1, value: "skarif2" } }]);
     });
 
     it("relays the typed value when OK is clicked", async () => {
@@ -112,9 +110,7 @@ describe("AskpassDialog", () => {
       fireEvent.input(input()!, { target: { value: "skarif2" } });
       fireEvent.click(screen.getByRole("button", { name: "OK" }));
 
-      expect(respondCalls()).toEqual([
-        { cmd: "askpass_respond", args: { id: 1, value: "skarif2" } },
-      ]);
+      expect(respondCalls()).toEqual([{ cmd: "askpass_respond", args: { id: 1, value: "skarif2" } }]);
     });
 
     it("relays null on Escape, which cancels the whole git op", async () => {
@@ -151,11 +147,7 @@ describe("AskpassDialog", () => {
       emit(prompt({ kind: "password", prompt: "Password for 'https://github.com'" }));
 
       expect(input()!.type).toBe("password");
-      expect(
-        screen.getByText(
-          "HTTPS wants a personal access token, not your account password.",
-        ),
-      ).toBeTruthy();
+      expect(screen.getByText("HTTPS wants a personal access token, not your account password.")).toBeTruthy();
     });
 
     it("does not offer the token hint for a username", async () => {

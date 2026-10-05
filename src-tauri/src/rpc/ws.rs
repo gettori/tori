@@ -13,9 +13,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
+use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::protocol::{CloseFrame, Role, WebSocketConfig, WebSocketContext};
-use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::{Error as WsError, Message};
 
 use super::frame::MAX_FRAME;
@@ -48,7 +48,13 @@ impl WsTransport {
         let listener = TcpListener::bind(addr)?;
         listener.set_nonblocking(true)?;
         let addr = listener.local_addr()?;
-        Ok(Self { listener: Mutex::new(Some(listener)), addr, stopping: AtomicBool::new(false), live: Live::default(), next: AtomicU64::new(0) })
+        Ok(Self {
+            listener: Mutex::new(Some(listener)),
+            addr,
+            stopping: AtomicBool::new(false),
+            live: Live::default(),
+            next: AtomicU64::new(0),
+        })
     }
 
     pub fn addr(&self) -> SocketAddr {
@@ -204,7 +210,9 @@ impl Write for Io<'_> {
 }
 
 fn config() -> WebSocketConfig {
-    WebSocketConfig::default().max_message_size(Some(MAX_FRAME)).max_frame_size(Some(MAX_FRAME))
+    WebSocketConfig::default()
+        .max_message_size(Some(MAX_FRAME))
+        .max_frame_size(Some(MAX_FRAME))
 }
 
 fn io_error(e: WsError) -> io::Error {
@@ -220,10 +228,30 @@ struct WsStream(Arc<Shared>);
 impl WsStream {
     fn new(tcp: TcpStream, id: u64, live: Live) -> io::Result<Self> {
         let socket = Arc::new(Mutex::new(tcp.try_clone()?));
-        let out = |tcp: &Arc<Mutex<TcpStream>>| Out { tcp: tcp.clone(), held: Vec::new() };
-        let reader = Reader { ctx: None, tcp: tcp.try_clone()?, out: out(&socket), rest_of_line: Vec::new() };
-        let writer = Writer { ctx: WebSocketContext::new(Role::Server, Some(config())), out: out(&socket), line: Vec::new() };
-        Ok(Self(Arc::new(Shared { tcp, upgraded: AtomicBool::new(false), closing: AtomicBool::new(false), reader: Mutex::new(reader), writer: Mutex::new(writer), id, live })))
+        let out = |tcp: &Arc<Mutex<TcpStream>>| Out {
+            tcp: tcp.clone(),
+            held: Vec::new(),
+        };
+        let reader = Reader {
+            ctx: None,
+            tcp: tcp.try_clone()?,
+            out: out(&socket),
+            rest_of_line: Vec::new(),
+        };
+        let writer = Writer {
+            ctx: WebSocketContext::new(Role::Server, Some(config())),
+            out: out(&socket),
+            line: Vec::new(),
+        };
+        Ok(Self(Arc::new(Shared {
+            tcp,
+            upgraded: AtomicBool::new(false),
+            closing: AtomicBool::new(false),
+            reader: Mutex::new(reader),
+            writer: Mutex::new(writer),
+            id,
+            live,
+        })))
     }
 
     // A browser reports a connection that ends with no close frame as abnormal
@@ -233,7 +261,16 @@ impl WsStream {
         if self.0.upgraded.load(Ordering::SeqCst) && !self.0.closing.swap(true, Ordering::SeqCst) {
             if let Ok(mut writer) = self.0.writer.try_lock() {
                 let Writer { ctx, out, .. } = &mut *writer;
-                if ctx.write(out, Message::Close(Some(CloseFrame { code, reason: "".into() }))).is_ok() {
+                if ctx
+                    .write(
+                        out,
+                        Message::Close(Some(CloseFrame {
+                            code,
+                            reason: "".into(),
+                        })),
+                    )
+                    .is_ok()
+                {
                     let _ = ctx.flush(out);
                 }
             }
@@ -266,13 +303,24 @@ impl Read for WsStream {
             self.0.upgraded.store(true, Ordering::SeqCst);
         }
         while reader.rest_of_line.is_empty() {
-            let Reader { ctx, tcp, out, rest_of_line } = &mut *reader;
+            let Reader {
+                ctx,
+                tcp,
+                out,
+                rest_of_line,
+            } = &mut *reader;
             let ctx = ctx.as_mut().expect("handshake done above");
             match ctx.read(&mut Io { tcp, out }) {
                 Ok(Message::Text(text)) => {
                     // A line break is whitespace between JSON tokens and is
                     // escaped inside strings, so a pretty-printed request stays one line.
-                    rest_of_line.extend(text.as_str().as_bytes().iter().map(|&b| if b == b'\n' || b == b'\r' { b' ' } else { b }));
+                    rest_of_line.extend(text.as_str().as_bytes().iter().map(|&b| {
+                        if b == b'\n' || b == b'\r' {
+                            b' '
+                        } else {
+                            b
+                        }
+                    }));
                     rest_of_line.push(b'\n');
                 }
                 Ok(Message::Close(_)) => {
@@ -361,15 +409,37 @@ mod tests {
     }
 
     fn front(auth_timeout: Duration) -> Front {
-        let dir = std::env::temp_dir().join(format!("tori-ws-{}-{}", std::process::id(), crate::chat::approval::random_token()));
+        let dir = std::env::temp_dir().join(format!(
+            "tori-ws-{}-{}",
+            std::process::id(),
+            crate::chat::approval::random_token()
+        ));
         let devices = Arc::new(Devices::open(dir.join("devices.json")));
         let credential = devices.mint("test").unwrap().1;
         let transport = Arc::new(WsTransport::bind("127.0.0.1:0".parse().unwrap()).unwrap());
         let hub = Arc::new(Hub::default());
-        let server = Arc::new(Server { hub: hub.clone(), backend: Box::<StubBackend>::default(), auth_timeout });
+        let server = Arc::new(Server {
+            hub: hub.clone(),
+            backend: Box::<StubBackend>::default(),
+            auth_timeout,
+        });
         let pairing = Arc::new(Pairing::new(Box::new(|_| {})));
-        serve(transport.clone(), Arc::new(Credential::Remote { devices: devices.clone(), pairing: pairing.clone() }), server);
-        Front { transport, hub, devices, pairing, credential, dir }
+        serve(
+            transport.clone(),
+            Arc::new(Credential::Remote {
+                devices: devices.clone(),
+                pairing: pairing.clone(),
+            }),
+            server,
+        );
+        Front {
+            transport,
+            hub,
+            devices,
+            pairing,
+            credential,
+            dir,
+        }
     }
 
     fn connect(front: &Front) -> tungstenite::Result<Client> {
@@ -379,13 +449,19 @@ mod tests {
 
     fn json_of(message: Message) -> Option<Value> {
         match message {
-            Message::Text(text) => Some(serde_json::from_str(text.as_str()).expect("every text frame is one whole JSON line")),
+            Message::Text(text) => {
+                Some(serde_json::from_str(text.as_str()).expect("every text frame is one whole JSON line"))
+            }
             _ => None,
         }
     }
 
     fn call(client: &mut Client, id: u64, method: &str, params: Value) -> Value {
-        client.send(Message::text(json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string())).unwrap();
+        client
+            .send(Message::text(
+                json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string(),
+            ))
+            .unwrap();
         loop {
             if let Some(reply) = json_of(client.read().unwrap()).filter(|v| v["id"] == json!(id)) {
                 return reply;
@@ -395,7 +471,10 @@ mod tests {
 
     fn authed(front: &Front) -> Client {
         let mut client = connect(front).unwrap();
-        assert_eq!(call(&mut client, 0, "auth", json!({ "token": front.credential }))["result"], json!({}));
+        assert_eq!(
+            call(&mut client, 0, "auth", json!({ "token": front.credential }))["result"],
+            json!({})
+        );
         client
     }
 
@@ -428,17 +507,27 @@ mod tests {
     fn replies_events_and_pongs_share_the_socket_without_breaking_a_frame() {
         let front = front(Duration::from_secs(5));
         let mut client = authed(&front);
-        assert_eq!(call(&mut client, 1, "subscribe", json!({"topic": "sessions"}))["result"], json!({}));
+        assert_eq!(
+            call(&mut client, 1, "subscribe", json!({"topic": "sessions"}))["result"],
+            json!({})
+        );
 
         let hub = front.hub.clone();
         let publisher = std::thread::spawn(move || {
             for n in 0..100 {
-                hub.publish(&Channel::Sessions, json!({ "kind": "session.started", "n": n, "pad": "x".repeat(2000) }));
+                hub.publish(
+                    &Channel::Sessions,
+                    json!({ "kind": "session.started", "n": n, "pad": "x".repeat(2000) }),
+                );
                 std::thread::sleep(Duration::from_millis(1));
             }
         });
         for id in 10..30 {
-            client.send(Message::text(json!({"jsonrpc": "2.0", "id": id, "method": "sessions.list", "params": {}}).to_string())).unwrap();
+            client
+                .send(Message::text(
+                    json!({"jsonrpc": "2.0", "id": id, "method": "sessions.list", "params": {}}).to_string(),
+                ))
+                .unwrap();
             if id == 15 {
                 client.send(Message::Ping("are you there".into())).unwrap();
             }
@@ -471,9 +560,15 @@ mod tests {
         assert!(connect(&front).is_err(), "a ninth is refused while eight are live");
 
         live.drain(..).for_each(drop);
-        assert!(wait_for(|| front.transport.live().is_empty()), "every closed connection gave its slot back");
+        assert!(
+            wait_for(|| front.transport.live().is_empty()),
+            "every closed connection gave its slot back"
+        );
         let mut ninth = authed(&front);
-        assert_eq!(call(&mut ninth, 1, "sessions.list", json!({}))["result"][0]["id"], json!("s1"));
+        assert_eq!(
+            call(&mut ninth, 1, "sessions.list", json!({}))["result"][0]["id"],
+            json!("s1")
+        );
     }
 
     #[test]
@@ -489,9 +584,20 @@ mod tests {
         }
 
         let mut device = connect(&front).unwrap();
-        assert_eq!(call(&mut device, 0, "auth", json!({ "token": reply["result"]["credential"] }))["result"], json!({}));
+        assert_eq!(
+            call(
+                &mut device,
+                0,
+                "auth",
+                json!({ "token": reply["result"]["credential"] })
+            )["result"],
+            json!({})
+        );
         let mut again = connect(&front).unwrap();
-        assert!(call(&mut again, 0, "pair", json!({ "code": offer.code }))["error"].is_object(), "a used code is refused");
+        assert!(
+            call(&mut again, 0, "pair", json!({ "code": offer.code }))["error"].is_object(),
+            "a used code is refused"
+        );
     }
 
     #[test]

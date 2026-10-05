@@ -193,12 +193,7 @@ function FileRow(props: {
           there is one control rather than a row of competing ones. Nothing on
           it opens a file: a folder has none to open, and a rule that holds for
           some rows is a rule nobody learns. */}
-      <button
-        type="button"
-        class={styles.fileHead}
-        aria-expanded={open()}
-        onClick={() => setOpen(!open())}
-      >
+      <button type="button" class={styles.fileHead} aria-expanded={open()} onClick={() => setOpen(!open())}>
         <span class={styles.fileGlyph} aria-hidden="true">
           <Icon icon={e().kind === "dir" ? Folder : File} />
         </span>
@@ -239,7 +234,9 @@ function FileRow(props: {
                       label={
                         child.path === null
                           ? `No ${e().label.toLowerCase()} file in ${child.name}`
-                          : (rooted() ? undefined : NO_ROOT)
+                          : rooted()
+                            ? undefined
+                            : NO_ROOT
                       }
                       whenDisabled
                       onClick={() => child.path && openPath(child.path)}
@@ -332,9 +329,7 @@ function FileRow(props: {
                 size="sm"
                 variant="ghost"
                 onClick={() =>
-                  void invoke("reveal_in_finder", { path: e().path }).catch((err) =>
-                    toast(String(err), "error"),
-                  )
+                  void invoke("reveal_in_finder", { path: e().path }).catch((err) => toast(String(err), "error"))
                 }
               >
                 Reveal in Finder
@@ -432,10 +427,7 @@ export default function AgentFiles(props: {
               </div>
             </Show>
           </div>
-          <Show
-            when={v().declared}
-            fallback={<div class={styles.cardMeta}>This adapter declares no files.</div>}
-          >
+          <Show when={v().declared} fallback={<div class={styles.cardMeta}>This adapter declares no files.</div>}>
             <Show when={shown()}>
               {(profile) => (
                 <div class={styles.accountsCard}>

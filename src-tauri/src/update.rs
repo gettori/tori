@@ -94,7 +94,9 @@ pub fn relaunch(app: tauri::AppHandle) -> Result<(), String> {
 /// (a dev build runs from `target/`).
 fn running_bundle() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
-    exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).map(Path::to_path_buf)
+    exe.ancestors()
+        .find(|p| p.extension().is_some_and(|e| e == "app"))
+        .map(Path::to_path_buf)
 }
 
 /// `brew` on the login PATH and a Caskroom folder for tori: the same rule
@@ -144,7 +146,10 @@ fn throttle_path() -> std::path::PathBuf {
 }
 
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Is a check due at `now`, given a stored deadline of `next`?
@@ -167,7 +172,12 @@ struct GithubRelease {
 
 /// Does the running version carry a stage suffix (`26.1002.1-alpha`)?
 fn is_prerelease(version: &str) -> bool {
-    version.trim().trim_start_matches('v').split('+').next().is_some_and(|core| core.contains('-'))
+    version
+        .trim()
+        .trim_start_matches('v')
+        .split('+')
+        .next()
+        .is_some_and(|core| core.contains('-'))
 }
 
 /// The newest tag strictly newer than `current`, skipping drafts, and skipping
@@ -228,7 +238,10 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     if let Ok(mut found) = FOUND_TAG.lock() {
         *found = Some(tag);
     }
-    Some(UpdateInfo { version, brew: brew_owns_install() })
+    Some(UpdateInfo {
+        version,
+        brew: brew_owns_install(),
+    })
 }
 
 /// Persist "do not check again until `now + interval`". Best-effort: an
@@ -293,7 +306,11 @@ mod tests {
     }
 
     fn release(tag: &str, prerelease: bool) -> GithubRelease {
-        GithubRelease { tag_name: tag.to_string(), draft: false, prerelease }
+        GithubRelease {
+            tag_name: tag.to_string(),
+            draft: false,
+            prerelease,
+        }
     }
 
     #[test]
@@ -312,7 +329,11 @@ mod tests {
     fn the_pick_skips_drafts_and_takes_the_highest_version_not_the_first() {
         let mut draft = release("v27.0.0-alpha", true);
         draft.draft = true;
-        let list = [draft, release("v26.1003.0-alpha", true), release("v26.1004.0-alpha", true)];
+        let list = [
+            draft,
+            release("v26.1003.0-alpha", true),
+            release("v26.1004.0-alpha", true),
+        ];
         assert_eq!(pick_update(&list, "26.1002.1-alpha"), Some("v26.1004.0-alpha".into()));
         assert_eq!(pick_update(&[], "26.1002.1-alpha"), None);
     }

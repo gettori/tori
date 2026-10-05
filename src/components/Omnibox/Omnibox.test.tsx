@@ -38,15 +38,19 @@ const { default: Omnibox } = await import("./Omnibox");
 const { setLiveChat, dropLiveChat } = await import("../../utils/chatSessions");
 const { publishEditorState, clearEditorState } = await import("../../utils/editorState");
 const { enterRoots } = await import("../../utils/gitActions");
+const { publishSymbols, clearSymbols, normalizeDocumentSymbols, normalizeWorkspaceSymbols, setWorkspaceSymbolSearch } =
+  await import("../../utils/symbols");
 const {
-  publishSymbols,
-  clearSymbols,
-  normalizeDocumentSymbols,
-  normalizeWorkspaceSymbols,
-  setWorkspaceSymbolSearch,
-} = await import("../../utils/symbols");
-const { onWith, NEW_SESSION, SET_RIGHT_MODE, TOGGLE_TERMINAL, STOP_CHAT, EDITOR_SAVE, OPEN_IN_EDITOR, EDITOR_LSP_SOURCE_ACTION, SOURCE_KINDS } =
-  await import("../../utils/events");
+  onWith,
+  NEW_SESSION,
+  SET_RIGHT_MODE,
+  TOGGLE_TERMINAL,
+  STOP_CHAT,
+  EDITOR_SAVE,
+  OPEN_IN_EDITOR,
+  EDITOR_LSP_SOURCE_ACTION,
+  SOURCE_KINDS,
+} = await import("../../utils/events");
 const { publishSourceActionKinds } = await import("../../utils/sourceActions");
 const { note, saveFrecency } = await import("../../utils/frecency");
 type OpenInEditor = { path: string; line?: number; col?: number };
@@ -490,12 +494,7 @@ describe("> - actions", () => {
     // still up would open behind it and take its focus fight.
     const order: string[] = [];
     mounted = render(() => (
-      <Omnibox
-        prefix=">"
-        selected={selection}
-        onOpenSettings={onOpenSettings}
-        onClose={() => order.push("closed")}
-      />
+      <Omnibox prefix=">" selected={selection} onOpenSettings={onOpenSettings} onClose={() => order.push("closed")} />
     ));
     const on = () => order.push("ran");
     window.addEventListener(SET_RIGHT_MODE, on);
@@ -613,7 +612,13 @@ describe("@ - the open file's symbols", () => {
   it("reads the active file, not the one the box was opened over", () => {
     const other = `${REPO}/src/other.ts`;
     publishSymbols(PATH, TREE);
-    publishSymbols(other, normalizeDocumentSymbols([{ name: "elsewhere", kind: 12, range: range(0, 0, 1, 0), selectionRange: range(0, 0, 0, 9) }], other));
+    publishSymbols(
+      other,
+      normalizeDocumentSymbols(
+        [{ name: "elsewhere", kind: 12, range: range(0, 0, 1, 0), selectionRange: range(0, 0, 0, 9) }],
+        other,
+      ),
+    );
     open("@");
     publishEditorState({ activePath: other, dirty: false, tabCount: 1, projectRoot: REPO, recentJumps: [] });
     expect(rowLabels()).toEqual(["elsewhere"]);
@@ -623,7 +628,12 @@ describe("@ - the open file's symbols", () => {
 describe("# - the project's symbols", () => {
   const HITS = normalizeWorkspaceSymbols(
     [
-      { name: "Widget", kind: 5, location: { uri: `file://${REPO}/src/w.ts`, range: range(3, 0, 3, 6) }, containerName: "ui" },
+      {
+        name: "Widget",
+        kind: 5,
+        location: { uri: `file://${REPO}/src/w.ts`, range: range(3, 0, 3, 6) },
+        containerName: "ui",
+      },
     ],
     toPath,
   );

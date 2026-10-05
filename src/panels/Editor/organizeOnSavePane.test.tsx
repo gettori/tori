@@ -70,7 +70,9 @@ function fakeServer(): Transport {
         msg.method === "initialize"
           ? { capabilities: { codeActionProvider: { codeActionKinds: ["source.organizeImports"] } } }
           : msg.method === "textDocument/codeAction"
-            ? (organizeEdit ? [organizeEdit] : [])
+            ? organizeEdit
+              ? [organizeEdit]
+              : []
             : null;
       const answer = () => receive?.(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }));
       if (hold && msg.method === "textDocument/codeAction") return;
@@ -107,7 +109,8 @@ vi.mock("./lspClient", async () => {
     onLspChange: () => () => {},
     setSemanticRefreshListener: () => () => {},
     setCodeLensRefreshListener: () => () => {},
-    stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+    stopAllLsp: () => Promise.resolve(),
+    stopEvictedLspRoots: () => Promise.resolve(),
   };
 });
 
@@ -185,9 +188,10 @@ describe("with the setting off", () => {
 
     await waitFor(() => expect(written).toHaveLength(1));
     expect(written[0].contents).toBe(DISK);
-    expect(asked.some((a) => a.method === "textDocument/codeAction"), "a save nobody opted into is free").toBe(
-      false,
-    );
+    expect(
+      asked.some((a) => a.method === "textDocument/codeAction"),
+      "a save nobody opted into is free",
+    ).toBe(false);
   });
 });
 
@@ -202,9 +206,7 @@ describe("with the setting on", () => {
     expect(written[0].contents).toBe(SORTED);
 
     const request = asked.find((a) => a.method === "textDocument/codeAction")!;
-    expect((request.params as { context: { only: string[] } }).context.only).toEqual([
-      "source.organizeImports",
-    ]);
+    expect((request.params as { context: { only: string[] } }).context.only).toEqual(["source.organizeImports"]);
   });
 
   it("puts the organized text in the buffer too, so disk and screen agree", async () => {
@@ -244,7 +246,10 @@ describe("with the setting on", () => {
 
 describe("fix all on save", () => {
   const FIXED = "import { b } from './b';\nimport { a } from './a';\n";
-  const semi = (line: number) => ({ range: { start: { line, character: 23 }, end: { line, character: 23 } }, newText: ";" });
+  const semi = (line: number) => ({
+    range: { start: { line, character: 23 }, end: { line, character: 23 } },
+    newText: ";",
+  });
 
   /** An ESLint beside the primary whose fix-all adds the missing semicolons, and
    *  which answers only when `release` is called if `held`. */

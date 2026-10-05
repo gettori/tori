@@ -55,15 +55,44 @@ function tool(id: string, over: Partial<ToolItem>): ToolItem {
   };
 }
 
-const say = (id: string, text: string): ChatItem => ({ kind: "user", id, blocks: [{ type: "text", text }], steer: false });
+const say = (id: string, text: string): ChatItem => ({
+  kind: "user",
+  id,
+  blocks: [{ type: "text", text }],
+  steer: false,
+});
 
 const ITEMS: ChatItem[] = [
   say("u12", "cap the limiter at 100 requests a minute per key"),
-  tool("e1", { name: "Edit", toolKind: "edit", input: { file_path: `${CWD}/src/limiter.ts` }, summary: { type: "edit", added: 14, removed: 3 }, durationMs: 90 }),
-  tool("b1", { name: "Bash", input: { command: "pnpm test limiter" }, summary: { type: "execute", exitCode: 0, lines: 22 }, durationMs: 4200 }),
-  { kind: "text", id: "x12", turnId: "t12", agentId: null, text: "Each key now gets 100 requests a minute from a sliding window in `src/limiter.ts`, and the 101st is refused with a 429. All 18 limiter tests pass." },
+  tool("e1", {
+    name: "Edit",
+    toolKind: "edit",
+    input: { file_path: `${CWD}/src/limiter.ts` },
+    summary: { type: "edit", added: 14, removed: 3 },
+    durationMs: 90,
+  }),
+  tool("b1", {
+    name: "Bash",
+    input: { command: "pnpm test limiter" },
+    summary: { type: "execute", exitCode: 0, lines: 22 },
+    durationMs: 4200,
+  }),
+  {
+    kind: "text",
+    id: "x12",
+    turnId: "t12",
+    agentId: null,
+    text: "Each key now gets 100 requests a minute from a sliding window in `src/limiter.ts`, and the 101st is refused with a 429. All 18 limiter tests pass.",
+  },
   say("u13", "now send the Retry-After header"),
-  tool("e2", { turnId: "t13", name: "Edit", toolKind: "edit", input: { file_path: `${CWD}/src/limiter.ts` }, summary: { type: "edit", added: 3, removed: 1 }, durationMs: 70 }),
+  tool("e2", {
+    turnId: "t13",
+    name: "Edit",
+    toolKind: "edit",
+    input: { file_path: `${CWD}/src/limiter.ts` },
+    summary: { type: "edit", added: 3, removed: 1 },
+    durationMs: 70,
+  }),
   tool("b2", { turnId: "t13", name: "Bash", input: { command: "pnpm test limiter" }, state: "running" }),
 ];
 
@@ -92,7 +121,13 @@ function Strip() {
       renderTab={(t) => (
         <Tab
           value={t.id}
-          icon={t.agent ? <TabMark agentId={t.agent} status={t.status ?? null} certainty="exact" /> : <Icon icon={SquareTerminal} />}
+          icon={
+            t.agent ? (
+              <TabMark agentId={t.agent} status={t.status ?? null} certainty="exact" />
+            ) : (
+              <Icon icon={SquareTerminal} />
+            )
+          }
           onClose={() => {}}
         >
           {t.title}
@@ -173,11 +208,7 @@ function Session() {
 // The Changes panel's Checkpoints tab, drawn from its own stylesheets: the live
 // timeline lists refs through the backend, so its markup is repeated here.
 function Checkpoints() {
-  const tabs = [
-    { label: "Graph" },
-    { label: "Stashes" },
-    { label: "Checkpoints", count: 13, on: true },
-  ];
+  const tabs = [{ label: "Graph" }, { label: "Stashes" }, { label: "Checkpoints", count: 13, on: true }];
   return (
     <div class={`${popover.surface} ${styles.card}`} inert>
       <div class={`${review.tabStrip} ${styles.cardTabs}`}>

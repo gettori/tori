@@ -89,9 +89,7 @@ async function open(path: string) {
     />
   ));
   await waitFor(() => expect(dirty.length).toBeGreaterThan(0));
-  const view = EditorView.findFromDOM(
-    mounted.container.querySelector(".cm-editor") as HTMLElement,
-  )!;
+  const view = EditorView.findFromDOM(mounted.container.querySelector(".cm-editor") as HTMLElement)!;
   // The baseline is taken on open, asynchronously. Waiting for it is the
   // difference between testing the guard and testing a race.
   await waitFor(() => expect(reads).toContain(path));
@@ -160,7 +158,6 @@ describe("saving a file outside every watched root", () => {
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes[1].contents).toBe("second\n");
   });
-
 });
 
 describe("saving a file inside a watched root", () => {

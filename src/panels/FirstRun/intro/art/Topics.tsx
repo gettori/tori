@@ -53,13 +53,23 @@ const WORK = "~/Projects/work";
 const PERSONAL = "~/Projects/personal";
 
 const SPACES: SpaceTint[] = [
-  { name: "work", color: "Sky", projects: [{ path: `${WORK}/api` }, { path: `${WORK}/web` }, { path: `${WORK}/infra` }] },
+  {
+    name: "work",
+    color: "Sky",
+    projects: [{ path: `${WORK}/api` }, { path: `${WORK}/web` }, { path: `${WORK}/infra` }],
+  },
   { name: "personal", color: "Emerald", projects: [{ path: `${PERSONAL}/blog` }] },
 ];
 
 function member(repoPath: string, branch: string, order: number): Member {
   const displayName = repoPath.split("/").pop()!;
-  return { repoPath, displayName, worktreePath: `${repoPath}/.tori/worktrees/${branch}`, state: { kind: "present" }, order };
+  return {
+    repoPath,
+    displayName,
+    worktreePath: `${repoPath}/.tori/worktrees/${branch}`,
+    state: { kind: "present" },
+    order,
+  };
 }
 
 function topic(name: string, branch: string, repos: string[]): Topic {
@@ -106,8 +116,20 @@ function TopicsSidebar() {
           <div class={sidebar.spaceHeader}>
             <span class={sidebar.spaceHeaderName}>Topics</span>
           </div>
-          <Button class={sidebar.headAdd} variant="ghost" size="md" aria-label="New Topic" icon={<Icon icon={Plus} />} />
-          <Button class={sidebar.searchToggle} variant="ghost" size="md" aria-label="Filter" icon={<Icon icon={Search} />} />
+          <Button
+            class={sidebar.headAdd}
+            variant="ghost"
+            size="md"
+            aria-label="New Topic"
+            icon={<Icon icon={Plus} />}
+          />
+          <Button
+            class={sidebar.searchToggle}
+            variant="ghost"
+            size="md"
+            aria-label="Filter"
+            icon={<Icon icon={Search} />}
+          />
         </div>
         <div class={`${topicList.list} ${sidebar.topicList}`}>
           <ul class={topicList.items}>
@@ -166,7 +188,12 @@ const CARET_LINE = 13;
 // table, so a keyword here is the colour it is in the real editor.
 function Code(props: { path: string; text: string }) {
   const lines = props.text.split("\n");
-  const asRows: DiffRow[] = lines.map((text, i) => ({ kind: "context", text: ` ${text}`, oldLine: i + 1, newLine: i + 1 }));
+  const asRows: DiffRow[] = lines.map((text, i) => ({
+    kind: "context",
+    text: ` ${text}`,
+    oldLine: i + 1,
+    newLine: i + 1,
+  }));
   const painted = createMemo(() => paintRows(asRows, props.path));
   return (
     <div class={styles.code}>
@@ -268,7 +295,9 @@ const HITS: { member: TintedMember; files: HitFile[] }[] = [
 ];
 
 const hitsIn = (files: HitFile[]) => files.reduce((n, f) => n + f.hits.length, 0);
-const indent = (depth: number, extra = 0) => ({ "padding-left": `calc(${depth * 12 + 8}px + ${extra} * var(--control-icon))` });
+const indent = (depth: number, extra = 0) => ({
+  "padding-left": `calc(${depth * 12 + 8}px + ${extra} * var(--control-icon))`,
+});
 
 function SearchView() {
   return (

@@ -70,11 +70,7 @@ export default function ForgeChipView(props: {
     <>
       <Show when={pr()}>
         {(p) => (
-          <span
-            class={`${styles.forgeItem} ${styles[`pr_${p().state}`]}`}
-            title={p().title}
-            data-forge-pr={p().state}
-          >
+          <span class={`${styles.forgeItem} ${styles[`pr_${p().state}`]}`} title={p().title} data-forge-pr={p().state}>
             <Icon icon={prIcon(p().state)} />
             <Show when={p().label}>{p().label}</Show>
           </span>
@@ -82,22 +78,14 @@ export default function ForgeChipView(props: {
       </Show>
       <Show when={props.chip.checks}>
         {(c) => (
-          <span
-            class={`${styles.forgeItem} ${styles[c().tone]}`}
-            title={c().title}
-            data-forge-checks={c().tone}
-          >
+          <span class={`${styles.forgeItem} ${styles[c().tone]}`} title={c().title} data-forge-checks={c().tone}>
             <Icon icon={CHECK_ICON[c().tone]} />
           </span>
         )}
       </Show>
       <Show when={props.chip.review}>
         {(r) => (
-          <span
-            class={`${styles.forgeItem} ${styles[r().tone]}`}
-            title={r().title}
-            data-forge-review={r().tone}
-          >
+          <span class={`${styles.forgeItem} ${styles[r().tone]}`} title={r().title} data-forge-review={r().tone}>
             <Icon icon={REVIEW_ICON[r().tone]} />
           </span>
         )}

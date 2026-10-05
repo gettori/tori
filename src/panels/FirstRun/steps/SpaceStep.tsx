@@ -69,13 +69,12 @@ export default function SpaceStep(props: {
               when={props.spaces.length > 0}
               fallback={
                 <>
-                  No spaces found in {shortHome(props.root, props.home)}. One space is all Tori needs
-                  to open, and you can add more at any time.
+                  No spaces found in {shortHome(props.root, props.home)}. One space is all Tori needs to open, and you
+                  can add more at any time.
                 </>
               }
             >
-              The new space is created inside {shortHome(props.root, props.home)}, beside the ones
-              already there.
+              The new space is created inside {shortHome(props.root, props.home)}, beside the ones already there.
             </Show>
           </div>
           <Show when={props.spaces.length > 0}>

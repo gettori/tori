@@ -77,9 +77,7 @@ const OPTIONS: ChatConfigOption[] = [
 function setup(options: ChatConfigOption[] = OPTIONS) {
   const onSet = vi.fn();
   const [live, setLive] = createSignal(options);
-  const result = render(() => (
-    <ConfigMirror options={live()} disabled={false} onSet={onSet} />
-  ));
+  const result = render(() => <ConfigMirror options={live()} disabled={false} onSet={onSet} />);
   const openMenu = (pill: HTMLElement) => {
     pointerClick(pill);
     const menus = [...document.querySelectorAll('[role="menu"]')];

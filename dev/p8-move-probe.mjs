@@ -21,11 +21,15 @@ async function sbUp() {
     if (res.ok) return null;
   } catch {}
   const log = openSync(join(tmpdir(), "p8-storybook.log"), "w");
-  const child = spawn(join(ROOT, "node_modules", ".bin", "storybook"), ["dev", "-p", String(SB_PORT), "--no-open", "--quiet"], {
-    cwd: ROOT,
-    stdio: ["ignore", log, log],
-    detached: true,
-  });
+  const child = spawn(
+    join(ROOT, "node_modules", ".bin", "storybook"),
+    ["dev", "-p", String(SB_PORT), "--no-open", "--quiet"],
+    {
+      cwd: ROOT,
+      stdio: ["ignore", log, log],
+      detached: true,
+    },
+  );
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
     try {
@@ -39,7 +43,14 @@ async function sbUp() {
 
 const sb = await sbUp();
 const profile = mkdtempSync(join(tmpdir(), "p8-chrome-"));
-const chrome = spawn(CHROME, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--window-size=1200,800", "about:blank"]);
+const chrome = spawn(CHROME, [
+  "--headless=new",
+  "--remote-debugging-port=0",
+  `--user-data-dir=${profile}`,
+  "--no-first-run",
+  "--window-size=1200,800",
+  "about:blank",
+]);
 const wsUrl = await new Promise((resolve, reject) => {
   let buf = "";
   chrome.stderr.on("data", (d) => {
@@ -52,11 +63,14 @@ const wsUrl = await new Promise((resolve, reject) => {
 const port = new URL(wsUrl).port;
 const pageUrl = `${SB_URL}/iframe.html?id=${STORY}&viewMode=story`;
 const target = await new Promise((resolve, reject) => {
-  const req = http.request({ host: "127.0.0.1", port, path: `/json/new?${encodeURIComponent(pageUrl)}`, method: "PUT" }, (res) => {
-    let b = "";
-    res.on("data", (d) => (b += d));
-    res.on("end", () => resolve(JSON.parse(b)));
-  });
+  const req = http.request(
+    { host: "127.0.0.1", port, path: `/json/new?${encodeURIComponent(pageUrl)}`, method: "PUT" },
+    (res) => {
+      let b = "";
+      res.on("data", (d) => (b += d));
+      res.on("end", () => resolve(JSON.parse(b)));
+    },
+  );
   req.on("error", reject);
   req.end();
 });

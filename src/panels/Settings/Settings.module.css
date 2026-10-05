@@ -209,8 +209,7 @@
   .railItemActive,
   .railItemActive:hover {
     background:
-      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-        var(--tori-border-thick) 100% no-repeat,
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
       linear-gradient(to right, var(--brand-subtle), transparent);
     /* Square on the bar's side, rounded away from it, as the sidebar's rows
        are: a rounded left corner clips the bar into a lozenge. */
@@ -719,7 +718,9 @@
     min-height: calc(52px * var(--ui-scale));
     border: var(--tori-border-thin) solid var(--border-default);
     border-radius: var(--tori-radius-md);
-    transition: border-color var(--tori-duration-fast), background var(--tori-duration-fast);
+    transition:
+      border-color var(--tori-duration-fast),
+      background var(--tori-duration-fast);
   }
   .agentRowWrap:hover {
     border-color: var(--border-strong);

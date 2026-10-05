@@ -80,9 +80,7 @@ vi.mock("../../utils/prRelation", () => ({ prRelation: () => polledRelation() })
 vi.mock("../../utils/forgeStatus", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/forgeStatus")>()),
   unitStatus: () =>
-    polledPrState
-      ? { pullRequest: { number: 12, state: polledPrState, headRepoIsOrigin: !polledFromFork } }
-      : null,
+    polledPrState ? { pullRequest: { number: 12, state: polledPrState, headRepoIsOrigin: !polledFromFork } } : null,
 }));
 
 vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
@@ -243,21 +241,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import ReviewPanel from "./ReviewPanel";
-import {
-  stage,
-  stagedFiles,
-  enterRoots,
-  refreshStatus,
-  gitStateFor,
-  startGitWatch,
-} from "../../utils/gitActions";
-import {
-  TOAST,
-  OPEN_IN_EDITOR,
-  SEND_TO_SESSION,
-  SEND_TO_SESSION_RESULT,
-  type ToastEvent,
-} from "../../utils/events";
+import { stage, stagedFiles, enterRoots, refreshStatus, gitStateFor, startGitWatch } from "../../utils/gitActions";
+import { TOAST, OPEN_IN_EDITOR, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, type ToastEvent } from "../../utils/events";
 import { saveSettings, DEFAULT_SETTINGS } from "../Settings/settingsStore";
 import { BLOCKED_REASON } from "../../utils/safeSend";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
@@ -502,9 +487,7 @@ describe("renames", () => {
   it("names both halves in one row, and acts on the destination", async () => {
     // What `--porcelain=v2 -z` now reports: a real pathspec plus the source
     // beside it, instead of v1's single unusable "before.txt -> after.txt".
-    statusRows = [
-      { status: "R ", path: "after.txt", orig_path: "before.txt", staged: true, unstaged: false },
-    ];
+    statusRows = [{ status: "R ", path: "after.txt", orig_path: "before.txt", staged: true, unstaged: false }];
     render(() => <ReviewPanel root="/proj" selected={null} />);
 
     const row = await screen.findByTitle("after.txt");
@@ -580,9 +563,7 @@ describe("conflicts", () => {
     // The refusal moved from `title` to the tooltip, which a disabled button
     // cannot open by itself - hence `tooltipWhenDisabled` around it.
     fireEvent.pointerEnter(ask.closest("[data-tooltip-hover-surface]")!);
-    await waitFor(() =>
-      expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"),
-    );
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"));
   });
 
   it("asks about a second conflicted file while the first is still in flight", async () => {
@@ -621,9 +602,7 @@ describe("conflicts", () => {
     // Reached through the hover surface, since a disabled button fires no
     // pointer events of its own.
     fireEvent.pointerEnter(stashAll().closest("[data-tooltip-hover-surface]")!);
-    await waitFor(() =>
-      expect(screen.getByRole("tooltip").textContent).toMatch(/merge is unresolved/),
-    );
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toMatch(/merge is unresolved/));
 
     statusRows = [UNSTAGED];
     await refreshStatus("/proj");
@@ -667,9 +646,7 @@ describe("discard", () => {
 
     await confirmWith("Discard changes");
     await waitFor(() =>
-      expect(discardArgs).toEqual([
-        { cmd: "git_discard_files", args: { projectPath: "/proj", files: ["src/a.ts"] } },
-      ]),
+      expect(discardArgs).toEqual([{ cmd: "git_discard_files", args: { projectPath: "/proj", files: ["src/a.ts"] } }]),
     );
     // Open buffers hear about it through the channel a checkpoint revert uses,
     // so a discarded file is not silently re-saved from a stale buffer.
@@ -742,9 +719,7 @@ describe("discard", () => {
 
     fireEvent.click(screen.getByText("Discard changes"));
     await waitFor(() =>
-      expect(discardArgs).toEqual([
-        { cmd: "git_discard_files", args: { projectPath: "/proj", files: ["src/a.ts"] } },
-      ]),
+      expect(discardArgs).toEqual([{ cmd: "git_discard_files", args: { projectPath: "/proj", files: ["src/a.ts"] } }]),
     );
   });
 
@@ -848,9 +823,7 @@ describe("stash", () => {
     );
     // A stash laid back down over an open buffer must raise the same keep-mine
     // / take-disk question a checkpoint revert does.
-    await waitFor(() =>
-      expect(reverted).toEqual([{ backstop_ts: null, restored: ["src/a.ts"], deleted: [] }]),
-    );
+    await waitFor(() => expect(reverted).toEqual([{ backstop_ts: null, restored: ["src/a.ts"], deleted: [] }]));
   });
 
   it("shows git's own reason when a pop conflicts", async () => {
@@ -880,9 +853,7 @@ describe("stash", () => {
 
     fireEvent.click(screen.getByText("Drop stash"));
     await waitFor(() =>
-      expect(stashArgs).toEqual([
-        { cmd: "git_stash_drop", args: { projectPath: "/proj", selector: "stash@{0}" } },
-      ]),
+      expect(stashArgs).toEqual([{ cmd: "git_stash_drop", args: { projectPath: "/proj", selector: "stash@{0}" } }]),
     );
   });
 
@@ -928,9 +899,7 @@ describe("amend", () => {
     await mountPanel();
     await turnAmendOn();
 
-    await waitFor(() =>
-      expect(messageBox().value).toBe("previous subject\n\nprevious body\n\nsecond paragraph"),
-    );
+    await waitFor(() => expect(messageBox().value).toBe("previous subject\n\nprevious body\n\nsecond paragraph"));
   });
 
   it("gives back what you typed when amend is switched off again", async () => {
@@ -1258,14 +1227,10 @@ describe("Open PR", () => {
 
     // The DTO is an object, so a `String(e)` toast would read "[object Object]"
     // for every forge failure the user is meant to act on.
-    await waitFor(() =>
-      expect(toasts.messages).toContain("A pull request already exists for skarif2:wave-3."),
-    );
+    await waitFor(() => expect(toasts.messages).toContain("A pull request already exists for skarif2:wave-3."));
     toasts.stop();
     expect(screen.getByText("Open a pull request")).toBeTruthy();
-    expect((screen.getByPlaceholderText("What this branch does") as HTMLInputElement).value).toBe(
-      "Add a thing",
-    );
+    expect((screen.getByPlaceholderText("What this branch does") as HTMLInputElement).value).toBe("Add a thing");
   });
 
   it("falls back to the compare page when signed out", async () => {
@@ -1350,10 +1315,7 @@ describe("the agent-drafted PR description", () => {
     window.addEventListener(SEND_TO_SESSION, onSend);
 
     render(() => (
-      <ReviewPanel
-        root="/proj"
-        selected={{ sessionId: "s1", agent: "claude", folderPath: "/proj" } as never}
-      />
+      <ReviewPanel root="/proj" selected={{ sessionId: "s1", agent: "claude", folderPath: "/proj" } as never} />
     ));
     fireEvent.click(await screen.findByRole("button", { name: "Open PR" }));
     await screen.findByText("Open a pull request");
@@ -1415,9 +1377,7 @@ describe("inside a Topic", () => {
       [B]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
     };
     enterRoots([A, B], A);
-    render(() => (
-      <ReviewPanel root={A} roots={roots as never} members={chipsFor(roots) as never} selected={null} />
-    ));
+    render(() => <ReviewPanel root={A} roots={roots as never} members={chipsFor(roots) as never} selected={null} />);
     await waitFor(() => expect(document.querySelector("[data-root]")).toBeTruthy());
     // The panel registers its listeners from an async `onMount`; a test that
     // fires a burst or a focus before that would be testing nothing.
@@ -1481,12 +1441,7 @@ describe("inside a Topic", () => {
     };
     enterRoots([A, B], A);
     render(() => (
-      <ReviewPanel
-        root={A}
-        roots={roots() as never}
-        members={chipsFor(roots()) as never}
-        selected={null}
-      />
+      <ReviewPanel root={A} roots={roots() as never} members={chipsFor(roots()) as never} selected={null} />
     ));
     await waitFor(() => expect(chip("api")).toBeTruthy());
 
@@ -1568,9 +1523,7 @@ describe("inside a Topic", () => {
     // One of each: they are one repo's answers, and the chip says which repo.
     await waitFor(() => expect(screen.getAllByText(PILL)).toHaveLength(1));
     expect(screen.getAllByText("feat/auth")).toHaveLength(1);
-    await waitFor(() =>
-      expect(screen.getAllByRole("button", { name: "Open PR" })).toHaveLength(1),
-    );
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Open PR" })).toHaveLength(1));
   });
 
   it("says a member cannot be opened instead of listing files for it", async () => {
@@ -1640,11 +1593,7 @@ describe("the members a Topic commits in", () => {
 
   /** Two members with staged work unless `only` names one, and a tab open in
    *  `activePath`. */
-  async function mountWithActive(
-    activePath: string | null,
-    selected: unknown = null,
-    only?: string,
-  ) {
+  async function mountWithActive(activePath: string | null, selected: unknown = null, only?: string) {
     statusByRoot = {
       [A]: only && only !== A ? [] : [STAGED_ROW],
       [B]: only && only !== B ? [] : [STAGED_ROW],

@@ -99,8 +99,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (cmd === "pick_folder") return Promise.resolve(bridge.picked);
     if (cmd === "delete_topic") {
-      const settle = () =>
-        bridge.failDelete ? Promise.reject(new Error("delete refused")) : Promise.resolve(null);
+      const settle = () => (bridge.failDelete ? Promise.reject(new Error("delete refused")) : Promise.resolve(null));
       if (!bridge.holdDelete) return settle();
       return new Promise((resolve, reject) => {
         bridge.holdDelete = () => settle().then(resolve, reject);
@@ -157,7 +156,13 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const RECORD_ONLY = new Set(["rename_topic", "rename_member", "reorder_members", "remove_member", "set_topic_promotion"]);
+const RECORD_ONLY = new Set([
+  "rename_topic",
+  "rename_member",
+  "reorder_members",
+  "remove_member",
+  "set_topic_promotion",
+]);
 
 function recordOnly(cmd: string, f: Topic, args: Record<string, unknown>): Topic {
   if (cmd === "rename_topic") return { ...f, name: String(args.name) };
@@ -417,7 +422,10 @@ describe("TopicList", () => {
     expect((await screen.findByText("Ask me first")).closest("[role=menuitem]")?.textContent).toContain("Current");
     pointerClick(screen.getByText("Refuse"));
     await waitFor(() =>
-      expect(bridge.calls.find((c) => c.cmd === "set_topic_promotion")?.args).toEqual({ topicId: "auth-1", promotion: "never" }),
+      expect(bridge.calls.find((c) => c.cmd === "set_topic_promotion")?.args).toEqual({
+        topicId: "auth-1",
+        promotion: "never",
+      }),
     );
 
     fireEvent.contextMenu(row("Auth"));
@@ -442,7 +450,13 @@ describe("TopicList", () => {
     // The slug, and with it every member's branch, was frozen at creation: a
     // rename is a record write and nothing else. The note in the prompt says
     // so, and this is what keeps the note true.
-    const GIT = ["create_worktree_in", "create_worktree", "remove_worktree", "remove_worktree_and_branch", "delete_remote_branch"];
+    const GIT = [
+      "create_worktree_in",
+      "create_worktree",
+      "remove_worktree",
+      "remove_worktree_and_branch",
+      "delete_remote_branch",
+    ];
     expect(bridge.calls.filter((c) => GIT.includes(c.cmd))).toEqual([]);
   });
 
@@ -618,7 +632,9 @@ describe("TopicList", () => {
     // PTYs under the worktree, and only the sweep asks, since only it removes.
     it("says what a removal will stop, per row", async () => {
       bridge.running = { [AUTH_WEB]: 2 };
-      render(() => <TopicList spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />);
+      render(() => (
+        <TopicList spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />
+      ));
       await screen.findByText("Auth");
       fireEvent.contextMenu(row("Auth"));
       pointerClick(await screen.findByText("Delete…"));
@@ -663,8 +679,7 @@ describe("TopicList", () => {
   describe("the member row menu", () => {
     const expand = async (name: string) =>
       fireEvent.click(await screen.findByRole("button", { name: `Show members of ${name}` }));
-    const memberRow = (repoPath: string) =>
-      document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!;
+    const memberRow = (repoPath: string) => document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!;
 
     async function openOn(topicName: string, repoPath: string) {
       render(() => <TopicList spaces={SPACES} query="" />);
@@ -683,10 +698,9 @@ describe("TopicList", () => {
         repoPaths: ["/w/web", "/w/api"],
       });
       await waitFor(() =>
-        expect(Array.from(document.querySelectorAll("[data-member]")).map((r) => r.getAttribute("data-member"))).toEqual([
-          "/w/web",
-          "/w/api",
-        ]),
+        expect(
+          Array.from(document.querySelectorAll("[data-member]")).map((r) => r.getAttribute("data-member")),
+        ).toEqual(["/w/web", "/w/api"]),
       );
     });
 
@@ -757,7 +771,11 @@ describe("TopicList", () => {
       bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
       await openOn("Auth", "/w/web");
       pointerClick(await screen.findByText("Pull"));
-      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "git_pull" && c.args.repo === "/w/web" && c.args.ffOnly === true)).toBe(true));
+      await waitFor(() =>
+        expect(
+          bridge.calls.some((c) => c.cmd === "git_pull" && c.args.repo === "/w/web" && c.args.ffOnly === true),
+        ).toBe(true),
+      );
 
       cleanup();
       localStorage.clear();
@@ -784,7 +802,10 @@ describe("TopicList", () => {
         window.removeEventListener(ROOT_MOVED, onMoved);
       }
       const to = "/w/web/.tori/worktrees/auth";
-      expect(bridge.calls.find((c) => c.cmd === "promote_member")!.args).toEqual({ topicId: "auth-1", repoPath: "/w/web" });
+      expect(bridge.calls.find((c) => c.cmd === "promote_member")!.args).toEqual({
+        topicId: "auth-1",
+        repoPath: "/w/web",
+      });
       expect(moved).toEqual([{ workspace: topicKey("auth-1"), from: "/w/web", to }]);
       expect(onSelect.mock.lastCall![1]).toEqual({ from: "/w/web", to });
     });

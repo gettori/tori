@@ -29,7 +29,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "git_branch_sync") return Promise.resolve(sync.byRoot[String(args?.projectPath)] ?? null);
     if (cmd === "get_config")
-      return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }] });
+      return Promise.resolve({
+        spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }],
+      });
     if (cmd === "git_status") return Promise.resolve([]);
     return Promise.resolve(null);
   },
@@ -82,9 +84,7 @@ const sessionSel = {
   sessionName: null,
 };
 
-
-const crumbs = () =>
-  [...document.querySelectorAll("nav[aria-label='location'] > span")].map((s) => s.textContent);
+const crumbs = () => [...document.querySelectorAll("nav[aria-label='location'] > span")].map((s) => s.textContent);
 
 const syncChip = () => document.querySelector("[data-sync-level]") as HTMLButtonElement | null;
 

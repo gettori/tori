@@ -38,11 +38,7 @@ describe("purgeTabsUnder", () => {
 
   it("reports every removed path so the caller can clear path-keyed state", () => {
     const out = purgeTabsUnder(maps(), "/space/one");
-    expect(out.removed.sort()).toEqual([
-      "/space/one/feat/c.ts",
-      "/space/one/main/a.ts",
-      "/space/one/main/b.ts",
-    ]);
+    expect(out.removed.sort()).toEqual(["/space/one/feat/c.ts", "/space/one/main/a.ts", "/space/one/main/b.ts"]);
   });
 
   it("clears the active tab of a workspace that lost everything", () => {

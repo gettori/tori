@@ -73,9 +73,7 @@ let mounted: ReturnType<typeof render> | null = null;
 let resolved: { restored: string[]; deleted: string[] }[] = [];
 
 function mount(file = "src/f.txt") {
-  mounted = render(() => (
-    <ConflictView workspace="/proj" file={file} onResolved={(o) => resolved.push(o)} />
-  ));
+  mounted = render(() => <ConflictView workspace="/proj" file={file} onResolved={(o) => resolved.push(o)} />);
 }
 
 /** The button for one decision, found by its accessible name so the long side
@@ -87,17 +85,18 @@ function mount(file = "src/f.txt") {
  *  decisions again on the conflict's own line and both routes carry the same
  *  name. `slotButton` below is how the other one is reached. */
 const byName = (t: string | RegExp) =>
-  screen.getAllByLabelText(t).find((el) => !el.closest(".cm-result-slot"))!.closest("button") as HTMLButtonElement;
+  screen
+    .getAllByLabelText(t)
+    .find((el) => !el.closest(".cm-result-slot"))!
+    .closest("button") as HTMLButtonElement;
 
 /** Every still-undecided slot offering this decision, inside the Result pane. */
-const slotButtons = (t: string | RegExp) =>
-  screen.queryAllByLabelText(t).filter((el) => el.closest(".cm-result-slot"));
+const slotButtons = (t: string | RegExp) => screen.queryAllByLabelText(t).filter((el) => el.closest(".cm-result-slot"));
 
 /** The first of them, which is the conflict the tab opened on. */
 const slotButton = (t: string | RegExp) => slotButtons(t)[0] as HTMLButtonElement | undefined;
 
-const markResolved = () =>
-  screen.getByText(/mark resolved/i).closest("button") as HTMLButtonElement;
+const markResolved = () => screen.getByText(/mark resolved/i).closest("button") as HTMLButtonElement;
 const nextConflict = () => byName("Next conflict");
 
 /** Decide every conflict the same way, walking from the one the tab opened on. */
@@ -138,7 +137,6 @@ describe("the conflict tab", () => {
     // had a mounted test to hang it on - see the phase notes for the gap.
     await expectNoAxeViolations(mounted!.container);
   });
-
 
   it("opens on the first conflict, counted and named by the operation", async () => {
     // On the first rather than on nothing: everything that acts on a conflict
@@ -224,9 +222,7 @@ describe("the conflict tab", () => {
     // the whole reason this control opted into that.
     expect(markResolved().disabled).toBe(true);
     fireEvent.pointerEnter(markResolved().closest("[data-tooltip-hover-surface]")!);
-    await waitFor(() =>
-      expect(screen.getByRole("tooltip").textContent).toMatch(/2 conflicts still undecided/),
-    );
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toMatch(/2 conflicts still undecided/));
 
     fireEvent.click(byName("Take Yours (HEAD)"));
     // One down, and the button still refuses: a half-resolved file staged as
@@ -290,9 +286,7 @@ describe("the conflict tab", () => {
     // A resolution rewrites a whole file, which is the blast radius the guard
     // is about: the agent working here may be writing the very file being
     // replaced. Whole-file discard and every stash action ask the same.
-    live = [
-      { sessionId: "other", sessionName: "docs-agent", folderPath: "/proj", status: "executing" },
-    ];
+    live = [{ sessionId: "other", sessionName: "docs-agent", folderPath: "/proj", status: "executing" }];
     const toasts: string[] = [];
     const onToast = (e: Event) => toasts.push((e as CustomEvent<{ message: string }>).detail.message);
     window.addEventListener(TOAST, onToast);
@@ -503,8 +497,7 @@ describe("actions in the side panes", () => {
 
 describe("keeping both sides", () => {
   /** Whether the header row offers a decision by this exact name. */
-  const offered = (name: string) =>
-    screen.queryAllByLabelText(name).some((el) => !el.closest(".cm-result-slot"));
+  const offered = (name: string) => screen.queryAllByLabelText(name).some((el) => !el.closest(".cm-result-slot"));
 
   it("offers a combination where the sides edit different halves of a line, and plain both where they collide", async () => {
     stages = {
@@ -770,8 +763,7 @@ describe("which two versions the panes compare", () => {
     mount();
     await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
     const content = () => mounted!.container.querySelector('[aria-label="Result"]')!;
-    const doc = () =>
-      EditorView.findFromDOM(content().closest(".cm-editor") as HTMLElement)!.state.doc.toString();
+    const doc = () => EditorView.findFromDOM(content().closest(".cm-editor") as HTMLElement)!.state.doc.toString();
 
     fireEvent.click(byName("Take Yours (HEAD)"));
     const before = doc();
@@ -807,10 +799,7 @@ describe("reading the code in the panes", () => {
 
     for (const pane of ["Yours (HEAD)", "Incoming", "Result"]) {
       await waitFor(() =>
-        expect(
-          screen.getByLabelText(pane).querySelector("span[class]"),
-          `${pane} is painted`,
-        ).toBeTruthy(),
+        expect(screen.getByLabelText(pane).querySelector("span[class]"), `${pane} is painted`).toBeTruthy(),
       );
     }
   });

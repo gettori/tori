@@ -40,7 +40,9 @@ fn checkpoint_index_path(session_id: &str, repo: &str) -> PathBuf {
 }
 
 fn legacy_index_path(session_id: &str) -> PathBuf {
-    crate::owned_state::config_dir().join("checkpoint-index").join(session_id)
+    crate::owned_state::config_dir()
+        .join("checkpoint-index")
+        .join(session_id)
 }
 
 // A session from before indexes were keyed per repository keeps its warm
@@ -58,7 +60,9 @@ pub(crate) fn remove_indexes(session_id: &str) {
     let keyed = format!("{session_id}-");
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        let ours = name.strip_prefix(&keyed).is_some_and(|h| h.len() == 16 && h.chars().all(|c| c.is_ascii_hexdigit()));
+        let ours = name
+            .strip_prefix(&keyed)
+            .is_some_and(|h| h.len() == 16 && h.chars().all(|c| c.is_ascii_hexdigit()));
         if ours {
             let _ = std::fs::remove_file(entry.path());
         }
@@ -93,7 +97,8 @@ pub(crate) fn remove_indexes(session_id: &str) {
 /// by the same `prompt_ts` that names the turn's checkpoint ref, so the two
 /// cannot drift apart.
 fn attribution_path(session_id: &str, prompt_ts: u64) -> PathBuf {
-    crate::owned_state::config_dir().join("checkpoint-touched")
+    crate::owned_state::config_dir()
+        .join("checkpoint-touched")
         .join(session_id)
         .join(format!("{prompt_ts}.json"))
 }
@@ -136,7 +141,16 @@ enum StoredTouched {
 /// such a turn `complete` would reinstate exactly the silent drop this list
 /// exists to prevent.
 const PATH_PARSEABLE_TOOLS: &[&str] = &[
-    "Edit", "Write", "MultiEdit", "NotebookEdit", "Read", "Glob", "Grep", "LS", "TodoWrite", "WebFetch",
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+    "Read",
+    "Glob",
+    "Grep",
+    "LS",
+    "TodoWrite",
+    "WebFetch",
     "WebSearch",
 ];
 
@@ -222,7 +236,8 @@ struct TouchedIndex {
 }
 
 fn touched_index_path(session_id: &str) -> PathBuf {
-    crate::owned_state::config_dir().join("checkpoint-touched")
+    crate::owned_state::config_dir()
+        .join("checkpoint-touched")
         .join(session_id)
         .join("index.json")
 }
@@ -300,8 +315,12 @@ pub(crate) struct TouchedTurn {
 /// predates the index is exactly the case where it would run every time.
 /// `rebuild_touched_index` covers that case once, at open.
 pub(crate) fn turns_touching(session_id: &str, abs_file: &str) -> Vec<TouchedTurn> {
-    let Some(index) = read_touched_index(session_id) else { return Vec::new() };
-    let Some(at) = index.files.get(abs_file) else { return Vec::new() };
+    let Some(index) = read_touched_index(session_id) else {
+        return Vec::new();
+    };
+    let Some(at) = index.files.get(abs_file) else {
+        return Vec::new();
+    };
     let mut order: Vec<u64> = index.turns.clone();
     order.sort_unstable();
     let mut out: Vec<TouchedTurn> = at
@@ -326,12 +345,17 @@ pub(crate) fn rebuild_touched_index(session_id: &str) {
     if touched_index_path(session_id).exists() {
         return;
     }
-    let Some(dir) = attribution_path(session_id, 0).parent().map(|p| p.to_path_buf()) else { return };
+    let Some(dir) = attribution_path(session_id, 0).parent().map(|p| p.to_path_buf()) else {
+        return;
+    };
     let Ok(entries) = std::fs::read_dir(&dir) else { return };
     let mut turns: Vec<u64> = entries
         .flatten()
         .filter_map(|e| {
-            e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).and_then(|n| n.parse().ok())
+            e.file_name()
+                .to_str()
+                .and_then(|n| n.strip_suffix(".json"))
+                .and_then(|n| n.parse().ok())
         })
         .collect();
     turns.sort_unstable();
@@ -340,7 +364,9 @@ pub(crate) fn rebuild_touched_index(session_id: &str) {
     }
     let mut index = TouchedIndex::default();
     for ts in turns {
-        let Some(rec) = read_touched(session_id, ts) else { continue };
+        let Some(rec) = read_touched(session_id, ts) else {
+            continue;
+        };
         fold_into_index(&mut index, ts, &rec.files);
     }
     write_touched_index(session_id, &index);
@@ -353,7 +379,10 @@ fn read_touched(session_id: &str, prompt_ts: u64) -> Option<Touched> {
     let text = std::fs::read_to_string(attribution_path(session_id, prompt_ts)).ok()?;
     match serde_json::from_str::<StoredTouched>(&text).ok()? {
         StoredTouched::Current(rec) => Some(rec),
-        StoredTouched::Legacy(files) => Some(Touched { tools: Vec::new(), files }),
+        StoredTouched::Legacy(files) => Some(Touched {
+            tools: Vec::new(),
+            files,
+        }),
     }
 }
 
@@ -362,7 +391,9 @@ fn read_touched(session_id: &str, prompt_ts: u64) -> Option<Touched> {
 /// unknown, and unknown is graded `Partial` rather than `Complete` so the
 /// honest branch is the default one.
 fn attribution_state(rec: Option<&Touched>) -> AttributionState {
-    let Some(rec) = rec else { return AttributionState::Unmeasured };
+    let Some(rec) = rec else {
+        return AttributionState::Unmeasured;
+    };
     if !rec.tools.is_empty() && rec.tools.iter().all(|t| PATH_PARSEABLE_TOOLS.contains(&t.as_str())) {
         AttributionState::Complete
     } else {
@@ -499,16 +530,27 @@ fn parse_ref_segment(segment: &str) -> Option<(u64, String, Option<u64>)> {
 fn worktree_members(at: &str) -> Option<Vec<String>> {
     let topics = crate::unit_home::topics();
     let topic = crate::topic_home::topic_at_home(&topics, at)?;
-    let mut members: Vec<&crate::topics::Member> =
-        topic.members.iter().filter(|m| m.mode == crate::topics::MemberMode::Worktree).collect();
+    let mut members: Vec<&crate::topics::Member> = topic
+        .members
+        .iter()
+        .filter(|m| m.mode == crate::topics::MemberMode::Worktree)
+        .collect();
     members.sort_by_key(|m| m.order);
-    Some(members.into_iter().filter_map(|m| crate::topics::member_root(m).map(str::to_string)).collect())
+    Some(
+        members
+            .into_iter()
+            .filter_map(|m| crate::topics::member_root(m).map(str::to_string))
+            .collect(),
+    )
 }
 
 // A member that joined later has only the empty tree to compare against,
 // which would read as the turn adding every file it holds.
 fn covering<'a>(roots: &'a [String], session_id: &str, ts: u64) -> Vec<&'a String> {
-    roots.iter().filter(|r| list_checkpoints(r, session_id).iter().any(|c| c.ts <= ts)).collect()
+    roots
+        .iter()
+        .filter(|r| list_checkpoints(r, session_id).iter().any(|c| c.ts <= ts))
+        .collect()
 }
 
 fn absolute(root: &str, path: &str) -> String {
@@ -550,7 +592,12 @@ fn list_checkpoints(repo: &str, session_id: &str) -> Vec<Checkpoint> {
         .filter_map(|line| {
             let (name, tree) = line.split_once(' ')?;
             let (ts, kind, target) = parse_ref_segment(name.strip_prefix(&prefix)?)?;
-            Some(Checkpoint { ts, tree: tree.to_string(), kind, target })
+            Some(Checkpoint {
+                ts,
+                tree: tree.to_string(),
+                kind,
+                target,
+            })
         })
         .collect();
     entries.sort_by_key(|c| c.ts);
@@ -563,7 +610,10 @@ fn list_checkpoints(repo: &str, session_id: &str) -> Vec<Checkpoint> {
 /// and a line walk that skipped it would carry line numbers across a change
 /// nothing in its plan accounts for.
 pub(crate) fn checkpoint_trees(repo: &str, session_id: &str) -> Vec<(u64, String)> {
-    list_checkpoints(repo, session_id).into_iter().map(|c| (c.ts, c.tree)).collect()
+    list_checkpoints(repo, session_id)
+        .into_iter()
+        .map(|c| (c.ts, c.tree))
+        .collect()
 }
 
 fn tree_at_or_before(checkpoints: &[Checkpoint], ts: u64) -> String {
@@ -575,12 +625,7 @@ fn tree_at_or_before(checkpoints: &[Checkpoint], ts: u64) -> String {
         .unwrap_or_else(|| EMPTY_TREE.to_string())
 }
 
-fn tree_after(
-    repo: &str,
-    session_id: &str,
-    checkpoints: &[Checkpoint],
-    ts: u64,
-) -> Result<String, String> {
+fn tree_after(repo: &str, session_id: &str, checkpoints: &[Checkpoint], ts: u64) -> Result<String, String> {
     if let Some(c) = checkpoints.iter().find(|c| c.ts > ts) {
         return Ok(c.tree.clone());
     }
@@ -597,7 +642,10 @@ fn tree_after(
 /// Returns whether a new ref was created.
 #[tauri::command]
 pub async fn checkpoint_snapshot(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
-    crate::exec::git_write("checkpoint_snapshot", repo_path.clone(), move || checkpoint_snapshot_body(session_id, repo_path, prompt_ts)).await
+    crate::exec::git_write("checkpoint_snapshot", repo_path.clone(), move || {
+        checkpoint_snapshot_body(session_id, repo_path, prompt_ts)
+    })
+    .await
 }
 
 pub(crate) fn checkpoint_snapshot_body(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
@@ -712,7 +760,9 @@ pub(crate) fn count_lines(repo: &str, before: &str, after: &str, files: &mut [Ch
     if files.is_empty() {
         return;
     }
-    let Ok(out) = git_capture(repo, &["diff", "--numstat", "--no-renames", before, after]) else { return };
+    let Ok(out) = git_capture(repo, &["diff", "--numstat", "--no-renames", before, after]) else {
+        return;
+    };
     let counts: HashMap<&str, (u32, u32)> = out
         .lines()
         .filter_map(|line| {
@@ -860,10 +910,7 @@ fn attributed_files(
 
     changed
         .into_iter()
-        .filter(|f| {
-            mine.contains(&f.path)
-                || (state == AttributionState::Partial && !claimed_by_another(&f.path))
-        })
+        .filter(|f| mine.contains(&f.path) || (state == AttributionState::Partial && !claimed_by_another(&f.path)))
         .map(|mut f| {
             f.unattributed = !mine.contains(&f.path);
             f.shared_with = other_sets
@@ -906,7 +953,9 @@ fn touched_since(repo: &str, session_id: &str, from: u64) -> Option<std::collect
         if ts < from {
             continue;
         }
-        let Some(rec) = read_touched(session_id, ts) else { continue };
+        let Some(rec) = read_touched(session_id, ts) else {
+            continue;
+        };
         saw_any = true;
         out.extend(rec.files.iter().filter_map(|p| relative_to(repo, p)));
     }
@@ -1026,11 +1075,17 @@ pub fn checkpoint_sessions(repo_path: String) -> Result<Vec<String>, String> {
 /// that has never snapshotted, so a non-repo folder simply shows no timeline.
 #[tauri::command(async)]
 pub fn checkpoint_list(repo_path: String, session_id: String) -> Result<Vec<CheckpointEntry>, String> {
-    let Some(roots) = worktree_members(&repo_path) else { return list_one(repo_path, session_id) };
+    let Some(roots) = worktree_members(&repo_path) else {
+        return list_one(repo_path, session_id);
+    };
     let mut turns: std::collections::BTreeMap<(u64, String), CheckpointEntry> = Default::default();
     for root in &roots {
         for e in list_one(root.clone(), session_id.clone())? {
-            let turn = turns.entry((e.prompt_ts, e.kind.clone())).or_insert(CheckpointEntry { file_count: 0, bytes: 0, ..e.clone() });
+            let turn = turns.entry((e.prompt_ts, e.kind.clone())).or_insert(CheckpointEntry {
+                file_count: 0,
+                bytes: 0,
+                ..e.clone()
+            });
             turn.file_count += e.file_count;
             turn.bytes += e.bytes;
         }
@@ -1115,12 +1170,17 @@ pub fn checkpoint_range_diff(
     from_ts: u64,
     to_ts: u64,
 ) -> Result<(Vec<CheckpointFile>, String), String> {
-    let Some(roots) = worktree_members(repo_path) else { return range_diff_one(repo_path, session_id, from_ts, to_ts, false) };
+    let Some(roots) = worktree_members(repo_path) else {
+        return range_diff_one(repo_path, session_id, from_ts, to_ts, false);
+    };
     let mut files = Vec::new();
     let mut diff = String::new();
     for root in covering(&roots, session_id, from_ts) {
         let (f, d) = range_diff_one(root, session_id, from_ts, to_ts, true)?;
-        files.extend(f.into_iter().map(|f| CheckpointFile { path: absolute(root, &f.path), ..f }));
+        files.extend(f.into_iter().map(|f| CheckpointFile {
+            path: absolute(root, &f.path),
+            ..f
+        }));
         diff.push_str(&d);
     }
     Ok((files, diff))
@@ -1141,15 +1201,19 @@ fn range_diff_one(
         let files = checkpoint_turn_files(repo_path.to_string(), session_id.to_string(), turn.ts, None, None)?;
         mine.extend(files.into_iter().map(|f| f.path));
     }
-    let files: Vec<CheckpointFile> = parse_name_status(&git_capture(repo_path, &["diff", "--name-status", &before, &after])?)
-        .into_iter()
-        .filter(|f| mine.contains(&f.path))
-        .collect();
+    let files: Vec<CheckpointFile> =
+        parse_name_status(&git_capture(repo_path, &["diff", "--name-status", &before, &after])?)
+            .into_iter()
+            .filter(|f| mine.contains(&f.path))
+            .collect();
     if files.is_empty() {
         return Ok((files, String::new()));
     }
     // Across several members, a hunk has to say whose file it is.
-    let prefixes = [format!("--src-prefix=a{repo_path}/"), format!("--dst-prefix=b{repo_path}/")];
+    let prefixes = [
+        format!("--src-prefix=a{repo_path}/"),
+        format!("--dst-prefix=b{repo_path}/"),
+    ];
     let mut args = vec!["diff", "--no-color"];
     if absolute {
         args.extend(prefixes.iter().map(String::as_str));
@@ -1196,8 +1260,17 @@ fn is_unattributed(repo: &str, session_id: &str, prompt_ts: u64, file: &str) -> 
 /// about them. So the default is to refuse and name the file; `force` is the
 /// separate per-file confirmation the caller collects.
 #[tauri::command]
-pub async fn checkpoint_revert_file(repo_path: String, session_id: String, prompt_ts: u64, file: String, force: Option<bool>) -> Result<String, String> {
-    crate::exec::git_write("checkpoint_revert_file", repo_path.clone(), move || checkpoint_revert_file_body(repo_path, session_id, prompt_ts, file, force)).await
+pub async fn checkpoint_revert_file(
+    repo_path: String,
+    session_id: String,
+    prompt_ts: u64,
+    file: String,
+    force: Option<bool>,
+) -> Result<String, String> {
+    crate::exec::git_write("checkpoint_revert_file", repo_path.clone(), move || {
+        checkpoint_revert_file_body(repo_path, session_id, prompt_ts, file, force)
+    })
+    .await
 }
 
 pub(crate) fn checkpoint_revert_file_body(
@@ -1255,7 +1328,11 @@ fn revert_file_one(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::write(&abs, &out.stdout).map_err(|e| e.to_string())?;
-    Ok(if exists_after { "restored".into() } else { "recreated".into() })
+    Ok(if exists_after {
+        "restored".into()
+    } else {
+        "recreated".into()
+    })
 }
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
@@ -1285,7 +1362,11 @@ pub(crate) fn parse_raw_change(line: &str) -> Option<RawChange> {
     let dst_mode = fields.next()?.to_string();
     let _src_sha = fields.next()?;
     let dst_sha = fields.next()?.to_string();
-    Some(RawChange { dst_mode, dst_sha, path: path.to_string() })
+    Some(RawChange {
+        dst_mode,
+        dst_sha,
+        path: path.to_string(),
+    })
 }
 
 /// Write a blob from the object store to `abs`, honouring the tree's mode:
@@ -1412,7 +1493,12 @@ pub(crate) fn checkpoint_revert_tree_body(
     }
 }
 
-fn revert_members(session_id: &str, roots: &[String], prompt_ts: u64, shared: &[String]) -> Result<RevertOutcome, String> {
+fn revert_members(
+    session_id: &str,
+    roots: &[String],
+    prompt_ts: u64,
+    shared: &[String],
+) -> Result<RevertOutcome, String> {
     let roots = covering(roots, session_id, prompt_ts);
     if roots.is_empty() {
         return Err("No worktree in this Topic has a checkpoint at that point in the timeline.".into());
@@ -1420,9 +1506,15 @@ fn revert_members(session_id: &str, roots: &[String], prompt_ts: u64, shared: &[
     // Checked for every member before any is written, so a member that cannot
     // be reverted stops the rewind rather than leaving it half applied.
     if let Some(root) = roots.iter().find(|r| !is_git_worktree(r)) {
-        return Err(format!("{root} isn't a git repository any more, so nothing was rewound."));
+        return Err(format!(
+            "{root} isn't a git repository any more, so nothing was rewound."
+        ));
     }
-    let mut out = RevertOutcome { backstop_ts: None, restored: Vec::new(), deleted: Vec::new() };
+    let mut out = RevertOutcome {
+        backstop_ts: None,
+        restored: Vec::new(),
+        deleted: Vec::new(),
+    };
     for root in roots {
         let here = shared.iter().filter_map(|f| relative_to(root, f)).collect();
         let lock = crate::exec::repo_lock(root);
@@ -1456,7 +1548,11 @@ fn revert_tree_one(
         .ok_or("No checkpoint at that point in the timeline.")?;
     let current = write_tree_scratch(&repo_path, &checkpoint_index_path(&session_id, &repo_path))?;
     if current == target {
-        return Ok(RevertOutcome { backstop_ts: None, restored: Vec::new(), deleted: Vec::new() });
+        return Ok(RevertOutcome {
+            backstop_ts: None,
+            restored: Vec::new(),
+            deleted: Vec::new(),
+        });
     }
     // Backstop before any write: if a later step fails, the pre-revert state
     // is already recoverable from the timeline.
@@ -1498,7 +1594,11 @@ fn revert_tree_one(
             restored.push(change.path);
         }
     }
-    Ok(RevertOutcome { backstop_ts: Some(backstop_ts), restored, deleted })
+    Ok(RevertOutcome {
+        backstop_ts: Some(backstop_ts),
+        restored,
+        deleted,
+    })
 }
 
 fn prune_refs(repo_path: &str, session_id: &str) {
@@ -1521,7 +1621,10 @@ fn prune_refs(repo_path: &str, session_id: &str) {
 /// unbounded.
 #[tauri::command]
 pub async fn checkpoint_prune(repo_path: String, session_id: String) -> Result<(), String> {
-    crate::exec::git_write("checkpoint_prune", repo_path.clone(), move || checkpoint_prune_body(repo_path, session_id)).await
+    crate::exec::git_write("checkpoint_prune", repo_path.clone(), move || {
+        checkpoint_prune_body(repo_path, session_id)
+    })
+    .await
 }
 
 pub(crate) fn checkpoint_prune_body(repo_path: String, session_id: String) -> Result<(), String> {
@@ -1547,8 +1650,8 @@ pub(crate) fn checkpoint_prune_body(repo_path: String, session_id: String) -> Re
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
+    use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1563,7 +1666,12 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "t@t.test")
             .output()
             .unwrap();
-        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn tmp_repo() -> (PathBuf, String) {
@@ -1607,7 +1715,10 @@ mod tests {
 
         let turns = turns_touching(&session, &file);
 
-        assert_eq!(turns.iter().map(|t| t.prompt_ts).collect::<Vec<_>>(), vec![1003, 1077, 1150]);
+        assert_eq!(
+            turns.iter().map(|t| t.prompt_ts).collect::<Vec<_>>(),
+            vec![1003, 1077, 1150]
+        );
         // The session's own numbering, not a count of the three: the widget says
         // "turn 4", and turn 4 is what the timeline calls it too.
         assert_eq!(turns[0].ordinal, 4);
@@ -1751,16 +1862,30 @@ mod tests {
         let (dir, sid) = tmp_repo();
 
         // A PTY turn, or any turn from before attribution existed.
-        assert_eq!(attribution_state(read_touched(&sid, 100).as_ref()), AttributionState::Unmeasured);
+        assert_eq!(
+            attribution_state(read_touched(&sid, 100).as_ref()),
+            AttributionState::Unmeasured
+        );
 
         // Every tool reported its own paths.
-        checkpoint_note_touched(sid.clone(), 100, "Edit".into(), vec![dir.join("a.txt").to_string_lossy().into_owned()])
-            .unwrap();
-        assert_eq!(attribution_state(read_touched(&sid, 100).as_ref()), AttributionState::Complete);
+        checkpoint_note_touched(
+            sid.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("a.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
+        assert_eq!(
+            attribution_state(read_touched(&sid, 100).as_ref()),
+            AttributionState::Complete
+        );
 
         // One shell call is enough to make the whole turn a lower bound.
         checkpoint_note_touched(sid.clone(), 100, "Bash".into(), vec![]).unwrap();
-        assert_eq!(attribution_state(read_touched(&sid, 100).as_ref()), AttributionState::Partial);
+        assert_eq!(
+            attribution_state(read_touched(&sid, 100).as_ref()),
+            AttributionState::Partial
+        );
 
         cleanup(&dir, &sid);
     }
@@ -1826,7 +1951,11 @@ mod tests {
         assert_eq!(names, ["edited-by-a.txt", "shell-written.txt"]);
         assert!(!for_a.iter().find(|f| f.path == "edited-by-a.txt").unwrap().unattributed);
         assert!(
-            for_a.iter().find(|f| f.path == "shell-written.txt").unwrap().unattributed,
+            for_a
+                .iter()
+                .find(|f| f.path == "shell-written.txt")
+                .unwrap()
+                .unattributed,
             "likely a's shell write, but nothing established it - so it is marked, not asserted"
         );
 
@@ -1880,11 +2009,15 @@ mod tests {
         checkpoint_note_touched(sid.clone(), 100, "Bash".into(), vec![]).unwrap();
 
         let refused = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), None);
-        assert!(refused.unwrap_err().contains("who-wrote-this.txt"), "the refusal names the file");
+        assert!(
+            refused.unwrap_err().contains("who-wrote-this.txt"),
+            "the refusal names the file"
+        );
         assert!(dir.join("who-wrote-this.txt").exists());
 
         let forced =
-            checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), Some(true)).unwrap();
+            checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), Some(true))
+                .unwrap();
         assert_eq!(forced, "deleted");
         assert!(!dir.join("who-wrote-this.txt").exists());
 
@@ -1905,8 +2038,20 @@ mod tests {
         // Each writes its own file, and each reports what it wrote.
         std::fs::write(dir.join("a.txt"), "from a").unwrap();
         std::fs::write(dir.join("b.txt"), "from b").unwrap();
-        checkpoint_note_touched(a.clone(), 100, "Edit".into(), vec![dir.join("a.txt").to_string_lossy().into_owned()]).unwrap();
-        checkpoint_note_touched(b.clone(), 100, "Edit".into(), vec![dir.join("b.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(
+            a.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("a.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
+        checkpoint_note_touched(
+            b.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("b.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
 
         let for_a = checkpoint_turn_files(repo.clone(), a.clone(), 100, Some(true), Some(vec![b.clone()])).unwrap();
         let for_b = checkpoint_turn_files(repo.clone(), b.clone(), 100, Some(true), Some(vec![a.clone()])).unwrap();
@@ -1937,18 +2082,33 @@ mod tests {
         std::fs::write(dir.join("shared.txt"), "both touched this").unwrap();
         std::fs::write(dir.join("only-a.txt"), "just a").unwrap();
         let shared = dir.join("shared.txt").to_string_lossy().into_owned();
-        checkpoint_note_touched(a.clone(), 100, "Edit".into(), vec![shared.clone(), dir.join("only-a.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(
+            a.clone(),
+            100,
+            "Edit".into(),
+            vec![shared.clone(), dir.join("only-a.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
         checkpoint_note_touched(b.clone(), 100, "Edit".into(), vec![shared.clone()]).unwrap();
 
         let for_a = checkpoint_turn_files(repo.clone(), a.clone(), 100, Some(true), Some(vec![b.clone()])).unwrap();
         let for_b = checkpoint_turn_files(repo.clone(), b.clone(), 100, Some(true), Some(vec![a.clone()])).unwrap();
 
-        let a_shared = for_a.iter().find(|f| f.path == "shared.txt").expect("shared file present for a");
-        let b_shared = for_b.iter().find(|f| f.path == "shared.txt").expect("shared file present for b");
+        let a_shared = for_a
+            .iter()
+            .find(|f| f.path == "shared.txt")
+            .expect("shared file present for a");
+        let b_shared = for_b
+            .iter()
+            .find(|f| f.path == "shared.txt")
+            .expect("shared file present for b");
         assert_eq!(a_shared.shared_with, vec![b.clone()]);
         assert_eq!(b_shared.shared_with, vec![a.clone()]);
         // The file only one of them wrote is not marked.
-        let a_only = for_a.iter().find(|f| f.path == "only-a.txt").expect("a's own file present");
+        let a_only = for_a
+            .iter()
+            .find(|f| f.path == "only-a.txt")
+            .expect("a's own file present");
         assert!(a_only.shared_with.is_empty());
         assert!(!for_b.iter().any(|f| f.path == "only-a.txt"));
 
@@ -1968,7 +2128,10 @@ mod tests {
         std::fs::write(dir.join("untracked-by-events.txt"), "written by a PTY agent").unwrap();
 
         let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None).unwrap();
-        assert_eq!(files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["untracked-by-events.txt"]);
+        assert_eq!(
+            files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+            ["untracked-by-events.txt"]
+        );
 
         cleanup(&dir, &sid);
     }
@@ -2009,8 +2172,20 @@ mod tests {
         std::fs::write(dir.join("two.txt"), "2").unwrap();
 
         // A turn makes many tool calls; each reports only its own paths.
-        checkpoint_note_touched(sid.clone(), 100, "Edit".into(), vec![dir.join("one.txt").to_string_lossy().into_owned()]).unwrap();
-        checkpoint_note_touched(sid.clone(), 100, "Edit".into(), vec![dir.join("two.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(
+            sid.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("one.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
+        checkpoint_note_touched(
+            sid.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("two.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
 
         let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, Some(true), None).unwrap();
         let mut names: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
@@ -2060,7 +2235,10 @@ mod tests {
         checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
 
         let after_status = git_capture(&repo, &["status", "--porcelain"]).unwrap();
-        assert_eq!(before_status, after_status, "the user's real index/staging must be untouched");
+        assert_eq!(
+            before_status, after_status,
+            "the user's real index/staging must be untouched"
+        );
         cleanup(&dir, &sid);
     }
 
@@ -2191,7 +2369,6 @@ mod tests {
         cleanup(&dir, &sid);
     }
 
-
     /// The blast radius the whole-tree snapshot used to have. Reverting session
     /// A's turn must leave session B's concurrent edits to *other* files exactly
     /// where they are - the snapshot spans the worktree, so without scoping the
@@ -2209,8 +2386,20 @@ mod tests {
         // Both sessions write in the same interval; each reports its own paths.
         std::fs::write(dir.join("a.txt"), "a after").unwrap();
         std::fs::write(dir.join("b.txt"), "b after").unwrap();
-        checkpoint_note_touched(a.clone(), 100, "Edit".into(), vec![dir.join("a.txt").to_string_lossy().into_owned()]).unwrap();
-        checkpoint_note_touched(b.clone(), 100, "Edit".into(), vec![dir.join("b.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(
+            a.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("a.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
+        checkpoint_note_touched(
+            b.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("b.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
 
         let out = checkpoint_revert_tree_body(repo.clone(), a.clone(), 100, None).unwrap();
         assert_eq!(out.restored, ["a.txt"]);
@@ -2279,9 +2468,21 @@ mod tests {
 
         // Turn at 100 wrote one.txt; a later turn at 200 wrote two.txt.
         std::fs::write(dir.join("one.txt"), "after").unwrap();
-        checkpoint_note_touched(sid.clone(), 100, "Edit".into(), vec![dir.join("one.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(
+            sid.clone(),
+            100,
+            "Edit".into(),
+            vec![dir.join("one.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
         std::fs::write(dir.join("two.txt"), "after").unwrap();
-        checkpoint_note_touched(sid.clone(), 200, "Edit".into(), vec![dir.join("two.txt").to_string_lossy().into_owned()]).unwrap();
+        checkpoint_note_touched(
+            sid.clone(),
+            200,
+            "Edit".into(),
+            vec![dir.join("two.txt").to_string_lossy().into_owned()],
+        )
+        .unwrap();
 
         let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
         let mut restored = out.restored.clone();
@@ -2301,8 +2502,11 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("kept.txt"), "before").unwrap();
         checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
-        let target =
-            list_checkpoints(&repo, &sid).into_iter().find(|c| c.ts == 100).unwrap().tree;
+        let target = list_checkpoints(&repo, &sid)
+            .into_iter()
+            .find(|c| c.ts == 100)
+            .unwrap()
+            .tree;
 
         // A turn that edited one file and created another.
         std::fs::write(dir.join("kept.txt"), "after").unwrap();
@@ -2350,7 +2554,10 @@ mod tests {
 
         let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "gone.txt".into(), None).unwrap();
         assert_eq!(action, "recreated");
-        assert_eq!(std::fs::read_to_string(dir.join("gone.txt")).unwrap(), "will be deleted");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("gone.txt")).unwrap(),
+            "will be deleted"
+        );
         cleanup(&dir, &sid);
     }
 
@@ -2368,7 +2575,10 @@ mod tests {
 
         // Per-turn stays scoped to its own boundary pair.
         let per_turn = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
-        assert_eq!(per_turn.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), vec!["turn1.txt"]);
+        assert_eq!(
+            per_turn.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+            vec!["turn1.txt"]
+        );
 
         // Cumulative runs from that boundary to the working tree, so it also
         // carries later turns *and* the user's own edit - which is exactly why
@@ -2405,7 +2615,10 @@ mod tests {
         assert_eq!(paths, ["base.txt", "turn1.txt"]);
 
         let (_, one) = checkpoint_range_diff(&repo, &sid, 100, 100).unwrap();
-        assert_eq!(one, checkpoint_diff_file(repo.clone(), sid.clone(), 100, "turn1.txt".into(), None).unwrap());
+        assert_eq!(
+            one,
+            checkpoint_diff_file(repo.clone(), sid.clone(), 100, "turn1.txt".into(), None).unwrap()
+        );
         cleanup(&dir, &sid);
     }
 
@@ -2425,7 +2638,10 @@ mod tests {
 
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v1");
         assert_eq!(std::fs::read_to_string(dir.join("keep.txt")).unwrap(), "same");
-        assert!(!dir.join("added_later.txt").exists(), "a post-checkpoint file is removed");
+        assert!(
+            !dir.join("added_later.txt").exists(),
+            "a post-checkpoint file is removed"
+        );
         assert_eq!(out.deleted, vec!["added_later.txt".to_string()]);
         assert!(out.restored.contains(&"a.txt".to_string()));
         assert!(out.restored.contains(&"keep.txt".to_string()));
@@ -2626,11 +2842,19 @@ mod tests {
         assert!(snapshot_members(&sid, "/topic-home", &roots, 200).unwrap());
 
         for root in &roots {
-            assert_eq!(list_checkpoints(root, &sid).iter().map(|c| c.ts).collect::<Vec<_>>(), [100, 200]);
+            assert_eq!(
+                list_checkpoints(root, &sid).iter().map(|c| c.ts).collect::<Vec<_>>(),
+                [100, 200]
+            );
         }
         let files: Vec<String> = roots
             .iter()
-            .flat_map(|r| turn_files_one(r.clone(), sid.clone(), 100, None, None).unwrap().into_iter().map(|f| absolute(r, &f.path)))
+            .flat_map(|r| {
+                turn_files_one(r.clone(), sid.clone(), 100, None, None)
+                    .unwrap()
+                    .into_iter()
+                    .map(|f| absolute(r, &f.path))
+            })
             .collect();
         assert_eq!(files, roots.iter().map(|r| absolute(r, "a.txt")).collect::<Vec<_>>());
         cleanup(&api, &sid);
@@ -2650,7 +2874,10 @@ mod tests {
 
         assert_eq!(std::fs::read_to_string(api.join("a.txt")).unwrap(), "before");
         assert!(!web.join("made.txt").exists());
-        assert_eq!((outcome.restored, outcome.deleted), (vec![wrote[0].clone()], vec![wrote[1].clone()]));
+        assert_eq!(
+            (outcome.restored, outcome.deleted),
+            (vec![wrote[0].clone()], vec![wrote[1].clone()])
+        );
         cleanup(&api, &sid);
         cleanup(&web, &sid);
     }

@@ -65,11 +65,7 @@ export function takeHandOff(path: string, to: Side): number | undefined {
 
 /** How far down a scroll container is, or undefined when it has nothing to
  *  scroll (or has not been laid out, which is every element under jsdom). */
-export function scrollFraction(
-  scrollTop: number,
-  scrollHeight: number,
-  clientHeight: number,
-): number | undefined {
+export function scrollFraction(scrollTop: number, scrollHeight: number, clientHeight: number): number | undefined {
   const max = scrollHeight - clientHeight;
   if (max <= 0) return undefined;
   return Math.min(Math.max(scrollTop / max, 0), 1);

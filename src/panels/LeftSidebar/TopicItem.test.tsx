@@ -49,8 +49,7 @@ const mount = (f: Topic, onRepair = () => {}, extra: Record<string, unknown> = {
   ));
 
 const expand = async () => fireEvent.click(await screen.findByRole("button", { name: /^Show members/ }));
-const memberRows = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll<HTMLElement>("[data-member]"));
+const memberRows = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLElement>("[data-member]"));
 
 describe("TopicItem", () => {
   it("caps the chip row at six and counts the rest", () => {
@@ -137,9 +136,7 @@ describe("TopicItem", () => {
     });
 
     it("names each member and says what state it is in only when broken", async () => {
-      const { container } = mount(
-        topic([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]),
-      );
+      const { container } = mount(topic([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]));
       await expand();
 
       const rows = memberRows(container);
@@ -204,7 +201,12 @@ describe("what a Topic row says about its members' branches", () => {
     const { container } = mount(
       topic([member("/w/api", 0), member("/w/web", 1)]),
       () => {},
-      withSync({ "/w/web": CONFLICTED, "/w/api": branchSync({ upstream: { ahead: 1, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false } }) }),
+      withSync({
+        "/w/web": CONFLICTED,
+        "/w/api": branchSync({
+          upstream: { ahead: 1, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false },
+        }),
+      }),
     );
 
     const pill = container.querySelector("[data-topic-sync]")!;
@@ -250,8 +252,9 @@ describe("what a Topic row says about its members' branches", () => {
     // roll-up goes inside the name's own line, so the row gains no block.
     const members = [member("/w/api", 0), member("/w/web", 1)];
     const quiet = mount(topic(members)).container.querySelector("[data-topic]")!;
-    const loud = mount(topic(members), () => {}, withSync({ "/w/web": CONFLICTED })).container
-      .querySelector("[data-topic]")!;
+    const loud = mount(topic(members), () => {}, withSync({ "/w/web": CONFLICTED })).container.querySelector(
+      "[data-topic]",
+    )!;
 
     expect(loud.children.length).toBe(quiet.children.length);
     expect(loud.querySelector("[data-topic-sync]")!.closest(`.${rows.row}`)).toBe(

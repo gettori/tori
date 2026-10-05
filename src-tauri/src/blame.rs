@@ -124,7 +124,11 @@ pub fn git_blame(project_path: String, file: String) -> Result<Blame, String> {
         .map(|h| h.trim().to_string())
         .unwrap_or_default();
     let Ok(text) = capture(&project_path, &["blame", "--porcelain", "--", &file]) else {
-        return Ok(Blame { head, lines: Vec::new(), commits: Vec::new() });
+        return Ok(Blame {
+            head,
+            lines: Vec::new(),
+            commits: Vec::new(),
+        });
     };
     let (lines, commits) = parse_porcelain(&text);
     Ok(Blame { head, lines, commits })
@@ -132,14 +136,19 @@ pub fn git_blame(project_path: String, file: String) -> Result<Blame, String> {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
     use std::path::Path;
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
         let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
-        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     #[test]

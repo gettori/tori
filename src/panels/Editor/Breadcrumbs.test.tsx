@@ -190,10 +190,7 @@ describe("the symbol half of the bar", () => {
 
 describe("picking somewhere else from a crumb", () => {
   it("offers the folder's other entries and opens the one picked", async () => {
-    dirs[`${ROOT}/src/panels`] = [
-      entry(`${ROOT}/src/panels`, "other.ts"),
-      entry(`${ROOT}/src/panels`, "thing.ts"),
-    ];
+    dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts"), entry(`${ROOT}/src/panels`, "thing.ts")];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
     pointerClick(screen.getByText("panels"));
     await screen.findByRole("menuitem", { name: "other.ts" });
@@ -294,10 +291,7 @@ describe("picking somewhere else from a crumb", () => {
   });
 
   it("marks the file already open, for a reader as well as an eye", async () => {
-    dirs[`${ROOT}/src/panels`] = [
-      entry(`${ROOT}/src/panels`, "other.ts"),
-      entry(`${ROOT}/src/panels`, "thing.ts"),
-    ];
+    dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts"), entry(`${ROOT}/src/panels`, "thing.ts")];
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
     pointerClick(screen.getByText("panels"));
     // Scoped to the menu: `thing.ts` is also the crumb that opened it.

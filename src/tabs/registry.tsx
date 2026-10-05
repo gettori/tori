@@ -124,10 +124,7 @@ export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripP
       draggable={!ghost}
       onDragStart={(e: DragEvent) => {
         if (e.dataTransfer) e.dataTransfer.effectAllowed = "copyMove";
-        startTabDrag(
-          { id: t.id, kind: t.kind, ws: place?.ws ?? t.workspace, fromPane: place?.paneId ?? null },
-          e,
-        );
+        startTabDrag({ id: t.id, kind: t.kind, ws: place?.ws ?? t.workspace, fromPane: place?.paneId ?? null }, e);
         d.onDragStart?.(t, e);
       }}
       onDragEnd={() => endTabDrag()}

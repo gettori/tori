@@ -52,8 +52,7 @@ import Select, { type SelectOption } from "../../../components/Select/Select";
 // out of the field and re-attached on save, so a user types "JetBrains Mono"
 // rather than editing a whole CSS list (and never accidentally drops the
 // system fallbacks). One stack per surface.
-export const UI_FONT_FALLBACK =
-  '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif';
+export const UI_FONT_FALLBACK = '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif';
 export const EDITOR_FONT_FALLBACK = "Menlo, Monaco, monospace";
 export const TERMINAL_FONT_FALLBACK = "Menlo, Monaco, monospace";
 
@@ -88,8 +87,7 @@ export const setAppearance = (a: Partial<Appearance>) =>
   saveSettings({ ...settings, appearance: { ...settings.appearance, ...a } });
 export const setTypography = (t: Partial<Typography>) =>
   saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
-export const setGit = (g: Partial<GitSettings>) =>
-  saveSettings({ ...settings, git: { ...settings.git, ...g } });
+export const setGit = (g: Partial<GitSettings>) => saveSettings({ ...settings, git: { ...settings.git, ...g } });
 export const setAlert = (state: keyof NotificationSettings, a: Partial<Alert>) =>
   saveSettings({
     ...settings,
@@ -103,8 +101,7 @@ export const setPanePins = (p: Partial<PanePins>) =>
   saveSettings({ ...settings, panePins: { ...settings.panePins, ...p } });
 export const setBudgets = (b: Partial<Budgets>) =>
   saveSettings({ ...settings, budgets: { ...settings.budgets, ...b } });
-export const setAgent = (h: Partial<Agent>) =>
-  saveSettings({ ...settings, agent: { ...settings.agent, ...h } });
+export const setAgent = (h: Partial<Agent>) => saveSettings({ ...settings, agent: { ...settings.agent, ...h } });
 export const setAutopilot = (a: Partial<Omit<AutopilotSettings, "enabled">>) =>
   saveSettings({ ...settings, autopilot: { ...settings.autopilot, ...a } });
 
@@ -311,8 +308,7 @@ export function Stepper(props: {
   // result is rounded to the step's own precision rather than left at
   // 1.7000000000000002.
   const places = () => (step() < 1 ? 1 : 0);
-  const bound = (v: number) =>
-    Math.min(props.max, Math.max(props.min, Number(v.toFixed(places()))));
+  const bound = (v: number) => Math.min(props.max, Math.max(props.min, Number(v.toFixed(places()))));
 
   /** Steps above `min`: the unit both the buttons and the typed field work in. */
   const units = () => (props.value - props.min) / step();
@@ -427,10 +423,7 @@ export function CardSection(props: PaneProps & { id: string; children: JSX.Eleme
           the `<section>` makes it `:first-child` of its own div, so the
           `.section:first-child` rule zeroes its top margin and two stacked card
           sections would butt together - the wrapper takes over that rhythm. */}
-      <div
-        id={rowDomId(props.id)}
-        classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}
-      >
+      <div id={rowDomId(props.id)} classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}>
         {/* A result, not the section: a agent grid and a 31-entry catalogue
             unfolding into a list of matching *settings* is the wall this
             redesign removes. So it says where the thing is and offers to go. */}
@@ -494,16 +487,9 @@ function EditsRow<K extends Exclude<keyof EditorDefaults, EditorToggleKey>>(
               type="button"
               class={styles.originAction}
               onClick={() =>
-                void setWorkspaceOverride(
-                  props.setting,
-                  fromWorkspace() ? undefined : editorDefaults()[props.setting],
-                )
+                void setWorkspaceOverride(props.setting, fromWorkspace() ? undefined : editorDefaults()[props.setting])
               }
-              label={
-                fromWorkspace()
-                  ? "Stop overriding this here and follow your global setting again"
-                  : props.pin
-              }
+              label={fromWorkspace() ? "Stop overriding this here and follow your global setting again" : props.pin}
             >
               {fromWorkspace() ? "Clear" : "Set here"}
             </Tooltip>
@@ -626,9 +612,7 @@ export function ToggleRow(props: PaneProps & { entry: EditorToggle }) {
               as="button"
               type="button"
               class={styles.originAction}
-              onClick={() =>
-                void setWorkspaceOverride(key(), fromWorkspace() ? undefined : editorDefaults()[key()])
-              }
+              onClick={() => void setWorkspaceOverride(key(), fromWorkspace() ? undefined : editorDefaults()[key()])}
               label={
                 fromWorkspace()
                   ? "Stop overriding this here and follow your global setting again"

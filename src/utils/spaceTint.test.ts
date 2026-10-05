@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vite-plus/test";
 import {
-  SPACE_COLORS, resolveColor, fallbackColor, spaceHue, spaceHueRgb, rgbTriple, applySpaceTint,
+  SPACE_COLORS,
+  resolveColor,
+  fallbackColor,
+  spaceHue,
+  spaceHueRgb,
+  rgbTriple,
+  applySpaceTint,
 } from "./spaceTint";
 
 /** A stand-in for `<html>`, so the writer is tested without a document. */

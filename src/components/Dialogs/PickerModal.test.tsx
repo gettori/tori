@@ -39,8 +39,7 @@ import PickerModal from "./PickerModal";
 // this file supplied one, because it needs a handle to type into, so the gate
 // could never see the gap. The field carries a real `aria-label` now, and one
 // axe assertion below deliberately renders the picker the way the callers do.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -71,8 +70,7 @@ function open(props: Partial<Omit<Props, "onSubmit" | "onCancel">> = {}) {
   return { onSubmit, onCancel, input, rows, active };
 }
 
-const type = (el: HTMLInputElement, value: string) =>
-  fireEvent.input(el, { target: { value } });
+const type = (el: HTMLInputElement, value: string) => fireEvent.input(el, { target: { value } });
 
 describe("PickerModal", () => {
   describe("contract", () => {
@@ -85,11 +83,7 @@ describe("PickerModal", () => {
     it("offers every item before anything is typed", () => {
       const { rows } = open();
 
-      expect(rows().map((r) => r.textContent)).toEqual([
-        "main",
-        "develop",
-        "feature/omnibox",
-      ]);
+      expect(rows().map((r) => r.textContent)).toEqual(["main", "develop", "feature/omnibox"]);
     });
 
     it("narrows the list as the filter is typed", () => {
@@ -299,12 +293,7 @@ describe("PickerModal", () => {
     // is exactly what it did before the `aria-label` fallback.
     it("has no accessibility violations as the callers actually render it", async () => {
       render(() => (
-        <PickerModal
-          title="Attach a branch"
-          items={["main", "develop"]}
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />
+        <PickerModal title="Attach a branch" items={["main", "develop"]} onSubmit={vi.fn()} onCancel={vi.fn()} />
       ));
 
       await expectNoAxeViolations(document.body, {

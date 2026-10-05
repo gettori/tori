@@ -44,11 +44,7 @@ export const Interactive: Story = {
         Raise an error
       </Button>
       <Button onClick={() => pushToast("Branch attached", "info")}>Raise a notice</Button>
-      <Button
-        onClick={() =>
-          pushToast("Renamed 12 files", "info", { label: "Undo", run: () => {} })
-        }
-      >
+      <Button onClick={() => pushToast("Renamed 12 files", "info", { label: "Undo", run: () => {} })}>
         Raise one with an action
       </Button>
       <ToastRegion />

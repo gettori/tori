@@ -20,11 +20,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * read. Waiting for all of them would leave the line blank for facts nobody
  * needs to wait for.
  */
-export function prMetaParts(
-  pr: PullRequest,
-  updatedAt: string | null,
-  counts: PrCounts | null,
-): string[] {
+export function prMetaParts(pr: PullRequest, updatedAt: string | null, counts: PrCounts | null): string[] {
   const parts = [pr.author];
   const opened = Date.parse(pr.createdAt);
   if (!Number.isNaN(opened)) parts.push(`opened ${compactAgo(opened / 1000)}`);

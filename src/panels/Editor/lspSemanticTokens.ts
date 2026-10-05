@@ -11,11 +11,7 @@
 // capabilities first, and a session that has none is a session whose numbers
 // cannot be interpreted - which is the same outcome as having no provider.
 
-import {
-  decodeSemanticTokens,
-  legendFrom,
-  type SemanticToken,
-} from "../../utils/semanticTokens";
+import { decodeSemanticTokens, legendFrom, type SemanticToken } from "../../utils/semanticTokens";
 import { lspTargetFor } from "./lspClient";
 import { pathToUri } from "./toriWorkspace";
 
@@ -110,10 +106,7 @@ export type PaintOutcome =
  * that loses its server is cleared rather than left wearing a dead one's
  * colours.
  */
-export async function refreshSemanticTokens(
-  deps: SemanticDeps,
-  path: string,
-): Promise<PaintOutcome> {
+export async function refreshSemanticTokens(deps: SemanticDeps, path: string): Promise<PaintOutcome> {
   const before = deps.current(path);
   if (!before) return "gone";
   const token = (pending.get(path) ?? 0) + 1;

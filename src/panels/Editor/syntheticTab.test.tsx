@@ -84,9 +84,8 @@ vi.mock("./CodeEditor", () => ({
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { emit, emitWith, onWith, FOCUS_PR_REVIEW, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import(
-  "../../utils/events",
-);
+const { emit, emitWith, onWith, FOCUS_PR_REVIEW, OPEN_IN_EDITOR, PURGE_UNDER_PATH } =
+  await import("../../utils/events");
 const { syntheticId, parseSyntheticId, prAllTabId, prDiffTabId, prTabId, prListTabId } =
   await import("../../utils/syntheticTabs");
 
@@ -102,11 +101,11 @@ let mounted: ReturnType<typeof render> | null = null;
 
 async function mountEditor() {
   mounted = render(() => (
-      <>
-        <Editor selected={selection as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selection as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 
@@ -265,9 +264,7 @@ describe("a tori:// tab in the editor pane", () => {
     await mountEditor();
     await open(prListTabId(REPO));
 
-    await waitFor(() =>
-      expect(screen.getByText("Sign in to GitHub in Settings to see pull requests.")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText("Sign in to GitHub in Settings to see pull requests.")).toBeTruthy());
     expect(mountedCodeEditor).toBe(0);
   });
 

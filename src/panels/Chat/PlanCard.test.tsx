@@ -27,17 +27,13 @@ describe("PlanCard", () => {
   // the list, which is the whole reason the card is pinned above the composer
   // rather than left to scroll away in the transcript.
   it("names the in-flight step in the header", () => {
-    const { container } = render(() => (
-      <PlanCard items={plan(["read it", "completed"], ["fix it", "inProgress"])} />
-    ));
+    const { container } = render(() => <PlanCard items={plan(["read it", "completed"], ["fix it", "inProgress"])} />);
     const head = container.querySelector("[class*='planHead']");
     expect(head?.textContent).toContain("fix it");
   });
 
   it("says nothing about an in-flight step when none is running", () => {
-    const { container } = render(() => (
-      <PlanCard items={plan(["read it", "completed"], ["fix it", "completed"])} />
-    ));
+    const { container } = render(() => <PlanCard items={plan(["read it", "completed"], ["fix it", "completed"])} />);
     const head = container.querySelector("[class*='planHead']");
     expect(head?.textContent).toContain("2/2");
     expect(head?.textContent).not.toContain("fix it");

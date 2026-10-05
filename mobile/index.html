@@ -2,17 +2,31 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#15171c" />
     <title>Tori</title>
     <style>
       /* The window is what shrinks for the keyboard; a document that could scroll
          would scroll the header away to reach the focused box instead. */
-      html, body, #root { height: 100%; margin: 0; overflow: hidden; background: var(--canvas-default); }
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--canvas-default);
+      }
       /* The desktop's styled scrollbar keeps a track that takes width; a phone
          scrolls by touch and never needs one. */
-      * { scrollbar-width: none; }
-      *::-webkit-scrollbar { display: none; }
+      * {
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        display: none;
+      }
     </style>
   </head>
 

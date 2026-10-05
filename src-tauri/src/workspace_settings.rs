@@ -75,13 +75,14 @@ pub fn set_workspace_settings(root: String, settings: Value) -> Result<Value, St
     }
     // The panel writes only the blocks it manages, so a hand-written block
     // beside them (`lsp`) is carried over rather than erased by the next click.
-    let mut merged = std::fs::read_to_string(&path).map(|t| parse_overlay(&t)).unwrap_or_else(|_| empty());
+    let mut merged = std::fs::read_to_string(&path)
+        .map(|t| parse_overlay(&t))
+        .unwrap_or_else(|_| empty());
     if let (Some(into), Some(from)) = (merged.as_object_mut(), settings.as_object()) {
         into.extend(from.clone());
     }
     let text = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
-    std::fs::write(&path, format!("{text}\n"))
-        .map_err(|e| format!("Writing {} failed: {e}", path.display()))?;
+    std::fs::write(&path, format!("{text}\n")).map_err(|e| format!("Writing {} failed: {e}", path.display()))?;
     Ok(merged)
 }
 
@@ -124,7 +125,11 @@ mod tests {
         let dir = repo("invisible");
         let root = dir.to_string_lossy().into_owned();
 
-        set_workspace_settings(root.clone(), serde_json::json!({ "editor": { "compactFolders": false } })).unwrap();
+        set_workspace_settings(
+            root.clone(),
+            serde_json::json!({ "editor": { "compactFolders": false } }),
+        )
+        .unwrap();
 
         // The whole point of the tracking story: the first override must not
         // leave an unexplained untracked file in the Changes panel.
@@ -163,7 +168,10 @@ mod tests {
         set_workspace_settings(root, serde_json::json!({ "editor": { "minimap": true } })).unwrap();
 
         let exclude = std::fs::read_to_string(dir.join(".git/info/exclude")).unwrap();
-        assert_eq!(exclude.lines().filter(|l| l.trim() == format!("{TORI_DIR}/")).count(), 1);
+        assert_eq!(
+            exclude.lines().filter(|l| l.trim() == format!("{TORI_DIR}/")).count(),
+            1
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -68,14 +68,12 @@ vi.mock("../utils/chatSessions", () => ({
 
 const { default: Terminal } = await import("../panels/Terminal/Terminal");
 const { default: PaneView } = await import("./PaneView");
-const { open, setOpen, focusTab, focusDockTab, activeWorkspace, dockActiveId } = await import(
-  "../panels/Terminal/terminalTabStore"
-);
+const { open, setOpen, focusTab, focusDockTab, activeWorkspace, dockActiveId } =
+  await import("../panels/Terminal/terminalTabStore");
 const { showDock, setFocusedSurface, resetDock } = await import("../layout/dockStore");
 const { startTabDrag, endTabDrag } = await import("./tabDrag");
-const { emit, emitWith, onWith, OPEN_JOB, REVEAL_DOCK, TAB_CYCLE, MOVE_TAB_TO_PANE, SPLIT_PANE } = await import(
-  "../utils/events"
-);
+const { emit, emitWith, onWith, OPEN_JOB, REVEAL_DOCK, TAB_CYCLE, MOVE_TAB_TO_PANE, SPLIT_PANE } =
+  await import("../utils/events");
 const { ensureEnvelope, resetPaneLayoutModel, seedOnePane } = await import("../layout/layoutStore");
 const { resetTabPlacement } = await import("../layout/tabPlacement");
 const { ensureShellsWorkspace, shellsPane } = await import("../layout/shellsWorkspace");
@@ -193,9 +191,7 @@ describe("workspace-scoped active", () => {
     bridge.log = [];
     ensureEnvelope(WS2, seedOnePane);
     setOpen([...open(), tab("sh:2", WS2)]);
-    await waitFor(() =>
-      expect(bridge.log.filter((l) => l.startsWith("sh:1") || l.startsWith("sh:3"))).toHaveLength(0),
-    );
+    await waitFor(() => expect(bridge.log.filter((l) => l.startsWith("sh:1") || l.startsWith("sh:3"))).toHaveLength(0));
     expect(activeIds()).toEqual(["sh:3"]);
   });
 

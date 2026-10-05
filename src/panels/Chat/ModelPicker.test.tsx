@@ -20,19 +20,17 @@ function machineModels(): ChatModelInfo[] {
     .map((l) => JSON.parse(l) as { type: string; response?: { response?: { models?: unknown[] } } });
   const models = frames.find((f) => f.type === "control_response")?.response?.response?.models;
   if (!models) throw new Error("the initialize capture carries no model catalogue");
-  return (models as Record<string, unknown>[]).map(
-    (m): ChatModelInfo => ({
-      value: m.value as string,
-      resolvedModel: m.resolvedModel as string,
-      displayName: (m.displayName as string) ?? "",
-      description: (m.description as string) ?? "",
-      supportsEffort: (m.supportsEffort as boolean) ?? false,
-      supportedEffortLevels: (m.supportedEffortLevels as string[]) ?? [],
-      supportsAutoMode: false,
-      supportsFastMode: false,
-      supportsAdaptiveThinking: false,
-    }),
-  );
+  return (models as Record<string, unknown>[]).map((m): ChatModelInfo => ({
+    value: m.value as string,
+    resolvedModel: m.resolvedModel as string,
+    displayName: (m.displayName as string) ?? "",
+    description: (m.description as string) ?? "",
+    supportsEffort: (m.supportsEffort as boolean) ?? false,
+    supportedEffortLevels: (m.supportedEffortLevels as string[]) ?? [],
+    supportsAutoMode: false,
+    supportsFastMode: false,
+    supportsAdaptiveThinking: false,
+  }));
 }
 
 // The adapter, which declares no models at all now. What a session that never
@@ -210,9 +208,7 @@ describe("ModelPicker", () => {
    */
   it("names the account on the pill only when there is one to name", () => {
     expect(setup({ value: "sonnet" }).pills()[0].textContent).toBe("Sonnet");
-    expect(setup({ value: "sonnet", profileLabel: "Globex" }).pills()[0].textContent).toBe(
-      "Sonnet / Globex",
-    );
+    expect(setup({ value: "sonnet", profileLabel: "Globex" }).pills()[0].textContent).toBe("Sonnet / Globex");
   });
 
   it("names the account in the tooltip too", () => {
@@ -253,14 +249,7 @@ describe("ModelPicker", () => {
     expect(sonnet.pills()).toHaveLength(2);
     // Capitalised for the menu, not on the wire: `onSelectEffort` still sends
     // the agent's own spelling, which the send test below pins.
-    expect(sonnet.rowNames(sonnet.openEffort())).toEqual([
-      "Default",
-      "Low",
-      "Medium",
-      "High",
-      "Xhigh",
-      "Max",
-    ]);
+    expect(sonnet.rowNames(sonnet.openEffort())).toEqual(["Default", "Low", "Medium", "High", "Xhigh", "Max"]);
   });
 
   /** The capitalisation is display only, and this is the assertion that keeps it
@@ -289,15 +278,7 @@ describe("ModelPicker", () => {
     };
     const s = setup({ models: [withExtra], value: "sonnet" });
     const menu = s.openEffort();
-    expect(s.rowNames(menu)).toEqual([
-      "Default",
-      "Low",
-      "Medium",
-      "High",
-      "Xhigh",
-      "Max",
-      "Ultracode",
-    ]);
+    expect(s.rowNames(menu)).toEqual(["Default", "Low", "Medium", "High", "Xhigh", "Max", "Ultracode"]);
 
     const refused = [...menu.children].find((r) => r.textContent?.includes("Ultracode"))!;
     // Announced as refused, and still a row keyboard navigation can reach: a

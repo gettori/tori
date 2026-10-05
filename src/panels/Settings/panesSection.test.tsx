@@ -28,8 +28,7 @@ const ROWS: [string, keyof PanePins][] = [
 ];
 
 /** The select belonging to a labelled row. */
-const selectFor = (label: string) =>
-  screen.getByText(label).closest("div")!.querySelector("button, select")!;
+const selectFor = (label: string) => screen.getByText(label).closest("div")!.querySelector("button, select")!;
 
 beforeEach(async () => {
   invoke.mockReset();

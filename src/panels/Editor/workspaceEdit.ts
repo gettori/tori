@@ -201,7 +201,10 @@ export async function applyWorkspaceEdit(
   for (const target of targets) {
     const path = uriToPath(target.uri);
     if (!path) {
-      return { kind: "aborted", reason: `The server named a file Tori cannot address (${target.uri}), so nothing was changed.` };
+      return {
+        kind: "aborted",
+        reason: `The server named a file Tori cannot address (${target.uri}), so nothing was changed.`,
+      };
     }
     const file = await deps.requestFile(target.uri);
     if (!file) {
@@ -237,7 +240,8 @@ export async function applyWorkspaceEdit(
     const mapping = deps.makeMapping();
     try {
       const writes: { path: string; contents: string }[] = [];
-      const dispatches: { view: EditorView; path: string; changes: { from: number; to: number; insert: string }[] }[] = [];
+      const dispatches: { view: EditorView; path: string; changes: { from: number; to: number; insert: string }[] }[] =
+        [];
       for (const { target, file, path } of files) {
         let changes;
         try {
@@ -250,7 +254,10 @@ export async function applyWorkspaceEdit(
             insert: e.newText,
           }));
         } catch (e) {
-          return { kind: "aborted", reason: `Tori could not place the change inside ${nameOf(path)}, so nothing was changed: ${String(e)}` };
+          return {
+            kind: "aborted",
+            reason: `Tori could not place the change inside ${nameOf(path)}, so nothing was changed: ${String(e)}`,
+          };
         }
         const view = file.getView();
         if (view) dispatches.push({ view, path, changes });

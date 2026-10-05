@@ -213,8 +213,7 @@
 /* What one commit touched, under it. Indented past the lane art, since these
    rows belong to the commit rather than to the graph. */
 .files {
-  padding: calc(2px * var(--ui-scale)) 0 calc(4px * var(--ui-scale))
-    calc(40px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) 0 calc(4px * var(--ui-scale)) calc(40px * var(--ui-scale));
 }
 
 .fileRow {

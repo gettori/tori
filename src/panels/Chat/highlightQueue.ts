@@ -31,7 +31,10 @@ export function createQueue(post: (req: Request) => void) {
   return {
     request(slot: string, code: string, lang: string, form: Form, done: Done): void {
       const busy = slots.get(slot);
-      if (busy && (same(busy.inFlight, code, lang, form) || (busy.waiting && same(busy.waiting.req, code, lang, form)))) {
+      if (
+        busy &&
+        (same(busy.inFlight, code, lang, form) || (busy.waiting && same(busy.waiting.req, code, lang, form)))
+      ) {
         return;
       }
       const req = { id: ++nextId, code, lang, form };

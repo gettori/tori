@@ -93,7 +93,12 @@ describe("topicSelection", () => {
   });
 
   it("opens a references-only Topic on each repo's own checkout, with no worktree path", () => {
-    const reference = (repoPath: string, checkout: string | null, kind: MemberState["kind"], order: number): Member => ({
+    const reference = (
+      repoPath: string,
+      checkout: string | null,
+      kind: MemberState["kind"],
+      order: number,
+    ): Member => ({
       repoPath,
       displayName: repoPath,
       mode: "reference",

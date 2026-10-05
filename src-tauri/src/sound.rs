@@ -32,9 +32,17 @@ mod mac {
     }
 
     fn load(app: &AppHandle, file: &str) -> Option<Retained<NSSound>> {
-        let path = app.path().resolve(file, BaseDirectory::Resource).ok().filter(|p| p.exists());
+        let path = app
+            .path()
+            .resolve(file, BaseDirectory::Resource)
+            .ok()
+            .filter(|p| p.exists());
         let sound = path.and_then(|p| {
-            NSSound::initWithContentsOfFile_byReference(NSSound::alloc(), &NSString::from_str(&p.to_string_lossy()), true)
+            NSSound::initWithContentsOfFile_byReference(
+                NSSound::alloc(),
+                &NSString::from_str(&p.to_string_lossy()),
+                true,
+            )
         });
         if sound.is_none() {
             eprintln!("tori: no sound to play at {file}");

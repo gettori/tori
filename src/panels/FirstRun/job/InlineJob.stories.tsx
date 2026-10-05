@@ -1,12 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import InlineJobFrame, { StaticOutput, type JobState } from "./InlineJobFrame";
 
-const INSTALL = [
-  "added 3 packages in 4s",
-  "",
-  "2 packages are looking for funding",
-  "  run `npm fund` for details",
-];
+const INSTALL = ["added 3 packages in 4s", "", "2 packages are looking for funding", "  run `npm fund` for details"];
 
 const LOGIN = [
   "Opening https://auth.openai.com/oauth/authorize in your browser.",
@@ -24,7 +19,14 @@ const CLONE_FAIL = [
   "and the repository exists.",
 ];
 
-function Frame(props: { state: JobState; command: string; lines: string[]; code?: number | null; okLine: string; title: string }) {
+function Frame(props: {
+  state: JobState;
+  command: string;
+  lines: string[];
+  code?: number | null;
+  okLine: string;
+  title: string;
+}) {
   return (
     <div style={{ padding: "var(--tori-space-7)", background: "var(--canvas-card)", "min-height": "100vh" }}>
       <InlineJobFrame
@@ -54,23 +56,50 @@ type Story = StoryObj;
 
 export const Running: Story = {
   render: () => (
-    <Frame state="running" command="npm install -g @anthropic-ai/claude-code" lines={INSTALL.slice(0, 1)} okLine="Claude installed" title="Install Claude" />
+    <Frame
+      state="running"
+      command="npm install -g @anthropic-ai/claude-code"
+      lines={INSTALL.slice(0, 1)}
+      okLine="Claude installed"
+      title="Install Claude"
+    />
   ),
 };
 
 export const NeedsInput: Story = {
-  render: () => <Frame state="waiting" command="codex login" lines={LOGIN} okLine="Signed in to Codex" title="Sign in to Codex (Default)" />,
+  render: () => (
+    <Frame
+      state="waiting"
+      command="codex login"
+      lines={LOGIN}
+      okLine="Signed in to Codex"
+      title="Sign in to Codex (Default)"
+    />
+  ),
 };
 
 /** Collapsed to one row; Show output restores the body with a footer. */
 export const Succeeded: Story = {
   render: () => (
-    <Frame state="ok" command="npm install -g @anthropic-ai/claude-code" lines={INSTALL} okLine="Claude installed" title="Install Claude" />
+    <Frame
+      state="ok"
+      command="npm install -g @anthropic-ai/claude-code"
+      lines={INSTALL}
+      okLine="Claude installed"
+      title="Install Claude"
+    />
   ),
 };
 
 export const Failed: Story = {
   render: () => (
-    <Frame state="fail" code={128} command="git clone git@github.com:acme/api.git" lines={CLONE_FAIL} okLine="Cloned" title="Clone api" />
+    <Frame
+      state="fail"
+      code={128}
+      command="git clone git@github.com:acme/api.git"
+      lines={CLONE_FAIL}
+      okLine="Cloned"
+      title="Clone api"
+    />
   ),
 };

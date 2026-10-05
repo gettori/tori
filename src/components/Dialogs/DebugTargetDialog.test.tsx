@@ -31,8 +31,7 @@ import DebugTargetDialog from "./DebugTargetDialog";
 // swapped the native `<select>` for `components/Select` and that naming carried
 // over unchanged: the wrapper takes the same `aria-labelledby`, so the mode
 // stayed clean across the migration rather than being re-fixed by it.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -97,9 +96,7 @@ describe("DebugTargetDialog", () => {
     it("says what it would run, in this file mode", () => {
       open({ filePath: "/tmp/app.ts" });
 
-      expect(
-        screen.getByText("Runs /tmp/app.ts under node, stopping on your breakpoints."),
-      ).toBeTruthy();
+      expect(screen.getByText("Runs /tmp/app.ts under node, stopping on your breakpoints.")).toBeTruthy();
     });
 
     it("blocks this file mode with a reason when nothing is open", () => {
@@ -164,9 +161,7 @@ describe("DebugTargetDialog", () => {
 
       fireEvent.input(port(), { target: { value: "80" } });
 
-      expect(
-        screen.getByText("Enter a port between 1024 and 65535 (node's default is 9229)."),
-      ).toBeTruthy();
+      expect(screen.getByText("Enter a port between 1024 and 65535 (node's default is 9229).")).toBeTruthy();
       expect(start().disabled).toBe(true);
     });
 

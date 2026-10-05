@@ -27,7 +27,12 @@ pub struct Bridge {
 
 impl Bridge {
     pub fn new(emit: Emit, timeout: Duration) -> Self {
-        Bridge { emit, pending: Mutex::default(), next: AtomicU64::new(1), timeout }
+        Bridge {
+            emit,
+            pending: Mutex::default(),
+            next: AtomicU64::new(1),
+            timeout,
+        }
     }
 
     pub fn request(&self, method: &str, params: Value) -> Result<Value, RpcError> {
@@ -36,7 +41,10 @@ impl Bridge {
         self.pending().insert(rid, tx);
         if let Err(e) = (self.emit)(json!({ "rid": rid, "method": method, "params": params })) {
             self.pending().remove(&rid);
-            return Err(RpcError::new(INTERNAL_ERROR, format!("could not reach the Tori window: {e}")));
+            return Err(RpcError::new(
+                INTERNAL_ERROR,
+                format!("could not reach the Tori window: {e}"),
+            ));
         }
         let outcome = rx.recv_timeout(self.timeout);
         self.pending().remove(&rid);
@@ -45,7 +53,10 @@ impl Bridge {
             Ok(Err(message)) => Err(RpcError::new(REFUSED, message)),
             Err(_) => Err(RpcError::new(
                 INTERNAL_ERROR,
-                format!("the Tori window did not answer {method} within {}s", self.timeout.as_secs()),
+                format!(
+                    "the Tori window did not answer {method} within {}s",
+                    self.timeout.as_secs()
+                ),
             )),
         }
     }
@@ -101,7 +112,11 @@ mod tests {
     fn nobody_answering_times_out_naming_the_window_and_a_late_reply_is_dropped() {
         let bridge = Bridge::new(Box::new(|_| Ok(())), Duration::from_millis(50));
         let err = bridge.request("window.open", json!({})).unwrap_err();
-        assert!(err.message.contains("Tori window did not answer window.open"), "{}", err.message);
+        assert!(
+            err.message.contains("Tori window did not answer window.open"),
+            "{}",
+            err.message
+        );
         assert!(bridge.pending().is_empty());
         bridge.reply(1, Ok(json!({})));
     }

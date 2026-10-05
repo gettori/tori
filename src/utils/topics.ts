@@ -187,7 +187,9 @@ export function topicSelection(topic: Topic, storedActiveRoot?: string | null): 
 
 /** Where a new chat starts: a Topic's home folder, which reaches every member,
  *  or the folder git and a terminal use everywhere else. */
-export function chatRoot(sel: Pick<Selection, "kind" | "activeRoot" | "folderPath" | "home"> | null | undefined): string | null {
+export function chatRoot(
+  sel: Pick<Selection, "kind" | "activeRoot" | "folderPath" | "home"> | null | undefined,
+): string | null {
   if (sel?.kind === "topic" && sel.home) return sel.home;
   return selectionRoot(sel);
 }
@@ -222,10 +224,7 @@ export function topicAtHome(folder: string | null | undefined): Topic | null {
  *  One rule, shared by the conflict banner, the commit target and the palette's
  *  git commands: three copies of it is how the three disagree about which repo
  *  the file in front of you is in. */
-export function rootOf(
-  path: string | null | undefined,
-  roots: readonly string[] | null | undefined,
-): string | null {
+export function rootOf(path: string | null | undefined, roots: readonly string[] | null | undefined): string | null {
   if (!path || !roots?.length) return null;
   let best: string | null = null;
   for (const r of roots) {
@@ -274,7 +273,6 @@ export function ownsCwd(cwd: string, folder: string): boolean {
  *  its workspace, a Topic or Shells tab by where it was spawned, since
  *  neither of those keys is a path. */
 export function tabUnderFolder(tab: { workspace: string; cwd?: string }, folder: string): boolean {
-  if (isTopicKey(tab.workspace) || isShellsKey(tab.workspace))
-    return !!tab.cwd && ownsCwd(tab.cwd, folder);
+  if (isTopicKey(tab.workspace) || isShellsKey(tab.workspace)) return !!tab.cwd && ownsCwd(tab.cwd, folder);
   return isUnderPath(tab.workspace, folder);
 }

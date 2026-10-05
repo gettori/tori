@@ -151,11 +151,13 @@ pub(crate) fn parse_version(output: &str) -> Option<String> {
         return None;
     }
     line.split_whitespace().find_map(|token| {
-        let candidate = token.trim_start_matches('v').trim_matches(|c: char| c == '(' || c == ')');
+        let candidate = token
+            .trim_start_matches('v')
+            .trim_matches(|c: char| c == '(' || c == ')');
         let looks_semver = candidate.contains('.')
-            && candidate.split('.').all(|part| {
-                !part.is_empty() && part.chars().next().is_some_and(|c| c.is_ascii_digit())
-            });
+            && candidate
+                .split('.')
+                .all(|part| !part.is_empty() && part.chars().next().is_some_and(|c| c.is_ascii_digit()));
         looks_semver.then(|| candidate.to_string())
     })
 }
@@ -184,9 +186,7 @@ pub(crate) fn compare(running: Option<&str>, verified: Option<&str>) -> BinarySt
 pub(crate) fn run_version(path: &Path) -> Option<String> {
     // Bounded: an agent CLI that blocks on `--version` (prompting for auth, say)
     // would otherwise strand the memoized sweep and every later caller with it.
-    let out = crate::env::output_with_timeout(
-        std::process::Command::new(path).arg("--version"),
-    )?;
+    let out = crate::env::output_with_timeout(std::process::Command::new(path).arg("--version"))?;
     // Some CLIs write their version to stderr; take whichever stream spoke.
     let stdout = String::from_utf8_lossy(&out.stdout);
     let text = if stdout.trim().is_empty() {
@@ -392,7 +392,6 @@ pub async fn refresh_agent_health() -> Vec<AgentHealth> {
     HEALTH.get_or_sweep(sweep)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,7 +438,11 @@ mod tests {
         assert_eq!(chat_program_missing(&present), None, "found on PATH is not missing");
 
         let same = agents::test_adapter_with_chat("tori-no-such-launch", "tori-no-such-launch");
-        assert_eq!(chat_program_missing(&same), None, "the launch binary is `status`'s question");
+        assert_eq!(
+            chat_program_missing(&same),
+            None,
+            "the launch binary is `status`'s question"
+        );
 
         assert_eq!(chat_program_missing(&agents::test_adapter("sh")), None, "no chat table");
     }
@@ -554,8 +557,14 @@ mod tests {
 
     #[test]
     fn compare_matches_across_the_verified_against_prefix() {
-        assert_eq!(compare(Some("1.18.3"), Some("claude 1.18.3")), BinaryStatus::VersionMatch);
-        assert_eq!(compare(Some("1.18.4"), Some("claude 1.18.3")), BinaryStatus::VersionDrift);
+        assert_eq!(
+            compare(Some("1.18.3"), Some("claude 1.18.3")),
+            BinaryStatus::VersionMatch
+        );
+        assert_eq!(
+            compare(Some("1.18.4"), Some("claude 1.18.3")),
+            BinaryStatus::VersionDrift
+        );
         // An adapter that declares nothing to compare against is never drift.
         assert_eq!(compare(Some("1.18.3"), None), BinaryStatus::VersionUnknown);
     }
@@ -589,7 +598,10 @@ mod tests {
     fn an_adapter_that_declares_no_measurement_never_reports_a_match() {
         let gemini = agents::find("gemini").expect("gemini ships bundled");
         assert_eq!(gemini.verified_against, None);
-        assert_eq!(compare(Some("0.9.0"), gemini.verified_against.as_deref()), BinaryStatus::VersionUnknown);
+        assert_eq!(
+            compare(Some("0.9.0"), gemini.verified_against.as_deref()),
+            BinaryStatus::VersionUnknown
+        );
 
         // And the measured one does match its declared version.
         let opencode = agents::find("opencode").expect("opencode ships bundled");

@@ -149,10 +149,7 @@ export function MenuSub(props: {
         <Icon icon={ChevronRight} class={styles.subInto} aria-hidden="true" />
       </Primitive.SubTrigger>
       <Primitive.Portal mount={surface()}>
-        <Primitive.SubContent
-          class={styles.content}
-          onContextMenu={(e: MouseEvent) => e.preventDefault()}
-        >
+        <Primitive.SubContent class={styles.content} onContextMenu={(e: MouseEvent) => e.preventDefault()}>
           {props.children}
         </Primitive.SubContent>
       </Primitive.Portal>
@@ -194,9 +191,7 @@ function NoteRow(props: { item: Extract<MenuItem, { label: string }> }) {
       refusing={props.item.refusing}
       describedBy={props.item.note ? noteId : undefined}
     >
-      <Show when={props.item.icon}>
-        {(icon) => <Icon icon={icon()} aria-hidden="true" />}
-      </Show>
+      <Show when={props.item.icon}>{(icon) => <Icon icon={icon()} aria-hidden="true" />}</Show>
       <Show when={props.item.note} fallback={props.item.label}>
         <span class={styles.noted}>
           {props.item.label}
@@ -235,10 +230,7 @@ function FlatRows(props: { items: MenuItem[] }) {
  *  nothing, and `GroupLabel` cannot stand outside one. */
 export function MenuRows(props: { items: MenuItem[] }) {
   return (
-    <Show
-      when={props.items.some((it) => "heading" in it)}
-      fallback={<FlatRows items={props.items} />}
-    >
+    <Show when={props.items.some((it) => "heading" in it)} fallback={<FlatRows items={props.items} />}>
       <Primitive.Group>
         <FlatRows items={props.items} />
       </Primitive.Group>

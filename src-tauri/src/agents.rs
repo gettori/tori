@@ -431,7 +431,10 @@ impl ChatConfig {
         // or no request at all - lands on the default, and only a request that
         // was displaced counts as a downgrade worth reporting.
         if let Some(id) = requested.filter(|id| self.modes.iter().any(|m| &m.id == id)) {
-            return Some(ResolvedMode { id: id.to_string(), downgraded_from: None });
+            return Some(ResolvedMode {
+                id: id.to_string(),
+                downgraded_from: None,
+            });
         }
         self.default_mode().map(|m| ResolvedMode {
             id: m.id.clone(),
@@ -1061,8 +1064,11 @@ fn check_session_plumbing(raw: &AdapterToml, source: &str) -> Result<(), String>
         ("parser", raw.parser.is_some()),
         ("running", raw.running.is_some()),
     ];
-    let missing: Vec<&str> =
-        declared.iter().filter(|(_, present)| !present).map(|(k, _)| *k).collect();
+    let missing: Vec<&str> = declared
+        .iter()
+        .filter(|(_, present)| !present)
+        .map(|(k, _)| *k)
+        .collect();
 
     if missing.is_empty() {
         return Ok(());
@@ -1113,8 +1119,11 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 eprintln!("tori: agent adapter {source}: unknown field `{key}`, ignoring");
             }
         }
-        let missing: Vec<&str> =
-            REQUIRED_TOP_LEVEL.iter().filter(|k| !table.contains_key(**k)).copied().collect();
+        let missing: Vec<&str> = REQUIRED_TOP_LEVEL
+            .iter()
+            .filter(|k| !table.contains_key(**k))
+            .copied()
+            .collect();
         if !missing.is_empty() {
             return Err(format!("{source}: missing required field(s): {}", missing.join(", ")));
         }
@@ -1123,8 +1132,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     let raw: AdapterToml = toml::from_str(text).map_err(|e| format!("{source}: {e}"))?;
 
     if !SUPPORTED_SCHEMA_VERSIONS.contains(&raw.schema_version) {
-        let supported =
-            SUPPORTED_SCHEMA_VERSIONS.map(|v| v.to_string()).join(", ");
+        let supported = SUPPORTED_SCHEMA_VERSIONS.map(|v| v.to_string()).join(", ");
         return Err(format!(
             "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
@@ -1164,9 +1172,8 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         .parser
         .as_ref()
         .map(|p| {
-            ParserKind::from_str(&p.kind).ok_or_else(|| {
-                format!("{source}: unknown parser kind `{}` (expected claude_jsonl)", p.kind)
-            })
+            ParserKind::from_str(&p.kind)
+                .ok_or_else(|| format!("{source}: unknown parser kind `{}` (expected claude_jsonl)", p.kind))
         })
         .transpose()?;
 
@@ -1174,28 +1181,25 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         None => None,
         Some(d) => match d.backend.as_str() {
             "file" => {
-                let dir = d.dir.ok_or_else(|| {
-                    format!("{source}: discovery.dir is required for backend = \"file\"")
-                })?;
+                let dir = d
+                    .dir
+                    .ok_or_else(|| format!("{source}: discovery.dir is required for backend = \"file\""))?;
                 let pattern = d.filename_pattern.ok_or_else(|| {
-                    format!(
-                        "{source}: discovery.filename_pattern is required for backend = \"file\""
-                    )
+                    format!("{source}: discovery.filename_pattern is required for backend = \"file\"")
                 })?;
-                let filename_regex = Regex::new(&pattern)
-                    .map_err(|e| format!("{source}: invalid discovery.filename_pattern: {e}"))?;
+                let filename_regex =
+                    Regex::new(&pattern).map_err(|e| format!("{source}: invalid discovery.filename_pattern: {e}"))?;
                 if filename_regex.capture_names().flatten().all(|n| n != "id") {
                     return Err(format!(
                         "{source}: discovery.filename_pattern must have a named `id` capture group"
                     ));
                 }
-                Some(Discovery::File { dir: expand_tilde(&dir), filename_regex })
+                Some(Discovery::File {
+                    dir: expand_tilde(&dir),
+                    filename_regex,
+                })
             }
-            other => {
-                return Err(format!(
-                    "{source}: unknown discovery.backend `{other}` (expected file)"
-                ))
-            }
+            other => return Err(format!("{source}: unknown discovery.backend `{other}` (expected file)")),
         },
     };
 
@@ -1268,9 +1272,10 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             // reports signed in while holding no credentials at all.
             let whoami_kind = match (a.whoami_args.is_empty(), a.whoami_kind.as_deref()) {
                 (true, None) => None,
-                (false, Some(kind)) => Some(WhoamiKind::from_str(kind).ok_or_else(|| {
-                    format!("{source}: unknown accounts.whoami_kind `{kind}`")
-                })?),
+                (false, Some(kind)) => Some(
+                    WhoamiKind::from_str(kind)
+                        .ok_or_else(|| format!("{source}: unknown accounts.whoami_kind `{kind}`"))?,
+                ),
                 (false, None) => {
                     return Err(format!(
                         "{source}: accounts.whoami_args needs accounts.whoami_kind \
@@ -1338,8 +1343,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 .iter()
                 .map(|name| {
                     UsageRung::from_str(name).ok_or_else(|| {
-                        let known: Vec<&str> =
-                            UsageRung::ALL.iter().map(|r| r.as_str()).collect();
+                        let known: Vec<&str> = UsageRung::ALL.iter().map(|r| r.as_str()).collect();
                         format!(
                             "{source}: unknown usage source `{name}` (expected one of {})",
                             known.join(", ")
@@ -1353,9 +1357,9 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
 
     let usage_reason = match (&usage, raw.schema_version < USAGE_MIN_VERSION) {
         (Some(_), _) => None,
-        (None, true) => {
-            Some(format!("this adapter predates the usage table (schema {USAGE_MIN_VERSION})"))
-        }
+        (None, true) => Some(format!(
+            "this adapter predates the usage table (schema {USAGE_MIN_VERSION})"
+        )),
         (None, false) => Some("this adapter declares no usage source".to_string()),
     };
 
@@ -1386,17 +1390,11 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                         return Err(format!("{source}: a config.entries id must not be empty"));
                     }
                     if seen.contains(&e.id.as_str()) {
-                        return Err(format!(
-                            "{source}: duplicate config.entries id `{}`",
-                            e.id
-                        ));
+                        return Err(format!("{source}: duplicate config.entries id `{}`", e.id));
                     }
                     seen.push(&e.id);
                     if e.label.trim().is_empty() {
-                        return Err(format!(
-                            "{source}: config.entries `{}` has an empty label",
-                            e.id
-                        ));
+                        return Err(format!("{source}: config.entries `{}` has an empty label", e.id));
                     }
                     let kind = ConfigKind::from_str(&e.kind).ok_or_else(|| {
                         format!(
@@ -1499,15 +1497,8 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
 /// called `~`), a `..` segment, and a Windows-style separator, which macOS
 /// would otherwise take as part of a filename rather than as the escape the
 /// author meant.
-fn check_relative_segment_path(
-    value: &str,
-    entry_id: &str,
-    field: &str,
-    source: &str,
-) -> Result<(), String> {
-    let refuse = |why: &str| {
-        Err(format!("{source}: config.entries `{entry_id}` {field} `{value}` {why}"))
-    };
+fn check_relative_segment_path(value: &str, entry_id: &str, field: &str, source: &str) -> Result<(), String> {
+    let refuse = |why: &str| Err(format!("{source}: config.entries `{entry_id}` {field} `{value}` {why}"));
     if value.trim().is_empty() {
         return refuse("must not be empty");
     }
@@ -1674,7 +1665,10 @@ pub fn find(id: &str) -> Option<&'static AgentAdapter> {
 /// grows a caller, this and its test can go.
 #[cfg(test)]
 pub fn apply_template(template: &[String], id: &str, file: &str) -> Vec<String> {
-    template.iter().map(|a| a.replace("{id}", id).replace("{file}", file)).collect()
+    template
+        .iter()
+        .map(|a| a.replace("{id}", id).replace("{file}", file))
+        .collect()
 }
 
 /// ERE pattern (for `pgrep -f`) matching a live process resuming session
@@ -1779,7 +1773,10 @@ mod tests {
     fn the_running_pattern_matches_chat_command_lines_not_just_pty_ones() {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         let id = "2e0777d8-a84b-425c-9a71-7b875918dcf1";
-        let pattern = claude.running_pattern.as_ref().expect("claude declares a running pattern");
+        let pattern = claude
+            .running_pattern
+            .as_ref()
+            .expect("claude declares a running pattern");
         let re = regex::Regex::new(&pattern.replace("{id}", id)).expect("valid ERE");
 
         let base = "claude -p --input-format stream-json --output-format stream-json --verbose \
@@ -1790,14 +1787,23 @@ mod tests {
             // The two the original pattern missed.
             ("a new chat", format!("{base} --session-id {id}")),
             ("a resumed chat", format!("{base} --resume {id}")),
-            ("a forked chat", format!("{base} --resume other --fork-session --session-id {id}")),
+            (
+                "a forked chat",
+                format!("{base} --resume other --fork-session --session-id {id}"),
+            ),
         ] {
             assert!(re.is_match(&cmdline), "{label} must count as running: {cmdline}");
         }
 
         for (label, cmdline) in [
-            ("a tail on the transcript", format!("tail -f /Users/x/.claude/projects/p/{id}.jsonl")),
-            ("an editor with it open", format!("nvim /Users/x/.claude/projects/p/{id}.jsonl")),
+            (
+                "a tail on the transcript",
+                format!("tail -f /Users/x/.claude/projects/p/{id}.jsonl"),
+            ),
+            (
+                "an editor with it open",
+                format!("nvim /Users/x/.claude/projects/p/{id}.jsonl"),
+            ),
             ("a grep for the id", format!("grep -r {id} /Users/x/notes")),
         ] {
             assert!(!re.is_match(&cmdline), "{label} must not count as running: {cmdline}");
@@ -1809,7 +1815,10 @@ mod tests {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
         let chat = claude.chat.as_ref().expect("claude has a chat table");
         assert_eq!(chat.trust_args(false).unwrap(), ["--setting-sources", "user"]);
-        assert!(chat.trust_args(true).unwrap().is_empty(), "a trusted project keeps its own settings");
+        assert!(
+            chat.trust_args(true).unwrap().is_empty(),
+            "a trusted project keeps its own settings"
+        );
     }
 
     #[test]
@@ -1846,7 +1855,10 @@ mod tests {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi"]);
+        assert_eq!(
+            ids,
+            vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi"]
+        );
 
         let by_id = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter").clone();
         let claude = by_id("claude");
@@ -1909,7 +1921,10 @@ mod tests {
         assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.12.0"]);
         // Everything else comes off the handshake, so there is nothing to declare.
         assert!(chat.modes.is_empty());
-        assert!(chat.effort_extras.is_empty(), "nothing measured on a agent nobody has probed");
+        assert!(
+            chat.effort_extras.is_empty(),
+            "nothing measured on a agent nobody has probed"
+        );
     }
 
     /// Sent only where `dev/mcp-probe.mjs --acp` saw the server called. pi-acp
@@ -1918,7 +1933,10 @@ mod tests {
     fn only_agents_measured_calling_an_mcp_server_are_sent_one() {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
         let sends = |id: &str| {
-            let adapter = reg.iter().find(|a| a.id == id).unwrap_or_else(|| panic!("{id} is bundled"));
+            let adapter = reg
+                .iter()
+                .find(|a| a.id == id)
+                .unwrap_or_else(|| panic!("{id} is bundled"));
             adapter.chat.as_ref().expect("an ACP chat table").acp.send_mcp_servers
         };
         assert!(sends("codex"));
@@ -1947,7 +1965,11 @@ mod tests {
         let config = claude.config.as_ref().expect("claude declares [config]");
 
         let by_id = |id: &str| {
-            config.entries.iter().find(|e| e.id == id).unwrap_or_else(|| panic!("row `{id}`"))
+            config
+                .entries
+                .iter()
+                .find(|e| e.id == id)
+                .unwrap_or_else(|| panic!("row `{id}`"))
         };
         assert_eq!(by_id("instructions").path, "CLAUDE.md");
         assert_eq!(by_id("instructions").kind, ConfigKind::File);
@@ -1963,9 +1985,7 @@ mod tests {
     /// tests below vary one thing each.
     fn v5_with_config(config: &str) -> String {
         let head = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 5", 1);
-        format!(
-            "{head}\n[accounts]\nhome_default = \"~/.x\"\n\n[config]\n{config}\n"
-        )
+        format!("{head}\n[accounts]\nhome_default = \"~/.x\"\n\n[config]\n{config}\n")
     }
 
     const ONE_ENTRY: &str = r#"
@@ -2011,8 +2031,7 @@ new_name_hint = "skill-name"
 
     #[test]
     fn a_config_entry_that_climbs_out_of_the_home_is_rejected() {
-        let text =
-            v5_with_config(&ONE_ENTRY.replace("path = \"X.md\"", "path = \"../.ssh/config\""));
+        let text = v5_with_config(&ONE_ENTRY.replace("path = \"X.md\"", "path = \"../.ssh/config\""));
         let err = load_adapter_str(&text, "test").unwrap_err();
         assert!(err.contains(".."), "the error should name the climb: {err}");
     }
@@ -2052,11 +2071,7 @@ new_name_hint = "skill-name"
         let err = load_adapter_str(&v5_with_config(&no_new_path), "test").unwrap_err();
         assert!(err.contains("needs new_path"), "{err}");
 
-        let on_a_file = ONE_ENTRY.replacen(
-            "kind = \"file\"",
-            "kind = \"file\"\nnew_path = \"{name}.md\"",
-            1,
-        );
+        let on_a_file = ONE_ENTRY.replacen("kind = \"file\"", "kind = \"file\"\nnew_path = \"{name}.md\"", 1);
         let err = load_adapter_str(&v5_with_config(&on_a_file), "test").unwrap_err();
         assert!(err.contains("nothing to land under"), "{err}");
 
@@ -2080,13 +2095,12 @@ new_name_hint = "skill-name"
 
     #[test]
     fn unknown_discovery_backend_is_rejected() {
-        let text = VALID_MINIMAL.replacen(
-            "[discovery]",
-            "[discovery]\nbackend = \"made_up_backend\"",
-            1,
-        );
+        let text = VALID_MINIMAL.replacen("[discovery]", "[discovery]\nbackend = \"made_up_backend\"", 1);
         let err = load_adapter_str(&text, "test").unwrap_err();
-        assert!(err.contains("made_up_backend"), "error should name the bad backend: {err}");
+        assert!(
+            err.contains("made_up_backend"),
+            "error should name the bad backend: {err}"
+        );
     }
 
     #[test]
@@ -2136,7 +2150,10 @@ pattern = 'claude-beta (--resume|-r) {id}'
         let reg = build_registry_from(&dir);
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi", "x"]);
+        assert_eq!(
+            ids,
+            vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi", "x"]
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2148,7 +2165,10 @@ pattern = 'claude-beta (--resume|-r) {id}'
         std::fs::write(dir.join("claude.toml"), "schema_version = 1\nid = \"claude\"\n").unwrap();
 
         let reg = build_registry_from(&dir);
-        let claude = reg.iter().find(|a| a.id == "claude").expect("built-in claude still present");
+        let claude = reg
+            .iter()
+            .find(|a| a.id == "claude")
+            .expect("built-in claude still present");
         assert_eq!(claude.program, "claude"); // untouched bundled value, not silently dropped
 
         std::fs::remove_dir_all(&dir).ok();
@@ -2160,10 +2180,12 @@ pattern = 'claude-beta (--resume|-r) {id}'
         // number meant this test silently stopped testing rejection the moment
         // that version became supported (it said 3, and v3 shipped).
         let unsupported = SCHEMA_VERSION + 1;
-        let text = VALID_MINIMAL
-            .replacen("schema_version = 1", &format!("schema_version = {unsupported}"), 1);
+        let text = VALID_MINIMAL.replacen("schema_version = 1", &format!("schema_version = {unsupported}"), 1);
         let err = load_adapter_str(&text, "test").unwrap_err();
-        assert!(err.contains("schema_version"), "error should mention schema_version: {err}");
+        assert!(
+            err.contains("schema_version"),
+            "error should mention schema_version: {err}"
+        );
     }
 
     // --- schema v2: the [chat] table ---
@@ -2213,7 +2235,10 @@ args = ["--effort", "low"]
 "#;
 
     fn v2_with_chat(chat: &str) -> String {
-        format!("{}{chat}", VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 2", 1))
+        format!(
+            "{}{chat}",
+            VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 2", 1)
+        )
     }
 
     #[test]
@@ -2245,7 +2270,10 @@ args = ["--effort", "low"]
     fn an_unknown_transport_is_rejected_naming_it() {
         let chat = CHAT_TABLE.replacen("claude_stream_json", "made_up_transport", 1);
         let err = load_adapter_str(&v2_with_chat(&chat), "test").unwrap_err();
-        assert!(err.contains("made_up_transport"), "error should name the bad transport: {err}");
+        assert!(
+            err.contains("made_up_transport"),
+            "error should name the bad transport: {err}"
+        );
     }
 
     /// The loud-failure contract: a broken chat table must not make the agent
@@ -2258,8 +2286,14 @@ args = ["--effort", "low"]
         std::fs::write(dir.join("claude.toml"), text).unwrap();
 
         let reg = build_registry_from(&dir);
-        let claude = reg.iter().find(|a| a.id == "claude").expect("built-in claude still present");
-        assert_eq!(claude.program, "claude", "the bundled adapter survived the broken override");
+        let claude = reg
+            .iter()
+            .find(|a| a.id == "claude")
+            .expect("built-in claude still present");
+        assert_eq!(
+            claude.program, "claude",
+            "the bundled adapter survived the broken override"
+        );
         assert!(claude.chat.is_some(), "and kept its own working chat table");
 
         std::fs::remove_dir_all(&dir).ok();
@@ -2290,7 +2324,10 @@ supports_isolation = true
 "#;
 
     fn v3_with(table: &str) -> String {
-        format!("{}{table}", VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 3", 1))
+        format!(
+            "{}{table}",
+            VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 3", 1)
+        )
     }
 
     #[test]
@@ -2370,7 +2407,10 @@ supports_isolation = true
     fn an_unknown_whoami_kind_is_rejected() {
         let table = ACCOUNTS_TABLE.replace("claude_json", "vibes");
         let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
-        assert!(err.contains("vibes"), "error should name the kind it did not recognize: {err}");
+        assert!(
+            err.contains("vibes"),
+            "error should name the kind it did not recognize: {err}"
+        );
     }
 
     /// An adapter may declare accounts without declaring a probe: plenty of
@@ -2412,10 +2452,11 @@ supports_isolation = true
 
     #[test]
     fn an_install_table_parses_into_a_spec() {
-        let text = format!(
-            "{VALID_MINIMAL}\n[install]\nprogram = \"npm\"\nargs = [\"install\", \"-g\", \"x\"]\n"
-        );
-        let spec = load_adapter_str(&text, "test").expect("parses").install.expect("declared");
+        let text = format!("{VALID_MINIMAL}\n[install]\nprogram = \"npm\"\nargs = [\"install\", \"-g\", \"x\"]\n");
+        let spec = load_adapter_str(&text, "test")
+            .expect("parses")
+            .install
+            .expect("declared");
         assert_eq!(spec.program, "npm");
         assert_eq!(spec.args, ["install", "-g", "x"]);
     }
@@ -2472,7 +2513,10 @@ supports_isolation = true
     #[test]
     fn an_accounts_table_in_a_v2_file_is_refused_rather_than_ignored() {
         let err = load_adapter_str(&v2_with_chat(ACCOUNTS_TABLE), "test").unwrap_err();
-        assert!(err.contains("[accounts]"), "error should name the table it refused: {err}");
+        assert!(
+            err.contains("[accounts]"),
+            "error should name the table it refused: {err}"
+        );
         assert!(
             err.contains(&format!("schema_version >= {ACCOUNTS_MIN_VERSION}")),
             "error should say what version [accounts] needs: {err}"
@@ -2515,7 +2559,10 @@ sources = ["sessions", "token"]
 "#;
 
     fn v4_with(table: &str) -> String {
-        format!("{}{table}", VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 4", 1))
+        format!(
+            "{}{table}",
+            VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 4", 1)
+        )
     }
 
     #[test]
@@ -2589,9 +2636,8 @@ sources = ["sessions", "token"]
     /// `sessions` because `codex-acp` forwards none: see its own TOML comment.
     #[test]
     fn a_bundled_adapter_declares_only_the_rungs_tori_can_climb() {
-        let declared = |text: &str, source: &str| {
-            load_adapter_str(text, source).expect("parses").usage.map(|u| u.sources)
-        };
+        let declared =
+            |text: &str, source: &str| load_adapter_str(text, source).expect("parses").usage.map(|u| u.sources);
         assert_eq!(
             declared(BUILTIN_CLAUDE, "bundled:claude"),
             Some(vec![UsageRung::Sessions, UsageRung::Token])
@@ -2615,7 +2661,10 @@ sources = ["sessions", "token"]
         let a = load_adapter_str(&v3_with("\n[accounts]\nlogin_args = [\"login\"]\n"), "test")
             .expect("a minimal accounts table parses");
         let acc = a.accounts.expect("accounts resolved");
-        assert!(!acc.supports_isolation, "isolation must be earned, never defaulted to true");
+        assert!(
+            !acc.supports_isolation,
+            "isolation must be earned, never defaulted to true"
+        );
         assert_eq!(acc.home_env, None);
     }
 
@@ -2640,14 +2689,22 @@ sources = ["sessions", "token"]
         assert_eq!(acc.home_env.as_deref(), Some("CLAUDE_CONFIG_DIR"));
         assert!(acc.supports_isolation, "measured in Phase 0: two simultaneous logins");
         assert!(!acc.whoami_args.is_empty(), "the sign-in probe must have args to run");
-        assert!(!acc.login_args.is_empty(), "the login ladder needs args for the PTY rung");
+        assert!(
+            !acc.login_args.is_empty(),
+            "the login ladder needs args for the PTY rung"
+        );
         // The other half of the Phase 0 measurement: a session under an isolated
         // home wrote its transcript beneath that home, in the same layout. The
         // declared discovery dir has to sit under this one for the swap to mean
         // anything, which is the whole of how a second account is found.
         let home = acc.home_default.expect("claude declares the home it relocates from");
         let dir = a.discovery_path().expect("claude discovers sessions from a directory");
-        assert!(dir.starts_with(&home), "{} is not under {}", dir.display(), home.display());
+        assert!(
+            dir.starts_with(&home),
+            "{} is not under {}",
+            dir.display(),
+            home.display()
+        );
     }
 
     /// Isolation is claimed only where it was measured.
@@ -2700,8 +2757,14 @@ sources = ["sessions", "token"]
         // accepts it but documents it as an alias for `default`, and reports
         // `default` at init, so a row for it would duplicate one.
         let modes: Vec<&str> = chat.modes.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(modes, vec!["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]);
-        assert!(!modes.contains(&"manual"), "`manual` is an alias for `default`, not a mode of its own");
+        assert_eq!(
+            modes,
+            vec!["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]
+        );
+        assert!(
+            !modes.contains(&"manual"),
+            "`manual` is an alias for `default`, not a mode of its own"
+        );
         assert!(
             chat.modes.iter().all(|m| !m.hint.is_empty()),
             "a mode with no hint renders a menu row that does not say what it does"
@@ -2733,7 +2796,12 @@ sources = ["sessions", "token"]
         // What *is* declared is which mode runs tools unasked, which is a fact
         // about the mode rather than about Tori - and one that matters more now
         // that Tori is not behind it.
-        let permissive: Vec<&str> = chat.modes.iter().filter(|m| m.permissive).map(|m| m.id.as_str()).collect();
+        let permissive: Vec<&str> = chat
+            .modes
+            .iter()
+            .filter(|m| m.permissive)
+            .map(|m| m.id.as_str())
+            .collect();
         assert_eq!(permissive, vec!["bypassPermissions"]);
 
         // No effort table any more: the levels are the agent's per model, and
@@ -2758,7 +2826,11 @@ sources = ["sessions", "token"]
             );
         }
         let extras: Vec<&str> = chat.effort_extras.iter().map(|e| e.id.as_str()).collect();
-        assert_eq!(extras, vec!["ultracode"], "see dev/effort-probe.mjs for what is measured");
+        assert_eq!(
+            extras,
+            vec!["ultracode"],
+            "see dev/effort-probe.mjs for what is measured"
+        );
     }
 
     /// Emit the resolved bundled adapters for `src/utils/agents.test.ts`.
@@ -2777,7 +2849,9 @@ sources = ["sessions", "token"]
             .collect();
         adapters.sort_by(|a, b| a.id.cmp(&b.id));
 
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("dev/fixtures/agents");
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/agents");
         std::fs::create_dir_all(&dir).expect("create fixture dir");
         let json = serde_json::to_string_pretty(&adapters).expect("serialize adapters");
         std::fs::write(dir.join("bundled.json"), format!("{json}\n")).expect("write adapters");
@@ -2882,7 +2956,10 @@ default = true
     fn the_default_mode_is_the_one_the_adapter_marks() {
         let chat = foreign_chat();
         assert_eq!(chat.default_mode().map(|m| m.id.as_str()), Some("auto_edit"));
-        assert!(!chat.modes.iter().any(|m| m.id == "default"), "the fixture must not contain Claude's spelling");
+        assert!(
+            !chat.modes.iter().any(|m| m.id == "default"),
+            "the fixture must not contain Claude's spelling"
+        );
 
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
         let claude_chat = claude.chat.expect("a chat table");
@@ -2898,7 +2975,10 @@ default = true
     /// its own rather than to nothing.
     #[test]
     fn an_adapter_with_no_marked_default_falls_back_to_its_first_mode() {
-        let chat = load_adapter_str(&v2_with_chat(CHAT_TABLE), "test").expect("parses").chat.expect("chat");
+        let chat = load_adapter_str(&v2_with_chat(CHAT_TABLE), "test")
+            .expect("parses")
+            .chat
+            .expect("chat");
         assert!(!chat.modes.iter().any(|m| m.is_default));
         assert_eq!(chat.default_mode().map(|m| m.id.as_str()), Some("plan"));
     }
@@ -2912,7 +2992,9 @@ default = true
     fn an_undeclared_mode_downgrades_to_the_adapters_default_and_reports_it() {
         let chat = foreign_chat();
 
-        let stale = chat.resolve_mode(Some("bypassPermissions")).expect("a downgrade still resolves");
+        let stale = chat
+            .resolve_mode(Some("bypassPermissions"))
+            .expect("a downgrade still resolves");
         assert_eq!(stale.id, "auto_edit");
         assert_eq!(stale.downgraded_from.as_deref(), Some("bypassPermissions"));
 
@@ -2928,21 +3010,16 @@ default = true
     #[test]
     fn a_session_with_a_stale_stored_mode_still_starts_on_the_default() {
         let chat = foreign_chat();
-        let args = crate::chat::commands::build_args(
-            &chat,
-            "s1",
-            false,
-            None,
-            None,
-            Some("bypassPermissions"),
-            None,
-            &[],
-        );
+        let args =
+            crate::chat::commands::build_args(&chat, "s1", false, None, None, Some("bypassPermissions"), None, &[]);
         assert!(
             args.windows(2).any(|w| w == ["--permission-mode", "auto_edit"]),
             "expected the adapter's default mode in {args:?}"
         );
-        assert!(!args.iter().any(|a| a == "bypassPermissions"), "the dropped mode must not reach the child");
+        assert!(
+            !args.iter().any(|a| a == "bypassPermissions"),
+            "the dropped mode must not reach the child"
+        );
     }
 
     /// **The guard that replaces the `PermissionMode` enum**, relocated to the
@@ -2969,14 +3046,23 @@ default = true
 
         // `--version` on a bare program name, as the cheapest possible check
         // that the binary is both present and runnable.
-        if std::process::Command::new(&chat.program).arg("--version").output().is_err() {
+        if std::process::Command::new(&chat.program)
+            .arg("--version")
+            .output()
+            .is_err()
+        {
             eprintln!("skipping: `{}` is not on PATH", chat.program);
             return;
         }
 
-        assert!(!chat.modes.is_empty(), "an adapter with no declared mode has nothing to probe");
+        assert!(
+            !chat.modes.is_empty(),
+            "an adapter with no declared mode has nothing to probe"
+        );
         for m in &chat.modes {
-            let args = chat.mode_args_for(&m.id).expect("a declared mode resolves its own args");
+            let args = chat
+                .mode_args_for(&m.id)
+                .expect("a declared mode resolves its own args");
             let out = std::process::Command::new(&chat.program)
                 .args(&args)
                 .arg("--version")
@@ -3034,7 +3120,12 @@ default = true
 
     #[test]
     fn chat_templates_substitute_their_own_placeholder_set() {
-        let args = vec!["--model".to_string(), "{model}".to_string(), "--effort".to_string(), "{effort}".to_string()];
+        let args = vec![
+            "--model".to_string(),
+            "{model}".to_string(),
+            "--effort".to_string(),
+            "{effort}".to_string(),
+        ];
         assert_eq!(
             apply_chat_template(&args, &[("model", "claude-opus-5"), ("effort", "xhigh")]),
             vec!["--model", "claude-opus-5", "--effort", "xhigh"]
@@ -3072,7 +3163,10 @@ default = true
     fn omitting_all_session_plumbing_needs_a_protocol_transport() {
         let bare = "schema_version = 2\nid = \"x\"\nlabel = \"X\"\n\n[launch]\nprogram = \"x\"\nresume_args = []\n";
         let err = load_adapter_str(bare, "test").unwrap_err();
-        assert!(err.contains("over the protocol"), "says what would make it legal: {err}");
+        assert!(
+            err.contains("over the protocol"),
+            "says what would make it legal: {err}"
+        );
         assert!(err.contains("acp"), "names the transport that qualifies: {err}");
 
         let with_acp = format!("{bare}\n[chat]\ntransport = \"acp\"\nbase_args = [\"acp\"]\n");
@@ -3099,11 +3193,12 @@ default = true
     fn adapters_md_example_parses() {
         let doc = include_str!("../../docs/ADAPTERS.md");
         let heading = "## Example: a from-scratch third-party adapter";
-        let after_heading =
-            doc.find(heading).expect("ADAPTERS.md must document a complete example") + heading.len();
+        let after_heading = doc.find(heading).expect("ADAPTERS.md must document a complete example") + heading.len();
         let rest = &doc[after_heading..];
-        let fence_start =
-            rest.find("```toml").expect("the example section must have a ```toml block") + "```toml".len();
+        let fence_start = rest
+            .find("```toml")
+            .expect("the example section must have a ```toml block")
+            + "```toml".len();
         let fence_end = rest[fence_start..].find("```").expect("unterminated ```toml fence") + fence_start;
         let example = rest[fence_start..fence_end].trim();
 
@@ -3120,14 +3215,16 @@ default = true
         let heading = "### An ACP agent";
         let after = doc.find(heading).expect("ADAPTERS.md must document an ACP example") + heading.len();
         let rest = &doc[after..];
-        let fence_start = rest.find("```toml").expect("the ACP example needs a ```toml block")
-            + "```toml".len();
+        let fence_start = rest.find("```toml").expect("the ACP example needs a ```toml block") + "```toml".len();
         let fence_end = rest[fence_start..].find("```").expect("unterminated fence") + fence_start;
 
         let a = load_adapter_str(rest[fence_start..fence_end].trim(), "ADAPTERS.md ACP example")
             .expect("the ACP example TOML should parse");
         assert_eq!(a.chat.as_ref().map(|c| c.transport), Some(ChatTransport::Acp));
-        assert!(a.discovery.is_none(), "and it declares none of the three file-era tables");
+        assert!(
+            a.discovery.is_none(),
+            "and it declares none of the three file-era tables"
+        );
         assert!(a.parser_kind.is_none());
         assert!(a.running_pattern.is_none());
     }

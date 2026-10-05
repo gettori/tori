@@ -14,7 +14,16 @@
 // does (`src/utils/agentLines.ts`). The second set only ever speaks where the
 // first is silent, which is exactly the set of lines blame calls uncommitted.
 
-import { gutter, GutterMarker, ViewPlugin, Decoration, WidgetType, EditorView, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import {
+  gutter,
+  GutterMarker,
+  ViewPlugin,
+  Decoration,
+  WidgetType,
+  EditorView,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { StateField, StateEffect, RangeSet, type Range, type EditorState } from "@codemirror/state";
 import { ago } from "../../utils/relativeTime";
 import { ageBucket, UNCOMMITTED, type Blame, type BlameCommit } from "../../utils/blame";
@@ -222,9 +231,7 @@ export function inlineBlameDecorations(state: EditorState, link: TurnLink = {}):
   const line = state.doc.lineAt(state.selection.main.head);
   const commit = blameAtLine(state, line.number);
   if (commit) {
-    return Decoration.set([
-      Decoration.widget({ widget: new BlameInline(blameLabel(commit)), side: 1 }).range(line.to),
-    ]);
+    return Decoration.set([Decoration.widget({ widget: new BlameInline(blameLabel(commit)), side: 1 }).range(line.to)]);
   }
   // No commit: the line is uncommitted, and the turn checkpoints may still know
   // who wrote it. A line with neither gets nothing - "not committed yet" beside

@@ -75,9 +75,7 @@ function withOrder(extensions: Extension[]): string {
 }
 
 function press(view: EditorView, key: string, mods: Partial<KeyboardEventInit> = {}) {
-  view.contentDOM.dispatchEvent(
-    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...mods }),
-  );
+  view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...mods }));
 }
 
 afterEach(() => {
@@ -160,9 +158,7 @@ describe("with vim on", () => {
     // Ctrl-D, Ctrl-K) collide with vim's Ctrl commands, and in normal mode vim
     // is the one that should win. `CodeEditor` puts the compartment at the top
     // of `commonExtensions` for this reason.
-    const contested = keymap.of([
-      { key: "x", preventDefault: true, run: () => true },
-    ]);
+    const contested = keymap.of([{ key: "x", preventDefault: true, run: () => true }]);
     const first = withOrder([vimExtension(true), contested]);
     const last = withOrder([contested, vimExtension(true)]);
     expect(first).toBe("lpha\n"); // vim's `x` deleted a character

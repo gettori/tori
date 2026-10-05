@@ -16,11 +16,7 @@ import {
 import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN, type SpaceStrip } from "../../settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID, type ThemeChoice } from "../../../../theme";
 import { primaryFamily } from "../../../../utils/fontLoad";
-import Select, {
-  type SelectGroup,
-  type SelectOption,
-  type SelectTab,
-} from "../../../../components/Select/Select";
+import Select, { type SelectGroup, type SelectOption, type SelectTab } from "../../../../components/Select/Select";
 import styles from "../../Settings.module.css";
 
 const SPACE_STRIPS: SelectOption[] = [
@@ -45,9 +41,7 @@ export default function AppearancePane(props: PaneProps) {
   // here rather than in the registry so a user theme lands in the same alphabet.
   const isTori = (t: ThemeChoice) => t.source === "bundled" && t.id.startsWith("tori-");
   const themes = createMemo(() =>
-    listSelectableThemes().sort(
-      (a, b) => Number(isTori(b)) - Number(isTori(a)) || a.label.localeCompare(b.label),
-    ),
+    listSelectableThemes().sort((a, b) => Number(isTori(b)) - Number(isTori(a)) || a.label.localeCompare(b.label)),
   );
 
   // Headings only once the themes folder holds something: then a user theme is
@@ -60,9 +54,7 @@ export default function AppearancePane(props: PaneProps) {
     const user = list.filter((t) => t.source !== "bundled");
     return [
       { label: "Bundled", options: list.filter((t) => t.source === "bundled").map(asOption) },
-      ...(user.length > 0
-        ? [{ label: "From ~/.config/tori/themes", options: user.map(asOption) }]
-        : []),
+      ...(user.length > 0 ? [{ label: "From ~/.config/tori/themes", options: user.map(asOption) }] : []),
     ];
   };
 
@@ -77,9 +69,7 @@ export default function AppearancePane(props: PaneProps) {
   // renders the select *blank* whenever settings.json names a theme that no
   // longer exists, which reads as "no theme" rather than "that one is gone".
   const currentTheme = () =>
-    themes().some((t) => t.id === settings.appearance.theme)
-      ? settings.appearance.theme
-      : DEFAULT_THEME_ID;
+    themes().some((t) => t.id === settings.appearance.theme) ? settings.appearance.theme : DEFAULT_THEME_ID;
 
   return (
     <>
@@ -129,9 +119,7 @@ export default function AppearancePane(props: PaneProps) {
             class={`${styles.input} ${styles.text}`}
             aria-label="UI font family"
             value={primaryFamily(settings.typography.uiFontFamily)}
-            onChange={(e) =>
-              setTypography({ uiFontFamily: withFallback(e.currentTarget.value, UI_FONT_FALLBACK) })
-            }
+            onChange={(e) => setTypography({ uiFontFamily: withFallback(e.currentTarget.value, UI_FONT_FALLBACK) })}
           />
         </Row>
         <Row {...props} id="ui-font-size" label="UI font size">

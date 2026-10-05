@@ -84,11 +84,33 @@ const chat = {
 };
 
 const ADAPTERS = [
-  { id: "claude", label: "Claude", program: "claude", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat },
+  {
+    id: "claude",
+    label: "Claude",
+    program: "claude",
+    base_args: [],
+    yolo_args: [],
+    resume_args: [],
+    parser_kind: null,
+    running_pattern: null,
+    pty_quiet_ms: 2000,
+    chat,
+  },
   // An ACP adapter declares no modes at all, on purpose: they are the agent's
   // own answer and arrive with a session. That empty table is what left the
   // draft reading "this agent has no modes" for every one of them.
-  { id: "codex", label: "Codex", program: "codex", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat: { ...chat, program: "codex", modes: [] } },
+  {
+    id: "codex",
+    label: "Codex",
+    program: "codex",
+    base_args: [],
+    yolo_args: [],
+    resume_args: [],
+    parser_kind: null,
+    running_pattern: null,
+    pty_quiet_ms: 2000,
+    chat: { ...chat, program: "codex", modes: [] },
+  },
 ];
 
 /** The sweep, mutable so the one describe that needs a two-account claude can
@@ -96,8 +118,40 @@ const ADAPTERS = [
 const health = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[] }));
 
 const HEALTH = [
-  { id: "claude", label: "Claude", program: "claude", status: "versionMatch", signIn: "signedIn", account: null, apiKeySource: null, path: "/bin/claude", version: "1", verifiedAgainst: "1", sessionsDir: null, sessionsDirExists: false, hooks: false, needsYou: false, overridePath: null },
-  { id: "codex", label: "Codex", program: "codex", status: "notFound", signIn: "unknown", account: null, apiKeySource: null, path: null, version: null, verifiedAgainst: null, sessionsDir: null, sessionsDirExists: false, hooks: false, needsYou: false, overridePath: null },
+  {
+    id: "claude",
+    label: "Claude",
+    program: "claude",
+    status: "versionMatch",
+    signIn: "signedIn",
+    account: null,
+    apiKeySource: null,
+    path: "/bin/claude",
+    version: "1",
+    verifiedAgainst: "1",
+    sessionsDir: null,
+    sessionsDirExists: false,
+    hooks: false,
+    needsYou: false,
+    overridePath: null,
+  },
+  {
+    id: "codex",
+    label: "Codex",
+    program: "codex",
+    status: "notFound",
+    signIn: "unknown",
+    account: null,
+    apiKeySource: null,
+    path: null,
+    version: null,
+    verifiedAgainst: null,
+    sessionsDir: null,
+    sessionsDirExists: false,
+    hooks: false,
+    needsYou: false,
+    overridePath: null,
+  },
 ];
 
 const row = (value: string, displayName: string) => ({
@@ -463,7 +517,6 @@ describe("a chat draft's slash commands", () => {
 
     expect(screen.queryByText("/review")).toBeNull();
   });
-
 });
 
 describe("a chat draft's pick", () => {

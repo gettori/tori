@@ -68,7 +68,10 @@ type Agent = {
 };
 
 function agent(over: Partial<RenameDeps> & { files?: MaterialisedFile[] } = {}): Agent {
-  const files = over.files ?? [file(pathToUri(A), "const before = 1"), file(pathToUri(B), "import { before } from './a'")];
+  const files = over.files ?? [
+    file(pathToUri(A), "const before = 1"),
+    file(pathToUri(B), "import { before } from './a'"),
+  ];
   const byUri = new Map(files.map((f) => [f.uri, f]));
   const written: { path: string; contents: string }[] = [];
   const dispatched: string[] = [];
@@ -262,7 +265,9 @@ describe("renameAcross", () => {
   it("does not take a backstop for a rename inside one file", async () => {
     const h = agent({ files: [file(pathToUri(A), "const before = 1")] });
     h.deps.requestRename = () =>
-      Promise.resolve({ changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] } });
+      Promise.resolve({
+        changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] },
+      });
 
     const out = await renameAcross(h.deps, "after");
     expect(out).toMatchObject({ kind: "applied", backstopTs: null });
@@ -329,7 +334,9 @@ describe("renameAcross refuses rather than half-applying", () => {
       backstopAvailable: () => Promise.resolve(false),
     });
     h.deps.requestRename = () =>
-      Promise.resolve({ changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] } });
+      Promise.resolve({
+        changes: { [pathToUri(A)]: [{ range: { start: at(0, 6), end: at(0, 12) }, newText: "after" }] },
+      });
 
     const out = await renameAcross(h.deps, "after");
     expect(out).toMatchObject({ kind: "applied" });

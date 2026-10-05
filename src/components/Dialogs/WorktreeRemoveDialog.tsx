@@ -75,7 +75,9 @@ export default function WorktreeRemoveDialog(props: {
         </Show>
         <div class={styles.wtDetailRow}>
           <span class={styles.wtDetailKey}>Folder</span>
-          <span class={styles.wtDetailVal} title={props.path}>{props.path}</span>
+          <span class={styles.wtDetailVal} title={props.path}>
+            {props.path}
+          </span>
         </div>
         <div class={styles.wtDetailRow}>
           <span class={styles.wtDetailKey}>Status</span>
@@ -98,17 +100,14 @@ export default function WorktreeRemoveDialog(props: {
           <div class={styles.wtDetailRow}>
             <span class={styles.wtDetailKey}>Running</span>
             <span class={styles.wtDetailVal}>
-              {props.runningCount} terminal tab{props.runningCount === 1 ? "" : "s"} (their
-              processes will be stopped)
+              {props.runningCount} terminal tab{props.runningCount === 1 ? "" : "s"} (their processes will be stopped)
             </span>
           </div>
         </Show>
       </div>
 
       <Show when={props.dirty || props.unpushed}>
-        <div class={styles.warning}>
-          This deletes work that is not saved anywhere else. It cannot be undone.
-        </div>
+        <div class={styles.warning}>This deletes work that is not saved anywhere else. It cannot be undone.</div>
       </Show>
 
       <Show when={props.branch}>

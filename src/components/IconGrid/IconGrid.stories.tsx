@@ -59,12 +59,7 @@ export const Bare: Story = {
   render: () => {
     const [icon, setIcon] = createSignal<string | null>(null);
     return (
-      <IconGrid
-        aria-label="Project icon"
-        value={icon()}
-        onChange={setIcon}
-        tiles={() => glyphs("").slice(0, 24)}
-      />
+      <IconGrid aria-label="Project icon" value={icon()} onChange={setIcon} tiles={() => glyphs("").slice(0, 24)} />
     );
   },
 };

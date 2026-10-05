@@ -51,18 +51,11 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 const { default: PrListView } = await import("./PrListView");
 const { default: PrOverviewView } = await import("./PrOverviewView");
 const { prTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
-const { prEntry, viewingPr, resetPrReviewStoreForTests } = await import(
-  "../../../utils/prReviewStore"
-);
+const { prEntry, viewingPr, resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
 const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
 const { onWith, OPEN_IN_EDITOR } = await import("../../../utils/events");
-const {
-  noteForgeAccounts,
-  noteForgeEnabled,
-  noteWatchedProjects,
-  resetForgeStatusForTests,
-  resolveForgeRepo,
-} = await import("../../../utils/forgeStatus");
+const { noteForgeAccounts, noteForgeEnabled, noteWatchedProjects, resetForgeStatusForTests, resolveForgeRepo } =
+  await import("../../../utils/forgeStatus");
 const { resetSessionActivityForTests } = await import("../../../utils/sessionActivity");
 
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({

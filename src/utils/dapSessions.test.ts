@@ -563,9 +563,7 @@ describe("stopping", () => {
     // `touchWarmRoot`, not `retainLspRoots`: the switch reaches the LRU through
     // the cycle-free `lspWarmRoots` module now, and only asks `lspClient` to
     // stop what fell off.
-    expect(rootEffect.indexOf("touchWarmRoot(")).toBeGreaterThan(
-      rootEffect.indexOf("if (!r) return;"),
-    );
+    expect(rootEffect.indexOf("touchWarmRoot(")).toBeGreaterThan(rootEffect.indexOf("if (!r) return;"));
     // And the run is no longer in that effect at all.
     expect(rootEffect.slice(0, rootEffect.indexOf("watchRoots"))).not.toContain("stopAllDap()");
 

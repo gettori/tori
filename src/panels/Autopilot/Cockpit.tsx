@@ -111,7 +111,14 @@ export function CockpitView() {
   onCleanup(() => clearInterval(tick));
   const crew = () => workerCards(items()).length;
   const limit = () => settings.chatDefaults.maxConcurrentChats;
-  const hero = () => heroFor(autopilotNow(), decisions().length, crew(), queuedItems(items()).filter((q) => !q.proposed).length, limit());
+  const hero = () =>
+    heroFor(
+      autopilotNow(),
+      decisions().length,
+      crew(),
+      queuedItems(items()).filter((q) => !q.proposed).length,
+      limit(),
+    );
   const scene = () => (overLimit(crew(), limit()) ? "storm" : pickScene(new Date(now()).getHours()));
   return (
     <div class={styles.overlay}>
@@ -140,12 +147,18 @@ export function CockpitView() {
 
 export function CockpitPopup() {
   let anchor!: HTMLDivElement;
-  createEffect(on(() => [popupOpen(), runner().state, runner().session] as const, ([open]) => open && void loadThread()));
+  createEffect(
+    on(
+      () => [popupOpen(), runner().state, runner().session] as const,
+      ([open]) => open && void loadThread(),
+    ),
+  );
   const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPopupOpen(false);
   // The switch toggles it itself, so a press there is not an outside click.
   const onPointer = (e: PointerEvent) => {
     const target = e.target as Node;
-    if (!anchor.contains(target) && !(target instanceof Element && target.closest("[aria-label='Autopilot']"))) setPopupOpen(false);
+    if (!anchor.contains(target) && !(target instanceof Element && target.closest("[aria-label='Autopilot']")))
+      setPopupOpen(false);
   };
   // Under the switch, its right edge on the switch's.
   const place = () => {

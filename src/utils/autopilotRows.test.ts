@@ -26,7 +26,10 @@ describe("item titles", () => {
   });
 
   it("lists proposed items after the queue, marked and after nothing", () => {
-    const rows = queuedItems([row({ id: "p", state: "proposed", created: 1 }), row({ id: "q", state: "queued", created: 2 })]);
+    const rows = queuedItems([
+      row({ id: "p", state: "proposed", created: 1 }),
+      row({ id: "q", state: "queued", created: 2 }),
+    ]);
     expect(rows.map((r) => [r.ticket.label, r.proposed ?? false, r.after])).toEqual([
       ["#12", false, undefined],
       ["#12", true, undefined],
@@ -55,8 +58,13 @@ describe("ticket references", () => {
   });
 
   it("reads an item without a reference by its number alone", () => {
-    expect(workerCards([row({ source: { type: "issue", key: n(12), project: "/code/tori" } })])[0].ticket).toEqual({ label: n(12), place: [] });
-    expect(workerCards([row({ source: { type: "issue", key: "ENG-9", project: "/code/tori" } })])[0].ticket.label).toBe("ENG-9");
+    expect(workerCards([row({ source: { type: "issue", key: n(12), project: "/code/tori" } })])[0].ticket).toEqual({
+      label: n(12),
+      place: [],
+    });
+    expect(workerCards([row({ source: { type: "issue", key: "ENG-9", project: "/code/tori" } })])[0].ticket.label).toBe(
+      "ENG-9",
+    );
   });
 
   it("names a logged item by the current row's reference", () => {
@@ -69,12 +77,29 @@ describe("ticket references", () => {
   it("keeps the derived fields a live change does not carry", () => {
     const seen = row({ id: "a", session_live: true, worktree_gone: false, reference: reference(212, "tori") });
     const [after] = applyItem([seen], row({ id: "a", note: "tests pass", reference: reference(212, "tori") }));
-    expect([after.note, after.session_live, after.worktree_gone, after.reference?.label]).toEqual(["tests pass", true, false, n(212)]);
+    expect([after.note, after.session_live, after.worktree_gone, after.reference?.label]).toEqual([
+      "tests pass",
+      true,
+      false,
+      n(212),
+    ]);
   });
 
   it("puts the issue on a decision card and its pull request beside it", () => {
-    const shipped = row({ id: "a", reference: { ...reference(212, "tori"), pr: { label: `PR ${n(230)}`, url: "https://github.com/o/tori/pull/230" } } });
-    const ask = { id: "q", session: "s", question: "Merge it?", item: "a", approval: { action: "pr.merge", number: 230 } } as unknown as SocketAsk;
+    const shipped = row({
+      id: "a",
+      reference: {
+        ...reference(212, "tori"),
+        pr: { label: `PR ${n(230)}`, url: "https://github.com/o/tori/pull/230" },
+      },
+    });
+    const ask = {
+      id: "q",
+      session: "s",
+      question: "Merge it?",
+      item: "a",
+      approval: { action: "pr.merge", number: 230 },
+    } as unknown as SocketAsk;
     const card = decisionOf(ask, [shipped], [], () => "");
     expect([card.ticket?.label, card.refKind, card.pr?.label]).toEqual([n(212), "issue", `PR ${n(230)}`]);
     const bare = decisionOf({ ...ask, item: undefined } as SocketAsk, [], [], () => "");

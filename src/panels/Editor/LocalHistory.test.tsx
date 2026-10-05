@@ -24,9 +24,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "local_history_list") return Promise.resolve(bridge.entries);
     if (cmd === "local_history_diff") return Promise.resolve(bridge.diff);
     if (cmd === "local_history_restore") {
-      return bridge.restoreFails
-        ? Promise.reject(new Error(bridge.restoreFails))
-        : Promise.resolve(null);
+      return bridge.restoreFails ? Promise.reject(new Error(bridge.restoreFails)) : Promise.resolve(null);
     }
     return Promise.resolve(null);
   },

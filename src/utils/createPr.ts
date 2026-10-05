@@ -43,12 +43,7 @@ export function connectHost(origin: string | null, known: KnownHosts): string | 
 /// `compare` is not a degraded mode to apologise for: it is how every host
 /// without an account, every signed-out user, and everyone with the integration
 /// switched off opens a PR, and it works without an account.
-export function prPath(
-  origin: string | null,
-  known: KnownHosts,
-  auth: AuthState,
-  enabled: boolean,
-): PrPath {
+export function prPath(origin: string | null, known: KnownHosts, auth: AuthState, enabled: boolean): PrPath {
   if (!origin) return "none";
   if (apiCanServe(origin, known) && mayUseForge(auth, enabled)) return "form";
   return parseOrigin(origin, known) ? "compare" : "none";

@@ -121,9 +121,7 @@ vi.mock("./CodeEditor", () => ({ default: () => null }));
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { emit, emitWith, OPEN_IN_EDITOR, DEBUG_START, DEBUG_STOP, DEBUG_PICK } = await import(
-  "../../utils/events",
-);
+const { emit, emitWith, OPEN_IN_EDITOR, DEBUG_START, DEBUG_STOP, DEBUG_PICK } = await import("../../utils/events");
 const { COMMANDS } = await import("../../utils/commands");
 const dap = await import("../../utils/dapSessions");
 const store = await import("../../utils/debugStore");
@@ -144,11 +142,11 @@ const selection = {
 async function mountEditor() {
   const [selected] = createSignal<unknown>(selection);
   render(() => (
-      <>
-        <Editor selected={selected() as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selected() as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 
@@ -238,9 +236,7 @@ describe("the target picker", () => {
 
     emitWith(DEBUG_PICK, { kind: "script" });
 
-    await waitFor(() =>
-      expect(screen.getByText(/No scripts in this project's package.json/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/No scripts in this project's package.json/)).toBeTruthy());
   });
 });
 
@@ -405,8 +401,6 @@ describe("starting a run", () => {
     await mountEditor();
     emitWith(DEBUG_PICK, { kind: "attach" });
 
-    await waitFor(() =>
-      expect((screen.getByPlaceholderText("9229") as HTMLInputElement).value).toBe("5858"),
-    );
+    await waitFor(() => expect((screen.getByPlaceholderText("9229") as HTMLInputElement).value).toBe("5858"));
   });
 });

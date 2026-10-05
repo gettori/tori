@@ -43,7 +43,11 @@ pub fn view(pull_request: PullRequest, files: Paged<PrFile>, viewer: &str, capab
 }
 
 fn file_view(file: PrFile) -> FileView {
-    let hunks = file.patch.as_deref().map(|p| crate::patch::parse_patch(p).hunks).unwrap_or_default();
+    let hunks = file
+        .patch
+        .as_deref()
+        .map(|p| crate::patch::parse_patch(p).hunks)
+        .unwrap_or_default();
     let span = |start: u32, count: u32| (count > 0).then(|| (start, start + count - 1));
     FileView {
         commentable: file.patch.is_some(),
@@ -56,10 +60,18 @@ fn file_view(file: PrFile) -> FileView {
 }
 
 /// Refuses a review that would not post as drawn, naming the verdict or the comment at fault.
-pub fn check_review(view: &PrView, head_sha: &str, event: ReviewEvent, comments: &[DraftComment]) -> Result<(), String> {
+pub fn check_review(
+    view: &PrView,
+    head_sha: &str,
+    event: ReviewEvent,
+    comments: &[DraftComment],
+) -> Result<(), String> {
     let pr = &view.pull_request;
     if pr.head_sha != head_sha {
-        return Err(format!("#{} moved past {head_sha} to {}, ask again for the new head", pr.number, pr.head_sha));
+        return Err(format!(
+            "#{} moved past {head_sha} to {}, ask again for the new head",
+            pr.number, pr.head_sha
+        ));
     }
     let offered = match event {
         ReviewEvent::Approve => view.capabilities.approve,
@@ -70,24 +82,39 @@ pub fn check_review(view: &PrView, head_sha: &str, event: ReviewEvent, comments:
         return Err(format!("this host has no {event:?} verdict, pick another"));
     }
     if view.mine && event != ReviewEvent::Comment {
-        return Err(format!("#{} is your own pull request, so only a Comment review can go on it", pr.number));
+        return Err(format!(
+            "#{} is your own pull request, so only a Comment review can go on it",
+            pr.number
+        ));
     }
     for (i, c) in comments.iter().enumerate() {
         let n = i + 1;
         let Some(file) = view.files.iter().find(|f| f.path == c.path) else {
-            return Err(format!("comment {n} is on {}, which #{} does not change", c.path, pr.number));
+            return Err(format!(
+                "comment {n} is on {}, which #{} does not change",
+                c.path, pr.number
+            ));
         };
         if !file.commentable {
-            return Err(format!("comment {n} is on {}, which has no patch to anchor to (binary, mode only or too large)", c.path));
+            return Err(format!(
+                "comment {n} is on {}, which has no patch to anchor to (binary, mode only or too large)",
+                c.path
+            ));
         }
-        let ends = [Some((c.line, c.side)), c.start_line.map(|l| (l, c.start_side.unwrap_or(c.side)))];
+        let ends = [
+            Some((c.line, c.side)),
+            c.start_line.map(|l| (l, c.start_side.unwrap_or(c.side))),
+        ];
         for (line, side) in ends.into_iter().flatten() {
             let ranges = match side {
                 DiffSide::Left => &file.left,
                 DiffSide::Right => &file.right,
             };
             if !ranges.iter().any(|(from, to)| (*from..=*to).contains(&line)) {
-                return Err(format!("comment {n}: line {line} ({side:?}) of {} is outside the diff", c.path));
+                return Err(format!(
+                    "comment {n}: line {line} ({side:?}) of {} is outside the diff",
+                    c.path
+                ));
             }
         }
     }
@@ -155,7 +182,14 @@ mod tests {
     }
 
     fn comment(path: &str, line: u32, side: DiffSide) -> DraftComment {
-        DraftComment { path: path.into(), line, side, start_line: None, start_side: None, body: "b".into() }
+        DraftComment {
+            path: path.into(),
+            line,
+            side,
+            start_line: None,
+            start_side: None,
+            body: "b".into(),
+        }
     }
 
     #[test]
@@ -164,15 +198,27 @@ mod tests {
         assert!(mine.mine, "the login compares without case");
         assert!(!sample("them", true).mine);
         assert!(!mine.capabilities.request_changes);
-        assert_eq!((mine.files[0].left.clone(), mine.files[0].right.clone()), (vec![(10, 12)], vec![(10, 13)]));
+        assert_eq!(
+            (mine.files[0].left.clone(), mine.files[0].right.clone()),
+            (vec![(10, 12)], vec![(10, 13)])
+        );
         assert!(mine.files[0].commentable);
-        assert!(!mine.files[1].commentable, "a file with no patch has nothing to anchor to");
+        assert!(
+            !mine.files[1].commentable,
+            "a file with no patch has nothing to anchor to"
+        );
     }
 
     #[test]
     fn a_draft_inside_the_diff_on_the_head_it_was_drawn_against_passes() {
-        let ok = [comment("src/a.rs", 13, DiffSide::Right), comment("src/a.rs", 11, DiffSide::Left)];
-        assert_eq!(check_review(&sample("them", true), "abc", ReviewEvent::RequestChanges, &ok), Ok(()));
+        let ok = [
+            comment("src/a.rs", 13, DiffSide::Right),
+            comment("src/a.rs", 11, DiffSide::Left),
+        ];
+        assert_eq!(
+            check_review(&sample("them", true), "abc", ReviewEvent::RequestChanges, &ok),
+            Ok(())
+        );
     }
 
     #[test]
@@ -193,15 +239,25 @@ mod tests {
             let err = check_review(&sample("me", true), "abc", event, &[]).unwrap_err();
             assert!(err.contains("your own pull request"), "{err}");
         }
-        assert_eq!(check_review(&sample("me", true), "abc", ReviewEvent::Comment, &[]), Ok(()));
+        assert_eq!(
+            check_review(&sample("me", true), "abc", ReviewEvent::Comment, &[]),
+            Ok(())
+        );
     }
 
     #[test]
     fn a_comment_outside_the_diff_is_refused_by_its_number() {
-        let past = [comment("src/a.rs", 13, DiffSide::Right), comment("src/a.rs", 13, DiffSide::Left)];
+        let past = [
+            comment("src/a.rs", 13, DiffSide::Right),
+            comment("src/a.rs", 13, DiffSide::Left),
+        ];
         let err = check_review(&sample("them", true), "abc", ReviewEvent::Comment, &past).unwrap_err();
         assert!(err.contains("comment 2: line 13 (Left)"), "{err}");
-        let range = [DraftComment { start_line: Some(2), start_side: Some(DiffSide::Right), ..comment("src/a.rs", 12, DiffSide::Right) }];
+        let range = [DraftComment {
+            start_line: Some(2),
+            start_side: Some(DiffSide::Right),
+            ..comment("src/a.rs", 12, DiffSide::Right)
+        }];
         let err = check_review(&sample("them", true), "abc", ReviewEvent::Comment, &range).unwrap_err();
         assert!(err.contains("comment 1: line 2 (Right)"), "{err}");
         let elsewhere = [comment("src/b.rs", 1, DiffSide::Right)];
@@ -211,7 +267,13 @@ mod tests {
 
     #[test]
     fn a_comment_on_a_file_with_no_patch_is_refused() {
-        let err = check_review(&sample("them", true), "abc", ReviewEvent::Comment, &[comment("logo.png", 1, DiffSide::Right)]).unwrap_err();
+        let err = check_review(
+            &sample("them", true),
+            "abc",
+            ReviewEvent::Comment,
+            &[comment("logo.png", 1, DiffSide::Right)],
+        )
+        .unwrap_err();
         assert!(err.contains("no patch to anchor to"), "{err}");
     }
 }

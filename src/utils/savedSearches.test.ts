@@ -144,9 +144,7 @@ describe("reading a stored list back", () => {
     const raw = JSON.stringify({
       [WS]: [{ name: "x" }, { query: "TODO" }, { name: " ok ", query: "T", options: 7 }],
     });
-    expect(savedFor(parseSavedStore(raw), WS)).toEqual([
-      { name: "ok", query: "T", options: DEFAULT_SEARCH_OPTIONS },
-    ]);
+    expect(savedFor(parseSavedStore(raw), WS)).toEqual([{ name: "ok", query: "T", options: DEFAULT_SEARCH_OPTIONS }]);
   });
 
   it("round-trips a member restriction and reads a pre-restriction entry as unrestricted", () => {

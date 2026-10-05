@@ -226,9 +226,9 @@ fn keep(event: &ChatEvent) -> Keep {
         | ChatEvent::ModeRefused { .. }
         | ChatEvent::RateLimit { .. } => Keep::Skip,
 
-        ChatEvent::TextDelta { .. }
-        | ChatEvent::ThinkingDelta { .. }
-        | ChatEvent::ToolCallProgress { .. } => Keep::Coalesce,
+        ChatEvent::TextDelta { .. } | ChatEvent::ThinkingDelta { .. } | ChatEvent::ToolCallProgress { .. } => {
+            Keep::Coalesce
+        }
 
         ChatEvent::TurnStarted { .. }
         | ChatEvent::UserMessage { .. }
@@ -330,7 +330,10 @@ impl Mirror {
     pub fn with_writer(writer: Box<dyn LogWriter>) -> Self {
         Self {
             writer: Mutex::new(writer),
-            state: Mutex::new(State { replaying: true, ..State::default() }),
+            state: Mutex::new(State {
+                replaying: true,
+                ..State::default()
+            }),
         }
     }
 
@@ -367,9 +370,7 @@ impl Mirror {
             // Live prompts only. A replay is the agent handing back turns that
             // already happened, and stamping those would date the whole
             // conversation to the moment the tab was reopened.
-            ChatEvent::UserMessage { .. } if !state.replaying => {
-                state.meta.last_prompt_ts = now_secs()
-            }
+            ChatEvent::UserMessage { .. } if !state.replaying => state.meta.last_prompt_ts = now_secs(),
             _ => {}
         }
 
@@ -475,7 +476,9 @@ impl Mirror {
     /// same one small object every time, and a sidecar ahead of the log it
     /// describes would promise a turn a reader cannot find.
     fn write_meta(&self, state: &State) {
-        let Ok(body) = serde_json::to_string(&state.meta) else { return };
+        let Ok(body) = serde_json::to_string(&state.meta) else {
+            return;
+        };
         let _ = lock(&self.writer).meta(&body);
     }
 }
@@ -509,7 +512,10 @@ fn push(state: &mut State, event: ChatEvent) {
 
 /// Human prompts among these events, which is the log's whole definition of one.
 fn prompts_in(events: &[ChatEvent]) -> u32 {
-    events.iter().filter(|e| matches!(e, ChatEvent::UserMessage { .. })).count() as u32
+    events
+        .iter()
+        .filter(|e| matches!(e, ChatEvent::UserMessage { .. }))
+        .count() as u32
 }
 
 fn now_secs() -> u64 {
@@ -542,7 +548,9 @@ pub fn read_meta(path: &Path) -> Option<LogMeta> {
 /// A missing file reads as an empty conversation, which is what a session that
 /// has not spoken yet is.
 pub fn read_log(path: &Path) -> (Vec<ChatEvent>, usize) {
-    let Ok(text) = std::fs::read_to_string(path) else { return (Vec::new(), 0) };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return (Vec::new(), 0);
+    };
     let mut events = Vec::new();
     let mut skipped = 0;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -616,7 +624,10 @@ pub(crate) mod recorder {
 
         /// What the last sidecar write said, as a reader would parse it.
         pub fn meta(&self) -> Option<LogMeta> {
-            lock(&self.0).metas.last().and_then(|body| serde_json::from_str(body).ok())
+            lock(&self.0)
+                .metas
+                .last()
+                .and_then(|body| serde_json::from_str(body).ok())
         }
     }
 
@@ -846,7 +857,12 @@ mod tests {
         }
 
         let users = handle.count("userMessage");
-        assert_eq!(users, 5, "three replayed turns plus two live ones: {:?}", handle.kinds());
+        assert_eq!(
+            users,
+            5,
+            "three replayed turns plus two live ones: {:?}",
+            handle.kinds()
+        );
         let guard = lock(&handle.0);
         assert_eq!(guard.replaces, 1, "the replay replaces the log exactly once");
     }
@@ -960,8 +976,14 @@ mod tests {
 
         let meta = read_meta(&dir.join("s1.meta")).expect("the sidecar is beside the log");
         assert_eq!(meta.prompt_count, 3);
-        assert_eq!(meta.model, "m", "observed on SessionStarted, which the log itself skips");
-        assert!(meta.last_prompt_ts >= before, "the last prompt is stamped from the clock");
+        assert_eq!(
+            meta.model, "m",
+            "observed on SessionStarted, which the log itself skips"
+        );
+        assert!(
+            meta.last_prompt_ts >= before,
+            "the last prompt is stamped from the clock"
+        );
         assert!(!dir.join("s1.meta.tmp").exists(), "the swap leaves nothing behind");
     }
 
@@ -988,8 +1010,14 @@ mod tests {
         mirror.note(&started());
 
         let after = log.meta().expect("the rebuild wrote one too");
-        assert_eq!(after.prompt_count, 2, "the replay is the whole conversation, not an addition");
-        assert_eq!(after.last_prompt_ts, live.last_prompt_ts, "a replayed prompt is not a new one");
+        assert_eq!(
+            after.prompt_count, 2,
+            "the replay is the whole conversation, not an addition"
+        );
+        assert_eq!(
+            after.last_prompt_ts, live.last_prompt_ts,
+            "a replayed prompt is not a new one"
+        );
     }
 
     /// **A reopened session counts on from the sidecar, not from zero.** An
@@ -1024,7 +1052,10 @@ mod tests {
     #[test]
     fn the_log_holds_the_conversation_and_not_the_session() {
         let (mirror, log) = mirror();
-        mirror.note(&ChatEvent::ConfigOptions { session_id: "s1".into(), options: Vec::new() });
+        mirror.note(&ChatEvent::ConfigOptions {
+            session_id: "s1".into(),
+            options: Vec::new(),
+        });
         mirror.note(&user("t1", "ask"));
         mirror.note(&turn_done("t1"));
 

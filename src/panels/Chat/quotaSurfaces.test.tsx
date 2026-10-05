@@ -34,7 +34,11 @@ vi.mock("@tauri-apps/api/core", () => ({
     invokes.push({ cmd, args });
     switch (cmd) {
       case "chat_spawn":
-        return Promise.resolve({ ownership: { type: "granted", contested: false }, spawned: "started", profileId: "default" });
+        return Promise.resolve({
+          ownership: { type: "granted", contested: false },
+          spawned: "started",
+          profileId: "default",
+        });
       case "chat_history":
         return Promise.resolve(wholeHistory([]));
       case "list_agents":

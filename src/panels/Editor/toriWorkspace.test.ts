@@ -232,10 +232,7 @@ describe("ToriWorkspace requestFile", () => {
     // Same shape, and the far more common one: the buffer reader returns text
     // without any await, so nothing after it is deferred either.
     const { client, closed } = fakeClient();
-    const ws = new ToriWorkspace(
-      client,
-      deps({ bufferText: () => "in a buffer", maxHeadless: 1 }),
-    );
+    const ws = new ToriWorkspace(client, deps({ bufferText: () => "in a buffer", maxHeadless: 1 }));
 
     await ws.requestFile(pathToUri(A));
     await ws.requestFile(pathToUri(B));
@@ -408,10 +405,7 @@ describe("ToriWorkspace and a mapping that is already running", () => {
 describe("ToriWorkspace headless lifecycle", () => {
   it("holds a bounded number of snapshots and closes what it drops", async () => {
     const { client, opened, closed } = fakeClient();
-    const ws = new ToriWorkspace(
-      client,
-      deps({ diskText: () => Promise.resolve("x"), maxHeadless: 10 }),
-    );
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("x"), maxHeadless: 10 }));
 
     for (let i = 0; i < 200; i++) await ws.requestFile(pathToUri(`/repo/f${i}.ts`));
 
@@ -419,17 +413,12 @@ describe("ToriWorkspace headless lifecycle", () => {
     expect(ws.files.length).toBe(10);
     expect(closed.length).toBe(190);
     // Least recently used first: the survivors are the last ten asked for.
-    expect(ws.files.map((f) => f.uri)).toEqual(
-      Array.from({ length: 10 }, (_, i) => pathToUri(`/repo/f${190 + i}.ts`)),
-    );
+    expect(ws.files.map((f) => f.uri)).toEqual(Array.from({ length: 10 }, (_, i) => pathToUri(`/repo/f${190 + i}.ts`)));
   });
 
   it("never evicts the file the editor is showing", async () => {
     const { client, closed } = fakeClient();
-    const ws = new ToriWorkspace(
-      client,
-      deps({ diskText: () => Promise.resolve("x"), maxHeadless: 2 }),
-    );
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("x"), maxHeadless: 2 }));
     ws.openFile(pathToUri(A), "typescript", asView(fakeView("shown")));
 
     for (let i = 0; i < 20; i++) await ws.requestFile(pathToUri(`/repo/f${i}.ts`));
@@ -443,10 +432,7 @@ describe("ToriWorkspace headless lifecycle", () => {
     // `mapPosition` throws for any URI missing from that snapshot, so evicting
     // mid-operation turns a rename into an exception rather than a smaller one.
     const { client, closed } = fakeClient();
-    const ws = new ToriWorkspace(
-      client,
-      deps({ diskText: () => Promise.resolve("x"), maxHeadless: 2 }),
-    );
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("x"), maxHeadless: 2 }));
     await ws.requestFile(pathToUri(A));
     await ws.requestFile(pathToUri(B));
 
@@ -478,10 +464,7 @@ describe("ToriWorkspace headless lifecycle", () => {
 
   it("releases once however often the release is called", async () => {
     const { client, closed } = fakeClient();
-    const ws = new ToriWorkspace(
-      client,
-      deps({ diskText: () => Promise.resolve("x"), maxHeadless: 1 }),
-    );
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("x"), maxHeadless: 1 }));
     const outer = ws.retainMapping();
     const inner = ws.retainMapping();
     inner();

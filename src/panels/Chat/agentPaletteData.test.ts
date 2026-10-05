@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  filterProviders,
-  fixReason,
-  lockedProvider,
-  paletteProviders,
-  splitModelDisplay,
-} from "./agentPaletteData";
+import { filterProviders, fixReason, lockedProvider, paletteProviders, splitModelDisplay } from "./agentPaletteData";
 import type { Adapter, ChatConfig } from "../../utils/agents";
 import type { CatalogModel, ModelCatalog } from "../../utils/modelCatalog";
 
@@ -83,8 +77,20 @@ describe("fixReason", () => {
   });
 
   it("tells a missing binary apart from a missing login", () => {
-    expect(fixReason("claude", () => false, () => true)).toBe("Signed out");
-    expect(fixReason("claude", () => false, () => false)).toBe("Not installed");
+    expect(
+      fixReason(
+        "claude",
+        () => false,
+        () => true,
+      ),
+    ).toBe("Signed out");
+    expect(
+      fixReason(
+        "claude",
+        () => false,
+        () => false,
+      ),
+    ).toBe("Not installed");
   });
 });
 
@@ -159,10 +165,7 @@ describe("paletteProviders", () => {
     const twoAccounts = (id: string) => (id === "claude" ? [DEFAULT, GLOBEX] : []);
     const both = [
       onPlan(catalog("claude", [model("opus", "claude-opus-5", "Opus")]), "Claude Max"),
-      onPlan(
-        catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")], "globex"),
-        "Claude Team",
-      ),
+      onPlan(catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")], "globex"), "Claude Team"),
       catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")]),
     ];
     const rows = () =>
@@ -266,11 +269,44 @@ describe("paletteProviders", () => {
 describe("filterProviders", () => {
   const providers = [
     lockedProvider(adapter("claude", "Claude"), [
-      { value: "sonnet", resolvedModel: "claude-sonnet-5", label: "Sonnet", description: "", effortLevels: [], contextWindow: null, live: false, userConfigured: false, fastMode: false, supportsAutoMode: false },
-      { value: "haiku", resolvedModel: "claude-haiku-4-5", label: "Haiku", description: "", effortLevels: [], contextWindow: null, live: false, userConfigured: false, fastMode: false, supportsAutoMode: false },
+      {
+        value: "sonnet",
+        resolvedModel: "claude-sonnet-5",
+        label: "Sonnet",
+        description: "",
+        effortLevels: [],
+        contextWindow: null,
+        live: false,
+        userConfigured: false,
+        fastMode: false,
+        supportsAutoMode: false,
+      },
+      {
+        value: "haiku",
+        resolvedModel: "claude-haiku-4-5",
+        label: "Haiku",
+        description: "",
+        effortLevels: [],
+        contextWindow: null,
+        live: false,
+        userConfigured: false,
+        fastMode: false,
+        supportsAutoMode: false,
+      },
     ]),
     lockedProvider(adapter("codex", "Codex"), [
-      { value: "gpt-5", resolvedModel: "gpt-5", label: "GPT-5", description: "", effortLevels: [], contextWindow: null, live: false, userConfigured: false, fastMode: false, supportsAutoMode: false },
+      {
+        value: "gpt-5",
+        resolvedModel: "gpt-5",
+        label: "GPT-5",
+        description: "",
+        effortLevels: [],
+        contextWindow: null,
+        live: false,
+        userConfigured: false,
+        fastMode: false,
+        supportsAutoMode: false,
+      },
     ]),
   ];
 

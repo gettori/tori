@@ -52,10 +52,7 @@ function planLabel(planType: string | null): string | null {
 }
 
 const clockAt = (at: number): string =>
-  new Date(at)
-    .toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    .toLowerCase()
-    .replace(" ", "");
+  new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "");
 
 /**
  * When this window empties, in the shape the distance calls for.
@@ -130,11 +127,7 @@ function readWindows(agentId: string, profile: string | null): WindowReading[] {
  * misses: you read the row you are signed into and the row beside it is the one
  * about to stop working.
  */
-function paceSentence(
-  agentId: string,
-  profile: string,
-  now: number,
-): string | null {
+function paceSentence(agentId: string, profile: string, now: number): string | null {
   const tab = asTabProfile(profile);
   const warnAt = usageWarnAt(agentId, tab);
   const mine = readWindows(agentId, tab);
@@ -199,7 +192,13 @@ export default function UsageCard(props: {
   /** The account the tabs are pointing at, which starts as the row the strip
    *  was hovered on and follows it when the pointer moves to another row. */
   const [picked, setPicked] = createSignal<string | null>(null);
-  createEffect(on(() => props.profile, () => setPicked(null), { defer: true }));
+  createEffect(
+    on(
+      () => props.profile,
+      () => setPicked(null),
+      { defer: true },
+    ),
+  );
   const shown = () => picked() ?? props.profile;
 
   const tab = () => asTabProfile(shown());
@@ -355,9 +354,7 @@ export default function UsageCard(props: {
 
         {/* Beside the windows, never instead of them. A rung that cannot answer
             says why while the readings a cheaper rung filled stay on screen. */}
-        <Show when={usageReason(props.agentId, tab())}>
-          {(why) => <p class={styles.trouble}>{why()}</p>}
-        </Show>
+        <Show when={usageReason(props.agentId, tab())}>{(why) => <p class={styles.trouble}>{why()}</p>}</Show>
 
         {/* No footer. The notify switch lived here and moved to the account's
             settings card with the rest of the quota controls, and no breakdown

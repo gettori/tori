@@ -44,7 +44,11 @@ impl Gate {
     pub fn note<T>(&self, account: &str, result: &Result<T, ForgeError>, now: u64) {
         let mut limits = self.limits.lock().unwrap_or_else(|e| e.into_inner());
         match result {
-            Err(ForgeError::RateLimited { kind, retry_after_secs, reset_at_secs }) => {
+            Err(ForgeError::RateLimited {
+                kind,
+                retry_after_secs,
+                reset_at_secs,
+            }) => {
                 let until = retry_after_secs
                     .map(|s| now + s)
                     .or(*reset_at_secs)
@@ -107,11 +111,18 @@ mod tests {
     use std::sync::{Arc, Barrier};
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "gettori".into(), repo: "tori".into() }
+        RepoRef {
+            owner: "gettori".into(),
+            repo: "tori".into(),
+        }
     }
 
     fn limited(reset_at: u64) -> ForgeError {
-        ForgeError::RateLimited { kind: RateLimitKind::Primary, retry_after_secs: None, reset_at_secs: Some(reset_at) }
+        ForgeError::RateLimited {
+            kind: RateLimitKind::Primary,
+            retry_after_secs: None,
+            reset_at_secs: Some(reset_at),
+        }
     }
 
     #[test]
@@ -171,7 +182,9 @@ mod tests {
             kind: IssueKind::Issue,
         };
         gate.assigned("a1", &repo(), false, || Ok(vec![item.clone()])).unwrap();
-        let again = gate.assigned("a1", &repo(), false, || panic!("should come from the cache")).unwrap();
+        let again = gate
+            .assigned("a1", &repo(), false, || panic!("should come from the cache"))
+            .unwrap();
         assert_eq!(again, vec![item]);
     }
 

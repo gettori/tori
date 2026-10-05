@@ -69,11 +69,7 @@ export default function Breadcrumbs(props: {
   trailing?: JSX.Element;
 }) {
   const crumbs = createMemo(() =>
-    pathCrumbs(
-      props.root,
-      props.path,
-      props.member ? { root: props.member.key, label: props.member.label } : null,
-    ),
+    pathCrumbs(props.root, props.path, props.member ? { root: props.member.key, label: props.member.label } : null),
   );
   const nodes = createMemo(() => symbolsFor(props.path));
   const trail = createMemo(() => {
@@ -93,8 +89,7 @@ export default function Breadcrumbs(props: {
   // Matched on the path rather than on being first, so a trail that did not
   // prepend the member (a Docs file open while a Topic is selected) wears no
   // chip instead of pinning one to whatever crumb happened to lead.
-  const chipFor = (crumb: PathCrumb) =>
-    props.member && crumb.path === props.member.key ? props.member : null;
+  const chipFor = (crumb: PathCrumb) => (props.member && crumb.path === props.member.key ? props.member : null);
 
   return (
     <Show when={crumbs().length}>
@@ -192,10 +187,7 @@ function DirLevel(props: { dir: string; here: string | null; onPick: (d: OpenInE
                   </MenuRow>
                 }
               >
-                <MenuSub
-                  label={<EntryName entry={entry} here={props.here} />}
-                  textValue={entry.name}
-                >
+                <MenuSub label={<EntryName entry={entry} here={props.here} />} textValue={entry.name}>
                   <DirLevel dir={entry.path} here={props.here} onPick={props.onPick} />
                 </MenuSub>
               </Show>

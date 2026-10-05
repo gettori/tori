@@ -41,9 +41,7 @@ const config = {
           name: "notes",
           path: NOTES,
           icon: "Rocket",
-          branchUnits: [
-            { label: "notes", folderPath: NOTES, branch: null, kind: "plain-dir", isCurrent: false },
-          ],
+          branchUnits: [{ label: "notes", folderPath: NOTES, branch: null, kind: "plain-dir", isCurrent: false }],
         },
       ],
     },
@@ -90,7 +88,8 @@ const tab = (id: string, workspace: string, sessionId: string) => ({
   workspace,
   kind: "agent" as const,
   sessionId,
-  agent: "claude" as const, state: "live" as const,
+  agent: "claude" as const,
+  state: "live" as const,
 });
 
 const liveTabs = [tab("tab-1", `${REPO}/feat`, onFeat.id), tab("tab-2", NOTES, inNotes.id)];
@@ -172,9 +171,7 @@ const row = async (label: string) => (await screen.findByText(label)).parentElem
 const selections: unknown[] = [];
 const mount = (expandedKeys: string[] = []) => {
   localStorage.setItem("tori.expanded.v1", JSON.stringify(expandedKeys));
-  return render(() => (
-    <LeftSidebar selected={null} onSelect={(s) => selections.push(s)} liveTabs={liveTabs} />
-  ));
+  return render(() => <LeftSidebar selected={null} onSelect={(s) => selections.push(s)} liveTabs={liveTabs} />);
 };
 
 /** Rust's dot for each tab-hosted session, placed under its own unit row. */
@@ -323,9 +320,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     mount(["p:work/repo"]);
 
     const repo = await row("repo");
-    expect(repo.querySelector("img")?.getAttribute("src")).toBe(
-      `asset://${REPO}/main/public/favicon.svg`,
-    );
+    expect(repo.querySelector("img")?.getAttribute("src")).toBe(`asset://${REPO}/main/public/favicon.svg`);
 
     // A project with a chosen glyph renders that glyph, never an image.
     const notes = await row("notes");
@@ -567,7 +562,9 @@ describe("what a branch row says about its remote", () => {
 
   it("draws what the branch owes the remote, and nothing when it owes nothing", async () => {
     bridge.sync = {
-      [syncKey("main")]: syncOf({ upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false, superseded: false } }),
+      [syncKey("main")]: syncOf({
+        upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false, superseded: false },
+      }),
       [syncKey("feat")]: syncOf(),
     };
     mount(["p:work/repo"]);
@@ -580,7 +577,9 @@ describe("what a branch row says about its remote", () => {
 
   it("marks a branch nobody has pushed without a count to put on it", async () => {
     bridge.sync = {
-      [syncKey("feat")]: syncOf({ upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false } }),
+      [syncKey("feat")]: syncOf({
+        upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false, superseded: false },
+      }),
     };
     mount(["p:work/repo"]);
 
@@ -625,7 +624,10 @@ describe("what a branch row says about its remote", () => {
     // no layout; what pins the height is that the node holds the row and
     // nothing else.
     bridge.sync = {
-      [syncKey("main")]: syncOf({ dirty: true, upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false, superseded: false } }),
+      [syncKey("main")]: syncOf({
+        dirty: true,
+        upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false, superseded: false },
+      }),
       [syncKey("feat")]: syncOf(),
     };
     const { container } = mount(["p:work/repo"]);
@@ -639,7 +641,9 @@ describe("what a branch row says about its remote", () => {
 
   it("hangs one styled tooltip on the run rather than a native one per glyph", async () => {
     bridge.sync = {
-      [syncKey("main")]: syncOf({ upstream: { ahead: 0, behind: 3, has_upstream: true, rewritten: false, superseded: false } }),
+      [syncKey("main")]: syncOf({
+        upstream: { ahead: 0, behind: 3, has_upstream: true, rewritten: false, superseded: false },
+      }),
     };
     mount(["p:work/repo"]);
 

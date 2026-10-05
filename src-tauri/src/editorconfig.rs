@@ -60,14 +60,20 @@ fn indent_for(file: &Path) -> EditorConfigIndent {
 }
 
 fn parse(text: &str) -> Parsed {
-    let mut parsed = Parsed { root: false, sections: Vec::new() };
+    let mut parsed = Parsed {
+        root: false,
+        sections: Vec::new(),
+    };
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
             continue;
         }
         if let Some(glob) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-            parsed.sections.push(Section { glob: glob.to_string(), pairs: Vec::new() });
+            parsed.sections.push(Section {
+                glob: glob.to_string(),
+                pairs: Vec::new(),
+            });
             continue;
         }
         let Some((k, v)) = line.split_once('=') else { continue };

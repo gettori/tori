@@ -148,9 +148,7 @@ export function updateLayout(
   // The all-hidden fallback covers edits the tree layer allows but this phase
   // never makes (closing the last visible pane while hidden ones remain).
   const focused =
-    focusedLeaf && !focusedLeaf.hidden
-      ? env.focusedPaneId
-      : (visibleLeaves(next)[0] ?? leaves(next)[0]).id;
+    focusedLeaf && !focusedLeaf.hidden ? env.focusedPaneId : (visibleLeaves(next)[0] ?? leaves(next)[0]).id;
   setEnvelopes({ ...envelopes(), [ws]: { ...env, layout: next, focusedPaneId: focused } });
   if (opts?.persist !== false) persistEnvelopes();
   return true;
@@ -234,11 +232,7 @@ export function seedOnePane(): LayoutEnvelope {
  *  are about two panes. `rightShare` is the editor's percent of the split;
  *  visibility carries over from the legacy layout, with its both-hidden
  *  repair. */
-export function seedTwoPane(opts: {
-  rightShare: number;
-  showLeft: boolean;
-  showRight: boolean;
-}): LayoutEnvelope {
+export function seedTwoPane(opts: { rightShare: number; showLeft: boolean; showRight: boolean }): LayoutEnvelope {
   const bothHidden = !opts.showLeft && !opts.showRight;
   const showLeft = bothHidden ? true : opts.showLeft;
   const showRight = bothHidden ? true : opts.showRight;

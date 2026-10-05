@@ -2,10 +2,28 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, For, Sh
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { EditorView, keymap, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  drawSelection,
+  dropCursor,
+  rectangularSelection,
+  crosshairCursor,
+  highlightSpecialChars,
+} from "@codemirror/view";
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
-import { Annotation, EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateEffect, type StateField } from "@codemirror/state";
+import {
+  Annotation,
+  EditorState,
+  Compartment,
+  Prec,
+  Text,
+  type Extension,
+  type StateCommand,
+  type StateEffect,
+  type StateField,
+} from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -390,8 +408,7 @@ export default function CodeEditor(props: {
   const paneIds = (): string[] => props.paneIds ?? [SOLO];
   const pathOf = (id: string): string | null =>
     props.paneIds ? (props.panePath?.(id) ?? null) : (props.activePath ?? null);
-  const hiddenOf = (id: string): boolean =>
-    props.paneIds ? !!props.paneHidden?.(id) : !!props.hidden;
+  const hiddenOf = (id: string): boolean => (props.paneIds ? !!props.paneHidden?.(id) : !!props.hidden);
   const focusedId = (): string => props.focusedPaneId ?? paneIds()[0] ?? SOLO;
   const activePath = (): string | null => pathOf(focusedId());
   let unlistenFs: UnlistenFn | undefined;
@@ -758,9 +775,7 @@ export default function CodeEditor(props: {
     // bare repo's worktrees share one ref store, so the sessions git can see
     // include ones whose checkpoints describe a different set of files.
     const sessions = chatsInFolder(root).map((c) => c.sessionId);
-    const agent = sessions.length
-      ? await agentLinesFor(root, relTo(root, path), sessions)
-      : emptyAgentLines();
+    const agent = sessions.length ? await agentLinesFor(root, relTo(root, path), sessions) : emptyAgentLines();
     if (!view || shown !== path || !props.blame) return;
     if (!canPlaceBlame(view.state.sliceDoc(), buffers.get(path)?.savedText)) return;
     setAgentMarkers(view, agent);
@@ -1052,8 +1067,7 @@ export default function CodeEditor(props: {
   // list of open sessions, the other is a pane the editor does not own.
   const turnLink: TurnLink = {
     nameFor: (sessionId) => liveChats().find((c) => c.sessionId === sessionId)?.sessionName,
-    onOpen: (turn) =>
-      emitWith<RevealTurn>(REVEAL_TURN, { sessionId: turn.session_id, promptTs: turn.prompt_ts }),
+    onOpen: (turn) => emitWith<RevealTurn>(REVEAL_TURN, { sessionId: turn.session_id, promptTs: turn.prompt_ts }),
   };
 
   function syncBlame() {
@@ -1161,9 +1175,7 @@ export default function CodeEditor(props: {
     // this, three LF lines pasted into a CRLF file land as *one* line holding
     // two literal "\n" characters, which `highlightSpecialChars` below then
     // draws as placeholders and a save writes out as bytes.
-    EditorView.clipboardInputFilter.of((text, state) =>
-      text.replace(/\r\n?|\n/g, state.lineBreak),
-    ),
+    EditorView.clipboardInputFilter.of((text, state) => text.replace(/\r\n?|\n/g, state.lineBreak)),
     highlightSpecialChars(),
     ...(plain ? [] : [foldingExtension()]),
     highlightSelectionMatches(),
@@ -1466,8 +1478,11 @@ export default function CodeEditor(props: {
    *  included. Called from both directions: the client moving decides whether a
    *  buffer is claimed, and the preference decides what the unclaimed ones get. */
   function syncFallbackCompletion() {
-    reconfigureBuffers(buffers, (buf) => buf.completion, currentFallbackCompletion, (path, effects) =>
-      dispatchToAuthority(path, effects),
+    reconfigureBuffers(
+      buffers,
+      (buf) => buf.completion,
+      currentFallbackCompletion,
+      (path, effects) => dispatchToAuthority(path, effects),
     );
   }
 
@@ -1480,8 +1495,11 @@ export default function CodeEditor(props: {
    *  the extension takes the field and its decorations with it, so nothing has
    *  to be cleared. */
   function syncCodeLens() {
-    reconfigureBuffers(buffers, (buf) => buf.codeLens, currentCodeLens, (path, effects) =>
-      dispatchToAuthority(path, effects),
+    reconfigureBuffers(
+      buffers,
+      (buf) => buf.codeLens,
+      currentCodeLens,
+      (path, effects) => dispatchToAuthority(path, effects),
     );
     // Switching it on has nothing to draw until somebody asks: the field starts
     // empty, and without this the lenses would appear only at the next edit.
@@ -1494,15 +1512,20 @@ export default function CodeEditor(props: {
    *  file and not just its authority, since a second pane holds its own state
    *  over the same document. */
   function syncIndent() {
-    reconfigureBuffers(buffers, (buf) => buf.indent, currentIndent, (path, effects) => {
-      let reached = false;
-      for (const rec of views.values()) {
-        if (rec.path !== path) continue;
-        rec.view.dispatch({ effects });
-        reached = true;
-      }
-      return reached;
-    });
+    reconfigureBuffers(
+      buffers,
+      (buf) => buf.indent,
+      currentIndent,
+      (path, effects) => {
+        let reached = false;
+        for (const rec of views.values()) {
+          if (rec.path !== path) continue;
+          rec.view.dispatch({ effects });
+          reached = true;
+        }
+        return reached;
+      },
+    );
   }
 
   /** Ask again for every open buffer: a rule written anywhere above a file can
@@ -1569,11 +1592,7 @@ export default function CodeEditor(props: {
     const moved = disk.text !== stashed.savedText;
     let state: EditorState;
     try {
-      state = EditorState.fromJSON(
-        stashed.state,
-        { extensions },
-        moved ? undefined : SERIALIZED_FIELDS,
-      );
+      state = EditorState.fromJSON(stashed.state, { extensions }, moved ? undefined : SERIALIZED_FIELDS);
     } catch (e) {
       console.error("unreadable hot-exit stash, falling back to disk", path, e);
       return { state: EditorState.create({ doc: Text.of(disk.lines), extensions }), savedText: disk.text, ...conf };
@@ -1706,12 +1725,14 @@ export default function CodeEditor(props: {
     // have nothing to do with it. Asking is also the cheaper half of that: the
     // server skips computing what it is not going to be asked about.
     const actions = await requestCodeActions(path, { start: at, end: at }, ["quickfix"]);
-    return (actions ?? [])
-      // A backstop for a server that answers a filtered request with more than
-      // it was asked for. A kindless action passes: under a quickfix-only
-      // filter, that is what the server is saying it is.
-      .filter((a) => !a.kind || a.kind === "quickfix" || a.kind.startsWith("quickfix."))
-      .map((a) => a.title);
+    return (
+      (actions ?? [])
+        // A backstop for a server that answers a filtered request with more than
+        // it was asked for. A kindless action passes: under a quickfix-only
+        // filter, that is what the server is saying it is.
+        .filter((a) => !a.kind || a.kind === "quickfix" || a.kind.startsWith("quickfix."))
+        .map((a) => a.title)
+    );
   });
   onCleanup(offFixLookup);
 
@@ -1784,9 +1805,7 @@ export default function CodeEditor(props: {
   function refreshSemantic() {
     const path = shown;
     if (!path) return;
-    refreshSemanticTokens(semanticDeps, path).catch((e) =>
-      console.error("semantic tokens failed", path, e),
-    );
+    refreshSemanticTokens(semanticDeps, path).catch((e) => console.error("semantic tokens failed", path, e));
   }
 
   const refreshSemanticSoon = debounce(refreshSemantic, 400);
@@ -1849,7 +1868,6 @@ export default function CodeEditor(props: {
   const offSymbolSearch = setWorkspaceSymbolSearch(requestWorkspaceSymbols);
   // The panel expands a level at a time and cannot hold a client of its own.
   const offCallFetcher = setCallFetcher(callFetcher);
-
 
   /** Open a file: read it, revive whatever was kept of it, and register the
    *  buffer. One caller at a time, through `building`. */
@@ -2021,9 +2039,7 @@ export default function CodeEditor(props: {
     const handedOff = takeHandOff(path, "source");
     const cursor = v.state.selection.main.head;
     const anchor =
-      handedOff === undefined
-        ? cursor
-        : v.state.doc.line(lineAtFraction(handedOff, v.state.doc.lines)).from;
+      handedOff === undefined ? cursor : v.state.doc.line(lineAtFraction(handedOff, v.state.doc.lines)).from;
     // `center` rather than the default `nearest` for the cursor: `nearest`
     // scrolls the minimum to bring the line into view, which from a fresh
     // `setState` (scrolled to the top) means it lands hard against the bottom
@@ -2034,9 +2050,7 @@ export default function CodeEditor(props: {
     // applied in the same measure cycle, so dispatching both is a race.
     const snap = handedOff === undefined ? buf.scrollSnap : undefined;
     v.dispatch({
-      effects:
-        snap ??
-        EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
+      effects: snap ?? EditorView.scrollIntoView(anchor, handedOff === undefined ? { y: "center" } : { y: "start" }),
     });
     traceMark("cm:scrolled");
     // Landing on the cursor is itself a position, and saying so replaces
@@ -2098,11 +2112,7 @@ export default function CodeEditor(props: {
     syncFrameLine();
     // Surface a deferred conflict banner if this buffer changed on disk while
     // it was in the background.
-    setConflict(
-      buf?.pendingKind && path
-        ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind }
-        : null,
-    );
+    setConflict(buf?.pendingKind && path ? { path, external: buf.pendingExternal ?? "", kind: buf.pendingKind } : null);
     refreshDiff();
     syncBlame();
     syncEditorPrefs();
@@ -2113,7 +2123,6 @@ export default function CodeEditor(props: {
     refreshLenses();
     publishServerOffers();
   }
-
 
   function evictClosed(openPaths: string[]) {
     const live = new Set(openPaths);
@@ -2292,7 +2301,9 @@ export default function CodeEditor(props: {
     sweepParked();
     fixRoles(rec.path);
     if (view === rec.view) {
-      const next = paneIds().map((id) => views.get(id)).find(Boolean);
+      const next = paneIds()
+        .map((id) => views.get(id))
+        .find(Boolean);
       if (next) focusPane(next.id);
       else {
         view = undefined;
@@ -2466,10 +2477,7 @@ export default function CodeEditor(props: {
     const written = outcome.kind === "applied" ? outcome.written : [];
     emitWith<ToastEvent>(TOAST, {
       ...said,
-      action:
-        ts !== null && root
-          ? { label: "Undo", run: () => void revertRename(root, ts, written) }
-          : undefined,
+      action: ts !== null && root ? { label: "Undo", run: () => void revertRename(root, ts, written) } : undefined,
     });
   }
 
@@ -2611,7 +2619,10 @@ export default function CodeEditor(props: {
   // pane was simply unmounted.
   createEffect(
     on(
-      () => paneIds().map((id) => hiddenOf(id)).join(","),
+      () =>
+        paneIds()
+          .map((id) => hiddenOf(id))
+          .join(","),
       () => {
         for (const rec of views.values()) rec.view.requestMeasure();
       },
@@ -2645,7 +2656,13 @@ export default function CodeEditor(props: {
       { defer: true },
     ),
   );
-  createEffect(on(() => props.openPaths, (paths) => evictClosed(paths), { defer: true }));
+  createEffect(
+    on(
+      () => props.openPaths,
+      (paths) => evictClosed(paths),
+      { defer: true },
+    ),
+  );
   // A memo, so only a real change to the list re-resolves: every settings write
   // replaces the store, and `on` alone would fire for each one.
   const lspDisabled = createMemo(() => (settings.lsp?.disabled ?? []).join("\n"));
@@ -2653,12 +2670,30 @@ export default function CodeEditor(props: {
   // Toggling blame reconfigures the compartment, which takes the field, the
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.
-  createEffect(on(() => props.blame, () => syncBlame(), { defer: true }));
+  createEffect(
+    on(
+      () => props.blame,
+      () => syncBlame(),
+      { defer: true },
+    ),
+  );
   // The pane's answer changed: a click toggled one, or a rename swept them.
   // `defer` because the swap already seeds the buffer it shows, and doing it
   // twice on open would be a dispatch nobody asked for.
-  createEffect(on(() => props.breakpoints, () => syncBreakpoints(), { defer: true }));
-  createEffect(on(() => props.frameLine, () => syncFrameLine(), { defer: true }));
+  createEffect(
+    on(
+      () => props.breakpoints,
+      () => syncBreakpoints(),
+      { defer: true },
+    ),
+  );
+  createEffect(
+    on(
+      () => props.frameLine,
+      () => syncFrameLine(),
+      { defer: true },
+    ),
+  );
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
   // each time a phase adds a key. The per-tab override rides along, since the
@@ -2674,14 +2709,28 @@ export default function CodeEditor(props: {
   // buffer's compartment, and doing that for a whitespace toggle would be work
   // for nothing.
   createEffect(
-    on(() => editorDefaults().wordCompletion, () => syncFallbackCompletion(), { defer: true }),
+    on(
+      () => editorDefaults().wordCompletion,
+      () => syncFallbackCompletion(),
+      { defer: true },
+    ),
   );
   // Its own effect for the same reason, and one more: switching this on is what
   // asks the server for the first time, so it has to be told apart from a
   // whitespace toggle rather than folded into the list above.
-  createEffect(on(() => editorDefaults().codeLens, () => syncCodeLens(), { defer: true }));
   createEffect(
-    on(() => [editorDefaults().tabSize, editorDefaults().insertSpaces], () => syncIndent(), { defer: true }),
+    on(
+      () => editorDefaults().codeLens,
+      () => syncCodeLens(),
+      { defer: true },
+    ),
+  );
+  createEffect(
+    on(
+      () => [editorDefaults().tabSize, editorDefaults().insertSpaces],
+      () => syncIndent(),
+      { defer: true },
+    ),
   );
   // Toggling vim from Settings takes effect where the caret already is, with
   // the file's text and undo history untouched: a compartment reconfigure, not
@@ -2793,10 +2842,7 @@ export default function CodeEditor(props: {
       return path ? (buffers.get(path)?.unopenable ?? null) : null;
     };
     return (
-      <div
-        class={styles.codeEditorWrap}
-        style={{ display: hiddenOf(p.id) ? "none" : undefined }}
-      >
+      <div class={styles.codeEditorWrap} style={{ display: hiddenOf(p.id) ? "none" : undefined }}>
         <Show when={conflict()?.path === pathOf(p.id) ? conflict() : null}>
           {(c) => (
             <div class={styles.reloadBanner}>
@@ -2806,8 +2852,12 @@ export default function CodeEditor(props: {
               >
                 <span>This file was deleted on disk, so saving would bring it back.</span>
               </Show>
-              <Button size="sm" onClick={reloadConflict}>{c().kind === "deleted" ? "Close file" : "Reload"}</Button>
-              <Button size="sm" onClick={keepMine}>Keep mine</Button>
+              <Button size="sm" onClick={reloadConflict}>
+                {c().kind === "deleted" ? "Close file" : "Reload"}
+              </Button>
+              <Button size="sm" onClick={keepMine}>
+                Keep mine
+              </Button>
             </div>
           )}
         </Show>

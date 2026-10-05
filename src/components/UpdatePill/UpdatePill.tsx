@@ -35,9 +35,7 @@ async function brewUpgrade() {
 
 export default function UpdatePill(props: { suppressed?: boolean }) {
   const [dismissed, setDismissed] = createSignal(false);
-  const [update] = createResource(() =>
-    invoke<UpdateInfo | null>("check_for_update").catch(() => null),
-  );
+  const [update] = createResource(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null));
 
   // Suppressed rather than unmounted while onboarding is open: a first-run user
   // meeting Tori for the first time should not be handed a version notice about

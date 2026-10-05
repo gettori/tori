@@ -4,7 +4,15 @@
 import type { AutopilotPopupProps } from "./AutopilotPopup";
 import type { AutopilotViewProps } from "./AutopilotView";
 import { heroFor } from "../../utils/autopilotRows";
-import type { ActivityItem, AutopilotState, CockpitHero, Decision, ThreadMessage, TicketRef, WorkerCard } from "./autopilot";
+import type {
+  ActivityItem,
+  AutopilotState,
+  CockpitHero,
+  Decision,
+  ThreadMessage,
+  TicketRef,
+  WorkerCard,
+} from "./autopilot";
 
 const ref = (n: number) => `#${n}`;
 
@@ -21,7 +29,8 @@ const ap = (text: string): ThreadMessage => ({ from: "autopilot", text });
 const sys = (text: string): ThreadMessage => ({ from: "system", text });
 const act = (time: string, text: string, needsYou = false): ActivityItem => ({ time, text, needsYou });
 
-const hero = (state: AutopilotState, calls: number, crew: number): CockpitHero => heroFor(state, calls, crew, crew ? 1 : 0, 4);
+const hero = (state: AutopilotState, calls: number, crew: number): CockpitHero =>
+  heroFor(state, calls, crew, crew ? 1 : 0, 4);
 
 const LOGIN = "tori/123-login-redirect";
 const AVATAR = "tori/131-avatar-cache";
@@ -80,7 +89,10 @@ const avatar = (w: Partial<WorkerCard>): WorkerCard => ({
 
 const queue = [{ ticket: ticket(140), title: "Theme flicker on launch", after: ticket(123, LOGIN) }];
 
-const error = { title: "Autopilot session exited (signal 9)", detail: "Restarting, attempt 2 of 3. Both workers keep running and stay locked. Nothing was sent." };
+const error = {
+  title: "Autopilot session exited (signal 9)",
+  detail: "Restarting, attempt 2 of 3. Both workers keep running and stay locked. Nothing was sent.",
+};
 
 export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
   off: {
@@ -146,7 +158,11 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
         log: ["$ pnpm test auth", "  42 passed", "> waiting on your PR approval"],
         doing: "Needs your approval",
       }),
-      avatar({ status: "needs", log: ["> read src/cache/lru.ts", "? expiry policy for cached avatars"], doing: "Asked you a question" }),
+      avatar({
+        status: "needs",
+        log: ["> read src/cache/lru.ts", "? expiry policy for cached avatars"],
+        doing: "Asked you a question",
+      }),
     ],
     emptyWorkers: "",
     queue,
@@ -172,13 +188,21 @@ export const VIEW: Record<AutopilotState, AutopilotViewProps> = {
     scene: "golden",
     workers: [
       login({ log: ["> edit src/auth/session.ts", "$ pnpm test auth"], doing: "Running tests", progress: 0.64 }),
-      avatar({ log: ["$ pnpm install", "  resolving 412 packages..."], doing: "Installing dependencies", progress: 0.2 }),
+      avatar({
+        log: ["$ pnpm install", "  resolving 412 packages..."],
+        doing: "Installing dependencies",
+        progress: 0.2,
+      }),
     ],
     emptyWorkers: "",
     queue,
     messages: [...base, sys("Autopilot session exited, 40s ago")],
     decisions: [],
-    activity: [...baseActivity, act("10:49", "Autopilot session exited", true), act("10:49", "Restarting, attempt 2 of 3")],
+    activity: [
+      ...baseActivity,
+      act("10:49", "Autopilot session exited", true),
+      act("10:49", "Restarting, attempt 2 of 3"),
+    ],
     shield: "Nothing has left this machine yet.",
     error,
   },
@@ -190,7 +214,13 @@ const popupBase = [
 ];
 
 export const POPUP: Record<AutopilotState, AutopilotPopupProps> = {
-  off: { state: "off", stateLine: "Off. Workers keep running as normal sessions.", decisions: [], inFlight: [], messages: [] },
+  off: {
+    state: "off",
+    stateLine: "Off. Workers keep running as normal sessions.",
+    decisions: [],
+    inFlight: [],
+    messages: [],
+  },
   idle: {
     state: "idle",
     stateLine: "On, nothing queued",
@@ -217,7 +247,10 @@ export const POPUP: Record<AutopilotState, AutopilotPopupProps> = {
       { ticket: ticket(123, LOGIN), status: "idle", doing: "Waiting on your PR approval" },
       { ticket: ticket(131, AVATAR), status: "needs", doing: "Asked you about cache expiry" },
     ],
-    messages: [...popupBase, ap(`${ref(123)} is ready for a PR. The ${ref(131)} worker has a question about cache expiry.`)],
+    messages: [
+      ...popupBase,
+      ap(`${ref(123)} is ready for a PR. The ${ref(131)} worker has a question about cache expiry.`),
+    ],
   },
   error: {
     state: "error",
@@ -228,6 +261,9 @@ export const POPUP: Record<AutopilotState, AutopilotPopupProps> = {
       { ticket: ticket(131, AVATAR), status: "running", doing: "Installing dependencies" },
     ],
     messages: [...popupBase, sys("Autopilot session exited, 40s ago")],
-    error: { title: error.title, detail: "Restarting, attempt 2 of 3. Your two workers keep running and nothing was sent." },
+    error: {
+      title: error.title,
+      detail: "Restarting, attempt 2 of 3. Your two workers keep running and nothing was sent.",
+    },
   },
 };

@@ -183,7 +183,13 @@ describe("a Topic worktree in Spaces", () => {
   it("wears one chip per Topic a folder belongs to", async () => {
     bridge.topics = [
       AUTH,
-      { ...AUTH, id: "f2", name: "Billing", branch: "feat/billing", members: [{ ...AUTH.members[0], worktreePath: SIBLING }] },
+      {
+        ...AUTH,
+        id: "f2",
+        name: "Billing",
+        branch: "feat/billing",
+        members: [{ ...AUTH.members[0], worktreePath: SIBLING }],
+      },
     ];
     await mounted(null);
 
@@ -191,8 +197,12 @@ describe("a Topic worktree in Spaces", () => {
     const names = Array.from(chips()).map((c) => c.getAttribute("aria-label"));
     expect(names).toEqual(["Open Topic Auth", "Open Topic Billing"]);
     // One each, on the row that actually holds that Topic's worktree.
-    expect(screen.getByRole("button", { name: "Open Topic Auth" }).closest('[draggable="true"]')?.textContent).toContain("feat/auth");
-    expect(screen.getByRole("button", { name: "Open Topic Billing" }).closest('[draggable="true"]')?.textContent).toContain("other");
+    expect(
+      screen.getByRole("button", { name: "Open Topic Auth" }).closest('[draggable="true"]')?.textContent,
+    ).toContain("feat/auth");
+    expect(
+      screen.getByRole("button", { name: "Open Topic Billing" }).closest('[draggable="true"]')?.textContent,
+    ).toContain("other");
   });
 
   // The Keep half of Remove repository: the worktree stays where it is, the

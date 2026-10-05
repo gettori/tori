@@ -125,9 +125,7 @@ describe("choosing a target", () => {
   it("resolves a file target against its own file and the rest against the workspace", () => {
     // A script and an attach have no file, so the root walk has nothing of
     // their own to start from.
-    expect(anchorFor({ adapterId: JS_ADAPTER, kind: "file", path: "/repo/pkg/a.ts" }, "/repo")).toBe(
-      "/repo/pkg/a.ts",
-    );
+    expect(anchorFor({ adapterId: JS_ADAPTER, kind: "file", path: "/repo/pkg/a.ts" }, "/repo")).toBe("/repo/pkg/a.ts");
     expect(anchorFor({ adapterId: JS_ADAPTER, kind: "script", script: "dev" }, "/repo")).toBe("/repo");
     expect(anchorFor({ adapterId: JS_ADAPTER, kind: "attach", port: 9229 }, "/repo")).toBe("/repo");
   });

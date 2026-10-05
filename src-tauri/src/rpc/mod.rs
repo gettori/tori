@@ -8,11 +8,11 @@
 
 pub mod approvals;
 pub mod asks;
-pub mod awake;
 pub mod auth;
+pub mod awake;
 pub mod bridge;
-pub mod devices;
 pub mod client;
+pub mod devices;
 pub mod dots;
 pub mod events;
 pub mod frame;
@@ -28,8 +28,8 @@ pub mod server;
 pub mod states;
 pub mod table;
 pub mod transport;
-pub mod ws;
 pub mod watcher;
+pub mod ws;
 
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
@@ -123,14 +123,19 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let devices = Arc::new(devices::Devices::open(devices_path()));
     let pairing = {
         let app = app.clone();
-        Arc::new(pairing::Pairing::new(Box::new(move |ended| devices_changed(&app, Some(ended)))))
+        Arc::new(pairing::Pairing::new(Box::new(move |ended| {
+            devices_changed(&app, Some(ended))
+        })))
     };
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
         REPLY_TIMEOUT,
     ));
-    let asks = Arc::new(Asks::with_holds(crate::autopilot::dir().join("holds.json"), autopilot_publisher(&hub, &app)));
+    let asks = Arc::new(Asks::with_holds(
+        crate::autopilot::dir().join("holds.json"),
+        autopilot_publisher(&hub, &app),
+    ));
     let autopilot = Arc::new(
         AutopilotStore::open(crate::autopilot::dir(), autopilot_publisher(&hub, &app))
             .on_closed(withdraw_holds(asks.clone(), bridge.clone())),
@@ -163,7 +168,10 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
-    let local = Arc::new(Credential::Local { process: token.clone(), children: children.clone() });
+    let local = Arc::new(Credential::Local {
+        process: token.clone(),
+        children: children.clone(),
+    });
     server::serve(transport.clone() as Arc<dyn Transport>, local, server.clone());
     let remote = Arc::new(Remote::new(server, devices.clone(), pairing));
     remote.apply(&crate::settings::remote());
@@ -182,7 +190,18 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }
         Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
     }
-    Ok(RpcState { transport, remote, hub, states, bridge, asks, autopilot, runner, devices, quotas: Quotas::default() })
+    Ok(RpcState {
+        transport,
+        remote,
+        hub,
+        states,
+        bridge,
+        asks,
+        autopilot,
+        runner,
+        devices,
+        quotas: Quotas::default(),
+    })
 }
 
 // What only the webview knows about its tabs, chats and forge poll; every
@@ -196,7 +215,9 @@ pub fn rpc_session_facts(
     let Some(composer) = COMPOSER.get() else { return };
     let chats: HashSet<String> = chat.0.live_sessions().into_iter().map(|(id, _)| id).collect();
     let tabs: HashSet<String> = pty.live_ids().unwrap_or_default().into_iter().collect();
-    composer.dots.replace(facts, |tab| tabs.contains(tab), |id| chats.contains(id));
+    composer
+        .dots
+        .replace(facts, |tab| tabs.contains(tab), |id| chats.contains(id));
     nudge(Nudge::Compose);
 }
 
@@ -232,7 +253,9 @@ pub fn session_dots() -> Vec<dots::Change> {
 }
 
 pub fn session_dot(id: &str) -> (dots::Dot, dots::Certainty) {
-    COMPOSER.get().map_or((dots::Dot::None, dots::Certainty::Inferred), |c| c.dots.dot(id))
+    COMPOSER
+        .get()
+        .map_or((dots::Dot::None, dots::Certainty::Inferred), |c| c.dots.dot(id))
 }
 
 pub fn session_attended(id: &str, dot: dots::Dot) -> bool {
@@ -251,7 +274,10 @@ pub fn rpc_attention(session: Option<String>, focused: bool) {
 // So a socket caller never waits on the webview to notice a session exited.
 // Queued rather than run inline, which would put a pgrep on the caller's call.
 pub fn refresh_dots_if_stale() {
-    if COMPOSER.get().is_some_and(|c| c.dots.probed_at().is_none_or(|at| at.elapsed() >= STALE_PROBE)) {
+    if COMPOSER
+        .get()
+        .is_some_and(|c| c.dots.probed_at().is_none_or(|at| at.elapsed() >= STALE_PROBE))
+    {
         nudge(Nudge::Probe);
     }
 }
@@ -294,7 +320,13 @@ impl Composer {
 
     fn probe(&self) {
         let want = self.dots.to_probe();
-        let refs = want.iter().map(|(id, agent)| crate::sessions::SessionRef { id: id.clone(), agent: agent.clone() }).collect();
+        let refs = want
+            .iter()
+            .map(|(id, agent)| crate::sessions::SessionRef {
+                id: id.clone(),
+                agent: agent.clone(),
+            })
+            .collect();
         let running = crate::sessions::running_now(&self.app.state::<crate::chat::host::ChatState>().0.registry, refs);
         self.dots.note_running(&want, &running.into_iter().collect());
     }
@@ -310,7 +342,16 @@ impl Composer {
                 .filter(|m| wanted.contains(&m.id))
                 .map(|m| {
                     let name = m.name.filter(|n| !n.is_empty()).unwrap_or(m.title);
-                    (m.id.clone(), dots::Meta { agent: m.agent, path: m.path, branch: m.branch, cwd: m.cwd, name })
+                    (
+                        m.id.clone(),
+                        dots::Meta {
+                            agent: m.agent,
+                            path: m.path,
+                            branch: m.branch,
+                            cwd: m.cwd,
+                            name,
+                        },
+                    )
                 })
                 .collect();
             *metas = (rows, wanted.into_iter().collect());
@@ -318,7 +359,8 @@ impl Composer {
         let spaces = OnceCell::new();
         let topics = OnceCell::new();
         let home_of = |at: &str, branch: Option<&str>| {
-            let spaces = spaces.get_or_init(|| crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()));
+            let spaces =
+                spaces.get_or_init(|| crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()));
             crate::unit_home::home_of(spaces, topics.get_or_init(crate::unit_home::topics), at, branch)
         };
         let tail_blocked = |id: &str, meta: &dots::Meta| {
@@ -327,8 +369,21 @@ impl Composer {
         };
         let (reports, changes) = self.dots.compose_all(&metas.0, home_of, tail_blocked);
 
-        let chats: HashSet<String> = self.app.state::<crate::chat::host::ChatState>().0.live_sessions().into_iter().map(|(id, _)| id).collect();
-        let tabs: HashSet<String> = self.app.state::<crate::pty::PtyState>().live_ids().unwrap_or_default().into_iter().collect();
+        let chats: HashSet<String> = self
+            .app
+            .state::<crate::chat::host::ChatState>()
+            .0
+            .live_sessions()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let tabs: HashSet<String> = self
+            .app
+            .state::<crate::pty::PtyState>()
+            .live_ids()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         let projects = OnceCell::new();
         let place_of = |folder: &str| Place {
             project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),
@@ -345,8 +400,17 @@ impl Composer {
         // Straight to the hub: a dot is not something the runner or the
         // watcher acts on, and a red check reaches them as `session.pr`.
         for change in &changes {
-            let place = if change.folder.is_empty() { Place::default() } else { place_of(&change.folder) };
-            let event = session_event("session.dot", &change.id, &place, json!({ "dot": change.dot, "certainty": change.certainty }));
+            let place = if change.folder.is_empty() {
+                Place::default()
+            } else {
+                place_of(&change.folder)
+            };
+            let event = session_event(
+                "session.dot",
+                &change.id,
+                &place,
+                json!({ "dot": change.dot, "certainty": change.certainty }),
+            );
             self.hub.publish_session(&change.id, event);
         }
         if !changes.is_empty() {
@@ -362,7 +426,12 @@ impl Composer {
         let metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
         for l in &mut live {
             if l.name.is_empty() {
-                l.name = metas.0.get(&l.id).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| l.id.clone());
+                l.name = metas
+                    .0
+                    .get(&l.id)
+                    .map(|m| m.name.clone())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| l.id.clone());
             }
             l.project = crate::unit_home::project_name(&spaces, &l.folder);
             if let (true, Some(t)) = (l.project.is_empty(), crate::unit_home::topic_of(&topics, &l.folder)) {
@@ -372,7 +441,10 @@ impl Composer {
         drop(metas);
         let chats: HashSet<String> = live.iter().filter(|l| l.chat).map(|l| l.id.clone()).collect();
         let pilot = RUNNER.get().is_some_and(|r| {
-            matches!(r.status().state, runner::RunnerState::Starting | runner::RunnerState::Idle | runner::RunnerState::Working)
+            matches!(
+                r.status().state,
+                runner::RunnerState::Starting | runner::RunnerState::Idle | runner::RunnerState::Working
+            )
         });
         // Released before the OS calls: building the tray's menu waits on the
         // main thread, which may itself be waiting on this lock.
@@ -460,7 +532,15 @@ pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> R
     }
     // An agent that cannot take a message mid-turn (ACP) still hears it, on the
     // user's next one.
-    if host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text: text.clone() }], true, events::TurnBy::Local).is_err() {
+    if host
+        .deliver(
+            session,
+            vec![crate::chat::model::ContentBlock::Text { text: text.clone() }],
+            true,
+            events::TurnBy::Local,
+        )
+        .is_err()
+    {
         host.note_for_next_turn(session, text);
     }
     Ok(())
@@ -472,12 +552,19 @@ pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> R
 /// whose turn ends at once and would take a steer as a turn of its own.
 pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
     let host = &app.state::<crate::chat::host::ChatState>().0;
-    let Some((_, cwd)) = host.live_sessions().into_iter().find(|(id, _)| id == session) else { return };
+    let Some((_, cwd)) = host.live_sessions().into_iter().find(|(id, _)| id == session) else {
+        return;
+    };
     // Canonical, as the spawn's own lookup is, so a cwd spelled another way
     // still finds its Topic.
     let real = |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
     let topics = crate::unit_home::topics();
-    let Some(topic) = topics.iter().find(|t| t.home.as_deref().is_some_and(|h| real(h) == real(&cwd))) else { return };
+    let Some(topic) = topics
+        .iter()
+        .find(|t| t.home.as_deref().is_some_and(|h| real(h) == real(&cwd)))
+    else {
+        return;
+    };
     let note = crate::topic_home::note(topic);
     if !mid_turn {
         host.note_for_next_turn(session, events::from_tori("topic", None, &note));
@@ -502,7 +589,12 @@ fn start_pr_wake(app: &AppHandle, states: &Arc<SessionStates>) {
     let deliver = move |session: &str, text: String| {
         let host = &app.state::<crate::chat::host::ChatState>().0;
         let text = events::from_tori("pr_watch", None, &text);
-        host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], false, events::TurnBy::Watcher)
+        host.deliver(
+            session,
+            vec![crate::chat::model::ContentBlock::Text { text }],
+            false,
+            events::TurnBy::Watcher,
+        )
     };
     pr_wake::start(ready, deliver);
 }
@@ -516,7 +608,12 @@ fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<A
         let deliver = |session: &str, text: String| {
             let host = &app.state::<crate::chat::host::ChatState>().0;
             let text = events::from_tori("wake", None, &text);
-            host.deliver(session, vec![crate::chat::model::ContentBlock::Text { text }], false, events::TurnBy::Watcher)
+            host.deliver(
+                session,
+                vec![crate::chat::model::ContentBlock::Text { text }],
+                false,
+                events::TurnBy::Watcher,
+            )
         };
         let stall = || std::time::Duration::from_secs(u64::from(crate::settings::autopilot().stall_minutes) * 60);
         watcher.run(nudges, deliver, stall);
@@ -586,7 +683,12 @@ pub fn rpc_ask_answer(rpc: tauri::State<RpcState>, id: String, answer: String) -
 
 pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts: u64) {
     let Some((hub, _)) = EVENTS.get() else { return };
-    let event = session_event("session.checkpoint", session_id, &Place::of(folder), json!({ "turn": turn, "prompt_ts": prompt_ts }));
+    let event = session_event(
+        "session.checkpoint",
+        session_id,
+        &Place::of(folder),
+        json!({ "turn": turn, "prompt_ts": prompt_ts }),
+    );
     hub.publish_session(session_id, event);
 }
 
@@ -761,12 +863,20 @@ pub fn autopilot_status(rpc: tauri::State<RpcState>) -> runner::Status {
 #[tauri::command]
 pub fn autopilot_closed_by_hand(rpc: tauri::State<RpcState>, session: String) -> Result<(), String> {
     let held: HashSet<String> = rpc.asks.holds().into_iter().map(|h| h.item).collect();
-    rpc.autopilot.closed_by_hand(&session, &held).map(|_| ()).map_err(|e| e.to_string())
+    rpc.autopilot
+        .closed_by_hand(&session, &held)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn autopilot_locked(rpc: tauri::State<RpcState>) -> Vec<String> {
-    let mut sessions: Vec<String> = rpc.autopilot.sessions().into_iter().chain(rpc.states.spawned()).collect();
+    let mut sessions: Vec<String> = rpc
+        .autopilot
+        .sessions()
+        .into_iter()
+        .chain(rpc.states.spawned())
+        .collect();
     sessions.sort();
     sessions.dedup();
     sessions.retain(|id| is_locked(&rpc.states, &rpc.autopilot, &rpc.runner, id));
@@ -777,12 +887,18 @@ pub const LOCKED: &str = "locked while the autopilot drives it; stop the autopil
 
 pub fn is_locked(states: &SessionStates, autopilot: &AutopilotStore, runner: &Runner, session: &str) -> bool {
     let spawner = states.spawner_of(session).map(|s| runner.resolve_spawner(&s));
-    runner::locks(&runner.status(), autopilot.state_for_session(session), spawner.as_deref())
+    runner::locks(
+        &runner.status(),
+        autopilot.state_for_session(session),
+        spawner.as_deref(),
+    )
 }
 
 // No socket means no autopilot, so nothing is locked.
 pub fn refuse_locked(app: &AppHandle, session: &str) -> Result<(), String> {
-    let Some(rpc) = app.try_state::<RpcState>() else { return Ok(()) };
+    let Some(rpc) = app.try_state::<RpcState>() else {
+        return Ok(());
+    };
     match is_locked(&rpc.states, &rpc.autopilot, &rpc.runner, session) {
         true => Err(LOCKED.to_string()),
         false => Ok(()),
@@ -803,12 +919,22 @@ pub fn pr_watch_list() -> Vec<WatchRow> {
         .list()
         .into_iter()
         .filter(|w| !w.ended)
-        .map(|w| WatchRow { session: w.session, url: w.url, project: w.project, branch: w.branch })
+        .map(|w| WatchRow {
+            session: w.session,
+            url: w.url,
+            project: w.project,
+            branch: w.branch,
+        })
         .collect()
 }
 
 #[tauri::command(async)]
-pub fn pr_watch_start(rpc: tauri::State<RpcState>, session: String, project: String, number: u64) -> Result<String, String> {
+pub fn pr_watch_start(
+    rpc: tauri::State<RpcState>,
+    session: String,
+    project: String,
+    number: u64,
+) -> Result<String, String> {
     let item = rpc.autopilot.item_for_session(&session).is_some();
     pr_watch::watch(&session, &project, number, item).map(|w| w.url)
 }
@@ -858,14 +984,19 @@ pub fn child_env(caller: Caller) -> Vec<(String, String)> {
     SOCKET
         .get()
         .map(|(sock, children)| {
-            vec![(ENV_SOCK.to_string(), sock.clone()), (ENV_CALLER.to_string(), children.mint(caller))]
+            vec![
+                (ENV_SOCK.to_string(), sock.clone()),
+                (ENV_CALLER.to_string(), children.mint(caller)),
+            ]
         })
         .unwrap_or_default()
 }
 
 pub fn revoke_env(env: &[(String, String)]) {
     if let Some((_, children)) = SOCKET.get() {
-        env.iter().filter(|(key, _)| key == ENV_CALLER).for_each(|(_, token)| children.revoke_token(token));
+        env.iter()
+            .filter(|(key, _)| key == ENV_CALLER)
+            .for_each(|(_, token)| children.revoke_token(token));
     }
 }
 
@@ -892,7 +1023,11 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
     if background {
         return vec![format!("mcp__{MCP_SERVER}__*")];
     }
-    let agents = [table::CallerKind::Terminal, table::CallerKind::Chat, table::CallerKind::Worker];
+    let agents = [
+        table::CallerKind::Terminal,
+        table::CallerKind::Chat,
+        table::CallerKind::Worker,
+    ];
     table::METHODS
         .iter()
         .filter(|m| !m.outward && m.callers.iter().any(|k| agents.contains(k)))
@@ -911,7 +1046,9 @@ pub fn mark_spawned_worker(session: &str, spawner: &str) {
 }
 
 pub fn current_spawner(spawner: &str) -> String {
-    RUNNER.get().map_or_else(|| spawner.to_string(), |r| r.resolve_spawner(spawner))
+    RUNNER
+        .get()
+        .map_or_else(|| spawner.to_string(), |r| r.resolve_spawner(spawner))
 }
 
 // Called by `chat_spawn` before the child starts, so its first outward call already meets the gate.
@@ -928,7 +1065,10 @@ pub fn mark_background(session: &str) {
 /// Empty if the file cannot be written, so the launch goes on without it.
 pub fn mcp_config_args() -> Vec<String> {
     let path = crate::owned_state::config_dir().join("claude-mcp.json");
-    let command = CLI_DIR.get().map_or_else(|| "tori".to_string(), |dir| dir.join("tori").to_string_lossy().into_owned());
+    let command = CLI_DIR.get().map_or_else(
+        || "tori".to_string(),
+        |dir| dir.join("tori").to_string_lossy().into_owned(),
+    );
     let config = json!({ "mcpServers": { MCP_SERVER: { "command": command, "args": ["mcp"] } } });
     let written = path
         .parent()
@@ -970,13 +1110,36 @@ mod tests {
         hub.subscribe(hub.register(tx, Box::new(|| {})), Channel::Autopilot);
         let dir = crate::autopilot::tests::temp_dir("session-ended");
         let publisher = hub.clone();
-        let store = AutopilotStore::open(dir.clone(), Box::new(move |event| publisher.publish(&Channel::Autopilot, event)));
-        let source = Source::Pr { number: 7, repo: "o/r".into() };
-        let target = Target::Key { kind: Kind::Review, source, project: "/p".into() };
-        store.update(target, Patch { session: Some("s1".into()), ..Patch::default() }).unwrap();
+        let store = AutopilotStore::open(
+            dir.clone(),
+            Box::new(move |event| publisher.publish(&Channel::Autopilot, event)),
+        );
+        let source = Source::Pr {
+            number: 7,
+            repo: "o/r".into(),
+        };
+        let target = Target::Key {
+            kind: Kind::Review,
+            source,
+            project: "/p".into(),
+        };
+        store
+            .update(
+                target,
+                Patch {
+                    session: Some("s1".into()),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
         rx.try_recv().unwrap();
 
-        publish_session(&hub, &store, "s1", session_event("session.ended", "s1", &Place::default(), json!({ "reason": "died" })));
+        publish_session(
+            &hub,
+            &store,
+            "s1",
+            session_event("session.ended", "s1", &Place::default(), json!({ "reason": "died" })),
+        );
         let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(event["params"]["topic"], "autopilot");
         assert_eq!(event["params"]["data"]["kind"], "autopilot.changed");
@@ -985,8 +1148,15 @@ mod tests {
     }
 
     fn merge_approval() -> Option<approvals::Approval> {
-        let draft = approvals::Draft::PrMerge { number: 7, method: crate::forge::MergeMethod::Squash, head_sha: "abc".into() };
-        Some(approvals::Approval { project: "/p".into(), draft })
+        let draft = approvals::Draft::PrMerge {
+            number: 7,
+            method: crate::forge::MergeMethod::Squash,
+            head_sha: "abc".into(),
+        };
+        Some(approvals::Approval {
+            project: "/p".into(),
+            draft,
+        })
     }
 
     #[test]
@@ -996,8 +1166,18 @@ mod tests {
         hub.subscribe(hub.register(tx, Box::new(|| {})), Channel::Autopilot);
         let dir = crate::autopilot::tests::temp_dir("hold-event");
         let publisher = hub.clone();
-        let asks = Asks::with_holds(dir.join("holds.json"), Box::new(move |event| publisher.publish(&Channel::Autopilot, event)));
-        let ask = asks.create("s1".into(), "merge?".into(), vec![], merge_approval(), None, Some("item-1".into()));
+        let asks = Asks::with_holds(
+            dir.join("holds.json"),
+            Box::new(move |event| publisher.publish(&Channel::Autopilot, event)),
+        );
+        let ask = asks.create(
+            "s1".into(),
+            "merge?".into(),
+            vec![],
+            merge_approval(),
+            None,
+            Some("item-1".into()),
+        );
         let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(event["params"]["data"]["hold"]["ask"], json!(ask.id));
         asks.withdraw(&ask.id);
@@ -1010,18 +1190,48 @@ mod tests {
     fn an_item_closing_while_its_hold_is_answered_blocks_neither() {
         let dir = crate::autopilot::tests::temp_dir("close-race");
         let asks = Arc::new(Asks::with_holds(dir.join("holds.json"), Box::new(|_| {})));
-        let bridge = Arc::new(Bridge::new(Box::new(|_| Err("no webview".into())), std::time::Duration::from_millis(10)));
-        let store = Arc::new(AutopilotStore::open(dir.clone(), Box::new(|_| {})).on_closed(withdraw_holds(asks.clone(), bridge)));
-        let source = Source::Pr { number: 7, repo: "o/r".into() };
-        let item = store.update(Target::Key { kind: Kind::Review, source, project: "/p".into() }, Patch::default()).unwrap().id;
-        let ask = asks.create("s1".into(), "merge?".into(), vec![], merge_approval(), None, Some(item.clone())).id;
+        let bridge = Arc::new(Bridge::new(
+            Box::new(|_| Err("no webview".into())),
+            std::time::Duration::from_millis(10),
+        ));
+        let store = Arc::new(
+            AutopilotStore::open(dir.clone(), Box::new(|_| {})).on_closed(withdraw_holds(asks.clone(), bridge)),
+        );
+        let source = Source::Pr {
+            number: 7,
+            repo: "o/r".into(),
+        };
+        let item = store
+            .update(
+                Target::Key {
+                    kind: Kind::Review,
+                    source,
+                    project: "/p".into(),
+                },
+                Patch::default(),
+            )
+            .unwrap()
+            .id;
+        let ask = asks
+            .create(
+                "s1".into(),
+                "merge?".into(),
+                vec![],
+                merge_approval(),
+                None,
+                Some(item.clone()),
+            )
+            .id;
 
         let (done_tx, done) = std::sync::mpsc::channel();
         let (closing, answering) = (store.clone(), asks.clone());
         let (item_id, ask_id) = (item.clone(), ask.clone());
         let tx = done_tx.clone();
         std::thread::spawn(move || {
-            let state = Patch { state: Some(crate::autopilot::State::Done), ..Patch::default() };
+            let state = Patch {
+                state: Some(crate::autopilot::State::Done),
+                ..Patch::default()
+            };
             closing.update(Target::Id(item_id), state).unwrap();
             tx.send(()).unwrap();
         });
@@ -1030,11 +1240,19 @@ mod tests {
             done_tx.send(()).unwrap();
         });
         for _ in 0..2 {
-            done.recv_timeout(std::time::Duration::from_secs(5)).expect("neither side blocks");
+            done.recv_timeout(std::time::Duration::from_secs(5))
+                .expect("neither side blocks");
         }
         assert!(asks.holds().is_empty(), "a done item holds nothing up");
         let read = asks.wait(&ask, std::time::Duration::ZERO);
-        assert_eq!(read, asks::Waited::Answered { answer: asks::WITHDRAWN.into(), approval_id: None }, "whichever landed first");
+        assert_eq!(
+            read,
+            asks::Waited::Answered {
+                answer: asks::WITHDRAWN.into(),
+                approval_id: None
+            },
+            "whichever landed first"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

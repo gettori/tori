@@ -50,14 +50,7 @@ describe("grepArgs", () => {
   it.each(combos)("round-trips %o", (options) => {
     const args = grepArgs("/proj", "needle", options, 500);
     expect(args).toEqual({ root: "/proj", query: "needle", options, max: 500 });
-    expect(Object.keys(args.options).sort()).toEqual([
-      "case",
-      "exclude",
-      "include",
-      "noIgnore",
-      "regex",
-      "wholeWord",
-    ]);
+    expect(Object.keys(args.options).sort()).toEqual(["case", "exclude", "include", "noIgnore", "regex", "wholeWord"]);
   });
 
   it("passes globs through verbatim", () => {
@@ -115,9 +108,7 @@ describe("truncationNotice", () => {
 
 describe("dirtyRelativePaths", () => {
   it("drops falsy entries, which is how the editor records a saved file", () => {
-    expect(
-      dirtyRelativePaths("/proj", { "/proj/a.ts": true, "/proj/b.ts": false }),
-    ).toEqual(["a.ts"]);
+    expect(dirtyRelativePaths("/proj", { "/proj/a.ts": true, "/proj/b.ts": false })).toEqual(["a.ts"]);
   });
 
   it("ignores paths outside the root", () => {
@@ -126,9 +117,7 @@ describe("dirtyRelativePaths", () => {
 
   it("does not treat a sibling sharing the root's prefix as inside it", () => {
     // The bug a bare startsWith(root) would have: /proj-old is not in /proj.
-    expect(
-      dirtyRelativePaths("/proj", { "/proj-old/a.ts": true, "/proj/b.ts": true }),
-    ).toEqual(["b.ts"]);
+    expect(dirtyRelativePaths("/proj", { "/proj-old/a.ts": true, "/proj/b.ts": true })).toEqual(["b.ts"]);
   });
 
   it("tolerates a root with a trailing slash", () => {
@@ -149,7 +138,14 @@ describe("replaceTargets", () => {
 
   it("groups spans per file and attaches that file's digest", () => {
     const targets = replaceTargets(
-      [m("a.ts", 1, [[0, 2], [5, 7]]), m("a.ts", 3, [[1, 3]]), m("b.ts", 2, [[0, 1]])],
+      [
+        m("a.ts", 1, [
+          [0, 2],
+          [5, 7],
+        ]),
+        m("a.ts", 3, [[1, 3]]),
+        m("b.ts", 2, [[0, 1]]),
+      ],
       [
         { path: "a.ts", digest: "d1" },
         { path: "b.ts", digest: "d2" },
@@ -199,22 +195,32 @@ describe("replaceOutcome", () => {
   });
 
   it("keeps skip reasons distinguishable, since they ask for different things", () => {
-    const out = replaceOutcome(12, ["a"], [
-      { path: "x", reason: "unsaved changes" },
-      { path: "y", reason: "unsaved changes" },
-      { path: "z", reason: "changed on disk" },
-    ]);
-    expect(out).toBe(
-      "Replaced 12 occurrences in 1 file, 2 skipped (unsaved changes), 1 skipped (changed on disk).",
+    const out = replaceOutcome(
+      12,
+      ["a"],
+      [
+        { path: "x", reason: "unsaved changes" },
+        { path: "y", reason: "unsaved changes" },
+        { path: "z", reason: "changed on disk" },
+      ],
     );
+    expect(out).toBe("Replaced 12 occurrences in 1 file, 2 skipped (unsaved changes), 1 skipped (changed on disk).");
   });
 
   it("sums two members' outcomes into one sentence that names both skips", () => {
     // A fan-out is one act, so it reports once. The member is inside the reason
     // because the counts are grouped by it: two members hold the same
     // `src/index.ts`, and a bare path names neither of them.
-    const api = { changed: ["src/a.ts"], skipped: [{ path: "src/index.ts", reason: "changed on disk in Payments API" }], occurrences: 3 };
-    const web = { changed: ["src/b.ts"], skipped: [{ path: "src/index.ts", reason: "unsaved changes in Web App" }], occurrences: 2 };
+    const api = {
+      changed: ["src/a.ts"],
+      skipped: [{ path: "src/index.ts", reason: "changed on disk in Payments API" }],
+      occurrences: 3,
+    };
+    const web = {
+      changed: ["src/b.ts"],
+      skipped: [{ path: "src/index.ts", reason: "unsaved changes in Web App" }],
+      occurrences: 2,
+    };
     expect(
       replaceOutcome(
         api.occurrences + web.occurrences,
@@ -237,7 +243,12 @@ describe("splitHighlights", () => {
   });
 
   it("highlights two occurrences on one line", () => {
-    expect(splitHighlights("ab cd ab", [[0, 2], [6, 8]])).toEqual([
+    expect(
+      splitHighlights("ab cd ab", [
+        [0, 2],
+        [6, 8],
+      ]),
+    ).toEqual([
       { text: "ab", hit: true },
       { text: " cd ", hit: false },
       { text: "ab", hit: true },
@@ -272,8 +283,14 @@ describe("splitHighlights", () => {
     for (const spans of [
       [[0, 99]],
       [[4, 2]],
-      [[6, 8], [0, 2]],
-      [[0, 4], [2, 6]],
+      [
+        [6, 8],
+        [0, 2],
+      ],
+      [
+        [0, 4],
+        [2, 6],
+      ],
       [[-3, 2]],
     ] as [number, number][][]) {
       expect(join(splitHighlights("ab cd ab", spans))).toBe("ab cd ab");
@@ -309,11 +326,7 @@ describe("mergeSearchResults", () => {
   ];
 
   it("keeps one section per root, in the order the legs came in", () => {
-    expect(mergeSearchResults(FAN).sections.map((s) => s.root)).toEqual([
-      "/feat/api",
-      "/feat/web",
-      "/feat/docs",
-    ]);
+    expect(mergeSearchResults(FAN).sections.map((s) => s.root)).toEqual(["/feat/api", "/feat/web", "/feat/docs"]);
   });
 
   it("keeps truncation on the section that hit the cap, not the whole set", () => {

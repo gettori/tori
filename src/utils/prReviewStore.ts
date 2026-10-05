@@ -238,23 +238,14 @@ export function fileExpanded(root: string, number: number, path: string): boolea
   return e.files.slice(0, EXPANDED_ON_OPEN).some((f) => f.path === path);
 }
 
-export function setFileExpanded(
-  root: string,
-  number: number,
-  path: string,
-  on: boolean,
-): void {
+export function setFileExpanded(root: string, number: number, path: string, on: boolean): void {
   const k = key(root, number);
   slot(k);
   const e = entries[k];
   // The first toggle is also what settles the default: past here the list says
   // exactly which sections are open, including the ones nobody has touched.
   const now = e.expandedFiles ?? e.files.slice(0, EXPANDED_ON_OPEN).map((f) => f.path);
-  setEntries(
-    k,
-    "expandedFiles",
-    on ? (now.includes(path) ? now : [...now, path]) : now.filter((p) => p !== path),
-  );
+  setEntries(k, "expandedFiles", on ? (now.includes(path) ? now : [...now, path]) : now.filter((p) => p !== path));
 }
 
 export function gapOpen(root: string, number: number, gapKey: string): boolean {
@@ -390,11 +381,7 @@ async function loadSummary(root: string, number: number): Promise<void> {
 /** Put a reply, a resolve or a submitted review's own new thread into the list
  *  in hand. Here rather than in a view because the list is: two tabs showing
  *  one pull request must not disagree about which conversations are resolved. */
-export function updateThreads(
-  root: string,
-  number: number,
-  fn: (list: ReviewThread[]) => ReviewThread[],
-): void {
+export function updateThreads(root: string, number: number, fn: (list: ReviewThread[]) => ReviewThread[]): void {
   const k = key(root, number);
   slot(k);
   setEntries(k, "threads", (list) => fn([...list]));
@@ -417,11 +404,7 @@ export function setThreadsError(root: string, number: number, message: string | 
  *  against, and never the verdict on whether that anchor still fits: the files
  *  are here, so working it out here is what stops a call site from being able to
  *  get it wrong or skip it. */
-export function addPending(
-  root: string,
-  number: number,
-  comment: DraftComment & { rowText: string },
-): void {
+export function addPending(root: string, number: number, comment: DraftComment & { rowText: string }): void {
   const k = key(root, number);
   slot(k);
   const held: PendingComment = {
@@ -477,12 +460,7 @@ export function toDrafts(list: readonly PendingComment[]): DraftComment[] {
   }));
 }
 
-export function setComposerText(
-  root: string,
-  number: number,
-  anchor: DraftAnchor,
-  text: string,
-): void {
+export function setComposerText(root: string, number: number, anchor: DraftAnchor, text: string): void {
   const k = key(root, number);
   slot(k);
   const want = anchorKey(anchor);
@@ -552,11 +530,7 @@ export function setGapOpen(root: string, number: number, gapKey: string, on: boo
  *  Pure, and over the patch rather than the file on disk: a review anchors to
  *  the diff the forge computed, and the head is usually not checked out here
  *  anyway. */
-export function anchorStateFor(
-  files: readonly PrFile[],
-  at: DraftAnchor,
-  rowText: string,
-): AnchorState {
+export function anchorStateFor(files: readonly PrFile[], at: DraftAnchor, rowText: string): AnchorState {
   const file = files.find((f) => f.path === at.path);
   if (!file?.patch) return "stale";
   for (const hunk of parseDiffHunks(file.patch)) {
@@ -651,11 +625,7 @@ function saveDraft(root: string, number: number, now = Date.now()): void {
   const k = key(root, number);
   const e = entries[k] ?? EMPTY;
   const store = readDrafts(now);
-  const empty =
-    e.pending.length === 0 &&
-    e.composers.length === 0 &&
-    e.viewed.length === 0 &&
-    e.reviewBody === "";
+  const empty = e.pending.length === 0 && e.composers.length === 0 && e.viewed.length === 0 && e.reviewBody === "";
   if (empty) delete store[k];
   else {
     store[k] = {

@@ -23,7 +23,11 @@ const TABLE: Entry[] = [
   { tag: [t.string, t.special(t.string)], color: "var(--syntax-string)" },
   { tag: [t.escape, t.character], color: "var(--syntax-escape)" },
   { tag: [t.regexp], color: "var(--syntax-regexp)" },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syntax-comment)", fontStyle: "italic" },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment, t.docComment],
+    color: "var(--syntax-comment)",
+    fontStyle: "italic",
+  },
   { tag: [t.number, t.integer, t.float], color: "var(--syntax-number)" },
   { tag: [t.bool, t.null, t.constant(t.variableName), t.standard(t.variableName)], color: "var(--syntax-constant)" },
   { tag: [t.typeName, t.standard(t.typeName)], color: "var(--syntax-type)" },
@@ -39,7 +43,10 @@ const TABLE: Entry[] = [
   { tag: [t.propertyName], color: "var(--syntax-property)" },
   { tag: [t.tagName, t.angleBracket], color: "var(--syntax-tag)" },
   { tag: [t.attributeName], color: "var(--syntax-attribute)" },
-  { tag: [t.punctuation, t.separator, t.bracket, t.paren, t.brace, t.squareBracket], color: "var(--syntax-punctuation)" },
+  {
+    tag: [t.punctuation, t.separator, t.bracket, t.paren, t.brace, t.squareBracket],
+    color: "var(--syntax-punctuation)",
+  },
   // Most specific last: these are refinements of tags matched above.
   { tag: [t.function(t.variableName)], color: "var(--syntax-function)" },
   { tag: [t.function(t.propertyName)], color: "var(--syntax-method)" },

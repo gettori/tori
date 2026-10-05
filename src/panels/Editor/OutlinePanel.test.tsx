@@ -24,9 +24,7 @@ const TREE = normalizeDocumentSymbols(
       kind: 5,
       range: range(0, 0, 6, 1),
       selectionRange: range(0, 6, 0, 11),
-      children: [
-        { name: "go", kind: 6, range: range(1, 2, 3, 3), selectionRange: range(1, 2, 1, 4) },
-      ],
+      children: [{ name: "go", kind: 6, range: range(1, 2, 3, 3), selectionRange: range(1, 2, 1, 4) }],
     },
     { name: "helper", kind: 12, range: range(8, 0, 10, 1), selectionRange: range(8, 9, 8, 15) },
   ],
@@ -62,8 +60,7 @@ describe("OutlinePanel", () => {
     publishSymbols(PATH, TREE);
     const { container } = render(() => <OutlinePanel path={PATH} />);
     const rows = [...container.querySelectorAll<HTMLElement>("div[style]")];
-    const pad = (name: string) =>
-      rows.find((r) => r.textContent?.startsWith(name))!.style.paddingLeft;
+    const pad = (name: string) => rows.find((r) => r.textContent?.startsWith(name))!.style.paddingLeft;
     expect(pad("go")).not.toBe(pad("Thing"));
     expect(pad("helper")).toBe(pad("Thing"));
   });

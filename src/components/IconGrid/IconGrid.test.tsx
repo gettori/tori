@@ -12,10 +12,7 @@ const GLYPHS: IconGridTile[] = Array.from({ length: 20 }, (_, i) => ({
   content: <svg aria-hidden="true" />,
 }));
 
-function openGrid(
-  props: Partial<Parameters<typeof IconGrid>[0]> = {},
-  initial: string | null = null,
-) {
+function openGrid(props: Partial<Parameters<typeof IconGrid>[0]> = {}, initial: string | null = null) {
   const [value, setValue] = createSignal<string | null>(initial);
   const onChange = vi.fn((next: string | null) => setValue(next));
   render(() => (
@@ -29,8 +26,7 @@ function openGrid(
   ));
   const group = () => screen.getByRole("group", { name: "Project icon" });
   const tiles = () => Array.from(group().querySelectorAll("button"));
-  const named = (name: string) =>
-    screen.getByRole("button", { name }) as HTMLButtonElement;
+  const named = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
   return { onChange, value, group, tiles, named };
 }
 
@@ -68,10 +64,13 @@ describe("IconGrid", () => {
     });
 
     it("selects the leading tile as null, and holds it while the query filters", () => {
-      const { onChange, tiles, named } = openGrid({
-        leading: { label: "No icon", content: "None" },
-        search: { label: "Search icons", placeholder: "Search icons" },
-      }, "icon-3");
+      const { onChange, tiles, named } = openGrid(
+        {
+          leading: { label: "No icon", content: "None" },
+          search: { label: "Search icons", placeholder: "Search icons" },
+        },
+        "icon-3",
+      );
 
       fireEvent.input(screen.getByLabelText("Search icons"), {
         target: { value: "Icon 1" },
@@ -104,12 +103,7 @@ describe("IconGrid", () => {
       const outer = vi.fn();
       render(() => (
         <div onKeyDown={outer}>
-          <IconGrid
-            aria-label="Space icon"
-            value={null}
-            onChange={() => {}}
-            tiles={() => GLYPHS}
-          />
+          <IconGrid aria-label="Space icon" value={null} onChange={() => {}} tiles={() => GLYPHS} />
         </div>
       ));
 

@@ -15,12 +15,5 @@ export default function Icon(props: IconProps) {
   const [local, rest] = splitProps(props, ["icon", "size", "strokeWidth"]);
   // Dynamic (not `const Glyph = local.icon`) so a changing `icon` prop swaps the
   // glyph reactively - e.g. a toggle button that flips between two icons.
-  return (
-    <Dynamic
-      component={local.icon}
-      size={local.size ?? 16}
-      strokeWidth={local.strokeWidth ?? 1.75}
-      {...rest}
-    />
-  );
+  return <Dynamic component={local.icon} size={local.size ?? 16} strokeWidth={local.strokeWidth ?? 1.75} {...rest} />;
 }

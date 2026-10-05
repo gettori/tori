@@ -95,8 +95,9 @@ export function createToolActions(opts: {
   const run = (verb: "install" | "update" | "remove") => {
     setPending(verb === "remove" ? "remove" : "install");
     (verb === "remove" ? opts.remove : opts.install)(t().id)
-      .then(() => opts.onChange(), (e) =>
-        emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} ${t().label}: ${String(e)}` }),
+      .then(
+        () => opts.onChange(),
+        (e) => emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} ${t().label}: ${String(e)}` }),
       )
       .finally(() => setPending(null));
   };

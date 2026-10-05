@@ -81,9 +81,7 @@ describe("the test idioms the Kobalte menus need", () => {
       const all = lines(source);
       all.forEach((line, i) => {
         if (!line.includes("fireEvent.mouseDown")) return;
-        const near = all
-          .slice(Math.max(0, i - PAIRED_WITHIN), i + PAIRED_WITHIN + 1)
-          .join("\n");
+        const near = all.slice(Math.max(0, i - PAIRED_WITHIN), i + PAIRED_WITHIN + 1).join("\n");
         if (near.includes("pointerDown")) return;
         found.push(`${path}:${i + 1}  ${line.trim()}`);
       });
@@ -96,9 +94,7 @@ describe("the test idioms the Kobalte menus need", () => {
     // a blanket permission for a file.
     for (const [path] of LONE_MOUSEDOWN) {
       expect(SOURCES[path], `${path} is exempted but no longer exists`).toBeTruthy();
-      expect(SOURCES[path], `${path} is exempted but has no lone mouseDown left`).toContain(
-        "fireEvent.mouseDown",
-      );
+      expect(SOURCES[path], `${path} is exempted but has no lone mouseDown left`).toContain("fireEvent.mouseDown");
     }
   });
 });

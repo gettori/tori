@@ -113,8 +113,8 @@ describe("a Topic's problems", () => {
     publishDiagnostics(`${API}/src/warn.ts`, [problem(1, "api warning", "warning")]);
     publishDiagnostics(`${API}/src/err.ts`, [problem(1, "api error")]);
     const { container } = render(() => <ProblemsPanel selected={unit(API)} roots={ROOTS} />);
-    const names = [...container.querySelectorAll("[data-root]")[0].querySelectorAll("[title]")].map(
-      (n) => n.getAttribute("title"),
+    const names = [...container.querySelectorAll("[data-root]")[0].querySelectorAll("[title]")].map((n) =>
+      n.getAttribute("title"),
     );
     expect(names[0]).toBe(`${API}/src/err.ts`);
   });

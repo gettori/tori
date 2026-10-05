@@ -66,11 +66,7 @@ fn create_in(dir: &Path, stem: &str) -> Result<PathBuf, String> {
     for _ in 0..MAX_TRIES {
         let name = next_name(&taken, stem);
         let path = dir.join(&name);
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(_) => return Ok(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 taken.insert(name);
@@ -120,10 +116,7 @@ mod tests {
     use super::*;
 
     fn tmp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "tori-scratch-test-{tag}-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("tori-scratch-test-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -175,7 +168,10 @@ mod tests {
 
         // A file beside the scratch folder, and a file nested under it, are
         // both outside what this may touch.
-        let outside = dir.parent().unwrap().join(format!("tori-scratch-outside-{}", std::process::id()));
+        let outside = dir
+            .parent()
+            .unwrap()
+            .join(format!("tori-scratch-outside-{}", std::process::id()));
         std::fs::write(&outside, "keep").unwrap();
         assert!(remove_in(&dir, &outside).is_err());
         assert!(outside.exists());

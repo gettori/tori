@@ -64,9 +64,9 @@ beforeEach(() => {
 
 describe("reading a reply", () => {
   it("takes a Location", () => {
-    expect(
-      normalizeLocations([{ uri: "file:///p/a.ts", range: { start: { line: 2 }, end: { line: 3 } } }]),
-    ).toEqual([{ path: "/p/a.ts", line: 2, endLine: 3 }]);
+    expect(normalizeLocations([{ uri: "file:///p/a.ts", range: { start: { line: 2 }, end: { line: 3 } } }])).toEqual([
+      { path: "/p/a.ts", line: 2, endLine: 3 },
+    ]);
   });
 
   it("takes a bare Location, which is a legal answer to a definition", () => {
@@ -145,7 +145,9 @@ describe("asking the server", () => {
     // The library's sync is debounced by 500 ms. Without this, typing and
     // peeking immediately is answered against text the server has not seen.
     let published: unknown;
-    await peekAt("definition", "/p/a.ts", { line: 1, character: 2 }, (l) => { published = l; });
+    await peekAt("definition", "/p/a.ts", { line: 1, character: 2 }, (l) => {
+      published = l;
+    });
     expect(calls).toEqual(["sync", "request textDocument/definition"]);
     expect(published).toEqual([{ path: "/p/a.ts", line: 4, endLine: 6 }]);
   });
@@ -166,14 +168,18 @@ describe("asking the server", () => {
   it("publishes null when nothing claims the file", async () => {
     target = null;
     let published: unknown = "untouched";
-    await peekAt("definition", "/p/a.ts", { line: 0, character: 0 }, (l) => { published = l; });
+    await peekAt("definition", "/p/a.ts", { line: 0, character: 0 }, (l) => {
+      published = l;
+    });
     expect(published).toBe(null);
   });
 
   it("publishes null when the server advertises no provider", async () => {
     target = fakeTarget({ supports: () => false });
     let published: unknown = "untouched";
-    await peekAt("definition", "/p/a.ts", { line: 0, character: 0 }, (l) => { published = l; });
+    await peekAt("definition", "/p/a.ts", { line: 0, character: 0 }, (l) => {
+      published = l;
+    });
     expect(published).toBe(null);
     // And it never asked, which is what keeps a MethodNotFound off the wire.
     expect(calls).toEqual([]);
@@ -183,7 +189,9 @@ describe("asking the server", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     target = fakeTarget({ request: () => Promise.reject(new Error("boom")) });
     let published: unknown = "untouched";
-    await peekAt("definition", "/p/a.ts", { line: 0, character: 0 }, (l) => { published = l; });
+    await peekAt("definition", "/p/a.ts", { line: 0, character: 0 }, (l) => {
+      published = l;
+    });
     expect(published).toBe(null);
     warn.mockRestore();
   });
@@ -201,8 +209,12 @@ describe("asking the server", () => {
     });
 
     const published: unknown[] = [];
-    const first = peekAt("definition", "/p/a.ts", { line: 1, character: 0 }, (l) => { published.push(l); });
-    const second = peekAt("definition", "/p/a.ts", { line: 9, character: 0 }, (l) => { published.push(l); });
+    const first = peekAt("definition", "/p/a.ts", { line: 1, character: 0 }, (l) => {
+      published.push(l);
+    });
+    const second = peekAt("definition", "/p/a.ts", { line: 9, character: 0 }, (l) => {
+      published.push(l);
+    });
     await settle();
 
     // The newer question answers first, then the older one arrives late.
@@ -221,8 +233,12 @@ describe("asking the server", () => {
     target = fakeTarget({ request: () => new Promise((resolve) => replies.push(resolve)) });
 
     const published: unknown[] = [];
-    const first = peekAt("definition", "/p/a.ts", { line: 3, character: 1 }, (l) => { published.push(l); });
-    const second = peekAt("definition", "/p/a.ts", { line: 3, character: 1 }, (l) => { published.push(l); });
+    const first = peekAt("definition", "/p/a.ts", { line: 3, character: 1 }, (l) => {
+      published.push(l);
+    });
+    const second = peekAt("definition", "/p/a.ts", { line: 3, character: 1 }, (l) => {
+      published.push(l);
+    });
     await settle();
     replies[0]([]);
     replies[1]([]);

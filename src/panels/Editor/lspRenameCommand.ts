@@ -77,13 +77,7 @@ export function toriRenameSymbol(view: EditorView, io: RenameIo): boolean {
   return true;
 }
 
-async function run(
-  view: EditorView,
-  plugin: LSPPlugin,
-  pos: number,
-  newName: string,
-  io: RenameIo,
-): Promise<void> {
+async function run(view: EditorView, plugin: LSPPlugin, pos: number, newName: string, io: RenameIo): Promise<void> {
   const client = plugin.client;
   const workspace = client.workspace as unknown as Partial<RenameWorkspace>;
   // Every client Tori builds is given a `ToriWorkspace`, so this holds. If that
@@ -91,7 +85,10 @@ async function run(
   // inside a promise, where it would look like nothing happened at all.
   if (typeof workspace?.requestFile !== "function" || typeof workspace.retainMapping !== "function") {
     io.report(
-      { kind: "aborted", reason: "This editor's language client has no Tori workspace, so a cross-file rename cannot run." },
+      {
+        kind: "aborted",
+        reason: "This editor's language client has no Tori workspace, so a cross-file rename cannot run.",
+      },
       null,
     );
     return;

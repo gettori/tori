@@ -84,11 +84,7 @@ export default function RebaseDialog(props: {
       actions={
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={props.busy || !changed() || !!problem()}
-            onClick={run}
-          >
+          <Button variant="primary" disabled={props.busy || !changed() || !!problem()} onClick={run}>
             {props.busy ? "Rebasing..." : "Rebase"}
           </Button>
         </>
@@ -148,13 +144,11 @@ export default function RebaseDialog(props: {
           )}
         </For>
       </div>
-      <Show when={problem()}>
-        {(p) => <div class={styles.problem}>{p()}</div>}
-      </Show>
+      <Show when={problem()}>{(p) => <div class={styles.problem}>{p()}</div>}</Show>
       <Show when={!problem() && pushedTouched()}>
         <div class={styles.note}>
-          Some of these commits are already on the upstream, so this rewrites
-          pushed history and the branch will need a force push.
+          Some of these commits are already on the upstream, so this rewrites pushed history and the branch will need a
+          force push.
         </div>
       </Show>
     </Dialog>

@@ -5,7 +5,8 @@ function rig() {
   const posted: Request[] = [];
   const answered: [Request, Reply][] = [];
   const queue = createQueue((req) => posted.push(req));
-  const ask = (slot: string, code: string) => queue.request(slot, code, "ts", "html", (req, reply) => answered.push([req, reply]));
+  const ask = (slot: string, code: string) =>
+    queue.request(slot, code, "ts", "html", (req, reply) => answered.push([req, reply]));
   return { posted, answered, queue, ask };
 }
 

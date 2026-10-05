@@ -62,8 +62,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       bridge.members = bridge.members.filter((m) => m.repoPath !== args.repoPath);
       return Promise.resolve(topic());
     }
-    if (cmd === "worktree_status")
-      return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: false });
+    if (cmd === "worktree_status") return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: false });
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -99,8 +98,7 @@ const { PURGE_UNDER_PATH } = await import("../../utils/events");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 
-const changed = () =>
-  (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: topic() }));
+const changed = () => (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: topic() }));
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 
 // The sidebar owns the selection, exactly as the shell wires it: `onSelect` re-resolves the Topic through `topicSelection`, which is

@@ -19,12 +19,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-import {
-  createDapConnection,
-  initializeArguments,
-  type DapConnection,
-  type DapHandle,
-} from "./dapClient";
+import { createDapConnection, initializeArguments, type DapConnection, type DapHandle } from "./dapClient";
 import { askToTrust, noteRefused, UNTRUSTED } from "./projectTrust";
 
 export type DapSession = {
@@ -183,9 +178,7 @@ async function startRun(start: DebugStart, startedAt: number): Promise<DapSessio
   // Torn down before this call reached the front of its adapter's queue.
   if (startedAt !== generation) return null;
 
-  const live = debugRoots().find(
-    (s) => s.adapterId === start.adapterId && s.projectPath === start.projectPath,
-  );
+  const live = debugRoots().find((s) => s.adapterId === start.adapterId && s.projectPath === start.projectPath);
   if (live) return live;
 
   const wire = openConnection();
@@ -269,9 +262,7 @@ async function connectChild(parent: DapSession, config: DebugConfig): Promise<vo
   await handshake(session, config);
 }
 
-function register(
-  fields: Omit<DapSession, "children" | "capabilities" | "configured">,
-): DapSession {
+function register(fields: Omit<DapSession, "children" | "capabilities" | "configured">): DapSession {
   const session: DapSession = { ...fields, children: [], capabilities: null, configured: false };
   sessions.set(session.handle.session, session);
   if (session.parent === null) rootIds = [...rootIds, session.handle.session];
@@ -362,10 +353,11 @@ async function handshake(
   onLaunchFailed?: (error: unknown) => void,
 ): Promise<void> {
   try {
-    session.capabilities = (await session.conn.request<Record<string, unknown>>(
-      "initialize",
-      initializeArguments(session.adapterId, session.childSessions),
-    )) ?? {};
+    session.capabilities =
+      (await session.conn.request<Record<string, unknown>>(
+        "initialize",
+        initializeArguments(session.adapterId, session.childSessions),
+      )) ?? {};
   } catch (e) {
     console.error("initialize failed", session.name, e);
     await endSession(session.handle.session);
@@ -477,9 +469,7 @@ function openConnection(): {
   return {
     channel,
     attach(handle) {
-      conn = createDapConnection(
-        (message) => void invoke("dap_send", { handle, message }).catch(() => {}),
-      );
+      conn = createDapConnection((message) => void invoke("dap_send", { handle, message }).catch(() => {}));
       for (const message of buffered.splice(0)) conn.receive(message);
       return conn;
     },

@@ -36,9 +36,7 @@ const options = () =>
 describe("Select", () => {
   it("shows the selected option's label, and an unknown value shows nothing", () => {
     const [value, setValue] = createSignal("banana");
-    render(() => (
-      <Select options={FRUIT} value={value()} onChange={() => {}} aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value={value()} onChange={() => {}} aria-label="Fruit" />);
 
     expect(trigger().textContent).toContain("Banana");
 
@@ -51,9 +49,7 @@ describe("Select", () => {
   it("round-trips a pointer selection as the option's string value", async () => {
     const [value, setValue] = createSignal("apple");
     const onChange = vi.fn((v: string) => setValue(v));
-    render(() => (
-      <Select options={FRUIT} value={value()} onChange={onChange} aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value={value()} onChange={onChange} aria-label="Fruit" />);
 
     pointerClick(trigger());
     await screen.findByRole("listbox");
@@ -69,9 +65,7 @@ describe("Select", () => {
 
   it("ignores a press on a disabled option", async () => {
     const onChange = vi.fn();
-    render(() => (
-      <Select options={FRUIT} value="apple" onChange={onChange} aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value="apple" onChange={onChange} aria-label="Fruit" />);
 
     pointerClick(trigger());
     await screen.findByRole("listbox");
@@ -84,9 +78,7 @@ describe("Select", () => {
 
   it("opens from the keyboard and commits with Enter", async () => {
     const [value, setValue] = createSignal("apple");
-    render(() => (
-      <Select options={FRUIT} value={value()} onChange={setValue} aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value={value()} onChange={setValue} aria-label="Fruit" />);
 
     trigger().focus();
     fireEvent.keyDown(trigger(), { key: "ArrowDown" });
@@ -106,9 +98,7 @@ describe("Select", () => {
 
   it("typeahead selects without opening the listbox", async () => {
     const [value, setValue] = createSignal("apple");
-    render(() => (
-      <Select options={FRUIT} value={value()} onChange={setValue} aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value={value()} onChange={setValue} aria-label="Fruit" />);
 
     trigger().focus();
     fireEvent.keyDown(trigger(), { key: "p" });
@@ -120,9 +110,7 @@ describe("Select", () => {
 
   it("renders group headings, and grouped rows still commit", async () => {
     const [value, setValue] = createSignal("dark");
-    render(() => (
-      <Select options={GROUPED} value={value()} onChange={setValue} aria-label="Fruit" />
-    ));
+    render(() => <Select options={GROUPED} value={value()} onChange={setValue} aria-label="Fruit" />);
 
     pointerClick(trigger());
     await screen.findByRole("listbox");
@@ -142,9 +130,7 @@ describe("Select", () => {
   // state and closes it, which is its behaviour rather than a Tori choice.
   it("an options list swapped after mount reaches the next open", async () => {
     const [opts, setOpts] = createSignal<SelectOption[]>(FRUIT);
-    render(() => (
-      <Select options={opts()} value="apple" onChange={() => {}} aria-label="Fruit" />
-    ));
+    render(() => <Select options={opts()} value="apple" onChange={() => {}} aria-label="Fruit" />);
 
     setOpts([...FRUIT, { value: "mango", label: "Mango" }]);
     await macrotask();
@@ -156,9 +142,7 @@ describe("Select", () => {
   });
 
   it("a disabled select does not open", async () => {
-    render(() => (
-      <Select options={FRUIT} value="apple" onChange={() => {}} disabled aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value="apple" onChange={() => {}} disabled aria-label="Fruit" />);
 
     pointerClick(trigger());
     await macrotask();
@@ -169,12 +153,7 @@ describe("Select", () => {
     render(() => (
       <>
         <span id="row-label">Transcript density</span>
-        <Select
-          options={FRUIT}
-          value="apple"
-          onChange={() => {}}
-          aria-labelledby="row-label"
-        />
+        <Select options={FRUIT} value="apple" onChange={() => {}} aria-labelledby="row-label" />
       </>
     ));
 
@@ -182,9 +161,7 @@ describe("Select", () => {
   });
 
   it("has no axe violations, closed or open", async () => {
-    render(() => (
-      <Select options={FRUIT} value="apple" onChange={() => {}} aria-label="Fruit" />
-    ));
+    render(() => <Select options={FRUIT} value="apple" onChange={() => {}} aria-label="Fruit" />);
 
     await expectNoAxeViolations(document.body);
 

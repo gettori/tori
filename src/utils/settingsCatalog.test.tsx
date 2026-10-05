@@ -7,13 +7,7 @@
 // but never listed here is invisible in the panel, in the filter box, and in the
 // palette at once, and works only for someone who hand-edits settings.json.
 import { describe, it, expect } from "vite-plus/test";
-import {
-  SECTION_TITLES,
-  SETTINGS,
-  SETTING_TABS,
-  TAB_OF_SECTION,
-  type SettingSection,
-} from "./settingsCatalog";
+import { SECTION_TITLES, SETTINGS, SETTING_TABS, TAB_OF_SECTION, type SettingSection } from "./settingsCatalog";
 import { DEFAULT_SETTINGS, type EditorDefaults } from "../panels/Settings/settingsStore";
 
 describe("the settings catalogue", () => {

@@ -82,10 +82,7 @@ function markForModel(id: string): string | undefined {
  * different icon simply falls through to the brain here - the settings cards,
  * which have the adapter itself rather than only its id, honour the field.
  */
-export function providerMarkKey(
-  model: string | null | undefined,
-  agentId?: string | null,
-): string | null {
+export function providerMarkKey(model: string | null | undefined, agentId?: string | null): string | null {
   const id = (model ?? "").toLowerCase();
   const byModel = markForModel(id);
   if (byModel) return byModel;
@@ -109,9 +106,6 @@ export function providerMarkKey(
 /** The mark for the provider behind a session, for `<Icon icon={...}>`. The
  *  brain is what a session with no nameable provider wears; see
  *  `providerMarkKey` for the decision itself. */
-export function providerIcon(
-  model: string | null | undefined,
-  agentId?: string | null,
-): Component<MarkProps> {
+export function providerIcon(model: string | null | undefined, agentId?: string | null): Component<MarkProps> {
   return agentMark(providerMarkKey(model, agentId)) ?? Brain;
 }

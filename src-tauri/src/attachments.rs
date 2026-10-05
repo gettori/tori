@@ -44,7 +44,10 @@ static SEQ: AtomicU64 = AtomicU64::new(0);
 /// of `shot.png` stay apart while the file keeps the name the user gave it:
 /// that name is what the chip shows and what the agent reads in the path.
 pub(crate) fn store_in(dir: &Path, name: &str, bytes: &[u8]) -> Result<String, String> {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let id = format!("{nanos:x}-{:x}", SEQ.fetch_add(1, Ordering::Relaxed));
     let holder = dir.join(id);
     std::fs::create_dir_all(&holder).map_err(|e| format!("cannot create {}: {e}", holder.display()))?;
@@ -73,12 +76,16 @@ fn safe_name(name: &str) -> String {
 /// filename carrying a quote or a backslash cannot escape its way past the
 /// scan. The trailing separator keeps `<id>/` from matching `<id>0/`.
 pub(crate) fn holders_named_by(transcript: &Path, dir: &Path) -> Vec<PathBuf> {
-    let Ok(text) = std::fs::read(transcript) else { return Vec::new() };
+    let Ok(text) = std::fs::read(transcript) else {
+        return Vec::new();
+    };
     holders_named_in(&text, dir)
 }
 
 pub(crate) fn holders_named_in(text: &[u8], dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     entries
         .flatten()
         .map(|e| e.path())
@@ -99,7 +106,9 @@ pub(crate) fn drop_unreferenced(holders: &[PathBuf], roots: &[PathBuf], referrer
     if holders.is_empty() {
         return;
     }
-    let Ok(orphans) = unreferenced(holders, roots, referrers) else { return };
+    let Ok(orphans) = unreferenced(holders, roots, referrers) else {
+        return;
+    };
     for holder in orphans {
         let _ = std::fs::remove_dir_all(holder);
     }
@@ -163,7 +172,10 @@ fn percent_decode(encoded: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         let hex = bytes.get(i + 1..i + 3).filter(|_| bytes[i] == b'%');
-        match hex.and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok()) {
+        match hex
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok())
+        {
             Some(b) => {
                 out.push(b);
                 i += 3;
@@ -182,7 +194,10 @@ mod tests {
     use super::*;
 
     fn scratch() -> PathBuf {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
         std::env::temp_dir().join(format!("tori-attachments-{nanos:x}-{}", std::process::id()))
     }
 
@@ -212,8 +227,10 @@ mod tests {
         let project = root.join("proj");
         std::fs::create_dir_all(&project).expect("project dir");
         let file = project.join(name);
-        let text: String =
-            paths.iter().map(|p| format!("{{\"text\":\"[image 1]: @{p}\"}}\n")).collect();
+        let text: String = paths
+            .iter()
+            .map(|p| format!("{{\"text\":\"[image 1]: @{p}\"}}\n"))
+            .collect();
         std::fs::write(&file, text).expect("transcript");
         file
     }
@@ -321,6 +338,9 @@ mod tests {
         // A stray percent is kept rather than turned into an error the user
         // would have to read about a file they only pasted.
         assert_eq!(percent_decode("100%.png"), "100%.png");
-        assert_eq!(safe_name(&percent_decode("%2E%2E%2Fx%2Fr%C3%A9sum%C3%A9.pdf")), "résumé.pdf");
+        assert_eq!(
+            safe_name(&percent_decode("%2E%2E%2Fx%2Fr%C3%A9sum%C3%A9.pdf")),
+            "résumé.pdf"
+        );
     }
 }

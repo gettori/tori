@@ -86,13 +86,17 @@ export default function TopicItem(props: {
     if (c?.branch && c.defaultBranch && c.branch !== c.defaultBranch) return `On ${c.branch}, not ${c.defaultBranch}`;
     return syncOf(m)?.dirty ? "Has uncommitted changes" : null;
   };
-  const stateLabel = (m: Member, label: string) =>
-    isReference(m) && m.state.kind === "present" ? "Reference" : label;
+  const stateLabel = (m: Member, label: string) => (isReference(m) && m.state.kind === "present" ? "Reference" : label);
   // Over every member, not the six that fit: a Topic speaks for all of them,
   // and the conflict hiding behind `+3` is the one worth knowing about.
   const rollup = createMemo(() =>
     rollupSync(
-      members().map((m) => ({ label: m.label, sync: syncOf(m.member), finished: finishedOf(m.member), pr: prOf(m.member) })),
+      members().map((m) => ({
+        label: m.label,
+        sync: syncOf(m.member),
+        finished: finishedOf(m.member),
+        pr: prOf(m.member),
+      })),
     ),
   );
   const memberOpen = (m: Member) => {

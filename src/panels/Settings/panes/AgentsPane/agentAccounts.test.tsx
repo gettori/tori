@@ -199,9 +199,11 @@ describe("the sign-in state on an agent page", () => {
   // rather than Tori reading its environment and guessing which variables
   // matter to which agent. A notice, never a block.
   it("warns when an inherited key overrides subscription billing", async () => {
-    const { container } = await open(mount({
-      health: { signIn: "signedIn", apiKeySource: "ANTHROPIC_API_KEY" },
-    }));
+    const { container } = await open(
+      mount({
+        health: { signIn: "signedIn", apiKeySource: "ANTHROPIC_API_KEY" },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("ANTHROPIC_API_KEY"));
     expect(container.textContent).toContain("rather than the subscription");
     // Still usable: the warning sits beside a working agent rather than in
@@ -223,11 +225,13 @@ describe("the accounts list", () => {
   });
 
   it("shows an added account's profile home on its card", async () => {
-    const { container, getByRole } = await open(mount({
-      accounts: {
-        profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/home/me/p/work" })],
-      },
-    }));
+    const { container, getByRole } = await open(
+      mount({
+        accounts: {
+          profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/home/me/p/work" })],
+        },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Work"));
     // A card nobody is signed into on opens closed, so the path is a press
     // away rather than on screen.
@@ -247,11 +251,13 @@ describe("the accounts list", () => {
   // declares no logout there is nothing to sign out of, so the control is the
   // removal itself.
   it("offers removal only through the sign-out control", async () => {
-    const { container, queryByRole, getByRole } = await open(mount({
-      accounts: {
-        profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
-      },
-    }));
+    const { container, queryByRole, getByRole } = await open(
+      mount({
+        accounts: {
+          profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
+        },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Work"));
     expect(queryByRole("button", { name: /Sign out and remove/ })).toBeNull();
     fireEvent.click(getByRole("button", { name: "Expand Work" }));
@@ -259,12 +265,14 @@ describe("the accounts list", () => {
   });
 
   it("removes directly when the agent has no logout command", async () => {
-    const { container, getByRole } = await open(mount({
-      accounts: {
-        canSignOut: false,
-        profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
-      },
-    }));
+    const { container, getByRole } = await open(
+      mount({
+        accounts: {
+          canSignOut: false,
+          profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
+        },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Work"));
     fireEvent.click(getByRole("button", { name: "Expand Work" }));
     expect(getByRole("button", { name: "Remove Work" })).toBeTruthy();
@@ -274,14 +282,13 @@ describe("the accounts list", () => {
   // Two profiles on one account is a thing somebody may genuinely want, so this
   // says what it sees rather than refusing.
   it("warns about a second profile signed in to the same account", async () => {
-    const { container, getByRole } = await open(mount({
-      accounts: {
-        profiles: [
-          profile(),
-          profile({ id: "work", label: "Work", isDefault: false, duplicateOf: "Default" }),
-        ],
-      },
-    }));
+    const { container, getByRole } = await open(
+      mount({
+        accounts: {
+          profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, duplicateOf: "Default" })],
+        },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Work"));
     fireEvent.click(getByRole("button", { name: "Expand Work" }));
     expect(container.textContent).toContain("same account as Default");
@@ -319,9 +326,11 @@ describe("signing in", () => {
   // honest thing the button can do is hand the user a real terminal.
   it("opens a terminal tab rather than trying to complete the login", async () => {
     const tabs = openedJobs();
-    const { container, getByText } = await open(mount({
-      accounts: { profiles: [profile({ signIn: "signedOut" })] },
-    }));
+    const { container, getByText } = await open(
+      mount({
+        accounts: { profiles: [profile({ signIn: "signedOut" })] },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     fireEvent.click(getByText("Sign in"));
     await waitFor(() => expect(tabs.length).toBe(1));
@@ -336,26 +345,28 @@ describe("signing in", () => {
   // "Work" signed the user into the login they already had and said it worked.
   it("signs each profile in to its own home", async () => {
     const tabs = openedJobs();
-    const { container, getAllByText } = await open(mount({
-      accounts: {
-        profiles: [
-          profile({ signIn: "signedOut" }),
-          profile({
-            id: "work",
-            label: "Work",
-            isDefault: false,
-            signIn: "signedOut",
-            home: "/canonical/work",
-            login: {
-              type: "terminal",
-              program: "claude",
-              args: ["auth", "login"],
-              home: ["CLAUDE_CONFIG_DIR", "/canonical/work"],
-            },
-          }),
-        ],
-      },
-    }));
+    const { container, getAllByText } = await open(
+      mount({
+        accounts: {
+          profiles: [
+            profile({ signIn: "signedOut" }),
+            profile({
+              id: "work",
+              label: "Work",
+              isDefault: false,
+              signIn: "signedOut",
+              home: "/canonical/work",
+              login: {
+                type: "terminal",
+                program: "claude",
+                args: ["auth", "login"],
+                home: ["CLAUDE_CONFIG_DIR", "/canonical/work"],
+              },
+            }),
+          ],
+        },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Work"));
 
     const buttons = getAllByText("Sign in");
@@ -384,12 +395,8 @@ describe("signing in", () => {
     fireEvent.input(input, { target: { value: "Work" } });
     fireEvent.click(screen.getByText("Create and sign in"));
 
-    await waitFor(() =>
-      expect(invoked.mock.calls.some((c) => c[0] === "add_agent_account")).toBe(true),
-    );
-    await waitFor(() =>
-      expect(invoked.mock.calls.some((c) => c[0] === "sessions_watch_start")).toBe(true),
-    );
+    await waitFor(() => expect(invoked.mock.calls.some((c) => c[0] === "add_agent_account")).toBe(true));
+    await waitFor(() => expect(invoked.mock.calls.some((c) => c[0] === "sessions_watch_start")).toBe(true));
   });
 
   it("offers no sign-in button for a profile already signed in", async () => {
@@ -416,8 +423,7 @@ describe("signing out", () => {
       expect(
         invoked.mock.calls.some(
           ([cmd, args]) =>
-            cmd === "sign_out_agent_account" &&
-            (args as { profileId?: string })?.profileId === "default",
+            cmd === "sign_out_agent_account" && (args as { profileId?: string })?.profileId === "default",
         ),
       ).toBe(true),
     );
@@ -434,11 +440,13 @@ describe("signing out", () => {
   // The checkbox is the old "Sign out and remove" button: same call, asked
   // where the consequence is written down.
   it("removes as well when the dialog's checkbox is ticked", async () => {
-    const { container, getByRole } = await open(mount({
-      accounts: {
-        profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w", managed: true })],
-      },
-    }));
+    const { container, getByRole } = await open(
+      mount({
+        accounts: {
+          profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w", managed: true })],
+        },
+      }),
+    );
     await waitFor(() => expect(container.textContent).toContain("Work"));
 
     fireEvent.click(getByRole("button", { name: "Expand Work" }));
@@ -449,9 +457,7 @@ describe("signing out", () => {
     await waitFor(() =>
       expect(
         invoked.mock.calls.some(
-          ([cmd, args]) =>
-            cmd === "remove_agent_account" &&
-            (args as { profileId?: string })?.profileId === "work",
+          ([cmd, args]) => cmd === "remove_agent_account" && (args as { profileId?: string })?.profileId === "work",
         ),
       ).toBe(true),
     );
@@ -518,10 +524,7 @@ describe("what each account can run", () => {
     const { container } = await open(
       mount({
         accounts: {
-          profiles: [
-            profile(),
-            profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" }),
-          ],
+          profiles: [profile(), profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" })],
         },
         catalogs: [
           catalogue("default", "max", ["opus", "sonnet", "haiku", "fable", "default"]),
@@ -548,7 +551,6 @@ describe("what each account can run", () => {
     expect(row?.textContent).not.toMatch(/\d+ models?/);
   });
 });
-
 
 // The quota half of the card. The account is the unit because the window is: a
 // five-hour window belongs to a login, so the chips, the threshold and the
@@ -577,7 +579,16 @@ describe("the quota on an account card", () => {
   const savedWindows = (id = "default") => {
     const writes = invoked.mock.calls.filter(([cmd]) => cmd === "set_settings");
     const last = writes[writes.length - 1]?.[1] as
-      | { settings?: { agent?: { usage?: Record<string, { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }> } } }
+      | {
+          settings?: {
+            agent?: {
+              usage?: Record<
+                string,
+                { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }
+              >;
+            };
+          };
+        }
       | undefined;
     return last?.settings?.agent?.usage?.claude?.accounts?.[id];
   };
@@ -721,10 +732,7 @@ describe("renaming an account", () => {
     const { container, getByRole } = await open(
       mount({
         accounts: {
-          profiles: [
-            profile(),
-            profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" }),
-          ],
+          profiles: [profile(), profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" })],
         },
       }),
     );
@@ -734,9 +742,7 @@ describe("renaming an account", () => {
     await waitFor(() => expect(sent("globex", "Work")).toBe(true));
     // And the page re-reads its own copy of the sweep, or the Models tabs keep
     // the old name until Settings is closed and reopened.
-    await waitFor(() =>
-      expect(invoked.mock.calls.filter(([cmd]) => cmd === "agent_health").length).toBeGreaterThan(1),
-    );
+    await waitFor(() => expect(invoked.mock.calls.filter(([cmd]) => cmd === "agent_health").length).toBeGreaterThan(1));
   });
 
   it("renames the login the user already had, and sends nothing for an unchanged name", async () => {

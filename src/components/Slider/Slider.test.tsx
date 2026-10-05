@@ -13,15 +13,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 function renderControlled(over: Partial<Parameters<typeof Slider>[0]> = {}) {
   const [value, setValue] = createSignal(1);
   const r = render(() => (
-    <Slider
-      value={value()}
-      onChange={setValue}
-      min={0.85}
-      max={1.4}
-      step={0.05}
-      label="UI scale"
-      {...over}
-    />
+    <Slider value={value()} onChange={setValue} min={0.85} max={1.4} step={0.05} label="UI scale" {...over} />
   ));
   return { ...r, value };
 }
@@ -98,17 +90,7 @@ describe("Slider", () => {
 
   it("ignores the keyboard while disabled", () => {
     const onChange = vi.fn();
-    render(() => (
-      <Slider
-        value={1}
-        onChange={onChange}
-        min={0.85}
-        max={1.4}
-        step={0.05}
-        label="UI scale"
-        disabled
-      />
-    ));
+    render(() => <Slider value={1} onChange={onChange} min={0.85} max={1.4} step={0.05} label="UI scale" disabled />);
 
     fireEvent.keyDown(screen.getByRole("slider"), { key: "ArrowRight" });
     expect(onChange).not.toHaveBeenCalled();

@@ -24,7 +24,10 @@ pub enum Credential {
         children: Arc<Children>,
     },
     // Never the process token: a device reaches this over the network.
-    Remote { devices: Arc<Devices>, pairing: Arc<Pairing> },
+    Remote {
+        devices: Arc<Devices>,
+        pairing: Arc<Pairing>,
+    },
 }
 
 impl Credential {
@@ -127,7 +130,10 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
             if constant_time_eq(token.as_bytes(), process.as_bytes()) {
                 return Ok(Principal::Local);
             }
-            children.get(&token).map(Principal::Session).ok_or(AuthError::WrongToken)
+            children
+                .get(&token)
+                .map(Principal::Session)
+                .ok_or(AuthError::WrongToken)
         }
         Credential::Remote { devices, .. } => devices.find(&token).map(Principal::Device).ok_or(AuthError::WrongToken),
     }
@@ -158,16 +164,36 @@ pub fn pair(first: &Request, credential: &Credential) -> Result<Paired, AuthErro
     let p = serde_json::from_value::<PairParams>(first.params.clone()).map_err(|_| AuthError::MissingCode)?;
     let code = p.code.ok_or(AuthError::MissingCode)?;
     let name = device_name(p.name.as_deref().unwrap_or_default());
-    let install = p.install.filter(|i| !i.is_empty() && i.len() <= MAX_INSTALL_CHARS && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+    let install = p.install.filter(|i| {
+        !i.is_empty() && i.len() <= MAX_INSTALL_CHARS && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    });
     pairing
-        .redeem(&code, crate::owned_state::now_ms(), || devices.mint_install(&name, install.as_deref()))
-        .map(|(device, credential, replaced)| Paired { id: device.id, name: device.name, credential, replaced })
+        .redeem(&code, crate::owned_state::now_ms(), || {
+            devices.mint_install(&name, install.as_deref())
+        })
+        .map(|(device, credential, replaced)| Paired {
+            id: device.id,
+            name: device.name,
+            credential,
+            replaced,
+        })
         .map_err(AuthError::Pair)
 }
 
 fn device_name(sent: &str) -> String {
-    let name: String = sent.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(MAX_NAME_CHARS).collect();
-    if name.is_empty() { DEFAULT_DEVICE_NAME.to_string() } else { name }
+    let name: String = sent
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .chars()
+        .take(MAX_NAME_CHARS)
+        .collect();
+    if name.is_empty() {
+        DEFAULT_DEVICE_NAME.to_string()
+    } else {
+        name
+    }
 }
 
 pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -183,11 +209,19 @@ mod tests {
     use serde_json::{json, Value};
 
     fn req(method: &str, params: Value) -> Request {
-        Request { jsonrpc: "2.0".into(), id: Some(json!(1)), method: method.into(), params }
+        Request {
+            jsonrpc: "2.0".into(),
+            id: Some(json!(1)),
+            method: method.into(),
+            params,
+        }
     }
 
     fn cred() -> Credential {
-        Credential::Local { process: "secret".into(), children: Arc::default() }
+        Credential::Local {
+            process: "secret".into(),
+            children: Arc::default(),
+        }
     }
 
     fn children(credential: &Credential) -> &Children {
@@ -211,8 +245,14 @@ mod tests {
         let credential = cred();
         let tab = children(&credential).mint(Caller::Terminal("t1".into()));
         let chat = children(&credential).mint(Caller::Chat("s1".into()));
-        assert_eq!(auth(&tab, &credential), Ok(Principal::Session(Caller::Terminal("t1".into()))));
-        assert_eq!(auth(&chat, &credential), Ok(Principal::Session(Caller::Chat("s1".into()))));
+        assert_eq!(
+            auth(&tab, &credential),
+            Ok(Principal::Session(Caller::Terminal("t1".into())))
+        );
+        assert_eq!(
+            auth(&chat, &credential),
+            Ok(Principal::Session(Caller::Chat("s1".into())))
+        );
         assert_eq!(auth("never-minted", &credential), Err(AuthError::WrongToken));
 
         children(&credential).revoke_token(&tab);
@@ -223,10 +263,22 @@ mod tests {
 
     #[test]
     fn anything_else_is_refused_with_its_reason() {
-        assert_eq!(authenticate(&req("auth", json!({"token": "secreT"})), &cred()), Err(AuthError::WrongToken));
-        assert_eq!(authenticate(&req("auth", json!({"token": "secret-longer"})), &cred()), Err(AuthError::WrongToken));
-        assert_eq!(authenticate(&req("auth", json!({})), &cred()), Err(AuthError::MissingToken));
-        assert_eq!(authenticate(&req("auth", Value::Null), &cred()), Err(AuthError::MissingToken));
+        assert_eq!(
+            authenticate(&req("auth", json!({"token": "secreT"})), &cred()),
+            Err(AuthError::WrongToken)
+        );
+        assert_eq!(
+            authenticate(&req("auth", json!({"token": "secret-longer"})), &cred()),
+            Err(AuthError::WrongToken)
+        );
+        assert_eq!(
+            authenticate(&req("auth", json!({})), &cred()),
+            Err(AuthError::MissingToken)
+        );
+        assert_eq!(
+            authenticate(&req("auth", Value::Null), &cred()),
+            Err(AuthError::MissingToken)
+        );
         assert_eq!(
             authenticate(&req("sessions.list", json!({"token": "secret"})), &cred()),
             Err(AuthError::NotAnAuthFrame)
@@ -236,18 +288,33 @@ mod tests {
     #[test]
     fn each_front_takes_only_its_own_kind_of_credential() {
         let path = std::env::temp_dir()
-            .join(format!("tori-auth-fronts-{}-{}", std::process::id(), crate::chat::approval::random_token()))
+            .join(format!(
+                "tori-auth-fronts-{}-{}",
+                std::process::id(),
+                crate::chat::approval::random_token()
+            ))
             .join("devices.json");
         let devices = Arc::new(Devices::open(path.clone()));
         let (device, secret) = devices.mint("phone").unwrap();
         let local = cred();
         let child = children(&local).mint(Caller::Chat("s1".into()));
-        let remote = Credential::Remote { devices, pairing: Arc::new(Pairing::new(Box::new(|_| {}))) };
+        let remote = Credential::Remote {
+            devices,
+            pairing: Arc::new(Pairing::new(Box::new(|_| {}))),
+        };
 
         assert_eq!(auth(&secret, &remote), Ok(Principal::Device(device.id)));
-        assert_eq!(auth("secret", &remote), Err(AuthError::WrongToken), "the process token is refused on a network front");
+        assert_eq!(
+            auth("secret", &remote),
+            Err(AuthError::WrongToken),
+            "the process token is refused on a network front"
+        );
         assert_eq!(auth(&child, &remote), Err(AuthError::WrongToken), "and so is a child's");
-        assert_eq!(auth(&secret, &local), Err(AuthError::WrongToken), "a device credential is refused on the unix socket");
+        assert_eq!(
+            auth(&secret, &local),
+            Err(AuthError::WrongToken),
+            "a device credential is refused on the unix socket"
+        );
         assert_eq!(auth("never-minted", &remote), Err(AuthError::WrongToken));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
@@ -255,16 +322,29 @@ mod tests {
     #[test]
     fn a_paired_credential_authenticates_and_pair_is_refused_on_the_unix_socket() {
         let path = std::env::temp_dir()
-            .join(format!("tori-auth-pair-{}-{}", std::process::id(), crate::chat::approval::random_token()))
+            .join(format!(
+                "tori-auth-pair-{}-{}",
+                std::process::id(),
+                crate::chat::approval::random_token()
+            ))
             .join("devices.json");
         let pairing = Arc::new(Pairing::new(Box::new(|_| {})));
-        let remote = Credential::Remote { devices: Arc::new(Devices::open(path.clone())), pairing: pairing.clone() };
+        let remote = Credential::Remote {
+            devices: Arc::new(Devices::open(path.clone())),
+            pairing: pairing.clone(),
+        };
         let code = pairing.start("ws://x", crate::owned_state::now_ms()).unwrap().code;
 
-        assert_eq!(pair(&req("pair", json!({ "code": code })), &cred()), Err(AuthError::NotAnAuthFrame));
+        assert_eq!(
+            pair(&req("pair", json!({ "code": code })), &cred()),
+            Err(AuthError::NotAnAuthFrame)
+        );
         let paired = pair(&req("pair", json!({ "code": code, "name": "  Pixel\n 8  " })), &remote).unwrap();
         assert_eq!(paired.name, "Pixel 8");
-        assert_eq!(auth(&paired.credential, &remote), Ok(Principal::Device(paired.id.clone())));
+        assert_eq!(
+            auth(&paired.credential, &remote),
+            Ok(Principal::Device(paired.id.clone()))
+        );
         assert!(remote.holds(&Principal::Device(paired.id)));
         assert_eq!(
             pair(&req("pair", json!({ "code": code })), &remote),

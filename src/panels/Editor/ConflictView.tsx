@@ -375,9 +375,7 @@ export default function ConflictView(props: {
         invoke<ConflictStages>("git_conflict_stages", { projectPath: workspace, file }),
         // The stages are the view; the operation only names the sides, so a
         // repo that cannot answer it still gets a usable conflict.
-        invoke<ConflictOp>("git_conflict_op", { projectPath: workspace }).catch(
-          () => "none" as ConflictOp,
-        ),
+        invoke<ConflictOp>("git_conflict_op", { projectPath: workspace }).catch(() => "none" as ConflictOp),
         invoke<ConflictSides>("git_conflict_sides", { projectPath: workspace }).catch(() => null),
       ]);
       if (mine !== current) return;
@@ -552,7 +550,10 @@ export default function ConflictView(props: {
       sideActionDecorations(rs, side, doc, picked, skipped, sideName(side, names()), actOnSide),
     ),
   ];
-  const slots = resultField(optionsFor, { choose: (id, choice) => void chooseRegion(id, choice), reset: (id) => void resetRegion(id) });
+  const slots = resultField(optionsFor, {
+    choose: (id, choice) => void chooseRegion(id, choice),
+    reset: (id) => void resetRegion(id),
+  });
 
   const aligner = paneAligner(() => {
     if (!merge || !result) return [];
@@ -775,18 +776,21 @@ export default function ConflictView(props: {
   // The language pack is fetched per file and lands after the panes are up, so
   // every view reaches it through a compartment rather than being rebuilt.
   createEffect(
-    on(() => props.file, (file) => {
-      setSyntax(null);
-      void import("./syntaxStyle").then(
-        async (m) => {
-          const ext = await m.syntaxFor(file);
-          if (props.file === file) setSyntax(() => ext);
-        },
-        // A failed chunk load leaves the panes uncoloured, which is what they
-        // looked like before; nothing retries because nothing would change.
-        () => {},
-      );
-    }),
+    on(
+      () => props.file,
+      (file) => {
+        setSyntax(null);
+        void import("./syntaxStyle").then(
+          async (m) => {
+            const ext = await m.syntaxFor(file);
+            if (props.file === file) setSyntax(() => ext);
+          },
+          // A failed chunk load leaves the panes uncoloured, which is what they
+          // looked like before; nothing retries because nothing would change.
+          () => {},
+        );
+      },
+    ),
   );
 
   createEffect(
@@ -923,8 +927,8 @@ export default function ConflictView(props: {
       </Show>
       <Show when={stages()?.binary}>
         <div class={styles.error}>
-          This file is binary, so there are no lines to merge. It has to be resolved in the terminal,
-          by choosing a whole version.
+          This file is binary, so there are no lines to merge. It has to be resolved in the terminal, by choosing a
+          whole version.
         </div>
       </Show>
       {/* A conflict about whether the file exists at all. No lines to choose

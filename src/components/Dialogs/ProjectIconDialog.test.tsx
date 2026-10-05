@@ -26,8 +26,7 @@ const { default: ProjectIconDialog } = await import("./ProjectIconDialog");
 // is already stored resolves through `onCancel`, not `onConfirm`, so the
 // backend never re-copies identical bytes under the same name. It looks like a
 // bug from the outside ("Save cancelled?"), which is exactly why it is pinned.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -53,10 +52,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
     />
   ));
   const search = () => screen.getByLabelText("Search icons") as HTMLInputElement;
-  const tiles = () =>
-    Array.from(
-      screen.getByRole("group", { name: "Project icon" }).querySelectorAll("button"),
-    );
+  const tiles = () => Array.from(screen.getByRole("group", { name: "Project icon" }).querySelectorAll("button"));
   const mode = (name: string) => screen.getByRole("button", { name });
   // The grid rests on a short random shelf, so a named glyph is reached the way
   // a user reaches one: through the field beside it.
@@ -69,8 +65,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   return { onConfirm, onCancel, onPickFile, search, tiles, mode, pick, dropzone, panel };
 }
 
-const save = (label = "Save") =>
-  screen.getByRole("button", { name: label }) as HTMLButtonElement;
+const save = (label = "Save") => screen.getByRole("button", { name: label }) as HTMLButtonElement;
 
 describe("ProjectIconDialog", () => {
   describe("contract", () => {
@@ -103,11 +98,7 @@ describe("ProjectIconDialog", () => {
 
       expect(mode("Pick an icon").getAttribute("aria-pressed")).toBe("true");
       expect(
-        tiles().some(
-          (b) =>
-            b.getAttribute("aria-label") === "Rocket" &&
-            b.getAttribute("aria-pressed") === "true",
-        ),
+        tiles().some((b) => b.getAttribute("aria-label") === "Rocket" && b.getAttribute("aria-pressed") === "true"),
       ).toBe(true);
     });
 

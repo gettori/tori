@@ -12,12 +12,7 @@ import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";
-import {
-  COMPOSE_DRAFT,
-  OPEN_IN_EDITOR,
-  type ComposeDraft,
-  type OpenInEditor,
-} from "../../../../utils/events";
+import { COMPOSE_DRAFT, OPEN_IN_EDITOR, type ComposeDraft, type OpenInEditor } from "../../../../utils/events";
 import type { ConfigFilesView, EntryView } from "./AgentFiles";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -95,9 +90,7 @@ const files = (over: Partial<ConfigFilesView> = {}): ConfigFilesView => ({
       profileId: "work",
       label: "Work",
       home: "/home/me/Library/tori/claude/work",
-      entries: [
-        entry({ path: "/home/me/Library/tori/claude/work/CLAUDE.md", state: "missing" }),
-      ],
+      entries: [entry({ path: "/home/me/Library/tori/claude/work/CLAUDE.md", state: "missing" })],
     },
   ],
   ...over,
@@ -126,9 +119,7 @@ const accountsView = () => ({
   ],
 });
 
-function mount(
-  over: { files?: ConfigFilesView; projectRoot?: string | null; accounts?: boolean } = {},
-) {
+function mount(over: { files?: ConfigFilesView; projectRoot?: string | null; accounts?: boolean } = {}) {
   invoked.mockReset();
   __resetModelCatalogsForTests();
   invoked.mockImplementation(async (cmd: string, args?: unknown) => {
@@ -147,9 +138,7 @@ function mount(
     if (cmd === "set_settings") return (args as { settings?: unknown })?.settings;
     return [];
   });
-  return render(() => (
-    <AgentsSection projectRoot={over.projectRoot === undefined ? "/work/repo" : over.projectRoot} />
-  ));
+  return render(() => <AgentsSection projectRoot={over.projectRoot === undefined ? "/work/repo" : over.projectRoot} />);
 }
 
 async function open(r: ReturnType<typeof render>) {
@@ -247,9 +236,7 @@ describe("the Files group", () => {
   // "Tori has nothing true to say about this agent's files" is not the same
   // claim as "this agent has none", so it is said in words.
   it("says so plainly for an adapter that declares no files", async () => {
-    const { container } = await open(
-      mount({ files: { adapterId: "claude", declared: false, profiles: [] } }),
-    );
+    const { container } = await open(mount({ files: { adapterId: "claude", declared: false, profiles: [] } }));
     expect(container.textContent).toContain("This adapter declares no files");
   });
 
@@ -267,9 +254,7 @@ describe("the Files group", () => {
     fireEvent.click(screen.getByText("Create and sign in"));
 
     await waitFor(() =>
-      expect(
-        invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length,
-      ).toBeGreaterThan(before),
+      expect(invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length).toBeGreaterThan(before),
     );
   });
 });
@@ -376,9 +361,7 @@ describe("creating a file from a row", () => {
       }),
     );
     // Straight into the editor: the point of creating one is to write it.
-    await waitFor(() =>
-      expect(seen).toEqual([{ path: "/home/me/.claude/skills/commit/SKILL.md" }]),
-    );
+    await waitFor(() => expect(seen).toEqual([{ path: "/home/me/.claude/skills/commit/SKILL.md" }]));
   });
 
   // On the row, beside the box that produced it. A toast would float away from
@@ -399,9 +382,7 @@ describe("creating a file from a row", () => {
     fireEvent.input(box, { target: { value: "a/b" } });
     fireEvent.keyDown(box, { key: "Enter" });
 
-    await waitFor(() =>
-      expect(r.container.textContent).toContain("cannot contain a path separator"),
-    );
+    await waitFor(() => expect(r.container.textContent).toContain("cannot contain a path separator"));
     expect(seen).toEqual([]);
   });
 
@@ -410,8 +391,7 @@ describe("creating a file from a row", () => {
     invoked.mockImplementation(async (cmd: string) => {
       if (cmd === "agent_health" || cmd === "refresh_agent_health") return [health()];
       if (cmd === "agent_config_files") return files();
-      if (cmd === "agent_config_new")
-        throw new Error("/home/me/.claude/skills/dup/SKILL.md already exists");
+      if (cmd === "agent_config_new") throw new Error("/home/me/.claude/skills/dup/SKILL.md already exists");
       return [];
     });
 
@@ -469,9 +449,7 @@ describe("removing a child", () => {
       }),
     );
     await waitFor(() =>
-      expect(
-        invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length,
-      ).toBeGreaterThan(before),
+      expect(invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length).toBeGreaterThan(before),
     );
   });
 

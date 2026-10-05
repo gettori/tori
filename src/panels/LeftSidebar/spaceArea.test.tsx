@@ -116,9 +116,7 @@ describe("the space's empty area", () => {
     pointerClick(await screen.findByText("Delete space"));
     // The count is a stat panel now: a caps label and a value on two lines, so
     // this reads the box rather than one of them.
-    await waitFor(() =>
-      expect(screen.getByText("Agents running").parentElement!.textContent).toContain("1"),
-    );
+    await waitFor(() => expect(screen.getByText("Agents running").parentElement!.textContent).toContain("1"));
   });
 });
 

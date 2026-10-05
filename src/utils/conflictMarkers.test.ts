@@ -37,7 +37,18 @@ describe("reading conflict markers", () => {
 
   it("paints nothing for a conflict that never closes, and still reads the next one", () => {
     const blocks = parseMarkers(
-      doc(["<<<<<<< HEAD", "lost", "=======", "<<<<<<< HEAD", "ours", "=======", "theirs", ">>>>>>> x", "<<<<<<< HEAD", "tail"]),
+      doc([
+        "<<<<<<< HEAD",
+        "lost",
+        "=======",
+        "<<<<<<< HEAD",
+        "ours",
+        "=======",
+        "theirs",
+        ">>>>>>> x",
+        "<<<<<<< HEAD",
+        "tail",
+      ]),
     );
 
     expect(blocks.map((b) => b.markers)).toEqual([{ start: 4, base: null, split: 6, end: 8 }]);

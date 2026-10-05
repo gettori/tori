@@ -27,7 +27,12 @@ export type CrashLogs = {
 export function installCrashReport() {
   window.addEventListener("error", (e) => {
     const err = e.error instanceof Error ? e.error : null;
-    report("error", err?.message || e.message, err?.stack, e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : undefined);
+    report(
+      "error",
+      err?.message || e.message,
+      err?.stack,
+      e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : undefined,
+    );
   });
   window.addEventListener("unhandledrejection", (e) => {
     const r = e.reason;

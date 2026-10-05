@@ -351,8 +351,7 @@ export const COMMANDS: Command[] = [
     scope: "global",
     // Accept both ⌘= and ⌘⇧+ (same physical key): e.key is "=" unshifted, "+"
     // shifted, so a user pressing either way zooms in.
-    match: (e) =>
-      e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "=" || e.key === "+"),
+    match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "=" || e.key === "+"),
     run: () => emit(ZOOM_IN),
   },
   {
@@ -361,8 +360,7 @@ export const COMMANDS: Command[] = [
     label: "Decrease font size",
     group: "view",
     scope: "global",
-    match: (e) =>
-      e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "-" || e.key === "_"),
+    match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "-" || e.key === "_"),
     run: () => emit(ZOOM_OUT),
   },
   {
@@ -492,8 +490,7 @@ export const COMMANDS: Command[] = [
     label: "Jump to tab 1 to 9 in the focused pane",
     group: "terminal",
     scope: "global",
-    match: (e) =>
-      e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key),
+    match: (e) => e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key),
     // The only command whose target is the key that fired it, so it is the only
     // one that cannot be run from a list of names.
     run: (e) => {
@@ -713,20 +710,28 @@ export const COMMANDS: Command[] = [
   // whose server has none, which is most of them.
   ...(
     [
-      ["lsp-organize-imports", "Organize imports", SOURCE_KINDS.organizeImports, "Sorts them and drops the ones nothing uses."],
-      ["lsp-remove-unused", "Remove unused code", SOURCE_KINDS.removeUnused, "Whatever the language server can prove is unreachable."],
+      [
+        "lsp-organize-imports",
+        "Organize imports",
+        SOURCE_KINDS.organizeImports,
+        "Sorts them and drops the ones nothing uses.",
+      ],
+      [
+        "lsp-remove-unused",
+        "Remove unused code",
+        SOURCE_KINDS.removeUnused,
+        "Whatever the language server can prove is unreachable.",
+      ],
       ["lsp-sort-imports", "Sort imports", SOURCE_KINDS.sortImports, "Order only. Nothing is added or removed."],
     ] as const
-  ).map(
-    ([id, label, kind, sub]): Command => ({
-      id,
-      label,
-      sub,
-      group: "editor",
-      run: () => emitWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, { kind, label }),
-      requires: ["editorFile", "sourceActions"],
-    }),
-  ),
+  ).map(([id, label, kind, sub]): Command => ({
+    id,
+    label,
+    sub,
+    group: "editor",
+    run: () => emitWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, { kind, label }),
+    requires: ["editorFile", "sourceActions"],
+  })),
   {
     id: "lsp-format",
     // Not only the language server's, despite the id: the editor tries the
@@ -786,14 +791,12 @@ export const COMMANDS: Command[] = [
     run: () => emit(EDITOR_PEEK_TYPE_DEFINITION),
     requires: ["editorFile", "typeDefinitionProvider"],
   },
-  ...RIGHT_MODES.map(
-    (m): Command => ({
-      id: `mode:${m.section ?? m.mode}`,
-      label: `Show ${m.label}`,
-      group: "editor",
-      run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode, section: m.section }),
-    }),
-  ),
+  ...RIGHT_MODES.map((m): Command => ({
+    id: `mode:${m.section ?? m.mode}`,
+    label: `Show ${m.label}`,
+    group: "editor",
+    run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode, section: m.section }),
+  })),
 
   // --- Debug ---------------------------------------------------------------
   {
@@ -833,19 +836,19 @@ export const COMMANDS: Command[] = [
   // The three target kinds, each opening the picker on its own tab. Listed
   // separately rather than as one "Debug\u2026" row because they are the three
   // different things somebody means, and the palette is where you say which.
-  ...([
-    { kind: "file", label: "Debug this file", requires: ["editorFile"] },
-    { kind: "script", label: "Debug a package script\u2026", requires: [] },
-    { kind: "attach", label: "Attach the debugger to a port\u2026", requires: [] },
-  ] as const).map(
-    (t): Command => ({
-      id: `debug:${t.kind}`,
-      label: t.label,
-      group: "editor",
-      requires: [...t.requires],
-      run: () => emitWith<DebugPick>(DEBUG_PICK, { kind: t.kind }),
-    }),
-  ),
+  ...(
+    [
+      { kind: "file", label: "Debug this file", requires: ["editorFile"] },
+      { kind: "script", label: "Debug a package script\u2026", requires: [] },
+      { kind: "attach", label: "Attach the debugger to a port\u2026", requires: [] },
+    ] as const
+  ).map((t): Command => ({
+    id: `debug:${t.kind}`,
+    label: t.label,
+    group: "editor",
+    requires: [...t.requires],
+    run: () => emitWith<DebugPick>(DEBUG_PICK, { kind: t.kind }),
+  })),
 
   // --- Panes ---------------------------------------------------------------
   //
@@ -1058,15 +1061,13 @@ export const COMMANDS: Command[] = [
   // layer is in force. Everything else opens the panel filtered to itself: a
   // font stack has no other value to toggle to, and a command that guessed at
   // one would be a worse affordance than the field.
-  ...SETTINGS.map(
-    (s): Command => ({
-      id: `prefs:${s.id}`,
-      label: `Preferences: ${s.label}`,
-      sub: SECTION_TITLES[s.section],
-      group: "settings",
-      run: s.toggles
-        ? () => emitWith<PrefsToggle>(PREFS_TOGGLE, { key: s.toggles! })
-        : () => emitWith<OpenSettings>(OPEN_SETTINGS, { query: s.label, entry: s.id }),
-    }),
-  ),
+  ...SETTINGS.map((s): Command => ({
+    id: `prefs:${s.id}`,
+    label: `Preferences: ${s.label}`,
+    sub: SECTION_TITLES[s.section],
+    group: "settings",
+    run: s.toggles
+      ? () => emitWith<PrefsToggle>(PREFS_TOGGLE, { key: s.toggles! })
+      : () => emitWith<OpenSettings>(OPEN_SETTINGS, { query: s.label, entry: s.id }),
+  })),
 ];

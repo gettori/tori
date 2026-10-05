@@ -185,9 +185,7 @@ describe("SessionInfo", () => {
     // The command/args split is what `claude mcp add <name> -- <cmd> <args>`
     // produces, so the file Tori writes is one Claude already understands.
     invoked.mockResolvedValue([]);
-    const { container, getByPlaceholderText, getByText } = render(() => (
-      <SessionInfo {...props({ cwd: "/repo" })} />
-    ));
+    const { container, getByPlaceholderText, getByText } = render(() => <SessionInfo {...props({ cwd: "/repo" })} />);
     open(container);
     await waitFor(() =>
       expect(invoked).toHaveBeenCalledWith("chat_mcp_list", {
@@ -219,9 +217,7 @@ describe("SessionInfo", () => {
     // Measured against claude 2.1.220: a freshly written .mcp.json server is
     // loaded as pending and not connected to. Tori reports that instead of
     // force-enabling it, because the approval lives in Claude's own state file.
-    invoked.mockResolvedValue([
-      { name: "everything", scope: "project", approval: "pending", config: {} },
-    ]);
+    invoked.mockResolvedValue([{ name: "everything", scope: "project", approval: "pending", config: {} }]);
     const { container } = render(() => <SessionInfo {...props({ cwd: "/repo" })} />);
     open(container);
     await waitFor(() => expect(container.textContent).toContain("pending approval"));
@@ -242,9 +238,7 @@ describe("SessionInfo", () => {
 
   it("surfaces a failed write instead of silently doing nothing", async () => {
     invoked.mockResolvedValueOnce([]);
-    const { container, getByText, getByPlaceholderText } = render(() => (
-      <SessionInfo {...props({ cwd: "/repo" })} />
-    ));
+    const { container, getByText, getByPlaceholderText } = render(() => <SessionInfo {...props({ cwd: "/repo" })} />);
     open(container);
     await waitFor(() => expect(invoked).toHaveBeenCalled());
     invoked.mockRejectedValueOnce("permission denied");

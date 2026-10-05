@@ -65,7 +65,8 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
@@ -119,9 +120,7 @@ async function mountPanes(left: string | null, right: string | null) {
  *  and jsdom is not a Mac. */
 const undoKey = (v: EditorView) => {
   for (const mods of [{ metaKey: true }, { ctrlKey: true }]) {
-    v.contentDOM.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "z", bubbles: true, cancelable: true, ...mods }),
-    );
+    v.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "z", bubbles: true, cancelable: true, ...mods }));
   }
 };
 

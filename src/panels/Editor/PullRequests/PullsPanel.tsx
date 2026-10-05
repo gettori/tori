@@ -30,17 +30,7 @@
 // tab stacks Scripts, Outline and TODOs under its tree. A verdict row is the way
 // into its own tab, so the summary and the detail are not two things to find.
 
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-  For,
-  Match,
-  Show,
-  Switch,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, For, Match, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
@@ -139,9 +129,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /// The tone names the failing count rather than reporting that some are
 /// failing, which is the difference between a row that answers and one that
 /// sends the reader to github.com to find out how bad it is.
-function checksLine(
-  checks: CheckRollup,
-): { tone: "good" | "bad" | "busy"; text: string; icon: LucideIcon } | null {
+function checksLine(checks: CheckRollup): { tone: "good" | "bad" | "busy"; text: string; icon: LucideIcon } | null {
   switch (checks.state) {
     case "failure":
       return {
@@ -350,9 +338,7 @@ export default function PullsPanel(props: {
   /// reading of the same facts here: a form this cannot submit and a compare
   /// page it sends you to instead are one decision, and the button has to be
   /// named for the one that will actually happen.
-  const actions = createMemo<
-    { label: string; run: () => void; primary?: boolean; busy?: boolean }[]
-  >(() => {
+  const actions = createMemo<{ label: string; run: () => void; primary?: boolean; busy?: boolean }[]>(() => {
     const s = say();
     const root = props.root;
     if (!s || !root) return [];
@@ -372,8 +358,7 @@ export default function PullsPanel(props: {
           {
             label: "New branch from base",
             primary: true,
-            run: () =>
-              emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: root, base: s.branch }),
+            run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: root, base: s.branch }),
           },
         ];
       case "noPrUnpushed":
@@ -547,8 +532,7 @@ export default function PullsPanel(props: {
   /// opener that asks for it: reading a pull request is walking a list of
   /// files, and a tab per row leaves a strip nobody can read by the time the
   /// review is written. Double click keeps one.
-  const openFile = (path: string) =>
-    openInStage((root, number) => prDiffTabId(root, number, path), true);
+  const openFile = (path: string) => openInStage((root, number) => prDiffTabId(root, number, path), true);
 
   const drifted = () => {
     const root = props.root;
@@ -592,12 +576,8 @@ export default function PullsPanel(props: {
   function TreeRows(p: { node: FolderNode<PrFile>; number: number; depth: number }) {
     return (
       <>
-        <For each={p.node.folders}>
-          {(f) => <DirRow node={f} number={p.number} depth={p.depth} />}
-        </For>
-        <For each={p.node.files}>
-          {(f) => <FileRow file={f} number={p.number} depth={p.depth} />}
-        </For>
+        <For each={p.node.folders}>{(f) => <DirRow node={f} number={p.number} depth={p.depth} />}</For>
+        <For each={p.node.files}>{(f) => <FileRow file={f} number={p.number} depth={p.depth} />}</For>
       </>
     );
   }
@@ -853,9 +833,7 @@ export default function PullsPanel(props: {
               size="xs"
               icon={<Icon icon={List} size={14} />}
               tooltip="All pull requests"
-              onClick={() =>
-                emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: prListTabId(root()) })
-              }
+              onClick={() => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: prListTabId(root()) })}
             />
           )}
         </Show>
@@ -868,8 +846,7 @@ export default function PullsPanel(props: {
               complete without it. */}
           <Show when={uncovered() > 0}>
             <div class={styles.notice}>
-              Checks are not shown for {uncovered()} branch{uncovered() === 1 ? "" : "es"} this poll
-              did not cover.
+              Checks are not shown for {uncovered()} branch{uncovered() === 1 ? "" : "es"} this poll did not cover.
             </div>
           </Show>
 
@@ -880,21 +857,14 @@ export default function PullsPanel(props: {
                   {/* Block 1: which pull request this is. */}
                   <div class={styles.identity}>
                     <div class={styles.identityTop}>
-                      <span
-                        class={styles.pill}
-                        data-pr-state={s().pr.isDraft ? "draft" : s().pr.state}
-                      >
+                      <span class={styles.pill} data-pr-state={s().pr.isDraft ? "draft" : s().pr.state}>
                         {s().pr.isDraft ? "draft" : s().pr.state}
                       </span>
                       {/* One line, with the rest of it behind the pointer. Tori's
                           own tooltip rather than the native `title`, which the
                           webview does not draw: a truncated label whose full text
                           nothing shows is a truncated label. */}
-                      <Tooltip<HTMLSpanElement>
-                        as="span"
-                        class={styles.subject}
-                        label={s().pr.title}
-                      >
+                      <Tooltip<HTMLSpanElement> as="span" class={styles.subject} label={s().pr.title}>
                         {s().pr.title}
                       </Tooltip>
                       {/* The number is the way out to github.com, rather than an
@@ -1211,8 +1181,7 @@ export default function PullsPanel(props: {
                             fewer checks than it counts. */}
                         <Show when={polled()!.checks.contexts.length < polled()!.checks.total}>
                           <div class={styles.contextMore}>
-                            {polled()!.checks.total - polled()!.checks.contexts.length} more not
-                            described by this read.
+                            {polled()!.checks.total - polled()!.checks.contexts.length} more not described by this read.
                           </div>
                         </Show>
                       </Show>
@@ -1238,7 +1207,6 @@ export default function PullsPanel(props: {
                         />
                       </Show>
                     </Match>
-
                   </Switch>
                 </div>
               </Show>

@@ -41,9 +41,8 @@ const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(async () => {
   invoke.mockReset();
-  invoke.mockImplementation(
-    async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : unstubbed(cmd),
+  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+    cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   await loadWorkspaceSettings(null);
 });
@@ -80,9 +79,7 @@ describe("the settings pickers", () => {
       await pick("Open sessions in", "Terminal (agent tab)");
 
       expect(settings.chatDefaults.defaultSurface).toBe("agent");
-      expect(screen.getByLabelText("Open sessions in").textContent).toContain(
-        "Terminal (agent tab)",
-      );
+      expect(screen.getByLabelText("Open sessions in").textContent).toContain("Terminal (agent tab)");
     });
 
     it("round-trips the transcript density through the store", async () => {
@@ -167,6 +164,5 @@ describe("the settings pickers", () => {
       expect(screen.queryByText("Bundled")).toBeNull();
       expect(screen.queryByText("From ~/.config/tori/themes")).toBeNull();
     });
-
   });
 });

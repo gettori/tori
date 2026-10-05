@@ -93,7 +93,13 @@ export default function FilesPanel(props: {
 
   // Pointing the workspace at another member from anywhere else wins over the
   // chip picked here, and a new root is a new file list for the filter.
-  createEffect(on(() => props.root, () => setPicked(null), { defer: true }));
+  createEffect(
+    on(
+      () => props.root,
+      () => setPicked(null),
+      { defer: true },
+    ),
+  );
   createEffect(
     on(treeRoot, () => {
       setFilter("");
@@ -205,7 +211,12 @@ export default function FilesPanel(props: {
           actions={
             <Show when={treeRoot()}>
               <Show when={controls()?.editable()}>
-                <IconButton size="sm" icon={<Icon icon={FilePlus} />} tooltip="New File" onClick={() => controls()?.newFile()} />
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={FilePlus} />}
+                  tooltip="New File"
+                  onClick={() => controls()?.newFile()}
+                />
                 <IconButton
                   size="sm"
                   icon={<Icon icon={FolderPlus} />}
@@ -213,7 +224,12 @@ export default function FilesPanel(props: {
                   onClick={() => controls()?.newFolder()}
                 />
               </Show>
-              <IconButton size="sm" icon={<Icon icon={RefreshCw} />} tooltip="Refresh" onClick={() => controls()?.refresh()} />
+              <IconButton
+                size="sm"
+                icon={<Icon icon={RefreshCw} />}
+                tooltip="Refresh"
+                onClick={() => controls()?.refresh()}
+              />
               <IconButton
                 size="sm"
                 icon={<Icon icon={ChevronsDownUp} />}
@@ -290,9 +306,7 @@ export default function FilesPanel(props: {
               activeId={tab() ?? null}
               idOf={(t) => t.id}
               onActivate={(id) => showTab(id as FilesTab)}
-              onReorder={(next) =>
-                setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])
-              }
+              onReorder={(next) => setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])}
               renderTab={(t) => (
                 <Tab quiet value={t.id} id={`files-tab-${t.id}`}>
                   {t.label}

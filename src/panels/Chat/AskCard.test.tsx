@@ -81,7 +81,16 @@ describe("an approval card", () => {
 
   it("shows the merge, its method and the head it pins", () => {
     render(() => (
-      <AskCard here="worker" ask={approvalAsk({ project: "/work/repo", action: "pr.merge", number: 42, method: "squash", head_sha: "abc123" })} />
+      <AskCard
+        here="worker"
+        ask={approvalAsk({
+          project: "/work/repo",
+          action: "pr.merge",
+          number: 42,
+          method: "squash",
+          head_sha: "abc123",
+        })}
+      />
     ));
     expect(screen.getByText("Merge pull request 42")).toBeTruthy();
     expect(screen.getByText("squash at abc123")).toBeTruthy();
@@ -89,16 +98,36 @@ describe("an approval card", () => {
 
   it("names the asking session when mirrored into another panel", () => {
     render(() => (
-      <AskCard here="autopilot" ask={approvalAsk({ project: "/work/repo", action: "pr.merge", number: 42, method: "squash", head_sha: "abc123" })} />
+      <AskCard
+        here="autopilot"
+        ask={approvalAsk({
+          project: "/work/repo",
+          action: "pr.merge",
+          number: 42,
+          method: "squash",
+          head_sha: "abc123",
+        })}
+      />
     ));
     expect(screen.getByText(/worker asks:/)).toBeTruthy();
   });
 
   it("still answers with the option picked", async () => {
     render(() => (
-      <AskCard here="worker" ask={approvalAsk({ project: "/work/repo", action: "pr.merge", number: 42, method: "squash", head_sha: "abc123" })} />
+      <AskCard
+        here="worker"
+        ask={approvalAsk({
+          project: "/work/repo",
+          action: "pr.merge",
+          number: 42,
+          method: "squash",
+          head_sha: "abc123",
+        })}
+      />
     ));
     fireEvent.click(screen.getByText("Approve"));
-    await waitFor(() => expect(invokes).toContainEqual({ cmd: "rpc_ask_answer", args: { id: "ask-1", answer: "Approve" } }));
+    await waitFor(() =>
+      expect(invokes).toContainEqual({ cmd: "rpc_ask_answer", args: { id: "ask-1", answer: "Approve" } }),
+    );
   });
 });

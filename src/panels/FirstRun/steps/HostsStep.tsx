@@ -18,7 +18,10 @@ export const signedInOn = (hosts: ForgeHost[], cloud: Cloud): ForgeAccount[] =>
   (hosts.find((h) => h.host === cloud)?.accounts ?? []).filter((a) => a.auth.kind === "signedIn");
 
 function initials(account: ForgeAccount): string {
-  return (account.login ?? account.label).replace(/[^0-9A-Za-z]/g, "").slice(0, 2).toUpperCase();
+  return (account.login ?? account.label)
+    .replace(/[^0-9A-Za-z]/g, "")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export default function HostsStep(props: {
@@ -35,10 +38,7 @@ export default function HostsStep(props: {
       <div class={styles.hostCards}>
         <For each={CARDS}>
           {(card) => (
-            <Show
-              when={props.waitingFor !== card.cloud}
-              fallback={<div class={styles.hostWait}>{props.wait}</div>}
-            >
+            <Show when={props.waitingFor !== card.cloud} fallback={<div class={styles.hostWait}>{props.wait}</div>}>
               <div class={styles.hostCard}>
                 <div class={styles.hostHead}>
                   <span class={styles.hostMark} aria-hidden="true">

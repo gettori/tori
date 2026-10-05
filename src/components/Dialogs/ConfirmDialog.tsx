@@ -54,11 +54,7 @@ export default function ConfirmDialog(props: {
       actions={
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
-          <Button
-            ref={ok}
-            variant={props.danger ? "danger" : "primary"}
-            onClick={() => props.onConfirm()}
-          >
+          <Button ref={ok} variant={props.danger ? "danger" : "primary"} onClick={() => props.onConfirm()}>
             {props.confirmLabel ?? "OK"}
           </Button>
         </>

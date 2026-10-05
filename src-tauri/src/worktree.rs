@@ -60,17 +60,18 @@ pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, St
     let mut cur_bare = false;
     let mut first = true;
 
-    let flush = |path: &mut Option<String>, branch: &mut String, bare: &mut bool, first: &mut bool, out: &mut Vec<Worktree>| {
-        if let Some(p) = path.take() {
-            out.push(Worktree {
-                path: p,
-                branch: std::mem::take(branch),
-                is_main: *first,
-                is_bare: std::mem::take(bare),
-            });
-            *first = false;
-        }
-    };
+    let flush =
+        |path: &mut Option<String>, branch: &mut String, bare: &mut bool, first: &mut bool, out: &mut Vec<Worktree>| {
+            if let Some(p) = path.take() {
+                out.push(Worktree {
+                    path: p,
+                    branch: std::mem::take(branch),
+                    is_main: *first,
+                    is_bare: std::mem::take(bare),
+                });
+                *first = false;
+            }
+        };
 
     for line in text.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
@@ -129,9 +130,7 @@ fn git_ok(repo: &str, args: &[&str]) -> Result<(), String> {
 /// so. Every caller that reads the list to decide whether a worktree exists has
 /// to prune first, or it adopts a folder that is not there.
 pub(crate) fn prune_worktrees(repo: &str) {
-    let _ = crate::exec::git_in(repo)
-        .args(["worktree", "prune"])
-        .output();
+    let _ = crate::exec::git_in(repo).args(["worktree", "prune"]).output();
 }
 
 pub(crate) fn branch_exists(repo: &str, branch: &str) -> bool {
@@ -161,7 +160,12 @@ pub(crate) fn origin_default(repo: &str) -> Option<String> {
 /// (and track) a remote-only branch instead of origin's default.
 pub(crate) fn remote_branch_exists(repo: &str, name: &str) -> bool {
     crate::exec::git_in(repo)
-        .args(["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{name}")])
+        .args([
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/remotes/origin/{name}"),
+        ])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -228,7 +232,13 @@ fn last_segment(branch: &str) -> &str {
 pub(crate) fn slugify(branch: &str) -> String {
     branch
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -280,18 +290,34 @@ pub(crate) fn link_shared(container: &Path, worktree: &Path) {
 /// Answers the worktree's folder path, so the caller can move the selection onto
 /// the thing it just made (a reused worktree answers its existing path).
 #[tauri::command]
-pub async fn create_worktree(app: AppHandle, repo_path: String, branch: String, base: Option<String>) -> Result<String, String> {
-    crate::exec::git_write("create_worktree", repo_path.clone(), move || create_worktree_body(app, repo_path, branch, base)).await
+pub async fn create_worktree(
+    app: AppHandle,
+    repo_path: String,
+    branch: String,
+    base: Option<String>,
+) -> Result<String, String> {
+    crate::exec::git_write("create_worktree", repo_path.clone(), move || {
+        create_worktree_body(app, repo_path, branch, base)
+    })
+    .await
 }
 
-pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: String, base: Option<String>) -> Result<String, String> {
+pub(crate) fn create_worktree_body(
+    app: AppHandle,
+    repo_path: String,
+    branch: String,
+    base: Option<String>,
+) -> Result<String, String> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
     }
 
     // Already checked out somewhere: reuse it rather than make a duplicate.
-    if let Some(existing) = list_worktrees_body(repo_path.clone())?.into_iter().find(|w| w.branch == branch) {
+    if let Some(existing) = list_worktrees_body(repo_path.clone())?
+        .into_iter()
+        .find(|w| w.branch == branch)
+    {
         return Ok(existing.path);
     }
 
@@ -309,7 +335,13 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
 /// it comes from the forge's PR ref, never from `origin/<head_ref>`. A worktree
 /// or branch already at another commit is refused rather than reset, since
 /// resetting would discard whatever was done in it.
-pub async fn create_pr_worktree(app: AppHandle, repo_path: String, number: u64, sha: String, setup: bool) -> Result<String, String> {
+pub async fn create_pr_worktree(
+    app: AppHandle,
+    repo_path: String,
+    number: u64,
+    sha: String,
+    setup: bool,
+) -> Result<String, String> {
     crate::exec::git_write("create_pr_worktree", repo_path.clone(), move || {
         let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path), setup)?;
         let target = target.to_string_lossy().into_owned();
@@ -322,18 +354,29 @@ pub async fn create_pr_worktree(app: AppHandle, repo_path: String, number: u64, 
 
 /// `setup` false for a fork's head: the setup command is the user's, but that
 /// tree is a stranger's, and its install scripts would run with nobody watching.
-pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, container: &Path, setup: bool) -> Result<PathBuf, String> {
+pub(crate) fn create_pr_worktree_in(
+    repo: &str,
+    number: u64,
+    sha: &str,
+    container: &Path,
+    setup: bool,
+) -> Result<PathBuf, String> {
     let branch = format!("pr-{number}");
     if branch_exists(repo, &branch) {
         let at = rev_parse(repo, &format!("refs/heads/{branch}"))?;
         if at != sha {
-            return Err(format!("{branch} is at {at}, the pull request is at {sha}: remove its worktree and branch to review again"));
+            return Err(format!(
+                "{branch} is at {at}, the pull request is at {sha}: remove its worktree and branch to review again"
+            ));
         }
     }
     let (path, created) = add_worktree_in(repo, &branch, container, Some(sha))?;
     let at = rev_parse(&path.to_string_lossy(), "HEAD")?;
     if at != sha {
-        return Err(format!("the worktree at {} is at {at}, the pull request is at {sha}: remove it to review again", path.display()));
+        return Err(format!(
+            "the worktree at {} is at {at}, the pull request is at {sha}: remove it to review again",
+            path.display()
+        ));
     }
     if created && setup {
         crate::setup::on_created(repo, &path);
@@ -342,7 +385,10 @@ pub(crate) fn create_pr_worktree_in(repo: &str, number: u64, sha: &str, containe
 }
 
 fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
-    let out = crate::exec::git_in(repo).args(["rev-parse", "--verify", rev]).output().map_err(|e| e.to_string())?;
+    let out = crate::exec::git_in(repo)
+        .args(["rev-parse", "--verify", rev])
+        .output()
+        .map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -375,9 +421,14 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
     }
     crate::git::not_an_option(branch)?;
     crate::git::not_an_option(base.unwrap_or_default())?;
-    if let Some(existing) = list_worktrees_body(repo.to_string())?.into_iter().find(|w| w.branch == branch) {
+    if let Some(existing) = list_worktrees_body(repo.to_string())?
+        .into_iter()
+        .find(|w| w.branch == branch)
+    {
         if existing.is_main && !existing.is_bare {
-            return Err(format!("Branch \"{branch}\" is checked out in the repository itself; switch it away first."));
+            return Err(format!(
+                "Branch \"{branch}\" is checked out in the repository itself; switch it away first."
+            ));
         }
         return Ok((PathBuf::from(existing.path), false));
     }
@@ -398,9 +449,7 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
         let start = match base.map(str::trim).filter(|b| !b.is_empty()) {
             Some(b) => Some(resolve_base(repo, b)?),
             None => {
-                let _ = crate::exec::git_in(repo)
-                    .arg("fetch")
-                    .output();
+                let _ = crate::exec::git_in(repo).arg("fetch").output();
                 new_branch_start_point(repo, branch)
             }
         };
@@ -453,7 +502,10 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
             // An untracked entry: a .shared symlink is not dirt, anything else is.
             if let Some(ref lc) = shared_canon {
                 let p = worktree.join(name);
-                let is_link = p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false);
+                let is_link = p
+                    .symlink_metadata()
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false);
                 if is_link {
                     if let Ok(target) = std::fs::canonicalize(&p) {
                         if target.starts_with(lc) {
@@ -532,7 +584,12 @@ pub(crate) fn resolve_remote_branch(repo: &Path, branch: &str) -> Option<(String
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect::<Vec<_>>())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     // Origin first, then the rest, so the common case resolves to origin.
     let ordered = remotes
@@ -595,7 +652,11 @@ pub async fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
 pub(crate) fn worktree_status_body(path: String) -> Result<WorktreeStatus, String> {
     let p = Path::new(&path);
     let has_remote = branch_at(p).and_then(|b| resolve_remote_branch(p, &b)).is_some();
-    Ok(WorktreeStatus { dirty: tree_dirty(p)?, unpushed: branch_unpushed(p), has_remote })
+    Ok(WorktreeStatus {
+        dirty: tree_dirty(p)?,
+        unpushed: branch_unpushed(p),
+        has_remote,
+    })
 }
 
 #[derive(Serialize)]
@@ -662,12 +723,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
 /// runs in the UI before this is called; `force` skips the dirty guard once the
 /// confirm dialog has warned about it.
 #[tauri::command(async)]
-pub fn remove_worktree(
-    app: AppHandle,
-    repo_path: String,
-    worktree_path: String,
-    force: bool,
-) -> Result<(), String> {
+pub fn remove_worktree(app: AppHandle, repo_path: String, worktree_path: String, force: bool) -> Result<(), String> {
     let lock = crate::exec::repo_lock(&repo_path);
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     do_remove_worktree(&repo_path, &worktree_path, force)?;
@@ -729,8 +785,8 @@ pub fn remove_worktree_and_branch(
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_tmp() -> PathBuf {
@@ -797,7 +853,10 @@ mod tests {
         // config.toml is freshly symlinked into the worktree.
         let cfg_meta = std::fs::symlink_metadata(wt.join("config.toml")).unwrap();
         assert!(cfg_meta.file_type().is_symlink());
-        assert_eq!(std::fs::read_link(wt.join("config.toml")).unwrap(), shared.join("config.toml"));
+        assert_eq!(
+            std::fs::read_link(wt.join("config.toml")).unwrap(),
+            shared.join("config.toml")
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -824,7 +883,13 @@ mod tests {
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
         Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
@@ -866,7 +931,13 @@ mod tests {
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
         Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
@@ -874,7 +945,10 @@ mod tests {
         git(&cont, &["config", "user.name", "t"]);
         // A bare clone has no remote-tracking refs; set the standard refspec and
         // fetch so origin/main exists (what the bootstrap does).
-        git(&cont, &["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+        git(
+            &cont,
+            &["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+        );
         git(&cont, &["fetch", "-q", "origin"]);
         git(&cont, &["worktree", "add", "-q", "main", "main"]);
         let wt = cont.join("main");
@@ -921,7 +995,13 @@ mod tests {
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
         Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
@@ -934,13 +1014,23 @@ mod tests {
         assert!(!remote_branch_exists(repo, "fork"), "the head is on no origin branch");
 
         let mut prefs = std::collections::HashMap::new();
-        prefs.insert(repo.to_string(), crate::settings::WorktreePrefs { setup_command: "true".into(), setup_wait: false });
+        prefs.insert(
+            repo.to_string(),
+            crate::settings::WorktreePrefs {
+                setup_command: "true".into(),
+                setup_wait: false,
+            },
+        );
         crate::setup::seam(prefs, tmp.join("logs"));
         let wt = create_pr_worktree_in(repo, 7, &first, &cont, false).unwrap();
         assert!(crate::setup::status(&wt).is_none(), "a fork's head runs no setup");
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first);
         let again = create_pr_worktree_in(repo, 7, &first, &cont, true).unwrap();
-        assert_eq!(again.canonicalize().unwrap(), wt.canonicalize().unwrap(), "the same head reuses it");
+        assert_eq!(
+            again.canonicalize().unwrap(),
+            wt.canonicalize().unwrap(),
+            "the same head reuses it"
+        );
 
         std::fs::write(src.join("a.txt"), "pushed again").unwrap();
         git(&src, &["checkout", "-q", "refs/pull/7/head"]);
@@ -949,7 +1039,11 @@ mod tests {
         let moved = fetch();
         let err = create_pr_worktree_in(repo, 7, &moved, &cont, true).unwrap_err();
         assert!(err.contains("pr-7 is at"), "{err}");
-        assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first, "the worktree is left where it was");
+        assert_eq!(
+            rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(),
+            first,
+            "the worktree is left where it was"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1030,8 +1124,14 @@ mod tests {
         let cont_s = cont.to_string_lossy().into_owned();
 
         // A branch matching a remote tracks it; anything else falls to the default.
-        assert_eq!(new_branch_start_point(&cont_s, "feature").as_deref(), Some("origin/feature"));
-        assert_eq!(new_branch_start_point(&cont_s, "brand-new").as_deref(), Some("origin/main"));
+        assert_eq!(
+            new_branch_start_point(&cont_s, "feature").as_deref(),
+            Some("origin/feature")
+        );
+        assert_eq!(
+            new_branch_start_point(&cont_s, "brand-new").as_deref(),
+            Some("origin/main")
+        );
         assert!(remote_branch_exists(&cont_s, "feature"));
         assert!(!remote_branch_exists(&cont_s, "brand-new"));
 
@@ -1050,26 +1150,45 @@ mod tests {
         std::fs::write(src.join("a.txt"), "hi").unwrap();
         git(&src, &["add", "."]);
         git(&src, &["commit", "-qm", "init"]);
-        assert!(list_worktrees_body(src.to_string_lossy().into_owned()).unwrap().iter().all(|w| !w.is_bare));
+        assert!(list_worktrees_body(src.to_string_lossy().into_owned())
+            .unwrap()
+            .iter()
+            .all(|w| !w.is_bare));
 
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
         Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
         git(&cont, &["worktree", "add", "-q", "main", "main"]);
         let cont_s = cont.to_string_lossy().into_owned();
         let listed = list_worktrees_body(cont_s.clone()).unwrap();
-        assert_eq!(listed.iter().filter(|w| w.is_bare).count(), 1, "exactly one bare record: {:?}", listed.iter().map(|w| &w.path).collect::<Vec<_>>());
+        assert_eq!(
+            listed.iter().filter(|w| w.is_bare).count(),
+            1,
+            "exactly one bare record: {:?}",
+            listed.iter().map(|w| &w.path).collect::<Vec<_>>()
+        );
         assert!(listed.iter().any(|w| !w.is_bare && w.branch == "main"));
 
         assert!(repo_readable(&cont_s));
         assert!(repo_readable(&src.to_string_lossy()));
         std::fs::remove_dir_all(&src).unwrap();
         assert!(!repo_readable(&src.to_string_lossy()), "a deleted dir is not a repo");
-        assert!(list_worktrees_body(src.to_string_lossy().into_owned()).unwrap().is_empty(), "which list alone cannot tell from empty");
+        assert!(
+            list_worktrees_body(src.to_string_lossy().into_owned())
+                .unwrap()
+                .is_empty(),
+            "which list alone cannot tell from empty"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1092,7 +1211,13 @@ mod tests {
         let command = |then: &str| format!("echo \"$TORI_WORKTREE_PATH\" >> '{}'; {then}", runs.display());
         let seam = |command: String| {
             let mut prefs = std::collections::HashMap::new();
-            prefs.insert(repo_s.clone(), crate::settings::WorktreePrefs { setup_command: command, setup_wait: false });
+            prefs.insert(
+                repo_s.clone(),
+                crate::settings::WorktreePrefs {
+                    setup_command: command,
+                    setup_wait: false,
+                },
+            );
             crate::setup::seam(prefs, tmp.join("logs"));
         };
         let settle = |wt: &Path| crate::setup::wait(wt, std::time::Duration::from_secs(10)).unwrap();
@@ -1102,7 +1227,11 @@ mod tests {
         assert_eq!(settle(&wt).state, crate::setup::State::Done);
         assert_eq!(std::fs::read_to_string(&runs).unwrap().trim(), wt.to_string_lossy());
         create_worktree_in(&repo_s, "a", &cont, None).unwrap();
-        assert_eq!(std::fs::read_to_string(&runs).unwrap().lines().count(), 1, "a reused worktree runs no second setup");
+        assert_eq!(
+            std::fs::read_to_string(&runs).unwrap().lines().count(),
+            1,
+            "a reused worktree runs no second setup"
+        );
 
         seam(command("sleep 30"));
         let b = create_worktree_in(&repo_s, "b", &cont, None).unwrap();
@@ -1135,8 +1264,17 @@ mod tests {
         let made = create_worktree_in(&repo_s, "feat/x", &container, None).unwrap();
         assert_eq!(made, container.join("x"));
         assert!(made.join("a.txt").is_file());
-        let status = Command::new("git").arg("-C").arg(&repo).args(["status", "--porcelain"]).output().unwrap();
-        assert_eq!(String::from_utf8_lossy(&status.stdout).trim(), "", "the plain repo stays clean");
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["status", "--porcelain"])
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&status.stdout).trim(),
+            "",
+            "the plain repo stays clean"
+        );
 
         // A second call reuses the worktree it made.
         assert_eq!(create_worktree_in(&repo_s, "feat/x", &container, None).unwrap(), made);
@@ -1166,7 +1304,15 @@ mod tests {
         std::fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-q"]);
         git(&repo, &["remote", "add", "origin", src.to_str().unwrap()]);
-        git(&repo, &["fetch", "-q", "origin", "+refs/heads/207-ticket-flow:refs/remotes/origin/207-ticket-flow"]);
+        git(
+            &repo,
+            &[
+                "fetch",
+                "-q",
+                "origin",
+                "+refs/heads/207-ticket-flow:refs/remotes/origin/207-ticket-flow",
+            ],
+        );
         let repo_s = repo.to_string_lossy().into_owned();
         let container = repo.join(".tori/worktrees");
         std::fs::create_dir_all(&container).unwrap();
@@ -1178,7 +1324,10 @@ mod tests {
             .args(["rev-parse", "--abbrev-ref", "207-ticket-flow@{u}"])
             .output()
             .unwrap();
-        assert_eq!(String::from_utf8_lossy(&upstream.stdout).trim(), "origin/207-ticket-flow");
+        assert_eq!(
+            String::from_utf8_lossy(&upstream.stdout).trim(),
+            "origin/207-ticket-flow"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 

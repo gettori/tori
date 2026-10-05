@@ -145,19 +145,12 @@ export default function SessionInfo(props: {
   return (
     <Show when={!empty()}>
       <div class={styles.sessionInfo}>
-        <button
-          type="button"
-          class={styles.sessionInfoToggle}
-          aria-expanded={open()}
-          onClick={() => setOpen(!open())}
-        >
+        <button type="button" class={styles.sessionInfoToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
           Session
           <Show when={props.mcpServers.length}>{(n) => <span> · {n()} MCP</span>}</Show>
           {/* Surfaced in the summary because a broken server is the whole
               reason someone opens this. */}
-          <Show when={broken().length}>
-            {(n) => <span class={styles.sessionInfoBad}> · {n()} not connected</span>}
-          </Show>
+          <Show when={broken().length}>{(n) => <span class={styles.sessionInfoBad}> · {n()} not connected</span>}</Show>
           <Show when={props.skills.length}>{(n) => <span> · {n()} skills</span>}</Show>
         </button>
         <Show when={open()}>
@@ -277,11 +270,7 @@ export default function SessionInfo(props: {
                   }
                 >
                   <form onSubmit={addServer}>
-                    <input
-                      placeholder="name"
-                      value={name()}
-                      onInput={(ev) => setName(ev.currentTarget.value)}
-                    />
+                    <input placeholder="name" value={name()} onInput={(ev) => setName(ev.currentTarget.value)} />
                     <input
                       placeholder="npx -y @scope/server"
                       value={command()}

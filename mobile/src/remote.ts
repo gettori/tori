@@ -84,7 +84,10 @@ export function pair(url: string, code: string, name: string): Promise<Saved> {
       reject(e instanceof Error ? e : new Error(String(e)));
       return;
     }
-    socket.onopen = () => socket.send(JSON.stringify({ jsonrpc: "2.0", id: 0, method: "pair", params: { code, name, install: installId() } }));
+    socket.onopen = () =>
+      socket.send(
+        JSON.stringify({ jsonrpc: "2.0", id: 0, method: "pair", params: { code, name, install: installId() } }),
+      );
     socket.onmessage = (message) => {
       const frame = JSON.parse(String(message.data)) as Frame;
       done(() => {
@@ -106,7 +109,10 @@ export class RemoteClient {
   private setGeneration: (n: number) => void;
   private socket: WebSocket | null = null;
   private nextId = 1;
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  private pending = new Map<
+    number,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+  >();
   private topics = new Map<string, Set<(data: unknown) => void>>();
   private retryMs = 1000;
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -143,7 +149,8 @@ export class RemoteClient {
       handlers.delete(handler);
       if (handlers.size > 0) return;
       this.topics.delete(topic);
-      if (this.status() === "open" && this.socket) void this.send(this.socket, "unsubscribe", { topic }).catch(() => {});
+      if (this.status() === "open" && this.socket)
+        void this.send(this.socket, "unsubscribe", { topic }).catch(() => {});
     };
   }
 

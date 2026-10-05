@@ -128,7 +128,10 @@ describe("requestCodeActions", () => {
     };
     expect(params.textDocument.uri).toBe("file:///proj/a.ts");
     expect(params.range).toEqual(range(3, 6, 3, 6));
-    expect(params.context.diagnostics.map((d) => d.code), "only the one under the caret").toEqual([2304]);
+    expect(
+      params.context.diagnostics.map((d) => d.code),
+      "only the one under the caret",
+    ).toEqual([2304]);
     expect(params.context.triggerKind, "a person asked").toBe(1);
   });
 
@@ -136,7 +139,9 @@ describe("requestCodeActions", () => {
     const t = target({ provides: ["codeActionProvider"] });
     targets = [t];
     rememberDiagnostics("file:///proj/a.ts", "ts", [{ range: range(3, 4, 3, 9), message: "type", code: 2304 }]);
-    rememberDiagnostics("file:///proj/a.ts", "eslint", [{ range: range(3, 4, 3, 9), message: "lint", code: "no-undef" }]);
+    rememberDiagnostics("file:///proj/a.ts", "eslint", [
+      { range: range(3, 4, 3, 9), message: "lint", code: "no-undef" },
+    ]);
 
     await requestCodeActions("/proj/a.ts", range(3, 6, 3, 6));
 
@@ -175,7 +180,10 @@ describe("requestSourceAction", () => {
   it("names the kind it wants, since a server computes a source action only when asked", () => {
     // tsserver does not volunteer organize-imports in an unfiltered answer, so
     // without `only` the command comes back empty against a working server.
-    const t = target({ provides: ["codeActionProvider"], res: [{ title: "Organize", kind: "source.organizeImports" }] });
+    const t = target({
+      provides: ["codeActionProvider"],
+      res: [{ title: "Organize", kind: "source.organizeImports" }],
+    });
     targets = [t];
 
     return requestSourceAction("/proj/a.ts", "source.organizeImports", whole).then(() => {
@@ -185,7 +193,9 @@ describe("requestSourceAction", () => {
   });
 
   it("hands back the one action the server offered", async () => {
-    targets = [target({ provides: ["codeActionProvider"], res: [{ title: "Organize", kind: "source.organizeImports" }] })];
+    targets = [
+      target({ provides: ["codeActionProvider"], res: [{ title: "Organize", kind: "source.organizeImports" }] }),
+    ];
 
     const action = await requestSourceAction("/proj/a.ts", "source.organizeImports", whole);
 
@@ -257,9 +267,7 @@ describe("normalizeCodeActions", () => {
   it("reads a bare Command as an action whose only step is running it", () => {
     // Still permitted by the spec even with literal support declared, and what
     // an older server answers on the same code path.
-    const [a] = normalizeCodeActions([
-      { title: "Run fix", command: "_typescript.applyFix", arguments: [1, 2] },
-    ]);
+    const [a] = normalizeCodeActions([{ title: "Run fix", command: "_typescript.applyFix", arguments: [1, 2] }]);
 
     expect(a.title).toBe("Run fix");
     expect(a.command).toEqual({ title: "Run fix", command: "_typescript.applyFix", arguments: [1, 2] });
@@ -581,7 +589,11 @@ describe("groupedCodeActions", () => {
   const a = (title: string, kind?: string, isPreferred?: boolean) => ({ title, kind, isPreferred });
 
   it("puts quick fixes above refactors above source actions", async () => {
-    const groups = groupedCodeActions([a("extract", "refactor.extract"), a("organize", "source.organizeImports"), a("import", "quickfix")]);
+    const groups = groupedCodeActions([
+      a("extract", "refactor.extract"),
+      a("organize", "source.organizeImports"),
+      a("import", "quickfix"),
+    ]);
     expect(groups.map((g) => g.map((x) => x.title))).toEqual([["import"], ["extract"], ["organize"]]);
   });
 

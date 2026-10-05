@@ -13,14 +13,7 @@
 // Anchored rather than centred, since a model is a property of the composer bar
 // and a modal over the transcript claimed more of the screen, and more of the
 // user's attention, than picking one is worth.
-import {
-  For,
-  Show,
-  createMemo,
-  createSignal,
-  createUniqueId,
-  type JSX,
-} from 'solid-js';
+import { For, Show, createMemo, createSignal, createUniqueId, type JSX } from "solid-js";
 import {
   ArrowDown,
   ArrowRightToLine,
@@ -31,21 +24,17 @@ import {
   RefreshCw,
   Search,
   Wrench,
-} from 'lucide-solid';
-import AgentGlyph from '../../components/Icon/AgentGlyph';
-import OverlayScroll from '../../components/Scrollbar/OverlayScroll';
-import Popover from '../../components/Popover/Popover';
-import Icon from '../../components/Icon/Icon';
-import Tooltip from '../../components/Tooltip/Tooltip';
-import {
-  filterProviders,
-  splitModelDisplay,
-  type PaletteProvider,
-} from './agentPaletteData';
-import type { PickableModel } from '../../utils/chatModels';
-import styles from './AgentPalette.module.css';
+} from "lucide-solid";
+import AgentGlyph from "../../components/Icon/AgentGlyph";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import Popover from "../../components/Popover/Popover";
+import Icon from "../../components/Icon/Icon";
+import Tooltip from "../../components/Tooltip/Tooltip";
+import { filterProviders, splitModelDisplay, type PaletteProvider } from "./agentPaletteData";
+import type { PickableModel } from "../../utils/chatModels";
+import styles from "./AgentPalette.module.css";
 
-type Pane = 'providers' | 'models';
+type Pane = "providers" | "models";
 
 export default function AgentPalette(props: {
   providers: readonly PaletteProvider[];
@@ -73,12 +62,11 @@ export default function AgentPalette(props: {
   onRecheck?: (agentId: string, profile: string | null) => void;
   onClose: () => void;
 }) {
-  const [query, setQuery] = createSignal('');
-  const [pane, setPane] = createSignal<Pane>('models');
+  const [query, setQuery] = createSignal("");
+  const [pane, setPane] = createSignal<Pane>("models");
   /** The row this chat is actually on. An agent with two accounts is two rows
    *  and only one of them wears the marks. */
-  const isCurrent = (p: PaletteProvider) =>
-    p.agentId === props.agentId && p.profile === props.profile;
+  const isCurrent = (p: PaletteProvider) => p.agentId === props.agentId && p.profile === props.profile;
   // Null until the reader names a row. The row in force is the fallback below
   // rather than a seed here, because a seed is a snapshot: a palette whose
   // provider list arrives after mount would have snapshotted nothing.
@@ -94,24 +82,14 @@ export default function AgentPalette(props: {
   // opens on the pair this chat is already on, and the filter can drop whatever
   // was highlighted, leaving a list with rows and no answer for Enter.
   const provider = createMemo(
-    () =>
-      filtered().find((p) => p.key === hiProvider()) ??
-      filtered().find(isCurrent) ??
-      filtered()[0] ??
-      null,
+    () => filtered().find((p) => p.key === hiProvider()) ?? filtered().find(isCurrent) ?? filtered()[0] ?? null,
   );
-  const models = createMemo<readonly PickableModel[]>(
-    () => provider()?.models ?? [],
-  );
-  const model = createMemo(
-    () => models().find((m) => m.value === hiModel()) ?? models()[0] ?? null,
-  );
+  const models = createMemo<readonly PickableModel[]>(() => provider()?.models ?? []);
+  const model = createMemo(() => models().find((m) => m.value === hiModel()) ?? models()[0] ?? null);
   /** The cursor as a row somebody named: the reader's arrows, or the model in
    *  force when the palette opened on one. Null while nothing in this list has
    *  been named, which is where `model()`'s fallback takes over. */
-  const namedModel = createMemo(
-    () => models().find((m) => m.value === hiModel()) ?? null,
-  );
+  const namedModel = createMemo(() => models().find((m) => m.value === hiModel()) ?? null);
   /** What actually gets a fill. Two conditions, and both are about not lighting
    *  a row the reader did not put the cursor on: the fallback would light the
    *  first row of every untouched list, and the model in force already wears
@@ -129,7 +107,7 @@ export default function AgentPalette(props: {
   }
 
   function move(delta: number) {
-    if (pane() === 'providers') {
+    if (pane() === "providers") {
       const rows = filtered();
       if (!rows.length) return;
       const at = rows.findIndex((p) => p === provider());
@@ -151,8 +129,8 @@ export default function AgentPalette(props: {
   function commit() {
     const target = provider();
     if (!target) return;
-    if (pane() === 'providers') {
-      if (target.selectable) return setPane('models');
+    if (pane() === "providers") {
+      if (target.selectable) return setPane("models");
       return props.onFix?.(target.agentId);
     }
     const picked = model();
@@ -163,19 +141,15 @@ export default function AgentPalette(props: {
     // Claimed here rather than left to the app: the palette is the one place
     // that knows *which* agent's settings the reader means, and the footer says
     // this key does something, so it has to.
-    if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    if ((e.metaKey || e.ctrlKey) && e.key === ",") {
       e.preventDefault();
       props.onFix?.(provider()?.agentId ?? props.agentId);
       return;
     }
-    if (e.key === 'ArrowDown') return (e.preventDefault(), move(1));
-    if (e.key === 'ArrowUp') return (e.preventDefault(), move(-1));
-    if (e.key === 'Tab')
-      return (
-        e.preventDefault(),
-        setPane(pane() === 'models' ? 'providers' : 'models')
-      );
-    if (e.key === 'Enter') return (e.preventDefault(), commit());
+    if (e.key === "ArrowDown") return (e.preventDefault(), move(1));
+    if (e.key === "ArrowUp") return (e.preventDefault(), move(-1));
+    if (e.key === "Tab") return (e.preventDefault(), setPane(pane() === "models" ? "providers" : "models"));
+    if (e.key === "Enter") return (e.preventDefault(), commit());
   }
 
   /** The heading's fact slot: the count, or the agent's own state when that is
@@ -183,13 +157,13 @@ export default function AgentPalette(props: {
    *  title already says what it counts. */
   const headFact = () => {
     const p = provider();
-    if (!p) return 'nothing to show';
-    if (p.health.kind === 'fix') return p.health.reason.toLowerCase();
-    if (p.health.kind === 'probing') return 'probing';
+    if (!p) return "nothing to show";
+    if (p.health.kind === "fix") return p.health.reason.toLowerCase();
+    if (p.health.kind === "probing") return "probing";
     // The plan leads the count where there is one: it is what says whose answer
     // this list is, which only means anything once there are two accounts to
     // tell apart. Same rule the agent card's models pane follows.
-    return [p.plan, `${models().length}`].filter(Boolean).join(', ');
+    return [p.plan, `${models().length}`].filter(Boolean).join(", ");
   };
 
   /** What there is to filter, over the whole hand rather than the filtered
@@ -198,12 +172,10 @@ export default function AgentPalette(props: {
    *  provider clause, since "across 1 provider" is the lock restated as if it
    *  were a count. */
   const filterHint = () => {
-    if (props.providers.length === 0) return 'Nothing to filter';
+    if (props.providers.length === 0) return "Nothing to filter";
     const total = props.providers.reduce((n, p) => n + p.models.length, 0);
-    const m = `${total} ${total === 1 ? 'model' : 'models'}`;
-    return props.providers.length === 1
-      ? `Filter ${m}`
-      : `Filter ${m} across ${props.providers.length} providers`;
+    const m = `${total} ${total === 1 ? "model" : "models"}`;
+    return props.providers.length === 1 ? `Filter ${m}` : `Filter ${m} across ${props.providers.length} providers`;
   };
 
   // Per instance, not a constant: every chat tab has a palette of its own, and a
@@ -215,13 +187,13 @@ export default function AgentPalette(props: {
   // `aria-activedescendant` is a space-separated list of ids, so a row id with
   // one in it would name two elements. Neither an agent id nor an account id
   // contains a space, so replacing the join is lossless.
-  const rowId = (kind: Pane, key: string) => `${id}-${kind}-${key.replace(/ /g, '-')}`;
+  const rowId = (kind: Pane, key: string) => `${id}-${kind}-${key.replace(/ /g, "-")}`;
   const activeId = () => {
     // The named row, not `model()`'s fallback: a row nothing has named carries
     // no mark of any kind, and announcing it would tell a screen reader
     // something the screen does not say. The model in force does qualify, since
     // it is marked from the moment the palette opens.
-    const key = pane() === 'providers' ? provider()?.key : namedModel()?.value;
+    const key = pane() === "providers" ? provider()?.key : namedModel()?.value;
     return key === undefined || key === null ? undefined : rowId(pane(), key);
   };
 
@@ -233,14 +205,12 @@ export default function AgentPalette(props: {
   /** The row's second line: the provider's own sentence when it sent one, else
    *  the model's id, which is what an ACP catalogue has instead of prose. Empty
    *  when the label already is the id, rather than printing it twice. */
-  const rowSub = (m: PickableModel) =>
-    m.description || (m.value !== m.label ? m.value : '');
+  const rowSub = (m: PickableModel) => m.description || (m.value !== m.label ? m.value : "");
 
   /** The split display for agents whose labels carry a provider path, per the
    *  adapter's own flag. Null everywhere else, including for a flagged agent's
    *  plain-named model, which falls back to the ordinary two lines. */
-  const display = (m: PickableModel) =>
-    provider()?.splitModels ? splitModelDisplay(m.label, m.value) : null;
+  const display = (m: PickableModel) => (provider()?.splitModels ? splitModelDisplay(m.label, m.value) : null);
 
   return (
     <Popover
@@ -265,7 +235,7 @@ export default function AgentPalette(props: {
           type="text"
           role="combobox"
           aria-expanded="true"
-          aria-controls={`${paneId('providers')} ${paneId('models')}`}
+          aria-controls={`${paneId("providers")} ${paneId("models")}`}
           aria-activedescendant={activeId()}
           aria-label="Filter agents and models"
           placeholder={filterHint()}
@@ -282,16 +252,13 @@ export default function AgentPalette(props: {
       </div>
 
       <div class={styles.panes}>
-        <div
-          class={styles.agents}
-          classList={{ [styles.paneActive]: pane() === 'providers' }}
-        >
+        <div class={styles.agents} classList={{ [styles.paneActive]: pane() === "providers" }}>
           <OverlayScroll class={styles.scroll}>
-            <div id={paneId('providers')} role="listbox" aria-label="Agents">
+            <div id={paneId("providers")} role="listbox" aria-label="Agents">
               <For each={filtered()}>
                 {(p) => (
                   <div
-                    id={rowId('providers', p.key)}
+                    id={rowId("providers", p.key)}
                     class={styles.row}
                     // Not gated on the pane: this row names what the list on
                     // the right is *of*, which stays true while the arrows are
@@ -302,7 +269,7 @@ export default function AgentPalette(props: {
                     aria-selected={isCurrent(p)}
                     onClick={() => {
                       highlightProvider(p);
-                      setPane('models');
+                      setPane("models");
                     }}
                   >
                     <span class={styles.glyph}>
@@ -310,10 +277,7 @@ export default function AgentPalette(props: {
                       <HealthDot health={p.health} />
                     </span>
                     <span class={styles.rowName}>{p.label}</span>
-                    <ProviderState
-                      provider={p}
-                      onFix={() => props.onFix?.(p.agentId)}
-                    />
+                    <ProviderState provider={p} onFix={() => props.onFix?.(p.agentId)} />
                   </div>
                 )}
               </For>
@@ -332,27 +296,18 @@ export default function AgentPalette(props: {
           </OverlayScroll>
         </div>
 
-        <div
-          class={styles.models}
-          classList={{ [styles.paneActive]: pane() === 'models' }}
-        >
+        <div class={styles.models} classList={{ [styles.paneActive]: pane() === "models" }}>
           {/* The agent as itself, then its list introduced the way Settings
               introduces the same list (`.groupHead`): the word, a rule, the
               count. No glyph: the left pane already wears it, and twice at
               this distance read as decoration. */}
           <div class={styles.head}>
-            <Show
-              when={provider()}
-              keyed
-              fallback={<div class={styles.headAgent}>No agent</div>}
-            >
+            <Show when={provider()} keyed fallback={<div class={styles.headAgent}>No agent</div>}>
               {(p) => (
                 <>
                   <div class={styles.headAgent}>
                     <span class={styles.headName}>{p.label}</span>
-                    <Show when={p.version}>
-                      {(v) => <span class={styles.headVersion}>v{v()}</span>}
-                    </Show>
+                    <Show when={p.version}>{(v) => <span class={styles.headVersion}>v{v()}</span>}</Show>
                     <span class={styles.headRule} />
                     <span class={styles.headFact}>{headFact()}</span>
                     <Show when={props.onRecheck}>
@@ -362,11 +317,11 @@ export default function AgentPalette(props: {
                           type="button"
                           class={styles.recheck}
                           classList={{
-                            [styles.recheckBusy]: p.health.kind === 'probing',
+                            [styles.recheckBusy]: p.health.kind === "probing",
                           }}
                           aria-label={`Check ${p.label} for new models`}
                           label="Check again"
-                          disabled={p.health.kind === 'probing'}
+                          disabled={p.health.kind === "probing"}
                           onMouseDown={(e: MouseEvent) => e.preventDefault()}
                           onClick={() => recheck()(p.agentId, p.profile)}
                         >
@@ -381,16 +336,15 @@ export default function AgentPalette(props: {
           </div>
 
           <OverlayScroll class={styles.scroll}>
-            <div id={paneId('models')} role="listbox" aria-label="Models">
+            <div id={paneId("models")} role="listbox" aria-label="Models">
               <For each={models()}>
                 {(m) => (
                   <div
-                    id={rowId('models', m.value)}
+                    id={rowId("models", m.value)}
                     class={styles.row}
                     classList={{
                       [styles.modelRow]: true,
-                      [styles.rowActive]:
-                        pane() === 'models' && m === shownModel(),
+                      [styles.rowActive]: pane() === "models" && m === shownModel(),
                       [styles.rowInert]: !provider()?.selectable,
                       [styles.rowCurrent]: inForce(m),
                     }}
@@ -399,16 +353,12 @@ export default function AgentPalette(props: {
                     aria-disabled={!provider()?.selectable}
                     onClick={() => {
                       const target = provider();
-                      if (target?.selectable)
-                        props.onSelect(target.agentId, target.profile, m);
+                      if (target?.selectable) props.onSelect(target.agentId, target.profile, m);
                     }}
                   >
                     <span class={styles.rowText}>
                       <span class={styles.rowTitle}>
-                        <span
-                          class={styles.rowName}
-                          classList={{ [styles.rowId]: m.userConfigured }}
-                        >
+                        <span class={styles.rowName} classList={{ [styles.rowId]: m.userConfigured }}>
                           {display(m)?.name ?? m.label}
                         </span>
                         <Show when={inForce(m)}>
@@ -440,15 +390,11 @@ export default function AgentPalette(props: {
                               {(seg, i) => (
                                 <>
                                   <Show when={i() > 0}>
-                                    <span
-                                      class={styles.sep}
-                                      aria-hidden="true"
-                                    />
+                                    <span class={styles.sep} aria-hidden="true" />
                                   </Show>
                                   <span
                                     classList={{
-                                      [styles.rowDescId]:
-                                        i() === d().segments.length - 1,
+                                      [styles.rowDescId]: i() === d().segments.length - 1,
                                     }}
                                   >
                                     {seg}
@@ -465,7 +411,7 @@ export default function AgentPalette(props: {
               </For>
               <Show when={models().length === 0}>
                 <div class={styles.empty} role="status">
-                  {provider() ? 'No models known yet' : 'No models match'}
+                  {provider() ? "No models known yet" : "No models match"}
                 </div>
               </Show>
             </div>
@@ -484,21 +430,21 @@ export default function AgentPalette(props: {
             </kbd>
             <kbd>
               <Icon icon={ArrowDown} size={12} />
-            </kbd>{' '}
+            </kbd>{" "}
             move
           </span>
           <span class={styles.sep} />
           <span>
             <kbd>
               <Icon icon={ArrowRightToLine} size={12} />
-            </kbd>{' '}
+            </kbd>{" "}
             switch provider
           </span>
           <span class={styles.sep} />
           <span>
             <kbd>
               <Icon icon={CornerDownLeft} size={12} />
-            </kbd>{' '}
+            </kbd>{" "}
             select
           </span>
         </div>
@@ -529,26 +475,23 @@ export default function AgentPalette(props: {
  * answered, amber while it is being asked, and a hollow ring for one that is
  * not there. The word beside it is what says which.
  */
-function HealthDot(props: { health: PaletteProvider['health'] }): JSX.Element {
+function HealthDot(props: { health: PaletteProvider["health"] }): JSX.Element {
   const tone = () => {
-    if (props.health.kind === 'count') return styles.dotOk;
-    return props.health.kind === 'probing' ? styles.dotWait : styles.dotOff;
+    if (props.health.kind === "count") return styles.dotOk;
+    return props.health.kind === "probing" ? styles.dotWait : styles.dotOff;
   };
   return <span class={`${styles.dot} ${tone()}`} aria-hidden="true" />;
 }
 
 /** The right-hand end of an agent row: what Tori knows, or the one thing the
  *  user can do about not knowing it. */
-function ProviderState(props: {
-  provider: PaletteProvider;
-  onFix: () => void;
-}): JSX.Element {
+function ProviderState(props: { provider: PaletteProvider; onFix: () => void }): JSX.Element {
   // `keyed` hands the value itself rather than an accessor, which is what lets
   // the union narrow inside the branch.
   return (
     <Show when={props.provider.health} keyed>
       {(state) =>
-        state.kind === 'fix' ? (
+        state.kind === "fix" ? (
           // `Tooltip`, not a native `title`: a `title` never reaches the
           // keyboard (issue 102), and this row's whole job is being reachable.
           <Tooltip
@@ -566,9 +509,7 @@ function ProviderState(props: {
             Fix
           </Tooltip>
         ) : (
-          <span class={styles.rowMeta}>
-            {state.kind === 'probing' ? 'probing' : state.count}
-          </span>
+          <span class={styles.rowMeta}>{state.kind === "probing" ? "probing" : state.count}</span>
         )
       }
     </Show>

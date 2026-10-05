@@ -53,7 +53,13 @@ pub fn project_state_path(kind: &str, cwd: &str) -> PathBuf {
 fn sanitize_segment(value: &str) -> String {
     value
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -91,10 +97,18 @@ fn replace(path: &Path, text: &str, mode: u32) -> Result<(), String> {
     use std::os::unix::fs::OpenOptionsExt;
     let parent = path.parent().ok_or("no parent directory")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let tmp = parent.join(format!(".{}.tmp", path.file_name().unwrap_or_default().to_string_lossy()));
+    let tmp = parent.join(format!(
+        ".{}.tmp",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    ));
     let _ = std::fs::remove_file(&tmp);
     {
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(mode).open(&tmp).map_err(|e| e.to_string())?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(mode)
+            .open(&tmp)
+            .map_err(|e| e.to_string())?;
         f.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
         f.sync_all().map_err(|e| e.to_string())?;
     }
@@ -136,13 +150,26 @@ mod tests {
     fn nothing_in_the_basename_can_point_the_file_elsewhere() {
         let traversal = project_state_path("usage", "/tmp/..");
         let name = traversal.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with('-'), "a `..` should leave no basename at all, got {name}");
+        assert!(
+            name.starts_with('-'),
+            "a `..` should leave no basename at all, got {name}"
+        );
 
         let odd = project_state_path("usage", "/tmp/we ird.name");
         let name = odd.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with("we_ird_name-"), "every character outside the safe set is an underscore: {name}");
-        assert!(!name.contains('/'), "a separator would point the file elsewhere: {name}");
-        assert_eq!(odd.parent(), traversal.parent(), "and both still land under the same kind");
+        assert!(
+            name.starts_with("we_ird_name-"),
+            "every character outside the safe set is an underscore: {name}"
+        );
+        assert!(
+            !name.contains('/'),
+            "a separator would point the file elsewhere: {name}"
+        );
+        assert_eq!(
+            odd.parent(),
+            traversal.parent(),
+            "and both still land under the same kind"
+        );
     }
 
     #[test]
@@ -153,7 +180,11 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");
 
         write_atomically(&path, "{\"b\":2}").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"b\":2}", "the second write replaces rather than appends");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\"b\":2}",
+            "the second write replaces rather than appends"
+        );
 
         let leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap())
             .unwrap()
@@ -161,7 +192,10 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .filter(|n| n.ends_with(".tmp"))
             .collect();
-        assert!(leftovers.is_empty(), "the temp file should have been renamed away, not left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "the temp file should have been renamed away, not left behind: {leftovers:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

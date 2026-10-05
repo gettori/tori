@@ -128,9 +128,7 @@ fn user_config_path(profile_home: Option<&str>) -> Option<PathBuf> {
 /// scope appears once, at the narrowest scope that defines it, which is the
 /// one Claude will actually use.
 pub fn merge_scopes(project: Option<&Value>, user_state: Option<&Value>, cwd: &str) -> Vec<McpEntry> {
-    let project_entry = user_state
-        .and_then(|v| v.get("projects"))
-        .and_then(|p| p.get(cwd));
+    let project_entry = user_state.and_then(|v| v.get("projects")).and_then(|p| p.get(cwd));
     let enabled = string_list(project_entry, "enabledMcpjsonServers");
     let disabled = string_list(project_entry, "disabledMcpjsonServers");
     // "*" enables every .mcp.json server for the project in one go.
@@ -141,9 +139,19 @@ pub fn merge_scopes(project: Option<&Value>, user_state: Option<&Value>, cwd: &s
         // Narrowest wins: a later scope replaces an earlier definition of the
         // same name rather than showing the user two rows for one server.
         if let Some(existing) = out.iter_mut().find(|e| e.name == name) {
-            *existing = McpEntry { name, scope, approval, config };
+            *existing = McpEntry {
+                name,
+                scope,
+                approval,
+                config,
+            };
         } else {
-            out.push(McpEntry { name, scope, approval, config });
+            out.push(McpEntry {
+                name,
+                scope,
+                approval,
+                config,
+            });
         }
     };
 
@@ -238,11 +246,7 @@ pub fn add_to_project(
     Ok(list_for(cwd, profile_home))
 }
 
-pub fn remove_from_project(
-    cwd: &str,
-    name: &str,
-    profile_home: Option<&str>,
-) -> Result<Vec<McpEntry>, String> {
+pub fn remove_from_project(cwd: &str, name: &str, profile_home: Option<&str>) -> Result<Vec<McpEntry>, String> {
     let path = project_config_path(Path::new(cwd));
     match remove_server(read_json(&path), name) {
         Some(doc) => {
@@ -341,7 +345,10 @@ mod tests {
         // An approval recorded against a different cwd must not leak.
         let project = json!({ "mcpServers": { "p": stdio("p") } });
         let user = json!({ "projects": { "/other": { "enabledMcpjsonServers": ["p"] }}});
-        assert_eq!(merge_scopes(Some(&project), Some(&user), "/w")[0].approval, McpApproval::Pending);
+        assert_eq!(
+            merge_scopes(Some(&project), Some(&user), "/w")[0].approval,
+            McpApproval::Pending
+        );
     }
 
     #[test]

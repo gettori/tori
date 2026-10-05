@@ -68,7 +68,11 @@ const adapters = [
 ];
 vi.mock("../../utils/agents", async (orig) => {
   const actual = await orig<typeof import("../../utils/agents")>();
-  return { ...actual, agents: () => adapters, findAdapter: (id: string) => adapters.find((a) => a.id === id) ?? { id, label: id } };
+  return {
+    ...actual,
+    agents: () => adapters,
+    findAdapter: (id: string) => adapters.find((a) => a.id === id) ?? { id, label: id },
+  };
 });
 
 vi.mock("../../utils/agentHealth", async (orig) => ({
@@ -76,9 +80,7 @@ vi.mock("../../utils/agentHealth", async (orig) => ({
   // Named only where naming says something, which is what the real one does:
   // "Default" is a word for the only thing there is.
   profileLabel: (_id: string, profile: string | null) =>
-    bench.profiles.length > 1
-      ? (bench.profiles.find((p) => p.id === (profile ?? "default"))?.label ?? null)
-      : null,
+    bench.profiles.length > 1 ? (bench.profiles.find((p) => p.id === (profile ?? "default"))?.label ?? null) : null,
   // Claude is the one bundled agent whose `whoami` names an account. Codex's
   // answers in an exit code, so it reaches the card only through its probe.
   namedProfiles: (id: string) => (id === "claude" ? bench.profiles : []),

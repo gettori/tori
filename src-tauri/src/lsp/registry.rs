@@ -46,7 +46,11 @@ pub enum Launch {
     ProjectBin { program: String, args: Vec<String> },
     /// The user's own copy on the login PATH, else the one Tori installed from
     /// `[install]` under `~/.config/tori/servers/<id>/`.
-    Managed { program: String, args: Vec<String>, runtime: Runtime },
+    Managed {
+        program: String,
+        args: Vec<String>,
+        runtime: Runtime,
+    },
 }
 
 impl Launch {
@@ -80,10 +84,18 @@ pub enum Install {
     Npm { package: String, version: String },
     /// One release asset per platform, checked against its sha256 before it
     /// is unpacked. `version` is the release tag.
-    GithubRelease { repo: String, version: String, assets: BTreeMap<String, Asset> },
+    GithubRelease {
+        repo: String,
+        version: String,
+        assets: BTreeMap<String, Asset>,
+    },
     /// Text only, for a server its own toolchain installs. `update` and
     /// `uninstall` are that toolchain's commands for the other two jobs.
-    Hint { text: String, update: Option<String>, uninstall: Option<String> },
+    Hint {
+        text: String,
+        update: Option<String>,
+        uninstall: Option<String>,
+    },
 }
 
 impl Install {
@@ -348,8 +360,11 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
                 eprintln!("tori: lsp server {source}: unknown field `{key}`, ignoring");
             }
         }
-        let missing: Vec<&str> =
-            REQUIRED_TOP_LEVEL.iter().filter(|k| !table.contains_key(**k)).copied().collect();
+        let missing: Vec<&str> = REQUIRED_TOP_LEVEL
+            .iter()
+            .filter(|k| !table.contains_key(**k))
+            .copied()
+            .collect();
         if !missing.is_empty() {
             return Err(format!("{source}: missing required field(s): {}", missing.join(", ")));
         }
@@ -378,10 +393,14 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
     // debugging.
     let launch = match raw.launch.kind.as_str() {
         "bundled_node" => {
-            let entry = raw.launch.entry.ok_or_else(|| {
-                format!("{source}: launch.kind = \"bundled_node\" requires `entry`")
-            })?;
-            Launch::BundledNode { entry, args: raw.launch.args }
+            let entry = raw
+                .launch
+                .entry
+                .ok_or_else(|| format!("{source}: launch.kind = \"bundled_node\" requires `entry`"))?;
+            Launch::BundledNode {
+                entry,
+                args: raw.launch.args,
+            }
         }
         kind @ ("path" | "project_bin" | "managed") => {
             let program = raw
@@ -389,8 +408,14 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
                 .program
                 .ok_or_else(|| format!("{source}: launch.kind = \"{kind}\" requires `program`"))?;
             match kind {
-                "path" => Launch::Path { program, args: raw.launch.args },
-                "project_bin" => Launch::ProjectBin { program, args: raw.launch.args },
+                "path" => Launch::Path {
+                    program,
+                    args: raw.launch.args,
+                },
+                "project_bin" => Launch::ProjectBin {
+                    program,
+                    args: raw.launch.args,
+                },
                 _ => {
                     let runtime = match raw.launch.runtime.as_deref() {
                         Some("node") => Runtime::Node,
@@ -402,7 +427,11 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
                         }
                         None => return Err(format!("{source}: launch.kind = \"managed\" requires `runtime`")),
                     };
-                    Launch::Managed { program, args: raw.launch.args, runtime }
+                    Launch::Managed {
+                        program,
+                        args: raw.launch.args,
+                        runtime,
+                    }
                 }
             }
         }
@@ -413,17 +442,24 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         }
     };
 
-    let install = raw.install.map(|table| load_install(table, launch.program(), source)).transpose()?;
+    let install = raw
+        .install
+        .map(|table| load_install(table, launch.program(), source))
+        .transpose()?;
     // Tori installs into `~/.config/tori/servers/<id>/`, and only `managed`
     // looks there, so either one without the other is a server that can never
     // run what was installed for it.
     let installs = matches!(install, Some(Install::Npm { .. } | Install::GithubRelease { .. }));
     let managed = matches!(launch, Launch::Managed { .. });
     if managed && !installs {
-        return Err(format!("{source}: launch.kind = \"managed\" needs an [install] of kind npm or github_release"));
+        return Err(format!(
+            "{source}: launch.kind = \"managed\" needs an [install] of kind npm or github_release"
+        ));
     }
     if installs && !managed {
-        return Err(format!("{source}: [install] of kind npm or github_release needs launch.kind = \"managed\""));
+        return Err(format!(
+            "{source}: [install] of kind npm or github_release needs launch.kind = \"managed\""
+        ));
     }
 
     let runs_project_code = raw.runs_project_code || matches!(launch, Launch::ProjectBin { .. });
@@ -432,24 +468,32 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         None | Some("primary") => Role::Primary,
         Some("secondary") => Role::Secondary,
         Some(other) => {
-            return Err(format!("{source}: unknown role `{other}` (tori implements: primary, secondary)"))
+            return Err(format!(
+                "{source}: unknown role `{other}` (tori implements: primary, secondary)"
+            ))
         }
     };
 
     let feature = |name: &String| {
-        FEATURES.iter().find(|(n, _)| n == name).map(|(_, f)| *f).ok_or_else(|| {
-            let known = FEATURES.map(|(n, _)| n).join(", ");
-            format!("{source}: unknown feature `{name}` (tori implements: {known})")
-        })
+        FEATURES
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, f)| *f)
+            .ok_or_else(|| {
+                let known = FEATURES.map(|(n, _)| n).join(", ");
+                format!("{source}: unknown feature `{name}` (tori implements: {known})")
+            })
     };
     let features = match (&raw.features, &raw.except_features) {
-        (Some(_), Some(_)) => {
-            return Err(format!("{source}: set `features` or `except_features`, not both"))
-        }
+        (Some(_), Some(_)) => return Err(format!("{source}: set `features` or `except_features`, not both")),
         (Some(only), None) => only.iter().map(feature).collect::<Result<Vec<_>, _>>()?,
         (None, Some(except)) => {
             let except = except.iter().map(feature).collect::<Result<Vec<_>, _>>()?;
-            FEATURES.iter().map(|(_, f)| *f).filter(|f| !except.contains(f)).collect()
+            FEATURES
+                .iter()
+                .map(|(_, f)| *f)
+                .filter(|f| !except.contains(f))
+                .collect()
         }
         (None, None) => FEATURES.iter().map(|(_, f)| *f).collect(),
     };
@@ -482,10 +526,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         .collect::<Result<Vec<_>, _>>()?;
 
     let settings = match raw.settings {
-        Some(v) => Some(
-            serde_json::to_value(v)
-                .map_err(|e| format!("{source}: settings is not representable: {e}"))?,
-        ),
+        Some(v) => Some(serde_json::to_value(v).map_err(|e| format!("{source}: settings is not representable: {e}"))?),
         None => None,
     };
 
@@ -530,26 +571,45 @@ fn load_install(raw: InstallToml, program: &str, source: &str) -> Result<Install
             let repo = required(raw.repo, "repo")?;
             let version = required(raw.version, "version")?;
             if raw.assets.is_empty() {
-                return Err(format!("{source}: [install] kind = \"github_release\" requires [install.assets]"));
+                return Err(format!(
+                    "{source}: [install] kind = \"github_release\" requires [install.assets]"
+                ));
             }
             let mut assets = BTreeMap::new();
             for (platform, asset) in raw.assets {
                 if asset.file.contains('/') {
-                    return Err(format!("{source}: asset `{platform}`: `file` is a filename, not a path"));
+                    return Err(format!(
+                        "{source}: asset `{platform}`: `file` is a filename, not a path"
+                    ));
                 }
                 if asset.sha256.len() != 64 || !asset.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
                     return Err(format!("{source}: asset `{platform}`: `sha256` must be 64 hex digits"));
                 }
                 let bin = asset.bin.unwrap_or_else(|| program.to_string());
                 if !inside(Path::new(&bin)) {
-                    return Err(format!("{source}: asset `{platform}`: `bin` must be a relative path inside the install"));
+                    return Err(format!(
+                        "{source}: asset `{platform}`: `bin` must be a relative path inside the install"
+                    ));
                 }
-                assets.insert(platform, Asset { file: asset.file, sha256: asset.sha256.to_lowercase(), bin });
+                assets.insert(
+                    platform,
+                    Asset {
+                        file: asset.file,
+                        sha256: asset.sha256.to_lowercase(),
+                        bin,
+                    },
+                );
             }
             Ok(Install::GithubRelease { repo, version, assets })
         }
-        "hint" => Ok(Install::Hint { text: required(raw.text, "text")?, update: raw.update, uninstall: raw.uninstall }),
-        other => Err(format!("{source}: unknown [install] kind `{other}` (tori implements: npm, github_release, hint)")),
+        "hint" => Ok(Install::Hint {
+            text: required(raw.text, "text")?,
+            update: raw.update,
+            uninstall: raw.uninstall,
+        }),
+        other => Err(format!(
+            "{source}: unknown [install] kind `{other}` (tori implements: npm, github_release, hint)"
+        )),
     }
 }
 
@@ -561,13 +621,16 @@ fn pinned(version: String, source: &str) -> Result<String, String> {
     if exact.is_match(&version) {
         Ok(version)
     } else {
-        Err(format!("{source}: [install] version `{version}` is not one exact version"))
+        Err(format!(
+            "{source}: [install] version `{version}` is not one exact version"
+        ))
     }
 }
 
 /// True when `path` is relative and never climbs out with `..`.
 pub fn inside(path: &Path) -> bool {
-    path.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
+    path.components()
+        .all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
         && path.components().next().is_some()
 }
 
@@ -675,7 +738,10 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
 fn admit(list: &mut Vec<LspServer>, server: LspServer) -> Result<(), String> {
     let unconditional = |s: &LspServer| s.role == Role::Primary && !s.needs_activation();
     if unconditional(&server) {
-        for other in list.iter().filter(|o| o.id != server.id && unconditional(o) && o.priority == server.priority) {
+        for other in list
+            .iter()
+            .filter(|o| o.id != server.id && unconditional(o) && o.priority == server.priority)
+        {
             if let Some(ext) = server.languages.keys().find(|ext| other.languages.contains_key(*ext)) {
                 return Err(format!(
                     "{}: `{}` is already the primary for .{ext} at priority {}; give one of them a different \
@@ -728,9 +794,11 @@ pub fn resolve<'a>(
         .collect();
     // On equal priority a primary that needed a marker is the more specific
     // answer, so it beats one that is always on; the id only keeps it stable.
-    let primary = active.iter().copied().filter(|s| s.role == Role::Primary).max_by_key(|s| {
-        (s.priority, s.needs_activation(), std::cmp::Reverse(s.id.as_str()))
-    });
+    let primary = active
+        .iter()
+        .copied()
+        .filter(|s| s.role == Role::Primary)
+        .max_by_key(|s| (s.priority, s.needs_activation(), std::cmp::Reverse(s.id.as_str())));
     let secondaries = active.into_iter().filter(|s| s.role == Role::Secondary).collect();
     (primary, secondaries)
 }
@@ -747,7 +815,11 @@ fn activated(server: &LspServer, file: &Path, project: &Path) -> bool {
 /// `markers` or `keys`. `None` for a file outside the project, which has no
 /// ancestor chain worth searching (a shared file, a worktree's `.shared/`).
 fn nearest_marker_dir(markers: &[String], keys: &[KeyMarker], file: &Path, project: &Path) -> Option<PathBuf> {
-    let start = if file.is_dir() { file } else { file.parent().unwrap_or(project) };
+    let start = if file.is_dir() {
+        file
+    } else {
+        file.parent().unwrap_or(project)
+    };
     if !start.starts_with(project) {
         return None;
     }
@@ -774,8 +846,7 @@ fn nearest_marker_dir(markers: &[String], keys: &[KeyMarker], file: &Path, proje
 /// stopping at the project boundary is also what keeps the resolved root
 /// inside the tree the editor already scopes to.
 pub fn root_for(server: &LspServer, file_path: &Path, project_path: &Path) -> PathBuf {
-    nearest_marker_dir(&server.root_markers, &[], file_path, project_path)
-        .unwrap_or_else(|| project_path.to_path_buf())
+    nearest_marker_dir(&server.root_markers, &[], file_path, project_path).unwrap_or_else(|| project_path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -798,8 +869,7 @@ program = "demo-server"
     fn temp_dir(name: &str) -> PathBuf {
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir()
-            .join(format!("tori_lsp_registry_{}_{name}_{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori_lsp_registry_{}_{name}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -830,13 +900,18 @@ program = "demo-server"
         let text = VALID.replace("kind = \"path\"", "kind = \"docker\"");
         let err = load_server_str(&text, "test").unwrap_err();
         assert!(err.contains("docker"), "error should name the bad kind: {err}");
-        assert!(err.contains("bundled_node"), "error should list what is implemented: {err}");
+        assert!(
+            err.contains("bundled_node"),
+            "error should list what is implemented: {err}"
+        );
     }
 
     #[test]
     fn each_launch_kind_requires_its_own_field() {
         let no_program = VALID.replace("program = \"demo-server\"", "");
-        assert!(load_server_str(&no_program, "test").unwrap_err().contains("requires `program`"));
+        assert!(load_server_str(&no_program, "test")
+            .unwrap_err()
+            .contains("requires `program`"));
 
         let node = VALID.replace("kind = \"path\"", "kind = \"bundled_node\"");
         assert!(load_server_str(&node, "test").unwrap_err().contains("requires `entry`"));
@@ -880,7 +955,16 @@ program = "demo-server"
         let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         // Equal lengths mean `admit` refused none of them.
         assert_eq!(list.len(), BUILTINS.len());
-        for id in ["biome", "eslint", "json", "oxlint", "python", "rust", "typescript", "yaml"] {
+        for id in [
+            "biome",
+            "eslint",
+            "json",
+            "oxlint",
+            "python",
+            "rust",
+            "typescript",
+            "yaml",
+        ] {
             assert!(list.iter().any(|s| s.id == id), "{id} is missing");
         }
         assert!(list.iter().all(|s| !s.is_override()));
@@ -892,7 +976,12 @@ program = "demo-server"
         let mut on_disk: Vec<String> = std::fs::read_dir(dir)
             .unwrap()
             .flatten()
-            .filter_map(|e| e.file_name().to_str()?.strip_suffix(".toml").map(|n| format!("bundled:{n}")))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()?
+                    .strip_suffix(".toml")
+                    .map(|n| format!("bundled:{n}"))
+            })
             .collect();
         on_disk.sort();
         let mut embedded: Vec<String> = BUILTINS.iter().map(|(source, _)| source.to_string()).collect();
@@ -915,7 +1004,11 @@ program = "demo-server"
                 .filter(|s| s.languages.contains_key(ext) && !s.needs_activation())
                 .collect();
             let top = always_on.iter().map(|s| s.priority).max().unwrap_or_default();
-            let winners: Vec<&str> = always_on.iter().filter(|s| s.priority == top).map(|s| s.id.as_str()).collect();
+            let winners: Vec<&str> = always_on
+                .iter()
+                .filter(|s| s.priority == top)
+                .map(|s| s.id.as_str())
+                .collect();
             let expected = if MARKER_ONLY.contains(&ext.as_str()) { 0 } else { 1 };
             assert_eq!(winners.len(), expected, ".{ext} has no single primary: {winners:?}");
         }
@@ -943,8 +1036,21 @@ version = "1.2.3"
     #[test]
     fn an_npm_install_is_one_exact_version() {
         let s = load_server_str(MANAGED, "test").unwrap();
-        assert_eq!(s.install, Some(Install::Npm { package: "demo-server".into(), version: "1.2.3".into() }));
-        assert_eq!(s.launch, Launch::Managed { program: "demo-server".into(), args: vec![], runtime: Runtime::Node });
+        assert_eq!(
+            s.install,
+            Some(Install::Npm {
+                package: "demo-server".into(),
+                version: "1.2.3".into()
+            })
+        );
+        assert_eq!(
+            s.launch,
+            Launch::Managed {
+                program: "demo-server".into(),
+                args: vec![],
+                runtime: Runtime::Node
+            }
+        );
 
         for loose in ["latest", "^1.2.3", "1.x", ">=1.0.0", "1.2"] {
             let text = MANAGED.replace("\"1.2.3\"", &format!("\"{loose}\""));
@@ -953,7 +1059,9 @@ version = "1.2.3"
         }
         assert!(load_server_str(&MANAGED.replace("\"1.2.3\"", "\"1.2.3-beta.1\""), "test").is_ok());
         let no_package = MANAGED.replace("package = \"demo-server\"", "");
-        assert!(load_server_str(&no_package, "test").unwrap_err().contains("requires `package`"));
+        assert!(load_server_str(&no_package, "test")
+            .unwrap_err()
+            .contains("requires `package`"));
     }
 
     #[test]
@@ -966,17 +1074,34 @@ version = "1.2.3"
         };
         let sha = "A".repeat(64);
         let s = load_server_str(&release(&format!("file = \"demo.tar.gz\"\nsha256 = \"{sha}\"")), "test").unwrap();
-        let Some(Install::GithubRelease { assets, version, .. }) = &s.install else { panic!("{:?}", s.install) };
+        let Some(Install::GithubRelease { assets, version, .. }) = &s.install else {
+            panic!("{:?}", s.install)
+        };
         assert_eq!(version, "v1");
         // `bin` defaults to the program, and the checksum is compared lowercase.
-        assert_eq!(assets["macos-aarch64"], Asset { file: "demo.tar.gz".into(), sha256: "a".repeat(64), bin: "demo-server".into() });
+        assert_eq!(
+            assets["macos-aarch64"],
+            Asset {
+                file: "demo.tar.gz".into(),
+                sha256: "a".repeat(64),
+                bin: "demo-server".into()
+            }
+        );
 
         let short = release("file = \"demo.tar.gz\"\nsha256 = \"abc\"");
         assert!(load_server_str(&short, "test").unwrap_err().contains("64 hex digits"));
-        let escapes = release(&format!("file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"../../bin/sh\""));
-        assert!(load_server_str(&escapes, "test").unwrap_err().contains("inside the install"));
-        let absolute = release(&format!("file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"/bin/sh\""));
-        assert!(load_server_str(&absolute, "test").unwrap_err().contains("inside the install"));
+        let escapes = release(&format!(
+            "file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"../../bin/sh\""
+        ));
+        assert!(load_server_str(&escapes, "test")
+            .unwrap_err()
+            .contains("inside the install"));
+        let absolute = release(&format!(
+            "file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"/bin/sh\""
+        ));
+        assert!(load_server_str(&absolute, "test")
+            .unwrap_err()
+            .contains("inside the install"));
         let path = release(&format!("file = \"a/demo.tar.gz\"\nsha256 = \"{sha}\""));
         assert!(load_server_str(&path, "test").unwrap_err().contains("filename"));
     }
@@ -985,7 +1110,14 @@ version = "1.2.3"
     fn a_hint_is_text_for_any_launch_kind() {
         let text = format!("{VALID}[install]\nkind = \"hint\"\ntext = \"brew install demo\"\n");
         let s = load_server_str(&text, "test").unwrap();
-        assert_eq!(s.install, Some(Install::Hint { text: "brew install demo".into(), update: None, uninstall: None }));
+        assert_eq!(
+            s.install,
+            Some(Install::Hint {
+                text: "brew install demo".into(),
+                update: None,
+                uninstall: None
+            })
+        );
         assert_eq!(s.install.unwrap().available_version(), None);
 
         let empty = format!("{VALID}[install]\nkind = \"hint\"\n");
@@ -1002,19 +1134,27 @@ version = "1.2.3"
     #[test]
     fn managed_and_an_install_come_together() {
         let bare = MANAGED.split("[install]").next().unwrap();
-        assert!(load_server_str(bare, "test").unwrap_err().contains("needs an [install]"));
+        assert!(load_server_str(bare, "test")
+            .unwrap_err()
+            .contains("needs an [install]"));
 
         let hinted = format!("{bare}[install]\nkind = \"hint\"\ntext = \"x\"\n");
-        assert!(load_server_str(&hinted, "test").unwrap_err().contains("needs an [install]"));
+        assert!(load_server_str(&hinted, "test")
+            .unwrap_err()
+            .contains("needs an [install]"));
 
         let on_path = MANAGED.replace("kind = \"managed\"", "kind = \"path\"");
-        assert!(load_server_str(&on_path, "test").unwrap_err().contains("needs launch.kind"));
+        assert!(load_server_str(&on_path, "test")
+            .unwrap_err()
+            .contains("needs launch.kind"));
     }
 
     #[test]
     fn managed_names_its_runtime() {
         let none = MANAGED.replace("runtime = \"node\"\n", "");
-        assert!(load_server_str(&none, "test").unwrap_err().contains("requires `runtime`"));
+        assert!(load_server_str(&none, "test")
+            .unwrap_err()
+            .contains("requires `runtime`"));
         let odd = MANAGED.replace("runtime = \"node\"", "runtime = \"python\"");
         assert!(load_server_str(&odd, "test").unwrap_err().contains("python"));
     }
@@ -1041,8 +1181,7 @@ version = "1.2.3"
     #[test]
     fn a_broken_override_keeps_the_previous_entry() {
         let dir = temp_dir("broken");
-        std::fs::write(dir.join("typescript.toml"), "schema_version = 1\nid = \"typescript\"\n")
-            .unwrap();
+        std::fs::write(dir.join("typescript.toml"), "schema_version = 1\nid = \"typescript\"\n").unwrap();
 
         let list = build_registry_from(&dir);
         let ts = list.iter().find(|s| s.id == "typescript").expect("must not disappear");
@@ -1196,15 +1335,19 @@ version = "1.2.3"
     fn lsp_servers_md_example_parses() {
         let doc = include_str!("../../../docs/LSP-SERVERS.md");
         let heading = "## Example: a from-scratch third-party server";
-        let after =
-            doc.find(heading).expect("LSP-SERVERS.md must document a complete example") + heading.len();
+        let after = doc
+            .find(heading)
+            .expect("LSP-SERVERS.md must document a complete example")
+            + heading.len();
         let rest = &doc[after..];
-        let start =
-            rest.find("```toml").expect("the example section must have a ```toml block") + "```toml".len();
+        let start = rest
+            .find("```toml")
+            .expect("the example section must have a ```toml block")
+            + "```toml".len();
         let end = rest[start..].find("```").expect("unterminated ```toml fence") + start;
 
-        let s = load_server_str(rest[start..end].trim(), "LSP-SERVERS.md example")
-            .expect("the example TOML should parse");
+        let s =
+            load_server_str(rest[start..end].trim(), "LSP-SERVERS.md example").expect("the example TOML should parse");
         assert_eq!(s.id, "python");
         assert_eq!(s.language_id_for("/p/a.py"), Some("python"));
         assert_eq!(s.launch.program(), "pyright-langserver");
@@ -1249,7 +1392,10 @@ version = "1.2.3"
         // "tidied" back into an ordering.
         let dir = monorepo("json_roots_split");
         let split = load_server_str(
-            &BUILTIN_JSON.replace(r#"root_markers = [".git"]"#, r#"root_markers = [".git", "package.json"]"#),
+            &BUILTIN_JSON.replace(
+                r#"root_markers = [".git"]"#,
+                r#"root_markers = [".git", "package.json"]"#,
+            ),
             "test",
         )
         .unwrap();
@@ -1349,7 +1495,10 @@ version = "1.2.3"
                 "{language} should keep lenses to exported and class members"
             );
         }
-        assert!(!server.schema_associations, "typescript should not ask for associations");
+        assert!(
+            !server.schema_associations,
+            "typescript should not ask for associations"
+        );
     }
 
     #[test]
@@ -1370,8 +1519,14 @@ version = "1.2.3"
         // The heading, exactly. A bare `"## Schema"` also matches inside
         // `### Schemas for JSON and YAML`, which is a different section and
         // has no block to find.
-        let after = doc.split("\n## Schema\n").nth(1).expect("the doc must have a Schema section");
-        let start = after.find("```toml").expect("the Schema section must show a toml block") + 7;
+        let after = doc
+            .split("\n## Schema\n")
+            .nth(1)
+            .expect("the doc must have a Schema section");
+        let start = after
+            .find("```toml")
+            .expect("the Schema section must show a toml block")
+            + 7;
         let block = &after[start..][..after[start..].find("```").expect("unterminated toml block")];
 
         let value: toml::Value = toml::from_str(block).expect("the documented schema block must parse");
@@ -1382,12 +1537,25 @@ version = "1.2.3"
         // `[initialization_options]` at some point in this file's life, and
         // nothing said so: `verified_against` really was a member of
         // `initialization_options` until wave 7.
-        for key in ["schema_version", "id", "label", "root_markers", "request_timeout_ms",
-                    "schema_associations", "verified_against"] {
-            assert!(table.contains_key(key), "`{key}` is not top-level in the documented block");
+        for key in [
+            "schema_version",
+            "id",
+            "label",
+            "root_markers",
+            "request_timeout_ms",
+            "schema_associations",
+            "verified_against",
+        ] {
+            assert!(
+                table.contains_key(key),
+                "`{key}` is not top-level in the documented block"
+            );
         }
         for table_key in ["languages", "launch", "initialization_options", "settings"] {
-            assert!(table.get(table_key).is_some_and(|v| v.is_table()), "`{table_key}` should be a table");
+            assert!(
+                table.get(table_key).is_some_and(|v| v.is_table()),
+                "`{table_key}` should be a table"
+            );
         }
     }
 
@@ -1401,7 +1569,10 @@ version = "1.2.3"
         }
         // Both launch kinds, and the supported schema version, are part of the
         // contract a config author reads.
-        assert!(doc.contains("bundled_node"), "the doc must describe the bundled_node kind");
+        assert!(
+            doc.contains("bundled_node"),
+            "the doc must describe the bundled_node kind"
+        );
         assert!(doc.contains("`path`"), "the doc must describe the path kind");
         assert!(
             doc.contains(&format!("schema_version = {SCHEMA_VERSION}")),
@@ -1469,7 +1640,10 @@ program = "deno"
 
     fn resolved_ids(servers: &[LspServer], file: &Path, project: &Path) -> (Option<String>, Vec<String>) {
         let (primary, secondaries) = resolve(servers, file, project, &HashSet::new());
-        (primary.map(|s| s.id.clone()), secondaries.iter().map(|s| s.id.clone()).collect())
+        (
+            primary.map(|s| s.id.clone()),
+            secondaries.iter().map(|s| s.id.clone()).collect(),
+        )
     }
 
     #[test]
@@ -1482,7 +1656,10 @@ program = "deno"
             load_server_str(ESLINT, "eslint").unwrap(),
         ];
 
-        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec![])
+        );
 
         std::fs::write(project.join("eslint.config.js"), "").unwrap();
         assert_eq!(
@@ -1495,13 +1672,22 @@ program = "deno"
     fn the_bundled_eslint_runs_beside_typescript_only_under_a_config() {
         let eslint = load_server_str(BUILTIN_ESLINT, "bundled:eslint").unwrap();
         assert_eq!(eslint.role, Role::Secondary);
-        assert!(eslint.runs_project_code, "it loads the project's own eslint, so an untrusted project refuses it");
+        assert!(
+            eslint.runs_project_code,
+            "it loads the project's own eslint, so an untrusted project refuses it"
+        );
         let project = temp_dir("bundled_eslint");
         let file = project.join("src/a.ts");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        let servers = [load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(), eslint];
+        let servers = [
+            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            eslint,
+        ];
 
-        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec![])
+        );
 
         std::fs::write(project.join("eslint.config.mjs"), "").unwrap();
         assert_eq!(
@@ -1526,16 +1712,25 @@ program = "deno"
             assert!(matches!(linter.launch, Launch::ProjectBin { .. }), "{}", linter.id);
             assert!(linter.runs_project_code, "{}", linter.id);
         }
-        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec![]));
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec![])
+        );
 
         std::fs::write(project.join("biome.json"), "{}").unwrap();
-        assert_eq!(resolved_ids(&servers, &file, &project), (Some("typescript".into()), vec!["biome".to_string()]));
+        assert_eq!(
+            resolved_ids(&servers, &file, &project),
+            (Some("typescript".into()), vec!["biome".to_string()])
+        );
 
         std::fs::write(project.join("eslint.config.js"), "").unwrap();
         std::fs::write(project.join(".oxlintrc.json"), "{}").unwrap();
         assert_eq!(
             resolved_ids(&servers, &file, &project),
-            (Some("typescript".into()), vec!["eslint".to_string(), "biome".to_string(), "oxlint".to_string()])
+            (
+                Some("typescript".into()),
+                vec!["eslint".to_string(), "biome".to_string(), "oxlint".to_string()]
+            )
         );
     }
 
@@ -1567,7 +1762,10 @@ program = "deno"
         assert!(!activated(&eslint, &file, &project));
 
         std::fs::write(outer.join("eslint.config.js"), "").unwrap();
-        assert!(!activated(&eslint, &file, &project), "a marker above the project must not count");
+        assert!(
+            !activated(&eslint, &file, &project),
+            "a marker above the project must not count"
+        );
 
         std::fs::write(project.join("src/eslint.config.js"), "").unwrap();
         assert!(activated(&eslint, &file, &project));

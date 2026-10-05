@@ -203,11 +203,7 @@ describe("toStore", () => {
   // conversation, so what was typed at it has nowhere else to survive a quit -
   // exactly a draft's problem, and answered the same way.
   it("keeps what was typed at a chat that has a session but no child", () => {
-    const out = toStore(
-      [tab({ id: "1", kind: "chat", sessionId: "c1", live: false, text: "typed" })],
-      {},
-      100,
-    );
+    const out = toStore([tab({ id: "1", kind: "chat", sessionId: "c1", live: false, text: "typed" })], {}, 100);
     expect(out["/w/a"].tabs[0].text).toBe("typed");
     expect(out["/w/a"].tabs[0].sessionId).toBe("c1");
   });
@@ -414,7 +410,10 @@ describe("parseStore", () => {
           tab({
             id: `chat:${n}`,
             kind: "chat",
-            title: chatTabLabel("tori", acc.map((t) => t.title)),
+            title: chatTabLabel(
+              "tori",
+              acc.map((t) => t.title),
+            ),
             program: "claude",
             sessionId: `s${n}`,
           }),
@@ -501,7 +500,12 @@ describe("parseStore", () => {
 
   it("drops an activeId that is not a non-empty string, keeping the index", () => {
     const raw = JSON.stringify({
-      w: { tabs: [{ title: "a", cwd: "/c", kind: "shell", program: "", args: [] }], active: 0, activeId: 7, savedAt: 1 },
+      w: {
+        tabs: [{ title: "a", cwd: "/c", kind: "shell", program: "", args: [] }],
+        active: 0,
+        activeId: 7,
+        savedAt: 1,
+      },
     });
     expect(parseStore(raw).w.activeId).toBeUndefined();
     expect(parseStore(raw).w.active).toBe(0);

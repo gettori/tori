@@ -22,9 +22,7 @@ afterEach(() => {
 
 describe("primaryFamily", () => {
   it("takes the first family and drops its quotes", () => {
-    expect(primaryFamily('"JetBrainsMono Nerd Font Mono", "SF Mono", monospace')).toBe(
-      "JetBrainsMono Nerd Font Mono",
-    );
+    expect(primaryFamily('"JetBrainsMono Nerd Font Mono", "SF Mono", monospace')).toBe("JetBrainsMono Nerd Font Mono");
     expect(primaryFamily("Menlo, monospace")).toBe("Menlo");
     expect(primaryFamily("")).toBe("");
   });

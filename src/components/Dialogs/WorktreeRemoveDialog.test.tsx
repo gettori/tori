@@ -29,8 +29,7 @@ import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 //
 // The dialog focuses its confirm button from a `requestAnimationFrame`, so a
 // test that asserts on focus has to yield one first.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -58,10 +57,8 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   return { onConfirm, onCancel };
 }
 
-const remove = () =>
-  screen.getByRole("button", { name: /^Remove worktree$|^Removing…$/ }) as HTMLButtonElement;
-const check = (name: string) =>
-  screen.getByRole("checkbox", { name }) as HTMLInputElement;
+const remove = () => screen.getByRole("button", { name: /^Remove worktree$|^Removing…$/ }) as HTMLButtonElement;
+const check = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
 const LOCAL = "Delete local branch (git branch -D)";
 const REMOTE = "Delete remote branch (git push --delete)";
 
@@ -97,9 +94,7 @@ describe("WorktreeRemoveDialog", () => {
 
       expect(screen.getByText("uncommitted changes")).toBeTruthy();
       expect(screen.getByText("unpushed commits")).toBeTruthy();
-      expect(
-        screen.getByText("This deletes work that is not saved anywhere else. It cannot be undone."),
-      ).toBeTruthy();
+      expect(screen.getByText("This deletes work that is not saved anywhere else. It cannot be undone.")).toBeTruthy();
     });
 
     it("counts the terminal tabs the removal will stop", () => {

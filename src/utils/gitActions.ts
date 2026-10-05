@@ -459,7 +459,11 @@ export function refreshGit(root: string | null): Promise<void> {
 
 // Every action reports failure the same way (a toast) and refreshes the store on
 // the way out, so no caller has to remember either.
-async function act(root: string, run: () => Promise<unknown>, after: (root: string) => Promise<void>): Promise<boolean> {
+async function act(
+  root: string,
+  run: () => Promise<unknown>,
+  after: (root: string) => Promise<void>,
+): Promise<boolean> {
   try {
     await run();
   } catch (e) {
@@ -481,11 +485,7 @@ export function unstage(root: string, paths: string[]): Promise<boolean> {
 /** Commit the staged changes. `amend` rewrites HEAD instead of adding a commit,
  *  and is the one form that needs nothing staged (amending only the message). */
 export function commit(root: string, message: string, amend = false, signoff = false): Promise<boolean> {
-  return act(
-    root,
-    () => invoke("git_commit", { projectPath: root, message, amend, signoff }),
-    refreshGit,
-  );
+  return act(root, () => invoke("git_commit", { projectPath: root, message, amend, signoff }), refreshGit);
 }
 
 /** What an integrate attempt did. Mirrors `IntegrateOutcome` in git.rs: a
@@ -546,11 +546,7 @@ export async function rebase(root: string, onto: string): Promise<IntegrateOutco
   return integrate(root, "git_rebase", { projectPath: root, onto });
 }
 
-async function integrate(
-  root: string,
-  cmd: string,
-  args: Record<string, unknown>,
-): Promise<IntegrateOutcome | null> {
+async function integrate(root: string, cmd: string, args: Record<string, unknown>): Promise<IntegrateOutcome | null> {
   try {
     const out = await invoke<IntegrateOutcome>(cmd, args);
     await refreshGit(root);
@@ -630,11 +626,7 @@ export function deleteBranch(root: string, branch: string, force = false): Promi
 
 /** Stash the index alone, leaving the worktree. */
 export function stashStaged(root: string, message?: string): Promise<boolean> {
-  return act(
-    root,
-    () => invoke("git_stash_push", { projectPath: root, message, staged: true }),
-    refreshStatus,
-  );
+  return act(root, () => invoke("git_stash_push", { projectPath: root, message, staged: true }), refreshStatus);
 }
 
 /** This root's branch names, for the pickers. Empty rather than throwing: a
@@ -661,11 +653,7 @@ export async function headMessage(root: string): Promise<string> {
 // Resolves once `git://push-done|error` fires for `repo`, so a caller can await
 // a push before proceeding (e.g. "Open PR" pushing first). One-shot: both
 // listeners are torn down as soon as either fires.
-function waitFor(
-  repo: string,
-  done: string,
-  failed: string,
-): Promise<{ ok: boolean; error: string }> {
+function waitFor(repo: string, done: string, failed: string): Promise<{ ok: boolean; error: string }> {
   return new Promise((resolve) => {
     let settled = false;
     let unDone: UnlistenFn | undefined;

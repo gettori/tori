@@ -177,10 +177,13 @@ export default function TopicList(props: {
     await load();
     unlistenTopics = await listen<Topic>("topics://changed", (e) => apply(e.payload));
     unlistenConfig = await listen("config://changed", () => load());
-    unlistenPromoted = await listen<{ topic: Topic; from: string | null; to: string | null }>("topics://promoted", (e) => {
-      apply(e.payload.topic);
-      promoted(e.payload.topic, e.payload.from, e.payload.to);
-    });
+    unlistenPromoted = await listen<{ topic: Topic; from: string | null; to: string | null }>(
+      "topics://promoted",
+      (e) => {
+        apply(e.payload.topic);
+        promoted(e.payload.topic, e.payload.from, e.payload.to);
+      },
+    );
   });
   onCleanup(() => {
     unlistenTopics?.();
@@ -263,8 +266,7 @@ export default function TopicList(props: {
     await mutate("rename_member", { topicId: topic.id, repoPath: member.repoPath, displayName: trimmed });
   }
 
-  const reorder = (topic: Topic, repoPaths: string[]) =>
-    mutate("reorder_members", { topicId: topic.id, repoPaths });
+  const reorder = (topic: Topic, repoPaths: string[]) => mutate("reorder_members", { topicId: topic.id, repoPaths });
 
   // The record detaches first, as the ticket specifies, and only then is the
   // worktree offered: the member has already left the Topic by the time the
@@ -378,8 +380,7 @@ export default function TopicList(props: {
   }
 
   /** Member repo paths in the order the record holds them. */
-  const orderOf = (topic: Topic) =>
-    [...topic.members].sort((a, b) => a.order - b.order).map((m) => m.repoPath);
+  const orderOf = (topic: Topic) => [...topic.members].sort((a, b) => a.order - b.order).map((m) => m.repoPath);
 
   function move(topic: Topic, member: Member, by: -1 | 1) {
     const keys = orderOf(topic);
@@ -458,11 +459,11 @@ export default function TopicList(props: {
     // Asked once the sweep exists rather than with the confirm: the count is
     // about what a removal stops, and the confirm removes nothing.
     for (const m of left) {
-      void props.countRunning?.(m.worktreePath).then((n) =>
-        setSweepReq((r) =>
-          r && r.topic.id === topic.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r,
-        ),
-      );
+      void props
+        .countRunning?.(m.worktreePath)
+        .then((n) =>
+          setSweepReq((r) => (r && r.topic.id === topic.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r)),
+        );
     }
   }
 
@@ -517,31 +518,33 @@ export default function TopicList(props: {
   // Refusing rather than disabled for the last member: the row stays reachable
   // by arrow key, and the reason the backend would answer with is drawn on it
   // here instead of arriving as an error after the click.
-  const memberMenu = (topic: Topic) => (member: Member): MenuItem[] => {
-    const keys = orderOf(topic);
-    const i = keys.indexOf(member.repoPath);
-    const last = topic.members.length <= 1;
-    // A reference reads the user's own checkout, which goes stale unless it is
-    // pulled; pulling is the one git write it takes.
-    const root = isReference(member) ? memberRoot(member) : null;
-    return [
-      ...(root ? [{ label: "Pull", onClick: () => void pull(root, false, true) }, { separator: true as const }] : []),
-      isReference(member)
-        ? { label: "Create worktree", onClick: () => void promote(topic, member) }
-        : { label: "Remove worktree…", onClick: () => demote(topic, member) },
-      { label: "Rename…", onClick: () => setMemberRenameReq({ topic, member }) },
-      { label: "Move up", disabled: i <= 0, onClick: () => move(topic, member, -1) },
-      { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(topic, member, 1) },
-      { separator: true },
-      {
-        label: "Remove repository",
-        danger: true,
-        refusing: last,
-        note: last ? LAST_MEMBER : undefined,
-        onClick: () => void removeMember(topic, member),
-      },
-    ];
-  };
+  const memberMenu =
+    (topic: Topic) =>
+    (member: Member): MenuItem[] => {
+      const keys = orderOf(topic);
+      const i = keys.indexOf(member.repoPath);
+      const last = topic.members.length <= 1;
+      // A reference reads the user's own checkout, which goes stale unless it is
+      // pulled; pulling is the one git write it takes.
+      const root = isReference(member) ? memberRoot(member) : null;
+      return [
+        ...(root ? [{ label: "Pull", onClick: () => void pull(root, false, true) }, { separator: true as const }] : []),
+        isReference(member)
+          ? { label: "Create worktree", onClick: () => void promote(topic, member) }
+          : { label: "Remove worktree…", onClick: () => demote(topic, member) },
+        { label: "Rename…", onClick: () => setMemberRenameReq({ topic, member }) },
+        { label: "Move up", disabled: i <= 0, onClick: () => move(topic, member, -1) },
+        { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(topic, member, 1) },
+        { separator: true },
+        {
+          label: "Remove repository",
+          danger: true,
+          refusing: last,
+          note: last ? LAST_MEMBER : undefined,
+          onClick: () => void removeMember(topic, member),
+        },
+      ];
+    };
 
   const visible = createMemo(() => {
     const q = props.query.trim().toLowerCase();

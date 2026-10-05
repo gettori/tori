@@ -82,9 +82,7 @@ export default function PermissionPrompt(props: {
    *  are already what the scoped Allow buttons send back, so surfacing them
    *  again would be two controls for one outcome. */
   const modeOffers = () =>
-    props.onSetMode
-      ? props.card.approval?.suggestions.filter((s) => s.type === "setMode") ?? []
-      : [];
+    props.onSetMode ? (props.card.approval?.suggestions.filter((s) => s.type === "setMode") ?? []) : [];
 
   function sendDenial() {
     const reason = (feedback() ?? "").trim();
@@ -176,7 +174,11 @@ export default function PermissionPrompt(props: {
             <Button size="sm" onClick={() => allow("project")}>
               Always in this project
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => props.onAnswer?.({ decision: "deny", scope: "once", reason: null })}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => props.onAnswer?.({ decision: "deny", scope: "once", reason: null })}
+            >
               Deny
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>

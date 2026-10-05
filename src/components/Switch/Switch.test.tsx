@@ -10,9 +10,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 // works for free) *and* that it announces as a switch.
 function renderControlled(over: Partial<Parameters<typeof Switch>[0]> = {}) {
   const [checked, setChecked] = createSignal(false);
-  const r = render(() => (
-    <Switch checked={checked()} onChange={setChecked} label="Stream responses" {...over} />
-  ));
+  const r = render(() => <Switch checked={checked()} onChange={setChecked} label="Stream responses" {...over} />);
   return { ...r, checked };
 }
 

@@ -102,8 +102,7 @@ const start = {
 };
 
 /** A buffer holding `path`, which is how the hover knows which file it is in. */
-const stateOf = (doc: string, path = FILE) =>
-  EditorState.create({ doc, extensions: [debugHoverFile.of(path)] });
+const stateOf = (doc: string, path = FILE) => EditorState.create({ doc, extensions: [debugHoverFile.of(path)] });
 /** The offset of the first character of `word` in `doc`, plus one, so the
  *  position is inside the word rather than on its edge. */
 const inside = (doc: string, word: string) => doc.indexOf(word) + 1;

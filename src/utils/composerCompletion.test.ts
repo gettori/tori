@@ -47,10 +47,7 @@ describe("rank", () => {
   const files = ["src/utils/chatCompose.ts", "src/panels/Chat/Composer.tsx", "README.md"];
 
   it("orders by fuzzy score and drops what does not match", () => {
-    expect(rank(files, "compose", (f) => f)).toEqual([
-      "src/utils/chatCompose.ts",
-      "src/panels/Chat/Composer.tsx",
-    ]);
+    expect(rank(files, "compose", (f) => f)).toEqual(["src/utils/chatCompose.ts", "src/panels/Chat/Composer.tsx"]);
   });
 
   it("keeps source order for an empty query", () => {

@@ -142,13 +142,7 @@ describe("Combobox", () => {
         { label: "Everything else", options: [{ value: "b", label: "beta" }] },
       ];
       render(() => (
-        <Combobox
-          aria-label="Filter"
-          options={groups}
-          query=""
-          onQueryChange={() => {}}
-          onSelect={() => {}}
-        />
+        <Combobox aria-label="Filter" options={groups} query="" onQueryChange={() => {}} onSelect={() => {}} />
       ));
       expect(screen.getByText("Recently visited")).toBeTruthy();
       expect(screen.getByText("Everything else")).toBeTruthy();
@@ -166,13 +160,7 @@ describe("Combobox", () => {
         { label: "Recently visited", options: [{ value: "a", label: "alpha" }] },
       ]);
       render(() => (
-        <Combobox
-          aria-label="Filter"
-          options={groups()}
-          query=""
-          onQueryChange={() => {}}
-          onSelect={() => {}}
-        />
+        <Combobox aria-label="Filter" options={groups()} query="" onQueryChange={() => {}} onSelect={() => {}} />
       ));
       expect(screen.getByText("Recently visited")).toBeTruthy();
 

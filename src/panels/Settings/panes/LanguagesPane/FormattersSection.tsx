@@ -75,8 +75,8 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
               Not installed. Install <code>{f().program}</code> and reopen Tori to pick it up.
             </Match>
             <Match when={f().status === "versionDrift"}>
-              Installed, version {f().version}. Tori's config was built against {f().verifiedAgainst},
-              so some behaviour may differ.
+              Installed, version {f().version}. Tori's config was built against {f().verifiedAgainst}, so some behaviour
+              may differ.
             </Match>
             <Match when={f().version}>Installed, version {f().version}.</Match>
             <Match when={true}>Installed. It does not report a version, so Tori cannot check it.</Match>
@@ -112,9 +112,9 @@ export default function FormattersSection() {
             <For each={formatters()}>{(formatter) => <FormatterCard formatter={formatter} />}</For>
           </div>
           <div class={styles.note}>
-            Format Document, and format on save when it is on, use the formatter the project's config
-            or <code>format.byExtension</code> names. With neither, the language server formats. Add
-            one with a TOML file in <code>~/.config/tori/formatters/</code>; see FORMATTERS.md.
+            Format Document, and format on save when it is on, use the formatter the project's config or{" "}
+            <code>format.byExtension</code> names. With neither, the language server formats. Add one with a TOML file
+            in <code>~/.config/tori/formatters/</code>; see FORMATTERS.md.
           </div>
         </Match>
       </Switch>

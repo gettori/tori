@@ -118,8 +118,7 @@ function markKey(root: string, file: string): string {
   return `${root}${NUL}${file}`;
 }
 
-export const LINE_COUNT_REFUSAL =
-  "A result line cannot be added or removed here - edit its text in place.";
+export const LINE_COUNT_REFUSAL = "A result line cannot be added or removed here - edit its text in place.";
 export const REGION_REFUSAL = "Only a result's own text is editable here.";
 export function appliedRefusal(file: string): string {
   return `${file} has already been written back.`;

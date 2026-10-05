@@ -64,7 +64,11 @@ impl What {
 
     fn text(&self) -> String {
         match self {
-            What::Ended(detail) | What::Pr(detail) | What::Idle(detail) | What::Proposed(detail) | What::Dropped(detail) => {
+            What::Ended(detail)
+            | What::Pr(detail)
+            | What::Idle(detail)
+            | What::Proposed(detail)
+            | What::Dropped(detail) => {
                 format!("{} ({detail})", self.kind())
             }
             _ => self.kind().to_string(),
@@ -229,7 +233,11 @@ impl Core {
         }
         if what.capped() {
             let key = (target.clone(), what.kind());
-            if self.last_sent.get(&key).is_some_and(|at| now.duration_since(*at) < REPEAT_WINDOW) {
+            if self
+                .last_sent
+                .get(&key)
+                .is_some_and(|at| now.duration_since(*at) < REPEAT_WINDOW)
+            {
                 self.held.insert(key, (session, what));
                 return;
             }
@@ -265,8 +273,16 @@ impl Core {
         for (target, id, what) in due {
             self.queue(target, Some(id), what, now);
         }
-        let expired: Vec<Capped> =
-            self.held.keys().filter(|key| self.last_sent.get(*key).is_none_or(|at| now.duration_since(*at) >= REPEAT_WINDOW)).cloned().collect();
+        let expired: Vec<Capped> = self
+            .held
+            .keys()
+            .filter(|key| {
+                self.last_sent
+                    .get(*key)
+                    .is_none_or(|at| now.duration_since(*at) >= REPEAT_WINDOW)
+            })
+            .cloned()
+            .collect();
         for key in expired {
             if let Some((session, what)) = self.held.remove(&key) {
                 self.last_sent.insert(key.clone(), now);
@@ -291,15 +307,25 @@ impl Core {
     pub fn requeue(&mut self, batch: Vec<(Target, Line)>) {
         for (target, mut line) in batch {
             if let Some(newer) = self.pending.remove(&target) {
-                newer.whats.into_iter().for_each(|what| line.merge(newer.session.clone(), what));
+                newer
+                    .whats
+                    .into_iter()
+                    .for_each(|what| line.merge(newer.session.clone(), what));
             }
             self.pending.insert(target, line);
         }
     }
 
     pub fn next_deadline(&self, stall: Duration) -> Option<Instant> {
-        let tracks = self.tracks.values().flat_map(|t| [t.idle.as_ref().map(|(at, _)| *at), t.stall_due(stall)]).flatten();
-        let held = self.held.keys().filter_map(|key| self.last_sent.get(key).map(|at| *at + REPEAT_WINDOW));
+        let tracks = self
+            .tracks
+            .values()
+            .flat_map(|t| [t.idle.as_ref().map(|(at, _)| *at), t.stall_due(stall)])
+            .flatten();
+        let held = self
+            .held
+            .keys()
+            .filter_map(|key| self.last_sent.get(key).map(|at| *at + REPEAT_WINDOW));
         let sent = self.sent.map(|at| at + SENT_TIMEOUT);
         tracks.chain(held).chain(sent).min()
     }
@@ -318,7 +344,16 @@ pub struct Watcher {
 impl Watcher {
     pub fn new(states: Arc<SessionStates>, store: Arc<AutopilotStore>, status: StatusOf) -> (Arc<Self>, Receiver<()>) {
         let (nudge, rx) = mpsc::channel();
-        (Arc::new(Self { core: Mutex::new(Core::default()), nudge, states, store, status }), rx)
+        (
+            Arc::new(Self {
+                core: Mutex::new(Core::default()),
+                nudge,
+                states,
+                store,
+                status,
+            }),
+            rx,
+        )
     }
 
     fn core(&self) -> MutexGuard<'_, Core> {
@@ -346,15 +381,21 @@ impl Watcher {
     pub fn session_event(&self, id: &str, event: &Value) {
         let found = self.found(id);
         let mut core = self.core();
-        let Some(target) = found.or_else(|| core.target_of(id)) else { return };
+        let Some(target) = found.or_else(|| core.target_of(id)) else {
+            return;
+        };
         core.observe(id, target, event, Instant::now());
         drop(core);
         self.nudge();
     }
 
     pub fn pr_event(&self, url: Option<&str>, checked_out_in: Option<&str>, ids: &[String], event: &Value) {
-        let mut targets: BTreeMap<Target, Option<String>> =
-            self.store.items_for_pr(url, checked_out_in).into_iter().map(|(item, session)| (Target::Item(item), session)).collect();
+        let mut targets: BTreeMap<Target, Option<String>> = self
+            .store
+            .items_for_pr(url, checked_out_in)
+            .into_iter()
+            .map(|(item, session)| (Target::Item(item), session))
+            .collect();
         let found: Vec<(String, Option<Target>)> = ids.iter().map(|id| (id.clone(), self.found(id))).collect();
         let mut core = self.core();
         for (id, target) in found {
@@ -398,7 +439,12 @@ impl Watcher {
     }
 
     // Sleeps until the next deadline or a nudge, so quiet workers cost nothing.
-    pub fn run(&self, rx: Receiver<()>, deliver: impl Fn(&str, String) -> Result<(), String>, stall_of: impl Fn() -> Duration) {
+    pub fn run(
+        &self,
+        rx: Receiver<()>,
+        deliver: impl Fn(&str, String) -> Result<(), String>,
+        stall_of: impl Fn() -> Duration,
+    ) {
         let (mut stall, mut read_at) = (stall_of(), Instant::now());
         loop {
             let now = Instant::now();
@@ -419,7 +465,9 @@ impl Watcher {
                 }
             }
             let next = self.core().next_deadline(stall);
-            let wait = next.map_or(MAX_WAIT, |at| at.saturating_duration_since(Instant::now())).min(MAX_WAIT);
+            let wait = next
+                .map_or(MAX_WAIT, |at| at.saturating_duration_since(Instant::now()))
+                .min(MAX_WAIT);
             match rx.recv_timeout(wait) {
                 Err(RecvTimeoutError::Disconnected) => return,
                 _ => while rx.try_recv().is_ok() {},
@@ -474,7 +522,12 @@ mod tests {
     #[test]
     fn ordinary_work_classifies_to_nothing() {
         let (mut core, now) = (idle_core(), Instant::now());
-        for kind in ["session.started", "session.turn_started", "session.checkpoint", "session.state"] {
+        for kind in [
+            "session.started",
+            "session.turn_started",
+            "session.checkpoint",
+            "session.state",
+        ] {
             core.observe("w", item("i1"), &event(kind), now);
         }
         assert_eq!(core.take(now), None);
@@ -492,14 +545,23 @@ mod tests {
     fn a_picked_up_item_wakes_uncapped_with_or_without_a_session() {
         let (mut core, now) = (idle_core(), Instant::now());
         core.item("i1".into(), None, What::Proposed("auto".into()), now);
-        core.item("i2".into(), Some("w".into()), What::Dropped("no longer assigned or open upstream".into()), now);
+        core.item(
+            "i2".into(),
+            Some("w".into()),
+            What::Dropped("no longer assigned or open upstream".into()),
+            now,
+        );
         assert_eq!(
             lines(&mut core, now),
             "item i1: proposed (auto)\nitem i2: dropped (no longer assigned or open upstream), session w"
         );
         core.item("i3".into(), None, What::Proposed("ask".into()), now);
         core.sent = None;
-        assert_eq!(lines(&mut core, now), "item i3: proposed (ask)", "not held by a repeat window");
+        assert_eq!(
+            lines(&mut core, now),
+            "item i3: proposed (ask)",
+            "not held by a repeat window"
+        );
     }
 
     #[test]
@@ -512,12 +574,27 @@ mod tests {
     #[test]
     fn a_turn_end_wakes_as_idle_unless_the_next_turn_starts_within_the_debounce() {
         let (mut core, now) = (idle_core(), Instant::now());
-        core.observe("w", item("i1"), &json!({ "kind": "session.turn_ended", "outcome": "completed" }), now);
-        core.observe("w", item("i1"), &event("session.turn_started"), now + Duration::from_secs(3));
+        core.observe(
+            "w",
+            item("i1"),
+            &json!({ "kind": "session.turn_ended", "outcome": "completed" }),
+            now,
+        );
+        core.observe(
+            "w",
+            item("i1"),
+            &event("session.turn_started"),
+            now + Duration::from_secs(3),
+        );
         core.tick(now + Duration::from_secs(11), STALL);
         assert_eq!(core.take(now), None, "the agent carried on");
 
-        core.observe("w", item("i1"), &json!({ "kind": "session.turn_ended", "outcome": "completed" }), now);
+        core.observe(
+            "w",
+            item("i1"),
+            &json!({ "kind": "session.turn_ended", "outcome": "completed" }),
+            now,
+        );
         core.tick(now + Duration::from_secs(9), STALL);
         assert_eq!(core.take(now), None, "still inside the debounce");
         core.tick(now + Duration::from_secs(10), STALL);
@@ -538,7 +615,11 @@ mod tests {
 
         core.touch("w", start + mins(41));
         core.tick(start + mins(62), STALL);
-        assert_eq!(lines(&mut core, start + mins(62)), "item i1: stalled, session w", "a new silence");
+        assert_eq!(
+            lines(&mut core, start + mins(62)),
+            "item i1: stalled, session w",
+            "a new silence"
+        );
     }
 
     #[test]
@@ -585,7 +666,12 @@ mod tests {
         let (mut core, now) = (Core::default(), Instant::now());
         core.set_pilot(RunnerState::Working, Some("pilot".into()));
         for n in 0..10 {
-            core.observe(&format!("w{n}"), item(&format!("i{n}")), &event("session.question"), now);
+            core.observe(
+                &format!("w{n}"),
+                item(&format!("i{n}")),
+                &event("session.question"),
+                now,
+            );
         }
         assert_eq!(core.take(now), None, "held while it works");
         core.set_pilot(RunnerState::Idle, Some("pilot".into()));
@@ -612,11 +698,23 @@ mod tests {
         let (mut core, now) = (idle_core(), Instant::now());
         core.observe("a", item("i1"), &event("session.question"), now);
         assert!(core.take(now).is_some());
-        core.observe("b", item("i2"), &event("session.question"), now + Duration::from_secs(1));
+        core.observe(
+            "b",
+            item("i2"),
+            &event("session.question"),
+            now + Duration::from_secs(1),
+        );
         core.tick(now + Duration::from_secs(20), STALL);
-        assert_eq!(core.take(now + Duration::from_secs(20)), None, "the first send may still open its turn");
+        assert_eq!(
+            core.take(now + Duration::from_secs(20)),
+            None,
+            "the first send may still open its turn"
+        );
         core.tick(now + Duration::from_secs(30), STALL);
-        assert_eq!(lines(&mut core, now + Duration::from_secs(30)), "item i2: question, session b");
+        assert_eq!(
+            lines(&mut core, now + Duration::from_secs(30)),
+            "item i2: question, session b"
+        );
     }
 
     #[test]
@@ -624,10 +722,18 @@ mod tests {
         let (mut core, now) = (idle_core(), Instant::now());
         core.observe("w", item("i1"), &event("session.question"), now);
         let batch = core.take(now).unwrap();
-        core.observe("w", item("i1"), &json!({ "kind": "session.ended", "reason": "died" }), now);
+        core.observe(
+            "w",
+            item("i1"),
+            &json!({ "kind": "session.ended", "reason": "died" }),
+            now,
+        );
         core.requeue(batch);
         core.tick(now + SENT_TIMEOUT, STALL);
-        assert_eq!(lines(&mut core, now + SENT_TIMEOUT), "item i1: question, ended (died), session w");
+        assert_eq!(
+            lines(&mut core, now + SENT_TIMEOUT),
+            "item i1: question, ended (died), session w"
+        );
     }
 
     fn store(name: &str) -> (Arc<AutopilotStore>, std::path::PathBuf) {
@@ -669,8 +775,24 @@ mod tests {
     fn a_done_items_session_is_no_longer_watched() {
         use crate::autopilot::{Kind, Patch, Source, State, Target as Key};
         let (store, dir) = store("watcher-done");
-        let key = Key::Key { kind: Kind::Review, source: Source::Pr { number: 7, repo: "o/r".into() }, project: "/p".into() };
-        let made = store.update(key, Patch { session: Some("w".into()), state: Some(State::Done), ..Patch::default() }).unwrap();
+        let key = Key::Key {
+            kind: Kind::Review,
+            source: Source::Pr {
+                number: 7,
+                repo: "o/r".into(),
+            },
+            project: "/p".into(),
+        };
+        let made = store
+            .update(
+                key,
+                Patch {
+                    session: Some("w".into()),
+                    state: Some(State::Done),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
         assert_eq!(made.state, State::Done);
         let watcher = watcher(Arc::new(SessionStates::default()), store);
         watcher.session_event("w", &event("session.question"));
@@ -682,31 +804,64 @@ mod tests {
     fn a_pr_change_after_the_worker_ended_still_wakes_its_item() {
         use crate::autopilot::{Kind, Patch, Source, Target as Key};
         let (store, dir) = store("watcher-pr");
-        let ship = Key::Key { kind: Kind::Ship, source: Source::Issue { key: "12".into(), project: "/p".into() }, project: "/p".into() };
+        let ship = Key::Key {
+            kind: Kind::Ship,
+            source: Source::Issue {
+                key: "12".into(),
+                project: "/p".into(),
+            },
+            project: "/p".into(),
+        };
         let url = "https://github.com/o/r/pull/9";
-        let shipped = store.update(ship, Patch { pr_url: Some(url.into()), ..Patch::default() }).unwrap();
-        let review = Key::Key { kind: Kind::Review, source: Source::Pr { number: 4, repo: "O/R".into() }, project: "/p".into() };
+        let shipped = store
+            .update(
+                ship,
+                Patch {
+                    pr_url: Some(url.into()),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
+        let review = Key::Key {
+            kind: Kind::Review,
+            source: Source::Pr {
+                number: 4,
+                repo: "O/R".into(),
+            },
+            project: "/p".into(),
+        };
         let reviewed = store.update(review, Patch::default()).unwrap();
         let watcher = watcher(Arc::new(SessionStates::default()), store);
 
         let moved = json!({ "pull_request": { "number": 9, "state": "open" }, "checks": "failure", "review": "none" });
         watcher.pr_event(Some(url), None, &[], &moved);
-        assert_eq!(pending(&watcher), format!("item {}: pr (#9 open; checks failure; review none)", shipped.id));
+        assert_eq!(
+            pending(&watcher),
+            format!("item {}: pr (#9 open; checks failure; review none)", shipped.id)
+        );
 
         watcher.core().set_pilot(RunnerState::Working, Some("pilot".into()));
         watcher.core().set_pilot(RunnerState::Idle, Some("pilot".into()));
-        let theirs = json!({ "pull_request": { "number": 4, "state": "open" }, "checks": "success", "review": "approved" });
+        let theirs =
+            json!({ "pull_request": { "number": 4, "state": "open" }, "checks": "success", "review": "approved" });
         watcher.pr_event(Some("https://github.com/o/r/pull/4"), None, &[], &theirs);
-        assert_eq!(pending(&watcher), format!("item {}: pr (#4 open; checks success; review approved)", reviewed.id));
+        assert_eq!(
+            pending(&watcher),
+            format!("item {}: pr (#4 open; checks success; review approved)", reviewed.id)
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_finished_pull_request_is_named_for_how_it_finished() {
-        let state = |s: crate::forge::model::PrState| {
-            json!({ "pull_request": { "number": 9, "state": s }, "checks": "none", "review": "none" })
-        };
-        assert_eq!(pr_detail(&state(crate::forge::model::PrState::Merged)), "#9 merged; checks none; review none");
-        assert_eq!(pr_detail(&state(crate::forge::model::PrState::Closed)), "#9 closed; checks none; review none");
+        let state = |s: crate::forge::model::PrState| json!({ "pull_request": { "number": 9, "state": s }, "checks": "none", "review": "none" });
+        assert_eq!(
+            pr_detail(&state(crate::forge::model::PrState::Merged)),
+            "#9 merged; checks none; review none"
+        );
+        assert_eq!(
+            pr_detail(&state(crate::forge::model::PrState::Closed)),
+            "#9 closed; checks none; review none"
+        );
     }
 }

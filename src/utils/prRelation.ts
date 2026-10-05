@@ -52,7 +52,8 @@ export function prRelation(
   const key = `${folderPath}\u0000${branch}`;
   const stamp = `${pr.number}:${pr.headSha}:${endedAt}:${localStamp(sync)}`;
   const held = answers[key];
-  if (held?.stamp !== stamp && !asking.has(`${key}\u0000${stamp}`)) void ask(key, stamp, folderPath, branch, pr.headSha, endedAt);
+  if (held?.stamp !== stamp && !asking.has(`${key}\u0000${stamp}`))
+    void ask(key, stamp, folderPath, branch, pr.headSha, endedAt);
   return held?.relation ?? null;
 }
 

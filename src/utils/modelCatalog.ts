@@ -152,10 +152,7 @@ export function cachedCommands(catalog: ModelCatalog | undefined): SlashCommand[
   return catalog?.catalogue?.commands ?? [];
 }
 
-export function cachedOptions(
-  catalog: ModelCatalog | undefined,
-  model: string | null,
-): ChatConfigOption[] {
+export function cachedOptions(catalog: ModelCatalog | undefined, model: string | null): ChatConfigOption[] {
   const row = model === null ? undefined : cachedModels(catalog).find((m) => m.value === model);
   return row?.options?.length ? row.options : (catalog?.catalogue?.options ?? []);
 }
@@ -295,8 +292,7 @@ export function __resetModelCatalogsForTests() {
  *
  *  Exported so anything else keying on the pair (the palette builds a map of
  *  catalogues) joins it the same way and spells the default account once. */
-export const catalogKey = (agentId: string, profile: string | null) =>
-  `${agentId} ${asProfileId(profile)}`;
+export const catalogKey = (agentId: string, profile: string | null) => `${agentId} ${asProfileId(profile)}`;
 const rowKey = (c: ModelCatalog) => catalogKey(c.agentId, c.profileId);
 
 /** Fold one account's fresh answer into the store, leaving the rest alone.
@@ -308,9 +304,7 @@ function absorb(next: ModelCatalog) {
   setModelCatalogs((prev) => {
     const rows = prev ?? [];
     const key = rowKey(next);
-    return rows.some((c) => rowKey(c) === key)
-      ? rows.map((c) => (rowKey(c) === key ? next : c))
-      : [...rows, next];
+    return rows.some((c) => rowKey(c) === key) ? rows.map((c) => (rowKey(c) === key ? next : c)) : [...rows, next];
   });
 }
 
@@ -381,9 +375,7 @@ export async function refreshDueCatalogs(): Promise<unknown> {
   // per run, so its value is the state of the world at first load; every probe
   // since has landed in the store and nowhere else. Deciding from the promise
   // re-asks a agent that answered five seconds ago.
-  return Promise.all(
-    (modelCatalogs() ?? []).filter(isDue).map((c) => refreshCatalog(c.agentId, c.profileId)),
-  );
+  return Promise.all((modelCatalogs() ?? []).filter(isDue).map((c) => refreshCatalog(c.agentId, c.profileId)));
 }
 
 /** Ask one account of one agent, but only if its answer is missing or out of

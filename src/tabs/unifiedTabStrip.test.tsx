@@ -62,17 +62,13 @@ const MIXED = [chatTab("c1", "claude one"), fileTab("f1", "app.ts"), chatTab("c2
 
 describe("a mixed strip", () => {
   it("renders every kind's tab through one bar, in list order", () => {
-    render(() => (
-      <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />
-    ));
+    render(() => <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />);
     const names = screen.getAllByRole("tab").map((t) => t.textContent);
     expect(names).toEqual(["claude one", "app.ts", "claude two"]);
   });
 
   it("routes activation through the clicked tab's own descriptor", async () => {
-    render(() => (
-      <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />
-    ));
+    render(() => <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />);
     pointerClick(screen.getByRole("tab", { name: "app.ts" }));
     await waitFor(() => expect(activated).toEqual(["f1"]));
   });
@@ -93,7 +89,7 @@ describe("a mixed strip", () => {
       <UnifiedTabStrip
         items={many}
         activeId="c1"
-       
+
         onReorder={(next) => orders.push(next.map((t) => t.id))}
       />
     ));
@@ -192,9 +188,7 @@ describe("the trailing cluster", () => {
 
 describe("per-kind affordances", () => {
   it("wraps the on-screen tab but not the measuring ghost", () => {
-    render(() => (
-      <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />
-    ));
+    render(() => <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />);
     // One file tab, rendered twice (row + ghost): the wrap must appear once.
     expect(screen.getAllByTestId("file-wrap")).toHaveLength(1);
   });
@@ -202,7 +196,13 @@ describe("per-kind affordances", () => {
 
 /** What the panels hand `TabMemberChip` inside a Topic. */
 const tinted = (displayName: string, hue: string): TintedMember => ({
-  member: { repoPath: `/r/${displayName}`, displayName, worktreePath: `/w/${displayName}`, state: { kind: "present" }, order: 0 },
+  member: {
+    repoPath: `/r/${displayName}`,
+    displayName,
+    worktreePath: `/w/${displayName}`,
+    state: { kind: "present" },
+    order: 0,
+  },
   key: `/w/${displayName}`,
   root: `/w/${displayName}`,
   label: displayName,
@@ -224,9 +224,7 @@ describe("accessibility", () => {
       chatTab("c3", "chat 3"),
       fileTab("f3", "file 3"),
     ];
-    const { container } = render(() => (
-      <UnifiedTabStrip items={many} activeId="c1" onReorder={() => {}} />
-    ));
+    const { container } = render(() => <UnifiedTabStrip items={many} activeId="c1" onReorder={() => {}} />);
     await screen.findByRole("button", { name: "3 more" });
     await expectNoAxeViolations(container);
   });
@@ -266,9 +264,7 @@ describe("accessibility", () => {
       chatTab("c2", "task"),
       fileTab("f3", "c.txt"),
     ];
-    const { container } = render(() => (
-      <UnifiedTabStrip items={many} activeId="f1" onReorder={() => {}} />
-    ));
+    const { container } = render(() => <UnifiedTabStrip items={many} activeId="f1" onReorder={() => {}} />);
     await screen.findByRole("button", { name: "2 more" });
     await expectNoAxeViolations(container);
   });

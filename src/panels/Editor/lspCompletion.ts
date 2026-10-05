@@ -433,9 +433,7 @@ export const toriCompletionSource: CompletionSource = (context) => {
   const triggerReason = context.explicit ? "invoked" : shouldTrigger(plugin, triggerChar);
   if (!triggerReason) return null;
   const completionContext =
-    triggerReason === "triggerCharacter"
-      ? { triggerKind: 2, triggerCharacter: triggerChar }
-      : { triggerKind: 1 };
+    triggerReason === "triggerCharacter" ? { triggerKind: 2, triggerCharacter: triggerChar } : { triggerKind: 1 };
 
   return requestCompletions(plugin, context.pos, completionContext, context as unknown as AbortSignal).then(
     (reply) => {

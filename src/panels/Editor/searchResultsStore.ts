@@ -110,7 +110,13 @@ export function openSearchEditor(
   seed: SearchBuffer["seed"] = null,
 ): string {
   const id = syntheticId("search", workspace, String(++seq));
-  buffers.set(id, { form: { ...form, options: { ...form.options }, repos: [...form.repos] }, doc: null, seed, state: null, closed: false });
+  buffers.set(id, {
+    form: { ...form, options: { ...form.options }, repos: [...form.repos] },
+    doc: null,
+    seed,
+    state: null,
+    closed: false,
+  });
   noteSearchQuery(id, seed ? form.query : "");
   emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: id });
   return id;

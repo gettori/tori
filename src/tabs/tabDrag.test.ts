@@ -115,9 +115,7 @@ describe("the drops that mean nothing", () => {
   });
 
   it("refuses a center drop by the tab that is already last", () => {
-    expect(
-      dropAction({ ...own, zone: { kind: "center" }, drag: drag({ id: "c" }) }),
-    ).toBeNull();
+    expect(dropAction({ ...own, zone: { kind: "center" }, drag: drag({ id: "c" }) })).toBeNull();
   });
 
   it("still reorders inside its own strip when the slot really differs", () => {

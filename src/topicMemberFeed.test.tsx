@@ -33,9 +33,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "list_topics")
-      return Promise.resolve([
-        { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: bridge.members },
-      ]);
+      return Promise.resolve([{ id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: bridge.members }]);
     if (cmd === "get_config")
       return Promise.resolve({
         spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }],

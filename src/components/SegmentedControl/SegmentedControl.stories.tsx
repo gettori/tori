@@ -40,13 +40,7 @@ export const Default: Story = {
   render: (args) => {
     const [pane, setPane] = createSignal("files");
     return (
-      <SegmentedControl
-        size={args.size}
-        options={PANES}
-        value={pane()}
-        onChange={setPane}
-        aria-label="Right panel"
-      />
+      <SegmentedControl size={args.size} options={PANES} value={pane()} onChange={setPane} aria-label="Right panel" />
     );
   },
 };

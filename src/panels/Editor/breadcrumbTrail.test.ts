@@ -29,9 +29,7 @@ const TREE = normalizeDocumentSymbols(
           kind: 6,
           range: range(1, 2, 3, 3),
           selectionRange: range(1, 2, 1, 4),
-          children: [
-            { name: "inner", kind: 12, range: range(2, 4, 2, 30), selectionRange: range(2, 4, 2, 9) },
-          ],
+          children: [{ name: "inner", kind: 12, range: range(2, 4, 2, 30), selectionRange: range(2, 4, 2, 9) }],
         },
       ],
     },

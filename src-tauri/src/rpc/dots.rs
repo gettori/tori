@@ -111,8 +111,17 @@ pub fn compose(input: &Inputs) -> Composed {
     };
     let raised = input.forge_attention && matches!(tier, Dot::Solid | Dot::Hollow);
     let dot = if raised { Dot::NeedsYou } else { tier };
-    let certainty = if input.chat_status.is_some() { Certainty::Exact } else { Certainty::Inferred };
-    Composed { state, dot, certainty, raised }
+    let certainty = if input.chat_status.is_some() {
+        Certainty::Exact
+    } else {
+        Certainty::Inferred
+    };
+    Composed {
+        state,
+        dot,
+        certainty,
+        raised,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -231,10 +240,20 @@ impl Dots {
         let mut facts = next;
         let tabs: HashSet<String> = facts.tabs.iter().map(|t| t.id.clone()).collect();
         let chats: HashSet<String> = facts.chats.iter().map(|c| c.session.clone()).collect();
-        let held_tabs: Vec<TabFact> =
-            inner.facts.tabs.iter().filter(|t| !tabs.contains(&t.id) && tab_alive(&t.id)).cloned().collect();
-        let held_chats: Vec<ChatFact> =
-            inner.facts.chats.iter().filter(|c| !chats.contains(&c.session) && chat_alive(&c.session)).cloned().collect();
+        let held_tabs: Vec<TabFact> = inner
+            .facts
+            .tabs
+            .iter()
+            .filter(|t| !tabs.contains(&t.id) && tab_alive(&t.id))
+            .cloned()
+            .collect();
+        let held_chats: Vec<ChatFact> = inner
+            .facts
+            .chats
+            .iter()
+            .filter(|c| !chats.contains(&c.session) && chat_alive(&c.session))
+            .cloned()
+            .collect();
         facts.tabs.extend(held_tabs);
         facts.chats.extend(held_chats);
         inner.activity.retain(|tab, _| tab_alive(tab));
@@ -248,7 +267,13 @@ impl Dots {
     pub fn note_running(&self, asked: &[(String, String)], running: &HashSet<String>) {
         let mut inner = self.inner();
         for (id, agent) in asked {
-            inner.probes.insert(id.clone(), Probe { agent: agent.clone(), running: running.contains(id) });
+            inner.probes.insert(
+                id.clone(),
+                Probe {
+                    agent: agent.clone(),
+                    running: running.contains(id),
+                },
+            );
         }
         // A stopped session with no tab is `none` either way, so it is not kept.
         let Inner { facts, probes, .. } = &mut *inner;
@@ -266,8 +291,12 @@ impl Dots {
         let inner = self.inner();
         let mut want: BTreeMap<String, String> = BTreeMap::new();
         for t in &inner.facts.tabs {
-            let agent = t.agent.clone().or_else(|| inner.probes.get(&t.session).map(|p| p.agent.clone()));
-            want.entry(t.session.clone()).or_insert_with(|| agent.unwrap_or_else(|| "claude".into()));
+            let agent = t
+                .agent
+                .clone()
+                .or_else(|| inner.probes.get(&t.session).map(|p| p.agent.clone()));
+            want.entry(t.session.clone())
+                .or_insert_with(|| agent.unwrap_or_else(|| "claude".into()));
         }
         for (id, p) in inner.probes.iter().filter(|(_, p)| p.running) {
             want.entry(id.clone()).or_insert_with(|| p.agent.clone());
@@ -286,7 +315,10 @@ impl Dots {
     }
 
     pub fn dot(&self, id: &str) -> (Dot, Certainty) {
-        self.inner().dots.get(id).map_or((Dot::None, Certainty::Inferred), |c| (c.dot, c.certainty))
+        self.inner()
+            .dots
+            .get(id)
+            .map_or((Dot::None, Certainty::Inferred), |c| (c.dot, c.certainty))
     }
 
     /// Every session a tab or a chat hosts, agent tabs first. A tab's name and
@@ -345,11 +377,21 @@ impl Dots {
             let running = inner.probes.get(id).is_some_and(|p| p.running);
             let pty = tab.and_then(|t| inner.activity.get(&t.id).copied());
             let session = meta.get(id);
-            let blocked = tab.is_some() && running && pty == Some(Activity::Quiet) && session.is_some_and(|m| tail_blocked(id, m));
+            let blocked = tab.is_some()
+                && running
+                && pty == Some(Activity::Quiet)
+                && session.is_some_and(|m| tail_blocked(id, m));
             let branch = session.map(|m| m.branch.as_str()).filter(|b| !b.is_empty());
-            let hosted = tab.map(|t| t.workspace.clone()).or_else(|| chat.map(|c| c.folder.clone()));
-            let home = hosted.as_deref().or(session.map(|m| m.cwd.as_str())).and_then(|at| home_of(at, branch));
-            let folder = hosted.or_else(|| home.as_ref().map(|h| h.folder.clone())).unwrap_or_default();
+            let hosted = tab
+                .map(|t| t.workspace.clone())
+                .or_else(|| chat.map(|c| c.folder.clone()));
+            let home = hosted
+                .as_deref()
+                .or(session.map(|m| m.cwd.as_str()))
+                .and_then(|at| home_of(at, branch));
+            let folder = hosted
+                .or_else(|| home.as_ref().map(|h| h.folder.clone()))
+                .unwrap_or_default();
             let input = Inputs {
                 chat_status: chat.map(|c| c.status),
                 has_live_tab: tab.is_some(),
@@ -359,22 +401,48 @@ impl Dots {
                 forge_attention: forge_attention(&facts.forge, &folder, branch),
             };
             let composed = compose(&input);
-            let change =
-                Change { id: id.to_string(), dot: composed.dot, certainty: composed.certainty, raised: composed.raised, home, folder };
+            let change = Change {
+                id: id.to_string(),
+                dot: composed.dot,
+                certainty: composed.certainty,
+                raised: composed.raised,
+                home,
+                folder,
+            };
             dots.insert(id.to_string(), change);
             let Some(state) = composed.state else { continue };
             if let Some(chat) = chat {
-                reports.push(Reported { id: id.into(), state, source: Source::Chat, folder: Some(chat.folder.clone()), tab: None });
+                reports.push(Reported {
+                    id: id.into(),
+                    state,
+                    source: Source::Chat,
+                    folder: Some(chat.folder.clone()),
+                    tab: None,
+                });
                 continue;
             }
             // A socket state for a PTY session only while its agent tab is there.
             if let Some(t) = facts.tabs.iter().find(|t| t.session == id) {
-                reports.push(Reported { id: id.into(), state, source: Source::Pty, folder: Some(t.workspace.clone()), tab: Some(t.id.clone()) });
+                reports.push(Reported {
+                    id: id.into(),
+                    state,
+                    source: Source::Pty,
+                    folder: Some(t.workspace.clone()),
+                    tab: Some(t.id.clone()),
+                });
             }
         }
 
-        let mut changes: Vec<Change> = dots.iter().filter(|(id, c)| inner.dots.get(*id) != Some(*c)).map(|(_, c)| c.clone()).collect();
-        for (id, _) in inner.dots.iter().filter(|(id, c)| !dots.contains_key(*id) && c.dot != Dot::None) {
+        let mut changes: Vec<Change> = dots
+            .iter()
+            .filter(|(id, c)| inner.dots.get(*id) != Some(*c))
+            .map(|(_, c)| c.clone())
+            .collect();
+        for (id, _) in inner
+            .dots
+            .iter()
+            .filter(|(id, c)| !dots.contains_key(*id) && c.dot != Dot::None)
+        {
             changes.push(Change {
                 id: id.clone(),
                 dot: Dot::None,
@@ -398,7 +466,9 @@ fn forge_attention(forge: &[ForgeUnit], folder: &str, branch: Option<&str>) -> b
     let here: Vec<&ForgeUnit> = forge.iter().filter(|u| u.folder_path == folder).collect();
     let units: Vec<BranchUnit> = here.iter().map(|u| u.unit()).collect();
     let siblings: Vec<&BranchUnit> = units.iter().collect();
-    here.iter().zip(&units).any(|(f, u)| f.attention && crate::unit_home::belongs_to_unit(branch, u, &siblings))
+    here.iter()
+        .zip(&units)
+        .any(|(f, u)| f.attention && crate::unit_home::belongs_to_unit(branch, u, &siblings))
 }
 
 #[cfg(test)]
@@ -449,24 +519,51 @@ mod tests {
 
     #[test]
     fn a_red_check_raises_the_dot_but_not_the_state() {
-        let idle = Inputs { has_live_tab: true, running: true, forge_attention: true, ..Default::default() };
+        let idle = Inputs {
+            has_live_tab: true,
+            running: true,
+            forge_attention: true,
+            ..Default::default()
+        };
         let c = compose(&idle);
         assert_eq!(c.dot, Dot::NeedsYou);
         assert_eq!(c.state, Some(SessionState::Idle));
     }
 
     fn tab(id: &str, session: &str) -> TabFact {
-        TabFact { id: id.into(), session: session.into(), live: true, workspace: "/p/repo".into(), agent: Some("claude".into()) }
+        TabFact {
+            id: id.into(),
+            session: session.into(),
+            live: true,
+            workspace: "/p/repo".into(),
+            agent: Some("claude".into()),
+        }
     }
 
     fn chat(session: &str, status: Status) -> ChatFact {
-        ChatFact { session: session.into(), status, folder: "/p/repo".into(), visible: false, spawner: None, name: String::new(), done_at: 0 }
+        ChatFact {
+            session: session.into(),
+            status,
+            folder: "/p/repo".into(),
+            visible: false,
+            spawner: None,
+            name: String::new(),
+            done_at: 0,
+        }
     }
 
     #[test]
     fn a_push_that_leaves_out_a_live_tab_or_chat_keeps_it() {
         let dots = Dots::default();
-        dots.replace(Facts { tabs: vec![tab("t1", "s1")], chats: vec![chat("c1", Status::Executing)], forge: vec![] }, |_| false, |_| false);
+        dots.replace(
+            Facts {
+                tabs: vec![tab("t1", "s1")],
+                chats: vec![chat("c1", Status::Executing)],
+                forge: vec![],
+            },
+            |_| false,
+            |_| false,
+        );
         dots.replace(Facts::default(), |tab| tab == "t1", |chat| chat == "c1");
         let kept = dots.inner().facts.clone();
         assert_eq!(kept.tabs, vec![tab("t1", "s1")]);
@@ -490,8 +587,19 @@ mod tests {
     #[test]
     fn a_home_folder_chat_and_an_old_member_worktree_session_both_land_on_the_topic() {
         let dots = Dots::default();
-        let home_chat = ChatFact { folder: "topic:auth-1".into(), ..chat("home", Status::WaitingForApproval) };
-        dots.replace(Facts { tabs: vec![], chats: vec![home_chat], forge: vec![] }, |_| false, |_| false);
+        let home_chat = ChatFact {
+            folder: "topic:auth-1".into(),
+            ..chat("home", Status::WaitingForApproval)
+        };
+        dots.replace(
+            Facts {
+                tabs: vec![],
+                chats: vec![home_chat],
+                forge: vec![],
+            },
+            |_| false,
+            |_| false,
+        );
         dots.note_running(&[("old".into(), "claude".into())], &HashSet::from(["old".to_string()]));
         let old = Meta {
             agent: "claude".into(),
@@ -506,7 +614,12 @@ mod tests {
             |at, branch| crate::unit_home::home_of(&[], &topics, at, branch),
             |_, _| false,
         );
-        let placed = |id: &str| changes.iter().find(|c| c.id == id).map(|c| (c.dot, c.home.as_ref().and_then(|h| h.topic.clone())));
+        let placed = |id: &str| {
+            changes
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| (c.dot, c.home.as_ref().and_then(|h| h.topic.clone())))
+        };
         assert_eq!(placed("home"), Some((Dot::NeedsYou, Some("auth-1".into()))));
         assert_eq!(placed("old"), Some((Dot::Hollow, Some("auth-1".into()))));
     }

@@ -41,10 +41,7 @@ export type DragReorder = {
   fromDrag: () => boolean;
 };
 
-export function createDragReorder(opts: {
-  keys: () => string[];
-  onCommit: (keys: string[]) => void;
-}): DragReorder {
+export function createDragReorder(opts: { keys: () => string[]; onCommit: (keys: string[]) => void }): DragReorder {
   const [dragging, setDragging] = createSignal<string | null>(null);
   const [over, setOver] = createSignal<string | null>(null);
   let settle: ReturnType<typeof setTimeout> | undefined;

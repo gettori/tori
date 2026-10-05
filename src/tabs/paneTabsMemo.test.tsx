@@ -4,12 +4,7 @@
 // the whole tab union per pane (O(tabs x panes) per click).
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { createRoot } from "solid-js";
-import {
-  __placementComputesForTests,
-  installPaneTabsMemo,
-  paneActiveId,
-  paneTabs,
-} from "./paneTabs";
+import { __placementComputesForTests, installPaneTabsMemo, paneActiveId, paneTabs } from "./paneTabs";
 import { installUnifiedTabsMemo, unifiedTabs } from "./unifiedTabs";
 import { ensureEnvelope, layoutRoot, resetPaneLayoutModel, seedTwoPane } from "../layout/layoutStore";
 import { moveTabToPane, resetTabPlacement, setPaneActive } from "../layout/tabPlacement";
@@ -47,7 +42,9 @@ describe("the placement memo", () => {
       setOpen(Array.from({ length: 12 }, (_, i) => shell(i)));
       const tabsInWs = open().map((t) => ({ id: t.id, kind: t.kind }));
       for (const n of [8, 9, 10, 11]) {
-        expect(moveTabToPane({ ws: WS, tab: { id: `sh:${n}`, kind: "shell" }, targetPaneId: right, root, tabsInWs })).toBeNull();
+        expect(
+          moveTabToPane({ ws: WS, tab: { id: `sh:${n}`, kind: "shell" }, targetPaneId: right, root, tabsInWs }),
+        ).toBeNull();
       }
 
       // Warm the memo, then read repeatedly: cached, no recompute, same array.
@@ -71,9 +68,7 @@ describe("the placement memo", () => {
 
       // And the maps say what the per-call filters used to say.
       expect(paneTabs(WS, right).map((t) => t.id)).toEqual(["sh:8", "sh:9", "sh:10", "sh:11"]);
-      expect(paneTabs(WS, left).map((t) => t.id)).toEqual(
-        Array.from({ length: 8 }, (_, i) => `sh:${i}`),
-      );
+      expect(paneTabs(WS, left).map((t) => t.id)).toEqual(Array.from({ length: 8 }, (_, i) => `sh:${i}`));
       expect(paneActiveId(WS, left)).toBe("sh:3");
       dispose();
     });

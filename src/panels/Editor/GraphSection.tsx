@@ -70,9 +70,7 @@ export default function GraphSection(props: {
           // A branch longer than one page would push the base off the bottom,
           // and where you left the trunk is the one thing this section is for.
           // So the page grows to reach it, rather than the reader paging for it.
-          const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(
-            () => 0,
-          );
+          const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
           const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
           setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all }));
           setError("");
@@ -85,17 +83,11 @@ export default function GraphSection(props: {
   );
 
   return (
-    <Show
-      when={entries().length}
-      fallback={<div class="tree-empty">{error() || "No commits yet."}</div>}
-    >
+    <Show when={entries().length} fallback={<div class="tree-empty">{error() || "No commits yet."}</div>}>
       <OverlayScroll class={styles.scroll}>
         <For each={entries()}>
           {(c) => (
-            <div
-              class={styles.entry}
-              classList={{ [styles.open]: open().has(c.sha), [styles.local]: c.off_base }}
-            >
+            <div class={styles.entry} classList={{ [styles.open]: open().has(c.sha), [styles.local]: c.off_base }}>
               {/* The button expands; the commit itself opens from the control
                   beside it, kept outside since a button cannot hold one. */}
               <div class={styles.rowWrap}>
@@ -129,8 +121,7 @@ export default function GraphSection(props: {
                     icon={<Icon icon={GitCommitHorizontal} />}
                     tooltip="Open this commit"
                     onClick={() =>
-                      props.root &&
-                      emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, c.sha) })
+                      props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, c.sha) })
                     }
                   />
                 </span>

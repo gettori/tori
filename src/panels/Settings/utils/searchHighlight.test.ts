@@ -21,11 +21,7 @@ describe("marking where a label matched", () => {
   it("marks the scattered characters of a loose match", () => {
     // "sfw" for "Soft wrap long lines": the looseness is the point on a short
     // label, and the marks show which characters earned it.
-    expect(marks("Soft wrap long lines", labelRanges("sfw", "Soft wrap long lines"))).toEqual([
-      "S",
-      "f",
-      "w",
-    ]);
+    expect(marks("Soft wrap long lines", labelRanges("sfw", "Soft wrap long lines"))).toEqual(["S", "f", "w"]);
   });
 
   it("marks nothing when the query is not a subsequence", () => {
@@ -44,9 +40,9 @@ describe("marking where a label matched", () => {
 
 describe("marking where a hint matched", () => {
   it("marks the substring occurrence", () => {
-    expect(marks("Runs the project's own Biome", hintRanges("Biome", "Runs the project's own Biome"))).toEqual(
-      ["Biome"],
-    );
+    expect(marks("Runs the project's own Biome", hintRanges("Biome", "Runs the project's own Biome"))).toEqual([
+      "Biome",
+    ]);
   });
 
   it("marks nothing for a subsequence that is not a substring", () => {
@@ -67,7 +63,11 @@ describe("splitting text into marked and plain pieces", () => {
       ["Soft wrap", labelRanges("sfw", "Soft wrap")],
       ["Minimap", []],
     ] as const) {
-      expect(segments(text, [...ranges]).map((s) => s.text).join("")).toBe(text);
+      expect(
+        segments(text, [...ranges])
+          .map((s) => s.text)
+          .join(""),
+      ).toBe(text);
     }
   });
 

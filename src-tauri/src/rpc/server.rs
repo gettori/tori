@@ -9,23 +9,25 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use serde::de::DeserializeOwned;
 use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::approvals::Draft;
 use super::auth::{authenticate, pair, Credential, Principal, PAIR_METHOD};
-use crate::autopilot::{AutopilotStore, Autonomy, ContractPatch, Kind, Observed, Patch, Pickup, Ships, Source, State, Target, UpdateError};
-use crate::forge::model::{DraftComment, ReviewEvent};
-use crate::forge::MergeMethod;
 use super::frame::{
-    read_request, to_line, write_line, ReadError, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST,
-    METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
+    read_request, to_line, write_line, ReadError, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS,
+    INVALID_REQUEST, METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
 };
 use super::hub::{Channel, ChatOutbox, ConnId, Hub, QUEUE_CAP, WAKE};
 use super::table::{self, CallerKind};
 use super::transport::{Stream, Transport};
+use crate::autopilot::{
+    Autonomy, AutopilotStore, ContractPatch, Kind, Observed, Patch, Pickup, Ships, Source, State, Target, UpdateError,
+};
+use crate::forge::model::{DraftComment, ReviewEvent};
+use crate::forge::MergeMethod;
 
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DEFAULT_LOG_LIMIT: usize = 50;
@@ -491,7 +493,11 @@ pub struct PrMergeParams {
 
 impl PrMergeParams {
     pub fn draft(&self) -> Draft {
-        Draft::PrMerge { number: self.number, method: self.method, head_sha: self.head_sha.clone() }
+        Draft::PrMerge {
+            number: self.number,
+            method: self.method,
+            head_sha: self.head_sha.clone(),
+        }
     }
 }
 
@@ -530,9 +536,19 @@ impl ItemUpdateParams {
     pub fn apply(self, store: &AutopilotStore, project: Option<String>) -> Result<Value, RpcError> {
         let target = match (self.id, self.kind, self.source, project) {
             (Some(id), None, None, None) => Target::Id(id),
-            (Some(_), ..) => return Err(RpcError::new(INVALID_PARAMS, "kind, source and project name a new item: with an id pass only what changes")),
+            (Some(_), ..) => {
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    "kind, source and project name a new item: with an id pass only what changes",
+                ))
+            }
             (None, Some(kind), Some(source), Some(project)) => Target::Key { kind, source, project },
-            (None, ..) => return Err(RpcError::new(INVALID_PARAMS, "without an id, pass kind, source and project")),
+            (None, ..) => {
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    "without an id, pass kind, source and project",
+                ))
+            }
         };
         let patch = Patch {
             state: self.state,
@@ -581,7 +597,9 @@ impl ProjectSetParams {
             account: self.account,
             model: self.model,
         };
-        let contract = store.set_project(project, patch).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+        let contract = store
+            .set_project(project, patch)
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
         serde_json::to_value(contract).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
 }
@@ -591,7 +609,8 @@ pub fn autopilot_state(
     holds: Vec<super::asks::Hold>,
     observe: impl FnOnce(&[crate::autopilot::Item]) -> Observed,
 ) -> Result<Value, RpcError> {
-    let mut state = serde_json::to_value(store.state(observe)).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+    let mut state =
+        serde_json::to_value(store.state(observe)).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
     state["holds"] = json!(holds);
     Ok(state)
 }
@@ -692,11 +711,17 @@ impl Server {
                 let sessions = matches!(channel, Channel::Sessions | Channel::Session(_));
                 let kind = self.backend.kind(principal);
                 if channel == Channel::Accounts && kind == CallerKind::Device {
-                    return Err(RpcError::new(REFUSED, "a device subscribes to sessions, session:<id>, chat:<id> and autopilot only"));
+                    return Err(RpcError::new(
+                        REFUSED,
+                        "a device subscribes to sessions, session:<id>, chat:<id> and autopilot only",
+                    ));
                 }
                 // The stream is for a person watching a chat; an agent reads a session with session.tail.
                 if matches!(channel, Channel::Chat(_)) && !matches!(kind, CallerKind::Device | CallerKind::Local) {
-                    return Err(RpcError::new(REFUSED, "chat:<id> is open to a device or a local client only"));
+                    return Err(RpcError::new(
+                        REFUSED,
+                        "chat:<id> is open to a device or a local client only",
+                    ));
                 }
                 if sessions {
                     self.backend.watching_sessions();
@@ -710,7 +735,8 @@ impl Server {
             }
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             name => {
-                let method = table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
+                let method =
+                    table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
                 let kind = self.backend.kind(principal);
                 if !method.callers.contains(&kind) {
                     let why = match kind {
@@ -718,7 +744,10 @@ impl Server {
                         _ => method.refusal,
                     };
                     let why = why.map(|r| format!(": {r}")).unwrap_or_default();
-                    return Err(RpcError::new(REFUSED, format!("{name} is not open to a {} caller{why}", kind.name())));
+                    return Err(RpcError::new(
+                        REFUSED,
+                        format!("{name} is not open to a {} caller{why}", kind.name()),
+                    ));
                 }
                 (method.call)(self.backend.as_ref(), principal, &req.params)
             }
@@ -803,7 +832,10 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
             Err(e) => Err(Response::err(first.id.clone().unwrap_or(Value::Null), e.rpc())),
         },
         Ok(None) => return,
-        Err(ReadError::Io(_)) => Err(Response::err(Value::Null, RpcError::new(UNAUTHORIZED, "no auth frame in time"))),
+        Err(ReadError::Io(_)) => Err(Response::err(
+            Value::Null,
+            RpcError::new(UNAUTHORIZED, "no auth frame in time"),
+        )),
         Err(e) => Err(Response::err(Value::Null, e.rpc())),
     };
     let principal = match authed {
@@ -977,7 +1009,10 @@ pub mod tests {
         }
         fn ask_answer(&self, _: &Principal, p: AskAnswerParams) -> Result<Value, RpcError> {
             match p.id.as_str() {
-                "gone" => Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", p.id))),
+                "gone" => Err(RpcError::new(
+                    INVALID_PARAMS,
+                    format!("no ask {}, or it was already answered", p.id),
+                )),
                 _ => Ok(json!({})),
             }
         }
@@ -1018,7 +1053,10 @@ pub mod tests {
             }
         }
         fn autopilot_log(&self, p: LogParams) -> Result<Value, RpcError> {
-            let log = self.autopilot.as_ref().map(|store| store.recent_log(p.limit.unwrap_or(DEFAULT_LOG_LIMIT)));
+            let log = self
+                .autopilot
+                .as_ref()
+                .map(|store| store.recent_log(p.limit.unwrap_or(DEFAULT_LOG_LIMIT)));
             Ok(json!(log.unwrap_or_default()))
         }
         fn autopilot_item_update(&self, _: &Principal, p: ItemUpdateParams) -> Result<Value, RpcError> {
@@ -1072,10 +1110,21 @@ pub mod tests {
         let transport = Arc::new(UnixTransport::bind().unwrap());
         let hub = Arc::new(Hub::default());
         let children = Arc::new(Children::default());
-        let server = Arc::new(Server { hub: hub.clone(), backend: Box::<StubBackend>::default(), auth_timeout: timeout });
-        let credential = Arc::new(Credential::Local { process: "tok".into(), children: children.clone() });
+        let server = Arc::new(Server {
+            hub: hub.clone(),
+            backend: Box::<StubBackend>::default(),
+            auth_timeout: timeout,
+        });
+        let credential = Arc::new(Credential::Local {
+            process: "tok".into(),
+            children: children.clone(),
+        });
         serve(transport.clone(), credential, server);
-        Running { transport, hub, children }
+        Running {
+            transport,
+            hub,
+            children,
+        }
     }
 
     pub struct Client {
@@ -1127,8 +1176,14 @@ pub mod tests {
     fn a_correct_token_allows_the_next_call() {
         let r = start(AUTH_TIMEOUT);
         let mut c = authed(&r);
-        assert_eq!(c.call(1, "sessions.list", json!({"limit": 3}))["result"], json!([{"id": "s1", "limit": 3}]));
-        assert_eq!(c.call(2, "session.tail", json!({"id": "s9", "agent": "claude"}))["result"], json!([{"id": "s9"}]));
+        assert_eq!(
+            c.call(1, "sessions.list", json!({"limit": 3}))["result"],
+            json!([{"id": "s1", "limit": 3}])
+        );
+        assert_eq!(
+            c.call(2, "session.tail", json!({"id": "s9", "agent": "claude"}))["result"],
+            json!([{"id": "s9"}])
+        );
     }
 
     #[test]
@@ -1141,8 +1196,14 @@ pub mod tests {
             assert_eq!(c.call(0, "auth", json!({ "token": token }))["result"], json!({}));
             c.call(1, "caller", Value::Null)["result"].clone()
         };
-        assert_eq!(as_caller(&tab), json!({"caller": {"kind": "terminal", "id": "t1"}, "kind": "terminal"}));
-        assert_eq!(as_caller(&chat), json!({"caller": {"kind": "chat", "id": "s1"}, "kind": "chat"}));
+        assert_eq!(
+            as_caller(&tab),
+            json!({"caller": {"kind": "terminal", "id": "t1"}, "kind": "terminal"})
+        );
+        assert_eq!(
+            as_caller(&chat),
+            json!({"caller": {"kind": "chat", "id": "s1"}, "kind": "chat"})
+        );
         assert_eq!(as_caller("tok"), json!({"caller": null, "kind": "local"}));
 
         r.children.revoke_token(&tab);
@@ -1177,10 +1238,19 @@ pub mod tests {
         let r = start(AUTH_TIMEOUT);
         let mut c = authed(&r);
         assert_eq!(c.call(1, "nope", json!({}))["error"]["code"], json!(METHOD_NOT_FOUND));
-        assert_eq!(c.call(2, "session.tail", json!({"id": 1}))["error"]["code"], json!(INVALID_PARAMS));
-        assert_eq!(c.call(3, "subscribe", json!({"topic": "topics"}))["error"]["code"], json!(INVALID_PARAMS));
+        assert_eq!(
+            c.call(2, "session.tail", json!({"id": 1}))["error"]["code"],
+            json!(INVALID_PARAMS)
+        );
+        assert_eq!(
+            c.call(3, "subscribe", json!({"topic": "topics"}))["error"]["code"],
+            json!(INVALID_PARAMS)
+        );
         c.send_raw("not json\n");
-        assert_eq!(c.recv().unwrap()["error"]["code"], json!(crate::rpc::frame::PARSE_ERROR));
+        assert_eq!(
+            c.recv().unwrap()["error"]["code"],
+            json!(crate::rpc::frame::PARSE_ERROR)
+        );
         assert_eq!(c.call(4, "sessions.list", Value::Null)["result"][0]["id"], json!("s1"));
     }
 
@@ -1202,7 +1272,10 @@ pub mod tests {
         let properties = schema["properties"].as_object().unwrap();
         assert_eq!(properties.len(), 12);
         for (name, field) in properties {
-            assert!(field["description"].as_str().is_some_and(|d| !d.is_empty()), "{name} has no description");
+            assert!(
+                field["description"].as_str().is_some_and(|d| !d.is_empty()),
+                "{name} has no description"
+            );
         }
         assert!(schema["required"].as_array().is_none_or(|r| r.is_empty()), "{schema}");
     }
@@ -1215,9 +1288,17 @@ pub mod tests {
         for method in table::METHODS {
             let schema = (method.params)().to_value();
             let mut sample = serde_json::Map::new();
-            for field in schema["required"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+            for field in schema["required"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+            {
                 let property = &schema["properties"][field];
-                let referenced = property["$ref"].as_str().and_then(|r| r.strip_prefix("#/$defs/")).map(|name| &schema["$defs"][name]);
+                let referenced = property["$ref"]
+                    .as_str()
+                    .and_then(|r| r.strip_prefix("#/$defs/"))
+                    .map(|name| &schema["$defs"][name]);
                 if let Some(first) = referenced.and_then(|def| def["enum"].get(0)) {
                     sample.insert(field.to_string(), first.clone());
                     continue;
@@ -1245,11 +1326,19 @@ pub mod tests {
     fn the_dispatcher_refuses_a_caller_kind_the_row_leaves_out() {
         let server = stub_server();
         let tab = Principal::Session(Caller::Terminal("t1".into()));
-        let err = server.dispatch(0, &tab, &request("ask.create", json!({"question": "q"}))).unwrap_err();
+        let err = server
+            .dispatch(0, &tab, &request("ask.create", json!({"question": "q"})))
+            .unwrap_err();
         assert_eq!(err.code, REFUSED);
-        assert!(err.message.contains("terminal") && err.message.contains("ask.create"), "{}", err.message);
+        assert!(
+            err.message.contains("terminal") && err.message.contains("ask.create"),
+            "{}",
+            err.message
+        );
         let chat = Principal::Session(Caller::Chat("s1".into()));
-        assert!(server.dispatch(0, &chat, &request("ask.create", json!({"question": "q"}))).is_ok());
+        assert!(server
+            .dispatch(0, &chat, &request("ask.create", json!({"question": "q"})))
+            .is_ok());
     }
 
     #[test]
@@ -1257,22 +1346,42 @@ pub mod tests {
         let server = stub_server();
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
         for method in ["pr.watch", "pr.unwatch"] {
-            for caller in [Principal::Local, Principal::Session(Caller::Terminal("t1".into())), worker.clone()] {
-                let err = server.dispatch(0, &caller, &request(method, json!({"key": "1"}))).unwrap_err();
+            for caller in [
+                Principal::Local,
+                Principal::Session(Caller::Terminal("t1".into())),
+                worker.clone(),
+            ] {
+                let err = server
+                    .dispatch(0, &caller, &request(method, json!({"key": "1"})))
+                    .unwrap_err();
                 assert_eq!(err.code, REFUSED, "{method} {caller:?}");
             }
             let tab = Principal::Session(Caller::Terminal("t1".into()));
-            let err = server.dispatch(0, &tab, &request(method, json!({"key": "1"}))).unwrap_err();
-            assert!(err.message.contains("only a chat you drive can hold one"), "{}", err.message);
+            let err = server
+                .dispatch(0, &tab, &request(method, json!({"key": "1"})))
+                .unwrap_err();
+            assert!(
+                err.message.contains("only a chat you drive can hold one"),
+                "{}",
+                err.message
+            );
             let chat = Principal::Session(Caller::Chat("s1".into()));
-            assert!(server.dispatch(0, &chat, &request(method, json!({"key": "1"}))).is_ok(), "{method}");
+            assert!(
+                server.dispatch(0, &chat, &request(method, json!({"key": "1"}))).is_ok(),
+                "{method}"
+            );
         }
     }
 
     #[test]
     fn session_answer_is_refused_to_a_worker_a_shell_and_a_terminal() {
         let server = stub_server();
-        let answer = || request("session.answer", json!({"session": "w1", "id": "toolu_1", "answer": "allow"}));
+        let answer = || {
+            request(
+                "session.answer",
+                json!({"session": "w1", "id": "toolu_1", "answer": "allow"}),
+            )
+        };
         for caller in [
             Principal::Session(Caller::Chat(WORKER.into())),
             Principal::Local,
@@ -1282,16 +1391,25 @@ pub mod tests {
             assert_eq!(err.code, REFUSED, "{caller:?}");
             assert!(err.message.contains("only the session that spawned"), "{}", err.message);
         }
-        assert!(server.dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &answer()).is_ok());
+        assert!(server
+            .dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &answer())
+            .is_ok());
         assert!(server.dispatch(0, &Principal::Device("d1".into()), &answer()).is_ok());
-        let each = request("session.answer", json!({"session": "w1", "id": "toolu_1", "answer": ["a", "b"]}));
-        assert!(server.dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &each).is_ok());
+        let each = request(
+            "session.answer",
+            json!({"session": "w1", "id": "toolu_1", "answer": ["a", "b"]}),
+        );
+        assert!(server
+            .dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &each)
+            .is_ok());
     }
 
     #[test]
     fn an_ask_is_answered_once_and_never_by_a_worker() {
         let server = stub_server();
-        let answer = |who: &Principal, id: &str| server.dispatch(0, who, &request("ask.answer", json!({"id": id, "answer": "yes"})));
+        let answer = |who: &Principal, id: &str| {
+            server.dispatch(0, who, &request("ask.answer", json!({"id": id, "answer": "yes"})))
+        };
         assert!(answer(&Principal::Local, "open").is_ok());
         assert_eq!(answer(&Principal::Local, "gone").unwrap_err().code, INVALID_PARAMS);
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
@@ -1302,7 +1420,10 @@ pub mod tests {
     fn a_worker_is_refused_spawn_and_steer_but_may_ask() {
         let server = stub_server();
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
-        for (method, params) in [("session.spawn", json!({})), ("session.steer", json!({"id": "s1", "text": "hi"}))] {
+        for (method, params) in [
+            ("session.spawn", json!({})),
+            ("session.steer", json!({"id": "s1", "text": "hi"})),
+        ] {
             let err = server.dispatch(0, &worker, &request(method, params)).unwrap_err();
             assert_eq!(err.code, REFUSED, "{method}");
             assert!(err.message.contains(table::WORKER_REFUSAL), "{method}: {}", err.message);
@@ -1311,13 +1432,21 @@ pub mod tests {
         assert_eq!(server.dispatch(0, &worker, &link).unwrap_err().code, REFUSED);
         let me = server.dispatch(0, &worker, &request("caller", Value::Null)).unwrap();
         assert_eq!(me["kind"], json!("worker"));
-        assert!(server.dispatch(0, &worker, &request("ask.create", json!({"question": "q"}))).is_ok());
-        assert!(server.dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"}))).is_ok());
+        assert!(server
+            .dispatch(0, &worker, &request("ask.create", json!({"question": "q"})))
+            .is_ok());
+        assert!(server
+            .dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"})))
+            .is_ok());
     }
 
     #[test]
     fn a_device_reads_and_drives_chats_and_the_autopilot_switch() {
-        let open: Vec<&str> = table::METHODS.iter().filter(|m| m.callers.contains(&CallerKind::Device)).map(|m| m.name).collect();
+        let open: Vec<&str> = table::METHODS
+            .iter()
+            .filter(|m| m.callers.contains(&CallerKind::Device))
+            .map(|m| m.name)
+            .collect();
         assert_eq!(
             open,
             [
@@ -1347,16 +1476,51 @@ pub mod tests {
         );
         let server = stub_server();
         let device = Principal::Device("d1".into());
-        assert!(server.dispatch(0, &device, &request("session.spawn", json!({"folder": "/p", "agent": "claude"}))).is_ok());
+        assert!(server
+            .dispatch(
+                0,
+                &device,
+                &request("session.spawn", json!({"folder": "/p", "agent": "claude"}))
+            )
+            .is_ok());
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
-        for method in ["session.info", "session.model", "session.mode", "units.git", "autopilot.log"] {
-            assert_eq!(server.dispatch(0, &worker, &request(method, json!({}))).unwrap_err().code, REFUSED, "{method}");
+        for method in [
+            "session.info",
+            "session.model",
+            "session.mode",
+            "units.git",
+            "autopilot.log",
+        ] {
+            assert_eq!(
+                server
+                    .dispatch(0, &worker, &request(method, json!({})))
+                    .unwrap_err()
+                    .code,
+                REFUSED,
+                "{method}"
+            );
         }
-        assert_eq!(server.dispatch(0, &device, &request("caller", Value::Null)).unwrap()["kind"], json!("device"));
+        assert_eq!(
+            server.dispatch(0, &device, &request("caller", Value::Null)).unwrap()["kind"],
+            json!("device")
+        );
         for method in ["autopilot.start", "autopilot.stop"] {
-            assert!(server.dispatch(0, &device, &request(method, Value::Null)).is_ok(), "{method}");
-            for session in [Principal::Session(Caller::Chat("s1".into())), Principal::Session(Caller::Chat(WORKER.into()))] {
-                assert_eq!(server.dispatch(0, &session, &request(method, Value::Null)).unwrap_err().code, REFUSED, "{method}");
+            assert!(
+                server.dispatch(0, &device, &request(method, Value::Null)).is_ok(),
+                "{method}"
+            );
+            for session in [
+                Principal::Session(Caller::Chat("s1".into())),
+                Principal::Session(Caller::Chat(WORKER.into())),
+            ] {
+                assert_eq!(
+                    server
+                        .dispatch(0, &session, &request(method, Value::Null))
+                        .unwrap_err()
+                        .code,
+                    REFUSED,
+                    "{method}"
+                );
             }
         }
     }
@@ -1365,10 +1529,20 @@ pub mod tests {
     fn a_device_reads_the_autopilot_log_the_desktop_reads() {
         let dir = crate::autopilot::tests::temp_dir("dispatch-log");
         let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
-        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store), asks: None }), ..stub_server() };
+        let server = Server {
+            backend: Box::new(StubBackend {
+                autopilot: Some(store),
+                asks: None,
+            }),
+            ..stub_server()
+        };
         let item = json!({"kind": "ship", "source": {"type": "pr", "number": 7, "repo": "o/r"}, "project": "/p"});
-        assert!(server.dispatch(0, &Principal::Local, &request("autopilot.item.update", item)).is_ok());
-        let logged = server.dispatch(0, &Principal::Device("d1".into()), &request("autopilot.log", json!({}))).unwrap();
+        assert!(server
+            .dispatch(0, &Principal::Local, &request("autopilot.item.update", item))
+            .is_ok());
+        let logged = server
+            .dispatch(0, &Principal::Device("d1".into()), &request("autopilot.log", json!({})))
+            .unwrap();
         let desktop = AutopilotStore::open(dir.clone(), Box::new(|_| {})).recent_log(DEFAULT_LOG_LIMIT);
         assert!(!desktop.is_empty());
         assert_eq!(logged, json!(desktop));
@@ -1385,7 +1559,13 @@ pub mod tests {
         assert!(subscribe("chat:s1").is_ok());
         assert!(subscribe("autopilot").is_ok());
         assert_eq!(subscribe("accounts").unwrap_err().code, REFUSED);
-        assert!(server.dispatch(0, &Principal::Local, &request("subscribe", json!({"topic": "autopilot"}))).is_ok());
+        assert!(server
+            .dispatch(
+                0,
+                &Principal::Local,
+                &request("subscribe", json!({"topic": "autopilot"}))
+            )
+            .is_ok());
     }
 
     #[test]
@@ -1398,7 +1578,11 @@ pub mod tests {
             Principal::Session(Caller::Chat(WORKER.into())),
             Principal::Session(Caller::Terminal("t1".into())),
         ] {
-            assert_eq!(server.dispatch(0, &caller, &chat()).unwrap_err().code, REFUSED, "{caller:?}");
+            assert_eq!(
+                server.dispatch(0, &caller, &chat()).unwrap_err().code,
+                REFUSED,
+                "{caller:?}"
+            );
         }
     }
 
@@ -1420,7 +1604,13 @@ pub mod tests {
         });
         assert_eq!(written[0], "reply", "the reply overtakes the stream queued before it");
         let chat_lines: Vec<Value> = written[1..].iter().map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(chat_lines.iter().map(|l| l["params"]["data"]["n"].clone()).collect::<Vec<_>>(), [json!(1), json!(2)]);
+        assert_eq!(
+            chat_lines
+                .iter()
+                .map(|l| l["params"]["data"]["n"].clone())
+                .collect::<Vec<_>>(),
+            [json!(1), json!(2)]
+        );
     }
 
     #[test]
@@ -1433,7 +1623,11 @@ pub mod tests {
             Principal::Session(Caller::Chat("s1".into())),
             Principal::Device("d1".into()),
         ] {
-            assert_eq!(server.dispatch(0, &caller, &mint()).unwrap_err().code, REFUSED, "{caller:?}");
+            assert_eq!(
+                server.dispatch(0, &caller, &mint()).unwrap_err().code,
+                REFUSED,
+                "{caller:?}"
+            );
         }
     }
 
@@ -1441,17 +1635,44 @@ pub mod tests {
     fn an_item_update_without_an_id_makes_one_open_item_per_source() {
         let dir = crate::autopilot::tests::temp_dir("dispatch-upsert");
         let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
-        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store), ..StubBackend::default() }), ..stub_server() };
-        let update = |who: &Principal, params: Value| server.dispatch(0, who, &request("autopilot.item.update", params));
+        let server = Server {
+            backend: Box::new(StubBackend {
+                autopilot: Some(store),
+                ..StubBackend::default()
+            }),
+            ..stub_server()
+        };
+        let update =
+            |who: &Principal, params: Value| server.dispatch(0, who, &request("autopilot.item.update", params));
         let key = json!({"kind": "ship", "source": {"type": "issue", "key": "12", "project": "/p"}, "project": "/p"});
         let first = update(&Principal::Local, key.clone()).unwrap();
-        assert_eq!(update(&Principal::Local, key.clone()).unwrap()["id"], first["id"], "a retry finds the item it made");
-        assert_eq!(update(&Principal::Local, json!({"id": first["id"], "state": "failed"})).unwrap()["state"], "failed");
+        assert_eq!(
+            update(&Principal::Local, key.clone()).unwrap()["id"],
+            first["id"],
+            "a retry finds the item it made"
+        );
+        assert_eq!(
+            update(&Principal::Local, json!({"id": first["id"], "state": "failed"})).unwrap()["state"],
+            "failed"
+        );
         let fresh = update(&Principal::Local, key).unwrap();
-        assert_ne!(fresh["id"], first["id"], "a failed item is closed, so the same source opens a new one");
-        assert_eq!(update(&Principal::Local, json!({"id": first["id"], "project": "/p"})).unwrap_err().code, INVALID_PARAMS);
+        assert_ne!(
+            fresh["id"], first["id"],
+            "a failed item is closed, so the same source opens a new one"
+        );
+        assert_eq!(
+            update(&Principal::Local, json!({"id": first["id"], "project": "/p"}))
+                .unwrap_err()
+                .code,
+            INVALID_PARAMS
+        );
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
-        assert_eq!(update(&worker, json!({"id": fresh["id"], "state": "done"})).unwrap_err().code, REFUSED);
+        assert_eq!(
+            update(&worker, json!({"id": fresh["id"], "state": "done"}))
+                .unwrap_err()
+                .code,
+            REFUSED
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1462,28 +1683,61 @@ pub mod tests {
         let dir = crate::autopilot::tests::temp_dir("dispatch-holds");
         let asks = Arc::new(Asks::with_holds(dir.join("holds.json"), Box::new(|_| {})));
         let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
-        let server = Server { backend: Box::new(StubBackend { autopilot: Some(store), asks: Some(asks.clone()) }), ..stub_server() };
-        let draft = Draft::PrMerge { number: 7, method: crate::forge::MergeMethod::Squash, head_sha: "abc".into() };
+        let server = Server {
+            backend: Box::new(StubBackend {
+                autopilot: Some(store),
+                asks: Some(asks.clone()),
+            }),
+            ..stub_server()
+        };
+        let draft = Draft::PrMerge {
+            number: 7,
+            method: crate::forge::MergeMethod::Squash,
+            head_sha: "abc".into(),
+        };
         let ask = |item: &str| {
-            let approval = Some(Approval { project: "/p".into(), draft: draft.clone() });
-            asks.create("s1".into(), "merge?".into(), vec![], approval, None, Some(item.into())).id
+            let approval = Some(Approval {
+                project: "/p".into(),
+                draft: draft.clone(),
+            });
+            asks.create("s1".into(), "merge?".into(), vec![], approval, None, Some(item.into()))
+                .id
         };
         let open = ask("item-1");
         let approved = ask("item-2");
         asks.answer(&approved, APPROVE.into(), By::User).unwrap();
 
-        let state = server.dispatch(0, &Principal::Local, &request("autopilot.state", json!({}))).unwrap();
+        let state = server
+            .dispatch(0, &Principal::Local, &request("autopilot.state", json!({})))
+            .unwrap();
         assert_eq!(state["holds"].as_array().map(Vec::len), Some(2));
 
-        let resolve = |id: &str| server.dispatch(0, &Principal::Local, &request("autopilot.hold.resolve", json!({ "id": id })));
+        let resolve = |id: &str| {
+            server.dispatch(
+                0,
+                &Principal::Local,
+                &request("autopilot.hold.resolve", json!({ "id": id })),
+            )
+        };
         for id in [&open, &approved] {
             let resolved = resolve(id).unwrap();
             assert_eq!(resolved["answer"], WITHDRAWN);
             assert!(resolved.get("approval_id").is_none(), "{resolved}");
-            assert_eq!(asks.wait(id, Duration::ZERO), Waited::Answered { answer: WITHDRAWN.into(), approval_id: None }, "an unread grant goes too");
+            assert_eq!(
+                asks.wait(id, Duration::ZERO),
+                Waited::Answered {
+                    answer: WITHDRAWN.into(),
+                    approval_id: None
+                },
+                "an unread grant goes too"
+            );
         }
         assert!(asks.holds().is_empty());
-        assert_eq!(resolve(&open).unwrap_err().code, INVALID_PARAMS, "a hold is withdrawn once");
+        assert_eq!(
+            resolve(&open).unwrap_err().code,
+            INVALID_PARAMS,
+            "a hold is withdrawn once"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1491,7 +1745,10 @@ pub mod tests {
     fn a_diff_range_ending_before_it_starts_is_refused() {
         let server = stub_server();
         let diff = |params| server.dispatch(0, &Principal::Local, &request("checkpoint.diff", params));
-        assert_eq!(diff(json!({"id": "s1", "turn": 3, "to": 2})).unwrap_err().code, INVALID_PARAMS);
+        assert_eq!(
+            diff(json!({"id": "s1", "turn": 3, "to": 2})).unwrap_err().code,
+            INVALID_PARAMS
+        );
         assert!(diff(json!({"id": "s1", "turn": 2, "to": 3})).is_ok());
         assert!(diff(json!({"id": "s1", "turn": 2})).is_ok());
     }
@@ -1500,8 +1757,12 @@ pub mod tests {
     fn a_subscriber_gets_events_and_a_disconnect_clears_it() {
         let r = start(AUTH_TIMEOUT);
         let mut c = authed(&r);
-        assert_eq!(c.call(1, "subscribe", json!({"topic": "sessions"}))["result"], json!({}));
-        r.hub.publish(&Channel::Sessions, json!({"kind": "session.started", "id": "s1"}));
+        assert_eq!(
+            c.call(1, "subscribe", json!({"topic": "sessions"}))["result"],
+            json!({})
+        );
+        r.hub
+            .publish(&Channel::Sessions, json!({"kind": "session.started", "id": "s1"}));
         let event = c.recv().unwrap();
         assert_eq!(event["method"], json!("event"));
         assert_eq!(event["params"]["data"]["id"], json!("s1"));
@@ -1519,11 +1780,15 @@ pub mod tests {
         let r = start(AUTH_TIMEOUT);
         let mut c = authed(&r);
         assert_eq!(c.call(1, "subscribe", json!({"topic": "chat:s1"}))["result"], json!({}));
-        r.hub.publish(&Channel::Chat("s1".into()), json!({"type": "textDelta", "text": "hi"}));
+        r.hub
+            .publish(&Channel::Chat("s1".into()), json!({"type": "textDelta", "text": "hi"}));
         let event = c.recv().unwrap();
         assert_eq!(event["params"]["topic"], json!("chat:s1"));
         assert_eq!(event["params"]["data"]["text"], json!("hi"));
-        assert_eq!(c.call(2, "sessions.list", json!({"limit": 1}))["result"], json!([{"id": "s1", "limit": 1}]));
+        assert_eq!(
+            c.call(2, "sessions.list", json!({"limit": 1}))["result"],
+            json!([{"id": "s1", "limit": 1}])
+        );
     }
 
     // Revokes the device while the auth reply is on its way, the one moment
@@ -1551,7 +1816,10 @@ pub mod tests {
 
     impl Stream for RevokeOnReply {
         fn try_clone_box(&self) -> std::io::Result<Box<dyn Stream>> {
-            Ok(Box::new(RevokeOnReply { inner: self.inner.try_clone()?, revoke: self.revoke.clone() }))
+            Ok(Box::new(RevokeOnReply {
+                inner: self.inner.try_clone()?,
+                revoke: self.revoke.clone(),
+            }))
         }
         fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
             self.inner.set_read_timeout(timeout)
@@ -1567,11 +1835,22 @@ pub mod tests {
         use crate::rpc::pairing::Pairing;
         use std::io::Read;
 
-        let dir = std::env::temp_dir().join(format!("tori-server-revoke-{}-{}", std::process::id(), crate::chat::approval::random_token()));
+        let dir = std::env::temp_dir().join(format!(
+            "tori-server-revoke-{}-{}",
+            std::process::id(),
+            crate::chat::approval::random_token()
+        ));
         let devices = Arc::new(Devices::open(dir.join("devices.json")));
         let (device, secret) = devices.mint("phone").unwrap();
-        let credential = Credential::Remote { devices: devices.clone(), pairing: Arc::new(Pairing::new(Box::new(|_| {}))) };
-        let server = Server { hub: Default::default(), backend: Box::<StubBackend>::default(), auth_timeout: Duration::from_secs(5) };
+        let credential = Credential::Remote {
+            devices: devices.clone(),
+            pairing: Arc::new(Pairing::new(Box::new(|_| {}))),
+        };
+        let server = Server {
+            hub: Default::default(),
+            backend: Box::<StubBackend>::default(),
+            auth_timeout: Duration::from_secs(5),
+        };
 
         let (mut client, served) = UnixStream::pair().unwrap();
         let revoke = {
@@ -1580,12 +1859,23 @@ pub mod tests {
                 let _ = devices.revoke(&device.id);
             })
         };
-        client.write_all(format!("{}\n", json!({"jsonrpc": "2.0", "id": 0, "method": "auth", "params": {"token": secret}})).as_bytes()).unwrap();
-        let handled = thread::spawn(move || handle(&server, &credential, Box::new(RevokeOnReply { inner: served, revoke })));
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    json!({"jsonrpc": "2.0", "id": 0, "method": "auth", "params": {"token": secret}})
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let handled =
+            thread::spawn(move || handle(&server, &credential, Box::new(RevokeOnReply { inner: served, revoke })));
 
         client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let mut got = String::new();
-        client.read_to_string(&mut got).expect("the connection is closed, not left open");
+        client
+            .read_to_string(&mut got)
+            .expect("the connection is closed, not left open");
         assert!(got.contains("\"result\":{}"), "auth itself passed: {got}");
         handled.join().unwrap();
         let _ = std::fs::remove_dir_all(&dir);

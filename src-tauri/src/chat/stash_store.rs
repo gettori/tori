@@ -45,7 +45,9 @@ fn push_in(file: &Path, entry: Value) -> Result<(Vec<Value>, Vec<Value>), String
 
 fn remove_in(file: &Path, id: &str) -> Result<(Option<Value>, Vec<Value>), String> {
     let mut stash = load_in(file);
-    let Some(at) = stash.iter().position(|e| id_of(e) == Some(id)) else { return Ok((None, stash)) };
+    let Some(at) = stash.iter().position(|e| id_of(e) == Some(id)) else {
+        return Ok((None, stash));
+    };
     let entry = stash.remove(at);
     save_in(file, &stash)?;
     Ok((Some(entry), stash))
@@ -89,7 +91,12 @@ pub fn discard(id: &str) -> Result<Vec<Value>, String> {
 // After the write, so the stash file already says which entries are left.
 fn sweep(removed: &[Value]) {
     if !removed.is_empty() {
-        sweep_in(removed, &crate::attachments::dir(), &crate::sessions::watch_dirs(), &path());
+        sweep_in(
+            removed,
+            &crate::attachments::dir(),
+            &crate::sessions::watch_dirs(),
+            &path(),
+        );
     }
 }
 
@@ -182,7 +189,11 @@ mod tests {
     fn named_by_transcript(root: &Path, path: &str) {
         let project = root.join("proj");
         std::fs::create_dir_all(&project).unwrap();
-        std::fs::write(project.join("s.jsonl"), format!("{{\"text\":\"[Image 1]: @{path}\"}}\n")).unwrap();
+        std::fs::write(
+            project.join("s.jsonl"),
+            format!("{{\"text\":\"[Image 1]: @{path}\"}}\n"),
+        )
+        .unwrap();
     }
 
     #[test]

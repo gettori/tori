@@ -29,7 +29,11 @@ type View =
   | { screen: "autopilotChat" }
   | { screen: "settings" };
 
-function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; link: { url: string; code: string } | null }) {
+function Pair(props: {
+  onPaired: (saved: Saved) => void;
+  notice: string | null;
+  link: { url: string; code: string } | null;
+}) {
   const [url, setUrl] = createSignal("");
   const [code, setCode] = createSignal("");
   const [name, setName] = createSignal(PHONE_NAME);
@@ -89,7 +93,9 @@ function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; 
         </span>
         <span class={shell.pairCardText}>
           <strong>Scan the code on the Mac</strong>
-          <span>In Tori on the Mac, open Settings, Remote, Pair a device, and scan the code with this phone's camera.</span>
+          <span>
+            In Tori on the Mac, open Settings, Remote, Pair a device, and scan the code with this phone's camera.
+          </span>
         </span>
       </div>
       <Show when={busy()}>
@@ -111,7 +117,12 @@ function Pair(props: { onPaired: (saved: Saved) => void; notice: string | null; 
           </label>
           <label class={shell.field}>
             Address
-            <input class={shell.mono} value={url()} placeholder="ws://192.168.1.10:7878" onInput={(e) => setUrl(e.currentTarget.value)} />
+            <input
+              class={shell.mono}
+              value={url()}
+              placeholder="ws://192.168.1.10:7878"
+              onInput={(e) => setUrl(e.currentTarget.value)}
+            />
           </label>
           <label class={shell.field}>
             Code
@@ -195,7 +206,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const barred = () => !top() || ["project", "topic", "unit"].includes(top()!.screen);
   const openUnit = (unit: Unit, back: string) => go({ screen: "unit", unit, back });
   const openSession = (row: SessionRow) => go({ screen: "chat", row });
-  const units = () => tree()?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name })))) ?? [];
+  const units = () =>
+    tree()?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name })))) ?? [];
   // From a chat reached through its worktree, the worktree is one step back.
   const openHome = (row: SessionRow) => {
     const found = units().find(({ unit }) => inUnit(row.home, unit));
@@ -293,7 +305,9 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             live={live}
             onBack={back}
             onChat={() => go({ screen: "autopilotChat" })}
-            onSession={(id) => go({ screen: "chat", row: live().find((row) => row.id === id) ?? { id, live: true, last_active: 0 } })}
+            onSession={(id) =>
+              go({ screen: "chat", row: live().find((row) => row.id === id) ?? { id, live: true, last_active: 0 } })
+            }
           />
         </Match>
         <Match when={top()?.screen === "autopilotChat"}>
@@ -382,7 +396,9 @@ export default function App() {
   return (
     <Show
       when={client()}
-      fallback={<Pair notice={notice()} link={link()} onPaired={(s) => (setNotice(null), setLink(null), setSaved(s))} />}
+      fallback={
+        <Pair notice={notice()} link={link()} onPaired={(s) => (setNotice(null), setLink(null), setSaved(s))} />
+      }
       keyed
     >
       {(c) => <Paired client={c} notice={notice()} onDisconnect={disconnect} />}

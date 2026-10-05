@@ -76,15 +76,11 @@ export const CustomRows: Story = {
       <>
         <MenuRow onClick={() => {}}>
           <span>main</span>
-          <span style={{ "margin-left": "auto", color: "var(--fg-muted)" }}>
-            up to date
-          </span>
+          <span style={{ "margin-left": "auto", color: "var(--fg-muted)" }}>up to date</span>
         </MenuRow>
         <MenuRow onClick={() => {}}>
           <span>feature/menus</span>
-          <span style={{ "margin-left": "auto", color: "var(--fg-muted)" }}>
-            3 ahead
-          </span>
+          <span style={{ "margin-left": "auto", color: "var(--fg-muted)" }}>3 ahead</span>
         </MenuRow>
         <MenuSeparator />
         <MenuRow onClick={() => {}} danger>

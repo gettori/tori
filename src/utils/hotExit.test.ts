@@ -63,9 +63,7 @@ describe("pruning the stash", () => {
   });
 
   it("keeps the newest when there are too many", () => {
-    const store = Object.fromEntries(
-      Array.from({ length: 5 }, (_, i) => [`/f${i}`, entry(`${i}`, NOW - i * DAY)]),
-    );
+    const store = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`/f${i}`, entry(`${i}`, NOW - i * DAY)]));
     expect(Object.keys(pruneStash(store, NOW, 30 * DAY, 2)).sort()).toEqual(["/f0", "/f1"]);
   });
 

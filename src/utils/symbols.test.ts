@@ -82,9 +82,7 @@ describe("normalizeDocumentSymbols", () => {
   });
 
   it("rebuilds the same tree from the flat shape", () => {
-    expect(shape(normalizeDocumentSymbols(FLAT, PATH))).toEqual(
-      shape(normalizeDocumentSymbols(HIERARCHICAL, PATH)),
-    );
+    expect(shape(normalizeDocumentSymbols(FLAT, PATH))).toEqual(shape(normalizeDocumentSymbols(HIERARCHICAL, PATH)));
   });
 
   it("nests by range, not by containerName", () => {
@@ -322,11 +320,12 @@ describe("workspace search registration", () => {
 
   it("routes through the registered search", async () => {
     const off = setWorkspaceSymbolSearch(async (q) =>
-      normalizeDocumentSymbols([{ name: q, kind: 5, range: range(0, 0, 1, 0), selectionRange: range(0, 0, 0, 1) }], PATH),
+      normalizeDocumentSymbols(
+        [{ name: q, kind: 5, range: range(0, 0, 1, 0), selectionRange: range(0, 0, 0, 1) }],
+        PATH,
+      ),
     );
-    await expect(searchWorkspaceSymbols("Thing").then((r) => r.map((n) => n.name))).resolves.toEqual([
-      "Thing",
-    ]);
+    await expect(searchWorkspaceSymbols("Thing").then((r) => r.map((n) => n.name))).resolves.toEqual(["Thing"]);
     off();
     await expect(searchWorkspaceSymbols("Thing")).resolves.toEqual([]);
   });
@@ -334,7 +333,10 @@ describe("workspace search registration", () => {
   it("ignores a stale unregister, so a remount is not undone by the old editor", async () => {
     const offOld = setWorkspaceSymbolSearch(async () => []);
     setWorkspaceSymbolSearch(async () =>
-      normalizeDocumentSymbols([{ name: "new", kind: 5, range: range(0, 0, 1, 0), selectionRange: range(0, 0, 0, 1) }], PATH),
+      normalizeDocumentSymbols(
+        [{ name: "new", kind: 5, range: range(0, 0, 1, 0), selectionRange: range(0, 0, 0, 1) }],
+        PATH,
+      ),
     );
     offOld();
     await expect(searchWorkspaceSymbols("x").then((r) => r.length)).resolves.toBe(1);

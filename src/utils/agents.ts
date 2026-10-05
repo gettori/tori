@@ -397,4 +397,3 @@ export function resumeCommand(agent: Adapter, vars: { id: string; file: string }
   if (agent.resume_args.length === 0) return null;
   return [agent.program, ...applyTemplate(agent.resume_args, vars)].map(shQuote).join(" ");
 }
-

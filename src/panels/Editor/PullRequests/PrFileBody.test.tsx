@@ -156,8 +156,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.mergeableFails
         ? Promise.reject(bridge.mergeableFails)
         : Promise.resolve(summaryOf(bridge.mergeable));
-    if (cmd === "forge_merge")
-      return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
+    if (cmd === "forge_merge") return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
     if (cmd === "forge_update_branch")
       return bridge.updateFails ? Promise.reject(bridge.updateFails) : Promise.resolve(null);
     if (cmd === "list_sessions") return Promise.resolve(bridge.sessions);
@@ -185,17 +184,12 @@ const { default: PrDiffView } = await import("./PrDiffView");
 const { notePr, prEntry } = await import("../../../utils/prReviewStore");
 const { anchorLabel } = await import("../../../utils/pendingReview");
 const { prDiffTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
-const { noteForgeAccounts, noteForgeEnabled, resetForgeStatusForTests, resolveForgeRepo } = await import(
-  "../../../utils/forgeStatus"
-);
+const { noteForgeAccounts, noteForgeEnabled, resetForgeStatusForTests, resolveForgeRepo } =
+  await import("../../../utils/forgeStatus");
 const { resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
-const { noteForgeUnits, noteDots, resetSessionActivityForTests } = await import(
-  "../../../utils/sessionActivity"
-);
+const { noteForgeUnits, noteDots, resetSessionActivityForTests } = await import("../../../utils/sessionActivity");
 const { trackFolders, resetSessionStoreForTests } = await import("../../../utils/sessionStore");
-const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(
-  "../../../utils/events"
-);
+const { onWith, emitWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import("../../../utils/events");
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
 
@@ -234,7 +228,6 @@ const signInAs = async (login: string) => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
-
 /// Open one file's diff where it is actually read: its tab in the stage.
 ///
 /// The pull request is handed to the store first, because there is no read by
@@ -266,7 +259,6 @@ describe("a pull request file's diff", () => {
     bridge.resolveFails = null;
     localStorage.clear();
   });
-
 
   it("expands a gap from the pull request's own head, spending no API quota", async () => {
     // The head is not checked out here, which is the normal case for reviewing
@@ -305,10 +297,7 @@ describe("a pull request file's diff", () => {
   it("fetches the head once, however many gaps are opened", async () => {
     // A fetch per expansion would put a network round trip behind every click
     // on a file the object store already holds in full.
-    bridge.files = [
-      file({ path: "a.ts", patch: TWO_HUNKS }),
-      file({ path: "b.ts", patch: TWO_HUNKS }),
-    ];
+    bridge.files = [file({ path: "a.ts", patch: TWO_HUNKS }), file({ path: "b.ts", patch: TWO_HUNKS })];
     bridge.slice = ["line four"];
 
     for (const path of ["a.ts", "b.ts"]) {
@@ -352,13 +341,10 @@ describe("a pull request file's diff", () => {
     await waitFor(() => expect(screen.queryByText(/unchanged lines/)).toBeTruthy());
     fireEvent.click(screen.getByText(/36 unchanged lines/));
 
-    await waitFor(() =>
-      expect(screen.queryByText(/could not read from remote repository/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.queryByText(/could not read from remote repository/)).toBeTruthy());
     // And the gap stayed shut, rather than opening onto nothing.
     expect(screen.queryByText(/36 unchanged lines/)).toBeTruthy();
   });
-
 });
 
 describe("review threads on a pull request's diff", () => {
@@ -396,9 +382,7 @@ describe("review threads on a pull request's diff", () => {
     diffHunk: "@@ -1,3 +1,3 @@\n one\n-two\n+two edited",
     isResolved: false,
     isOutdated: false,
-    comments: [
-      { id: "C1", author: "reviewer", body: "this drops the error", createdAt: "2026-08-03T09:00:00Z" },
-    ],
+    comments: [{ id: "C1", author: "reviewer", body: "this drops the error", createdAt: "2026-08-03T09:00:00Z" }],
     ...over,
   });
 
@@ -420,9 +404,11 @@ describe("review threads on a pull request's diff", () => {
     // the two hunks. Dropping it silently is how a conversation disappears from
     // a file that visibly has one.
     bridge.threads = [
-      thread({ id: "PRRT_off", line: 20, comments: [
-        { id: "C9", author: "reviewer", body: "in the gap", createdAt: "" },
-      ] }),
+      thread({
+        id: "PRRT_off",
+        line: 20,
+        comments: [{ id: "C9", author: "reviewer", body: "in the gap", createdAt: "" }],
+      }),
     ];
     await open();
 
@@ -480,9 +466,7 @@ describe("review threads on a pull request's diff", () => {
     fireEvent.click(buttons[buttons.length - 1]);
     expect(screen.queryByText("nope")).toBeTruthy();
 
-    await waitFor(() =>
-      expect(screen.queryByText("you cannot comment on this pull request")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.queryByText("you cannot comment on this pull request")).toBeTruthy());
     expect(screen.queryByText("nope")).toBeNull();
   });
 
@@ -536,9 +520,7 @@ describe("review threads on a pull request's diff", () => {
     bridge.threadsTruncated = true;
     await open();
 
-    await waitFor(() =>
-      expect(screen.queryByText(/more conversations than one read can carry/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.queryByText(/more conversations than one read can carry/)).toBeTruthy());
     const link = screen.getByText(/See them all on github.com/) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("https://github.com/skarif2/tori/pull/42");
   });
@@ -555,7 +537,6 @@ describe("review threads on a pull request's diff", () => {
     const box = screen.getByLabelText(/Reply to the thread on src\/edit.ts/);
     await waitFor(() => expect(document.activeElement).toBe(box));
   });
-
 });
 
 describe("reading without reviewing", () => {
@@ -621,11 +602,7 @@ describe("reading without reviewing", () => {
     // it belongs to the thing both read.
     const held = prEntry(ROOT, 42).pending;
     expect(held).toHaveLength(3);
-    expect(held.map(anchorLabel)).toEqual([
-      "src/edit.ts:2",
-      "src/edit.ts:41 (base)",
-      "src/edit.ts:42-43",
-    ]);
+    expect(held.map(anchorLabel)).toEqual(["src/edit.ts:2", "src/edit.ts:41 (base)", "src/edit.ts:42-43"]);
     // And the whole point: nothing has been sent.
     expect(cmds("forge_submit_review")).toHaveLength(0);
   });
@@ -640,9 +617,7 @@ describe("reading without reviewing", () => {
         diffHunk: "@@ -1,3 +1,3 @@\n one\n-two\n+two edited",
         isResolved: false,
         isOutdated: false,
-        comments: [
-          { id: "C1", author: "reviewer", body: "this drops the error", createdAt: "" },
-        ],
+        comments: [{ id: "C1", author: "reviewer", body: "this drops the error", createdAt: "" }],
       },
     ];
     openFile("src/edit.ts");
@@ -698,7 +673,10 @@ describe("handing a review thread to the agent that owns the branch", () => {
   };
 
   const sendButton = () =>
-    screen.getAllByText("Send to agent").find((n) => n.closest("button"))!.closest("button")!;
+    screen
+      .getAllByText("Send to agent")
+      .find((n) => n.closest("button"))!
+      .closest("button")!;
 
   beforeEach(async () => {
     resetPrReviewStoreForTests();
@@ -719,9 +697,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
         diffHunk: "@@ -1,3 +1,3 @@\n one\n-two\n+two edited",
         isResolved: false,
         isOutdated: false,
-        comments: [
-          { id: "C1", author: "reviewer", body: "this drops the error", createdAt: "2026-08-03T09:00:00Z" },
-        ],
+        comments: [{ id: "C1", author: "reviewer", body: "this drops the error", createdAt: "2026-08-03T09:00:00Z" }],
       },
     ];
     bridge.threadsFail = null;
@@ -772,9 +748,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
     await waitFor(() => expect(document.querySelector("[data-send-note]")).toBeTruthy());
     off();
 
-    expect(document.querySelector("[data-send-note]")!.textContent).toBe(
-      "Sent to title of on-wave.",
-    );
+    expect(document.querySelector("[data-send-note]")!.textContent).toBe("Sent to title of on-wave.");
   });
 
   it("shows the whole span a multi-line thread covers, not just its last line", async () => {
@@ -786,9 +760,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
     await trackFolders([ROOT]);
     noteForgeUnits([]);
     await openWithThread();
-    expect(document.querySelector('[data-thread-id="PRRT_1"]')!.textContent).toContain(
-      "src/edit.ts:1-2",
-    );
+    expect(document.querySelector('[data-thread-id="PRRT_1"]')!.textContent).toContain("src/edit.ts:1-2");
   });
 
   it("names the session and how it is doing before anything is sent", async () => {
@@ -800,9 +772,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
     await openWithThread();
     // A session with no tab caps at "running", which is what a detached agent
     // looks like: real, resumable, and not idle.
-    expect(document.querySelector("[data-send-to]")!.getAttribute("data-send-to")).toBe(
-      "title of on-wave · Running",
-    );
+    expect(document.querySelector("[data-send-to]")!.getAttribute("data-send-to")).toBe("title of on-wave · Running");
     expect(sendButton().disabled).toBe(false);
   });
 
@@ -839,12 +809,8 @@ describe("handing a review thread to the agent that owns the branch", () => {
     ] as const) {
       const term = fakeTerminal(result);
       fireEvent.click(sendButton());
-      await waitFor(() =>
-        expect(document.querySelector("[data-send-note]")!.textContent).toBe(expected),
-      );
-      expect(document.querySelector("[data-send-note]")!.getAttribute("data-send-note")).toBe(
-        "error",
-      );
+      await waitFor(() => expect(document.querySelector("[data-send-note]")!.textContent).toBe(expected));
+      expect(document.querySelector("[data-send-note]")!.getAttribute("data-send-note")).toBe("error");
       term.off();
       // Unsent: nothing was added to the conversation, and the button is live
       // again for a retry.

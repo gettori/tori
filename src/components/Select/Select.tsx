@@ -86,9 +86,9 @@ export default function Select(props: {
   // the keyboard skips them, and hidden.
   const entries = createMemo(
     () =>
-      (props.tabs
-        ? props.tabs.flatMap((t): (SelectOption | SelectGroup)[] => t.options)
-        : props.options) as SelectOption[] | SelectGroup[],
+      (props.tabs ? props.tabs.flatMap((t): (SelectOption | SelectGroup)[] => t.options) : props.options) as
+        | SelectOption[]
+        | SelectGroup[],
   );
   const flat = createMemo<SelectOption[]>(() => flatten(entries()));
   const selected = createMemo(() => flat().find((o) => o.value === props.value) ?? null);
@@ -105,8 +105,7 @@ export default function Select(props: {
   });
   const valueTab = () => (selected() ? (tabOf().get(selected()!) ?? 0) : 0);
   const [tab, setTab] = createSignal(valueTab());
-  const offTab = (entry: SelectOption | SelectGroup) =>
-    props.tabs != null && tabOf().get(entry) !== tab();
+  const offTab = (entry: SelectOption | SelectGroup) => props.tabs != null && tabOf().get(entry) !== tab();
 
   const dialogSurface = useDialogSurface();
 
@@ -130,22 +129,13 @@ export default function Select(props: {
       disabled={props.disabled}
       gutter={TRIGGER_GUTTER}
       sectionComponent={(section) => (
-        <Primitive.Section
-          class={styles.section}
-          hidden={offTab(section.section.rawValue)}
-        >
+        <Primitive.Section class={styles.section} hidden={offTab(section.section.rawValue)}>
           {section.section.rawValue.label}
         </Primitive.Section>
       )}
       itemComponent={(item) => (
-        <Primitive.Item
-          item={item.item}
-          class={styles.item}
-          hidden={offTab(item.item.rawValue)}
-        >
-          <Primitive.ItemLabel class={styles.itemLabel}>
-            {item.item.rawValue.label}
-          </Primitive.ItemLabel>
+        <Primitive.Item item={item.item} class={styles.item} hidden={offTab(item.item.rawValue)}>
+          <Primitive.ItemLabel class={styles.itemLabel}>{item.item.rawValue.label}</Primitive.ItemLabel>
           <Primitive.ItemIndicator class={styles.check}>
             <Icon icon={Check} />
           </Primitive.ItemIndicator>
@@ -153,16 +143,12 @@ export default function Select(props: {
       )}
     >
       <Primitive.Trigger
-        class={[styles.trigger, styles[props.size ?? "md"], props.class]
-          .filter(Boolean)
-          .join(" ")}
+        class={[styles.trigger, styles[props.size ?? "md"], props.class].filter(Boolean).join(" ")}
         aria-label={props["aria-label"]}
         aria-labelledby={props["aria-labelledby"]}
         ref={props.ref}
       >
-        <Primitive.Value<SelectOption> class={styles.value}>
-          {(state) => state.selectedOption().label}
-        </Primitive.Value>
+        <Primitive.Value<SelectOption> class={styles.value}>{(state) => state.selectedOption().label}</Primitive.Value>
         <Primitive.Icon class={styles.caret}>
           <Icon icon={ChevronsUpDown} />
         </Primitive.Icon>

@@ -22,8 +22,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::model::{
-    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
-    QuestionAnswer,
+    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
 
 /// Delivers one event to whoever is currently listening to a session.
@@ -77,7 +76,9 @@ pub fn build_command(spec: &StartSpec) -> std::process::Command {
     // `pty.rs`'s `command` tabs use it.
     cmd.env("PATH", crate::rpc::path_with_cli(&crate::env::session_path()));
     cmd.envs(crate::credential::spawn_env());
-    cmd.envs(crate::rpc::child_env(crate::rpc::auth::Caller::Chat(spec.session_id.clone())));
+    cmd.envs(crate::rpc::child_env(crate::rpc::auth::Caller::Chat(
+        spec.session_id.clone(),
+    )));
     for (k, v) in &spec.env {
         cmd.env(k, v);
     }
@@ -166,8 +167,7 @@ pub trait AgentTransport: Send {
     /// A agent that publishes no such options **errors** rather than
     /// succeeding silently. Nothing can reach this without a mirror to click
     /// in, so a quiet `Ok(())` here would only ever hide a routing bug.
-    fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue)
-        -> Result<(), String>;
+    fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue) -> Result<(), String>;
 
     /// Ask the agent to hand its conversation over again, and say whether it
     /// will.
@@ -277,11 +277,7 @@ pub(crate) mod mock {
         fn set_model(&mut self, _model: &str, _effort: Option<String>) -> Result<(), String> {
             Ok(())
         }
-        fn set_config_option(
-            &mut self,
-            config_id: &str,
-            value: &ChatConfigValue,
-        ) -> Result<(), String> {
+        fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue) -> Result<(), String> {
             self.config_switches.push((config_id.to_string(), value.clone()));
             Ok(())
         }
@@ -350,7 +346,11 @@ mod tests {
         }];
         let mut mock = MockTransport::default();
         assert!(mock.respond_question("toolu_4", "op-10", &answers).unwrap());
-        assert_eq!(mock.answered, vec![answers], "the form must arrive intact, not merely arrive");
+        assert_eq!(
+            mock.answered,
+            vec![answers],
+            "the form must arrive intact, not merely arrive"
+        );
     }
 
     /// A sink with no listener must drop events rather than panic or block: the
@@ -360,7 +360,10 @@ mod tests {
         let sink: Sink = Arc::new(Mutex::new(None));
         emit(
             &sink,
-            ChatEvent::SessionEnded { session_id: "s".to_string(), reason: None },
+            ChatEvent::SessionEnded {
+                session_id: "s".to_string(),
+                reason: None,
+            },
         );
     }
 }

@@ -327,9 +327,7 @@ async function applyRename(ctx: EditCtx, from: string, to: string, undo?: string
       // The moment someone wants this back is the moment they are told about it,
       // so the reverse runs here rather than living in a history panel.
       run: () => {
-        void applyRename(ctx, to, from).catch((e) =>
-          emitWith<ToastEvent>(TOAST, { message: `Could not undo: ${e}` }),
-        );
+        void applyRename(ctx, to, from).catch((e) => emitWith<ToastEvent>(TOAST, { message: `Could not undo: ${e}` }));
       },
     },
   });
@@ -377,10 +375,7 @@ async function deleteEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
   const targets = targetsOf(entry, ctx);
   const what = entry.is_dir ? "folder" : "file";
   const ok = await ctx.askConfirm({
-    title:
-      targets.length > 1
-        ? `Delete ${targets.length} selected items?`
-        : `Delete the ${what} “${entry.name}”?`,
+    title: targets.length > 1 ? `Delete ${targets.length} selected items?` : `Delete the ${what} “${entry.name}”?`,
     // Not "cannot be undone": the backend trashes rather than unlinks, and a
     // dialog that overstates the damage teaches people to distrust the next one.
     message: "They move to the Trash, where you can put them back.",
@@ -558,8 +553,7 @@ function TreeNode(props: {
   // Lazily, and on restore too: a directory that comes back open on mount has
   // never read its children.
   createEffect(() => {
-    if (open() && children() === null)
-      void listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
+    if (open() && children() === null) void listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
   });
 
   // Publish this directory's reload so a mutation elsewhere in the tree can
@@ -778,17 +772,10 @@ function TreeNode(props: {
           // The destination opens once the move lands, so a file dropped on a
           // shut folder is seen to go into it rather than appearing to vanish.
           const dir = dropDir();
-          if (from)
-            void moveInto(props.ctx!, from, dir).then(
-              (moved) => moved && props.expand.setOpen(dir, true),
-            );
+          if (from) void moveInto(props.ctx!, from, dir).then((moved) => moved && props.expand.setOpen(dir, true));
         }}
       >
-        {props.entry.is_dir ? (
-          <Chevron open={open()} />
-        ) : (
-          <FileIcon name={props.entry.name} />
-        )}
+        {props.entry.is_dir ? <Chevron open={open()} /> : <FileIcon name={props.entry.name} />}
         <span
           class={styles.treeName}
           classList={{
@@ -807,9 +794,7 @@ function TreeNode(props: {
           <span
             class={styles.touchedDot}
             classList={{ [styles.editingDot]: isEditingNow(props.entry.path) }}
-            title={
-              isEditingNow(props.entry.path) ? "Being edited right now" : "Changed by the selected session"
-            }
+            title={isEditingNow(props.entry.path) ? "Being edited right now" : "Changed by the selected session"}
           >
             ●
           </span>
@@ -844,16 +829,9 @@ function TreeNode(props: {
  *  A tree keeps a match's ancestors on screen to place it, which is exactly the
  *  chrome someone filtering is trying to get past. Ranked paths put the best
  *  match on the first row every time. */
-function FilterResults(props: {
-  root: string;
-  matches: { rel: string; score: number }[];
-  activePath?: string | null;
-}) {
+function FilterResults(props: { root: string; matches: { rel: string; score: number }[]; activePath?: string | null }) {
   return (
-    <Show
-      when={props.matches.length}
-      fallback={<div class={styles.empty}>No files match that filter.</div>}
-    >
+    <Show when={props.matches.length} fallback={<div class={styles.empty}>No files match that filter.</div>}>
       <For each={props.matches}>
         {(m) => (
           <div
@@ -987,7 +965,13 @@ function RootBody(props: {
 
   // Turning compaction on or off restructures every row, so the visible level
   // is rebuilt rather than left describing the other setting.
-  createEffect(on(() => props.compactFolders, () => void reloadRoot(), { defer: true }));
+  createEffect(
+    on(
+      () => props.compactFolders,
+      () => void reloadRoot(),
+      { defer: true },
+    ),
+  );
 
   // Filtering searches the whole root, not the rows that happen to be expanded:
   // a lazily-loaded tree has most of itself unread, so filtering the visible

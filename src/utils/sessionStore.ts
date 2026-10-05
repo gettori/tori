@@ -110,9 +110,7 @@ const inFlight = new Set<string>();
  *  already holds are left to `refreshSessions`, which rescans the lot. */
 export async function trackFolders(folders: readonly string[]) {
   const have = sessions();
-  const missing = [...new Set(folders)].filter(
-    (f) => f && !(f in have) && !inFlight.has(f),
-  );
+  const missing = [...new Set(folders)].filter((f) => f && !(f in have) && !inFlight.has(f));
   if (missing.length === 0) return;
   for (const f of missing) inFlight.add(f);
   try {

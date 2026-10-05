@@ -53,10 +53,7 @@ function withEntry(store: ExpandedStore, ws: string, next: WorkspaceExpanded): E
  * disk is renamed for all of them. Returns the same store when nothing changed,
  * so a caller holding this in a signal does not re-run its readers on a no-op.
  */
-export function mapExpandedPaths(
-  store: ExpandedStore,
-  map: (path: string) => string | null,
-): ExpandedStore {
+export function mapExpandedPaths(store: ExpandedStore, map: (path: string) => string | null): ExpandedStore {
   let changed = false;
   const out: Record<string, WorkspaceExpanded> = {};
   for (const [ws, entry] of Object.entries(store)) {
@@ -68,8 +65,7 @@ export function mapExpandedPaths(
   return changed ? out : store;
 }
 
-const same = (a: readonly string[], b: readonly string[]) =>
-  a.length === b.length && a.every((p, i) => p === b[i]);
+const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((p, i) => p === b[i]);
 
 function mapPaths(paths: readonly string[], map: (path: string) => string | null): string[] {
   const out: string[] = [];

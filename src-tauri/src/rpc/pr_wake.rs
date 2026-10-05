@@ -84,16 +84,27 @@ impl Core {
 // One wake for every watched pull request of the session with news, and how
 // much of each one's pending news it rendered.
 pub fn wake_for(watches: &[Watch], session: &str) -> Option<(String, Vec<(String, usize)>)> {
-    let mine: Vec<&Watch> = watches.iter().filter(|w| w.session == session && !w.pending.is_empty()).collect();
+    let mine: Vec<&Watch> = watches
+        .iter()
+        .filter(|w| w.session == session && !w.pending.is_empty())
+        .collect();
     if mine.is_empty() {
         return None;
     }
-    let text = mine.iter().map(|w| pr_watch::render(&w.url, &w.pending)).collect::<Vec<_>>().join("\n\n");
+    let text = mine
+        .iter()
+        .map(|w| pr_watch::render(&w.url, &w.pending))
+        .collect::<Vec<_>>()
+        .join("\n\n");
     Some((text, mine.iter().map(|w| (w.url.clone(), w.pending.len())).collect()))
 }
 
 pub fn sessions_with_news(watches: &[Watch]) -> Vec<String> {
-    let sessions: BTreeMap<&str, ()> = watches.iter().filter(|w| !w.pending.is_empty()).map(|w| (w.session.as_str(), ())).collect();
+    let sessions: BTreeMap<&str, ()> = watches
+        .iter()
+        .filter(|w| !w.pending.is_empty())
+        .map(|w| (w.session.as_str(), ()))
+        .collect();
     sessions.into_keys().map(str::to_string).collect()
 }
 
@@ -112,7 +123,9 @@ impl Waker {
 
 pub fn session_event(session: &str, event: &Value) {
     if let Some(waker) = WAKER.get() {
-        waker.core().observe(session, event["kind"].as_str().unwrap_or_default(), Instant::now());
+        waker
+            .core()
+            .observe(session, event["kind"].as_str().unwrap_or_default(), Instant::now());
         let _ = waker.nudge.send(());
     }
 }
@@ -123,9 +136,18 @@ pub fn nudge() {
     }
 }
 
-pub fn start(ready: impl Fn(&str) -> bool + Send + 'static, deliver: impl Fn(&str, String) -> Result<(), String> + Send + 'static) {
+pub fn start(
+    ready: impl Fn(&str) -> bool + Send + 'static,
+    deliver: impl Fn(&str, String) -> Result<(), String> + Send + 'static,
+) {
     let (nudge, rx) = mpsc::channel();
-    if WAKER.set(Waker { core: Mutex::default(), nudge }).is_err() {
+    if WAKER
+        .set(Waker {
+            core: Mutex::default(),
+            nudge,
+        })
+        .is_err()
+    {
         return;
     }
     std::thread::spawn(move || run(rx, ready, deliver));
@@ -140,7 +162,9 @@ fn run(rx: Receiver<()>, ready: impl Fn(&str) -> bool, deliver: impl Fn(&str, St
             if !waker.core().due(&session, ready(&session), now) {
                 continue;
             }
-            let Some((text, told)) = wake_for(&watches, &session) else { continue };
+            let Some((text, told)) = wake_for(&watches, &session) else {
+                continue;
+            };
             if let Err(e) = deliver(&session, text) {
                 eprintln!("tori: pull request wake not delivered: {e}");
                 continue;
@@ -165,7 +189,9 @@ fn run(rx: Receiver<()>, ready: impl Fn(&str) -> bool, deliver: impl Fn(&str, St
             }
         }
         let next = waker.core().next_deadline();
-        let wait = next.map_or(MAX_WAIT, |at| at.saturating_duration_since(Instant::now())).min(MAX_WAIT);
+        let wait = next
+            .map_or(MAX_WAIT, |at| at.saturating_duration_since(Instant::now()))
+            .min(MAX_WAIT);
         match rx.recv_timeout(wait) {
             Err(RecvTimeoutError::Disconnected) => return,
             _ => while rx.try_recv().is_ok() {},
@@ -201,7 +227,10 @@ mod tests {
         let (mut core, t0) = (Core::default(), Instant::now());
         assert!(!core.due("s", false, t0));
         assert_eq!(core.next_deadline(), None, "waits for a nudge, not a clock");
-        assert!(!core.due("s", true, at(t0, 100)), "a session first seen idle still waits the debounce");
+        assert!(
+            !core.due("s", true, at(t0, 100)),
+            "a session first seen idle still waits the debounce"
+        );
         assert!(core.due("s", true, at(t0, 110)));
     }
 

@@ -101,24 +101,15 @@ fn default_profile() -> String {
 pub enum ClaimOutcome {
     /// The claim is yours. `contested` marks a session we found running outside
     /// Tori: allowed, because we cannot stop it, but the caller must warn.
-    Granted {
-        contested: bool,
-    },
+    Granted { contested: bool },
     /// You already have this open on the same kind of surface. Focus that tab.
-    AlreadyMineFocus {
-        tab_id: String,
-    },
+    AlreadyMineFocus { tab_id: String },
     /// Another surface holds it. Opening a second driver would corrupt the
     /// transcript, so this is a refusal.
-    HeldByOther {
-        surface: Surface,
-        tab_id: String,
-    },
+    HeldByOther { surface: Surface, tab_id: String },
     /// A previous Tori died leaving this session's child alive. Unclaimable
     /// until the user decides what to do with the surviving process.
-    Orphaned {
-        child_pid: u32,
-    },
+    Orphaned { child_pid: u32 },
 }
 
 /// What the world looks like to a claim attempt, gathered once by the caller so
@@ -139,18 +130,18 @@ pub struct Probe {
 ///
 /// Returns the outcome plus the claims table it implies, so the caller writes
 /// state in one place instead of each branch mutating as it goes.
-pub fn decide(
-    claims: &HashMap<String, Claim>,
-    session_id: &str,
-    want: &Claim,
-    probe: Probe,
-) -> ClaimOutcome {
+pub fn decide(claims: &HashMap<String, Claim>, session_id: &str, want: &Claim, probe: Probe) -> ClaimOutcome {
     match claims.get(session_id) {
         Some(held) if probe.holder_alive => {
             if held.surface == want.surface {
-                ClaimOutcome::AlreadyMineFocus { tab_id: held.tab_id.clone() }
+                ClaimOutcome::AlreadyMineFocus {
+                    tab_id: held.tab_id.clone(),
+                }
             } else {
-                ClaimOutcome::HeldByOther { surface: held.surface, tab_id: held.tab_id.clone() }
+                ClaimOutcome::HeldByOther {
+                    surface: held.surface,
+                    tab_id: held.tab_id.clone(),
+                }
             }
         }
         // A claim whose Tori is gone. If its child outlived it and is still
@@ -161,11 +152,13 @@ pub fn decide(
         // The pid is matched out rather than unwrapped: a defaulted 0 here would
         // travel to the frontend as a killable pid, and `kill 0` signals this
         // whole process group.
-        Some(Claim { child_pid: Some(pid), .. }) if probe.child_still_ours => {
-            ClaimOutcome::Orphaned { child_pid: *pid }
-        }
+        Some(Claim {
+            child_pid: Some(pid), ..
+        }) if probe.child_still_ours => ClaimOutcome::Orphaned { child_pid: *pid },
         // Stale record, nothing of ours survived it: the record is just litter.
-        Some(_) | None => ClaimOutcome::Granted { contested: probe.externally_running },
+        Some(_) | None => ClaimOutcome::Granted {
+            contested: probe.externally_running,
+        },
     }
 }
 
@@ -214,7 +207,11 @@ pub fn release(claims: &mut HashMap<String, Claim>, session_id: &str, tab_id: &s
 pub enum Reaped {
     /// A crashed Tori's child is still running this session. Carries the agent
     /// so the terminate call matches the same pattern the classification did.
-    Orphan { session_id: String, child_pid: u32, agent: String },
+    Orphan {
+        session_id: String,
+        child_pid: u32,
+        agent: String,
+    },
     /// Nothing survived; the record is litter and gets dropped.
     Stale { session_id: String },
 }
@@ -235,9 +232,11 @@ pub fn classify_persisted(
         .iter()
         .filter(|(_, c)| !alive(c.tori_pid))
         .map(|(id, c)| match c.child_pid {
-            Some(pid) if still_running(&c.agent, id, pid) => {
-                Reaped::Orphan { session_id: id.clone(), child_pid: pid, agent: c.agent.clone() }
-            }
+            Some(pid) if still_running(&c.agent, id, pid) => Reaped::Orphan {
+                session_id: id.clone(),
+                child_pid: pid,
+                agent: c.agent.clone(),
+            },
             _ => Reaped::Stale { session_id: id.clone() },
         })
         .collect();
@@ -270,7 +269,9 @@ pub fn serialize_claims(claims: &HashMap<String, Claim>) -> String {
 }
 
 fn load_claims_from(path: &std::path::Path) -> HashMap<String, Claim> {
-    std::fs::read_to_string(path).map(|t| parse_claims(&t)).unwrap_or_default()
+    std::fs::read_to_string(path)
+        .map(|t| parse_claims(&t))
+        .unwrap_or_default()
 }
 
 /// Replace the claims file atomically.
@@ -333,18 +334,9 @@ fn pid_alive(pid: u32) -> bool {
 ///
 /// Pure, so the rule is tested against a table rather than against whatever
 /// happens to be claimed on the machine.
-fn with_live_child(
-    claims: &HashMap<String, Claim>,
-    ids: &[String],
-    alive: impl Fn(u32) -> bool,
-) -> Vec<String> {
+fn with_live_child(claims: &HashMap<String, Claim>, ids: &[String], alive: impl Fn(u32) -> bool) -> Vec<String> {
     ids.iter()
-        .filter(|id| {
-            claims
-                .get(*id)
-                .and_then(|c| c.child_pid)
-                .is_some_and(&alive)
-        })
+        .filter(|id| claims.get(*id).and_then(|c| c.child_pid).is_some_and(&alive))
         .cloned()
         .collect()
 }
@@ -439,14 +431,20 @@ pub struct Registry {
 
 impl Default for Registry {
     fn default() -> Self {
-        Self { claims: Mutex::new(HashMap::new()), path: claims_path() }
+        Self {
+            claims: Mutex::new(HashMap::new()),
+            path: claims_path(),
+        }
     }
 }
 
 impl Registry {
     #[cfg(test)]
     pub fn at(path: PathBuf) -> Self {
-        Self { claims: Mutex::new(HashMap::new()), path }
+        Self {
+            claims: Mutex::new(HashMap::new()),
+            path,
+        }
     }
 
     /// Attempt to take `session_id` for `want`, gathering the process-table
@@ -546,7 +544,11 @@ impl Registry {
             Err(e) => e.into_inner(),
         };
         let me = std::process::id();
-        guard.iter().filter(|(_, c)| c.tori_pid == me).map(|(id, c)| (id.clone(), c.agent.clone())).collect()
+        guard
+            .iter()
+            .filter(|(_, c)| c.tori_pid == me)
+            .map(|(id, c)| (id.clone(), c.agent.clone()))
+            .collect()
     }
 
     /// Move an existing claim onto the tab that has just taken the session over.
@@ -640,11 +642,16 @@ fn reap_at(path: &std::path::Path) -> Vec<Reaped> {
         .into_iter()
         .filter(|(id, c)| {
             pid_alive(c.tori_pid)
-                || found.iter().any(|r| matches!(r, Reaped::Orphan { session_id, .. } if session_id == id))
+                || found
+                    .iter()
+                    .any(|r| matches!(r, Reaped::Orphan { session_id, .. } if session_id == id))
         })
         .collect();
     let _ = save_claims_to(path, &survivors);
-    found.into_iter().filter(|r| matches!(r, Reaped::Orphan { .. })).collect()
+    found
+        .into_iter()
+        .filter(|r| matches!(r, Reaped::Orphan { .. }))
+        .collect()
 }
 
 /// End an orphaned child and drop its record.
@@ -671,7 +678,14 @@ mod tests {
     use super::*;
 
     fn claim(surface: Surface, tab: &str) -> Claim {
-        Claim { surface, tab_id: tab.to_string(), child_pid: Some(4242), tori_pid: 1, agent: "claude".into(), profile: "default".into() }
+        Claim {
+            surface,
+            tab_id: tab.to_string(),
+            child_pid: Some(4242),
+            tori_pid: 1,
+            agent: "claude".into(),
+            profile: "default".into(),
+        }
     }
 
     /// A per-test claims store. Never the real one: a test run while Tori is
@@ -692,7 +706,11 @@ mod tests {
     }
 
     fn clear() -> Probe {
-        Probe { holder_alive: false, externally_running: false, child_still_ours: false }
+        Probe {
+            holder_alive: false,
+            externally_running: false,
+            child_still_ours: false,
+        }
     }
 
     #[test]
@@ -707,11 +725,18 @@ mod tests {
         }]);
         let first = parked.take();
         assert_eq!(first.len(), 1, "the frontend's first read gets the orphan");
-        assert!(parked.take().is_empty(), "a second read must not re-offer a child already dealt with");
+        assert!(
+            parked.take().is_empty(),
+            "a second read must not re-offer a child already dealt with"
+        );
     }
 
     fn live() -> Probe {
-        Probe { holder_alive: true, externally_running: false, child_still_ours: false }
+        Probe {
+            holder_alive: true,
+            externally_running: false,
+            child_still_ours: false,
+        }
     }
 
     #[test]
@@ -731,7 +756,9 @@ mod tests {
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         assert_eq!(
             decide(&claims, "s1", &claim(Surface::Chat, "tab-b"), live()),
-            ClaimOutcome::AlreadyMineFocus { tab_id: "tab-a".to_string() }
+            ClaimOutcome::AlreadyMineFocus {
+                tab_id: "tab-a".to_string()
+            }
         );
     }
 
@@ -743,7 +770,10 @@ mod tests {
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         assert_eq!(
             decide(&claims, "s1", &claim(Surface::PtyAgent, "tab-b"), live()),
-            ClaimOutcome::HeldByOther { surface: Surface::Chat, tab_id: "tab-a".to_string() }
+            ClaimOutcome::HeldByOther {
+                surface: Surface::Chat,
+                tab_id: "tab-a".to_string()
+            }
         );
     }
 
@@ -772,7 +802,9 @@ mod tests {
         assert_eq!(claims["s1"].surface, Surface::Chat);
         assert_eq!(
             decide(&claims, "s1", &claim(Surface::Chat, "tab-third"), live()),
-            ClaimOutcome::AlreadyMineFocus { tab_id: "tab-after-reload".to_string() }
+            ClaimOutcome::AlreadyMineFocus {
+                tab_id: "tab-after-reload".to_string()
+            }
         );
     }
 
@@ -800,7 +832,11 @@ mod tests {
     #[test]
     fn an_externally_running_session_is_granted_but_contested() {
         let claims = HashMap::new();
-        let probe = Probe { holder_alive: false, externally_running: true, child_still_ours: false };
+        let probe = Probe {
+            holder_alive: false,
+            externally_running: true,
+            child_still_ours: false,
+        };
         assert_eq!(
             decide(&claims, "s1", &claim(Surface::Chat, "tab-a"), probe),
             ClaimOutcome::Granted { contested: true }
@@ -813,7 +849,11 @@ mod tests {
     fn a_dead_tori_with_a_surviving_child_is_an_orphan_not_a_grant() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
-        let probe = Probe { holder_alive: false, externally_running: true, child_still_ours: true };
+        let probe = Probe {
+            holder_alive: false,
+            externally_running: true,
+            child_still_ours: true,
+        };
         assert_eq!(
             decide(&claims, "s1", &claim(Surface::Chat, "tab-b"), probe),
             ClaimOutcome::Orphaned { child_pid: 4242 }
@@ -839,7 +879,12 @@ mod tests {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         let found = classify_persisted(&claims, |_| false, |_, _, _| false);
-        assert_eq!(found, vec![Reaped::Stale { session_id: "s1".to_string() }]);
+        assert_eq!(
+            found,
+            vec![Reaped::Stale {
+                session_id: "s1".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -847,7 +892,14 @@ mod tests {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         let found = classify_persisted(&claims, |_| false, |_, _, _| true);
-        assert_eq!(found, vec![Reaped::Orphan { session_id: "s1".to_string(), child_pid: 4242, agent: "claude".into() }]);
+        assert_eq!(
+            found,
+            vec![Reaped::Orphan {
+                session_id: "s1".to_string(),
+                child_pid: 4242,
+                agent: "claude".into()
+            }]
+        );
     }
 
     #[test]
@@ -863,7 +915,18 @@ mod tests {
     fn claims_round_trip_through_the_on_disk_shape() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
-        record(&mut claims, "s2", Claim { surface: Surface::PtyAgent, tab_id: "tab-b".into(), child_pid: None, tori_pid: 9, agent: "claude".into(), profile: "default".into() });
+        record(
+            &mut claims,
+            "s2",
+            Claim {
+                surface: Surface::PtyAgent,
+                tab_id: "tab-b".into(),
+                child_pid: None,
+                tori_pid: 9,
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
+        );
         assert_eq!(parse_claims(&serialize_claims(&claims)), claims);
     }
 
@@ -966,7 +1029,10 @@ mod tests {
 
     /// One claim, with a tab id of its own.
     fn on_tab(claim: Claim, tab_id: &str) -> Claim {
-        Claim { tab_id: tab_id.into(), ..claim }
+        Claim {
+            tab_id: tab_id.into(),
+            ..claim
+        }
     }
 
     #[test]
@@ -976,7 +1042,10 @@ mod tests {
         claims.insert("s-a".to_string(), on_tab(held("claude", 1, Some(9)), "claude-a"));
         claims.insert("s-1".to_string(), on_tab(held("codex", 1, Some(9)), "codex-1"));
         // Sorted, so a refusal message reads the same twice running.
-        assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, |_| true), ["claude-a", "claude-b"]);
+        assert_eq!(
+            held_by(&claims, "claude", DEFAULT_PROFILE, |_| true),
+            ["claude-a", "claude-b"]
+        );
         assert_eq!(held_by(&claims, "codex", DEFAULT_PROFILE, |_| true), ["codex-1"]);
         assert!(held_by(&claims, "gemini", DEFAULT_PROFILE, |_| true).is_empty());
     }
@@ -991,7 +1060,10 @@ mod tests {
         claims.insert(
             "s-1".to_string(),
             on_tab(
-                Claim { surface: Surface::PtyAgent, ..held("claude", 1, None) },
+                Claim {
+                    surface: Surface::PtyAgent,
+                    ..held("claude", 1, None)
+                },
                 "sh:7",
             ),
         );
@@ -1007,7 +1079,10 @@ mod tests {
             "s-default".to_string(),
             on_tab(held_on("claude", DEFAULT_PROFILE, 1, Some(9)), "on-default"),
         );
-        claims.insert("s-globex".to_string(), on_tab(held_on("claude", "globex", 1, Some(9)), "on-globex"));
+        claims.insert(
+            "s-globex".to_string(),
+            on_tab(held_on("claude", "globex", 1, Some(9)), "on-globex"),
+        );
         assert_eq!(held_by(&claims, "claude", "globex", |_| true), ["on-globex"]);
         assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, |_| true), ["on-default"]);
     }
@@ -1035,7 +1110,10 @@ mod tests {
     #[test]
     fn a_pty_agent_tab_counts_even_with_no_child_pid_recorded() {
         let mut claims = HashMap::new();
-        claims.insert("s1".to_string(), on_tab(held("claude", std::process::id(), None), "sh:1"));
+        claims.insert(
+            "s1".to_string(),
+            on_tab(held("claude", std::process::id(), None), "sh:1"),
+        );
         assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, pid_alive), ["sh:1"]);
     }
 
@@ -1051,15 +1129,27 @@ mod tests {
         record(
             &mut claims,
             "s1",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: dead, agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-a".into(),
+                child_pid: None,
+                tori_pid: dead,
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
         assert!(!pid_alive(dead));
         assert_eq!(
-            decide(&claims, "s1", &claim(Surface::Chat, "tab-b"), Probe {
-                holder_alive: pid_alive(dead),
-                externally_running: false,
-                child_still_ours: false
-            }),
+            decide(
+                &claims,
+                "s1",
+                &claim(Surface::Chat, "tab-b"),
+                Probe {
+                    holder_alive: pid_alive(dead),
+                    externally_running: false,
+                    child_still_ours: false
+                }
+            ),
             ClaimOutcome::Granted { contested: false }
         );
     }
@@ -1144,12 +1234,22 @@ mod tests {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
-        assert!(seen, "the stand-in should be visible to the same pgrep the claim path uses");
+        assert!(
+            seen,
+            "the stand-in should be visible to the same pgrep the claim path uses"
+        );
 
         let registry = Registry::at(temp_store("contested"));
         let outcome = registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-a".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
         assert_eq!(
             outcome,
@@ -1229,26 +1329,50 @@ mod tests {
         record(
             &mut leftover,
             &id,
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: Some(child_pid), tori_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-a".into(),
+                child_pid: Some(child_pid),
+                tori_pid: 4_000_000,
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
         // Plus a record whose child did not survive, which must be swept.
         record(
             &mut leftover,
             "litter",
-            Claim { surface: Surface::Chat, tab_id: "tab-z".into(), child_pid: None, tori_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-z".into(),
+                child_pid: None,
+                tori_pid: 4_000_000,
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
         save_claims_to(&store, &leftover).unwrap();
 
         let orphans = reap_at(&store);
         assert_eq!(
             orphans,
-            vec![Reaped::Orphan { session_id: id.clone(), child_pid, agent: "claude".into() }],
+            vec![Reaped::Orphan {
+                session_id: id.clone(),
+                child_pid,
+                agent: "claude".into()
+            }],
             "the surviving child should be named as an orphan, and the litter swept"
         );
 
         let survivors = load_claims_from(&store);
-        assert!(survivors.contains_key(&id), "an orphan's record must survive, or its session looks free");
-        assert!(!survivors.contains_key("litter"), "a record with nothing alive behind it is litter");
+        assert!(
+            survivors.contains_key(&id),
+            "an orphan's record must survive, or its session looks free"
+        );
+        assert!(
+            !survivors.contains_key("litter"),
+            "a record with nothing alive behind it is litter"
+        );
 
         // And the session is genuinely unclaimable until the user decides.
         let registry = Registry::at(store.clone());
@@ -1256,7 +1380,14 @@ mod tests {
         assert_eq!(
             registry.claim(
                 &id,
-                Claim { surface: Surface::Chat, tab_id: "tab-new".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim {
+                    surface: Surface::Chat,
+                    tab_id: "tab-new".into(),
+                    child_pid: None,
+                    tori_pid: std::process::id(),
+                    agent: "claude".into(),
+                    profile: "default".into()
+                },
             ),
             ClaimOutcome::Orphaned { child_pid }
         );
@@ -1301,10 +1432,14 @@ mod tests {
         );
 
         let seen = std::sync::Mutex::new(Vec::new());
-        let found = classify_persisted(&claims, |_| false, |agent, id, pid| {
-            seen.lock().unwrap().push((agent.to_string(), id.to_string(), pid));
-            true
-        });
+        let found = classify_persisted(
+            &claims,
+            |_| false,
+            |agent, id, pid| {
+                seen.lock().unwrap().push((agent.to_string(), id.to_string(), pid));
+                true
+            },
+        );
         let mut asked = seen.into_inner().unwrap();
         asked.sort();
         assert_eq!(
@@ -1317,16 +1452,16 @@ mod tests {
         );
         // And the agent travels onto the orphan, so terminating it re-checks the
         // same pattern the classification used.
-        assert!(found.iter().any(|r| matches!(r, Reaped::Orphan { agent, .. } if agent == "gemini")));
+        assert!(found
+            .iter()
+            .any(|r| matches!(r, Reaped::Orphan { agent, .. } if agent == "gemini")));
     }
 
     /// A claims file written before the agent field existed must still load.
     /// Only claude could have written one, which is what makes the default safe.
     #[test]
     fn a_claim_file_predating_the_agent_field_still_loads() {
-        let parsed = parse_claims(
-            r#"{"s1":{"surface":"chat","tabId":"t","childPid":42,"toriPid":7}}"#,
-        );
+        let parsed = parse_claims(r#"{"s1":{"surface":"chat","tabId":"t","childPid":42,"toriPid":7}}"#);
         assert_eq!(parsed["s1"].agent, "claude");
     }
 
@@ -1338,9 +1473,20 @@ mod tests {
         record(
             &mut claims,
             "s1",
-            Claim { surface: Surface::PtyAgent, tab_id: "tab-a".into(), child_pid: None, tori_pid: 12345, agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::PtyAgent,
+                tab_id: "tab-a".into(),
+                child_pid: None,
+                tori_pid: 12345,
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
-        let probe = Probe { holder_alive: false, externally_running: true, child_still_ours: true };
+        let probe = Probe {
+            holder_alive: false,
+            externally_running: true,
+            child_still_ours: true,
+        };
         assert_eq!(
             decide(&claims, "s1", &claim(Surface::Chat, "tab-b"), probe),
             ClaimOutcome::Granted { contested: true }

@@ -3,15 +3,21 @@ import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceWork } from "../../utils/perfTrace";
-import { emitWith, NAVIGATE, OPEN_IN_EDITOR, TOAST, type NavTarget, type OpenInEditor, type ToastEvent } from "../../utils/events";
+import {
+  emitWith,
+  NAVIGATE,
+  OPEN_IN_EDITOR,
+  TOAST,
+  type NavTarget,
+  type OpenInEditor,
+  type ToastEvent,
+} from "../../utils/events";
 import { linkTarget } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
 import CodeBlock from "./CodeBlock";
 import styles from "./Chat.module.css";
 
-type Segment =
-  | { kind: "prose"; html: string }
-  | { kind: "code"; lang: string; code: string };
+type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
 
 /**
  * Assistant markdown, rendered block by block rather than as one innerHTML

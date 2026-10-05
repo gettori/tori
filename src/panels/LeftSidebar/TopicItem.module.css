@@ -12,8 +12,7 @@
 .item > .headSel,
 .item > .headSel:hover {
   background:
-    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-      var(--tori-border-thick) 100% no-repeat,
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
     linear-gradient(to right, var(--brand-subtle), transparent);
 }
 

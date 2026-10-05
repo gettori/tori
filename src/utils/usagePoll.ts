@@ -64,12 +64,7 @@ export type PollContext = {
   spawns: boolean;
 };
 
-export function mayPoll(
-  clock: PollClock,
-  trigger: Trigger,
-  now: number,
-  ctx: PollContext,
-): boolean {
+export function mayPoll(clock: PollClock, trigger: Trigger, now: number, ctx: PollContext): boolean {
   // First and unconditional. A hidden window has no strip to update and no
   // notification the user would see sooner for it.
   if (!ctx.visible) return false;

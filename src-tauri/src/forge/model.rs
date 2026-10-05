@@ -200,7 +200,12 @@ impl CheckRollup {
     /// have not finished. One constructor so the five places that answer it
     /// cannot drift into disagreeing about what a blank rollup is.
     pub fn none() -> Self {
-        CheckRollup { state: CheckState::None, total: 0, failing: 0, contexts: Vec::new() }
+        CheckRollup {
+            state: CheckState::None,
+            total: 0,
+            failing: 0,
+            contexts: Vec::new(),
+        }
     }
 }
 
@@ -459,7 +464,10 @@ pub struct Paged<T> {
 
 impl<T> Paged<T> {
     pub fn complete(items: Vec<T>) -> Self {
-        Self { items, truncated: false }
+        Self {
+            items,
+            truncated: false,
+        }
     }
 }
 
@@ -524,7 +532,11 @@ mod tests {
                     state: CheckState::Failure,
                     url: Some("https://github.com/skarif2/tori/runs/1".into()),
                 },
-                CheckContext { name: "lint".into(), state: CheckState::Success, url: None },
+                CheckContext {
+                    name: "lint".into(),
+                    state: CheckState::Success,
+                    url: None,
+                },
             ],
         }
     }

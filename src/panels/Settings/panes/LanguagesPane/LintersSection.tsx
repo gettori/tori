@@ -28,8 +28,8 @@ export default function LintersSection() {
             </div>
           </Show>
           <div class={styles.note}>
-            A linter runs beside the language's own server, in projects with its config. Add one
-            with a TOML file in <code>~/.config/tori/lsp/</code>; see LSP-SERVERS.md.
+            A linter runs beside the language's own server, in projects with its config. Add one with a TOML file in{" "}
+            <code>~/.config/tori/lsp/</code>; see LSP-SERVERS.md.
           </div>
         </Match>
       </Switch>

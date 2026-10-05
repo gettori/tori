@@ -62,10 +62,6 @@ const KIND_ICONS: Record<number, LucideIcon> = {
  *  as a rendering bug rather than as an unfamiliar kind. */
 export default function SymbolIcon(props: { kind: number; class?: string }) {
   return (
-    <Icon
-      icon={KIND_ICONS[props.kind] ?? CircleDot}
-      class={props.class}
-      aria-label={symbolKindName(props.kind)}
-    />
+    <Icon icon={KIND_ICONS[props.kind] ?? CircleDot} class={props.class} aria-label={symbolKindName(props.kind)} />
   );
 }

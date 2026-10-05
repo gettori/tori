@@ -16,7 +16,11 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd !== "git_blame") return Promise.resolve(null);
     calls.push({ projectPath: String(args.projectPath), file: String(args.file) });
     if (fails) return Promise.reject("fatal: not a git repository");
-    return Promise.resolve({ head, lines: [0], commits: [{ sha: "a".repeat(40), short: "aaaaaaa", author: "Ada", time: 1, summary: "s" }] });
+    return Promise.resolve({
+      head,
+      lines: [0],
+      commits: [{ sha: "a".repeat(40), short: "aaaaaaa", author: "Ada", time: 1, summary: "s" }],
+    });
   },
 }));
 

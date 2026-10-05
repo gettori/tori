@@ -75,7 +75,9 @@ export function ticketOf(item: ItemRow): TicketRef {
 // A change names only what it knows: `session_live` and `worktree_gone` come
 // from a full read, so a row keeps the last ones until the next.
 export function applyItem(prev: ItemRow[], item: ItemRow): ItemRow[] {
-  return prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? { ...i, ...item } : i)) : [...prev, item];
+  return prev.some((i) => i.id === item.id)
+    ? prev.map((i) => (i.id === item.id ? { ...i, ...item } : i))
+    : [...prev, item];
 }
 
 const itemTitle = (item: ItemRow) =>
@@ -146,9 +148,18 @@ export function activityOf(e: AutopilotEvent, items: ItemRow[]): ActivityItem | 
   return null;
 }
 
-const KIND_OF: Record<AskApproval["action"], DecisionKind> = { "pr.create": "pr", "review.submit": "review", "pr.merge": "merge" };
+const KIND_OF: Record<AskApproval["action"], DecisionKind> = {
+  "pr.create": "pr",
+  "review.submit": "review",
+  "pr.merge": "merge",
+};
 
-export function decisionOf(ask: SocketAsk, items: ItemRow[], holds: Hold[], asker: (session: string) => string): Decision {
+export function decisionOf(
+  ask: SocketAsk,
+  items: ItemRow[],
+  holds: Hold[],
+  asker: (session: string) => string,
+): Decision {
   const approval = ask.approval ?? null;
   const item = items.find((i) => i.id === ask.item);
   const number = approval && "number" in approval ? approval.number : undefined;
@@ -173,7 +184,13 @@ const COUNT = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eig
 const counted = (n: number, one: string, many: string) => `${COUNT[n] ?? n} ${n === 1 ? one : many}`;
 
 const waitBelow = (crew: number) =>
-  crew === 0 ? "" : crew === 1 ? " The worker waits below." : crew === 2 ? " Both workers wait below." : " The crew waits below.";
+  crew === 0
+    ? ""
+    : crew === 1
+      ? " The worker waits below."
+      : crew === 2
+        ? " Both workers wait below."
+        : " The crew waits below.";
 
 function onDeck(crew: number, queued: number): string {
   const deck = crew ? `${counted(crew, "worker", "workers")} on deck` : "Nobody on deck yet";
@@ -184,7 +201,13 @@ function onDeck(crew: number, queued: number): string {
 export const overLimit = (crew: number, limit: number) => limit > 0 && crew > limit;
 
 /** The banner's words for where the autopilot stands. */
-export function heroFor(state: AutopilotState, calls: number, crew: number, queued: number, limit: number): CockpitHero {
+export function heroFor(
+  state: AutopilotState,
+  calls: number,
+  crew: number,
+  queued: number,
+  limit: number,
+): CockpitHero {
   if ((state === "working" || state === "idle") && overLimit(crew, limit)) {
     return {
       eyebrow: "Rough seas",
@@ -228,14 +251,9 @@ export function heroFor(state: AutopilotState, calls: number, crew: number, queu
   }
 }
 
-export function decisionsFor(
-  asks: SocketAsk[],
-  session: string | null,
-): SocketAsk[] {
+export function decisionsFor(asks: SocketAsk[], session: string | null): SocketAsk[] {
   return asks.filter(
-    (a) =>
-      a.item !== undefined ||
-      (session !== null && (a.shown_in ?? [a.session]).includes(session)),
+    (a) => a.item !== undefined || (session !== null && (a.shown_in ?? [a.session]).includes(session)),
   );
 }
 

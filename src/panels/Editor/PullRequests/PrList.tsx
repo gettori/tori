@@ -32,12 +32,7 @@ import {
   uncoveredUnits,
   pollNow,
 } from "../../../utils/forgeStatus";
-import {
-  ensurePrList,
-  forgetPrList,
-  prListEntry,
-  reloadPrList,
-} from "../../../utils/prListStore";
+import { ensurePrList, forgetPrList, prListEntry, reloadPrList } from "../../../utils/prListStore";
 import type { PullRequest } from "../../../utils/forgeTypes";
 import Button from "../../../components/Button/Button";
 import styles from "./PrList.module.css";
@@ -129,14 +124,10 @@ export default function PrList(props: {
         </Show>
       </div>
 
-      <Show when={paused()}>
-        {(why) => <div class={styles.notice}>{PAUSED_COPY[why()]}</div>}
-      </Show>
+      <Show when={paused()}>{(why) => <div class={styles.notice}>{PAUSED_COPY[why()]}</div>}</Show>
 
       <Show when={paused() === null}>
-        <Show when={entry().error}>
-          {(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}
-        </Show>
+        <Show when={entry().error}>{(message) => <div class={`${styles.notice} ${styles.bad}`}>{message()}</div>}</Show>
 
         <Show when={!entry().error && !loading() && shown().length === 0}>
           <div class={styles.notice}>No open pull requests.</div>
@@ -146,9 +137,7 @@ export default function PrList(props: {
           {(pr) => {
             // The same badges the sidebar chip is built from, minus the PR
             // glyph: this row already says `#12` in its own title.
-            const chip = createMemo(() =>
-              forgeBadges(pollRoot() ? unitStatus(pollRoot()!, pr.headRef) : null),
-            );
+            const chip = createMemo(() => forgeBadges(pollRoot() ? unitStatus(pollRoot()!, pr.headRef) : null));
             return (
               <div
                 class={styles.row}
@@ -185,14 +174,11 @@ export default function PrList(props: {
         {/* Both truncations, said out loud. A short list that looks complete is
             the failure nobody reports. */}
         <Show when={entry().truncated}>
-          <div class={styles.notice}>
-            This repo has more open pull requests than one listing can carry.
-          </div>
+          <div class={styles.notice}>This repo has more open pull requests than one listing can carry.</div>
         </Show>
         <Show when={uncovered() > 0}>
           <div class={styles.notice}>
-            Checks are not shown for {uncovered()} branch{uncovered() === 1 ? "" : "es"} this poll
-            did not cover.
+            Checks are not shown for {uncovered()} branch{uncovered() === 1 ? "" : "es"} this poll did not cover.
           </div>
         </Show>
       </Show>

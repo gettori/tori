@@ -71,7 +71,9 @@ pub(crate) fn save_state(state: &State) -> Result<(), String> {
 
 #[tauri::command]
 pub fn first_run_state() -> FirstRunState {
-    FirstRunState { intro_seen: load_state().intro_seen }
+    FirstRunState {
+        intro_seen: load_state().intro_seen,
+    }
 }
 
 #[tauri::command(async)]
@@ -96,8 +98,11 @@ mod tests {
     use super::*;
 
     fn tmp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("tori-onboarding-{tag}-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let dir = std::env::temp_dir().join(format!(
+            "tori-onboarding-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -136,11 +141,24 @@ mod tests {
     #[test]
     fn the_other_notice_flag_is_kept_on_save() {
         let p = tmp_dir("keep").join("state.json");
-        save_to(&p, &State { intro_seen: false, theme_import_notice_shown: true }).unwrap();
+        save_to(
+            &p,
+            &State {
+                intro_seen: false,
+                theme_import_notice_shown: true,
+            },
+        )
+        .unwrap();
         let mut state = load_from(&p);
         state.intro_seen = true;
         save_to(&p, &state).unwrap();
-        assert_eq!(load_from(&p), State { intro_seen: true, theme_import_notice_shown: true });
+        assert_eq!(
+            load_from(&p),
+            State {
+                intro_seen: true,
+                theme_import_notice_shown: true
+            }
+        );
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 }

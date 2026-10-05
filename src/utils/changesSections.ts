@@ -48,9 +48,7 @@ export function setHistoryTab(tab: HistoryTab): void {
 
 const COMMIT_BOX_KEY = "tori.changes.commitBox";
 
-const [commitBoxShown, setCommitBoxSignal] = createSignal(
-  localStorage.getItem(COMMIT_BOX_KEY) === "1",
-);
+const [commitBoxShown, setCommitBoxSignal] = createSignal(localStorage.getItem(COMMIT_BOX_KEY) === "1");
 
 export { commitBoxShown };
 

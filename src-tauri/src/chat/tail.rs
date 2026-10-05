@@ -63,7 +63,11 @@ pub struct HistoryTail {
 impl HistoryTail {
     /// Everything as one tail: a history the reader cannot page.
     pub fn whole(events: Vec<ChatEvent>) -> Self {
-        Self { summary: HistorySummary::default(), events, cursor: None }
+        Self {
+            summary: HistorySummary::default(),
+            events,
+            cursor: None,
+        }
     }
 }
 
@@ -151,7 +155,11 @@ fn summarize(events: &[ChatEvent], tail: &[ChatEvent]) -> HistorySummary {
     let mut touched = BTreeSet::new();
     for ev in events {
         match ev {
-            ChatEvent::Compacted { pre_tokens, post_tokens, .. } => {
+            ChatEvent::Compacted {
+                pre_tokens,
+                post_tokens,
+                ..
+            } => {
                 s.compactions += 1;
                 if let Some(post) = post_tokens {
                     s.context_tokens = Some(*post);
@@ -179,7 +187,9 @@ fn summarize(events: &[ChatEvent], tail: &[ChatEvent]) -> HistorySummary {
                 continue;
             }
             match ev {
-                ChatEvent::ToolCallStarted { name, input, .. } if name == "AskUserQuestion" && asks_questions(input) => {
+                ChatEvent::ToolCallStarted { name, input, .. }
+                    if name == "AskUserQuestion" && asks_questions(input) =>
+                {
                     calls.remove(id);
                     asks.insert(id);
                 }
@@ -208,20 +218,28 @@ fn tool_use_id(ev: &ChatEvent) -> Option<&str> {
 /// The panel's `parseQuestions` test: an input it cannot read as questions is
 /// drawn as an ordinary tool card instead.
 fn asks_questions(input: &serde_json::Value) -> bool {
-    let Some(questions) = input.get("questions").and_then(|q| q.as_array()) else { return false };
+    let Some(questions) = input.get("questions").and_then(|q| q.as_array()) else {
+        return false;
+    };
     !questions.is_empty()
         && questions.iter().all(|q| {
             q.get("question").is_some_and(|t| t.is_string())
-                && q.get("options").and_then(|o| o.as_array()).is_some_and(|o| {
-                    !o.is_empty() && o.iter().all(|o| o.get("label").is_some_and(|l| l.is_string()))
-                })
+                && q.get("options")
+                    .and_then(|o| o.as_array())
+                    .is_some_and(|o| !o.is_empty() && o.iter().all(|o| o.get("label").is_some_and(|l| l.is_string())))
         })
 }
 
 fn cursor_at(prompts: &[(u64, usize)], at: usize) -> HistoryCursor {
     match prompts.iter().rev().find(|&&(_, start)| start <= at) {
-        Some(&(ts, start)) => HistoryCursor { prompt_ts: Some(ts), offset: at - start },
-        None => HistoryCursor { prompt_ts: None, offset: at },
+        Some(&(ts, start)) => HistoryCursor {
+            prompt_ts: Some(ts),
+            offset: at - start,
+        },
+        None => HistoryCursor {
+            prompt_ts: None,
+            offset: at,
+        },
     }
 }
 
@@ -229,7 +247,10 @@ fn cursor_at(prompts: &[(u64, usize)], at: usize) -> HistoryCursor {
 pub fn resolve(cursor: &HistoryCursor, prompts: &[(u64, usize)]) -> Option<usize> {
     match cursor.prompt_ts {
         None => Some(cursor.offset),
-        Some(ts) => prompts.iter().find(|&&(t, _)| t == ts).map(|&(_, start)| start + cursor.offset),
+        Some(ts) => prompts
+            .iter()
+            .find(|&&(t, _)| t == ts)
+            .map(|&(_, start)| start + cursor.offset),
     }
 }
 
@@ -252,7 +273,10 @@ pub struct Parsed {
 pub fn page_before(parsed: &Parsed, cursor: &HistoryCursor) -> Option<HistoryPage> {
     let end = resolve(cursor, &parsed.prompts).filter(|&end| end <= parsed.events.len())?;
     let tail = tail_of(&parsed.events, &parsed.prompts, end);
-    Some(HistoryPage { events: tail.events, cursor: tail.cursor })
+    Some(HistoryPage {
+        events: tail.events,
+        cursor: tail.cursor,
+    })
 }
 
 /// What a cached parse was read from: the file's modification time and length,
@@ -269,7 +293,10 @@ pub struct PageCache {
 
 impl PageCache {
     pub const fn new(cap: usize) -> Self {
-        Self { cap, entries: VecDeque::new() }
+        Self {
+            cap,
+            entries: VecDeque::new(),
+        }
     }
 
     fn take(&mut self, key: &str, stamp: Stamp) -> Option<Arc<Parsed>> {
@@ -312,7 +339,9 @@ mod tests {
     use super::*;
 
     fn user(turn: usize, label: Option<&str>) -> ChatEvent {
-        let mut blocks = vec![ContentBlock::Text { text: format!("prompt {turn}") }];
+        let mut blocks = vec![ContentBlock::Text {
+            text: format!("prompt {turn}"),
+        }];
         if let Some(l) = label {
             blocks.push(ContentBlock::FileRef {
                 path: "/tmp/a.png".into(),
@@ -322,11 +351,20 @@ mod tests {
                 label: Some(l.into()),
             });
         }
-        ChatEvent::UserMessage { session_id: "s".into(), turn_id: format!("t{turn}"), blocks }
+        ChatEvent::UserMessage {
+            session_id: "s".into(),
+            turn_id: format!("t{turn}"),
+            blocks,
+        }
     }
 
     fn text(turn: usize, body: &str) -> ChatEvent {
-        ChatEvent::TextDelta { session_id: "s".into(), turn_id: format!("t{turn}"), text: body.into(), agent_id: None }
+        ChatEvent::TextDelta {
+            session_id: "s".into(),
+            turn_id: format!("t{turn}"),
+            text: body.into(),
+            agent_id: None,
+        }
     }
 
     fn history(turns: usize, replies: usize) -> (Vec<ChatEvent>, Vec<(u64, usize)>) {
@@ -363,7 +401,13 @@ mod tests {
         let tail = tail_of(&events, &prompts, events.len());
         assert_eq!(rows(&tail.events), 70);
         assert!(matches!(tail.events[0], ChatEvent::UserMessage { .. }));
-        assert_eq!(tail.cursor, Some(HistoryCursor { prompt_ts: Some(1093), offset: 0 }));
+        assert_eq!(
+            tail.cursor,
+            Some(HistoryCursor {
+                prompt_ts: Some(1093),
+                offset: 0
+            })
+        );
     }
 
     #[test]
@@ -551,13 +595,19 @@ mod tests {
             .join("../src/panels/Chat/__fixtures__/historyTail.golden.json");
         // One event per line, so a change to the fold reads as a small diff.
         let mut fresh = String::from("[\n");
-        for (i, (name, (events, prompts))) in [("rich", rich_history()), ("split", split_turn())].into_iter().enumerate() {
+        for (i, (name, (events, prompts))) in [("rich", rich_history()), ("split", split_turn())]
+            .into_iter()
+            .enumerate()
+        {
             let tail = tail_of(&events, &prompts, events.len());
             assert!(tail.cursor.is_some(), "{name} is long enough to cut");
             let start = events.len() - tail.events.len();
             assert_eq!(tail.events[..], events[start..]);
             // Each page as the range of `full` it covers, newest first.
-            let all = Parsed { events: events.clone(), prompts: prompts.clone() };
+            let all = Parsed {
+                events: events.clone(),
+                prompts: prompts.clone(),
+            };
             let mut pages = Vec::new();
             let (mut end, mut cursor) = (start, tail.cursor);
             while let Some(c) = cursor {
@@ -566,7 +616,10 @@ mod tests {
                 end -= page.events.len();
                 cursor = page.cursor;
             }
-            let lines: Vec<String> = events.iter().map(|e| format!("    {}", serde_json::to_string(e).unwrap())).collect();
+            let lines: Vec<String> = events
+                .iter()
+                .map(|e| format!("    {}", serde_json::to_string(e).unwrap()))
+                .collect();
             fresh += &format!(
                 "{}{{\"name\":{:?},\"start\":{start},\"pages\":[{}],\"cursor\":{},\"summary\":{},\"full\":[\n{}\n]}}",
                 if i == 0 { "" } else { ",\n" },
@@ -590,7 +643,9 @@ mod tests {
     fn the_split_turn_cuts_between_a_call_and_its_completion() {
         let (events, prompts) = split_turn();
         let tail = tail_of(&events, &prompts, events.len());
-        let ChatEvent::TextDelta { .. } = &tail.events[0] else { panic!("cut at a text row") };
+        let ChatEvent::TextDelta { .. } = &tail.events[0] else {
+            panic!("cut at a text row")
+        };
         assert!(matches!(tail.events[1], ChatEvent::ToolCallCompleted { .. }));
     }
 
@@ -636,8 +691,14 @@ mod tests {
     fn a_second_page_reuses_the_parse() {
         let cache = Mutex::new(PageCache::new(3));
         let mut parses = 0;
-        cached(&cache, "a", stamp(1), || { parses += 1; parsed(5) });
-        cached(&cache, "a", stamp(1), || { parses += 1; parsed(5) });
+        cached(&cache, "a", stamp(1), || {
+            parses += 1;
+            parsed(5)
+        });
+        cached(&cache, "a", stamp(1), || {
+            parses += 1;
+            parsed(5)
+        });
         assert_eq!(parses, 1);
     }
 
@@ -645,10 +706,20 @@ mod tests {
     fn a_changed_file_is_parsed_again() {
         let cache = Mutex::new(PageCache::new(3));
         let mut parses = 0;
-        cached(&cache, "a", stamp(1), || { parses += 1; parsed(5) });
-        cached(&cache, "a", stamp(2), || { parses += 1; parsed(6) });
+        cached(&cache, "a", stamp(1), || {
+            parses += 1;
+            parsed(5)
+        });
+        cached(&cache, "a", stamp(2), || {
+            parses += 1;
+            parsed(6)
+        });
         assert_eq!(parses, 2);
-        assert_eq!(cache.lock().unwrap().entries.len(), 1, "the stale parse is replaced, not kept beside");
+        assert_eq!(
+            cache.lock().unwrap().entries.len(),
+            1,
+            "the stale parse is replaced, not kept beside"
+        );
     }
 
     #[test]
@@ -659,7 +730,13 @@ mod tests {
         }
         cached(&cache, "a", stamp(1), || panic!("a is still cached"));
         cached(&cache, "d", stamp(1), || parsed(2));
-        let keys: Vec<_> = cache.lock().unwrap().entries.iter().map(|(k, _, _)| k.clone()).collect();
+        let keys: Vec<_> = cache
+            .lock()
+            .unwrap()
+            .entries
+            .iter()
+            .map(|(k, _, _)| k.clone())
+            .collect();
         assert_eq!(keys, ["d", "a", "c"]);
     }
 

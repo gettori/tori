@@ -56,7 +56,7 @@ export default function HunkCommentInput(props: {
   }
 
   const disabled = () => !props.target || !!props.disabledReason;
-  const hint = () => (disabled() ? props.disabledReason ?? "Select a session first" : "Comment on this hunk");
+  const hint = () => (disabled() ? (props.disabledReason ?? "Select a session first") : "Comment on this hunk");
 
   return (
     <>

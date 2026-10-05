@@ -4,12 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { tags as t } from "@lezer/highlight";
-import {
-  semanticDecorations,
-  semanticHighlight,
-  semanticTokenCount,
-  setSemanticTokens,
-} from "./semanticHighlight";
+import { semanticDecorations, semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import type { SemanticToken } from "../../utils/semanticTokens";
 
 // A `.tsx` with no JSX in it, deliberately: the extension is what puts a file in
@@ -18,13 +13,13 @@ import type { SemanticToken } from "../../utils/semanticTokens";
 // semantic colour beats the grammar's guess for the same run of text, and that
 // the decorations survive an edit instead of flashing away on every keystroke.
 
-const token = (
-  line: number,
-  char: number,
-  length: number,
-  type: string,
-  modifiers: string[] = [],
-): SemanticToken => ({ line, char, length, type, modifiers });
+const token = (line: number, char: number, length: number, type: string, modifiers: string[] = []): SemanticToken => ({
+  line,
+  char,
+  length,
+  type,
+  modifiers,
+});
 
 /** A named stand-in for `CodeEditor`'s own highlight style. `class` rather than
  *  `color` so the generated element is findable; the real one paints with

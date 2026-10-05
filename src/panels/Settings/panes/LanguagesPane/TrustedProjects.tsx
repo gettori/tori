@@ -49,9 +49,7 @@ export default function TrustedProjects() {
     setQuery("");
   };
   const run = (verb: string, change: Promise<unknown>) =>
-    void change.catch((e) =>
-      emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} this project: ${String(e)}` }),
-    );
+    void change.catch((e) => emitWith<ToastEvent>(TOAST, { message: `Could not ${verb} this project: ${String(e)}` }));
   const revokeAll = () => {
     setConfirming(false);
     run("revoke", Promise.all((trusted() ?? []).map(revokeProject)));
@@ -146,8 +144,8 @@ export default function TrustedProjects() {
         </div>
       </Show>
       <div class={styles.note}>
-        Servers that run a project's own code, like TypeScript and Rust, and every debugger only start in
-        trusted projects.
+        Servers that run a project's own code, like TypeScript and Rust, and every debugger only start in trusted
+        projects.
       </div>
 
       <Show when={confirming()}>

@@ -34,8 +34,7 @@ vi.mock("./panels/Terminal/Terminal", async () => {
           renderMenuItem: (u) => <span>{u.id}</span>,
           activate: (u) => store.focusTab(u.workspace, u.id),
           close: () => {},
-          stripItems: () =>
-            unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
+          stripItems: () => unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
           stripActiveId: store.visibleId,
           stripReorder: () => {},
           hostIds: () => store.open().map((t) => t.id),
@@ -61,8 +60,7 @@ vi.mock("./panels/Editor/Editor", async () => {
         stripItems: () => unifiedTabs().filter((u) => u.kind === "file"),
         stripActiveId: () => store.activeByWs()[REPO] ?? null,
         stripReorder: () => {},
-        hostIds: (paneId, tabs) =>
-          paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : [],
+        hostIds: (paneId, tabs) => (paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : []),
       });
       return null;
     },
@@ -97,12 +95,13 @@ const term = (id: string) => ({
 });
 
 const panes = () => document.querySelectorAll<HTMLElement>(".work-split .pane");
-const tabsIn = (el: HTMLElement) => within(el).queryAllByRole("tab").map((t) => t.textContent ?? "");
+const tabsIn = (el: HTMLElement) =>
+  within(el)
+    .queryAllByRole("tab")
+    .map((t) => t.textContent ?? "");
 const A = `${REPO}/a.ts`;
 const chord = (code: string) =>
-  window.dispatchEvent(
-    new KeyboardEvent("keydown", { metaKey: true, altKey: true, code, bubbles: true }),
-  );
+  window.dispatchEvent(new KeyboardEvent("keydown", { metaKey: true, altKey: true, code, bubbles: true }));
 
 beforeEach(() => {
   localStorage.clear();
@@ -195,7 +194,9 @@ describe("a layout stored by an earlier build", () => {
     );
     localStorage.setItem(
       "tori.tabpanes.v1",
-      JSON.stringify({ [REPO]: { tabs: { "sh:1": "left", [A]: "right" }, kinds: {}, active: {}, locks: {}, order: {}, seq: 0 } }),
+      JSON.stringify({
+        [REPO]: { tabs: { "sh:1": "left", [A]: "right" }, kinds: {}, active: {}, locks: {}, order: {}, seq: 0 },
+      }),
     );
     render(() => <App />);
 
@@ -236,8 +237,6 @@ describe("the sidebar's width", () => {
     // Anything that persists the layout has to write the choice, not the squeeze,
     // so widening the window later hands the 900 back.
     emit(TOGGLE_SIDEBAR);
-    await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("tori.layout.v1")!).sidebar).toBe(900),
-    );
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.layout.v1")!).sidebar).toBe(900));
   });
 });

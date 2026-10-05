@@ -20,13 +20,7 @@ const OPTIONS: RadioOption[] = [
 function renderControlled(over: Partial<Parameters<typeof RadioGroup>[0]> = {}) {
   const [value, setValue] = createSignal<string | null>(null);
   const r = render(() => (
-    <RadioGroup
-      options={OPTIONS}
-      value={value()}
-      onChange={setValue}
-      label="Where should it render?"
-      {...over}
-    />
+    <RadioGroup options={OPTIONS} value={value()} onChange={setValue} label="Where should it render?" {...over} />
   ));
   return { ...r, value };
 }
@@ -123,9 +117,7 @@ describe("RadioGroup", () => {
   });
 
   it("names itself from aria-label when there is no visible label", () => {
-    render(() => (
-      <RadioGroup options={OPTIONS} value={null} onChange={() => {}} aria-label="Placement" />
-    ));
+    render(() => <RadioGroup options={OPTIONS} value={null} onChange={() => {}} aria-label="Placement" />);
     expect(screen.getByRole("radiogroup", { name: "Placement" })).toBeTruthy();
   });
 
@@ -165,9 +157,7 @@ describe("RadioGroup", () => {
 
   it("ignores presses while the whole group is disabled", () => {
     const onChange = vi.fn();
-    render(() => (
-      <RadioGroup options={OPTIONS} value={null} onChange={onChange} label="Pick" disabled />
-    ));
+    render(() => <RadioGroup options={OPTIONS} value={null} onChange={onChange} label="Pick" disabled />);
 
     fireEvent.click(radio("Modal"));
     expect(onChange).not.toHaveBeenCalled();

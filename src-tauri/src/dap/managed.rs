@@ -39,16 +39,29 @@ fn install_with(adapter: &DapAdapter, dir: &Path, python: &Path) -> Result<Insta
         let spec = format!("{package}=={version}");
         run(
             Command::new(venv.join("bin/python"))
-                .args(["-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--only-binary=:all:"])
+                .args([
+                    "-m",
+                    "pip",
+                    "install",
+                    "--disable-pip-version-check",
+                    "--no-input",
+                    "--only-binary=:all:",
+                ])
                 .arg(&spec),
             &format!("pip install {spec}"),
         )?;
-        Ok(Installed { version: version.clone(), bin: format!("venv/bin/{}", adapter.launch.program()) })
+        Ok(Installed {
+            version: version.clone(),
+            bin: format!("venv/bin/{}", adapter.launch.program()),
+        })
     })
 }
 
 fn run(cmd: &mut Command, what: &str) -> Result<(), String> {
-    let out = cmd.stdin(Stdio::null()).output().map_err(|e| format!("could not run {what}: {e}"))?;
+    let out = cmd
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run {what}: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
@@ -102,7 +115,11 @@ mod tests {
             assert_eq!(manifest, installed);
             let version = package_version(&bin, "debugpy", adapter.launch.module().unwrap());
             assert_eq!(version.as_deref(), Some(installed.version.as_str()), "{python}");
-            let left: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+            let left: Vec<_> = std::fs::read_dir(&dir)
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name())
+                .collect();
             assert_eq!(left, ["debugpy"], "{python}: only the install is left");
 
             crate::lsp::managed::remove(&dir, "debugpy").unwrap();

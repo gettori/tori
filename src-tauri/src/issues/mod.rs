@@ -145,7 +145,10 @@ mod tests {
 
     #[test]
     fn a_slug_folds_punctuation_and_case() {
-        assert_eq!(suggested_branch("202", "GitHub Issues: start a unit!"), "202-github-issues-start-a-unit");
+        assert_eq!(
+            suggested_branch("202", "GitHub Issues: start a unit!"),
+            "202-github-issues-start-a-unit"
+        );
     }
 
     #[test]

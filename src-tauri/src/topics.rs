@@ -20,7 +20,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::exec::{common_dir, named_lock, repo_lock};
 use crate::owned_state::write_atomically;
-use crate::worktree::{branch_exists, branch_has_worktree, create_worktree_in, list_worktrees_body, remote_branch_exists};
+use crate::worktree::{
+    branch_exists, branch_has_worktree, create_worktree_in, list_worktrees_body, remote_branch_exists,
+};
 
 /// The member's creation is in flight: recorded before the first `worktree
 /// add`, so a crash mid-loop leaves a retryable member, not a lost one.
@@ -36,7 +38,9 @@ pub enum MemberState {
     WorktreeMissing,
     RepoMissing,
     CheckoutMissing,
-    Failed { reason: String },
+    Failed {
+        reason: String,
+    },
 }
 
 /// What the user asked a member to be. `state` is what git says it is, and
@@ -165,7 +169,11 @@ impl Store {
     }
 
     fn with_home(&self, mut topic: Topic) -> Topic {
-        topic.home = Some(crate::topic_home::home_dir(&self.path, &topic.id).to_string_lossy().into_owned());
+        topic.home = Some(
+            crate::topic_home::home_dir(&self.path, &topic.id)
+                .to_string_lossy()
+                .into_owned(),
+        );
         topic
     }
 
@@ -257,7 +265,11 @@ fn reconcile(store: &Store, adopt: bool) -> (Vec<Topic>, Vec<Adopted>) {
                         .into_iter()
                         .find(|w| w.branch == topic.branch && !w.is_main && !w.is_bare && Path::new(&w.path).is_dir());
                     if let (true, Ok(c), Some(wt)) = (adopt, &found, made) {
-                        adopted.push(Adopted { topic_id: topic.id.clone(), from: Some(c.path.clone()), to: wt.path.clone() });
+                        adopted.push(Adopted {
+                            topic_id: topic.id.clone(),
+                            from: Some(c.path.clone()),
+                            to: wt.path.clone(),
+                        });
                         member.mode = MemberMode::Worktree;
                         member.worktree_path = Some(wt.path);
                         (MemberState::Present, None)
@@ -327,7 +339,14 @@ fn reference_checkout(repo: &str) -> (Result<Checkout, MemberState>, Vec<crate::
             .find(|w| same_path(&w.path, repo))
             .map(|w| w.branch.clone())
             .filter(|b| !b.is_empty());
-        return (Ok(Checkout { path: repo.to_string(), branch, default_branch }), worktrees);
+        return (
+            Ok(Checkout {
+                path: repo.to_string(),
+                branch,
+                default_branch,
+            }),
+            worktrees,
+        );
     }
     let found = worktrees
         .iter()
@@ -336,7 +355,11 @@ fn reference_checkout(repo: &str) -> (Result<Checkout, MemberState>, Vec<crate::
             Some(d) => &w.branch == d,
             None => w.branch == "main" || w.branch == "master",
         })
-        .map(|w| Checkout { path: w.path.clone(), branch: Some(w.branch.clone()), default_branch: default_branch.clone() })
+        .map(|w| Checkout {
+            path: w.path.clone(),
+            branch: Some(w.branch.clone()),
+            default_branch: default_branch.clone(),
+        })
         .ok_or(MemberState::CheckoutMissing);
     (found, worktrees)
 }
@@ -464,7 +487,10 @@ pub fn promote_for_chat(
             if ask(&question)? {
                 promote()
             } else {
-                Err(format!("The user declined a worktree for {}. Leave it unchanged.", member.display_name))
+                Err(format!(
+                    "The user declined a worktree for {}. Leave it unchanged.",
+                    member.display_name
+                ))
             }
         }
     }
@@ -489,12 +515,7 @@ pub fn promote_for_chat(
 ///
 /// Repair is not "rebuild the worktree". This never creates or deletes one; the
 /// reconcile that follows is what names the state.
-pub fn relocate_member(
-    store: &Store,
-    topic_id: &str,
-    repo_path: &str,
-    new_repo_path: &str,
-) -> Result<Topic, String> {
+pub fn relocate_member(store: &Store, topic_id: &str, repo_path: &str, new_repo_path: &str) -> Result<Topic, String> {
     if !crate::worktree::repo_readable(new_repo_path) {
         return Err(format!("{new_repo_path} is not a git repository"));
     }
@@ -531,9 +552,7 @@ pub fn relocate_member(
         if let Some(wt) = worktree_path.as_deref() {
             args.push(wt.to_string());
         }
-        let _ = crate::exec::git_in(new_repo_path)
-            .args(&args)
-            .output();
+        let _ = crate::exec::git_in(new_repo_path).args(&args).output();
         crate::worktree::prune_worktrees(new_repo_path);
     }
 
@@ -707,9 +726,10 @@ fn member_worktree(repo: &str, branch: &str) -> Result<PathBuf, String> {
     let lock = repo_lock(repo);
     let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     crate::worktree::prune_worktrees(repo);
-    let existing = list_worktrees_body(repo.to_string())
-        .ok()
-        .and_then(|wts| wts.into_iter().find(|w| w.branch == branch && Path::new(&w.path).is_dir()));
+    let existing = list_worktrees_body(repo.to_string()).ok().and_then(|wts| {
+        wts.into_iter()
+            .find(|w| w.branch == branch && Path::new(&w.path).is_dir())
+    });
     match existing {
         Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
         Some(w) => Ok(PathBuf::from(w.path)),
@@ -790,7 +810,10 @@ pub fn create_topic(
 ) -> Result<Topic, String> {
     let members: Vec<NewMember> = repos
         .iter()
-        .map(|r| NewMember { repo_path: r.clone(), mode: MemberMode::Worktree })
+        .map(|r| NewMember {
+            repo_path: r.clone(),
+            mode: MemberMode::Worktree,
+        })
         .collect();
     create_topic_with(store, name, branch, &members, on_step)
 }
@@ -976,7 +999,10 @@ pub mod commands {
             let lock = crate::exec::named_lock("topics-told");
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let store = Store::default_location();
-            let before: Vec<_> = super::recorded(&store).iter().map(|t| (t.id.clone(), crate::topic_home::told(t))).collect();
+            let before: Vec<_> = super::recorded(&store)
+                .iter()
+                .map(|t| (t.id.clone(), crate::topic_home::told(t)))
+                .collect();
             let (topics, adopted) = super::list_and_adopt(&store);
             for topic in &topics {
                 if let Some((_, told)) = before.iter().find(|(id, _)| *id == topic.id) {
@@ -984,9 +1010,14 @@ pub mod commands {
                 }
             }
             for a in &adopted {
-                let Some(topic) = topics.iter().find(|t| t.id == a.topic_id) else { continue };
+                let Some(topic) = topics.iter().find(|t| t.id == a.topic_id) else {
+                    continue;
+                };
                 settle(&app, &index, topic);
-                let _ = app.emit("topics://promoted", serde_json::json!({ "topic": topic, "from": a.from, "to": a.to }));
+                let _ = app.emit(
+                    "topics://promoted",
+                    serde_json::json!({ "topic": topic, "from": a.from, "to": a.to }),
+                );
             }
             Ok(topics)
         })
@@ -1003,8 +1034,7 @@ pub mod commands {
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("create_topic", move || {
-            let topic =
-                super::create_topic_with(&Store::default_location(), &name, &branch, &members, &step(&app))?;
+            let topic = super::create_topic_with(&Store::default_location(), &name, &branch, &members, &step(&app))?;
             settle(&app, &index, &topic);
             Ok(topic)
         })
@@ -1058,12 +1088,20 @@ pub mod commands {
         repo_path: String,
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
-        blocking("promote_member", move || promote_settled(&app, &index, &topic_id, &repo_path)).await
+        blocking("promote_member", move || {
+            promote_settled(&app, &index, &topic_id, &repo_path)
+        })
+        .await
     }
 
     /// Promote, then tell the rest of the app: the sidebar, and every chat in
     /// the Topic's home, which is granted the new worktree.
-    pub(crate) fn promote_settled(app: &AppHandle, index: &ProjectIndex, topic_id: &str, repo: &str) -> Result<Topic, String> {
+    pub(crate) fn promote_settled(
+        app: &AppHandle,
+        index: &ProjectIndex,
+        topic_id: &str,
+        repo: &str,
+    ) -> Result<Topic, String> {
         let before = told_now(topic_id);
         let topic = super::promote_member(&Store::default_location(), topic_id, repo)?;
         settle(app, index, &topic);
@@ -1107,8 +1145,7 @@ pub mod commands {
         blocking("relocate_member", move || {
             index.evict(Path::new(&repo_path));
             let before = told_now(&topic_id);
-            let topic =
-                super::relocate_member(&Store::default_location(), &topic_id, &repo_path, &new_repo_path)?;
+            let topic = super::relocate_member(&Store::default_location(), &topic_id, &repo_path, &new_repo_path)?;
             settle(&app, &index, &topic);
             tell_chats(&app, &before, &topic);
             Ok(topic)
@@ -1186,28 +1223,42 @@ pub mod commands {
     pub async fn rename_topic(app: AppHandle, topic_id: String, name: String) -> Result<Topic, String> {
         blocking("rename_topic", move || {
             let store = Store::default_location();
-            announce_and_tell(&app, &store, &topic_id, || super::rename_topic(&store, &topic_id, &name))
+            announce_and_tell(&app, &store, &topic_id, || {
+                super::rename_topic(&store, &topic_id, &name)
+            })
         })
         .await
     }
 
     #[tauri::command]
-    pub async fn set_topic_promotion(app: AppHandle, topic_id: String, promotion: super::Promotion) -> Result<Topic, String> {
+    pub async fn set_topic_promotion(
+        app: AppHandle,
+        topic_id: String,
+        promotion: super::Promotion,
+    ) -> Result<Topic, String> {
         blocking("set_topic_promotion", move || {
             let store = Store::default_location();
-            announce_and_tell(&app, &store, &topic_id, || super::set_promotion(&store, &topic_id, promotion))
+            announce_and_tell(&app, &store, &topic_id, || {
+                super::set_promotion(&store, &topic_id, promotion)
+            })
         })
         .await
     }
 
     #[tauri::command]
     pub async fn delete_topic(topic_id: String) -> Result<(), String> {
-        blocking("delete_topic", move || super::delete_topic(&Store::default_location(), &topic_id)).await
+        blocking("delete_topic", move || {
+            super::delete_topic(&Store::default_location(), &topic_id)
+        })
+        .await
     }
 
     #[tauri::command]
     pub async fn probe_topic_branch(repo_path: String, branch: String) -> Result<BranchProbe, String> {
-        blocking("probe_topic_branch", move || Ok(super::probe_topic_branch(&repo_path, &branch))).await
+        blocking("probe_topic_branch", move || {
+            Ok(super::probe_topic_branch(&repo_path, &branch))
+        })
+        .await
     }
 }
 
@@ -1228,8 +1279,17 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git").arg("-C").arg(dir).args(args).output().expect("git runs");
-        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn repo(dir: &Path) -> String {
@@ -1286,10 +1346,20 @@ mod tests {
             "auth",
             vec![
                 member("/r/a", Some("/r/a/.tori/worktrees/auth"), MemberState::Present),
-                member("/r/b", None, MemberState::Failed { reason: "pending".into() }),
+                member(
+                    "/r/b",
+                    None,
+                    MemberState::Failed {
+                        reason: "pending".into(),
+                    },
+                ),
             ],
         );
-        store.save(&TopicFile { topics: vec![full.clone()] }).unwrap();
+        store
+            .save(&TopicFile {
+                topics: vec![full.clone()],
+            })
+            .unwrap();
         assert_eq!(store.load().topics, vec![full]);
 
         std::fs::write(
@@ -1315,7 +1385,13 @@ mod tests {
         let repo_path = repo(&gone);
         let wt = tmp.join("wt");
         git(&gone, &["worktree", "add", "-q", "-b", "feat/f", &wt.to_string_lossy()]);
-        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, Some(&wt.to_string_lossy()), MemberState::Present)])]);
+        let store = store_with(
+            &tmp,
+            vec![topic(
+                "f",
+                vec![member(&repo_path, Some(&wt.to_string_lossy()), MemberState::Present)],
+            )],
+        );
 
         std::fs::remove_dir_all(&gone).unwrap();
         let listed = list_topics(&store);
@@ -1333,14 +1409,32 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "feat/f", &wt_str]);
-        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, Some(&wt_str), MemberState::WorktreeMissing)])]);
+        let store = store_with(
+            &tmp,
+            vec![topic(
+                "f",
+                vec![member(&repo_path, Some(&wt_str), MemberState::WorktreeMissing)],
+            )],
+        );
 
-        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::Present, "a live worktree on the branch is present");
+        assert_eq!(
+            list_topics(&store)[0].members[0].state,
+            MemberState::Present,
+            "a live worktree on the branch is present"
+        );
 
         std::fs::remove_dir_all(&wt).unwrap();
         assert_eq!(list_topics(&store)[0].members[0].state, MemberState::WorktreeMissing);
-        assert_eq!(store.load().topics[0].members[0].state, MemberState::WorktreeMissing, "and the file was written back");
-        assert_eq!(store.load().topics[0].members[0].worktree_path.as_deref(), Some(wt_str.as_str()), "only state changes");
+        assert_eq!(
+            store.load().topics[0].members[0].state,
+            MemberState::WorktreeMissing,
+            "and the file was written back"
+        );
+        assert_eq!(
+            store.load().topics[0].members[0].worktree_path.as_deref(),
+            Some(wt_str.as_str()),
+            "only state changes"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1352,7 +1446,13 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "feat/f", &wt_str]);
-        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, Some(&wt_str), MemberState::Present)])]);
+        let store = store_with(
+            &tmp,
+            vec![topic(
+                "f",
+                vec![member(&repo_path, Some(&wt_str), MemberState::Present)],
+            )],
+        );
 
         git(&wt, &["checkout", "-q", "-b", "other"]);
         assert_eq!(list_topics(&store)[0].members[0].state, MemberState::WorktreeMissing);
@@ -1363,7 +1463,9 @@ mod tests {
     fn a_pending_member_stays_failed_until_it_has_a_worktree() {
         let tmp = unique_tmp();
         let repo_path = repo(&tmp.join("r"));
-        let pending = MemberState::Failed { reason: "pending".into() };
+        let pending = MemberState::Failed {
+            reason: "pending".into(),
+        };
         let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, None, pending.clone())])]);
         assert_eq!(list_topics(&store)[0].members[0].state, pending);
         std::fs::remove_dir_all(&tmp).ok();
@@ -1390,16 +1492,25 @@ mod tests {
 
         remove_member(&store, "f", &repo_path).unwrap();
         let members = store.load().topics[0].members.clone();
-        assert_eq!(members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(), ["/r/b"]);
+        assert_eq!(
+            members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(),
+            ["/r/b"]
+        );
         assert!(wt.join("a.txt").is_file(), "the worktree is untouched");
-        assert!(remove_member(&store, "f", &repo_path).is_err(), "a second removal names the absent member");
+        assert!(
+            remove_member(&store, "f", &repo_path).is_err(),
+            "a second removal names the absent member"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
     fn remove_member_refuses_the_last_one_and_points_at_delete() {
         let tmp = unique_tmp();
-        let store = store_with(&tmp, vec![topic("f", vec![member("/r/a", None, MemberState::WorktreeMissing)])]);
+        let store = store_with(
+            &tmp,
+            vec![topic("f", vec![member("/r/a", None, MemberState::WorktreeMissing)])],
+        );
 
         let err = remove_member(&store, "f", "/r/a").expect_err("the last member stays");
         assert_eq!(err, LAST_MEMBER);
@@ -1415,7 +1526,13 @@ mod tests {
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
         let out = Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         assert!(out.status.success());
@@ -1456,7 +1573,11 @@ mod tests {
         assert!(f.id.starts_with("feat-x-"));
         let states: Vec<_> = f.members.iter().map(|m| &m.state).collect();
         assert_eq!(states[0], &MemberState::Present);
-        assert!(matches!(states[1], MemberState::Failed { reason } if reason.contains("refusing to overwrite")), "{:?}", states[1]);
+        assert!(
+            matches!(states[1], MemberState::Failed { reason } if reason.contains("refusing to overwrite")),
+            "{:?}",
+            states[1]
+        );
         assert_eq!(states[2], &MemberState::Present);
         assert_eq!(f.members.iter().map(|m| m.order).collect::<Vec<_>>(), [0, 1, 2]);
         assert_eq!(f.members[0].display_name, "a");
@@ -1467,22 +1588,37 @@ mod tests {
 
         // The record is what a reader sees between members: the reconcile agrees.
         let listed = list_topics(&store);
-        assert_eq!(listed[0].members.iter().map(|m| m.state.clone()).collect::<Vec<_>>(), f.members.iter().map(|m| m.state.clone()).collect::<Vec<_>>());
+        assert_eq!(
+            listed[0].members.iter().map(|m| m.state.clone()).collect::<Vec<_>>(),
+            f.members.iter().map(|m| m.state.clone()).collect::<Vec<_>>()
+        );
 
         // The plain repo stays clean and its walkers do not see the worktree.
-        let status = Command::new("git").arg("-C").arg(&a).args(["status", "--porcelain"]).output().unwrap();
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&a)
+            .args(["status", "--porcelain"])
+            .output()
+            .unwrap();
         assert_eq!(String::from_utf8_lossy(&status.stdout).trim(), "");
         let files = crate::fs::list_project_files_body(a.clone()).unwrap();
         assert!(files.iter().all(|p| !p.contains(".tori/worktrees")), "{files:?}");
-        let hits = crate::search::grep_project(a.clone(), "one".into(), crate::search::SearchOptions::default(), 50).unwrap();
+        let hits =
+            crate::search::grep_project(a.clone(), "one".into(), crate::search::SearchOptions::default(), 50).unwrap();
         assert!(!hits.matches.is_empty());
         assert!(hits.matches.iter().all(|m| !m.path.contains(".tori/worktrees")));
 
         // Guards: same branch, same repo twice, a worktree of a member is the member.
-        assert!(create_topic(&store, "x", "feat/x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
-        assert!(create_topic(&store, "Y", "y", &[a.clone(), a.clone()], &|_| {}).unwrap_err().contains("listed twice"));
+        assert!(create_topic(&store, "x", "feat/x", std::slice::from_ref(&a), &|_| {})
+            .unwrap_err()
+            .contains("already uses feat/x"));
+        assert!(create_topic(&store, "Y", "y", &[a.clone(), a.clone()], &|_| {})
+            .unwrap_err()
+            .contains("listed twice"));
         let wt_a_s = wt_a.to_string_lossy().into_owned();
-        assert!(create_topic(&store, "Y", "y", &[a.clone(), wt_a_s], &|_| {}).unwrap_err().contains("listed twice"));
+        assert!(create_topic(&store, "Y", "y", &[a.clone(), wt_a_s], &|_| {})
+            .unwrap_err()
+            .contains("listed twice"));
         assert!(create_topic(&store, "Z", "z", &[], &|_| {}).is_err());
         assert_eq!(store.load().topics.len(), 1, "a rejected create leaves no record");
 
@@ -1491,7 +1627,10 @@ mod tests {
         std::fs::remove_dir_all(tmp.join("b/.tori/worktrees/feat-x")).unwrap();
         let f = retry_member(&store, &f.id, &b).unwrap();
         assert_eq!(f.members[1].state, MemberState::Present);
-        assert_eq!(f.members[1].worktree_path.as_deref(), Some(tmp.join("b/.tori/worktrees/x").to_str().unwrap()));
+        assert_eq!(
+            f.members[1].worktree_path.as_deref(),
+            Some(tmp.join("b/.tori/worktrees/x").to_str().unwrap())
+        );
         assert!(retry_member(&store, &f.id, &c).is_ok(), "a present member re-resolves");
         assert!(retry_member(&store, &f.id, "/nope").is_err());
 
@@ -1502,12 +1641,30 @@ mod tests {
         assert_eq!(f.members[3].order, 3);
         assert_eq!(f.members[3].state, MemberState::Present);
         assert!(tmp.join("d/.tori/worktrees/x/a.txt").is_file());
-        assert!(add_member(&store, &f.id, &d, &|_| {}).unwrap_err().contains("already a member"));
+        assert!(add_member(&store, &f.id, &d, &|_| {})
+            .unwrap_err()
+            .contains("already a member"));
 
         let probe = probe_topic_branch(&d, "feat/x");
-        assert_eq!(probe, BranchProbe { valid: true, local: true, remote: false, has_worktree: true });
+        assert_eq!(
+            probe,
+            BranchProbe {
+                valid: true,
+                local: true,
+                remote: false,
+                has_worktree: true
+            }
+        );
         let fresh = repo(&tmp.join("e"));
-        assert_eq!(probe_topic_branch(&fresh, "feat/x"), BranchProbe { valid: true, local: false, remote: false, has_worktree: false });
+        assert_eq!(
+            probe_topic_branch(&fresh, "feat/x"),
+            BranchProbe {
+                valid: true,
+                local: false,
+                remote: false,
+                has_worktree: false
+            }
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1530,7 +1687,12 @@ mod tests {
         assert!(!a.join(".tori/worktrees").exists(), "adopting creates no container");
         let listed = list_worktrees_body(a_s.clone()).unwrap();
         assert_eq!(listed.len(), 2, "no new worktree");
-        assert_eq!(f.members[1].state, MemberState::Failed { reason: "feat/x is checked out in place".into() });
+        assert_eq!(
+            f.members[1].state,
+            MemberState::Failed {
+                reason: "feat/x is checked out in place".into()
+            }
+        );
         assert_eq!(f.members[1].worktree_path, None);
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1572,15 +1734,28 @@ mod tests {
         let a = repo(&tmp.join("a"));
         let store = Store::at(tmp.join("topics.json"));
         let head = |wt: &str| {
-            let out = Command::new("git").arg("-C").arg(wt).args(["rev-parse", "--abbrev-ref", "HEAD"]).output().unwrap();
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(wt)
+                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                .output()
+                .unwrap();
             String::from_utf8_lossy(&out.stdout).trim().to_string()
         };
 
-        for (name, branch, folder) in [("Webhooks", "webhooks", "webhooks"), ("Login bug", "bug/login", "login"), ("\u{56fd}\u{969b}\u{5316}", "i18n", "i18n")] {
+        for (name, branch, folder) in [
+            ("Webhooks", "webhooks", "webhooks"),
+            ("Login bug", "bug/login", "login"),
+            ("\u{56fd}\u{969b}\u{5316}", "i18n", "i18n"),
+        ] {
             let t = create_topic(&store, name, branch, std::slice::from_ref(&a), &|_| {}).unwrap();
             assert_eq!(t.name, name);
             assert_eq!(t.branch, branch);
-            assert!(t.id.starts_with(&format!("{}-", crate::worktree::slugify(branch))), "{}", t.id);
+            assert!(
+                t.id.starts_with(&format!("{}-", crate::worktree::slugify(branch))),
+                "{}",
+                t.id
+            );
             assert_eq!(t.members[0].state, MemberState::Present, "{branch}");
             let wt = t.members[0].worktree_path.clone().unwrap();
             assert_eq!(PathBuf::from(&wt), tmp.join("a/.tori/worktrees").join(folder));
@@ -1596,7 +1771,10 @@ mod tests {
         let store = Store::at(tmp.join("topics.json"));
 
         for bad in ["bug login", "@{-1}", "-x", "  "] {
-            assert!(create_topic(&store, "X", bad, std::slice::from_ref(&a), &|_| {}).is_err(), "{bad:?}");
+            assert!(
+                create_topic(&store, "X", bad, std::slice::from_ref(&a), &|_| {}).is_err(),
+                "{bad:?}"
+            );
             assert!(!probe_topic_branch(&a, bad).valid, "{bad:?}");
         }
         assert!(store.load().topics.is_empty(), "a refused branch leaves no record");
@@ -1626,11 +1804,9 @@ mod tests {
         assert!(wt_a.ends_with("auth") && wt_b.ends_with("billing"));
         assert_eq!(list_topics(&store).len(), 2);
         // Only the branch collides, and only with itself.
-        assert!(
-            create_topic(&store, "auth", "auth", std::slice::from_ref(&a), &|_| {})
-                .unwrap_err()
-                .contains("already uses auth")
-        );
+        assert!(create_topic(&store, "auth", "auth", std::slice::from_ref(&a), &|_| {})
+            .unwrap_err()
+            .contains("already uses auth"));
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1707,7 +1883,11 @@ mod tests {
 
         let fixed = relocate_member(&store, &f.id, &old_s, &new_s).unwrap();
         assert_eq!(fixed.members[0].repo_path, new_s);
-        assert_eq!(fixed.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "untouched");
+        assert_eq!(
+            fixed.members[0].worktree_path.as_deref(),
+            Some(wt_s.as_str()),
+            "untouched"
+        );
         assert_eq!(fixed.members[0].state, MemberState::Present);
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1720,7 +1900,10 @@ mod tests {
         let b = repo(&tmp.join("b"));
         let store = Store::at(tmp.join("topics.json"));
         let seen = RefCell::new(Vec::<Vec<MemberState>>::new());
-        let record = |f: &Topic| seen.borrow_mut().push(f.members.iter().map(|m| m.state.clone()).collect());
+        let record = |f: &Topic| {
+            seen.borrow_mut()
+                .push(f.members.iter().map(|m| m.state.clone()).collect())
+        };
 
         let f = create_topic(&store, "X", "feat/x", &[a, b], &record).unwrap();
         let pending = MemberState::Failed { reason: PENDING.into() };
@@ -1750,16 +1933,28 @@ mod tests {
             vec![topic(
                 "f",
                 vec![
-                    Member { order: 0, ..member("/r/a", None, MemberState::WorktreeMissing) },
-                    Member { order: 1, ..member("/r/b", None, MemberState::WorktreeMissing) },
-                    Member { order: 2, ..member("/r/c", None, MemberState::WorktreeMissing) },
+                    Member {
+                        order: 0,
+                        ..member("/r/a", None, MemberState::WorktreeMissing)
+                    },
+                    Member {
+                        order: 1,
+                        ..member("/r/b", None, MemberState::WorktreeMissing)
+                    },
+                    Member {
+                        order: 2,
+                        ..member("/r/c", None, MemberState::WorktreeMissing)
+                    },
                 ],
             )],
         );
 
         reorder_members(&store, "f", &["/r/c".to_string()]).unwrap();
         let members = store.load().topics[0].members.clone();
-        assert_eq!(members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(), ["/r/c", "/r/a", "/r/b"]);
+        assert_eq!(
+            members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(),
+            ["/r/c", "/r/a", "/r/b"]
+        );
         assert_eq!(members.iter().map(|m| m.order).collect::<Vec<_>>(), [0, 1, 2]);
 
         rename_member(&store, "f", "/r/a", " Backend ").unwrap();
@@ -1783,7 +1978,13 @@ mod tests {
         let cont = tmp.join(name);
         std::fs::create_dir_all(&cont).unwrap();
         let out = Command::new("git")
-            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         assert!(out.status.success());
@@ -1819,7 +2020,10 @@ mod tests {
         let branches = git_out(&a, &["branch", "--list"]);
         let worktrees = git_out(&a, &["worktree", "list"]);
 
-        let members = [NewMember { repo_path: a.clone(), mode: MemberMode::Reference }];
+        let members = [NewMember {
+            repo_path: a.clone(),
+            mode: MemberMode::Reference,
+        }];
         let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
         let m = &t.members[0];
         assert_eq!(m.state, MemberState::Present);
@@ -1845,10 +2049,17 @@ mod tests {
         let store = Store::at(tmp.join("topics.json"));
 
         let worktrees = git_out(&cont, &["worktree", "list"]);
-        let members = [NewMember { repo_path: cont.clone(), mode: MemberMode::Reference }];
+        let members = [NewMember {
+            repo_path: cont.clone(),
+            mode: MemberMode::Reference,
+        }];
         let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
         assert_eq!(t.members[0].state, MemberState::CheckoutMissing);
-        assert_eq!(git_out(&cont, &["worktree", "list"]), worktrees, "attaching writes nothing");
+        assert_eq!(
+            git_out(&cont, &["worktree", "list"]),
+            worktrees,
+            "attaching writes nothing"
+        );
         assert_eq!(member_root(&list_topics(&store)[0].members[0]), None);
 
         let t = retry_member(&store, &t.id, &cont).unwrap();
@@ -1873,7 +2084,10 @@ mod tests {
     }
 
     fn reference_topic(store: &Store, repo: &str) -> Topic {
-        let members = [NewMember { repo_path: repo.to_string(), mode: MemberMode::Reference }];
+        let members = [NewMember {
+            repo_path: repo.to_string(),
+            mode: MemberMode::Reference,
+        }];
         create_topic_with(store, "X", "feat/x", &members, &|_| {}).unwrap()
     }
 
@@ -1893,7 +2107,9 @@ mod tests {
         assert_eq!(t.promotion, Promotion::Ask);
         set_promotion(&store, &t.id, Promotion::Never).unwrap();
         assert_eq!(recorded(&store)[0].promotion, Promotion::Never);
-        assert!(std::fs::read_to_string(store.path()).unwrap().contains("\"promotion\": \"never\""));
+        assert!(std::fs::read_to_string(store.path())
+            .unwrap()
+            .contains("\"promotion\": \"never\""));
     }
 
     #[test]
@@ -1940,7 +2156,10 @@ mod tests {
         assert_eq!(m.state, MemberState::Present);
         assert_eq!(m.checkout, None);
         let wt = m.worktree_path.as_deref().unwrap();
-        assert_eq!(git_out(wt, &["rev-parse", "HEAD"]), git_out(&a, &["rev-parse", "origin/HEAD"]));
+        assert_eq!(
+            git_out(wt, &["rev-parse", "HEAD"]),
+            git_out(&a, &["rev-parse", "origin/HEAD"])
+        );
         assert_eq!(member_root(m), Some(wt));
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1958,7 +2177,10 @@ mod tests {
         let t = promote_member(&store, &t.id, &a).unwrap();
         let wt = t.members[0].worktree_path.clone().unwrap();
         assert_eq!(git_out(&wt, &["rev-parse", "HEAD"]), pushed);
-        assert_eq!(git_out(&wt, &["rev-parse", "--abbrev-ref", "feat/x@{u}"]).trim(), "origin/feat/x");
+        assert_eq!(
+            git_out(&wt, &["rev-parse", "--abbrev-ref", "feat/x@{u}"]).trim(),
+            "origin/feat/x"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -2017,12 +2239,23 @@ mod tests {
 
         let made = tmp.join("made").to_string_lossy().into_owned();
         git(Path::new(&a), &["worktree", "add", "-q", "-b", "feat/x", &made]);
-        assert!(list_topics(&store).iter().all(|x| x.members[0].mode == MemberMode::Reference), "a plain read adopts nothing");
+        assert!(
+            list_topics(&store)
+                .iter()
+                .all(|x| x.members[0].mode == MemberMode::Reference),
+            "a plain read adopts nothing"
+        );
         let (topics, adopted) = list_and_adopt(&store);
         assert_eq!(adopted.len(), 1);
-        assert_eq!((adopted[0].from.as_deref(), adopted[0].to.as_str()), (Some(a.as_str()), made.as_str()));
+        assert_eq!(
+            (adopted[0].from.as_deref(), adopted[0].to.as_str()),
+            (Some(a.as_str()), made.as_str())
+        );
         let m = &topics.into_iter().find(|x| x.id == t.id).unwrap().members[0];
-        assert_eq!((m.mode, m.worktree_path.as_deref(), &m.state), (MemberMode::Worktree, Some(made.as_str()), &MemberState::Present));
+        assert_eq!(
+            (m.mode, m.worktree_path.as_deref(), &m.state),
+            (MemberMode::Worktree, Some(made.as_str()), &MemberState::Present)
+        );
         assert!(list_and_adopt(&store).1.is_empty(), "adopted once");
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2037,12 +2270,19 @@ mod tests {
         let home = crate::topic_home::home_dir(&store.path, &t.id);
         assert_eq!(t.home.as_deref(), Some(home.to_string_lossy().as_ref()));
         let note = || std::fs::read_to_string(home.join(crate::topic_home::NOTE)).unwrap();
-        assert!(note().contains(&format!("a (reference, read only): `{a}`")), "{}", note());
+        assert!(
+            note().contains(&format!("a (reference, read only): `{a}`")),
+            "{}",
+            note()
+        );
 
         add_member_as(&store, &t.id, &b, MemberMode::Reference, &|_| {}).unwrap();
         assert!(note().contains(&format!("`{b}`")));
 
-        let wt = promote_member(&store, &t.id, &a).unwrap().members[0].worktree_path.clone().unwrap();
+        let wt = promote_member(&store, &t.id, &a).unwrap().members[0]
+            .worktree_path
+            .clone()
+            .unwrap();
         assert!(note().contains(&format!("a (worktree): `{wt}`")), "{}", note());
 
         demote_member(&store, &t.id, &a, false).unwrap();
@@ -2051,7 +2291,10 @@ mod tests {
 
         remove_member(&store, &t.id, &b).unwrap();
         assert!(!note().contains(&format!("`{b}`")));
-        assert!(!std::fs::read_to_string(&store.path).unwrap().contains("\"home\""), "the home is never stored");
+        assert!(
+            !std::fs::read_to_string(&store.path).unwrap().contains("\"home\""),
+            "the home is never stored"
+        );
 
         delete_topic(&store, &t.id).unwrap();
         assert!(!home.exists());
@@ -2088,14 +2331,30 @@ mod tests {
         let before = crate::topic_home::told(&topic);
         let topic = demote_member(&store, &t.id, &a, false).unwrap();
         let notes = RefCell::new(Vec::new());
-        crate::topic_home::tell_home_chats(&before, &topic, &live, |_, _| Ok(()), |s, text| Ok(notes.borrow_mut().push((s.to_string(), text.to_string()))));
+        crate::topic_home::tell_home_chats(
+            &before,
+            &topic,
+            &live,
+            |_, _| Ok(()),
+            |s, text| Ok(notes.borrow_mut().push((s.to_string(), text.to_string()))),
+        );
         let notes = notes.into_inner();
         assert_eq!(notes.len(), 1, "a demote is told");
-        assert!(notes[0].1.contains(&format!("(reference, read only): `{a}`")) && !notes[0].1.contains(&wt), "{}", notes[0].1);
+        assert!(
+            notes[0].1.contains(&format!("(reference, read only): `{a}`")) && !notes[0].1.contains(&wt),
+            "{}",
+            notes[0].1
+        );
 
         let before = crate::topic_home::told(&topic);
         let told = RefCell::new(0);
-        crate::topic_home::tell_home_chats(&before, &topic, &live, |_, _| Ok(()), |_, _| Ok(*told.borrow_mut() += 1));
+        crate::topic_home::tell_home_chats(
+            &before,
+            &topic,
+            &live,
+            |_, _| Ok(()),
+            |_, _| Ok(*told.borrow_mut() += 1),
+        );
         assert_eq!(told.into_inner(), 0, "nothing changed, nothing told");
         std::fs::remove_dir_all(&tmp).ok();
     }
