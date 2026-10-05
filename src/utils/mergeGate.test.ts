@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { mergeGate } from "./mergeGate";
 import { MERGEABLE_STATES, type MergeableState } from "./forgeTypes";
 

@@ -7,7 +7,7 @@
 // seam a unit test cannot see: which deps get built, in what order they run
 // relative to the formatter, and whether the buffer the formatter is handed is
 // the one organizing just replaced.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
 import { EditorView } from "@codemirror/view";

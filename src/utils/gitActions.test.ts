@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // The point of this module is that nothing has to be mounted for it to be true:
 // the Changes panel is unmounted whenever the right pane shows anything else,

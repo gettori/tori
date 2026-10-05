@@ -10,7 +10,7 @@
 // Getting this wrong does not fail loudly: a container-scoped run on a portalled
 // component audits an empty div and passes. `src/test/domSetup.ts` unmounts after
 // each test, so a body-scoped run only ever sees the current test's DOM.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import ToastRegion, { pushToast } from "./Toasts";
 import { Toast } from "../../lib/toast";

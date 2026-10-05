@@ -6,7 +6,7 @@
 // same file is a follower that mirrors the document, keeps no history of its
 // own, and never answers a question about it (save, dirty, hot exit, the live
 // buffer the preview and the language workspace read).
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";

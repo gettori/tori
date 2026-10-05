@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import plainTurn from "../../dev/fixtures/claude/plain-turn.jsonl?raw";
 import readCall from "../../dev/fixtures/claude/read-call.jsonl?raw";
 import {

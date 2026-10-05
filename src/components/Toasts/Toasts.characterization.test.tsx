@@ -9,7 +9,7 @@
 // hovering does to a *sibling* toast's timer, and whether mouse-leave re-arms
 // the full TTL or resumes the remaining time. The assertions here are the
 // intersection both implementations honor.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import ToastRegion, { pushToast } from "./Toasts";
 import { Toast } from "../../lib/toast";

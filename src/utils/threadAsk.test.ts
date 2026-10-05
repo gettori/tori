@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { composeThreadAsk, threadWhere, REPLY_CAP } from "./threadAsk";
 import { sanitizeForSend, type SessionTarget } from "./safeSend";
 import type { ReviewComment, ReviewThread } from "./forgeTypes";

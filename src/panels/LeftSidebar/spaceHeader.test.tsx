@@ -1,7 +1,7 @@
 // Which space you are in, in words rather than as one lit icon in the rail.
 // The header carries the same menu the tile's right-click does, which was the
 // only way to it before.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick, rightClick } from "../../test/menus";
 

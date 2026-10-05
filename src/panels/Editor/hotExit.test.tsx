@@ -5,7 +5,7 @@
 // real `CodeEditor` is the half that only it can do: serializing a live buffer,
 // and rebuilding one from a stash so that the text, the undo history and the
 // conflict banner all come back the way the ticket describes.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { rerunLast, runTask } from "./runTask";
 import { loadTaskRuns } from "./taskRecents";
 import { OPEN_OMNIBOX, OPEN_TERMINAL, RUN_LAST_TASK, type OpenTerminal } from "./events";

@@ -2,7 +2,7 @@
 // never sees named in our own code, so only tokenizing actual source proves
 // the mapping holds. The diff case exists because it shipped unmapped once -
 // the grammar loaded fine and every line fell through to the default color.
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "vite-plus/test";
 import { init, canHighlight, isLoaded, loadLang, toHtml, toLines } from "./shikiEngine";
 
 const DIFF = ["--- a/x.ts", "+++ b/x.ts", "@@ -1 +1 @@", "-const old = 1;", "+const fresh = 1;"].join("\n");

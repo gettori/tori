@@ -1,6 +1,6 @@
 // The space's own surface: a right-click on the tree's empty area is the
 // space's menu, and a space with nothing in it says so and offers the way out.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick, rightClick } from "../../test/menus";
 

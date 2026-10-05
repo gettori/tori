@@ -15,7 +15,7 @@
 // configuration its fixture builds: the default category, a search (which
 // un-hides all six panes at once and is the only state with no selected tab),
 // and a category whose rows are steppers and selects rather than switches.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

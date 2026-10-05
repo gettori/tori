@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { BINDINGS, GROUP_LABELS, bindingsByGroup, dispatchHotkey, dispatchWindowHotkey } from "./hotkeys";
 
 // `match` only reads flag properties, so a plain object is a faithful stand-in

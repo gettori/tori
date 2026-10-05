@@ -1,7 +1,7 @@
 // When an ACP chat records a mode pick as the tab's and the project's: on the
 // agent's answer, not on the invoke, which resolves on staging. Recording there
 // wrote a refused mode into every later draft in the project (issue 164).
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
 import { pointerClick } from "../../test/menus";

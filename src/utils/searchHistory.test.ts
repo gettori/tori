@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { DEFAULT_SEARCH_OPTIONS, type SearchOptions } from "./searchOptions";
 import {
   DRAFT,

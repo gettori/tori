@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent, type ChatEvent, type ToolSummary } from "../../utils/chatTypes";
 import { selectedModel, type PickableModel } from "../../utils/chatModels";

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { organizeForSave, ORGANIZE_TIMEOUT_MS } from "./organizeOnSave";
 import type { LspTextEdit } from "./workspaceEdit";
 

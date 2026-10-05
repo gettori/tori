@@ -1,6 +1,6 @@
 // The glyph resolves a logo or it does not, and what it does when it does not
 // is the whole point: an initial, never a borrowed mark and never a hole.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import AgentGlyph from "./AgentGlyph";
 

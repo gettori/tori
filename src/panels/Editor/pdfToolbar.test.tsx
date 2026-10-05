@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import PdfToolbar from "./PdfToolbar";
 import { loadPdf, pdfView, releasePdfsExcept, setPdfView } from "./pdfDocument";
 import { CSS_PER_PT, MAX_PERCENT, MIN_PERCENT } from "./pdfLayout";

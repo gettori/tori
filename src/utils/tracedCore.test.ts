@@ -3,7 +3,7 @@
 // build-only, which means no other suite ever executes this file's body: a
 // regression in argument passing or error propagation would ship unseen.
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 
 const realInvoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => realInvoke(...a) }));

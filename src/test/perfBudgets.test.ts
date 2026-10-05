@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { drift, type BudgetRow } from "./perfBudgets";
 
 const row = (name: string, unit: BudgetRow["unit"], budget: number): BudgetRow => ({

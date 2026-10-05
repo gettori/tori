@@ -1,7 +1,7 @@
 // A Topic as the selection (#154 phase 1). The shell keys every store on
 // `topic:<id>` rather than a folder, re-resolves a stored Topic against the
 // live record, and backfills `kind` on a selection persisted before Topics.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { cleanup, render, waitFor } from "@solidjs/testing-library";
 import { installAnimationFrame } from "./test/frames";
 

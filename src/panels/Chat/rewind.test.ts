@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 
 // A rewind's one leak is that the forked agent still remembers the turns being

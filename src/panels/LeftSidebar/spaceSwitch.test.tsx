@@ -1,7 +1,7 @@
 // The bug this pins: clicking a space tile switched the tree and nothing else.
 // The chat, the files and git stayed on the previous space's worktree until you
 // clicked a row, so the sidebar and every pane beside it disagreed.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import type { Selection } from "./LeftSidebar";

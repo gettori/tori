@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import TabMark from "./TabMark";
 import type { SessionStatus } from "../../utils/sessionStatus";

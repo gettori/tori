@@ -1,6 +1,6 @@
 // The one move rule (#159 phase 1). Drag and Move up / Move down commit the
 // same call, so the keyboard route cannot land somewhere the pointer would not.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import { createRoot } from "solid-js";
 import { moveKey, createDragReorder } from "./dragReorder";
 

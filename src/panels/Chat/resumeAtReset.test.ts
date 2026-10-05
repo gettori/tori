@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FIRE_GRACE_MS, arm, armedFor, cancel, register, resetResumeAtResetForTests, type Arm } from "./resumeAtReset";
 
 const RESET = 1_788_779_400;

@@ -4,7 +4,7 @@
 // is a *wrong* number, so it renders as the 0% a fresh window starts at,
 // while a merely old one keeps its number and goes dim. Drawing 98% on a quota
 // that has since emptied is the failure the three states exist to prevent.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen } from "@solidjs/testing-library";
 
 const bench = vi.hoisted(() => ({

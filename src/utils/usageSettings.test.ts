@@ -5,7 +5,7 @@
 // has answered for shows the two windows that cost nothing to read, so a free
 // reading arrives without an opt-in, while a stored empty list is the user's own
 // no and outlives every adapter bump.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import type { UsageSettings } from "../panels/Settings/settingsStore";
 
 const bench = vi.hoisted(() => ({

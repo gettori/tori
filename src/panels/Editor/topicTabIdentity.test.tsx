@@ -2,7 +2,7 @@
 // before the seti glyph, the repo reaches the accessible name through a hidden
 // span, and the `+N` rows spend their width on `<repo> / <rel path>` because the
 // overflow menu is where two members' same-named files sit next to each other.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, within } from "@solidjs/testing-library";
 
 import { installResizeObserver } from "./__fixtures__/editorAgent";

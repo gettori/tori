@@ -7,7 +7,7 @@
 // winning, and the command does nothing however often it is run. That is the bug
 // `toggleVimMode` carried before Phase 4's self-review, and generating a command
 // per setting is what would have multiplied it by thirty.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import appSource from "../../App.tsx?raw";
 

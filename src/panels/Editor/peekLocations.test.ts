@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // What the fake backend has on disk, and what it was asked for.
 let disk: Record<string, string> = {};

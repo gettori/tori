@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 
 /** Every source file in `src/`, as text, except the ones in this folder.
  *

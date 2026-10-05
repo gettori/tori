@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { writtenPaths, setTouchedPaths, touchedPaths, isTouched, type TouchOp } from "./touchedFiles";
 
 function f(path: string, op: TouchOp) {

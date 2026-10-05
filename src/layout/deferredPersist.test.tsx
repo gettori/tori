@@ -1,7 +1,7 @@
 // The layout stores write on a debounce (plan phase 4 task 1): a click changes
 // the model now and pays for the JSON later. What the suite is about is the
 // safety half, since a deferred write that never lands is data loss.
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vite-plus/test";
 import {
   ensureEnvelope,
   flushEnvelopes,

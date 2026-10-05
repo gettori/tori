@@ -5,7 +5,7 @@
 // stage views receive `active` through a memo, so their effects (fit,
 // `pty_resize`, `chat_set_visible`) fire on real edges only, not on every
 // signal behind the derivation.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { createEffect } from "solid-js";
 import { installAnimationFrame } from "../test/frames";

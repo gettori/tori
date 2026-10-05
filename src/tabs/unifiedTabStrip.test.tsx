@@ -3,7 +3,7 @@
 // the panel suites, and what this file pins is that one bar composes any mix
 // of kinds - rows, activation routing, reorder, overflow, the combined trailing
 // cluster, and the wrap-skipping ghost.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../test/menus";

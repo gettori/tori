@@ -1,7 +1,7 @@
 // The draft's option picks reaching the session it grew into. `ChatView` is
 // mounted for real here, unlike everywhere else, because what is under test is
 // *when* the apply fires rather than what it sends.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
 

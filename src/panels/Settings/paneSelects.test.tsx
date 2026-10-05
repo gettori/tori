@@ -23,7 +23,7 @@
 // `Select.test.tsx`, where the scan is small and the component is the subject;
 // what these tests add is the association, asserted by querying each control
 // *through* its visible label.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

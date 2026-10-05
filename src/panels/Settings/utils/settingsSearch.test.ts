@@ -7,7 +7,7 @@
 // assertions this file used to carry retired with `matchingSections` when the
 // panel switched over; the concern behind them (a match keeps the context around
 // it) is now a rendering property, checked in `settingsPanel.test.tsx`.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { matchingEntries } from "./settingsSearch";
 import { SETTINGS, SETTING_TABS, TAB_OF_SECTION } from "../../../utils/settingsCatalog";
 

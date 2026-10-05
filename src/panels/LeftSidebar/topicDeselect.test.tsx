@@ -1,7 +1,7 @@
 // Removing a Topic member's worktree from Spaces (#154 phase 1) moves the
 // Topic's active root to its next present member; only losing the last one
 // clears the selection. A unit selection under the folder clears as before.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 

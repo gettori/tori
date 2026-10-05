@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { answerApplyEdit, APPLY_EDIT_TIMEOUT_MS } from "./serverEdits";

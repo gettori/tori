@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vite-plus/test";
 import { ensureFontLoaded, primaryFamily } from "./fontLoad";
 
 /** Install a fake FontFaceSet, since jsdom ships none. Returns the specs the

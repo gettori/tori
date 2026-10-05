@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, lazyPlugins } from "vite-plus";
 import solid from "vite-plugin-solid";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -97,7 +97,9 @@ const traceCoreImports = () => ({
 
 // https://vite.dev/config/
 export default defineConfig(async ({ command }) => ({
-  plugins: [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])],
+  fmt: { printWidth: 120 },
+
+  plugins: lazyPlugins(() => [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])]),
 
   // The syntax worker loads each grammar by dynamic import, and an iife worker
   // cannot split chunks.

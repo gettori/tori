@@ -1,7 +1,7 @@
 // The Problems tab inside a Topic (#160 phase 1). The store spans every warm
 // project, so what decides whether the tab exists is the scope the editor gives
 // it: one branch unit's folder, or every member of a Topic at once.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 

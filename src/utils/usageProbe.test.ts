@@ -4,7 +4,7 @@
 // wiring around it: an agent nobody enabled, an account showing no windows, and
 // a read that failed are all reasons not to spawn anything, and none of them are
 // the scheduler's business.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 const bench = vi.hoisted(() => ({
   enabled: new Set<string>(["codex"]),

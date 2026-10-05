@@ -5,7 +5,7 @@
 // Typing asks about every category, so all six answer at once and the rail
 // selects nothing. A command points at one setting, so it lands you on that
 // setting's category with the box seeded.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 

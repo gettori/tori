@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, onTestFinished } from "vitest";
+import { describe, it, expect, vi, onTestFinished } from "vite-plus/test";
 import { createSignal, type JSX } from "solid-js";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";

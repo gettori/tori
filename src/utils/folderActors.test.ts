@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 
 const sessions = [
   { id: "chatted", agent: "claude", cwd: "/work/repo", name: "held by a chat" },

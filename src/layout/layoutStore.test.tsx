@@ -1,7 +1,7 @@
 // The per-workspace layout envelope store (plan phase 5). A .tsx suite for the
 // jsdom project: the store's whole job is localStorage round-trips, which the
 // node project has no localStorage to run against.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import {
   ensureEnvelope,
   envelopeFor,

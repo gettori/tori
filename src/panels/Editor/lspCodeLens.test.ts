@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 // Static, and above the dynamic import below rather than beside it: an
 // `import type` is erased, so its position is about reading order only, and a
 // type import written under a top-level `await import` reads as if it were

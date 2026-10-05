@@ -4,7 +4,7 @@
 // the live pane subtree mounted, and re-measure no tab strip. The panels are
 // stubbed down to registered descriptors over the real stores, as in appSplits,
 // so the shell is the subject.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { cleanup, render } from "@solidjs/testing-library";
 import { installAnimationFrame } from "./test/frames";
 

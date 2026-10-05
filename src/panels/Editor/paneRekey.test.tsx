@@ -3,7 +3,7 @@
 // the id it is rendered under is not the id it keeps. The claim under test is
 // that the view is *moved* to the pane that replaces it rather than rebuilt,
 // and that a view nobody claims is still destroyed.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal, For } from "solid-js";
 import { render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";

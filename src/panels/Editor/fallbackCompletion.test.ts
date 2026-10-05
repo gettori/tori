@@ -4,7 +4,7 @@
 // Asserted by running the sources the extension registers, rather than by
 // looking at the returned array: "the extension is installed" and "typing `al`
 // offers `alpha`" are different claims, and only the second is the ticket.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import {

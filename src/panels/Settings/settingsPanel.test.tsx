@@ -6,7 +6,7 @@
 // is invisible rather than broken. The second is that `aria-modal` is a claim -
 // focus has to actually stay inside, or the attribute is a lie a screen reader
 // believes.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

@@ -2,7 +2,7 @@
 // row wears a Tag chip that opens the Topic with that folder
 // active, and while a Topic is selected no unit reads as active, not even
 // the member whose folder is the active root.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 const REPO = "/w/api";
