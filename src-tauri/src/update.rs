@@ -366,10 +366,12 @@ mod tests {
         assert!(is_due(now + RETRY_INTERVAL_SECS, now + RETRY_INTERVAL_SECS));
         // ...while the one a success writes has not.
         assert!(!is_due(now + CHECK_INTERVAL_SECS, now + RETRY_INTERVAL_SECS));
-        assert!(
-            RETRY_INTERVAL_SECS < CHECK_INTERVAL_SECS,
-            "a failure must never delay the next check longer than a success"
-        );
+        const {
+            assert!(
+                RETRY_INTERVAL_SECS < CHECK_INTERVAL_SECS,
+                "a failure must never delay the next check longer than a success"
+            )
+        };
     }
 
     #[test]

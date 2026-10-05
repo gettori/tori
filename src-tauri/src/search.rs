@@ -876,7 +876,7 @@ pub fn apply_line_edits(root: String, files: Vec<FileEdits>) -> Result<ApplyResu
                 refused = Some("changed since the search");
                 break;
             };
-            if &content[ls..le] != e.was {
+            if content[ls..le] != e.was {
                 refused = Some("changed since the search");
                 break;
             }

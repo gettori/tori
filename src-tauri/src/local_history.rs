@@ -128,7 +128,7 @@ fn entries_under(repo: &str, prefix: &str) -> Vec<HistoryEntry> {
             })
         })
         .collect();
-    entries.sort_by(|a, b| b.ts.cmp(&a.ts));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.ts));
     entries
 }
 

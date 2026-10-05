@@ -193,7 +193,7 @@ fn apply_hunks(attr: &mut Vec<i32>, hunks: &[Hunk], value: i32) {
         };
         let start = (start + delta).clamp(0, attr.len() as isize) as usize;
         let end = (start + h.old_count).min(attr.len());
-        attr.splice(start..end, std::iter::repeat(value).take(h.new_count));
+        attr.splice(start..end, std::iter::repeat_n(value, h.new_count));
         delta += h.new_count as isize - h.old_count as isize;
     }
 }

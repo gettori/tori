@@ -614,7 +614,7 @@ fn filter_sort(all: Vec<SessionMeta>, folder: &str, inclusive: bool) -> Vec<Sess
             }
         })
         .collect();
-    v.sort_by(|a, b| b.last_active.cmp(&a.last_active));
+    v.sort_by_key(|s| std::cmp::Reverse(s.last_active));
     v
 }
 
@@ -635,7 +635,7 @@ pub(crate) fn listed_sessions(index: &SessionIndex, folder: Option<&str>) -> Vec
         Some(folder) => filter_sort(all, folder, true),
         None => {
             let mut all = all;
-            all.sort_by(|a, b| b.last_active.cmp(&a.last_active));
+            all.sort_by_key(|s| std::cmp::Reverse(s.last_active));
             all
         }
     };
@@ -879,8 +879,8 @@ pub fn folder_historical(index: State<SessionIndex>, folder: String) -> Result<b
 /// Renames, and nothing else. An overlay written before archiving was removed
 /// also carries an `archived` key; serde ignores unknown fields, so such a file
 /// still parses and every rename in it survives (see
-/// gotchas#serde-ignores-unknown-fields-so-a-version-field-alone-cannot-gate-a-format
-/// - the same property that makes a version field useless as a gate is what
+/// gotchas#serde-ignores-unknown-fields-so-a-version-field-alone-cannot-gate-a-format:
+/// the same property that makes a version field useless as a gate is what
 /// makes this migration free). The residual key is **pruned on the next write**
 /// rather than kept: `save_overlay` re-serializes the whole map from this
 /// struct, so the first rename anywhere drops it for every session at once.
@@ -1291,16 +1291,15 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
             // Claude: a compaction boundary. Skip sidechain (subagent) records so
             // only top-level compactions count, matching ccstatusline. Reclaimed
             // is summed only when both pre and post token sizes are present.
-            Some("system") => {
+            Some("system")
                 if v.get("subtype").and_then(|s| s.as_str()) == Some("compact_boundary")
-                    && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true)
-                {
-                    compaction_count += 1;
-                    if let Some(m) = v.get("compactMetadata") {
-                        let get = |k: &str| m.get(k).and_then(|n| n.as_u64());
-                        if let (Some(pre), Some(post)) = (get("preTokens"), get("postTokens")) {
-                            compaction_reclaimed += pre.saturating_sub(post);
-                        }
+                    && v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) =>
+            {
+                compaction_count += 1;
+                if let Some(m) = v.get("compactMetadata") {
+                    let get = |k: &str| m.get(k).and_then(|n| n.as_u64());
+                    if let (Some(pre), Some(post)) = (get("preTokens"), get("postTokens")) {
+                        compaction_reclaimed += pre.saturating_sub(post);
                     }
                 }
             }
@@ -1600,7 +1599,7 @@ fn extract_touched_files(path: &str, agent: &str) -> Vec<TouchedFile> {
             count: a.count,
         })
         .collect();
-    files.sort_by(|a, b| b.last_ts.cmp(&a.last_ts));
+    files.sort_by_key(|f| std::cmp::Reverse(f.last_ts));
     files
 }
 

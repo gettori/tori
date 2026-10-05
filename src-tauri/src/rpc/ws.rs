@@ -279,6 +279,10 @@ impl WsStream {
     }
 
     fn handshake(reader: &mut Reader) -> io::Result<()> {
+        #[allow(
+            clippy::result_large_err,
+            reason = "tungstenite's handshake callback signature fixes the error type"
+        )]
         let from_the_app = |request: &Request, response: Response| {
             let origin = request.headers().get("origin").and_then(|o| o.to_str().ok());
             if origin_allowed(origin, cfg!(debug_assertions)) {

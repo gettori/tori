@@ -362,23 +362,6 @@ pub async fn cached_profiles(adapter_id: &str) -> Vec<ProfileHealth> {
         .unwrap_or_default()
 }
 
-/// What the cached sweep says about one adapter's **default** profile.
-///
-/// The narrow read, for callers that only ever mean the account a session
-/// started without choosing one runs as.
-pub async fn cached_sign_in(adapter_id: &str) -> crate::auth::Whoami {
-    HEALTH
-        .get_or_sweep(sweep)
-        .into_iter()
-        .find(|h| h.id == adapter_id)
-        .map(|h| crate::auth::Whoami {
-            state: h.sign_in,
-            email: h.account,
-            api_key_source: h.api_key_source,
-        })
-        .unwrap_or_default()
-}
-
 /// Re-probe every adapter now and return the new answer.
 ///
 /// The caller is anything that could have changed the answer: an in-app

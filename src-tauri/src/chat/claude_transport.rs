@@ -1145,7 +1145,7 @@ pub mod tests {
             "an armed question must be pending"
         );
         assert!(deadline >= before + DECIDE_TIMEOUT_SECS * 1000);
-        assert!(DECIDE_TIMEOUT_SECS < super::super::approval::HOOK_TIMEOUT_SECS);
+        const { assert!(DECIDE_TIMEOUT_SECS < super::super::approval::HOOK_TIMEOUT_SECS) };
     }
 
     /// **A question is parked with no clock at all.**
