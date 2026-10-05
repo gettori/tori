@@ -1,0 +1,9 @@
+# The dispatcher puts a global vp on PATH too, so ask for the project's own.
+if [ ! -x node_modules/.bin/vp ]; then
+  echo "warning: node_modules/.bin/vp is missing, skipping the pre-push checks (run pnpm install)" >&2
+  exit 0
+fi
+pnpm exec tsc --noEmit
+pnpm --dir mobile typecheck
+pnpm build
+pnpm --dir mobile build
