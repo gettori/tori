@@ -6,7 +6,8 @@
 #   scripts/check.sh ts      lockfile, type check (desktop and mobile), format,
 #                            lint (report only), token guard and vitest, both
 #                            vite builds
-#   scripts/check.sh rust    format, desktop crate tests, mobile crate check
+#   scripts/check.sh rust    format, clippy, desktop crate tests, mobile crate
+#                            check
 #   scripts/check.sh audit   npm and crate advisories
 #   scripts/check.sh all     all three, in that order
 set -euo pipefail
@@ -43,6 +44,9 @@ rust() {
   step "format"
   cargo fmt --manifest-path src-tauri/Cargo.toml --check
   cargo fmt --manifest-path mobile/src-tauri/Cargo.toml --check
+  step "clippy"
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+  cargo clippy --manifest-path mobile/src-tauri/Cargo.toml --all-targets -- -D warnings
   step "desktop crate tests"
   cargo test --manifest-path src-tauri/Cargo.toml
   step "mobile crate check"
