@@ -24,8 +24,8 @@
     "name": "git.spawns.sidebar.cold",
     "runtime": "rust",
     "unit": "count",
-    "budget": 35,
-    "reason": "a first sidebar load of one worktree container (two worktrees) and one plain repo: 5 for get_config's project probe, 30 for git_branch_sync_many over the three rows it drew, about 10 per row"
+    "budget": 38,
+    "reason": "a first sidebar load of one worktree container (two worktrees) and one plain repo: 5 for get_config's project probe, 33 for git_branch_sync_many over the three rows it drew, about 11 per row, one of them the recorded base lookup"
   },
   {
     "name": "git.spawns.sidebar.warm",
