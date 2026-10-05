@@ -7,6 +7,9 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [solid()],
   publicDir: "../public",
+  // The chat's syntax worker loads each grammar by dynamic import, and an iife
+  // worker cannot split chunks.
+  worker: { format: "es" as const },
   clearScreen: false,
   server: {
     port: 1430,
