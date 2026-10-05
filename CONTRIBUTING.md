@@ -51,11 +51,11 @@ with the TOML attached and it can join the bundled set.
 
 - **macOS.** Tori is macOS only today, developed and tested on macOS 15.
 - **Xcode Command Line Tools**: `xcode-select --install`
-- **Rust (stable)**, via [rustup](https://rustup.rs). Tauri v2 needs no extra
-  targets for a local dev build; the release workflow adds
-  `aarch64-apple-darwin` and `x86_64-apple-darwin` for the universal bundle.
-- **Node.js 22** and **pnpm** (`corepack enable pnpm`, or see
+- **Rust**, via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the
+  version: run `rustup toolchain install` once in the repo to fetch it.
+- **Node.js 22** (`.nvmrc`) and **pnpm** (`corepack enable pnpm`, or see
   [pnpm.io](https://pnpm.io/installation)).
+- **cargo-audit** for the audit checks: `cargo install cargo-audit --locked`.
 
 ### Run it
 
@@ -83,10 +83,13 @@ pnpm tauri build
 ### Checks
 
 ```sh
-pnpm test          # token-layer guard + vitest
-npx tsc --noEmit   # frontend typecheck
-cargo test --manifest-path src-tauri/Cargo.toml
+scripts/check.sh all   # everything CI runs; run it before opening a PR
 ```
+
+CI runs the same script, one target per job, so passing it locally is passing
+CI. The targets also run alone: `ts` (frozen install, type check for desktop
+and mobile, `pnpm test`, both vite builds), `rust` (desktop tests, mobile
+check) and `audit` (npm and crate advisories).
 
 `pnpm test` runs `scripts/check-tokens.mjs` before the unit tests. That guard
 fails the build on any color literal outside `src/styles/tokens.css` and its

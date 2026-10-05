@@ -15,9 +15,7 @@
 
 ## Checks
 
-- [ ] `pnpm test` passes (token guard + vitest)
-- [ ] `npx tsc --noEmit` is clean
-- [ ] `cargo test --manifest-path src-tauri/Cargo.toml` passes
+- [ ] `scripts/check.sh all` passes
 - [ ] New colors go through `src/styles/tokens.css` with a value for **both**
       themes, not through the guard's allowlist
 - [ ] Checked in both light and dark, if this touches UI
