@@ -4,8 +4,7 @@
 # `scripts/check.sh all` locally is passing CI.
 #
 #   scripts/check.sh ts      lockfile, type check (desktop and mobile), format,
-#                            lint (report only), token guard and vitest, both
-#                            vite builds
+#                            lint, token guard and vitest, both vite builds
 #   scripts/check.sh rust    format, clippy, desktop crate tests, mobile crate
 #                            check
 #   scripts/check.sh audit   npm and crate advisories
@@ -29,9 +28,8 @@ ts() {
   pnpm --dir mobile typecheck
   step "format"
   pnpm exec vp fmt --check
-  # Reported, not enforced, until the lint backlog is fixed.
-  step "lint (report only)"
-  pnpm exec vp lint || echo "warning: lint errors above are not enforced yet" >&2
+  step "lint"
+  pnpm exec vp lint --deny-warnings
   step "token guard and vitest"
   pnpm test
   step "vite build"
