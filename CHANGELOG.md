@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1005.0-alpha
 
 - When Tori closes on its own, it writes a crash file under
   `~/.config/tori/crashes/` (version, thread, message, backtrace) and the next
