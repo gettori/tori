@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 
 // The other end of the run: the panel emits an `OPEN_TERMINAL` and *this* is

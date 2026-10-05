@@ -3,7 +3,7 @@
 // writes `activeWorkspace`, and that write is the whole of the bug
 // adr_jobs_leave_the_tab_model exists to prevent. `interactive` decides only
 // whether the keyboard follows.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, within } from "@solidjs/testing-library";
 
 const REPO = "/root/work/repo";

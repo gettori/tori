@@ -1,7 +1,7 @@
 // Pane-scoped tab keys on the editor side (plan phase 6): Cmd+W, Cmd+1..9 and
 // Ctrl+Tab act on the file tabs only while the file pane holds pane focus, and
 // Cmd+W rides closeTab, so a dirty buffer is asked about before it is lost.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 globalThis.ResizeObserver ??= class {

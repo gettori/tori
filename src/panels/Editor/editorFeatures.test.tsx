@@ -5,7 +5,7 @@
 // buffer" are separate claims and only the second is the ticket. jsdom has no
 // layout, but CodeMirror still builds its DOM, which is where both of these
 // features live: a class on the line for the guides, a widget for the swatches.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView, gutter } from "@codemirror/view";
 import { syntaxHighlighting, HighlightStyle, forceParsing } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";

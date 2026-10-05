@@ -4,7 +4,7 @@
 // Both are mirrors of `catalog_probe.rs`, and both have a case that looks like
 // an edge and is not: an alias-heavy catalogue is the normal one, and a
 // version-less binary is two of the four agents Tori ships adapters for.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { invoke } from "@tauri-apps/api/core";
 import probeSource from "../../src-tauri/src/catalog_probe.rs?raw";
 import { refreshAgentHealth } from "./agentHealth";

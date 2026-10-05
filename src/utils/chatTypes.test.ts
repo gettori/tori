@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import goldenEvents from "../../dev/fixtures/chat/events.json";
 import goldenCommands from "../../dev/fixtures/chat/commands.json";
 import goldenToolSummaries from "../../dev/fixtures/chat/toolSummaries.json";

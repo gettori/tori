@@ -5,7 +5,7 @@
 // And **once per window per reset, across restarts**, because the record of
 // what has been said is on disk and a notice repeated on every launch is the
 // failure that record exists to prevent.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const bench = vi.hoisted(() => ({
   focused: false,

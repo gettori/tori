@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import SessionStats, { type SessionDetail } from "./SessionStats";

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { approaching, breach, heldNotice, stopNotice, warnNotice } from "./chatBudget";
 import { quotaState } from "./chatRateLimit";
 import type { Budgets } from "../panels/Settings/settingsStore";

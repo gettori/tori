@@ -2,7 +2,7 @@
 // same tree and git legs a worktree switch does; before this it was admitted as
 // a span and then never closed, so every Topic switch wrote `settled: null`
 // after the 5s timeout.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { installAnimationFrame } from "../test/frames";
 
 installAnimationFrame();

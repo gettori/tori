@@ -4,7 +4,7 @@
 // one they are about is the active tab's, not the member you last clicked in the
 // tree. What is asserted here is that they say which repo, that a run launches
 // in it, and that moving the active member no longer kills the run.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import PaneView from "../../tabs/PaneView";

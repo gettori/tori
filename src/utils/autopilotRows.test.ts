@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { activityOf, applyItem, decisionOf, queuedItems, workerCards, type ItemRow } from "./autopilotRows";
 import type { SocketAsk } from "./socketAsks";
 

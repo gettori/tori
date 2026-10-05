@@ -10,7 +10,7 @@
 // source scan in the spirit of the other `?raw` scan tests: it reads the test
 // files as text and insists every call is awaited, returned, or handed back from
 // an arrow (`() => expectNoAxeViolations(x)` inside a `Promise.all`).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 const sources = import.meta.glob("../**/*.test.tsx", {
   query: "?raw",

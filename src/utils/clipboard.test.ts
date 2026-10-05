@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const tauriWriteText = vi.fn();
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: (t: string) => tauriWriteText(t) }));

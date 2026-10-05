@@ -7,7 +7,7 @@
 // being folded on top of it - and a replay that brings nothing must leave it
 // alone. `ChatView` is mounted for real, like `openedChat.test.tsx`, because the
 // seam under test is between the panel and the child.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";

@@ -6,7 +6,7 @@
 // `getBBox`, which jsdom does not implement. `Diagram.test.tsx` covers what the
 // component does with each answer; this file only asks whether the preview
 // wires a fence to it at all, and what happens to every other fence.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, fireEvent, waitFor } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 

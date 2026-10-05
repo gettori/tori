@@ -1,7 +1,7 @@
 // CodeMirror resolves a gutter click by the target's height and jsdom gives
 // every element a zero rect, so in here every gutter click lands on line 1.
 // Only the two wiring tests at the bottom, whose hunk is on line 1, use one.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import {

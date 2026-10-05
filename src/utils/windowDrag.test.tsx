@@ -6,7 +6,7 @@
 // `-webkit-app-region`, which is Electron's), and every pixel of the bar is
 // covered by a child, so neither ever ran. What can be pinned here is the
 // decision, which is the part that has to keep holding as chrome is added.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const dragged = vi.fn();
 const zoomed = vi.fn();

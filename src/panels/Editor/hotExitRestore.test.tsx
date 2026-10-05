@@ -5,7 +5,7 @@
 // it belongs to `Editor.tsx`: the restore is deliberately lazy, so all but one
 // of those files has no buffer at all, and the dirty dots have to come from the
 // stash rather than from a buffer that will not exist until somebody clicks.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 

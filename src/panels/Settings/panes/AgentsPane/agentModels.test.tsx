@@ -13,7 +13,7 @@
 // reports: `ensureAdaptersLoaded` fetches once per module and caches, so a
 // per-test `list_agents` would answer only the first test and silently reuse it
 // for the rest.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";

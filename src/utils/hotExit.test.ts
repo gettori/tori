@@ -4,7 +4,7 @@
 // tested for the losing case rather than only the happy one: what a prune
 // throws away, what a malformed file does to a launch, and what a *second*
 // quit writes when the first quit's entries have not all been claimed yet.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 
 /** What the backend answers. `null` means it refuses, which is its own case. */
 const backend: { stash: unknown } = { stash: null };

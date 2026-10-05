@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { routeSelection, restoreRoute } from "./sessionSurface";
 
 const inputs = (over: Partial<Parameters<typeof routeSelection>[0]> = {}) => ({

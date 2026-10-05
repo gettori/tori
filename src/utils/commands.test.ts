@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 // Read as text rather than with `node:fs`: this project ships no `@types/node`,
 // and `?raw` is how the other source-inspecting test (revertGuard) does it.
 import commandsSource from "./commands.ts?raw";

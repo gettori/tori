@@ -3,7 +3,7 @@
 // follows is a session's edits, so it belongs on the bar the session's other
 // levers are on. `ChatView` is mounted for real, like `openedChat.test.tsx`,
 // because where the control sits in that bar is the whole of what is under test.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent, within } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
 

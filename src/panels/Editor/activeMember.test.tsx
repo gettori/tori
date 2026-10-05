@@ -1,7 +1,7 @@
 // The member chip rows inside a Topic (#160 phase 3). Pull requests wears the
 // right panel's row, which moves `activeRoot`; the Files tab wears its own, and
 // its Scripts section is the pane that visibly reloads for the member picked.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
 import { installAnimationFrame } from "../../test/frames";

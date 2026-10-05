@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { tabGesture } from "./tabGesture";
 
 // A `.test.tsx` with no JSX in it, deliberately: the file extension is what

@@ -2,7 +2,7 @@
 // phase 3): one placement change rebuilds a workspace's pane maps once, and
 // every consumer reads that one answer, instead of each paneTabs call filtering
 // the whole tab union per pane (O(tabs x panes) per click).
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { createRoot } from "solid-js";
 import {
   __placementComputesForTests,

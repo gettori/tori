@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { Compartment, EditorState, StateField } from "@codemirror/state";
 import { activeEditorFeatures, editorPrefExtensions } from "./editorPrefs";
 import type { EditorDefaults } from "../Settings/settingsStore";

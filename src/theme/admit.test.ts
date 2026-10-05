@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { admit } from "./admit";
 import type { AdmittedPalette } from "./admit";
 import { listThemes } from "./bundled";

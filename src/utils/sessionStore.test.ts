@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // The store's contract is what it asks the backend for and what it keeps, so
 // the mock records every `list_sessions` folder and can be told to fail one.

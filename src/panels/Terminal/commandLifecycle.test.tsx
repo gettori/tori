@@ -1,7 +1,7 @@
 // What happens when a command exits. A clean run closes its own tab and the
 // toast is the record; anything else stays on screen wearing its code, which is
 // the output worth keeping.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 

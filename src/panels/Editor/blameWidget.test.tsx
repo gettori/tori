@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, type WidgetType } from "@codemirror/view";
 import { blameExtension, agentEffect, blameEffect, inlineBlameDecorations } from "./blameGutter";

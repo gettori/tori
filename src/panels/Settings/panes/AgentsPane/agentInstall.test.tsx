@@ -4,7 +4,7 @@
 // running the vendor's own documented command, from the adapter's [install]
 // table, and the tab re-probes health on exit. These tests keep that shape:
 // nothing here asserts on a package landing anywhere, because nothing does.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";

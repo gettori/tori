@@ -5,7 +5,7 @@
 // turn**, so this file's job is to catch the two ways that claim goes wrong: a
 // logo quietly disappearing because a key was renamed, and a logo appearing on
 // an agent it does not belong to.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { FALLBACK_ADAPTERS } from "../../utils/agents";
 import { agentMark, knownMarks } from "./agentMarks";
 

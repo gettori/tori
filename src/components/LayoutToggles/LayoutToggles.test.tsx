@@ -7,7 +7,7 @@
 // The terminal and editor toggles that used to sit beside the sidebar's are
 // gone (phase 13): with one pane holding every kind there is nothing for them
 // to hide, and their keys bring a kind's tab to the front instead.
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import LayoutToggles from "./LayoutToggles";

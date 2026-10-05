@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import twoTurns from "../../dev/fixtures/claude/two-turns.jsonl?raw";
 import { fmtCost, fmtTokens, observationComplete, turnTokens, usageSummary } from "./chatUsage";
 import { contextTokens } from "./chatModels";

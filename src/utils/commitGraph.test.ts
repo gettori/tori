@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 
 import { authorInitials, buildGraph, refPill } from "./commitGraph";
 import type { LogEntry } from "./gitActions";

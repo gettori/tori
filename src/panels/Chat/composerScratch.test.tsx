@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
 let scratchBroken = false;

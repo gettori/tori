@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 
 // Hover-to-inspect: the one debugger surface that lives in the buffer.

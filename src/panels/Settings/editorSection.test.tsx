@@ -6,7 +6,7 @@
 // `EditorDefaults`, wires the feature, and never touches this panel: the setting
 // then exists, works when hand-edited, and is invisible to everyone who does
 // not read settings.json.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

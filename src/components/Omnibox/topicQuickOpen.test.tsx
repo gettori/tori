@@ -5,7 +5,7 @@
 // Its own file rather than a describe in `Omnibox.test.tsx`: that suite's mock
 // answers `list_project_files` with one flat array whatever root it is asked
 // about, and its selection is a branch unit throughout.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 
 const A = "/r/api/.tori/worktrees/auth";

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { MAX_REOPENABLE, rememberClosedTab, sweepClosed, takeClosedTab, type ClosedStore } from "./reopenStack";
 
 const closeAll = (ws: string, ...paths: string[]): ClosedStore =>

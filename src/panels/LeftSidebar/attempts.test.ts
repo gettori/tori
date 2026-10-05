@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { attemptFolderName, groupAttempts, samePath, type AttemptRecord } from "./attempts";
 
 type Unit = { folderPath: string; label: string };

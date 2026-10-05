@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { ContextMenu, DropdownMenu } from "./menu";
 
 // Kobalte builds both menus on one shared `Menu` implementation, and

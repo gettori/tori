@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { configurationFor, configurationClientCapabilities } from "./lspConfiguration";
 
 // What `yaml-language-server` actually asks for, in the order it asks

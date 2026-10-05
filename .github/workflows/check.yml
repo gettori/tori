@@ -8,7 +8,7 @@
 # that only runs when someone remembers to run it will be breached by the first
 # contributor who does not.
 #
-# `tsc --noEmit` is here for a related reason: `pnpm build` is `vite build`,
+# `tsc --noEmit` is here for a related reason: `pnpm build` is `vp build`,
 # which transpiles without type-checking, so nothing else in the repo would
 # ever notice a type error.
 #
@@ -36,7 +36,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version-file: .node-version
           cache: pnpm
 
       - run: scripts/check.sh ts
@@ -67,7 +67,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version-file: .node-version
 
       - uses: taiki-e/install-action@v2
         with:

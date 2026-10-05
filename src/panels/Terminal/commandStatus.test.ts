@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { commandStatus, dropCommandStatus, reportCommandExit, resetCommandStatus } from "./commandStatus";
 import type { OpenTerm } from "./terminalTabStore";
 

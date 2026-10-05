@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 // Rust composes every dot (`rpc/dots.rs`, pinned by the golden fixtures there),
 // so the test hands the store Rust's answer through `noteDots` and checks what

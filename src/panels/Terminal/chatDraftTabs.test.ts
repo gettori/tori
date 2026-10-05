@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { canRevertToDraft, isChatDraft, type OpenTerm } from "./terminalTabStore";
 
 // Which chat tabs are drafts, and which of them may become one again. Both are

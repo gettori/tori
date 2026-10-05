@@ -3,7 +3,7 @@
 // rail. The navigation is not rendered here - the editor portals it into a
 // module-owned host - so what this pins is that the slot adopts that host, and
 // that the pane toggles it used to hold are gone.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { render, screen } from "@solidjs/testing-library";
 import WindowControls from "./WindowControls";
 import { stageHost } from "../../tabs/stageHost";

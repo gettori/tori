@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { createSignal, type JSX } from "solid-js";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import OverflowTabBar from "./OverflowTabBar";

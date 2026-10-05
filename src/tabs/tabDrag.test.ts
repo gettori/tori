@@ -2,7 +2,7 @@
 // geometry that reads a pointer over a pane, and the rule that turns a zone
 // into an edit. Both are decided here rather than in the DOM, so the guards can
 // be stated as "this drop is nothing" without standing a layout up first.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { dropAction, hitTest, type DragTab, type Rect } from "./tabDrag";
 
 const pane: Rect = { left: 0, top: 0, width: 400, height: 300 };

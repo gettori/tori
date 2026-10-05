@@ -5,7 +5,7 @@
 // The store's bound is the part worth testing hardest. It holds whole
 // documents, so a rule that lets an entry outlive its tab is a leak that grows
 // for as long as the session does.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 
 import {
   isMarkdownPath,

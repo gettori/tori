@@ -2,7 +2,7 @@
 // come from the same greedy pass. That property is what every consumer leans
 // on - a mark can never land on a character that did not earn the match - and
 // it is what these tests pin.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { fuzzyMatch, fuzzyScore } from "./fuzzy";
 
 describe("fuzzyMatch", () => {

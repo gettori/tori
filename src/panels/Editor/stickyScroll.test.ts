@@ -5,7 +5,7 @@
 // pinned in the right place on screen is a question about layout, which jsdom
 // cannot answer and this file does not ask; `stickyScrollGate.test.tsx` covers
 // the part of the overlay that is real without geometry.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { stickyHeaders, MAX_STICKY } from "./stickyScroll";

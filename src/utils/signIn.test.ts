@@ -4,7 +4,7 @@
 // is tested here is the half that can go wrong silently: a login tab that
 // forgets to carry the profile's home signs the user into the account they
 // already had, reports success, and leaves two profiles that are one account.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { loginJob, loginNote, type LoginRoute } from "./signIn";
 
 const terminal = (home: [string, string] | null): LoginRoute => ({

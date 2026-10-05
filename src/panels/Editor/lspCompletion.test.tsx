@@ -7,7 +7,7 @@
 // `clientExtensions()` - the very list the app hands every session - and every
 // assertion is made through the plugin the library installs. Only the transport
 // is fake, and it answers the way a server does.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { languageServerExtensions, LSPClient, type Transport } from "@codemirror/lsp-client";
 import {
   CompletionContext,

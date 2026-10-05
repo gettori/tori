@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import toriDark from "./palettes/tori-dark.json";
 import toriLight from "./palettes/tori-light.json";
 import { alpha, buildRoles, mix, ROLES, variants } from "./roles";

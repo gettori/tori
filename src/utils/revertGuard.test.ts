@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { revertGuard, revertBlockers, type RevertCandidate } from "./revertGuard";
 import { applyEvent, chatStatus, initialChat } from "../panels/Chat/chatStore";
 import { dropLiveChat, setLiveChat } from "./chatSessions";

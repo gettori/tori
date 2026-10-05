@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick, rightClick } from "../../test/menus";

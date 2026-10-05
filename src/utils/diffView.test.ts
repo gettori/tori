@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { buildRows, hunkGaps, pairRun, toSideBySide, wordSegs, similarity } from "./diffView";
 
 const changed = (segs: { text: string; changed: boolean }[] | undefined) =>

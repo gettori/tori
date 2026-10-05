@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { LSPClient, LSPPlugin, type Transport } from "@codemirror/lsp-client";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
