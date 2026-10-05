@@ -7,9 +7,10 @@
      is already `muted` when the row is not selected, so the same tone here
      would flatten the two into one. `.row.branch.sel` raises this to muted
      when the label goes to default, keeping the one-step gap. */
-  display: flex;
-  align-items: center;
+  display: block;
   min-width: 0;
+  /* Clips the separator each wrapped line starts with (see `.items`). */
+  overflow: hidden;
   /* Not declared here on purpose: a declaration on this element would outrank
      the inherited one, and the selected row raises the tone by setting the
      variable on the stack above (see `.row.branch.sel .rowStack`). The
@@ -23,14 +24,19 @@
      "unreadable". The tone carries the hierarchy here, not the size. */
   font-size: var(--tori-text-md);
   font-variant-numeric: tabular-nums;
-  /* One line tall, but wrapping: a fact that does not fit moves to a second
-     line nobody sees, so it drops whole instead of being cut mid-number. A
-     third line would cost every PR row the height of a whole branch. */
-  flex-wrap: wrap;
-  align-content: flex-start;
-  height: 1lh;
-  overflow: hidden;
   white-space: nowrap;
+}
+
+/* Wrapping rather than clipping: a fact that does not fit moves whole to a
+   line of its own, so a narrow rail costs the row height and never a fact.
+   Every fact carries its separator in front, and the run is pulled left by
+   one separator so whichever fact starts a line has its dot clipped away. */
+.items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-left: calc(-1 * var(--sep-w));
+  --sep-w: calc(12px * var(--ui-scale));
 }
 
 /* One fact: a glyph and the number beside it. */
@@ -54,14 +60,16 @@
 }
 
 /* GitHub's separator, and the reason the line reads as facts rather than as a
-   sentence. Drawn between adjacent facts rather than emitted by the component,
-   so a fact that is absent takes its separator with it and the line can never
-   end on a dangling dot. Dimmer than the facts it parts, or it competes with
+   sentence. Drawn in front of every fact rather than emitted by the component,
+   so a fact that is absent takes its separator with it and no line can end on
+   a dangling dot; the one starting a line is clipped (see `.items`). Dimmer than the facts it parts, or it competes with
    them, and its colour is the line's own rather than the tone of whichever
    fact follows it. */
-.item + .item::before {
+.item::before {
   content: "\00B7";
-  padding-inline: calc(4px * var(--ui-scale));
+  display: inline-block;
+  width: var(--sep-w);
+  text-align: center;
   color: var(--pr-line-fg, var(--fg-subtle));
   /* Bigger than the text it parts, not smaller. A middot is a tiny glyph on a
      big em box, so at the line's own 13px it all but vanished. `line-height: 0`
