@@ -1,7 +1,7 @@
 // The dock's one pane exists before anything opens in it, so a command started
 // from any workspace has a pane to land in. It takes both kinds that live there:
 // what Tori runs, and the shells you open yourself.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { ensureShellsWorkspace, shellsPane } from "./shellsWorkspace";
 import { layoutRoot, resetPaneLayoutModel } from "./layoutStore";
 import { leaves } from "./paneLayout";

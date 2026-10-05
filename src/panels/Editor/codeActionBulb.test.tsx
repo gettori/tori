@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CODE_ACTION_MARKER_CLASS, codeActionBulb, codeActionLine, setCodeActionLine } from "./codeActionBulb";

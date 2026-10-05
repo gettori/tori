@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // The echo-suppression half of any batch the editor writes itself: a cross-file
 // rename, or a `WorkspaceEdit` from a server. `isSelfWrite` exists so the editor

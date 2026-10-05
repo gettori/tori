@@ -6,7 +6,7 @@
 // about it is coverage: a key added to `EditorDefaults` and wired to a feature
 // but never listed here is invisible in the panel, in the filter box, and in the
 // palette at once, and works only for someone who hand-edits settings.json.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import {
   SECTION_TITLES,
   SETTINGS,

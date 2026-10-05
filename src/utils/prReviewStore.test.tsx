@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { ForgeAccount, PrFile, PullRequest, StatusReport } from "./forgeTypes";
 
 // The per-pull-request store, driven through the Tauri boundary.

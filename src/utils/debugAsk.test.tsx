@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { SessionTarget } from "./safeSend";
 import type { StackFrame } from "./debugStack";
 import type { VarRow, VarScope } from "./debugVariables";

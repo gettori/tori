@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { apiCanServe, composeDraftRequest, prPath, submitBlockedReason } from "./createPr";
 import type { AuthState } from "./forgeTypes";
 import type { KnownHosts } from "./prUrl";

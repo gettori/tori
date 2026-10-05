@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { render, fireEvent, screen, within } from "@solidjs/testing-library";
 
 // Every call this surface makes to the backend, recorded. The draft's promise is

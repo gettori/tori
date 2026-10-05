@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: () => Promise.resolve(true) }));
 

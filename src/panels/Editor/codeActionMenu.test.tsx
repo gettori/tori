@@ -6,7 +6,7 @@
 // pieces is already unit-tested apart and what is left to get wrong is the
 // wiring between them. Only the transport is fake, and it answers the way a
 // server does.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
 import { pointerClick } from "../../test/menus";

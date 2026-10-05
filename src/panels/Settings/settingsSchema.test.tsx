@@ -8,7 +8,7 @@
 // runtime-visible, so adding a key to the type breaks the catalog test first
 // and this one second. Both name the file to edit.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import userRaw from "../../../src-tauri/resources/schemas/tori-settings.schema.json?raw";
 import workspaceRaw from "../../../src-tauri/resources/schemas/tori-workspace-settings.schema.json?raw";
 import { SETTINGS } from "../../utils/settingsCatalog";

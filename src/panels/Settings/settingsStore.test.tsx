@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // `.tsx`, with no JSX in it: the extension is what puts a file in the jsdom
 // project (see vitest.config.ts), and the store reaches the theme module at

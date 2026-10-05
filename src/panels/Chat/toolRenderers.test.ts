@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent } from "../../utils/chatTypes";
 import { applyEvent, initialChat, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";

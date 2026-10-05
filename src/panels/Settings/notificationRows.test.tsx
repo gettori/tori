@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

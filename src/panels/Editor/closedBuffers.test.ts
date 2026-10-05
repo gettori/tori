@@ -4,7 +4,7 @@
 // store gives up, and whether a kept buffer may be handed back at all. The
 // second is the one with teeth, since a wrong yes replays an undo history
 // against a document that has moved underneath it.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { codeFolding, foldEffect, foldedRanges } from "@codemirror/language";
 import { rememberClosed, reviveClosed, MAX_CLOSED_BUFFERS, SERIALIZED_FIELDS } from "./closedBuffers";

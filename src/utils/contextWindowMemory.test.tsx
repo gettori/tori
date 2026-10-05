@@ -3,7 +3,7 @@
 // A `.tsx` file for the DOM project, which is the one with a `localStorage`:
 // the whole point of this module is that the answer survives the session that
 // measured it.
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach } from "vite-plus/test";
 import { rememberWindows, rememberedWindows } from "./contextWindowMemory";
 import { contextWindowFor } from "./chatModels";
 

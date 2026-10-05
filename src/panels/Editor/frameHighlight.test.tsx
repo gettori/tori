@@ -3,7 +3,7 @@
 //
 // `debugStack.ts` decides which line and is tested on its own. What is here is
 // the part only an EditorState can answer.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import {

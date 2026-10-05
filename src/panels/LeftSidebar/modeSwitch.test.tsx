@@ -1,7 +1,7 @@
 // The Spaces/Topics switch is how you browse, not which work is open, so it
 // restores that mode's last selection and otherwise leaves it alone. A space
 // switch clears instead, because it is a different context, not a different list.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import type { Selection } from "./LeftSidebar";

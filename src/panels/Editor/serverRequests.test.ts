@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { createRequestRouter } from "./serverRequests";
 
 // The router sits on the transport, in front of a library that answers -32601

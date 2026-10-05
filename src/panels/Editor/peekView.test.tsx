@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { EditorState, type StateField } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 // Type-only, so it is erased and does not race the mocks below.

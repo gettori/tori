@@ -2,7 +2,7 @@
 // Whether it opens beside it or under it is the row's own wrap (see the
 // `.searchInput` basis, guarded in scripts/check-tokens.mjs), so what is left
 // here is when it exists at all and what closing it does.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 const WORK = "/root/work/proj";

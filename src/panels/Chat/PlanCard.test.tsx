@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { render, fireEvent } from "@solidjs/testing-library";
 import PlanCard from "./PlanCard";
 import { applyEvent, initialChat } from "./chatStore";

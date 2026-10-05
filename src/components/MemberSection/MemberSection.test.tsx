@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { For } from "solid-js";
 import MemberSection from "./MemberSection";

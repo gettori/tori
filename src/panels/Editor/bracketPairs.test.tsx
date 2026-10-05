@@ -5,7 +5,7 @@
 // looks like on screen is not something jsdom can answer, so it is not asked
 // here - but the state still has to be built behind a view, because a view is
 // the only thing that finishes the parse. See `stateFor`.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { forceParsing } from "@codemirror/language";

@@ -1,5 +1,5 @@
 // The quit pipeline's one rule: everyone gets asked, and the first no ends it.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { closeAllowed, registerCloseGuard } from "./closeGuard";
 
 let offs: (() => void)[] = [];

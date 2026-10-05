@@ -6,7 +6,7 @@
 //
 // The store is a module singleton with a once-only fetch, so these run in one
 // sequence against one sweep rather than re-seeding it per test.
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vite-plus/test";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));

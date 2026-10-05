@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import initializeCapture from "../../../dev/fixtures/claude/initialize.jsonl?raw";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";

@@ -3,7 +3,7 @@
 // with no present member opens empty rather than pointing anything at "".
 // Files shows one member at a time, picked from its chip row, an unusable one
 // as its repair, and a branch unit stays exactly as headerless as it was.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { pointerClick } from "../../test/menus";
 import { render, screen, waitFor } from "@solidjs/testing-library";

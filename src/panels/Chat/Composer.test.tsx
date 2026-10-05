@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, fireEvent } from "@solidjs/testing-library";
 import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";

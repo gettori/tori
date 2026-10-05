@@ -5,7 +5,7 @@
 // the same answers in the same order, the verdict column is always filled (an
 // empty cell in a filled column reads as a bug, not as calm), and the filter
 // narrows what is on screen without ever changing what a row says.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";

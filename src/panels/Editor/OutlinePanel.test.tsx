@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import OutlinePanel from "./OutlinePanel";
 import { publishSymbols, clearSymbols, normalizeDocumentSymbols } from "../../utils/symbols";

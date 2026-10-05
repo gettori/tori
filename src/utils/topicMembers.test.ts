@@ -1,7 +1,7 @@
 // The shared tinted-members resource (#155 phase 2). Two events can change what
 // a member chip says: the Topic record itself and the Space list it takes its
 // colour from. Each has to refetch exactly the half it invalidates.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createRoot } from "solid-js";
 import type { TintedMember } from "./topicMembers";
 import { isSyntheticId, syntheticId } from "./syntheticTabs";

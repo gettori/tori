@@ -2,7 +2,7 @@
 // one (plan phase 9 task 5): the focused pane's. The palette's enablement, the
 // git commands and the breadcrumb all read the same published snapshot, so this
 // asserts the snapshot follows pane focus.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 
 globalThis.ResizeObserver ??= class {

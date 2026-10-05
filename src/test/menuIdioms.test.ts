@@ -27,7 +27,7 @@
 // split across the two vitest projects. This file excludes itself: a
 // source-scanning test that reads its own regexes reports itself, which is a
 // gotcha the vault already records.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 const SELF = "test/menuIdioms.test.ts";
 

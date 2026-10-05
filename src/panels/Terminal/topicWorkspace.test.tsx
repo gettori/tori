@@ -1,7 +1,7 @@
 // The terminal inside a Topic (#154 phase 1): tabs group under `topic:<id>`
 // (so the same folder selected from Spaces shows none of them), restore lists
 // sessions across every member root, and the History crumb names the Topic.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 

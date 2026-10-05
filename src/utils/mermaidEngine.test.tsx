@@ -5,7 +5,7 @@
 // `.tsx` for the extension alone. It needs no JSX; it needs the jsdom that the
 // extension selects (see vitest.config.ts), because every seed it passes is read
 // off `getComputedStyle`.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // The two result shapes mermaid's own types insist on, so a mock cannot drift
 // from the API it stands in for.

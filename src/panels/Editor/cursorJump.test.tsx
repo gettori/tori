@@ -4,7 +4,7 @@
 // the claim, that the numbers handed to it come from the right places and that
 // the three guards actually hold. Both matter: a threshold that is right about
 // line numbers it reads off the wrong state records a jump on every tab click.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { caretListener, cursorJumpListener } from "./cursorJump";

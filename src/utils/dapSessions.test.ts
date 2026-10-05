@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 import editorSource from "../panels/Editor/Editor.tsx?raw";
 import type { ToastEvent } from "./events";

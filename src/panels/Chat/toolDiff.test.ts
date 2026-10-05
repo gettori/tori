@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { diffCounts, lineDiff, patchHunks, toolDiffBody } from "./toolDiff";
 import type { PatchHunk } from "../../utils/chatTypes";
 

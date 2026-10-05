@@ -9,7 +9,7 @@
 // whole of the right answer - but they are called from `queueMicrotask` and
 // from `requestAnimationFrame`, which means the missing method surfaces as an
 // *unhandled* error after the test that caused it has already passed.
-import { afterEach } from "vitest";
+import { afterEach } from "vite-plus/test";
 import { cleanup } from "@solidjs/testing-library";
 import { installTabLayout, resetTabBarWidth } from "./tabLayout";
 

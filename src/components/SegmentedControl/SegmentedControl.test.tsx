@@ -8,7 +8,7 @@
 // Note the negative test below. An assertion that cannot fail is not a gate, and
 // a labeled control passes axe trivially, so the fixture that breaks the
 // component's documented contract is what proves this one has teeth.
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import SegmentedControl from "./SegmentedControl";

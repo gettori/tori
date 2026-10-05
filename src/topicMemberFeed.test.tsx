@@ -9,7 +9,7 @@
 // `topics://changed` refetches (`createTopicMembers` is invalidation-based
 // by design, one read per generation) and a consumer follows. The panels that
 // take those members as a prop assert the prop drives them in their own files.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { For } from "solid-js";
 

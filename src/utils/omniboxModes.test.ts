@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { MODES, parseLine, parseQuery, specOf } from "./omniboxModes";
 
 describe("which mode a query selects", () => {

@@ -63,7 +63,7 @@
 // has no JSX transform available to it. Scanning `.tsx` alone also keeps this
 // file out of its own scan, which otherwise reports its own regex literal as a
 // violation (see the vault's gotcha on a source-scanning test reading itself).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 const SOURCES = Object.fromEntries(
   Object.entries(

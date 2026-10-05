@@ -1,7 +1,7 @@
 // The one comparison the app makes with versions, and its stance: ahead of
 // the measurement is silence, behind it is the only warnable state, and
 // ignorance never warns.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { behindVerified, verifiedVersion } from "./versions";
 
 describe("behindVerified", () => {

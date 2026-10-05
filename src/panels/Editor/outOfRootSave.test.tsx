@@ -9,7 +9,7 @@
 // So an out-of-root tab records the file's mtime and re-checks it just before
 // writing. In root, nothing changes: the watcher got there first, and a second
 // answer read at save time would only ever be staler.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";
 

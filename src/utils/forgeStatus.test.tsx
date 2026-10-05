@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { AuthState, ForgeAccount, RepoAccount, StatusReport, UnitStatus } from "./forgeTypes";
 import { MIN_GAP_MS, POLL_INTERVAL_MS, PRIMARY_BACKOFF_MS } from "./forgePoll";
 

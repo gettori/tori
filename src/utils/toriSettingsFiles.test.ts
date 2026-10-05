@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { isToriSettingsFile, TORI_SETTINGS_FILES } from "./toriSettingsFiles";
 import { languageIdFor, type LspServer } from "./lspServers";
 

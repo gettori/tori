@@ -8,7 +8,7 @@
 // strips and tabs are given the rects a real layout would have. What that
 // leaves untested is the browser's own drag plumbing, which is what the CDP
 // probe (dev/p10-drag-probe.mjs) is for.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { ChangeSet, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { LSPClient } from "@codemirror/lsp-client";

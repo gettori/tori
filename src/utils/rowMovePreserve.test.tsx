@@ -3,7 +3,7 @@
 // simulate the browser's resets inside `fn` and pin the restore half, and the
 // last runs a real keyed <For> reorder over a mixed list, the shape the
 // terminal stage actually is.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { createSignal, For } from "solid-js";
 import { render } from "@solidjs/testing-library";
 import { preserveScrollAndFocus } from "./rowMovePreserve";

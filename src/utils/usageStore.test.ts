@@ -1,6 +1,6 @@
 // The account-level quota store: what merges, what is absent, and what is only
 // said once.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
 let loaded: unknown = null;

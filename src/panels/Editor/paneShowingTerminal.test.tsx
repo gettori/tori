@@ -3,7 +3,7 @@
 // one on screen. Otherwise both surfaces are flex children of the same stage
 // and split it down the middle, with "Open a file from the tree" sitting beside
 // a half-width xterm.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 

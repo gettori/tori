@@ -1,7 +1,7 @@
 // The lazy edge around CodeMirror (plan phase 7 verify): CodeEditor and the
 // grammars load on first file open through Editor.tsx's lazy() edges. This
 // walks the eager static-import graph from the entry and names any offender.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 
 // Vite's own glob rather than `node:fs`, the way `boundary.test.ts` does it,
 // so no `@types/node` is needed. Keys are relative to this file: `../index.tsx`.

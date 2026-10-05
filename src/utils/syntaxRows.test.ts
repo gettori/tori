@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import { overlay, paintRows } from "./syntaxRows";
 import { buildRows } from "./diffView";
 import { HIGHLIGHT_MAX } from "../panels/Chat/highlight";

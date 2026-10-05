@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { render, cleanup } from "@solidjs/testing-library";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { SearchQuery, setSearchQuery } from "@codemirror/search";

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import ProjectIcon, { type ProjectIconSource } from "./ProjectIcon";
 

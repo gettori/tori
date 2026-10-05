@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { isScratchPath, defaultSaveName, resolveSavePath } from "./scratch";
 
 const DIR = "/Users/me/.config/tori/scratch";

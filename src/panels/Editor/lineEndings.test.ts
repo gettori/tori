@@ -4,7 +4,7 @@
 // file; this half is about the decisions the round trip rests on: which ending
 // wins when a file uses both, and that the three values `fromDisk` returns
 // really are three views of one answer rather than three chances to disagree.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { detectEol, fromDisk } from "./lineEndings";
 
 /** Every source file in this folder, as text. Vite's own glob rather than

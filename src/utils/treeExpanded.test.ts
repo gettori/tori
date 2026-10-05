@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 
 // The rules the tree's open directories follow with no tree mounted: what a
 // stored shape is allowed to be, and what happens to an entry when the folder

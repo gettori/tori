@@ -2,7 +2,7 @@
 //
 // A fake clock throughout: every rule here is about elapsed time, and a test
 // that waited out five minutes would be one nobody runs.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import {
   BASE_BACKOFF_MS,
   MANUAL_GAP_MS,

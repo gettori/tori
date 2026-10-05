@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 // A project card shows at most BRANCH_CAP (6) branch rows and puts the rest

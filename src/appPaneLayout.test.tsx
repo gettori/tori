@@ -9,7 +9,7 @@
 // Every case here is about *two* panes, which a workspace no longer starts with
 // (plan phase 12), so the layout is stored the way one that had been split
 // would have it. The single-pane default has its own suite, appOnePane.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

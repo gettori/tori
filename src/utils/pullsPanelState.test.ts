@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { forgeChip } from "./forgeChip";
 import { pullsPanelState, type DirectRead, type PullsPanelState } from "./pullsPanelState";
 import type { BranchSync } from "./gitActions";

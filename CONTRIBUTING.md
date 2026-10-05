@@ -53,7 +53,7 @@ with the TOML attached and it can join the bundled set.
 - **Xcode Command Line Tools**: `xcode-select --install`
 - **Rust**, via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the
   version: run `rustup toolchain install` once in the repo to fetch it.
-- **Node.js 22** (`.nvmrc`) and **pnpm** (`corepack enable pnpm`, or see
+- **Node.js 22** (`.node-version`) and **pnpm** (`corepack enable pnpm`, or see
   [pnpm.io](https://pnpm.io/installation)).
 - **cargo-audit** for the audit checks: `cargo install cargo-audit --locked`.
 

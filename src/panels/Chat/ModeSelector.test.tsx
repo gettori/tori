@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import ModeSelector from "./ModeSelector";

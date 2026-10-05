@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite-plus";
 import solid from "vite-plugin-solid";
 
 // Standalone test config (takes precedence over vite.config.ts), split into two

@@ -30,7 +30,7 @@
 // from its own `import.meta.glob`. That is load-bearing and invisible, so the
 // suite below asserts it rather than trusting it (the vault's gotcha on a
 // source-scanning test reading itself).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 // Vite writes a sibling's key relative to the importer, so `src/test/frames.ts`
 // arrives as `./frames.ts` while everything else arrives as `../panels/...`.

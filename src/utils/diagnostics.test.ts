@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { setDiagnostics } from "@codemirror/lint";
 import {

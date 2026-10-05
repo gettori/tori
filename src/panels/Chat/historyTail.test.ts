@@ -2,7 +2,7 @@
 // folded whole and folded as summary plus tail, must leave the same values
 // behind. Rust writes the file, so a fold rule changed on either side fails.
 
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import golden from "./__fixtures__/historyTail.golden.json";
 import {
   applyEvent,

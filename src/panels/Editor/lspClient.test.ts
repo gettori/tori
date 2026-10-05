@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { ToastEvent } from "../../utils/events";
 
 // The client's lifecycle signal, and which session answers for a given file.

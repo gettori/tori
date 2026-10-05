@@ -1,6 +1,6 @@
 // The contract this helper exists to hold: PURGE_UNDER_PATH goes out before the
 // worktree does, and it goes out even when the removal then fails.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 const bridge = vi.hoisted(() => ({
   steps: [] as string[],

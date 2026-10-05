@@ -4,7 +4,7 @@
 //
 // `breakpoints.ts` owns the store and `debugBreakpoints.ts` owns the wire; both
 // are tested on their own. Nothing here knows a debug session exists.
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import {

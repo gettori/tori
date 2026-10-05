@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { editorState, publishEditorState, clearEditorState } from "./editorState";
 
 // The whole point of the module: a consumer reads what the editor is showing

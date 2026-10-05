@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 // The impure half: what `launchTarget` asks the backend for, and what it does
 // with a target the adapter refuses. `debugTargets.ts` owns the config rules and

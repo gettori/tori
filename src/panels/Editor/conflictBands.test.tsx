@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorView } from "@codemirror/view";
 import { conflictBands } from "./conflictBands";
 

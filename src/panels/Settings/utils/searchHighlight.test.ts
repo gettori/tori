@@ -2,7 +2,7 @@
 // have to agree with the matcher that put the row on screen and the badge that
 // counted it. A row shown with nothing marked reads as a filter bug; a mark
 // where the matcher found nothing claims a reason that is not the real one.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { hintRanges, labelRanges, segments } from "./searchHighlight";
 import { matchingEntries } from "./settingsSearch";
 import { SETTINGS } from "../../../utils/settingsCatalog";

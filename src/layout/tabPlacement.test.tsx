@@ -1,6 +1,6 @@
 // Tab placement (plan phase 8): the pane a tab is in, the guard that refuses a
 // move, and the close-pane merge. Pure model, so this runs without a DOM.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import {
   activeIdInPane,
   forgetTab,

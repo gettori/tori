@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 // The pane's view of a debug run: the session tree as a signal, the console
 // transcript, and the sanitising that stands between a program's stdout and the

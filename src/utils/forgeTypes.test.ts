@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import golden from "../../dev/fixtures/forge/model.json";
 import {
   AUTH_STATE_KINDS,

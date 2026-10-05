@@ -2,7 +2,7 @@
 // against the tree it is handed, so the interesting cases are the trees a
 // session actually produces: one after a split, one after a close, one with a
 // pane hidden, and one where the user has locked a pane to a kind.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import {
   closePane,
   leaves,

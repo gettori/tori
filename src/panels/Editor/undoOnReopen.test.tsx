@@ -6,7 +6,7 @@
 // right moment: the buffer being closed has to be the one the view was showing
 // (not the copy stashed before the last keystroke), and the one handed back has
 // to be reachable by `undo` rather than merely present in memory.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";

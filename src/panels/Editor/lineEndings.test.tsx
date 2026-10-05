@@ -7,7 +7,7 @@
 // the two. So this mounts the component that owns both and drives the whole
 // round trip. It is the only suite in the repo that mounts the real editor
 // rather than stubbing it, for exactly that reason.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, waitFor } from "@solidjs/testing-library";
 import { EditorView } from "@codemirror/view";

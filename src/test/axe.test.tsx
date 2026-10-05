@@ -3,7 +3,7 @@
 // The helper is the thing every component test will lean on, so it needs its own
 // proof that it can fail. A agent that reports "no violations" because it
 // never really looked is worse than no agent, since it reads as coverage.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 import axe, { type Result } from "axe-core";
 import {

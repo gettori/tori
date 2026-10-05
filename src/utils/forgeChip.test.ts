@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { forgeChip, forgeDoor } from "./forgeChip";
 import type { CheckState, PullRequest, ReviewDecision, UnitStatus } from "./forgeTypes";
 import type { KnownHosts } from "./prUrl";

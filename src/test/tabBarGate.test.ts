@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 
 /** `OverflowTabBar` as text. Vite's own glob rather than `node:fs`, the way
  *  `boundary.test.ts` does it, so no `@types/node` is needed. */

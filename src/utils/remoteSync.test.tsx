@@ -2,7 +2,7 @@
 // *when* `git_fetch_quiet` is called, never what it does: which containers are
 // actually due is Rust's decision, and the floor this passes is the only part
 // of that decision the frontend owns.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createRoot } from "solid-js";
 
 const calls: { minAgeSecs: number; only: string | null }[] = [];

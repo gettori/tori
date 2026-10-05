@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { activeToken, dropToken, moveIndex, rank, replaceToken, MAX_COMPLETIONS } from "./composerCompletion";
 
 describe("activeToken", () => {

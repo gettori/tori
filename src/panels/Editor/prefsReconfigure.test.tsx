@@ -14,7 +14,7 @@
 // The failure and its fix were both reproduced in a real browser instead
 // (`grimoire/smoke/`, Phase 12); removing the empty dispatch does not fail
 // anything here.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 
 globalThis.ResizeObserver ??= class {

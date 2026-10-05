@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorState, type StateCommand } from "@codemirror/state";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import type { DiffRow } from "../../utils/diffView";

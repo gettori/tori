@@ -1,7 +1,7 @@
 // The preview's links and images. A link is routed and never followed, since
 // an anchor the webview follows takes the whole app off the SPA; a remote
 // image still renders here, which is the one place it does.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { orgNotice, orgRoute } from "./orgNotice";
 
 // The rule both surfaces share. The sidebar's repo row meets this on a poll and

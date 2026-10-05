@@ -4,7 +4,7 @@
 // The rule under test is that these are two facts and both have to say yes. The
 // asymmetry matters more than the conjunction: a definite "signed out" is a no,
 // and the `unknown` that four of the seven bundled agents report forever is not.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const bench = vi.hoisted(() => ({
   enabled: {} as Record<string, boolean>,

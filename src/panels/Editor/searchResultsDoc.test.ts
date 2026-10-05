@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 // Source text, to check the eager-path rule below the way `commands.test.ts`
 // checks its own import rule.

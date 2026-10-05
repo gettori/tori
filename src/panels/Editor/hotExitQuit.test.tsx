@@ -5,7 +5,7 @@
 // when hot exit is off, and *also* show it when hot exit was on but the stash
 // did not land. The third is the one worth a test, because getting it wrong
 // looks exactly like the first until the day somebody's disk is full.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 
 import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";

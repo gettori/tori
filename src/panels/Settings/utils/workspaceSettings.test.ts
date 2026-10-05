@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import configSource from "../../../../src-tauri/src/config.rs?raw";
 import settingsSource from "../../../../src-tauri/src/settings.rs?raw";
 import { editorOrigins, overlayFile, parseOverlay, resolveEditorDefaults, withOverride } from "./workspaceSettings";

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 
 // The rules a breakpoint follows before any adapter has heard of it: where a
 // line is kept, what a second click does, and what is left behind when the last

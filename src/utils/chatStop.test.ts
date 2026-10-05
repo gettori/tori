@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { chatToStop, isStoppable, stoppableChats, type LiveChat } from "./chatSessions";
 import { BINDINGS } from "./hotkeys";
 import { applyEvent, chatStatus, initialChat } from "../panels/Chat/chatStore";

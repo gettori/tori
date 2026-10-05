@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 // Read as text, the way commands.test.ts and revertGuard's test do: this
 // project ships no `@types/node`, so `?raw` is how a test inspects source.
 import codeEditorSource from "../panels/Editor/CodeEditor.tsx?raw";

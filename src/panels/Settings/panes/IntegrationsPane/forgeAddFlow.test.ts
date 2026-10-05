@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { began, failed, isSelfHosted, pasteInstead, type AddFlow, type Target } from "./forgeAddFlow";
 import type { SignInRoutes, SignInStart } from "../../../../utils/forgeTypes";
 

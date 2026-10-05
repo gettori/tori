@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import { EditorState, Text } from "@codemirror/state";
 import { EditorView, Decoration } from "@codemirror/view";
 import { codeLensCount, codeLensDecorations, codeLensExtension, setCodeLenses } from "./codeLensWidget";

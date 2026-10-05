@@ -1,7 +1,7 @@
 // The dock: Tori's own commands in a card under the work card, on screen beside
 // whatever branch is selected. The real shell and terminal panel; the surfaces
 // are stubbed to what a real one does with focus.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import { createEffect } from "solid-js";
 

@@ -1,7 +1,7 @@
 // A terminal tab inside a Topic names its repo (#158 phase 2). A shell has no
 // file, so the cwd is what answers, and the member set comes from the same
 // module-wide resource the editor reads rather than a second `list_topics`.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import { setTabBarWidth } from "../../test/tabLayout";

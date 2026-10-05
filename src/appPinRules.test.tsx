@@ -3,7 +3,7 @@
 // pane takes one kind and nothing else, and neither may disturb what is already
 // on screen. Same stubbed panels as appSplits: registered descriptors over the
 // real stores, so this is about the shell.
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { cleanup, render, screen, waitFor, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

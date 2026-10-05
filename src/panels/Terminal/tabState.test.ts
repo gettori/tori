@@ -5,7 +5,7 @@
 // Table-driven on purpose: the rule is per kind (only chat has a readable
 // middle), and the interesting half is what is *refused*, which a handful of
 // hand-written cases would under-cover.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import {
   advanceTabState,
   dropTabState,

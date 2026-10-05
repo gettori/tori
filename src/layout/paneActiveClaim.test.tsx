@@ -14,7 +14,7 @@
 // A `.tsx` with no JSX in it: `tabPlacement` persists through localStorage, and
 // the suite splits environments on the extension, so the DOM project is the one
 // that can run this at all.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { activeIdInPane, resetTabPlacement, setPaneActive } from "./tabPlacement";
 
 const WS = "/space/proj/main";

@@ -2,7 +2,7 @@
 // and the tab menu both emit, App runs the guards, and PaneTree draws whatever
 // comes out. The panels are stubbed down to what a pane actually needs of them
 // (a registered descriptor over the real stores), so this is about the shell.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();

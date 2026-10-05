@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
 import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";

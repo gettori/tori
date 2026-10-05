@@ -1,7 +1,7 @@
 // Steering and editing a queued message. These run the real panel: the flush
 // driver, the ceiling and the composer swap during an edit live in `ChatView`,
 // not in the store.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";

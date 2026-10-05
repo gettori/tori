@@ -5,7 +5,7 @@
 // The rule *routing* is asserted through the shell in `appPinRules.test.tsx`;
 // this is the half that rots on its own, a control that stops reaching the
 // store while everything downstream of it still works.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 

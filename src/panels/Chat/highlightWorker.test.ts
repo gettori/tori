@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { Reply, Request } from "./highlightQueue";
 
 // A stand-in for the syntax worker, driven by hand: what is under test is how

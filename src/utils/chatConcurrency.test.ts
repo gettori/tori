@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vite-plus/test";
 import * as concurrency from "./chatConcurrency";
 import { capNotice, chatTabLabel, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "./chatConcurrency";
 import { chatsInFolder, dropLiveChat, setLiveChat } from "./chatSessions";

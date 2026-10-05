@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { Compartment, EditorState, type StateEffect } from "@codemirror/state";
 import { reattachLsp, reconfigureBuffers, type LspBuffer } from "./lspReattach";
 

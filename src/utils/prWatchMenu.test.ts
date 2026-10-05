@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { prWatchMenu, type PrWatchRow } from "./prWatchMenu";
 
 const URL = "https://github.com/o/r/pull/7";

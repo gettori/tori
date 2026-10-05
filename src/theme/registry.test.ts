@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_THEME_ID, getBundledTheme, listSelectableBundled } from "./bundled";
 import { dropLegacy, readCache, type CacheStore } from ".";
 import { paintRoles, type StyleTarget } from "./resolver";

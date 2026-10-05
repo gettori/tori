@@ -12,7 +12,7 @@
 // That is why the compartment is reconfigured through `reconfigureBuffers`
 // (`state.update` for the buffers in no view) rather than through the
 // `prefsConf` dispatch beside it, and this is the test that says so.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 

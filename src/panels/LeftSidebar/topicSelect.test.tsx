@@ -2,7 +2,7 @@
 // shell a topic Selection, exactly one row reads as active, toggling the
 // mode leaves the selection alone, and deleting the selected Topic clears
 // it and sweeps its key out of every store.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 

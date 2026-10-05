@@ -32,3 +32,4 @@ grimoire/
 *.log
 .env
 .env.local
+.vitest/

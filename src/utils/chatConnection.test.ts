@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { applyEvent, beginReconnect, chatStatus, connectionHealth, enqueue, initialChat, queuedText } from "../panels/Chat/chatStore";
 import type { ChatEvent } from "./chatTypes";
 

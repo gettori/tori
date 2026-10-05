@@ -3,7 +3,7 @@
 // Every one of them is a `StateCommand`, so none of this needs a view: a real
 // language pack gives `selectParentSyntax` a syntax tree to climb, and a
 // capturing dispatch stands in for the pane.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { EditorSelection, EditorState, type StateCommand } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { defaultKeymap, selectParentSyntax } from "@codemirror/commands";

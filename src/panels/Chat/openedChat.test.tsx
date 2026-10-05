@@ -2,7 +2,7 @@
 // phase 3). `ChatView` is mounted for real, like `openingOptions.test.tsx`,
 // because what is under test is the split between the surface and the child:
 // a stand-in would have to fake exactly the thing being asserted.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";

@@ -2,7 +2,7 @@
 // last run's terminal tabs (never spawning them unasked) while the same
 // workspace's files come back silently. Both panels mount into one tree, the
 // shape the two-pane shell gives them.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // The strip seeds its visible count from an empty item list and corrects it in a
 // frame, so without this every lookup by tab role races that correction.

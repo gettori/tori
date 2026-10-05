@@ -6,7 +6,7 @@
 // member has to move `activeRoot` onto a member that still exists, before
 // anything touches the folder, or the panels keep showing a repo the Topic no
 // longer has.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { pointerClick } from "../../test/menus";

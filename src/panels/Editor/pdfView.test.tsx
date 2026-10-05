@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import PdfView from "./PdfView";
 import { pdfView, releasePdfsExcept, setPdfView } from "./pdfDocument";
 import { expectNoAxeViolations } from "../../test/axe";

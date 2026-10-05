@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
 import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 import CallsPanel from "./CallsPanel";
 import {
