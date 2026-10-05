@@ -11,7 +11,7 @@ const FORBID_ATTR = ["style"];
 // DOMPurify's own list plus `tori:`, the scheme the autopilot links a place in
 // the app with. A scheme it does not know loses its href.
 const ALLOWED_URI_REGEXP =
-  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|tori):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|tori):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i;
 
 type Purifier = ReturnType<typeof DOMPurify>;
 let purifier: Purifier | undefined;

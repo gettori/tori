@@ -102,7 +102,7 @@ export function agentOffReason(id: string, profile: string | null = null): strin
  * moved on screen, and the store is what the pickers read.
  */
 export function setAgentEnabled(id: string, on: boolean): void {
-  const enabled = { ...(settings.agent?.enabled ?? {}) };
+  const enabled = { ...settings.agent?.enabled };
   if (on) enabled[id] = true;
   else delete enabled[id];
   void saveSettings({ ...settings, agent: { ...settings.agent, enabled } }).catch(() => {});
@@ -193,7 +193,7 @@ export function defaultProfile(agentId: string): string {
  * only the one account.
  */
 export function setDefaultProfile(agentId: string, profileId: string): void {
-  const defaultProfiles = { ...(settings.agent?.defaultProfiles ?? {}) };
+  const defaultProfiles = { ...settings.agent?.defaultProfiles };
   if (asTabProfile(profileId)) defaultProfiles[agentId] = profileId;
   else delete defaultProfiles[agentId];
   void saveSettings({ ...settings, agent: { ...settings.agent, defaultProfiles } }).catch(() => {});

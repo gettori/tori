@@ -125,7 +125,7 @@ export function recordReadings(
   const key = accountKey(agentId, profile);
   let changed = false;
   setReadings((prev) => {
-    const account = { ...(prev[key] ?? {}) };
+    const account = { ...prev[key] };
     for (const r of incoming) {
       const held = account[r.kind];
       if (held && held.sampledAt > now) continue;
@@ -285,7 +285,7 @@ export function seedUsageStoreForTests(
 ) {
   const key = accountKey(agentId, profile);
   setReadings((prev) => {
-    const account = { ...(prev[key] ?? {}) };
+    const account = { ...prev[key] };
     for (const r of incoming) {
       account[r.kind] = { ...r, sampledAt: r.sampledAt ?? now, source: r.source ?? "sessions" };
     }

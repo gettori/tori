@@ -120,7 +120,7 @@ const LCS_GUARD = 4_000_000;
 function lcs(a: string[], b: string[]): DiffRow[] {
   // `len[i][j]` is the length of the longest common subsequence of the tails
   // `a[i..]` and `b[j..]`, so walking forward from 0,0 emits in file order.
-  const len: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  const len = Array.from({ length: a.length + 1 }, () => new Int32Array(b.length + 1));
   for (let i = a.length - 1; i >= 0; i -= 1) {
     for (let j = b.length - 1; j >= 0; j -= 1) {
       len[i][j] = a[i] === b[j] ? len[i + 1][j + 1] + 1 : Math.max(len[i + 1][j], len[i][j + 1]);

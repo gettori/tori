@@ -308,8 +308,8 @@ function Bridge(props: {
 
   createEffect(() => {
     // Read both, so a re-seed follows a re-filter as well as a keystroke.
-    props.options;
-    props.query;
+    void props.options;
+    void props.query;
 
     const state = context.listState();
     const manager = state.selectionManager();
