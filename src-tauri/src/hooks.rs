@@ -99,23 +99,22 @@ pub fn prune_stale(sessions: impl Fn() -> Vec<SessionMeta>) {
     if entries.is_empty() {
         return;
     }
-    let last_active: HashMap<String, u64> =
-        sessions().into_iter().map(|s| (s.id, s.last_active)).collect();
+    let last_active: HashMap<String, u64> = sessions().into_iter().map(|s| (s.id, s.last_active)).collect();
     for entry in entries {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
         let stale = match last_active.get(id) {
             None => true,
-            Some(&active) => {
-                std::fs::read_to_string(&path)
-                    .ok()
-                    .and_then(|t| serde_json::from_str::<StatusFile>(&t).ok())
-                    .map(|f| f.at < active)
-                    .unwrap_or(true)
-            }
+            Some(&active) => std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| serde_json::from_str::<StatusFile>(&t).ok())
+                .map(|f| f.at < active)
+                .unwrap_or(true),
         };
         if stale {
             let _ = std::fs::remove_file(&path);
@@ -195,8 +194,15 @@ pub fn agent_hook_launch_args(agent_id: String) -> Vec<String> {
 // Tori's MCP server reaches any claude transport, whether or not its adapter
 // takes the status hooks.
 fn launch_args(adapter: &crate::agents::AgentAdapter) -> Vec<String> {
-    let claude = adapter.chat.as_ref().is_some_and(|c| c.transport == crate::agents::ChatTransport::ClaudeStreamJson);
-    let mut args = if claude { crate::rpc::mcp_config_args() } else { Vec::new() };
+    let claude = adapter
+        .chat
+        .as_ref()
+        .is_some_and(|c| c.transport == crate::agents::ChatTransport::ClaudeStreamJson);
+    let mut args = if claude {
+        crate::rpc::mcp_config_args()
+    } else {
+        Vec::new()
+    };
     if adapter.hooks {
         if let Ok(path) = write_claude_settings_file() {
             args.extend(["--settings".to_string(), path.to_string_lossy().into_owned()]);
@@ -211,7 +217,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn now_secs() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
     }
 
     /// Serializes every test that touches the shared hooks-status directory.
@@ -318,9 +327,18 @@ mod tests {
         ];
         prune_stale(|| sessions.clone());
 
-        assert!(!status_path(&gone).exists(), "a status file for a session that no longer exists is stale");
-        assert!(!status_path(&outdated).exists(), "a status file older than its session's last activity is stale");
-        assert!(status_path(&fresh).exists(), "a status file newer than its session's last activity is kept");
+        assert!(
+            !status_path(&gone).exists(),
+            "a status file for a session that no longer exists is stale"
+        );
+        assert!(
+            !status_path(&outdated).exists(),
+            "a status file older than its session's last activity is stale"
+        );
+        assert!(
+            status_path(&fresh).exists(),
+            "a status file newer than its session's last activity is kept"
+        );
         hooks_status_prune(fresh.clone());
     }
 
@@ -351,10 +369,17 @@ mod tests {
     #[test]
     fn claude_gets_settings_flag_pointing_at_a_short_file_path() {
         let args = agent_hook_launch_args("claude".to_string());
-        assert_eq!((args[0].as_str(), args[2].as_str()), ("--mcp-config", "--settings"), "{args:?}");
+        assert_eq!(
+            (args[0].as_str(), args[2].as_str()),
+            ("--mcp-config", "--settings"),
+            "{args:?}"
+        );
         // Load-bearing: a *path*, not inline JSON - see write_claude_settings_file's
         // doc comment for why an inline blob hangs the shell it's typed into.
-        assert!(!args[3].trim_start().starts_with('{'), "must be a file path, not inline JSON");
+        assert!(
+            !args[3].trim_start().starts_with('{'),
+            "must be a file path, not inline JSON"
+        );
         let text = std::fs::read_to_string(&args[3]).expect("the settings file should exist");
         let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
         assert_eq!(parsed["permissions"], json!({ "allow": crate::rpc::mcp_allow(false) }));

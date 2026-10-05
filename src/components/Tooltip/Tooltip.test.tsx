@@ -32,9 +32,7 @@ function focusTrigger(trigger: HTMLElement) {
  *  before that happens, and pass whether or not the tooltip was mounted in the
  *  right place - the shape of a test that cannot fail. */
 function settleAriaHidden(): Promise<void> {
-  return new Promise((resolve) =>
-    setTimeout(() => requestAnimationFrame(() => resolve())),
-  );
+  return new Promise((resolve) => setTimeout(() => requestAnimationFrame(() => resolve())));
 }
 
 describe("Tooltip", () => {
@@ -220,9 +218,7 @@ describe("Tooltip", () => {
       const trigger = screen.getByRole("button", { name: "Amend" });
       focusTrigger(trigger);
 
-      expect(trigger.getAttribute("aria-describedby")).toBe(
-        screen.getByRole("tooltip").id,
-      );
+      expect(trigger.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
     });
   });
 
@@ -236,9 +232,7 @@ describe("Tooltip", () => {
       // The backfill: the tooltip text *is* the name, exactly as the `title` it
       // replaces was. Losing this at 101 call sites is the regression the whole
       // ticket is arranged to avoid.
-      expect(
-        screen.getByRole("button", { name: "Split the editor" }),
-      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Split the editor" })).toBeTruthy();
     });
 
     it("emits no native title, so the two cannot disagree", () => {
@@ -281,9 +275,7 @@ describe("Tooltip", () => {
     });
 
     it("adds no tooltip machinery when no tooltip is given", () => {
-      const { container } = render(() => (
-        <IconButton icon={<Glyph />} aria-label="Split the editor" />
-      ));
+      const { container } = render(() => <IconButton icon={<Glyph />} aria-label="Split the editor" />);
 
       // The untooltipped path is most of the app, and it stays a bare button.
       const button = screen.getByRole("button", { name: "Split the editor" });
@@ -319,13 +311,7 @@ describe("Tooltip", () => {
 
     it("opens from the surface while the control is disabled", async () => {
       render(() => (
-        <Tooltip
-          label="Nothing staged to commit"
-          as="button"
-          whenDisabled
-          disabled
-          openDelay={0}
-        >
+        <Tooltip label="Nothing staged to commit" as="button" whenDisabled disabled openDelay={0}>
           Commit
         </Tooltip>
       ));

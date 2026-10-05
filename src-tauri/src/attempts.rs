@@ -208,8 +208,17 @@ pub struct CreatedAttempt {
 /// attempt lives inside the project root instead. Removal does go through the
 /// shared path, which is where the dirty and live-use guards live.
 #[tauri::command]
-pub async fn create_attempt(app: AppHandle, root: String, group_id: String, goal: String, branch: String) -> Result<CreatedAttempt, String> {
-    crate::exec::git_write("create_attempt", root.clone(), move || create_attempt_body(app, root, group_id, goal, branch)).await
+pub async fn create_attempt(
+    app: AppHandle,
+    root: String,
+    group_id: String,
+    goal: String,
+    branch: String,
+) -> Result<CreatedAttempt, String> {
+    crate::exec::git_write("create_attempt", root.clone(), move || {
+        create_attempt_body(app, root, group_id, goal, branch)
+    })
+    .await
 }
 
 pub(crate) fn create_attempt_body(
@@ -250,9 +259,20 @@ pub(crate) fn create_attempt_body(
     // Tori created this folder: adopt it so a path that once held other sessions
     // does not surface them as this attempt's history.
     let _ = crate::sessions::adopt(&target_str);
-    record(&root, Attempt { path: target_str.clone(), group_id, goal })?;
+    record(
+        &root,
+        Attempt {
+            path: target_str.clone(),
+            group_id,
+            goal,
+        },
+    )?;
     let _ = app.emit("config://changed", ());
-    Ok(CreatedAttempt { path: target_str, branch, uncloned })
+    Ok(CreatedAttempt {
+        path: target_str,
+        branch,
+        uncloned,
+    })
 }
 
 /// Pick a folder name inside the attempts directory, never overwriting one that
@@ -265,7 +285,13 @@ fn attempt_folder(container: &Path, branch: &str) -> Result<String, String> {
         .next()
         .unwrap_or(branch)
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if base.is_empty() {
         return Err("Branch name has no usable folder segment".into());
@@ -310,12 +336,19 @@ pub fn promote_attempt(
 ) -> Result<Vec<String>, String> {
     let attempts = list_attempts(&root);
     let winner = canon(&winner_path);
-    let Some(group) = attempts.iter().find(|a| canon(&a.path) == winner).map(|a| a.group_id.clone()) else {
+    let Some(group) = attempts
+        .iter()
+        .find(|a| canon(&a.path) == winner)
+        .map(|a| a.group_id.clone())
+    else {
         return Err("That attempt is not recorded, so its group cannot be resolved.".into());
     };
 
     let mut problems = Vec::new();
-    for loser in attempts.iter().filter(|a| a.group_id == group && canon(&a.path) != winner) {
+    for loser in attempts
+        .iter()
+        .filter(|a| a.group_id == group && canon(&a.path) != winner)
+    {
         // Resolved before the worktree goes: a session is found by its recorded
         // cwd, and once the directory is gone there is nothing left to match on.
         let sessions = crate::sessions::ids_under(&index, &loser.path);
@@ -353,7 +386,11 @@ fn discard_attempt(
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let branch = crate::worktree::list_worktrees_body(root.to_string())
         .ok()
-        .and_then(|wts| wts.into_iter().find(|w| canon(&w.path) == canon(path)).map(|w| w.branch))
+        .and_then(|wts| {
+            wts.into_iter()
+                .find(|w| canon(&w.path) == canon(path))
+                .map(|w| w.branch)
+        })
         .filter(|b| !b.is_empty() && b != "(detached)");
 
     for id in session_ids {
@@ -400,8 +437,17 @@ mod tests {
     use super::*;
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git").arg("-C").arg(dir).args(args).output().expect("git runs");
-        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     /// A scratch directory that cleans itself up, plus the project-state map it
@@ -461,13 +507,19 @@ mod tests {
 
         // An ordinary worktree, made the way a user would, outside the group.
         let plain = dir.path().join("plain-wt");
-        git(dir.path(), &["worktree", "add", "-b", "plain", &plain.to_string_lossy()]);
+        git(
+            dir.path(),
+            &["worktree", "add", "-b", "plain", &plain.to_string_lossy()],
+        );
 
         for n in 1..=3 {
             let container = dir.path().join(ATTEMPTS_DIR);
             std::fs::create_dir_all(&container).unwrap();
             let target = container.join(format!("try-{n}"));
-            git(dir.path(), &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()]);
+            git(
+                dir.path(),
+                &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()],
+            );
             record(
                 &root,
                 Attempt {
@@ -532,17 +584,32 @@ mod tests {
     fn an_attempt_is_created_inside_the_root_which_gains_exactly_one_entry() {
         let dir = repo("inside");
         let root = dir.path();
-        let before: Vec<_> = std::fs::read_dir(root).unwrap().flatten().map(|e| e.file_name()).collect();
+        let before: Vec<_> = std::fs::read_dir(root)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
 
         let container = root.join(ATTEMPTS_DIR);
         std::fs::create_dir_all(&container).unwrap();
         for n in 1..=3 {
             let target = container.join(format!("try-{n}"));
-            git(root, &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()]);
+            git(
+                root,
+                &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()],
+            );
         }
 
-        let after: Vec<_> = std::fs::read_dir(root).unwrap().flatten().map(|e| e.file_name()).collect();
-        assert_eq!(after.len(), before.len() + 1, "three attempts, one new entry at the root");
+        let after: Vec<_> = std::fs::read_dir(root)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(
+            after.len(),
+            before.len() + 1,
+            "three attempts, one new entry at the root"
+        );
         assert!(after.iter().any(|n| n == ATTEMPTS_DIR));
         // Inside the root, which is what keeps the sessions discoverable.
         assert!(container.starts_with(root));
@@ -573,11 +640,17 @@ mod tests {
 
         let exclude = std::fs::read_to_string(dir.path().join(".git/info/exclude")).unwrap();
         assert_eq!(
-            exclude.lines().filter(|l| l.trim() == format!("{ATTEMPTS_DIR}/")).count(),
+            exclude
+                .lines()
+                .filter(|l| l.trim() == format!("{ATTEMPTS_DIR}/"))
+                .count(),
             1,
             "written once, not once per call"
         );
-        assert!(!dir.path().join(".gitignore").exists(), "the user's tracked ignore file is untouched");
+        assert!(
+            !dir.path().join(".gitignore").exists(),
+            "the user's tracked ignore file is untouched"
+        );
 
         // And it actually takes effect: an attempt directory is not untracked dirt.
         std::fs::create_dir_all(dir.path().join(ATTEMPTS_DIR)).unwrap();
@@ -609,7 +682,15 @@ mod tests {
             let target = container.join(n);
             git(dir.path(), &["worktree", "add", "-b", n, &target.to_string_lossy()]);
             let p = target.to_string_lossy().into_owned();
-            record(&root, Attempt { path: p.clone(), group_id: group.into(), goal: "g".into() }).unwrap();
+            record(
+                &root,
+                Attempt {
+                    path: p.clone(),
+                    group_id: group.into(),
+                    goal: "g".into(),
+                },
+            )
+            .unwrap();
             paths.push(p);
         }
 
@@ -636,7 +717,10 @@ mod tests {
             .unwrap();
         let branches = String::from_utf8_lossy(&branches.stdout);
         assert!(branches.contains('a'), "the winner's branch is kept");
-        assert!(!branches.lines().any(|l| l.trim() == "b"), "the loser's branch is deleted");
+        assert!(
+            !branches.lines().any(|l| l.trim() == "b"),
+            "the loser's branch is deleted"
+        );
     }
 
     /// `promote_attempt` needs an `AppHandle` to emit, which a unit test has no
@@ -652,7 +736,10 @@ mod tests {
             .map(|a| a.group_id.clone())
             .expect("the winner is recorded");
         let mut problems = Vec::new();
-        for loser in attempts.iter().filter(|a| a.group_id == group && canon(&a.path) != winner) {
+        for loser in attempts
+            .iter()
+            .filter(|a| a.group_id == group && canon(&a.path) != winner)
+        {
             if let Err(e) = discard_attempt(root, &loser.path, &[], None) {
                 problems.push(format!("{}: {e}", loser.path));
             }
@@ -691,11 +778,17 @@ mod tests {
         std::fs::create_dir_all(&container).unwrap();
         for n in 1..=3 {
             let target = container.join(format!("try-{n}"));
-            git(root, &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()]);
+            git(
+                root,
+                &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()],
+            );
             let failed = clone_dep_dirs(root, &target);
             assert!(failed.is_empty(), "clone reported failures: {failed:?}");
 
-            assert!(target.join("node_modules/left/index.js").is_file(), "packages are present");
+            assert!(
+                target.join("node_modules/left/index.js").is_file(),
+                "packages are present"
+            );
             let link = target.join("node_modules/.bin/cli");
             assert!(
                 link.symlink_metadata().unwrap().file_type().is_symlink(),
@@ -770,7 +863,10 @@ mod tests {
         std::fs::create_dir_all(&container).unwrap();
         for n in 1..=3 {
             let target = container.join(format!("try-{n}"));
-            git(root, &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()]);
+            git(
+                root,
+                &["worktree", "add", "-b", &format!("try-{n}"), &target.to_string_lossy()],
+            );
             std::fs::create_dir_all(target.join("node_modules/pkg")).unwrap();
             std::fs::write(target.join("node_modules/pkg/index.js"), "dep\n").unwrap();
             std::fs::write(target.join("attempt-only.txt"), "only in the attempt\n").unwrap();
@@ -788,7 +884,10 @@ mod tests {
             .output()
             .unwrap();
         let listing = String::from_utf8_lossy(&listing.stdout);
-        assert!(listing.contains("real.txt"), "the user's own new file is still captured");
+        assert!(
+            listing.contains("real.txt"),
+            "the user's own new file is still captured"
+        );
         assert!(
             !listing.contains(ATTEMPTS_DIR),
             "the attempts directory reached the snapshot: {listing}"
@@ -824,13 +923,21 @@ mod tests {
         clone_dep_dirs(root, &target);
         crate::worktree::link_shared(&container, &target);
 
-        assert!(target.join(".env").symlink_metadata().is_ok(), "a shared file is linked in");
+        assert!(
+            target.join(".env").symlink_metadata().is_ok(),
+            "a shared file is linked in"
+        );
         assert!(
             target.join("node_modules/pkg/index.js").is_file(),
             "the clone survives: a shared name must not replace it"
         );
         assert!(
-            !target.join("node_modules").symlink_metadata().unwrap().file_type().is_symlink(),
+            !target
+                .join("node_modules")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
             "node_modules stayed the clone, not a link to the shared one"
         );
 
@@ -862,9 +969,14 @@ mod tests {
         std::fs::write(target.join("attempt-only.txt"), "x\n").unwrap();
 
         let files = crate::fs::list_project_files_body(root_str).expect("listing");
-        assert!(files.iter().any(|f| f.contains("a.txt")), "the project's own files are still offered");
         assert!(
-            !files.iter().any(|f| f.contains(ATTEMPTS_DIR) || f.contains("attempt-only")),
+            files.iter().any(|f| f.contains("a.txt")),
+            "the project's own files are still offered"
+        );
+        assert!(
+            !files
+                .iter()
+                .any(|f| f.contains(ATTEMPTS_DIR) || f.contains("attempt-only")),
             "an attempt's files reached quick-open: {files:?}"
         );
     }

@@ -110,9 +110,8 @@ fn default_terminal_font_size() -> u16 {
 impl Default for Typography {
     fn default() -> Self {
         Self {
-            ui_font_family:
-                "\"Inter\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif"
-                    .into(),
+            ui_font_family: "\"Inter\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif"
+                .into(),
             ui_font_size: 15,
             editor_font_family: "\"SF Mono\", Menlo, Monaco, monospace".into(),
             editor_font_size: 15,
@@ -198,7 +197,11 @@ pub struct Forge {
 
 impl Default for Forge {
     fn default() -> Self {
-        Self { enabled: true, picks: Default::default(), pr_watch: false }
+        Self {
+            enabled: true,
+            picks: Default::default(),
+            pr_watch: false,
+        }
     }
 }
 
@@ -707,7 +710,10 @@ pub struct Git {
 
 impl Default for Git {
     fn default() -> Self {
-        Self { fetch_every_minutes: default_fetch_every_minutes(), show_topic_worktrees: false }
+        Self {
+            fetch_every_minutes: default_fetch_every_minutes(),
+            show_topic_worktrees: false,
+        }
     }
 }
 
@@ -723,7 +729,10 @@ pub struct Alert {
 }
 
 fn default_needs_you_alert() -> Alert {
-    Alert { notify: true, sound: false }
+    Alert {
+        notify: true,
+        sound: false,
+    }
 }
 
 // Needs you notified before it had a switch, so a block that leaves `notify`
@@ -737,7 +746,10 @@ fn needs_you_alert<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Alert, D::E
         sound: bool,
     }
     let raw = Raw::deserialize(d)?;
-    Ok(Alert { notify: raw.notify, sound: raw.sound })
+    Ok(Alert {
+        notify: raw.notify,
+        sound: raw.sound,
+    })
 }
 
 /// Per session state, whether it notifies and whether it makes a sound.
@@ -752,7 +764,10 @@ pub struct Notifications {
 
 impl Default for Notifications {
     fn default() -> Self {
-        Self { needs_you: default_needs_you_alert(), turn_finished: Alert::default() }
+        Self {
+            needs_you: default_needs_you_alert(),
+            turn_finished: Alert::default(),
+        }
     }
 }
 
@@ -805,7 +820,11 @@ pub struct Remote {
 
 impl Default for Remote {
     fn default() -> Self {
-        Self { enabled: false, address: None, port: default_remote_port() }
+        Self {
+            enabled: false,
+            address: None,
+            port: default_remote_port(),
+        }
     }
 }
 
@@ -879,7 +898,9 @@ fn default_stall_minutes() -> u32 {
 
 // A file saved before a pick holds `null` or "", and both mean the default.
 fn autopilot_agent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    Ok(Option::<String>::deserialize(d)?.filter(|a| !a.is_empty()).unwrap_or_else(default_autopilot_agent))
+    Ok(Option::<String>::deserialize(d)?
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(default_autopilot_agent))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -994,8 +1015,7 @@ fn migrate_editor_block(mut value: serde_json::Value) -> serde_json::Value {
     }
     // A file can hold both shapes at once if it was written across the rename,
     // so the per-project entries that were already there are kept.
-    let kept: serde_json::Map<String, serde_json::Value> =
-        editor.into_iter().filter(|(_, v)| v.is_object()).collect();
+    let kept: serde_json::Map<String, serde_json::Value> = editor.into_iter().filter(|(_, v)| v.is_object()).collect();
     obj.insert("editorDefaults".into(), serde_json::Value::Object(defaults));
     obj.insert("editor".into(), serde_json::Value::Object(kept));
     value
@@ -1157,7 +1177,10 @@ pub fn pr_watch() -> bool {
 
 pub fn autopilot_worker_cap() -> u32 {
     let settings = load_from(&settings_path());
-    worker_cap(settings.autopilot.max_workers, settings.chat_defaults.max_concurrent_chats)
+    worker_cap(
+        settings.autopilot.max_workers,
+        settings.chat_defaults.max_concurrent_chats,
+    )
 }
 
 /// Load-modify-save on the forge picks, under the same lock and for the same
@@ -1366,12 +1389,18 @@ mod tests {
         // between this struct and itself - the half of the trap that a
         // `Settings`-to-`Settings` comparison cannot see.
         let raw = std::fs::read_to_string(&p).unwrap();
-        assert!(raw.contains("\"maxConcurrentChats\": 9"), "written under the key the panel writes");
+        assert!(
+            raw.contains("\"maxConcurrentChats\": 9"),
+            "written under the key the panel writes"
+        );
 
         // And a file predating the cap reads as the default rather than as
         // zero, which is the value that means "never warn".
         std::fs::write(&p, r#"{"chatDefaults":{"streaming":false}}"#).unwrap();
-        assert_eq!(load_from(&p).chat_defaults.max_concurrent_chats, default_max_concurrent_chats());
+        assert_eq!(
+            load_from(&p).chat_defaults.max_concurrent_chats,
+            default_max_concurrent_chats()
+        );
         // And a file predating the question card reads as on rather than as
         // `false`, which is what a bare `#[serde(default)]` on a bool would
         // give and would silently disable the feature for every existing user.
@@ -1393,17 +1422,53 @@ mod tests {
         let p = tmp_file();
         std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
         let loaded = load_from(&p);
-        assert_eq!(loaded.notifications.needs_you, Alert { notify: true, sound: false });
-        assert_eq!(loaded.notifications.turn_finished, Alert { notify: false, sound: false });
+        assert_eq!(
+            loaded.notifications.needs_you,
+            Alert {
+                notify: true,
+                sound: false
+            }
+        );
+        assert_eq!(
+            loaded.notifications.turn_finished,
+            Alert {
+                notify: false,
+                sound: false
+            }
+        );
 
-        std::fs::write(&p, r#"{"notifications":{"needsYou":{"sound":true},"turnFinished":{"sound":true}}}"#).unwrap();
+        std::fs::write(
+            &p,
+            r#"{"notifications":{"needsYou":{"sound":true},"turnFinished":{"sound":true}}}"#,
+        )
+        .unwrap();
         let partial = load_from(&p);
-        assert_eq!(partial.notifications.needs_you, Alert { notify: true, sound: true });
-        assert_eq!(partial.notifications.turn_finished, Alert { notify: false, sound: true });
+        assert_eq!(
+            partial.notifications.needs_you,
+            Alert {
+                notify: true,
+                sound: true
+            }
+        );
+        assert_eq!(
+            partial.notifications.turn_finished,
+            Alert {
+                notify: false,
+                sound: true
+            }
+        );
 
         let mut s = partial;
-        s.notifications =
-            Notifications { needs_you: Alert { notify: false, sound: true }, turn_finished: Alert { notify: true, sound: false } };
+        s.notifications = Notifications {
+            needs_you: Alert {
+                notify: false,
+                sound: true,
+            },
+            turn_finished: Alert {
+                notify: true,
+                sound: false,
+            },
+        };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
 
@@ -1459,7 +1524,10 @@ mod tests {
         .unwrap();
         let back = load_from(&p);
         assert_eq!(back.budgets.session_usd, Some(3.0));
-        assert_eq!(back.budgets.warn_at_fraction, 0.8, "the fraction came from its default, not from 0");
+        assert_eq!(
+            back.budgets.warn_at_fraction, 0.8,
+            "the fraction came from its default, not from 0"
+        );
         assert_eq!(back.budgets.project_usd, None);
         // And the section that has nothing to do with budgets is untouched: a
         // section that fails to deserialize takes the whole file with it.
@@ -1492,7 +1560,12 @@ mod tests {
 
         let mut s = loaded;
         s.editor_defaults.format_on_save = true;
-        s.editor.insert("/repo/quiet".into(), EditorPrefs { format_on_save: Some(false) });
+        s.editor.insert(
+            "/repo/quiet".into(),
+            EditorPrefs {
+                format_on_save: Some(false),
+            },
+        );
         s.editor.insert("/repo/silent".into(), EditorPrefs::default());
         save_to(&p, &s).unwrap();
         let back = load_from(&p);
@@ -1521,12 +1594,18 @@ mod tests {
         s.editor_defaults.organize_imports_on_save = true;
         save_to(&p, &s).unwrap();
         let back = load_from(&p);
-        assert!(back.editor_defaults.organize_imports_on_save, "and the value written comes back");
+        assert!(
+            back.editor_defaults.organize_imports_on_save,
+            "and the value written comes back"
+        );
         assert_eq!(back, s);
 
         // Written under its camelCase name, which is what the frontend sends.
         let raw = std::fs::read_to_string(&p).unwrap();
-        assert!(raw.contains("organizeImportsOnSave"), "serialized under the name the frontend uses");
+        assert!(
+            raw.contains("organizeImportsOnSave"),
+            "serialized under the name the frontend uses"
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1535,7 +1614,10 @@ mod tests {
         let p = tmp_file();
         std::fs::write(&p, r#"{"lsp":{"disabled":["eslint"]}}"#).unwrap();
         let mut s = load_from(&p);
-        assert!(s.lsp.never_offer.is_empty(), "a file written before the field existed offers everything");
+        assert!(
+            s.lsp.never_offer.is_empty(),
+            "a file written before the field existed offers everything"
+        );
 
         s.lsp.never_offer = vec!["python".into()];
         save_to(&p, &s).unwrap();
@@ -1544,7 +1626,10 @@ mod tests {
         assert_eq!(back.lsp.disabled, vec!["eslint".to_string()]);
 
         let raw = std::fs::read_to_string(&p).unwrap();
-        assert!(raw.contains("neverOffer"), "serialized under the name the frontend uses");
+        assert!(
+            raw.contains("neverOffer"),
+            "serialized under the name the frontend uses"
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1579,7 +1664,10 @@ mod tests {
         let p = tmp_file();
         std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
         let loaded = load_from(&p);
-        assert_eq!(loaded.editor_defaults.tab_size, 2, "a file from before the field reads as the default");
+        assert_eq!(
+            loaded.editor_defaults.tab_size, 2,
+            "a file from before the field reads as the default"
+        );
         assert!(loaded.editor_defaults.insert_spaces);
 
         let mut s = loaded;
@@ -1589,7 +1677,10 @@ mod tests {
         assert_eq!(load_from(&p), s);
 
         let raw = std::fs::read_to_string(&p).unwrap();
-        assert!(raw.contains("tabSize") && raw.contains("insertSpaces"), "serialized under the frontend's names");
+        assert!(
+            raw.contains("tabSize") && raw.contains("insertSpaces"),
+            "serialized under the frontend's names"
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1602,8 +1693,14 @@ mod tests {
         let p = tmp_file();
         std::fs::write(&p, r#"{"editorDefaults":{"formatOnSave":true}}"#).unwrap();
         let loaded = load_from(&p);
-        assert!(loaded.editor_defaults.format_on_save, "the field that was written survived");
-        assert!(!loaded.editor_defaults.vim_mode, "and the one that was not reads as off");
+        assert!(
+            loaded.editor_defaults.format_on_save,
+            "the field that was written survived"
+        );
+        assert!(
+            !loaded.editor_defaults.vim_mode,
+            "and the one that was not reads as off"
+        );
 
         let mut s = loaded;
         s.editor_defaults.vim_mode = true;
@@ -1629,10 +1726,16 @@ mod tests {
         .unwrap();
         let back = load_from(&p);
         assert_eq!(back.typography.terminal_font_family, default_terminal_font_family());
-        assert!(back.typography.terminal_font_family.contains("JetBrainsMono Nerd Font Mono"));
+        assert!(back
+            .typography
+            .terminal_font_family
+            .contains("JetBrainsMono Nerd Font Mono"));
         // Only the terminal moves: the editor's identical value was left alone
         // on purpose, since nothing bundled changes what an editor should use.
-        assert_eq!(back.typography.editor_font_family, "\"SF Mono\", Menlo, Monaco, monospace");
+        assert_eq!(
+            back.typography.editor_font_family,
+            "\"SF Mono\", Menlo, Monaco, monospace"
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1642,11 +1745,18 @@ mod tests {
     #[test]
     fn a_chosen_terminal_font_is_left_alone() {
         let p = tmp_file();
-        std::fs::write(&p, r#"{ "typography": { "uiFontFamily": "Inter", "uiFontSize": 15,
+        std::fs::write(
+            &p,
+            r#"{ "typography": { "uiFontFamily": "Inter", "uiFontSize": 15,
              "editorFontFamily": "Menlo", "editorFontSize": 15,
              "terminalFontFamily": "Menlo, \"SF Mono\", monospace", "terminalFontSize": 15,
-             "lineHeight": 1.5 } }"#).unwrap();
-        assert_eq!(load_from(&p).typography.terminal_font_family, "Menlo, \"SF Mono\", monospace");
+             "lineHeight": 1.5 } }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            load_from(&p).typography.terminal_font_family,
+            "Menlo, \"SF Mono\", monospace"
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1696,7 +1806,10 @@ mod tests {
         s.agent.default_profiles.insert("claude".into(), "globex".into());
         save_to(&p, &s).unwrap();
         let back = load_from(&p);
-        assert_eq!(back.agent.default_profiles.get("claude").map(String::as_str), Some("globex"));
+        assert_eq!(
+            back.agent.default_profiles.get("claude").map(String::as_str),
+            Some("globex")
+        );
         // An agent nobody answered for starts on the login the user already
         // had, which is the absence of an entry rather than a stored "default".
         assert_eq!(back.agent.default_profiles.get("codex"), None);
@@ -1716,7 +1829,10 @@ mod tests {
         std::fs::write(&p, r#"{"agent":{"paths":{"claude":"/builds/claude"}}}"#).unwrap();
         let old = load_from(&p);
         assert!(old.agent.default_profiles.is_empty());
-        assert_eq!(old.agent.paths.get("claude").map(String::as_str), Some("/builds/claude"));
+        assert_eq!(
+            old.agent.paths.get("claude").map(String::as_str),
+            Some("/builds/claude")
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1734,16 +1850,18 @@ mod tests {
                     (
                         "default".to_string(),
                         AccountUsage {
-                            windows: Some(vec![
-                                "five_hour".into(),
-                                "seven_day".into(),
-                                MODEL_WEEK.into(),
-                            ]),
+                            windows: Some(vec!["five_hour".into(), "seven_day".into(), MODEL_WEEK.into()]),
                             warn_at: Some(0.8),
                             notify: Some(false),
                         },
                     ),
-                    ("work".to_string(), AccountUsage { windows: Some(vec![]), ..Default::default() }),
+                    (
+                        "work".to_string(),
+                        AccountUsage {
+                            windows: Some(vec![]),
+                            ..Default::default()
+                        },
+                    ),
                 ]
                 .into(),
             },
@@ -1761,7 +1879,11 @@ mod tests {
             Some(&[] as &[String]),
             "a list naming no windows is a real answer, not an absent one"
         );
-        assert_eq!(back.agent.usage.get("gemini"), None, "an unanswered agent stores nothing");
+        assert_eq!(
+            back.agent.usage.get("gemini"),
+            None,
+            "an unanswered agent stores nothing"
+        );
     }
 
     /// An entry that answers one thing leaves the rest absent rather than
@@ -1799,7 +1921,10 @@ mod tests {
         let mut u = UsageSettings::default();
         u.accounts.insert(
             "default".into(),
-            AccountUsage { windows: Some(vec!["five_hour".into()]), ..Default::default() },
+            AccountUsage {
+                windows: Some(vec!["five_hour".into()]),
+                ..Default::default()
+            },
         );
         let asked = |u: &UsageSettings, id: &str| {
             u.accounts
@@ -1807,7 +1932,10 @@ mod tests {
                 .and_then(|a| a.windows.as_ref())
                 .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
         };
-        assert!(!asked(&u, "default"), "the five-hour chip is not consent to a vault read");
+        assert!(
+            !asked(&u, "default"),
+            "the five-hour chip is not consent to a vault read"
+        );
         assert!(!asked(&u, "work"), "an account with no entry has asked for nothing");
 
         u.accounts.insert(
@@ -1821,7 +1949,10 @@ mod tests {
 
         u.accounts.insert(
             "default".into(),
-            AccountUsage { windows: Some(vec![WEEK_OTHER.into()]), ..Default::default() },
+            AccountUsage {
+                windows: Some(vec![WEEK_OTHER.into()]),
+                ..Default::default()
+            },
         );
         assert!(asked(&u, "default"), "the other week is answered by the token too");
     }
@@ -1838,7 +1969,10 @@ mod tests {
         .unwrap();
         let back = load_from(&p);
         assert!(back.agent.usage.is_empty());
-        assert_eq!(back.agent.paths.get("claude").map(String::as_str), Some("/builds/claude"));
+        assert_eq!(
+            back.agent.paths.get("claude").map(String::as_str),
+            Some("/builds/claude")
+        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -1857,15 +1991,24 @@ mod tests {
 
         // Another agent's account of the same name is not this one's.
         forget_default_profile_in(&p, "claude", "work");
-        assert_eq!(load_from(&p).agent.default_profiles.get("claude").map(String::as_str), Some("globex"));
+        assert_eq!(
+            load_from(&p).agent.default_profiles.get("claude").map(String::as_str),
+            Some("globex")
+        );
 
         forget_default_profile_in(&p, "claude", "globex");
         let back = load_from(&p);
         assert_eq!(back.agent.default_profiles.get("claude"), None);
         // Only that entry: this file holds every other preference too, and a
         // removal that rewrote it from defaults would take them with it.
-        assert_eq!(back.agent.default_profiles.get("codex").map(String::as_str), Some("work"));
-        assert_eq!(back.agent.paths.get("claude").map(String::as_str), Some("/builds/claude"));
+        assert_eq!(
+            back.agent.default_profiles.get("codex").map(String::as_str),
+            Some("work")
+        );
+        assert_eq!(
+            back.agent.paths.get("claude").map(String::as_str),
+            Some("/builds/claude")
+        );
         assert_eq!(back.chat_defaults.model.as_deref(), Some("opus"));
         let _ = std::fs::remove_file(&p);
     }
@@ -1956,7 +2099,10 @@ mod tests {
         let back = load_from(&p);
 
         assert!(!back.editor_defaults.minimap, "the explicit editorDefaults key wins");
-        assert!(back.editor_defaults.rainbow_brackets, "and the old block fills the rest");
+        assert!(
+            back.editor_defaults.rainbow_brackets,
+            "and the old block fills the rest"
+        );
         assert_eq!(back.editor.get("/repo/a").and_then(|e| e.format_on_save), Some(true));
         let _ = std::fs::remove_file(&p);
     }
@@ -2136,7 +2282,11 @@ mod tests {
         assert!(!Remote::default().enabled);
 
         let mut s = Settings::default();
-        s.remote = Remote { enabled: true, address: Some("100.64.1.2".into()), port: 9000 };
+        s.remote = Remote {
+            enabled: true,
+            address: Some("100.64.1.2".into()),
+            port: 9000,
+        };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p).remote, s.remote);
         std::fs::remove_file(&p).ok();
@@ -2163,7 +2313,13 @@ mod tests {
         assert!(load_from(&p).worktree.is_empty());
 
         let mut s = Settings::default();
-        s.worktree.insert("/p".into(), WorktreePrefs { setup_command: "pnpm install".into(), setup_wait: true });
+        s.worktree.insert(
+            "/p".into(),
+            WorktreePrefs {
+                setup_command: "pnpm install".into(),
+                setup_wait: true,
+            },
+        );
         save_to(&p, &s).unwrap();
         assert!(std::fs::read_to_string(&p).unwrap().contains("\"setupCommand\""));
         assert_eq!(load_from(&p).worktree, s.worktree);
@@ -2208,7 +2364,11 @@ mod tests {
     #[test]
     fn import_notice_fires_once_and_never_again() {
         let p = tmp_file();
-        std::fs::write(&p, "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }").unwrap();
+        std::fs::write(
+            &p,
+            "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }",
+        )
+        .unwrap();
         let settings = load_from(&p);
         let mut state = crate::onboarding::State::default();
 
@@ -2233,13 +2393,20 @@ mod tests {
     #[test]
     fn import_path_is_read_but_never_written_back() {
         let p = tmp_file();
-        std::fs::write(&p, "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }").unwrap();
+        std::fs::write(
+            &p,
+            "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }",
+        )
+        .unwrap();
         let s = load_from(&p);
         assert_eq!(s.appearance.legacy_import_path.as_deref(), Some("/x/t.json"));
 
         save_to(&p, &s).unwrap();
         let written = std::fs::read_to_string(&p).unwrap();
-        assert!(!written.contains("importPath"), "importPath must be dropped on save: {written}");
+        assert!(
+            !written.contains("importPath"),
+            "importPath must be dropped on save: {written}"
+        );
         assert!(load_from(&p).appearance.legacy_import_path.is_none());
         std::fs::remove_file(&p).ok();
     }

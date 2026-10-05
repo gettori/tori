@@ -221,11 +221,7 @@ export function countOccurrences(matches: { submatches: Submatch[] }[]): number 
 /** The truncation notice, or null when nothing was dropped. Names both units,
  *  since "matches" alone reads as the row count while a replace acts on
  *  occurrences. */
-export function truncationNotice(
-  truncated: boolean,
-  cap: number,
-  occurrences: number,
-): string | null {
+export function truncationNotice(truncated: boolean, cap: number, occurrences: number): string | null {
   if (!truncated) return null;
   const plural = occurrences === 1 ? "occurrence" : "occurrences";
   return `First ${cap} matching lines shown (${occurrences} ${plural}). Refine your search.`;

@@ -87,9 +87,7 @@ describe("the canonical command table", () => {
     // the shortcut sheet can print - a binding the library installs privately
     // is one nothing can tell the user about.
     for (const c of COMMANDS.filter((c) => c.group === "editor")) {
-      expect(c.scope, `${c.id} is global; an editor action must not fire at a terminal`).not.toBe(
-        "global",
-      );
+      expect(c.scope, `${c.id} is global; an editor action must not fire at a terminal`).not.toBe("global");
     }
   });
 
@@ -227,7 +225,15 @@ describe("the rerun-task binding", () => {
     // ⌘B is the sidebar toggle and refuses Shift, so the pair is a real pair;
     // the table-wide duplicate probe above is what keeps it one.
     const press = (mods: Partial<KeyboardEvent>) =>
-      rerun.match!({ key: "b", code: "KeyB", metaKey: false, shiftKey: false, altKey: false, ctrlKey: false, ...mods } as KeyboardEvent);
+      rerun.match!({
+        key: "b",
+        code: "KeyB",
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        ctrlKey: false,
+        ...mods,
+      } as KeyboardEvent);
     expect(press({ metaKey: true, shiftKey: true })).toBe(true);
     expect(press({ metaKey: true })).toBe(false);
   });

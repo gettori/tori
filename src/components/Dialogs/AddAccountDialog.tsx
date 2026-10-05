@@ -89,8 +89,7 @@ export default function AddAccountDialog(props: {
             </Show>
           </div>
           <div class={styles.fieldHint}>
-            {props.agentLabel} keys its login by this exact spelling, so write it the way your shell
-            exports it.
+            {props.agentLabel} keys its login by this exact spelling, so write it the way your shell exports it.
           </div>
         </div>
       </div>

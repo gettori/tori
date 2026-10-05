@@ -100,8 +100,8 @@ describe("configurationClientCapabilities", () => {
     // stop asking. Declaring it is the half that makes the router's answer
     // something the server will trust.
     expect(configurationClientCapabilities.clientCapabilities.workspace.configuration).toBe(true);
-    expect(
-      configurationClientCapabilities.clientCapabilities.workspace.didChangeConfiguration,
-    ).toEqual({ dynamicRegistration: false });
+    expect(configurationClientCapabilities.clientCapabilities.workspace.didChangeConfiguration).toEqual({
+      dynamicRegistration: false,
+    });
   });
 });

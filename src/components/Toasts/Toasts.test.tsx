@@ -59,9 +59,7 @@ describe("ToastRegion accessibility", () => {
 
     emit(FOCUS_TOASTS);
 
-    expect(document.activeElement).toBe(
-      screen.getByRole("status", { name: "push rejected" }).parentElement,
-    );
+    expect(document.activeElement).toBe(screen.getByRole("status", { name: "push rejected" }).parentElement);
   });
 
   // Kobalte matches its built-in hotkey with `hotkey.every(...)`, and `every`

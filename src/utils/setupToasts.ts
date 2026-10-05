@@ -23,7 +23,10 @@ export function noteSetup(r: SetupReport): void {
     r.state === "done"
       ? { message: `Setup finished in ${name}`, kind: "info" }
       : {
-          message: r.code === null ? `Setup in ${name} ended without an exit code` : `Setup in ${name} failed (exit ${r.code})`,
+          message:
+            r.code === null
+              ? `Setup in ${name} ended without an exit code`
+              : `Setup in ${name} failed (exit ${r.code})`,
           kind: "error",
           action: showLog,
         },

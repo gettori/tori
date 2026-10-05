@@ -42,10 +42,7 @@ const CLAUDE = lockedProvider(adapter("claude", "Claude"), [
   model("haiku", "Haiku 4.5", "Cheap and quick"),
 ]);
 
-const CODEX = lockedProvider(adapter("codex", "Codex"), [
-  model("gpt-5", "GPT-5"),
-  model("gpt-5-mini", "GPT-5 mini"),
-]);
+const CODEX = lockedProvider(adapter("codex", "Codex"), [model("gpt-5", "GPT-5"), model("gpt-5-mini", "GPT-5 mini")]);
 
 const SIGNED_OUT: PaletteProvider = {
   ...lockedProvider(adapter("gemini", "Gemini"), [model("gemini-3-pro", "Gemini 3 Pro")]),

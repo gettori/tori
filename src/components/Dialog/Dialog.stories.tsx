@@ -30,9 +30,7 @@ type Story = StoryObj<typeof meta>;
 const Actions = (props: { confirm?: string; danger?: boolean }) => (
   <>
     <Button>Cancel</Button>
-    <Button variant={props.danger ? "danger" : "primary"}>
-      {props.confirm ?? "OK"}
-    </Button>
+    <Button variant={props.danger ? "danger" : "primary"}>{props.confirm ?? "OK"}</Button>
   </>
 );
 
@@ -121,9 +119,7 @@ export const Overflowing: Story = {
     description: undefined,
     children: (
       <ul style={{ margin: 0, "padding-left": "var(--tori-space-6)" }}>
-        <For each={Array.from({ length: 60 }, (_, i) => i)}>
-          {(i) => <li>Target {i}</li>}
-        </For>
+        <For each={Array.from({ length: 60 }, (_, i) => i)}>{(i) => <li>Target {i}</li>}</For>
       </ul>
     ),
     actions: <Actions confirm="Attach" />,

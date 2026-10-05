@@ -90,7 +90,8 @@ describe("the stop hotkey", () => {
   });
 
   it("matches Cmd+. and not its near neighbours", () => {
-    const ev = (over: Partial<KeyboardEvent>) => ({ metaKey: false, shiftKey: false, ctrlKey: false, altKey: false, key: ".", ...over }) as KeyboardEvent;
+    const ev = (over: Partial<KeyboardEvent>) =>
+      ({ metaKey: false, shiftKey: false, ctrlKey: false, altKey: false, key: ".", ...over }) as KeyboardEvent;
     expect(binding()!.match(ev({ metaKey: true }))).toBe(true);
     expect(binding()!.match(ev({ metaKey: true, shiftKey: true }))).toBe(false);
     expect(binding()!.match(ev({ metaKey: false }))).toBe(false);
@@ -129,7 +130,8 @@ describe("end to end through the store", () => {
       sessionId: SESSION,
       turnId: "t1",
       model: "claude-sonnet-5",
-      permissionMode: "default", agentInitiated: false
+      permissionMode: "default",
+      agentInitiated: false,
     });
     expect(chatToStop(entry())?.sessionId).toBe(SESSION);
 

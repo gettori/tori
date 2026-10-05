@@ -204,8 +204,16 @@ describe("the commit detail tab", () => {
     await waitFor(() => expect(pendingDetail.length).toBe(2));
 
     // The one it left answers last, and must not win the race it lost.
-    pendingDetail[1]({ ...base, subject: "the one asked for", files: [{ path: "asked.ts", old_path: null, status: "M" }] });
-    pendingDetail[0]({ ...base, subject: "the one left behind", files: [{ path: "stale.ts", old_path: null, status: "M" }] });
+    pendingDetail[1]({
+      ...base,
+      subject: "the one asked for",
+      files: [{ path: "asked.ts", old_path: null, status: "M" }],
+    });
+    pendingDetail[0]({
+      ...base,
+      subject: "the one left behind",
+      files: [{ path: "stale.ts", old_path: null, status: "M" }],
+    });
 
     await waitFor(() => expect(screen.getByText("the one asked for")).toBeTruthy());
     expect(screen.queryByText("the one left behind")).toBeNull();

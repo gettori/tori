@@ -47,7 +47,9 @@ describe("languageForPath", () => {
     const keyword = async (path: string, text: string, word: string) => {
       const lang = await languageForPath(path);
       expect(lang, path).not.toBeNull();
-      const span = tokenLines(text, lang!).flat().find((s) => s.text === word);
+      const span = tokenLines(text, lang!)
+        .flat()
+        .find((s) => s.text === word);
       expect(span?.cls, path).toBeTruthy();
     };
     await keyword("/r/main.go", "package main\n", "package");

@@ -56,20 +56,41 @@ const SRC = join(ROOT, "src");
 // are values that are data rather than styling.
 const ALLOWLIST = new Map([
   ["src/styles/tokens.css", "the token layer itself: the one place literals are defined"],
-  ["src/theme/roles.test.ts", "test fixtures asserting the derivation helpers produce specific colors, and that the syntax ramp's categories are telling apart"],
+  [
+    "src/theme/roles.test.ts",
+    "test fixtures asserting the derivation helpers produce specific colors, and that the syntax ramp's categories are telling apart",
+  ],
   ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
-  ["src/theme/contrast.test.ts", "the WCAG reference pairs and the historic misses the gate must keep catching, e.g. Light+'s ANSI green at 2.56 on white"],
-  ["src/dev/Styleguide.tsx", "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them"],
-  ["src/utils/spaceTint.ts", "the space swatches: a space's colour is user data stored in tori.toml beside its name and icon, not part of the UI's palette. It must read the same in every theme - a swatch that changed meaning on a theme switch would make the setting meaningless - so it cannot be a role, which is exactly what a role is for"],
-  ["src/utils/spaceTint.test.ts", "test fixtures pinning the hex -> channel-triple conversion. A named input and its expected three numbers are the only way to catch a red/blue swap, which every wash in the app would then render in the wrong hue"],
-  ["src/panels/Editor/editorFeatures.test.tsx", "buffer contents, not UI styling: the CSS colour-swatch test has to put a colour literal in the document, because a swatch appearing beside one is the whole feature. The literal is the input under test and never reaches a stylesheet"],
+  [
+    "src/theme/contrast.test.ts",
+    "the WCAG reference pairs and the historic misses the gate must keep catching, e.g. Light+'s ANSI green at 2.56 on white",
+  ],
+  [
+    "src/dev/Styleguide.tsx",
+    "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them",
+  ],
+  [
+    "src/utils/spaceTint.ts",
+    "the space swatches: a space's colour is user data stored in tori.toml beside its name and icon, not part of the UI's palette. It must read the same in every theme - a swatch that changed meaning on a theme switch would make the setting meaningless - so it cannot be a role, which is exactly what a role is for",
+  ],
+  [
+    "src/utils/spaceTint.test.ts",
+    "test fixtures pinning the hex -> channel-triple conversion. A named input and its expected three numbers are the only way to catch a red/blue swap, which every wash in the app would then render in the wrong hue",
+  ],
+  [
+    "src/panels/Editor/editorFeatures.test.tsx",
+    "buffer contents, not UI styling: the CSS colour-swatch test has to put a colour literal in the document, because a swatch appearing beside one is the whole feature. The literal is the input under test and never reaches a stylesheet",
+  ],
 ]);
 
 // Directory prefixes, for families of files where every member is exempt for the
 // same reason. A prefix rather than one entry per file: a counted list of paths
 // goes stale the moment a theme is added, and the staleness is silent.
 const ALLOWLIST_PREFIXES = new Map([
-  ["src/theme/palettes/", "theme palettes: flat hex primitives ARE the file's content, and roles.ts derives every semantic role from them"],
+  [
+    "src/theme/palettes/",
+    "theme palettes: flat hex primitives ARE the file's content, and roles.ts derives every semantic role from them",
+  ],
 ]);
 
 /** Whether `rel` is exempt from check 1, by exact path or by directory prefix. */
@@ -82,11 +103,43 @@ function isAllowlisted(rel) {
 }
 
 const NAMED = [
-  "white", "black", "red", "green", "blue", "yellow", "orange", "purple", "gray",
-  "grey", "cyan", "magenta", "pink", "brown", "silver", "gold", "navy", "teal",
-  "olive", "maroon", "lime", "aqua", "fuchsia", "crimson", "tomato", "salmon",
-  "khaki", "violet", "indigo", "beige", "ivory", "coral", "plum", "orchid",
-  "wheat", "azure", "lavender",
+  "white",
+  "black",
+  "red",
+  "green",
+  "blue",
+  "yellow",
+  "orange",
+  "purple",
+  "gray",
+  "grey",
+  "cyan",
+  "magenta",
+  "pink",
+  "brown",
+  "silver",
+  "gold",
+  "navy",
+  "teal",
+  "olive",
+  "maroon",
+  "lime",
+  "aqua",
+  "fuchsia",
+  "crimson",
+  "tomato",
+  "salmon",
+  "khaki",
+  "violet",
+  "indigo",
+  "beige",
+  "ivory",
+  "coral",
+  "plum",
+  "orchid",
+  "wheat",
+  "azure",
+  "lavender",
 ];
 
 // `transparent` and `currentColor` are intentionally not flagged: they are
@@ -121,9 +174,7 @@ const PATTERNS = [
 /** The hue names the scale.* roles declare, e.g. `red` from `scale.red`. These
  *  are names the token layer resolves, so a quoted one is a reference, not a
  *  literal. Derived from ROLES so adding a hue needs no edit here. */
-const SCALE_HUES = new Set(
-  ROLES.filter((r) => r.group === "scale").map((r) => r.id.split(".")[1]),
-);
+const SCALE_HUES = new Set(ROLES.filter((r) => r.group === "scale").map((r) => r.id.split(".")[1]));
 
 /** The one file allowed to name a hue: the generated seti mapping. */
 const HUE_MAPPING = "src/seti/mapping.ts";
@@ -168,13 +219,15 @@ function walk(dir, out = []) {
 // Comments explain colors constantly ("the gold brand", "#fff on a fill"), and
 // flagging prose would train everyone to ignore this check.
 function stripComments(source) {
-  return source
-    // A block comment collapses to its own newlines rather than to "", so every
-    // line after it keeps its number. Deleting them outright shifts every
-    // subsequent report, and a guard that names the wrong line is one people
-    // learn to distrust.
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ""))
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  return (
+    source
+      // A block comment collapses to its own newlines rather than to "", so every
+      // line after it keeps its number. Deleting them outright shifts every
+      // subsequent report, and a guard that names the wrong line is one people
+      // learn to distrust.
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ""))
+      .replace(/(^|[^:])\/\/.*$/gm, "$1")
+  );
 }
 
 // An allowlist entry pointing at a file that no longer exists is silent rot: it
@@ -406,7 +459,9 @@ const termProblems = [];
 if (!termBody) {
   termProblems.push(`could not find termColors() in ${TERMINAL_VIEW}; this check locates it by that name`);
 } else if (termNames.length === 0) {
-  termProblems.push(`termColors() in ${TERMINAL_VIEW} read no --tokens; the v("--x") form this check scans for changed`);
+  termProblems.push(
+    `termColors() in ${TERMINAL_VIEW} read no --tokens; the v("--x") form this check scans for changed`,
+  );
 }
 for (const name of termNames) {
   if (!ROLE_BY_CSS_VAR.has(name)) {
@@ -484,7 +539,8 @@ for (const hue of emitted) {
   if (!declared.has(hue)) hueProblems.push(`${MAPPING} emits hue "${hue}", which has no scale.${hue} role`);
 }
 for (const hue of declared) {
-  if (!emitted.has(hue)) hueProblems.push(`scale.${hue} is declared but no file type uses it; run scripts/gen-seti.mjs`);
+  if (!emitted.has(hue))
+    hueProblems.push(`scale.${hue} is declared but no file type uses it; run scripts/gen-seti.mjs`);
 }
 
 if (hueProblems.length > 0) {
@@ -721,7 +777,9 @@ for (const property of TITLE_RECIPE) {
   if (ours === undefined) {
     titleProblems.push(`${DIALOG_CSS} .title no longer declares ${property}, so there is nothing to match`);
   } else if (theirs === undefined) {
-    titleProblems.push(`${OMNIBOX_CSS} .title does not declare ${property}, so the palette heading drifts from a dialog title`);
+    titleProblems.push(
+      `${OMNIBOX_CSS} .title does not declare ${property}, so the palette heading drifts from a dialog title`,
+    );
   } else if (ours !== theirs) {
     titleProblems.push(`${property}: ${DIALOG_CSS} says ${ours}, ${OMNIBOX_CSS} says ${theirs}`);
   }
@@ -813,7 +871,7 @@ if (!chatSource) {
 
 const tierRoles = ROLES.filter((r) => r.group === "blocking");
 if (tierRoles.length === 0) {
-  blockingProblems.push("no role declares group \"blocking\", so there is no tier for the two cards to share");
+  blockingProblems.push('no role declares group "blocking", so there is no tier for the two cards to share');
 }
 for (const role of tierRoles) {
   if (!(chatSource ?? "").includes(`var(${role.cssVar})`)) {
@@ -834,7 +892,22 @@ if (blockingProblems.length > 0) {
 // its own tint puts text on a pair nothing ever measured and the gate stays
 // green. Held in both directions: the rules may name no other fill, and
 // `contrast.ts` must still measure the strip's text roles against that one.
-const LANE_SELECTORS = [".lanes", ".laneGroup", ".laneGroupName", ".lane", ".lane:hover", ".laneOn", ".laneStill", ".laneStill:hover", ".laneDot", ".laneLabel", ".laneFigure", ".laneKey", ".toolLane", ".toolLane:hover"];
+const LANE_SELECTORS = [
+  ".lanes",
+  ".laneGroup",
+  ".laneGroupName",
+  ".lane",
+  ".lane:hover",
+  ".laneOn",
+  ".laneStill",
+  ".laneStill:hover",
+  ".laneDot",
+  ".laneLabel",
+  ".laneFigure",
+  ".laneKey",
+  ".toolLane",
+  ".toolLane:hover",
+];
 /** The one fill the strip may wear, in both spellings: the CSS var the rules
  *  name, and the role id the contrast table measures against. */
 const LANE_FILL = "--neutral-hover";
@@ -919,8 +992,7 @@ if (!chatSource) {
     }
     if (stripRole !== laneRole) {
       toneProblems.push(
-        `"${meaning}" is ${stripRole} on ${strip} and ${laneRole} on ${lane}; ` +
-          `one panel, one tone per meaning`,
+        `"${meaning}" is ${stripRole} on ${strip} and ${laneRole} on ${lane}; ` + `one panel, one tone per meaning`,
       );
       continue;
     }
@@ -970,7 +1042,9 @@ if (!pdfCss) {
   pdfProblems.push("pdfjs-dist is not installed, so the version the stylesheet names cannot be checked");
 } else {
   // The comment is stripped from `sources`, so the version is read from disk.
-  const named = readFileSync(join(SRC, "panels/Editor/PdfView.module.css"), "utf8").match(/pdf\.js (\d+\.\d+\.\d+)/)?.[1];
+  const named = readFileSync(join(SRC, "panels/Editor/PdfView.module.css"), "utf8").match(
+    /pdf\.js (\d+\.\d+\.\d+)/,
+  )?.[1];
   const installed = JSON.parse(readFileSync(pdfjsPkg, "utf8")).version;
   if (named !== installed) {
     pdfProblems.push(

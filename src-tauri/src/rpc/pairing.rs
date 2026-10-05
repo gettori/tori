@@ -62,13 +62,20 @@ pub struct Pairing {
 
 impl Pairing {
     pub fn new(on_change: Box<dyn Fn(Ended) + Send + Sync>) -> Self {
-        Self { live: Mutex::new(None), on_change }
+        Self {
+            live: Mutex::new(None),
+            on_change,
+        }
     }
 
     pub fn start(&self, url: &str, now_ms: u64) -> Result<Offer, String> {
         let code = random_code()?;
         let expires_ms = now_ms + TTL_MS;
-        *self.lock() = Some(Live { code: code.clone(), expires_ms, wrong: 0 });
+        *self.lock() = Some(Live {
+            code: code.clone(),
+            expires_ms,
+            wrong: 0,
+        });
         Ok(Offer {
             code: format!("{}-{}", &code[..4], &code[4..]),
             url: url.to_string(),
@@ -130,7 +137,9 @@ fn normalise(typed: &str) -> String {
 
 fn random_code() -> Result<String, String> {
     let mut buf = [0u8; 8];
-    std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf)).map_err(|e| e.to_string())?;
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut buf))
+        .map_err(|e| e.to_string())?;
     Ok(buf.iter().map(|b| ALPHABET[(b & 31) as usize] as char).collect())
 }
 
@@ -157,7 +166,11 @@ mod tests {
         assert!(offer.uri.ends_with(&offer.code.replace('-', "")));
         let typed = offer.code.to_lowercase().replace('0', "o").replace('1', "l");
         assert_eq!(p.redeem(&typed, 1, ok), Ok(()));
-        assert_eq!(p.redeem(&offer.code, 2, ok), Err(PairError::NoCode), "a used code is refused");
+        assert_eq!(
+            p.redeem(&offer.code, 2, ok),
+            Err(PairError::NoCode),
+            "a used code is refused"
+        );
         assert_eq!(*seen.lock().unwrap(), vec![Ended::Used]);
     }
 
@@ -177,7 +190,11 @@ mod tests {
             assert_eq!(p.redeem("AAAAAAAA", 1, ok), Err(PairError::Wrong));
         }
         assert_eq!(p.redeem("AAAAAAAA", 1, ok), Err(PairError::Burned));
-        assert_eq!(p.redeem(&offer.code, 1, ok), Err(PairError::NoCode), "the right code after the burn");
+        assert_eq!(
+            p.redeem(&offer.code, 1, ok),
+            Err(PairError::NoCode),
+            "the right code after the burn"
+        );
         assert_eq!(*seen.lock().unwrap(), vec![Ended::Burned]);
     }
 
@@ -194,7 +211,10 @@ mod tests {
     fn a_failed_mint_leaves_the_code_live() {
         let (p, seen) = pairing();
         let offer = p.start("ws://x", 0).unwrap();
-        assert_eq!(p.redeem(&offer.code, 1, || Err::<(), _>("disk full".into())), Err(PairError::Mint("disk full".into())));
+        assert_eq!(
+            p.redeem(&offer.code, 1, || Err::<(), _>("disk full".into())),
+            Err(PairError::Mint("disk full".into()))
+        );
         assert_eq!(p.redeem(&offer.code, 2, ok), Ok(()));
         assert_eq!(*seen.lock().unwrap(), vec![Ended::Used]);
     }

@@ -669,25 +669,64 @@ html {
 /* Syntax classes for code drawn outside an EditorView (the diff rows). Emitted
    as literal class strings by src/panels/Editor/syntaxStyle.ts from the table
    the editor paints with, so they are global like the gutter classes below. */
-.sy-keyword { color: var(--syntax-keyword); }
-.sy-control { color: var(--syntax-control); }
-.sy-operator { color: var(--syntax-operator); }
-.sy-string { color: var(--syntax-string); }
-.sy-escape { color: var(--syntax-escape); }
-.sy-regexp { color: var(--syntax-regexp); }
-.sy-comment { color: var(--syntax-comment); font-style: italic; }
-.sy-number { color: var(--syntax-number); }
-.sy-constant { color: var(--syntax-constant); }
-.sy-type { color: var(--syntax-type); }
-.sy-class { color: var(--syntax-class); }
-.sy-namespace { color: var(--syntax-namespace); }
-.sy-variable { color: var(--syntax-variable); }
-.sy-property { color: var(--syntax-property); }
-.sy-tag { color: var(--syntax-tag); }
-.sy-attribute { color: var(--syntax-attribute); }
-.sy-punctuation { color: var(--syntax-punctuation); }
-.sy-function { color: var(--syntax-function); }
-.sy-method { color: var(--syntax-method); }
+.sy-keyword {
+  color: var(--syntax-keyword);
+}
+.sy-control {
+  color: var(--syntax-control);
+}
+.sy-operator {
+  color: var(--syntax-operator);
+}
+.sy-string {
+  color: var(--syntax-string);
+}
+.sy-escape {
+  color: var(--syntax-escape);
+}
+.sy-regexp {
+  color: var(--syntax-regexp);
+}
+.sy-comment {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+.sy-number {
+  color: var(--syntax-number);
+}
+.sy-constant {
+  color: var(--syntax-constant);
+}
+.sy-type {
+  color: var(--syntax-type);
+}
+.sy-class {
+  color: var(--syntax-class);
+}
+.sy-namespace {
+  color: var(--syntax-namespace);
+}
+.sy-variable {
+  color: var(--syntax-variable);
+}
+.sy-property {
+  color: var(--syntax-property);
+}
+.sy-tag {
+  color: var(--syntax-tag);
+}
+.sy-attribute {
+  color: var(--syntax-attribute);
+}
+.sy-punctuation {
+  color: var(--syntax-punctuation);
+}
+.sy-function {
+  color: var(--syntax-function);
+}
+.sy-method {
+  color: var(--syntax-method);
+}
 
 /* The undecided-conflict row inside the merge Result pane. Emitted as literal
    class strings by src/panels/Editor/resultPane.ts, so global like the gutter
@@ -1094,7 +1133,6 @@ html {
   color: var(--accent-fg);
   text-decoration: underline;
 }
-
 
 /* LSP diagnostics. @codemirror/lint ships hardcoded colours in its base theme
    (they live in node_modules, so the token guard cannot see them); these

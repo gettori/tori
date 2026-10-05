@@ -325,8 +325,7 @@ const stageHosts = () => [...document.querySelectorAll<HTMLElement>("[data-stage
 // By dataset rather than an attribute selector: a tab id is a file path, so it
 // carries separators a selector would have to be escaped for.
 const hostEl = (id: string) => stageHosts().find((el) => el.dataset.stageHost === id) ?? null;
-const editorHostEl = () =>
-  stageHosts().find((el) => el.dataset.stageHost?.startsWith("editor-stage")) ?? null;
+const editorHostEl = () => stageHosts().find((el) => el.dataset.stageHost?.startsWith("editor-stage")) ?? null;
 const editorView = () => {
   const host = editorHostEl();
   return host ? EditorView.findFromDOM(host) : null;
@@ -419,7 +418,14 @@ function editorState(host: HTMLElement | null): EditorReading {
   const view = host ? EditorView.findFromDOM(host) : null;
   if (!view) {
     return {
-      found: false, scrollTop: -1, centerLine: -1, topLine: -1, scrollHeight: -1, anchor: -1, head: -1, undo: -1,
+      found: false,
+      scrollTop: -1,
+      centerLine: -1,
+      topLine: -1,
+      scrollHeight: -1,
+      anchor: -1,
+      head: -1,
+      undo: -1,
     };
   }
   const sel = view.state.selection.main;
@@ -699,6 +705,8 @@ export async function quit(): Promise<void> {
   // `destroy`, not `close`: close re-enters the editor's dirty-buffer confirm
   // and would hang on a dialog nobody can answer. Destroying the window leaves
   // the process up (PTY and chat hosts), so the backend is asked to exit too.
-  await getCurrentWindow().destroy().catch(() => {});
+  await getCurrentWindow()
+    .destroy()
+    .catch(() => {});
   await invoke("trace_quit").catch(() => {});
 }

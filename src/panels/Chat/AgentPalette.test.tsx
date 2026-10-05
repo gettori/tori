@@ -36,10 +36,7 @@ function model(value: string, label: string): PickableModel {
   };
 }
 
-const claude = lockedProvider(adapter("claude", "Claude"), [
-  model("sonnet", "Sonnet"),
-  model("haiku", "Haiku"),
-]);
+const claude = lockedProvider(adapter("claude", "Claude"), [model("sonnet", "Sonnet"), model("haiku", "Haiku")]);
 const codex: PaletteProvider = {
   ...lockedProvider(adapter("codex", "Codex"), [model("gpt-5", "GPT-5")]),
   health: { kind: "fix", reason: "Signed out" },
@@ -144,11 +141,9 @@ describe("AgentPalette", () => {
     // Scoped to the models list: the agent row carries the same class all the
     // while, which is its own decision (it names what the right pane is of).
     const lit = () =>
-      [
-        ...screen
-          .getByRole("listbox", { name: "Models" })
-          .querySelectorAll(`[role="option"].${styles.rowActive}`),
-      ].map((o) => o.id.replace(/^.*?-models-/, ""));
+      [...screen.getByRole("listbox", { name: "Models" }).querySelectorAll(`[role="option"].${styles.rowActive}`)].map(
+        (o) => o.id.replace(/^.*?-models-/, ""),
+      );
     expect(lit()).toEqual([]);
     expect(active(filter)).toBeNull();
 
@@ -429,10 +424,9 @@ describe("AgentPalette", () => {
   it("bars a recheck while one is already in flight", () => {
     const probing: PaletteProvider = { ...claude, health: { kind: "probing" } };
     setup({ providers: [probing], onRecheck: vi.fn() });
-    expect(
-      (screen.getByRole("button", { name: /check claude for new models/i }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    expect((screen.getByRole("button", { name: /check claude for new models/i }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it("offers one agent when it is handed one, which is the whole of the lock", () => {

@@ -21,8 +21,7 @@ const { installTrace, traceSwitchStart, tracePaint, traceSettle, traceFlush } = 
 await installTrace();
 
 type Row = { t: string; kind: string; key: string; paint: number | null; settled: number | null };
-const rows = (): Row[] =>
-  written.map((l) => JSON.parse(l) as Row).filter((r) => r.t === "switch");
+const rows = (): Row[] => written.map((l) => JSON.parse(l) as Row).filter((r) => r.t === "switch");
 
 beforeEach(() => {
   written.length = 0;

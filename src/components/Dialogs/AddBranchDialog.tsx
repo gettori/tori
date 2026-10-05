@@ -136,9 +136,7 @@ export default function AddBranchDialog(props: {
 }) {
   const [query, setQuery] = createSignal(props.prefill ?? "");
   const [picked, setPicked] = createSignal<BranchPick | null>(
-    props.prefill && props.locals.includes(props.prefill)
-      ? { name: props.prefill, kind: "local" }
-      : null,
+    props.prefill && props.locals.includes(props.prefill) ? { name: props.prefill, kind: "local" } : null,
   );
   const [base, setBase] = createSignal(props.baseDefault ?? "");
   let input: HTMLInputElement | undefined;
@@ -168,8 +166,7 @@ export default function AddBranchDialog(props: {
 
   // Local, and nothing standing on it. A remote-only row has no local ref to
   // delete, and git refuses a branch that is checked out anywhere.
-  const deletable = (name: string) =>
-    !!props.onDeleteAsk && kinds().get(name) === "local" && !taken().has(name);
+  const deletable = (name: string) => !!props.onDeleteAsk && kinds().get(name) === "local" && !taken().has(name);
 
   const [source, setSource] = createSignal<"branch" | "issue">("branch");
   const [issueQuery, setIssueQuery] = createSignal("");
@@ -182,17 +179,21 @@ export default function AddBranchDialog(props: {
   const [ahead, setAhead] = createSignal(false);
 
   createEffect(
-    on(source, (s) => {
-      queueMicrotask(() => input?.focus());
-      if (s !== "issue" || assigned() !== null || !props.issues) return;
-      props.issues
-        .assigned()
-        .then((list) => setAssigned(list.filter((i) => i.kind === "issue")))
-        .catch((e) => {
-          setAssigned([]);
-          setIssueError(errorText(e));
-        });
-    }, { defer: true }),
+    on(
+      source,
+      (s) => {
+        queueMicrotask(() => input?.focus());
+        if (s !== "issue" || assigned() !== null || !props.issues) return;
+        props.issues
+          .assigned()
+          .then((list) => setAssigned(list.filter((i) => i.kind === "issue")))
+          .catch((e) => {
+            setAssigned([]);
+            setIssueError(errorText(e));
+          });
+      },
+      { defer: true },
+    ),
   );
 
   const issueMatches = createMemo(() => {
@@ -205,7 +206,9 @@ export default function AddBranchDialog(props: {
   );
   const displays = createMemo(() => new Map((assigned() ?? []).map((i) => [i.key, i.display])));
   const unlistedKey = () => {
-    const m = issueQuery().trim().match(/^#?(\d+)$/);
+    const m = issueQuery()
+      .trim()
+      .match(/^#?(\d+)$/);
     return m && !displays().has(m[1]) ? m[1] : null;
   };
 
@@ -227,14 +230,14 @@ export default function AddBranchDialog(props: {
   const issueKind = (name: string): BranchKind => kinds().get(name) ?? "new";
   // The host makes the branch from its own copy of the base, so the base has
   // to be there, and a branch that already exists here is not the host's to make.
-  const linkable = () =>
-    issueKind(issueName().trim()) !== "local" && !!base() && props.remotes.includes(base());
+  const linkable = () => issueKind(issueName().trim()) !== "local" && !!base() && props.remotes.includes(base());
   const linkNote = () => {
     const name = issueName().trim();
     if (!name) return null;
     if (issueKind(name) === "local") return `${name} already exists here, so it will not be linked`;
     if (!linkable()) return base() ? `${base()} is not on the remote, so the branch stays local` : null;
-    if (link() && ahead()) return `${base()} has commits the remote does not; the branch starts from the remote's ${base()}`;
+    if (link() && ahead())
+      return `${base()} has commits the remote does not; the branch starts from the remote's ${base()}`;
     return null;
   };
 
@@ -242,7 +245,10 @@ export default function AddBranchDialog(props: {
     const b = base();
     if (source() !== "issue" || !link() || !props.issues || !props.locals.includes(b)) return setAhead(false);
     const current = (v: boolean) => base() === b && setAhead(v);
-    props.issues.ahead(b).then(current).catch(() => current(false));
+    props.issues
+      .ahead(b)
+      .then(current)
+      .catch(() => current(false));
   });
 
   const issueChoice = (): BranchPick | null => {
@@ -292,9 +298,7 @@ export default function AddBranchDialog(props: {
   /** The row drawn as chosen, which is a row and never a typed new name. A
    *  memo, so the effect below fires on the choice changing rather than on
    *  every keystroke and every list that lands. */
-  const parked = createMemo(() =>
-    source() === "issue" || choice()?.kind === "new" ? null : (choice()?.name ?? null),
-  );
+  const parked = createMemo(() => (source() === "issue" || choice()?.kind === "new" ? null : (choice()?.name ?? null)));
 
   // Picking answers the list's question, so the next thing to press is the one
   // that commits it. Kobalte hands the filter its focus back as part of
@@ -526,9 +530,7 @@ export default function AddBranchDialog(props: {
               />
               <span class={styles.branchName}>{option.label}</span>
               <Show when={taken().has(option.value)}>
-                <span class={styles.branchTag}>
-                  {props.mode === "worktree" ? "in a worktree" : "checked out"}
-                </span>
+                <span class={styles.branchTag}>{props.mode === "worktree" ? "in a worktree" : "checked out"}</span>
               </Show>
               <Show when={deletable(option.value)}>
                 {/* Not a button: see the note about `option` above. Hidden from
@@ -661,8 +663,12 @@ function BasePicker(props: {
   // two kinds are interleaved by the filter rather than stacked.
   const options = createMemo<ComboboxOption[] | ComboboxGroup[]>(() => {
     const row = (b: { name: string }) => ({ value: b.name, label: b.name });
-    const locals = matches().filter((b) => b.kind === "local").map(row);
-    const remotes = matches().filter((b) => b.kind === "remote").map(row);
+    const locals = matches()
+      .filter((b) => b.kind === "local")
+      .map(row);
+    const remotes = matches()
+      .filter((b) => b.kind === "remote")
+      .map(row);
     if (!locals.length) return remotes;
     if (!remotes.length) return locals;
     return [

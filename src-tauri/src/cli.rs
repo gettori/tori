@@ -9,8 +9,23 @@ use serde_json::{json, Value};
 use crate::rpc::client::{self, Client, Found};
 
 const COMMANDS: [&str; 17] = [
-    "sessions", "projects", "session", "events", "whoami", "steer", "interrupt", "worktree", "checkpoints", "checkpoint", "spawn", "open", "budget",
-    "ask", "pr", "autopilot", "mcp",
+    "sessions",
+    "projects",
+    "session",
+    "events",
+    "whoami",
+    "steer",
+    "interrupt",
+    "worktree",
+    "checkpoints",
+    "checkpoint",
+    "spawn",
+    "open",
+    "budget",
+    "ask",
+    "pr",
+    "autopilot",
+    "mcp",
 ];
 
 const USAGE: &str = "usage:
@@ -50,7 +65,9 @@ const USAGE: &str = "usage:
   tori mcp";
 
 pub fn is_cli() -> bool {
-    std::env::args().nth(1).is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
+    std::env::args()
+        .nth(1)
+        .is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
 }
 
 pub fn run() -> i32 {
@@ -150,7 +167,10 @@ struct Parsed {
 
 impl Parsed {
     fn new(args: &[String], valued: &[&str], switches: &[&str]) -> Result<Self, Failure> {
-        let mut parsed = Parsed { positional: Vec::new(), flags: HashMap::new() };
+        let mut parsed = Parsed {
+            positional: Vec::new(),
+            flags: HashMap::new(),
+        };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             let Some(name) = arg.strip_prefix("--") else {
@@ -179,7 +199,10 @@ impl Parsed {
 
     fn number(&self, name: &str) -> Result<Option<usize>, Failure> {
         self.value(name)
-            .map(|v| v.parse().map_err(|_| usage(format!("--{name} takes a number, got {v}"))))
+            .map(|v| {
+                v.parse()
+                    .map_err(|_| usage(format!("--{name} takes a number, got {v}")))
+            })
             .transpose()
     }
 }
@@ -194,7 +217,9 @@ fn connect() -> Result<Client, Failure> {
     }
     match Client::connect(&endpoint) {
         // A crash leaves the bridge file behind, naming a socket nobody serves.
-        Err(client::ClientError::Io(e)) if endpoint.found == Found::File && e.kind() == io::ErrorKind::ConnectionRefused => {
+        Err(client::ClientError::Io(e))
+            if endpoint.found == Found::File && e.kind() == io::ErrorKind::ConnectionRefused =>
+        {
             let message = "Tori is not running: ~/.config/tori/rpc.json names a socket nobody is serving";
             Err(Failure::Io(io::Error::new(io::ErrorKind::NotFound, message)))
         }
@@ -212,7 +237,11 @@ fn sessions(args: &[String]) -> Result<(), Failure> {
     }
     let rows = rows.as_array().cloned().unwrap_or_default();
     let table: Vec<[String; 7]> = rows.iter().map(session_cells).collect();
-    write_table(&mut out, ["ID", "AGENT", "ACCOUNT", "STATE", "BRANCH", "FOLDER", "TITLE"], &table)
+    write_table(
+        &mut out,
+        ["ID", "AGENT", "ACCOUNT", "STATE", "BRANCH", "FOLDER", "TITLE"],
+        &table,
+    )
 }
 
 fn projects(args: &[String]) -> Result<(), Failure> {
@@ -231,14 +260,31 @@ fn projects(args: &[String]) -> Result<(), Failure> {
 fn project_lines(tree: &Value) -> Vec<String> {
     let text = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let list = |v: &Value, key: &str| v.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
-    let join = |cells: Vec<String>| cells.into_iter().filter(|c| !c.is_empty()).collect::<Vec<_>>().join("  ");
+    let join = |cells: Vec<String>| {
+        cells
+            .into_iter()
+            .filter(|c| !c.is_empty())
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
     let mut lines = Vec::new();
     for space in list(tree, "spaces") {
-        lines.push(join(vec!["space".into(), text(&space, "name"), home_relative(&text(&space, "path"))]));
+        lines.push(join(vec![
+            "space".into(),
+            text(&space, "name"),
+            home_relative(&text(&space, "path")),
+        ]));
         for project in list(&space, "projects") {
-            lines.push(format!("  {}", join(vec![text(&project, "name"), home_relative(&text(&project, "path"))])));
+            lines.push(format!(
+                "  {}",
+                join(vec![text(&project, "name"), home_relative(&text(&project, "path"))])
+            ));
             for unit in list(&project, "units") {
-                let current = if unit["isCurrent"] == true { "current".to_string() } else { String::new() };
+                let current = if unit["isCurrent"] == true {
+                    "current".to_string()
+                } else {
+                    String::new()
+                };
                 let cells = vec![text(&unit, "label"), text(&unit, "kind"), current, text(&unit, "issue")];
                 lines.push(format!("    {}", join(cells)));
             }
@@ -248,7 +294,11 @@ fn project_lines(tree: &Value) -> Vec<String> {
         lines.push(join(vec!["topic".into(), text(&topic, "name"), text(&topic, "branch")]));
         for member in list(&topic, "members") {
             let at = member.get("worktreePath").and_then(Value::as_str).unwrap_or("");
-            let cells = vec![text(&member, "displayName"), home_relative(at), text(&member["state"], "kind")];
+            let cells = vec![
+                text(&member, "displayName"),
+                home_relative(at),
+                text(&member["state"], "kind"),
+            ];
             lines.push(format!("  {}", join(cells)));
         }
     }
@@ -282,8 +332,20 @@ fn session_cells(row: &Value) -> [String; 7] {
         Some(state) => state.replace('_', " "),
         None => "live".to_string(),
     };
-    let title = row.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text("title"));
-    [text("id"), text("agent"), account, state, text("branch"), home_relative(&text("cwd")), clip(&title, 60)]
+    let title = row
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| text("title"));
+    [
+        text("id"),
+        text("agent"),
+        account,
+        state,
+        text("branch"),
+        home_relative(&text("cwd")),
+        clip(&title, 60),
+    ]
 }
 
 fn home_relative(path: &str) -> String {
@@ -314,7 +376,11 @@ fn session_tail(args: &[String]) -> Result<(), Failure> {
     let json = p.has("json");
     // One reply streams as many text pieces, so N lines of text need far more
     // than N events. `--json` prints events, so there it counts events.
-    let limit = if json { lines } else { lines.map(|n| n.saturating_mul(20)) };
+    let limit = if json {
+        lines
+    } else {
+        lines.map(|n| n.saturating_mul(20))
+    };
     let params = json!({ "id": id, "agent": p.value("agent"), "limit": limit });
     let events = connect()?.call("session.tail", params)?;
     let mut out = io::stdout().lock();
@@ -362,7 +428,11 @@ fn transcript(events: &[Value]) -> Vec<String> {
                     .or_else(|| input("file_path"))
                     .or_else(|| input("path"))
                     .unwrap_or("");
-                lines.push(format!("  [{}] {}", field("name").unwrap_or("tool"), clip(what, 100)).trim_end().to_string());
+                lines.push(
+                    format!("  [{}] {}", field("name").unwrap_or("tool"), clip(what, 100))
+                        .trim_end()
+                        .to_string(),
+                );
             }
             "sessionError" => {
                 flush(&mut prose, &mut lines);
@@ -392,7 +462,11 @@ fn session_wait(args: &[String]) -> Result<(), Failure> {
     }
     writeln!(out, "{}", settled["state"].as_str().unwrap_or(""))?;
     if let Some(question) = settled["question"]["question"].as_str() {
-        writeln!(out, "asking {}: {question}", settled["question"]["id"].as_str().unwrap_or(""))?;
+        writeln!(
+            out,
+            "asking {}: {question}",
+            settled["question"]["id"].as_str().unwrap_or("")
+        )?;
     }
     if let Some(last) = settled["last"].as_str() {
         writeln!(out, "{last}")?;
@@ -412,14 +486,27 @@ fn session_pending(args: &[String]) -> Result<(), Failure> {
     }
     for row in rows.as_array().into_iter().flatten() {
         let text = match row["kind"].as_str() {
-            Some("permission") => format!("{} {}", row["tool"].as_str().unwrap_or(""), row["detail"].as_str().unwrap_or("")),
+            Some("permission") => format!(
+                "{} {}",
+                row["tool"].as_str().unwrap_or(""),
+                row["detail"].as_str().unwrap_or("")
+            ),
             Some("question") => {
                 let questions = row["questions"].as_array().into_iter().flatten();
-                questions.filter_map(|q| q["question"].as_str()).collect::<Vec<_>>().join(" | ")
+                questions
+                    .filter_map(|q| q["question"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
             }
             _ => row["text"].as_str().unwrap_or("").to_string(),
         };
-        writeln!(out, "{} {}: {}", row["kind"].as_str().unwrap_or(""), row["id"].as_str().unwrap_or(""), text.trim_end())?;
+        writeln!(
+            out,
+            "{} {}: {}",
+            row["kind"].as_str().unwrap_or(""),
+            row["id"].as_str().unwrap_or(""),
+            text.trim_end()
+        )?;
     }
     Ok(())
 }
@@ -427,12 +514,18 @@ fn session_pending(args: &[String]) -> Result<(), Failure> {
 fn answer_params(args: &[String]) -> Result<Value, Failure> {
     let p = Parsed::new(args, &["each"], &[])?;
     let [session, id, words @ ..] = p.positional.as_slice() else {
-        return Err(usage("session answer takes a session id, the id to answer and the answer"));
+        return Err(usage(
+            "session answer takes a session id, the id to answer and the answer",
+        ));
     };
     let answer = match (p.flags.get("each"), words) {
         (Some(each), []) => json!(each),
         (None, words) if !words.is_empty() => json!(words.join(" ")),
-        _ => return Err(usage("session answer takes the answer as words or as --each, one per question, not both")),
+        _ => {
+            return Err(usage(
+                "session answer takes the answer as words or as --each, one per question, not both",
+            ))
+        }
     };
     Ok(json!({ "session": session, "id": id, "answer": answer }))
 }
@@ -490,7 +583,11 @@ fn interrupt_params(args: &[String]) -> Result<Value, Failure> {
 fn interrupt(args: &[String]) -> Result<(), Failure> {
     let params = interrupt_params(args)?;
     connect()?.call("session.interrupt", params.clone())?;
-    Ok(writeln!(io::stdout().lock(), "interrupted: {}", params["id"].as_str().unwrap_or_default())?)
+    Ok(writeln!(
+        io::stdout().lock(),
+        "interrupted: {}",
+        params["id"].as_str().unwrap_or_default()
+    )?)
 }
 
 fn worktree_new(args: &[String]) -> Result<(), Failure> {
@@ -499,13 +596,23 @@ fn worktree_new(args: &[String]) -> Result<(), Failure> {
         return Err(usage("worktree new takes one branch name"));
     };
     let project = p.value("project").map(absolute).transpose()?;
-    let made = connect()?.call("worktree.new", json!({ "branch": branch, "project": project, "from": p.value("from") }))?;
+    let made = connect()?.call(
+        "worktree.new",
+        json!({ "branch": branch, "project": project, "from": p.value("from") }),
+    )?;
     // On stderr, so a script reading the path from stdout reads only the path.
     if let Some(setup) = made["setup"].as_str().filter(|s| *s != "none") {
-        let log = made["setup_log"].as_str().map(|log| format!(", log {log}")).unwrap_or_default();
+        let log = made["setup_log"]
+            .as_str()
+            .map(|log| format!(", log {log}"))
+            .unwrap_or_default();
         writeln!(io::stderr().lock(), "setup {setup}{log}")?;
     }
-    Ok(writeln!(io::stdout().lock(), "{}", made["path"].as_str().unwrap_or(""))?)
+    Ok(writeln!(
+        io::stdout().lock(),
+        "{}",
+        made["path"].as_str().unwrap_or("")
+    )?)
 }
 
 // The socket resolves paths in the app's cwd, not this shell's.
@@ -527,7 +634,12 @@ fn checkpoints(args: &[String]) -> Result<(), Failure> {
         let number = |key: &str| row[key].as_u64().unwrap_or(0);
         let files = number("file_count");
         let noun = if files == 1 { "file" } else { "files" };
-        writeln!(out, "{:>3}  {}  {files} {noun}", number("turn"), row["kind"].as_str().unwrap_or(""))?;
+        writeln!(
+            out,
+            "{:>3}  {}  {files} {noun}",
+            number("turn"),
+            row["kind"].as_str().unwrap_or("")
+        )?;
     }
     Ok(())
 }
@@ -537,7 +649,9 @@ fn checkpoint_turn(args: &[String], switches: &[&str]) -> Result<Value, Failure>
     let [id, turn] = p.positional.as_slice() else {
         return Err(usage("takes a session id and a turn number from tori checkpoints"));
     };
-    let turn: usize = turn.parse().map_err(|_| usage(format!("turn must be a number, got {turn}")))?;
+    let turn: usize = turn
+        .parse()
+        .map_err(|_| usage(format!("turn must be a number, got {turn}")))?;
     Ok(json!({ "id": id, "turn": turn, "force": p.has("force").then_some(true) }))
 }
 
@@ -546,9 +660,16 @@ fn diff_params(args: &[String]) -> Result<Value, Failure> {
     let (id, turn, to) = match p.positional.as_slice() {
         [id, turn] => (id, turn, None),
         [id, turn, to] => (id, turn, Some(to)),
-        _ => return Err(usage("takes a session id, a turn number from tori checkpoints and an optional last turn")),
+        _ => {
+            return Err(usage(
+                "takes a session id, a turn number from tori checkpoints and an optional last turn",
+            ))
+        }
     };
-    let number = |v: &String| v.parse::<usize>().map_err(|_| usage(format!("turn must be a number, got {v}")));
+    let number = |v: &String| {
+        v.parse::<usize>()
+            .map_err(|_| usage(format!("turn must be a number, got {v}")))
+    };
     Ok(json!({ "id": id, "turn": number(turn)?, "to": to.map(number).transpose()? }))
 }
 
@@ -571,16 +692,36 @@ fn checkpoint_revert(args: &[String]) -> Result<(), Failure> {
 }
 
 fn spawn(args: &[String]) -> Result<(), Failure> {
-    let valued = ["agent", "account", "model", "mode", "effort", "folder", "new-worktree", "project", "from", "prompt", "attach"];
+    let valued = [
+        "agent",
+        "account",
+        "model",
+        "mode",
+        "effort",
+        "folder",
+        "new-worktree",
+        "project",
+        "from",
+        "prompt",
+        "attach",
+    ];
     let p = Parsed::new(args, &valued, &["background", "json"])?;
     if !p.positional.is_empty() {
-        return Err(usage("spawn takes no positional arguments: pass the prompt with --prompt"));
+        return Err(usage(
+            "spawn takes no positional arguments: pass the prompt with --prompt",
+        ));
     }
     if p.has("folder") && p.has("new-worktree") {
         return Err(usage("pass --folder or --new-worktree, not both"));
     }
     let path = |name| p.value(name).map(absolute).transpose();
-    let attach = p.flags.get("attach").into_iter().flatten().map(|a| absolute(a)).collect::<Result<Vec<_>, _>>()?;
+    let attach = p
+        .flags
+        .get("attach")
+        .into_iter()
+        .flatten()
+        .map(|a| absolute(a))
+        .collect::<Result<Vec<_>, _>>()?;
     let params = json!({
         "agent": p.value("agent"),
         "account": p.value("account"),
@@ -608,7 +749,10 @@ fn open(args: &[String]) -> Result<(), Failure> {
     let [path] = p.positional.as_slice() else {
         return Err(usage("open takes one file path"));
     };
-    connect()?.call("window.open", json!({ "path": absolute(path)?, "line": p.number("line")? }))?;
+    connect()?.call(
+        "window.open",
+        json!({ "path": absolute(path)?, "line": p.number("line")? }),
+    )?;
     Ok(())
 }
 
@@ -626,7 +770,10 @@ fn budget(args: &[String]) -> Result<(), Failure> {
         return Ok(writeln!(out, "{figures}")?);
     }
     let dollars = |v: &Value| v.as_f64().map_or("unknown".to_string(), |usd| format!("${usd:.2}"));
-    let ceiling = |v: &Value| v.as_f64().map_or("no budget".to_string(), |usd| format!("of ${usd:.2}"));
+    let ceiling = |v: &Value| {
+        v.as_f64()
+            .map_or("no budget".to_string(), |usd| format!("of ${usd:.2}"))
+    };
     let budgets = &figures["budgets"];
     if let Some(session) = figures["session"].as_object() {
         let spent = dollars(&session["costUsd"]);
@@ -634,9 +781,16 @@ fn budget(args: &[String]) -> Result<(), Failure> {
         writeln!(out, "session  {spent} {}  {id}", ceiling(&budgets["sessionUsd"]))?;
     }
     let spent = dollars(&figures["project"]["costUsd"]);
-    writeln!(out, "project  {spent} {}  {}", ceiling(&budgets["projectUsd"]), figures["folder"].as_str().unwrap_or(""))?;
+    writeln!(
+        out,
+        "project  {spent} {}  {}",
+        ceiling(&budgets["projectUsd"]),
+        figures["folder"].as_str().unwrap_or("")
+    )?;
     for window in figures["quota"].as_array().into_iter().flatten() {
-        let used = window["utilization"].as_f64().map_or("?".to_string(), |u| format!("{:.0}%", u * 100.0));
+        let used = window["utilization"]
+            .as_f64()
+            .map_or("?".to_string(), |u| format!("{:.0}%", u * 100.0));
         let kind = window["kind"].as_str().unwrap_or("");
         writeln!(out, "{kind}  {used}  {}", window["state"].as_str().unwrap_or(""))?;
     }
@@ -644,9 +798,15 @@ fn budget(args: &[String]) -> Result<(), Failure> {
 }
 
 fn ask_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
-    let p = Parsed::new(args, &["option", "timeout", "wait", "answer", "approval", "project"], &[])?;
+    let p = Parsed::new(
+        args,
+        &["option", "timeout", "wait", "answer", "approval", "project"],
+        &[],
+    )?;
     if (p.has("approval") || p.has("project")) && (p.has("wait") || p.has("answer")) {
-        return Err(usage("--approval and --project go with a question, not --wait or --answer"));
+        return Err(usage(
+            "--approval and --project go with a question, not --wait or --answer",
+        ));
     }
     let timeout = p.number("timeout")?;
     Ok(match (p.value("wait"), p.value("answer")) {
@@ -661,7 +821,10 @@ fn ask_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
             let approval = p.value("approval").map(json_flag("approval")).transpose()?;
             let project = p.value("project").map(absolute).transpose()?;
             let question = p.positional.join(" ");
-            ("ask.create", json!({ "question": question, "options": options, "timeout": timeout, "approval": approval, "project": project }))
+            (
+                "ask.create",
+                json!({ "question": question, "options": options, "timeout": timeout, "approval": approval, "project": project }),
+            )
         }
     })
 }
@@ -691,12 +854,16 @@ fn pr_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     let Some((sub, rest)) = args.split_first() else {
         return Err(usage("pr needs a subcommand: create, review or merge"));
     };
-    let valued = ["head", "base", "title", "body", "event", "comments", "method", "head-sha", "project", "approval"];
+    let valued = [
+        "head", "base", "title", "body", "event", "comments", "method", "head-sha", "project", "approval",
+    ];
     let p = Parsed::new(rest, &valued, &["draft", "json"])?;
     let project = p.value("project").map(absolute).transpose()?;
     let approval_id = p.value("approval");
     let number = || match p.positional.as_slice() {
-        [n] => n.parse::<u64>().map_err(|_| usage(format!("the pull request number must be a number, got {n}"))),
+        [n] => n
+            .parse::<u64>()
+            .map_err(|_| usage(format!("the pull request number must be a number, got {n}"))),
         _ => Err(usage(format!("pr {sub} takes one pull request number"))),
     };
     let needed = |name: &str| p.value(name).ok_or_else(|| usage(format!("pr {sub} needs --{name}")));
@@ -720,7 +887,11 @@ fn pr_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
                 "approve" => "approve",
                 "comment" => "comment",
                 "request-changes" => "requestChanges",
-                other => return Err(usage(format!("--event is approve, comment or request-changes, got {other}"))),
+                other => {
+                    return Err(usage(format!(
+                        "--event is approve, comment or request-changes, got {other}"
+                    )))
+                }
             };
             let comments = p.value("comments").map(json_flag("comments")).transpose()?;
             let body = p.value("body").unwrap_or("");
@@ -764,7 +935,9 @@ fn pr(args: &[String]) -> Result<(), Failure> {
 
 fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     let Some((sub, rest)) = args.split_first() else {
-        return Err(usage("autopilot needs a subcommand: state, start, stop, item, project or hold"));
+        return Err(usage(
+            "autopilot needs a subcommand: state, start, stop, item, project or hold",
+        ));
     };
     match sub.as_str() {
         "state" => {
@@ -779,10 +952,20 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             if !p.positional.is_empty() {
                 return Err(usage(format!("autopilot {sub} takes no arguments")));
             }
-            Ok((if sub == "start" { "autopilot.start" } else { "autopilot.stop" }, json!({})))
+            Ok((
+                if sub == "start" {
+                    "autopilot.start"
+                } else {
+                    "autopilot.stop"
+                },
+                json!({}),
+            ))
         }
         "item" => {
-            let valued = ["kind", "issue", "pr", "repo", "project", "state", "worktree", "session", "pr-url", "note", "title", "contract"];
+            let valued = [
+                "kind", "issue", "pr", "repo", "project", "state", "worktree", "session", "pr-url", "note", "title",
+                "contract",
+            ];
             let p = Parsed::new(rest, &valued, &["json"])?;
             let id = match p.positional.as_slice() {
                 [] => None,
@@ -793,11 +976,15 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             let source = match (p.value("issue"), p.value("pr"), p.value("repo")) {
                 (None, None, None) => None,
                 (Some(key), None, None) => {
-                    let project = project.as_ref().ok_or_else(|| usage("--issue needs --project, the project the issue is in"))?;
+                    let project = project
+                        .as_ref()
+                        .ok_or_else(|| usage("--issue needs --project, the project the issue is in"))?;
                     Some(json!({ "type": "issue", "key": key, "project": project }))
                 }
                 (None, Some(number), Some(repo)) => {
-                    let number: u64 = number.parse().map_err(|_| usage(format!("--pr takes a pull request number, got {number}")))?;
+                    let number: u64 = number
+                        .parse()
+                        .map_err(|_| usage(format!("--pr takes a pull request number, got {number}")))?;
                     Some(json!({ "type": "pr", "number": number, "repo": repo }))
                 }
                 (None, Some(_), None) => return Err(usage("--pr needs --repo <owner/name>")),
@@ -822,7 +1009,9 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             let valued = ["project", "ships", "autonomy", "pickup", "agent", "account", "model"];
             let p = Parsed::new(rest, &valued, &["json"])?;
             if !p.positional.is_empty() {
-                return Err(usage("autopilot project takes only flags: name the project with --project"));
+                return Err(usage(
+                    "autopilot project takes only flags: name the project with --project",
+                ));
             }
             let choice = |name: &str| p.value(name).map(|v| v.replace('-', "_"));
             let params = json!({
@@ -843,7 +1032,9 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 _ => Err(usage("autopilot hold takes: resolve <id>")),
             }
         }
-        other => Err(usage(format!("unknown autopilot subcommand {other}: state, start, stop, item, project or hold"))),
+        other => Err(usage(format!(
+            "unknown autopilot subcommand {other}: state, start, stop, item, project or hold"
+        ))),
     }
 }
 
@@ -875,7 +1066,10 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
     write_table(&mut out, ["ID", "KIND", "STATE", "SOURCE", "SESSION", "NOTE"], &table)?;
     let projects = done["projects"].as_object().cloned().unwrap_or_default();
     if !projects.is_empty() {
-        let table: Vec<[String; 5]> = projects.iter().map(|(path, contract)| project_cells(path, contract)).collect();
+        let table: Vec<[String; 5]> = projects
+            .iter()
+            .map(|(path, contract)| project_cells(path, contract))
+            .collect();
         writeln!(out)?;
         write_table(&mut out, ["PROJECT", "SHIPS", "AUTONOMY", "PICKUP", "AGENT"], &table)?;
     }
@@ -891,7 +1085,12 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
 fn hold_cells(hold: &Value) -> [String; 4] {
     let text = |key: &str| hold[key].as_str().unwrap_or("").to_string();
     let answer = hold["answer"].as_str().unwrap_or("waiting").to_string();
-    [text("ask"), text("item"), hold["draft"]["action"].as_str().unwrap_or("").to_string(), answer]
+    [
+        text("ask"),
+        text("item"),
+        hold["draft"]["action"].as_str().unwrap_or("").to_string(),
+        answer,
+    ]
 }
 
 fn render_contract(contract: &Value) -> String {
@@ -910,7 +1109,13 @@ fn project_cells(path: &str, contract: &Value) -> [String; 5] {
         (Some(agent), Some(model)) => format!("{agent} {model}"),
         (agent, model) => agent.or(model).unwrap_or("").to_string(),
     };
-    [home_relative(path), text("ships"), text("autonomy"), text("pickup"), agent]
+    [
+        home_relative(path),
+        text("ships"),
+        text("autonomy"),
+        text("pickup"),
+        agent,
+    ]
 }
 
 fn item_cells(row: &Value) -> [String; 6] {
@@ -930,12 +1135,23 @@ fn item_cells(row: &Value) -> [String; 6] {
         Some(true) => format!("{} (worktree gone)", text("state").replace('_', " ")),
         _ => text("state").replace('_', " "),
     };
-    [text("id"), text("kind"), state, source, session.to_string(), clip(&text("note"), 60)]
+    [
+        text("id"),
+        text("kind"),
+        state,
+        source,
+        session.to_string(),
+        clip(&text("note"), 60),
+    ]
 }
 
 fn events(args: &[String]) -> Result<(), Failure> {
     let p = Parsed::new(args, &["topic"], &[])?;
-    let topics = p.flags.get("topic").cloned().unwrap_or_else(|| vec!["sessions".to_string(), "accounts".to_string()]);
+    let topics = p
+        .flags
+        .get("topic")
+        .cloned()
+        .unwrap_or_else(|| vec!["sessions".to_string(), "accounts".to_string()]);
     let mut client = connect()?;
     for topic in &topics {
         client.call("subscribe", json!({ "topic": topic }))?;
@@ -967,8 +1183,13 @@ mod tests {
 
     #[test]
     fn ask_answer_names_the_id_and_joins_the_text() {
-        let (method, params) = ask_request(&args(&["--answer", "ask-1", "the", "second", "one"])).ok().unwrap();
-        assert_eq!((method, params), ("ask.answer", json!({ "id": "ask-1", "answer": "the second one" })));
+        let (method, params) = ask_request(&args(&["--answer", "ask-1", "the", "second", "one"]))
+            .ok()
+            .unwrap();
+        assert_eq!(
+            (method, params),
+            ("ask.answer", json!({ "id": "ask-1", "answer": "the second one" }))
+        );
         assert!(ask_request(&args(&["--answer", "ask-1"])).is_err());
         assert!(ask_request(&args(&["--answer", "ask-1", "--wait", "ask-2", "x"])).is_err());
         let (method, _) = ask_request(&args(&["which", "one?", "--option", "a"])).ok().unwrap();
@@ -978,7 +1199,14 @@ mod tests {
 
     #[test]
     fn ask_carries_an_approval_draft_as_json() {
-        let (method, params) = ask_request(&args(&["open", "it?", "--approval", r#"{"action":"pr.merge","number":7}"#])).ok().unwrap();
+        let (method, params) = ask_request(&args(&[
+            "open",
+            "it?",
+            "--approval",
+            r#"{"action":"pr.merge","number":7}"#,
+        ]))
+        .ok()
+        .unwrap();
         assert_eq!(method, "ask.create");
         assert_eq!(params["approval"], json!({ "action": "pr.merge", "number": 7 }));
         assert!(ask_request(&args(&["q", "--approval", "{not json"])).is_err());
@@ -987,57 +1215,148 @@ mod tests {
 
     #[test]
     fn pr_commands_map_onto_the_outward_methods() {
-        let (method, params) =
-            pr_request(&args(&["create", "--head", "1-x", "--head-sha", "abc", "--base", "main", "--title", "T", "--approval", "appr-1"]))
-                .ok()
-                .unwrap();
+        let (method, params) = pr_request(&args(&[
+            "create",
+            "--head",
+            "1-x",
+            "--head-sha",
+            "abc",
+            "--base",
+            "main",
+            "--title",
+            "T",
+            "--approval",
+            "appr-1",
+        ]))
+        .ok()
+        .unwrap();
         assert_eq!(method, "pr.create");
-        assert_eq!((params["head"].clone(), params["body"].clone(), params["draft"].clone()), (json!("1-x"), json!(""), json!(false)));
+        assert_eq!(
+            (params["head"].clone(), params["body"].clone(), params["draft"].clone()),
+            (json!("1-x"), json!(""), json!(false))
+        );
         assert_eq!(params["approval_id"], json!("appr-1"));
-        assert!(pr_request(&args(&["create", "--head", "1-x"])).is_err(), "base and title are required");
+        assert!(
+            pr_request(&args(&["create", "--head", "1-x"])).is_err(),
+            "base and title are required"
+        );
 
-        let (method, params) = pr_request(&args(&["review", "12", "--event", "request-changes", "--head-sha", "abc", "--body", "no"])).ok().unwrap();
-        assert_eq!((method, params["number"].clone(), params["event"].clone()), ("review.submit", json!(12), json!("requestChanges")));
+        let (method, params) = pr_request(&args(&[
+            "review",
+            "12",
+            "--event",
+            "request-changes",
+            "--head-sha",
+            "abc",
+            "--body",
+            "no",
+        ]))
+        .ok()
+        .unwrap();
+        assert_eq!(
+            (method, params["number"].clone(), params["event"].clone()),
+            ("review.submit", json!(12), json!("requestChanges"))
+        );
         assert!(pr_request(&args(&["review", "12", "--event", "maybe"])).is_err());
 
-        let (method, params) = pr_request(&args(&["merge", "12", "--method", "squash", "--head-sha", "abc"])).ok().unwrap();
+        let (method, params) = pr_request(&args(&["merge", "12", "--method", "squash", "--head-sha", "abc"]))
+            .ok()
+            .unwrap();
         assert_eq!((method, params["head_sha"].clone()), ("pr.merge", json!("abc")));
-        assert!(pr_request(&args(&["merge", "12", "--method", "squash"])).is_err(), "a merge pins its head");
+        assert!(
+            pr_request(&args(&["merge", "12", "--method", "squash"])).is_err(),
+            "a merge pins its head"
+        );
         assert!(pr_request(&args(&["close", "12"])).is_err());
         assert!(USAGE.contains("tori pr merge <number>"));
     }
 
     #[test]
     fn autopilot_commands_map_onto_the_autopilot_methods() {
-        assert_eq!(autopilot_request(&args(&["state", "--json"])).ok(), Some(("autopilot.state", json!({}))));
+        assert_eq!(
+            autopilot_request(&args(&["state", "--json"])).ok(),
+            Some(("autopilot.state", json!({})))
+        );
         assert!(autopilot_request(&args(&["state", "x"])).is_err());
 
-        let (method, params) =
-            autopilot_request(&args(&["item", "--kind", "review", "--pr", "7", "--repo", "o/r", "--project", "/p", "--state", "waiting-on-you"])).ok().unwrap();
+        let (method, params) = autopilot_request(&args(&[
+            "item",
+            "--kind",
+            "review",
+            "--pr",
+            "7",
+            "--repo",
+            "o/r",
+            "--project",
+            "/p",
+            "--state",
+            "waiting-on-you",
+        ]))
+        .ok()
+        .unwrap();
         assert_eq!(method, "autopilot.item.update");
         assert_eq!(params["source"], json!({ "type": "pr", "number": 7, "repo": "o/r" }));
-        assert_eq!((params["id"].clone(), params["state"].clone()), (json!(null), json!("waiting_on_you")));
+        assert_eq!(
+            (params["id"].clone(), params["state"].clone()),
+            (json!(null), json!("waiting_on_you"))
+        );
 
-        let (_, params) = autopilot_request(&args(&["item", "--kind", "ship", "--issue", "12", "--project", "/p"])).ok().unwrap();
-        assert_eq!(params["source"], json!({ "type": "issue", "key": "12", "project": "/p" }));
-        assert!(autopilot_request(&args(&["item", "--issue", "12"])).is_err(), "an issue source names its project");
-        assert!(autopilot_request(&args(&["item", "--pr", "7"])).is_err(), "a pull request source names its repo");
+        let (_, params) = autopilot_request(&args(&["item", "--kind", "ship", "--issue", "12", "--project", "/p"]))
+            .ok()
+            .unwrap();
+        assert_eq!(
+            params["source"],
+            json!({ "type": "issue", "key": "12", "project": "/p" })
+        );
+        assert!(
+            autopilot_request(&args(&["item", "--issue", "12"])).is_err(),
+            "an issue source names its project"
+        );
+        assert!(
+            autopilot_request(&args(&["item", "--pr", "7"])).is_err(),
+            "a pull request source names its repo"
+        );
         assert!(autopilot_request(&args(&["item", "--pr", "x", "--repo", "o/r"])).is_err());
 
-        let (_, params) = autopilot_request(&args(&["item", "item-1", "--note", "blocked on CI"])).ok().unwrap();
-        assert_eq!((params["id"].clone(), params["note"].clone()), (json!("item-1"), json!("blocked on CI")));
+        let (_, params) = autopilot_request(&args(&["item", "item-1", "--note", "blocked on CI"]))
+            .ok()
+            .unwrap();
+        assert_eq!(
+            (params["id"].clone(), params["note"].clone()),
+            (json!("item-1"), json!("blocked on CI"))
+        );
         assert!(autopilot_request(&args(&["item", "a", "b"])).is_err());
         assert!(autopilot_request(&args(&["hold"])).is_err());
 
-        let (method, params) = autopilot_request(&args(&["project", "--project", "/p", "--autonomy", "auto-until-outward", "--model", "opus"])).ok().unwrap();
+        let (method, params) = autopilot_request(&args(&[
+            "project",
+            "--project",
+            "/p",
+            "--autonomy",
+            "auto-until-outward",
+            "--model",
+            "opus",
+        ]))
+        .ok()
+        .unwrap();
         assert_eq!(method, "autopilot.project.set");
         assert_eq!(params["autonomy"], json!("auto_until_outward"));
-        assert_eq!((params["project"].clone(), params["ships"].clone()), (json!("/p"), json!(null)), "a flag left out keeps its value");
+        assert_eq!(
+            (params["project"].clone(), params["ships"].clone()),
+            (json!("/p"), json!(null)),
+            "a flag left out keeps its value"
+        );
         assert!(autopilot_request(&args(&["project", "/p"])).is_err());
         assert!(USAGE.contains("tori autopilot project"));
 
-        assert_eq!(autopilot_request(&args(&["hold", "resolve", "ask-1"])).ok(), Some(("autopilot.hold.resolve", json!({ "id": "ask-1" }))));
-        assert!(autopilot_request(&args(&["hold", "approve", "ask-1"])).is_err(), "a hold is approved on its card, never here");
+        assert_eq!(
+            autopilot_request(&args(&["hold", "resolve", "ask-1"])).ok(),
+            Some(("autopilot.hold.resolve", json!({ "id": "ask-1" })))
+        );
+        assert!(
+            autopilot_request(&args(&["hold", "approve", "ask-1"])).is_err(),
+            "a hold is approved on its card, never here"
+        );
         assert!(autopilot_request(&args(&["hold", "resolve"])).is_err());
         assert!(USAGE.contains("tori autopilot hold resolve <id>"));
         assert!(USAGE.contains("tori autopilot state"));
@@ -1049,13 +1368,22 @@ mod tests {
             "id": "item-1", "kind": "ship", "state": "running", "source": { "type": "pr", "number": 7, "repo": "o/r" },
             "session_live": false, "worktree_gone": true, "note": null,
         });
-        assert_eq!(item_cells(&row), ["item-1", "ship", "running (worktree gone)", "o/r#7", "ended", ""].map(String::from));
+        assert_eq!(
+            item_cells(&row),
+            ["item-1", "ship", "running (worktree gone)", "o/r#7", "ended", ""].map(String::from)
+        );
     }
 
     #[test]
     fn checkpoint_diff_takes_an_optional_last_turn() {
-        assert_eq!(diff_params(&args(&["s1", "2"])).ok(), Some(json!({ "id": "s1", "turn": 2, "to": null })));
-        assert_eq!(diff_params(&args(&["s1", "2", "4"])).ok(), Some(json!({ "id": "s1", "turn": 2, "to": 4 })));
+        assert_eq!(
+            diff_params(&args(&["s1", "2"])).ok(),
+            Some(json!({ "id": "s1", "turn": 2, "to": null }))
+        );
+        assert_eq!(
+            diff_params(&args(&["s1", "2", "4"])).ok(),
+            Some(json!({ "id": "s1", "turn": 2, "to": 4 }))
+        );
         assert!(diff_params(&args(&["s1", "2", "x"])).is_err());
         assert!(diff_params(&args(&["s1", "2", "3", "4"])).is_err());
     }
@@ -1106,6 +1434,9 @@ mod tests {
             "identity": { "agent": "codex", "cwd": "/p/wt" },
         });
         assert_eq!(render_whoami(&worker), "worker s2\nagent: codex\ncwd: /p/wt\n");
-        assert_eq!(render_whoami(&json!({ "caller": null, "kind": "local", "identity": {} })), "outside caller\n");
+        assert_eq!(
+            render_whoami(&json!({ "caller": null, "kind": "local", "identity": {} })),
+            "outside caller\n"
+        );
     }
 }

@@ -275,9 +275,7 @@ describe("settling an apply", () => {
 
   it("treats an edit taken by an open buffer as landed, and says it is unsaved", () => {
     const after = settle(doc(), edited(), { written: [], inBuffer: [hit("src/a.ts")], refused: [] });
-    expect(renderLines(after, edited())[3]).toBe(
-      "src/a.ts  applied in the open buffer, not saved yet",
-    );
+    expect(renderLines(after, edited())[3]).toBe("src/a.ts  applied in the open buffer, not saved yet");
     expect(collectEdits(after, edited()).map((f) => f.path)).toEqual(["src/b.ts"]);
   });
 });
@@ -298,7 +296,10 @@ describe("staying off the eager path", () => {
       const imports = [...source.matchAll(/^import\s+(type\s+)?[^;]*?from\s+"([^"]+)";/gm)];
       expect(imports.length, `${name}: no imports found, so this proves nothing`).toBeGreaterThan(0);
       const values = imports.filter(([, isType, from]) => from.startsWith("@codemirror/") && !isType);
-      expect(values.map((m) => m[2]), `${name} must import CodeMirror as types only`).toEqual([]);
+      expect(
+        values.map((m) => m[2]),
+        `${name} must import CodeMirror as types only`,
+      ).toEqual([]);
     }
   });
 });
@@ -317,8 +318,6 @@ describe("saying what happened", () => {
   });
 
   it("has something to say when nothing happened at all", () => {
-    expect(describeApply(doc(), { written: [], inBuffer: [], refused: [] })).toBe(
-      "Nothing to write.",
-    );
+    expect(describeApply(doc(), { written: [], inBuffer: [], refused: [] })).toBe("Nothing to write.");
   });
 });

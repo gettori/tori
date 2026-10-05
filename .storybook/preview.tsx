@@ -1,9 +1,5 @@
 import type { Preview } from "storybook-solidjs-vite";
-import {
-  DEFAULT_THEME_ID,
-  getBundledTheme,
-  listSelectableBundled,
-} from "../src/theme/bundled";
+import { DEFAULT_THEME_ID, getBundledTheme, listSelectableBundled } from "../src/theme/bundled";
 import { buildRoles } from "../src/theme/roles";
 import { applyResolved } from "../src/theme/resolver";
 

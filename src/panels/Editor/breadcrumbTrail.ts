@@ -54,11 +54,7 @@ export function baseName(path: string): string {
  * the active one: resolving a background member's file against the active root
  * would find no shared prefix and collapse the whole trail to a basename.
  */
-export function pathCrumbs(
-  root: string | null,
-  path: string | null,
-  member?: CrumbMember | null,
-): PathCrumb[] {
+export function pathCrumbs(root: string | null, path: string | null, member?: CrumbMember | null): PathCrumb[] {
   if (!path) return [];
   // Only a member that really holds the file replaces the root, so a mismatched
   // one costs its own crumb rather than the whole trail.
@@ -103,11 +99,7 @@ function holds(node: SymbolNode, line: number, column: number): boolean {
  * inside neither, and so is every caret in a file whose server offers no
  * symbols.
  */
-export function symbolTrail(
-  nodes: readonly SymbolNode[],
-  line: number,
-  column: number,
-): SymbolNode[] {
+export function symbolTrail(nodes: readonly SymbolNode[], line: number, column: number): SymbolNode[] {
   const out: SymbolNode[] = [];
   let level: readonly SymbolNode[] = nodes;
   for (;;) {

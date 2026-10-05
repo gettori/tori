@@ -14,7 +14,13 @@ describe("socketAsks", () => {
   });
 
   it("shows a mirrored approval in both panels, and one answer clears both", async () => {
-    showAsk({ id: "ask-3", session: "worker", question: "open it?", options: ["Approve", "Reject"], shown_in: ["worker", "autopilot"] });
+    showAsk({
+      id: "ask-3",
+      session: "worker",
+      question: "open it?",
+      options: ["Approve", "Reject"],
+      shown_in: ["worker", "autopilot"],
+    });
     expect(asksFor("worker").map((a) => a.id)).toContain("ask-3");
     expect(asksFor("autopilot").map((a) => a.id)).toEqual(["ask-3"]);
     await answerAsk("ask-3", "Approve");

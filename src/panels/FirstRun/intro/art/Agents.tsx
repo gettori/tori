@@ -88,7 +88,10 @@ const PROVIDERS = [
     model("haiku", "Haiku 4.5", "Cheap and quick"),
   ]),
   lockedProvider(adapter("codex", "Codex"), [model("gpt-5", "GPT-5"), model("gpt-5-mini", "GPT-5 mini")]),
-  lockedProvider(adapter("gemini", "Gemini"), [model("gemini-3-pro", "Gemini 3 Pro"), model("gemini-3-flash", "Gemini 3 Flash")]),
+  lockedProvider(adapter("gemini", "Gemini"), [
+    model("gemini-3-pro", "Gemini 3 Pro"),
+    model("gemini-3-flash", "Gemini 3 Flash"),
+  ]),
   lockedProvider(adapter("opencode", "OpenCode"), [model("sonnet-5", "Sonnet 5"), model("gpt-5", "GPT-5")]),
 ];
 
@@ -230,7 +233,14 @@ export default function AgentsArt() {
       <div class={styles.palette} ref={setMount}>
         <Show when={mount()}>
           <DialogSurface.Provider value={mount}>
-            <AgentPalette providers={PROVIDERS} agentId="claude" profile={null} value="opus" onSelect={noop} onClose={noop} />
+            <AgentPalette
+              providers={PROVIDERS}
+              agentId="claude"
+              profile={null}
+              value="opus"
+              onSelect={noop}
+              onClose={noop}
+            />
           </DialogSurface.Provider>
         </Show>
       </div>

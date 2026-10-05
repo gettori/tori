@@ -66,10 +66,7 @@ export type EditorPrefOverrides = { softWrap?: boolean | null; plain?: boolean }
 const HEAVY: EditorFeature[] = ["indentGuides", "bracketPairGuides", "minimap"];
 
 /** Which features are on for this buffer, override first, setting second. */
-export function activeEditorFeatures(
-  prefs: EditorDefaults,
-  overrides: EditorPrefOverrides = {},
-): EditorFeature[] {
+export function activeEditorFeatures(prefs: EditorDefaults, overrides: EditorPrefOverrides = {}): EditorFeature[] {
   const on: EditorFeature[] = [];
   if (prefs.indentGuides) on.push("indentGuides");
   // `?? ACTIVE_LINE` rather than the lookup alone: the value can arrive from a
@@ -133,10 +130,7 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
  * A preference whose extension cannot be added and removed live does not belong
  * here, it belongs in `makeState` with a rebuild.
  */
-export function editorPrefExtensions(
-  prefs: EditorDefaults,
-  overrides: EditorPrefOverrides = {},
-): Extension[] {
+export function editorPrefExtensions(prefs: EditorDefaults, overrides: EditorPrefOverrides = {}): Extension[] {
   return activeEditorFeatures(prefs, overrides).map((f) => FEATURE_EXTENSIONS[f]());
 }
 
@@ -170,8 +164,5 @@ export function resolveIndent(prefs: EditorDefaults, file?: FileIndent): Indent 
 }
 
 export function indentExtension(indent: Indent): Extension[] {
-  return [
-    EditorState.tabSize.of(indent.tabWidth),
-    indentUnit.of(indent.spaces ? " ".repeat(indent.size) : "\t"),
-  ];
+  return [EditorState.tabSize.of(indent.tabWidth), indentUnit.of(indent.spaces ? " ".repeat(indent.size) : "\t")];
 }

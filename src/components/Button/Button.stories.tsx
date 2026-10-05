@@ -4,14 +4,7 @@ import { Settings } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import Button, { type ButtonVariant, type ButtonSize } from "./Button";
 
-const VARIANTS: ButtonVariant[] = [
-  "default",
-  "primary",
-  "success",
-  "warn",
-  "danger",
-  "ghost",
-];
+const VARIANTS: ButtonVariant[] = ["default", "primary", "success", "warn", "danger", "ghost"];
 const SIZES: ButtonSize[] = ["md", "sm", "xs"];
 
 const meta = {
@@ -36,9 +29,7 @@ export const Playground: Story = {};
 export const Variants: Story = {
   render: () => (
     <div style={{ display: "flex", gap: "var(--tori-space-4)", "flex-wrap": "wrap" }}>
-      <For each={VARIANTS}>
-        {(variant) => <Button variant={variant}>{variant}</Button>}
-      </For>
+      <For each={VARIANTS}>{(variant) => <Button variant={variant}>{variant}</Button>}</For>
     </div>
   ),
 };

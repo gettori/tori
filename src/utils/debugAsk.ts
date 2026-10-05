@@ -99,9 +99,7 @@ export function composeFrame(
   // Only when there is a way in worth describing: a one-frame stack would
   // repeat the sentence above it in a different shape.
   if (stack.length > 1) {
-    const listed = stack
-      .slice(0, FRAME_CAP)
-      .map((f) => `${clip(f.name)} (${clip(f.sourceName)}:${f.line})`);
+    const listed = stack.slice(0, FRAME_CAP).map((f) => `${clip(f.name)} (${clip(f.sourceName)}:${f.line})`);
     const rest = stack.length - listed.length;
     const more = rest ? ` < ${rest} more frame${rest === 1 ? "" : "s"}` : "";
     parts.push(`Stack: ${listed.join(" < ")}${more}.`);

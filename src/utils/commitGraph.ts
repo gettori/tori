@@ -133,8 +133,7 @@ export type FoldedPill = RefPill & { base: boolean };
 export function foldPills(refs: readonly string[], base: string | null | undefined): FoldedPill[] {
   const all = refs.map(refPill);
   const head = all.find((p) => p.kind === "head")?.label;
-  const hasLocal = (name: string) =>
-    name === head || all.some((p) => p.kind === "branch" && p.label === name);
+  const hasLocal = (name: string) => name === head || all.some((p) => p.kind === "branch" && p.label === name);
   const remoteOf = (name: string) => all.find((p) => p.kind === "remote" && p.label.endsWith(`/${name}`));
   const isBase = (name: string) => !!base && (name === base || name === `origin/${base}`);
   return all.flatMap((p) => {

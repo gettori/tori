@@ -23,8 +23,7 @@ export const DEFAULT_PIN_SIDES: PinSides = {
   file: "rightmost",
 };
 
-export const pinGroup = (kind: string): PinGroup =>
-  kind === "file" ? "file" : kind === "chat" ? "chat" : "terminal";
+export const pinGroup = (kind: string): PinGroup => (kind === "file" ? "file" : kind === "chat" ? "chat" : "terminal");
 
 const [sides, setSides] = createSignal<PinSides>(DEFAULT_PIN_SIDES);
 

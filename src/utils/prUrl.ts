@@ -84,12 +84,7 @@ export function parseOrigin(url: string, known: KnownHosts): ParsedOrigin | null
  *  when `origin` isn't a recognized provider. A host with an account is
  *  reached at its account's base URL, which keeps a port the ssh remote
  *  cannot carry; any other host is assumed to serve https on its own name. */
-export function comparePrUrl(
-  origin: string,
-  base: string,
-  branch: string,
-  known: KnownHosts,
-): string | null {
+export function comparePrUrl(origin: string, base: string, branch: string, known: KnownHosts): string | null {
   const parsed = parseOrigin(origin, known);
   if (!parsed) return null;
   const { provider, host, owner, repo } = parsed;

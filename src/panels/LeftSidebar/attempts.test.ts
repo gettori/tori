@@ -61,10 +61,7 @@ describe("groupAttempts", () => {
 
     expect(ordinary.map((u) => u.label)).toEqual(["main"]);
     expect(groups[0].members.map((m) => m.unit)).toEqual([undefined, undefined]);
-    expect(groups[0].members.map((m) => attemptFolderName(m.attempt.path))).toEqual([
-      "try-1",
-      "try-2",
-    ]);
+    expect(groups[0].members.map((m) => attemptFolderName(m.attempt.path))).toEqual(["try-1", "try-2"]);
   });
 
   it("leaves a project with no attempts exactly as it was", () => {

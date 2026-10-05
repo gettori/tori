@@ -92,11 +92,7 @@ export function capTabs(ws: WorkspaceFiles, max = MAX_TABS): WorkspaceFiles {
 // therefore carried through untouched. A workspace IS erased once this run has
 // opened tabs in it and then closed them all, so current truth wins over what
 // was stored.
-export function mergeStore(
-  prev: FileTabStore,
-  live: FileTabStore,
-  touched: ReadonlySet<string>,
-): FileTabStore {
+export function mergeStore(prev: FileTabStore, live: FileTabStore, touched: ReadonlySet<string>): FileTabStore {
   const out: FileTabStore = {};
   for (const [ws, v] of Object.entries(prev)) {
     if (!touched.has(ws)) out[ws] = v;

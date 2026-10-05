@@ -14,9 +14,7 @@
 import type { OpenJob } from "./events";
 
 /** Mirrors `crate::install::InstallRoute`. */
-export type InstallRoute =
-  | { type: "terminal"; program: string; args: string[] }
-  | { type: "undeclared" };
+export type InstallRoute = { type: "terminal"; program: string; args: string[] } | { type: "undeclared" };
 
 /** The three things the `[install]` table can do to a binary. One job shape
  *  serves all of them; only the id and the title say which one is running. */

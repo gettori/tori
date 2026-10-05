@@ -104,9 +104,7 @@ describe("an execute body", () => {
   // arrives as one line of JSON.
   it("opens an ACP raw output up rather than rendering the blob as a terminal", () => {
     const raw = '{"output":"hi\\n","metadata":{"exit":1,"truncated":false}}';
-    const { container } = render(() => (
-      <ToolOutput card={card()} renderer="execute" text={raw} onOpen={() => {}} />
-    ));
+    const { container } = render(() => <ToolOutput card={card()} renderer="execute" text={raw} onOpen={() => {}} />);
     expect(container.textContent).not.toBe(raw);
     expect(container.textContent?.split("\n").length).toBeGreaterThan(4);
     expect(container.querySelector("code")).toBeTruthy();

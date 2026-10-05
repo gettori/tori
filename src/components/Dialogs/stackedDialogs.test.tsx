@@ -54,8 +54,7 @@ const { default: ConfirmDialog } = await import("./ConfirmDialog");
 const { default: WorktreeRemoveDialog } = await import("./WorktreeRemoveDialog");
 
 /** The panel that contains this text, whether or not it is the top layer. */
-const panelWith = (text: string) =>
-  screen.getByText(text).closest("[role='dialog']") as HTMLElement;
+const panelWith = (text: string) => screen.getByText(text).closest("[role='dialog']") as HTMLElement;
 
 const askpassInput = () => document.querySelector<HTMLInputElement>(`.${styles.input}`)!;
 
@@ -70,12 +69,7 @@ async function stack() {
   const onConfirm = vi.fn();
   render(() => (
     <>
-      <ConfirmDialog
-        title="Delete branch"
-        message="This cannot be undone."
-        onConfirm={onConfirm}
-        onCancel={onCancel}
-      />
+      <ConfirmDialog title="Delete branch" message="This cannot be undone." onConfirm={onConfirm} onCancel={onCancel} />
       <AskpassDialog />
     </>
   ));

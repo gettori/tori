@@ -48,10 +48,7 @@ let drawn = new Map<string, { path: string; branch: string }>();
  *  "in sync" are the same to `syncState`, which is what keeps an unanswered row
  *  from reading as a clean one. A missing folder is one of those nulls: a Topic
  *  member whose worktree is gone has no branch to stand anywhere. */
-export function syncFor(
-  folderPath: string | null | undefined,
-  branch: string | null | undefined,
-): BranchSync | null {
+export function syncFor(folderPath: string | null | undefined, branch: string | null | undefined): BranchSync | null {
   return folderPath ? (answers[keyOf(folderPath, branch)] ?? null) : null;
 }
 
@@ -90,10 +87,12 @@ export function resyncRoot(root: string | null | undefined): Promise<void> {
 export function adoptSync(root: string, branch: string | null, sync: BranchSync | null): void {
   const key = keyOf(root, branch);
   if (!drawn.has(key)) return;
-  setAnswers(produce((state) => {
-    if (sync) state[key] = sync;
-    else delete state[key];
-  }));
+  setAnswers(
+    produce((state) => {
+      if (sync) state[key] = sync;
+      else delete state[key];
+    }),
+  );
 }
 
 async function ask(units: { path: string; branch: string }[]): Promise<void> {
@@ -106,30 +105,24 @@ async function ask(units: { path: string; branch: string }[]): Promise<void> {
     for (const unit of units) drawn.delete(keyOf(unit.path, unit.branch));
     return;
   }
-  setAnswers(produce((state) => {
-    for (const unit of units) {
-      const key = keyOf(unit.path, unit.branch);
-      // The row left while the batch ran, or the backend left it out: a path
-      // that stopped being a repo must lose its old answer, not keep it.
-      if (!drawn.has(key)) continue;
-      if (reply[key]) state[key] = reply[key];
-      else delete state[key];
-    }
-  }));
+  setAnswers(
+    produce((state) => {
+      for (const unit of units) {
+        const key = keyOf(unit.path, unit.branch);
+        // The row left while the batch ran, or the backend left it out: a path
+        // that stopped being a repo must lose its old answer, not keep it.
+        if (!drawn.has(key)) continue;
+        if (reply[key]) state[key] = reply[key];
+        else delete state[key];
+      }
+    }),
+  );
 }
 
 /** The levels, most severe first. The order here is the order `syncState`
  *  resolves them in, so a branch that is both behind its base and diverged from
  *  its upstream reports the divergence. */
-export type SyncLevel =
-  | "conflicts"
-  | "checks"
-  | "diverged"
-  | "behind"
-  | "baseBehind"
-  | "ahead"
-  | "unpushed"
-  | "none";
+export type SyncLevel = "conflicts" | "checks" | "diverged" | "behind" | "baseBehind" | "ahead" | "unpushed" | "none";
 
 /** How loud the level is drawn. Four steps rather than the levels themselves,
  *  so two levels that deserve the same weight cannot drift apart in CSS. */
@@ -243,7 +236,8 @@ export function syncMarks(sync: BranchSync | null | undefined, finished?: Finish
     marks[marks.length - 1].title += ". The upstream still points at history you rewrote, so this needs a force push";
   }
   if (superseded) {
-    marks[marks.length - 1].title += `. The upstream was force-pushed over the ${plural(ahead, "commit")} here, so pulling resets to it`;
+    marks[marks.length - 1].title +=
+      `. The upstream was force-pushed over the ${plural(ahead, "commit")} here, so pulling resets to it`;
   }
   if (sync.dirty) {
     marks.push({ kind: "dirty", count: null, tone: "muted", title: "Uncommitted changes" });
@@ -431,7 +425,13 @@ export function syncState(sync: BranchSync | null | undefined, finished?: Finish
   if (finished?.state === "merged") {
     const after = finished.relation?.kind === "ahead" ? finished.relation.count : 0;
     if (after === 0) return NOTHING;
-    return { ...NOTHING, level: "ahead", tone: "muted", label: `${UP}${after}`, detail: `${plural(after, "commit")} after merge.` };
+    return {
+      ...NOTHING,
+      level: "ahead",
+      tone: "muted",
+      label: `${UP}${after}`,
+      detail: `${plural(after, "commit")} after merge.`,
+    };
   }
 
   if (ahead > 0) {

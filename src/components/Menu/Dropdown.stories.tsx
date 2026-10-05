@@ -4,12 +4,7 @@ import Button from "../Button/Button";
 import Dropdown, { type MenuPlacement } from "./Dropdown";
 import { MenuRow, MenuSeparator, MenuSub } from "./rows";
 
-const PLACEMENTS: MenuPlacement[] = [
-  "bottom-start",
-  "bottom-end",
-  "top-start",
-  "top-end",
-];
+const PLACEMENTS: MenuPlacement[] = ["bottom-start", "bottom-end", "top-start", "top-end"];
 
 const meta = {
   title: "Components/Dropdown",

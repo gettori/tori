@@ -197,10 +197,7 @@ describe("what a pause fetches", () => {
     await flush();
 
     expect(commands("variables").map((c) => c.args.variablesReference)).toEqual([100]);
-    expect(vars.variableRows("s0").map((r) => `${r.name}=${r.value}`)).toEqual([
-      "count=3",
-      "user=Object",
-    ]);
+    expect(vars.variableRows("s0").map((r) => `${r.name}=${r.value}`)).toEqual(["count=3", "user=Object"]);
     expect(vars.isVariableExpanded("s0")).toBe(true);
   });
 
@@ -439,9 +436,7 @@ describe("writing a value back", () => {
 
 describe("text the debuggee wrote", () => {
   it("renders a value's control bytes as characters", async () => {
-    variableAnswers.set("100:", [
-      { name: "banner", value: "loud\u001b[31m\u0007", variablesReference: 0 },
-    ]);
+    variableAnswers.set("100:", [{ name: "banner", value: "loud\u001b[31m\u0007", variablesReference: 0 }]);
     const { vars } = await paused();
     vars.toggleVariables("s0", 100);
     await flush();

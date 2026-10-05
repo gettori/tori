@@ -74,8 +74,7 @@ describe("which diagnostics a range is asked about", () => {
     ]);
   });
 
-  const messages = (r: ReturnType<typeof range>) =>
-    diagnosticsIn("file:///a.ts", "ts", r).map((d) => d.message);
+  const messages = (r: ReturnType<typeof range>) => diagnosticsIn("file:///a.ts", "ts", r).map((d) => d.message);
 
   it("answers with the one the caret sits inside", () => {
     expect(messages(range(5, 4, 5, 4))).toEqual(["second"]);

@@ -30,9 +30,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 const { clientExtensions } = await import("./lspClient");
-const { RESOLVE_TIMEOUT_MS, toriCompletionSource, offsetOf, lspToSnippet, prefixRegexp } = await import(
-  "./lspCompletion"
-);
+const { RESOLVE_TIMEOUT_MS, toriCompletionSource, offsetOf, lspToSnippet, prefixRegexp } =
+  await import("./lspCompletion");
 
 const URI = "file:///proj/a.ts";
 
@@ -396,9 +395,7 @@ describe("auto-import through completionItem/resolve", () => {
   const IMPORT = "import { useMemo } from 'react'\n";
   const importOnResolve = (line: number) => (item: Record<string, unknown>) => ({
     ...item,
-    additionalTextEdits: [
-      { range: { start: { line, character: 0 }, end: { line, character: 0 } }, newText: IMPORT },
-    ],
+    additionalTextEdits: [{ range: { start: { line, character: 0 }, end: { line, character: 0 } }, newText: IMPORT }],
   });
 
   it("inserts both the identifier and the import line", async () => {

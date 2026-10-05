@@ -104,10 +104,7 @@ export default function ProblemsPanel(props: { selected: Selection | null; roots
 
   return (
     <div class={styles.problemsPanel}>
-      <Show
-        when={total() > 0}
-        fallback={<div class={styles.empty}>No problems in the open files.</div>}
-      >
+      <Show when={total() > 0} fallback={<div class={styles.empty}>No problems in the open files.</div>}>
         {/* `Index`, not `For`: the sections are rebuilt from scratch on every
             diagnostic, and a referentially-keyed list would remount each one
             and reopen a member the reader had collapsed. */}
@@ -121,11 +118,7 @@ export default function ProblemsPanel(props: { selected: Selection | null; roots
                     <div class={styles.fileGroup}>
                       <div class={styles.fileHead} title={path}>
                         <span class={styles.fileName}>{basename(path)}</span>
-                        <For
-                          each={(["error", "warning", "info", "hint"] as Severity[]).filter(
-                            (s) => counts[s] > 0,
-                          )}
-                        >
+                        <For each={(["error", "warning", "info", "hint"] as Severity[]).filter((s) => counts[s] > 0)}>
                           {(s) => <span class={`${styles.count} ${styles[s]}`}>{counts[s]}</span>}
                         </For>
                       </div>

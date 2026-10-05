@@ -27,8 +27,7 @@ let host: HTMLElement | undefined;
 let toggled: number[] = [];
 let moved: { lines: number[]; docLines: number }[] = [];
 
-const armed = (...lines: number[]): BreakpointMark[] =>
-  lines.map((line) => ({ line, state: "armed" as const }));
+const armed = (...lines: number[]): BreakpointMark[] => lines.map((line) => ({ line, state: "armed" as const }));
 
 function mount(marks: BreakpointMark[] = [], doc = DOC): EditorView {
   toggled = [];
@@ -59,8 +58,7 @@ afterEach(() => {
 
 /** The drawn markers. CodeMirror gives a gutter an element only for the lines
  *  that have one, so this is the whole of what the column shows. */
-const markers = () =>
-  [...host!.querySelectorAll(`.${BREAKPOINT_GUTTER_CLASS} .${BREAKPOINT_MARKER_CLASS}`)];
+const markers = () => [...host!.querySelectorAll(`.${BREAKPOINT_GUTTER_CLASS} .${BREAKPOINT_MARKER_CLASS}`)];
 
 describe("staying on the line it was set on", () => {
   it("follows ten lines inserted above it", () => {

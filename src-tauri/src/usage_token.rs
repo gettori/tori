@@ -99,11 +99,17 @@ pub struct TokenReading {
 /// else in this ticket. Checked rather than trusted to the endpoint, so an
 /// expired token is a sentence about the login instead of a bare 401.
 pub fn access_token(secret: &str, now_ms: u64) -> Result<String, TokenFailure> {
-    let v: serde_json::Value =
-        serde_json::from_str(secret).map_err(|_| TokenFailure::NotALogin)?;
+    let v: serde_json::Value = serde_json::from_str(secret).map_err(|_| TokenFailure::NotALogin)?;
     let oauth = v.get("claudeAiOauth").ok_or(TokenFailure::NotALogin)?;
-    let token = oauth.get("accessToken").and_then(|t| t.as_str()).ok_or(TokenFailure::NotALogin)?;
-    if oauth.get("expiresAt").and_then(|e| e.as_u64()).is_some_and(|at| at <= now_ms) {
+    let token = oauth
+        .get("accessToken")
+        .and_then(|t| t.as_str())
+        .ok_or(TokenFailure::NotALogin)?;
+    if oauth
+        .get("expiresAt")
+        .and_then(|e| e.as_u64())
+        .is_some_and(|at| at <= now_ms)
+    {
         return Err(TokenFailure::Expired);
     }
     Ok(token.to_string())
@@ -129,7 +135,13 @@ fn window(kind: &str, v: &serde_json::Value) -> Option<ProbeWindow> {
 fn scoped_kind(display_name: &str) -> String {
     let slug: String = display_name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("seven_day_{slug}")
 }
@@ -169,7 +181,10 @@ pub fn parse_usage(body: &str) -> TokenReading {
         windows.push(ProbeWindow {
             kind,
             utilization: limit.get("percent").and_then(|p| p.as_f64()).map(|p| p / 100.0),
-            resets_at: limit.get("resets_at").and_then(|r| r.as_str()).and_then(parse_rfc3339_secs),
+            resets_at: limit
+                .get("resets_at")
+                .and_then(|r| r.as_str())
+                .and_then(parse_rfc3339_secs),
             status: None,
             reached_type: None,
         });
@@ -237,8 +252,7 @@ impl Vault for Keychain {
     fn secret(&self, service: &str, account: &str) -> Result<Option<String>, String> {
         let mut cmd = std::process::Command::new("/usr/bin/security");
         cmd.args(["find-generic-password", "-a", account, "-s", service, "-w"]);
-        let out = crate::env::output_with_timeout(&mut cmd)
-            .ok_or_else(|| "the keychain did not answer".to_string())?;
+        let out = crate::env::output_with_timeout(&mut cmd).ok_or_else(|| "the keychain did not answer".to_string())?;
         match out.status.code() {
             Some(0) => Ok(Some(String::from_utf8_lossy(&out.stdout).trim_end().to_string())),
             Some(ITEM_NOT_FOUND) => Ok(None),
@@ -303,8 +317,15 @@ pub async fn usage_token_claude(profile: Option<String>) -> Result<TokenReading,
         } else {
             UsageSource::Off
         };
-        read_usage(source, home_of(&id).as_deref(), &os_account(), &Keychain, &Anthropic, now_ms())
-            .map_err(|e| e.reason())
+        read_usage(
+            source,
+            home_of(&id).as_deref(),
+            &os_account(),
+            &Keychain,
+            &Anthropic,
+            now_ms(),
+        )
+        .map_err(|e| e.reason())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -325,7 +346,9 @@ mod tests {
 
     impl Vault for Recorder {
         fn secret(&self, service: &str, account: &str) -> Result<Option<String>, String> {
-            self.lookups.borrow_mut().push((service.to_string(), account.to_string()));
+            self.lookups
+                .borrow_mut()
+                .push((service.to_string(), account.to_string()));
             Ok(self.secret.clone())
         }
     }
@@ -368,7 +391,10 @@ mod tests {
     #[test]
     fn the_setting_is_the_gate() {
         for off in [UsageSource::Off, UsageSource::Sessions, UsageSource::Cli] {
-            let vault = Recorder { secret: Some(login(NOW + 1)), ..Default::default() };
+            let vault = Recorder {
+                secret: Some(login(NOW + 1)),
+                ..Default::default()
+            };
             let api = Canned(Ok(fixture()));
             let answer = read_usage(off, None, "me", &vault, &api, NOW);
 
@@ -376,7 +402,10 @@ mod tests {
             assert!(vault.lookups.borrow().is_empty(), "{off:?} looked the credential up");
         }
 
-        let vault = Recorder { secret: Some(login(NOW + 1)), ..Default::default() };
+        let vault = Recorder {
+            secret: Some(login(NOW + 1)),
+            ..Default::default()
+        };
         let api = Canned(Ok(fixture()));
         read_usage(UsageSource::Token, None, "me", &vault, &api, NOW).expect("a reading");
         assert_eq!(vault.lookups.borrow().len(), 1, "on, and asked exactly once");
@@ -390,7 +419,11 @@ mod tests {
         assert_eq!(service_for(None), "Claude Code-credentials");
         let named = service_for(Some("/Users/me/Library/Application Support/tori/profiles/claude/work"));
         assert!(named.starts_with("Claude Code-credentials-"), "{named}");
-        assert_eq!(named.len(), "Claude Code-credentials-".len() + 8, "eight hex characters");
+        assert_eq!(
+            named.len(),
+            "Claude Code-credentials-".len() + 8,
+            "eight hex characters"
+        );
         assert_ne!(named, service_for(Some("/Users/me/other")), "one directory, one item");
     }
 
@@ -419,7 +452,10 @@ mod tests {
         assert_eq!(five.utilization, Some(0.07));
         // "2026-09-06T09:09:59.694749+00:00" as epoch seconds, not 1970.
         assert_eq!(five.resets_at, Some(1_788_685_799));
-        assert!(reading.windows.iter().all(|w| w.reached_type.is_none()), "nothing was locked");
+        assert!(
+            reading.windows.iter().all(|w| w.reached_type.is_none()),
+            "nothing was locked"
+        );
     }
 
     /// A null window is absent, not zero. A Pro account has no Opus window and
@@ -454,7 +490,9 @@ mod tests {
 
     #[test]
     fn extra_usage_reports_only_once_it_is_switched_on() {
-        let off = parse_usage(&serde_json::json!({ "extra_usage": { "is_enabled": false, "utilization": 40.0 } }).to_string());
+        let off = parse_usage(
+            &serde_json::json!({ "extra_usage": { "is_enabled": false, "utilization": 40.0 } }).to_string(),
+        );
         assert!(off.windows.is_empty(), "{:?}", off.windows);
 
         let on = parse_usage(
@@ -473,25 +511,37 @@ mod tests {
     fn every_failure_says_which_one_it_was() {
         let api = || Canned(Ok(fixture()));
 
-        let empty = Recorder { secret: None, ..Default::default() };
+        let empty = Recorder {
+            secret: None,
+            ..Default::default()
+        };
         assert_eq!(
             read_usage(UsageSource::Token, None, "me", &empty, &api(), NOW),
             Err(TokenFailure::NoItem)
         );
 
-        let mcp = Recorder { secret: Some("{\"mcpOAuth\":{}}".into()), ..Default::default() };
+        let mcp = Recorder {
+            secret: Some("{\"mcpOAuth\":{}}".into()),
+            ..Default::default()
+        };
         assert_eq!(
             read_usage(UsageSource::Token, None, "me", &mcp, &api(), NOW),
             Err(TokenFailure::NotALogin)
         );
 
-        let stale = Recorder { secret: Some(login(NOW - 1)), ..Default::default() };
+        let stale = Recorder {
+            secret: Some(login(NOW - 1)),
+            ..Default::default()
+        };
         assert_eq!(
             read_usage(UsageSource::Token, None, "me", &stale, &api(), NOW),
             Err(TokenFailure::Expired)
         );
 
-        let good = Recorder { secret: Some(login(NOW + 1)), ..Default::default() };
+        let good = Recorder {
+            secret: Some(login(NOW + 1)),
+            ..Default::default()
+        };
         let refused = Canned(Err(TokenFailure::Refused(401)));
         let answer = read_usage(UsageSource::Token, None, "me", &good, &refused, NOW);
         assert_eq!(answer, Err(TokenFailure::Refused(401)));
@@ -503,7 +553,10 @@ mod tests {
     /// from. Driven rather than reasoned about.
     #[test]
     fn no_file_under_the_data_dir_holds_the_token() {
-        let vault = Recorder { secret: Some(login(NOW + 1)), ..Default::default() };
+        let vault = Recorder {
+            secret: Some(login(NOW + 1)),
+            ..Default::default()
+        };
         let api = Canned(Ok(fixture()));
         let reading = read_usage(UsageSource::Token, None, "me", &vault, &api, NOW).expect("a reading");
 
@@ -565,9 +618,8 @@ mod tests {
     #[test]
     #[ignore = "reads the real Keychain item and calls the usage endpoint"]
     fn the_real_account_answers_with_its_scoped_window() {
-        let reading =
-            read_usage(UsageSource::Token, None, &os_account(), &Keychain, &Anthropic, now_ms())
-                .expect("a signed-in claude answers");
+        let reading = read_usage(UsageSource::Token, None, &os_account(), &Keychain, &Anthropic, now_ms())
+            .expect("a signed-in claude answers");
 
         let kinds: Vec<&str> = reading.windows.iter().map(|w| w.kind.as_str()).collect();
         assert!(kinds.contains(&"five_hour"), "{kinds:?}");
@@ -576,6 +628,9 @@ mod tests {
             kinds.iter().any(|k| k.starts_with("seven_day_")),
             "the model-scoped window is the reason this rung exists: {kinds:?}"
         );
-        assert!(reading.windows.iter().all(|w| w.utilization.is_some_and(|u| (0.0..=1.0).contains(&u))));
+        assert!(reading
+            .windows
+            .iter()
+            .all(|w| w.utilization.is_some_and(|u| (0.0..=1.0).contains(&u))));
     }
 }

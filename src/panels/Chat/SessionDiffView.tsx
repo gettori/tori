@@ -53,7 +53,6 @@ function relativeTo(cwd: string, path: string): string {
   return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
 
-
 export default function SessionDiffView(props: {
   sessionId: string;
   cwd: string;
@@ -233,7 +232,13 @@ export default function SessionDiffView(props: {
                       <Show when={openHunks().has(key()) && why()}>
                         {(text) => <div class={styles.why}>{text()}</div>}
                       </Show>
-                      <DiffRows rows={traceWork("session-diff", () => buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }))} path={file.path} twoColumn={twoColumn()} />
+                      <DiffRows
+                        rows={traceWork("session-diff", () =>
+                          buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }),
+                        )}
+                        path={file.path}
+                        twoColumn={twoColumn()}
+                      />
                     </div>
                   );
                 }}

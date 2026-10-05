@@ -73,7 +73,11 @@ pub fn command(server: &LspServer, dir: &Path) -> Result<Command, String> {
     } else if server.install.as_ref().is_some_and(|i| i.available_version().is_some()) {
         return Err(NOT_INSTALLED.to_string());
     } else {
-        return Err(format!("{}: `{program}` is not on your PATH, and Tori has no build of it for {}", server.id, platform()));
+        return Err(format!(
+            "{}: `{program}` is not on your PATH, and Tori has no build of it for {}",
+            server.id,
+            platform()
+        ));
     };
     cmd.args(args);
     Ok(cmd)
@@ -139,17 +143,31 @@ fn fill(
                 .output()
                 .map_err(|e| format!("could not run npm: {e}"))?;
             if !out.status.success() {
-                return Err(format!("npm install {package}@{version} failed: {}", last_line(&out.stderr)));
+                return Err(format!(
+                    "npm install {package}@{version} failed: {}",
+                    last_line(&out.stderr)
+                ));
             }
-            Installed { version: version.clone(), bin: format!("node_modules/.bin/{program}") }
+            Installed {
+                version: version.clone(),
+                bin: format!("node_modules/.bin/{program}"),
+            }
         }
         Some(Install::GithubRelease { repo, version, assets }) => {
             let key = platform();
-            let asset = assets.get(&key).ok_or_else(|| format!("{} has no build for {key}", server.label))?;
-            let bytes = fetch(&format!("https://github.com/{repo}/releases/download/{version}/{}", asset.file))?;
+            let asset = assets
+                .get(&key)
+                .ok_or_else(|| format!("{} has no build for {key}", server.label))?;
+            let bytes = fetch(&format!(
+                "https://github.com/{repo}/releases/download/{version}/{}",
+                asset.file
+            ))?;
             let digest = format!("{:x}", Sha256::digest(&bytes));
             if digest != asset.sha256 {
-                return Err(format!("{}: checksum mismatch (expected {}, got {digest})", asset.file, asset.sha256));
+                return Err(format!(
+                    "{}: checksum mismatch (expected {}, got {digest})",
+                    asset.file, asset.sha256
+                ));
             }
             if is_archive(&asset.file) {
                 let archive = staging.join(&asset.file);
@@ -164,7 +182,10 @@ fn fill(
                 std::fs::write(bin, &bytes).map_err(|e| e.to_string())?;
             }
             make_executable(&staging.join(&asset.bin))?;
-            Installed { version: version.clone(), bin: asset.bin.clone() }
+            Installed {
+                version: version.clone(),
+                bin: asset.bin.clone(),
+            }
         }
         Some(Install::Hint { .. }) | None => return Err(format!("{}: Tori has nothing to install", server.id)),
     };
@@ -213,7 +234,11 @@ fn unpack(archive: &Path, into: &Path) -> Result<(), String> {
     if out.status.success() {
         Ok(())
     } else {
-        Err(format!("could not unpack {}: {}", archive.display(), last_line(&out.stderr)))
+        Err(format!(
+            "could not unpack {}: {}",
+            archive.display(),
+            last_line(&out.stderr)
+        ))
     }
 }
 
@@ -237,7 +262,11 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
         .redirects(5)
         .timeout(Duration::from_secs(300))
         .build();
-    let response = agent.get(url).set("User-Agent", "tori-lsp-install").call().map_err(|e| e.to_string())?;
+    let response = agent
+        .get(url)
+        .set("User-Agent", "tori-lsp-install")
+        .call()
+        .map_err(|e| e.to_string())?;
     let mut bytes = Vec::new();
     response
         .into_reader()
@@ -252,7 +281,12 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 
 pub(crate) fn last_line(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
-    text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output").trim().to_string()
+    text.lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("no output")
+        .trim()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -288,7 +322,14 @@ mod tests {
         std::fs::create_dir_all(src.join("bin")).unwrap();
         std::fs::write(src.join("bin").join(program), "#!/bin/sh\necho demo\n").unwrap();
         let out = src.join("demo.tar.gz");
-        let status = Command::new("tar").arg("-czf").arg(&out).arg("-C").arg(&src).arg("bin").status().unwrap();
+        let status = Command::new("tar")
+            .arg("-czf")
+            .arg(&out)
+            .arg("-C")
+            .arg(&src)
+            .arg("bin")
+            .status()
+            .unwrap();
         assert!(status.success());
         let bytes = std::fs::read(out).unwrap();
         let digest = format!("{:x}", Sha256::digest(&bytes));
@@ -298,13 +339,22 @@ mod tests {
     #[test]
     fn a_checksum_mismatch_aborts_and_leaves_no_partial_directory() {
         let (bytes, _) = archive("tori-demo-server");
-        let server = release_server("tori-demo-server", "demo.tar.gz", &"0".repeat(64), "bin/tori-demo-server");
+        let server = release_server(
+            "tori-demo-server",
+            "demo.tar.gz",
+            &"0".repeat(64),
+            "bin/tori-demo-server",
+        );
         let dir = temp_dir("install_mismatch");
 
         let err = install_with(&server, &dir, |_| Ok(bytes.clone())).unwrap_err();
 
         assert!(err.contains("checksum mismatch"), "{err}");
-        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
         assert!(left.is_empty(), "nothing may be left behind: {left:?}");
     }
 
@@ -325,12 +375,16 @@ mod tests {
         assert_eq!(Path::new(command(&server, &dir).unwrap().get_program()), on_path);
 
         let (bytes, digest) = archive("tori-not-on-any-path");
-        let server = release_server("tori-not-on-any-path", "demo.tar.gz", &digest, "bin/tori-not-on-any-path");
+        let server = release_server(
+            "tori-not-on-any-path",
+            "demo.tar.gz",
+            &digest,
+            "bin/tori-not-on-any-path",
+        );
         install_with(&server, &dir, |_| Ok(bytes.clone())).unwrap();
         assert_eq!(
             Path::new(command(&server, &dir).unwrap().get_program()),
             dir.join("demo/bin/tori-not-on-any-path")
         );
     }
-
 }

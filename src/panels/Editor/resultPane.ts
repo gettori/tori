@@ -47,7 +47,12 @@ export type OptionsFor = (id: string) => ChoiceOption[];
 export function choiceOptions(labels: SideLabels, both: Choice[]): ChoiceOption[] {
   const combined = (choice: Choice): ChoiceOption => {
     if (choice === "both") {
-      return { choice, text: "Both", name: "Keep both versions, ours first", readout: "Holds both versions, ours first" };
+      return {
+        choice,
+        text: "Both",
+        name: "Keep both versions, ours first",
+        readout: "Holds both versions, ours first",
+      };
     }
     const first = labels[choice === "combine-theirs" ? "theirs" : "ours"];
     return both.length > 1

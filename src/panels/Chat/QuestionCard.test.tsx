@@ -122,9 +122,7 @@ describe("QuestionCard", () => {
 
   it("sends one answer per question, with picks and typed text kept apart", () => {
     const onAnswer = vi.fn();
-    render(() => (
-      <QuestionCard item={item({ questions: [CHANNEL, SCOPE, PLACEMENT, EXTRA] })} onAnswer={onAnswer} />
-    ));
+    render(() => <QuestionCard item={item({ questions: [CHANNEL, SCOPE, PLACEMENT, EXTRA] })} onAnswer={onAnswer} />);
     fireEvent.click(radio("In protocol"));
     fireEvent.click(box("The title copy"));
     fireEvent.click(box("The keyframe coupling"));
@@ -159,9 +157,7 @@ describe("QuestionCard", () => {
     const record =
       'Your questions have been answered: "Which answer channel should the card use?"="In protocol". ' +
       "You can now continue with these answers in mind.";
-    render(() => (
-      <QuestionCard item={item({ requestId: null, result: record })} onAnswer={() => {}} />
-    ));
+    render(() => <QuestionCard item={item({ requestId: null, result: record })} onAnswer={() => {}} />);
     expect(screen.getByText("Which answer channel should the card use?")).toBeTruthy();
     expect(radio("In protocol").checked).toBe(true);
     expect(radio("In protocol").disabled).toBe(true);
@@ -309,9 +305,7 @@ describe("QuestionCard", () => {
   });
 
   it("stays clean once answered", async () => {
-    render(() => (
-      <QuestionCard item={item({ requestId: null, result: "Your questions have been answered." })} />
-    ));
+    render(() => <QuestionCard item={item({ requestId: null, result: "Your questions have been answered." })} />);
     await expectNoAxeViolations(document.body);
   });
 });

@@ -1,6 +1,13 @@
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Decoration, EditorView, drawSelection, highlightActiveLine, keymap, type DecorationSet } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  drawSelection,
+  highlightActiveLine,
+  keymap,
+  type DecorationSet,
+} from "@codemirror/view";
 import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { Ellipsis, RefreshCw, Rows3 } from "lucide-solid";
@@ -259,7 +266,7 @@ export default function SearchResultsBuffer(props: {
   const [hasDoc, setHasDoc] = createSignal(false);
 
   const entry = () => searchBuffer(props.id);
-  const status = () => refusal() ?? (held() ? HELD : outcome() ?? "");
+  const status = () => refusal() ?? (held() ? HELD : (outcome() ?? ""));
   const docOf = () => searchBuffer(props.id)?.doc ?? EMPTY_DOC;
 
   function countPending() {
@@ -436,7 +443,11 @@ export default function SearchResultsBuffer(props: {
       setCaps({ backend: answered?.backend ?? "", unsupported: merged.unsupported });
       const failed = merged.sections.filter((s) => s.error);
       const matches = merged.sections.flatMap((s) => s.matches.map((m) => ({ ...m, root: s.root })));
-      const doc = await buildFrom(matches, roots.map((r) => ({ root: r.path, label: labelOf(r.path) })), f);
+      const doc = await buildFrom(
+        matches,
+        roots.map((r) => ({ root: r.path, label: labelOf(r.path) })),
+        f,
+      );
       if (gen !== runGen) return;
       e.doc = doc;
       showDoc();
@@ -605,7 +616,9 @@ export default function SearchResultsBuffer(props: {
       </Show>
       <div class={styles.editorHost} classList={{ [styles.blank]: !hasDoc() }} ref={host} />
       <Show when={form() && !hasDoc()}>
-        <div class={styles.blankHint}>{running() ? "Searching..." : "Type to search. Double-click a result to open it."}</div>
+        <div class={styles.blankHint}>
+          {running() ? "Searching..." : "Type to search. Double-click a result to open it."}
+        </div>
       </Show>
     </div>
   );

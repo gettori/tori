@@ -211,7 +211,7 @@ export default function BranchLine(props: {
 
   return (
     <Show when={pr() || stat()}>
-      {(
+      {
         // A span, not a button. The line reports; it is not a way in. The
         // Pull Requests panel is reached from the command palette and from
         // the editor's own right-panel tabs, so a control per branch row here
@@ -229,7 +229,7 @@ export default function BranchLine(props: {
             <Show when={pr()}>{(p) => history(p)}</Show>
           </span>
         </Tooltip>
-      )}
+      }
     </Show>
   );
 }

@@ -104,9 +104,7 @@ export default function AskpassDialog() {
               onKeyDown={onKeyDown}
             />
             <Show when={c().kind === "password"}>
-              <div class={styles.hint}>
-                HTTPS wants a personal access token, not your account password.
-              </div>
+              <div class={styles.hint}>HTTPS wants a personal access token, not your account password.</div>
             </Show>
           </>
         )}

@@ -134,7 +134,11 @@ describe("how old a reading is", () => {
 });
 
 describe("announcing a transition once", () => {
-  const warned = () => ({ ...reading("seven_day", { utilization: 0.88 }), sampledAt: NOW, source: "sessions" as const });
+  const warned = () => ({
+    ...reading("seven_day", { utilization: 0.88 }),
+    sampledAt: NOW,
+    source: "sessions" as const,
+  });
 
   it("fires once however many events repeat it", () => {
     const r = warned();
@@ -194,7 +198,11 @@ describe("the snapshot", () => {
 
   it("saves the pruned set, not the one it was holding", async () => {
     const live = { ...reading("five_hour"), sampledAt: NOW, source: "sessions" as const };
-    const dead = { ...reading("seven_day", { resetsAt: Math.floor(NOW / 1000) - 60 }), sampledAt: NOW, source: "sessions" as const };
+    const dead = {
+      ...reading("seven_day", { resetsAt: Math.floor(NOW / 1000) - 60 }),
+      sampledAt: NOW,
+      source: "sessions" as const,
+    };
     shouldAnnounce("claude", null, live, "approaching");
     shouldAnnounce("claude", null, dead, "reached");
     expect(Object.keys(usageSnapshot(NOW).fired)).toHaveLength(1);

@@ -93,7 +93,7 @@ function assertBundleMatchesManifest() {
       `the adapter no longer prints ${JSON.stringify(manifest.expect.readiness)}.\n` +
         `  js-debug ${manifest.version} changed its readiness line. The Rust host retries the\n` +
         `  connect rather than parsing this, so nothing is broken, but update\n` +
-        `  manifest.json's expect.readiness deliberately.`
+        `  manifest.json's expect.readiness deliberately.`,
     );
   }
 
@@ -112,7 +112,7 @@ function assertBundleMatchesManifest() {
         `  none of them on a client capability, so an unanswered one hangs the session\n` +
         `  with no error. Add the handler first, then update manifest.json. If a new name\n` +
         `  is an internal method rather than a request to us, add it to\n` +
-        `  expect.internalRequestMethods.`
+        `  expect.internalRequestMethods.`,
     );
   }
 }
@@ -133,11 +133,7 @@ function download() {
   const actual = createHash("sha256").update(fs.readFileSync(tmp)).digest("hex");
   if (actual !== manifest.sha256) {
     fs.rmSync(tmp, { force: true });
-    die(
-      `sha256 mismatch for ${manifest.url}\n` +
-        `  expected ${manifest.sha256}\n` +
-        `  got      ${actual}`
-    );
+    die(`sha256 mismatch for ${manifest.url}\n` + `  expected ${manifest.sha256}\n` + `  got      ${actual}`);
   }
 
   fs.rmSync(path.join(DAP_DIR, "js-debug"), { recursive: true, force: true });

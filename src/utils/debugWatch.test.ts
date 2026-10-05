@@ -32,10 +32,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         const command = frame.command as string;
         const requestArgs = (frame.arguments ?? {}) as Record<string, unknown>;
         sent.push({ session: handle.session, command, args: requestArgs });
-        const answer =
-          command === "evaluate"
-            ? evaluations.get(requestArgs.expression as string)
-            : undefined;
+        const answer = command === "evaluate" ? evaluations.get(requestArgs.expression as string) : undefined;
         const failed = Boolean(answer?.fail);
         void Promise.resolve().then(() =>
           deliver(handle.session, {
@@ -63,12 +60,10 @@ vi.mock("./events", async () => {
 });
 
 function bodyFor(command: string, answer?: { result?: string; type?: string }): unknown {
-  if (command === "initialize")
-    return { supportsConfigurationDoneRequest: true, supportsSetVariable: true };
+  if (command === "initialize") return { supportsConfigurationDoneRequest: true, supportsSetVariable: true };
   if (command === "stackTrace") return { stackFrames: FRAMES };
   if (command === "scopes") return { scopes: [{ name: "Locals", variablesReference: 100 }] };
-  if (command === "variables")
-    return { variables: [{ name: "count", value: "3", variablesReference: 0 }] };
+  if (command === "variables") return { variables: [{ name: "count", value: "3", variablesReference: 0 }] };
   if (command === "setVariable") return { value: "42", variablesReference: 0 };
   if (command === "evaluate") return { result: answer?.result ?? "?", type: answer?.type };
   return {};

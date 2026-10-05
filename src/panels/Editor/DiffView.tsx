@@ -29,12 +29,7 @@ import {
 import { debounce } from "../../utils/debounce";
 import { blameFor, dropBlame, type Blame } from "../../utils/blame";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
-import {
-  gitStateFor,
-  refreshStatus,
-  stage as stageFiles,
-  unstage as unstageFiles,
-} from "../../utils/gitActions";
+import { gitStateFor, refreshStatus, stage as stageFiles, unstage as unstageFiles } from "../../utils/gitActions";
 import { parseDiffHunks, DIFF_CONTEXT } from "../../utils/diffHunks";
 import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
@@ -442,10 +437,7 @@ export default function DiffView(props: {
       <Show
         when={openGaps().has(gapKey)}
         fallback={
-          <div
-            class={`${diffRowClasses.line} ${styles.diffGap}`}
-            onClick={() => void expandGap(gapKey, gap)}
-          >
+          <div class={`${diffRowClasses.line} ${styles.diffGap}`} onClick={() => void expandGap(gapKey, gap)}>
             {`\u22ef ${count} unchanged line${count === 1 ? "" : "s"}`}
           </div>
         }
@@ -497,7 +489,12 @@ export default function DiffView(props: {
         </Show>
         <span class={styles.spacer} />
         <Show when={editorLayout()}>
-          <IconButton size="sm" icon={<Icon icon={ChevronUp} />} tooltip="Previous change" onClick={() => nav?.previous()} />
+          <IconButton
+            size="sm"
+            icon={<Icon icon={ChevronUp} />}
+            tooltip="Previous change"
+            onClick={() => nav?.previous()}
+          />
           <IconButton size="sm" icon={<Icon icon={ChevronDown} />} tooltip="Next change" onClick={() => nav?.next()} />
         </Show>
         <Show when={!readOnly()}>
@@ -508,9 +505,7 @@ export default function DiffView(props: {
             tooltip={staged() ? "Unstage this file" : "Stage this file"}
             onClick={() =>
               void applied(() =>
-                staged()
-                  ? unstageFiles(props.workspace, [file()])
-                  : stageFiles(props.workspace, [file()]),
+                staged() ? unstageFiles(props.workspace, [file()]) : stageFiles(props.workspace, [file()]),
               )
             }
           />
@@ -673,9 +668,7 @@ export default function DiffView(props: {
                         : undefined
                     }
                   />
-                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                    {(gap) => gapRow(gap, `gap${hi()}`)}
-                  </For>
+                  <For each={gaps().filter((g) => g.afterHunk === hi())}>{(gap) => gapRow(gap, `gap${hi()}`)}</For>
                 </div>
               )}
             </For>

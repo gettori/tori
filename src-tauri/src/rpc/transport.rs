@@ -62,7 +62,12 @@ impl UnixTransport {
         let _ = std::fs::remove_file(&sock_path);
         let listener = UnixListener::bind(&sock_path)?;
         std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o700))?;
-        Ok(Self { listener, sock_path, dir, stopping: AtomicBool::new(false) })
+        Ok(Self {
+            listener,
+            sock_path,
+            dir,
+            stopping: AtomicBool::new(false),
+        })
     }
 
     pub fn sock_path(&self) -> &Path {

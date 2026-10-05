@@ -99,24 +99,18 @@ const MAX_COMPACT_DEPTH: usize = 8;
 /// ("exactly one visible child, and it is a directory") stays owned by the
 /// caller that filters those names out of what it draws.
 #[tauri::command]
-pub async fn fs_read_dir_compact(
-    path: String,
-    compact: bool,
-    hidden: Vec<String>,
-) -> Result<Vec<CompactRow>, String> {
+pub async fn fs_read_dir_compact(path: String, compact: bool, hidden: Vec<String>) -> Result<Vec<CompactRow>, String> {
     crate::exec::blocking("fs_read_dir_compact", move || {
         fs_read_dir_compact_body(&path, compact, &hidden)
     })
     .await
 }
 
-fn fs_read_dir_compact_body(
-    path: &str,
-    compact: bool,
-    hidden: &[String],
-) -> Result<Vec<CompactRow>, String> {
+fn fs_read_dir_compact_body(path: &str, compact: bool, hidden: &[String]) -> Result<Vec<CompactRow>, String> {
     let visible = |es: Vec<DirEntry>| -> Vec<DirEntry> {
-        es.into_iter().filter(|e| !hidden.iter().any(|h| h == &e.name)).collect()
+        es.into_iter()
+            .filter(|e| !hidden.iter().any(|h| h == &e.name))
+            .collect()
     };
     let base = visible(read_sorted(path)?);
 
@@ -181,10 +175,7 @@ fn fs_read_dir_compact_body(
 // `git check-ignore --stdin` from within `dir`, so the repo's full ignore rules
 // apply (already-tracked files are correctly not reported). Any failure (not a
 // repo, git missing) yields an empty set, so nothing is dimmed.
-fn gitignored_paths<'a>(
-    dir: &str,
-    paths: impl Iterator<Item = &'a str>,
-) -> std::collections::HashSet<String> {
+fn gitignored_paths<'a>(dir: &str, paths: impl Iterator<Item = &'a str>) -> std::collections::HashSet<String> {
     use std::io::Write;
     use std::process::Stdio;
 
@@ -308,17 +299,22 @@ pub fn fs_write_files(files: Vec<FileWrite>) -> Result<Vec<String>, String> {
                 // A file the rename would create. Its directory has to exist:
                 // this command deliberately does not make directories, because
                 // every caller is rewriting files that are already there.
-                let parent = path.parent().ok_or_else(|| format!("{} has no parent directory.", f.path))?;
+                let parent = path
+                    .parent()
+                    .ok_or_else(|| format!("{} has no parent directory.", f.path))?;
                 if !parent.is_dir() {
-                    return Err(format!("{} does not exist, so {} can't be written.", parent.display(), f.path));
+                    return Err(format!(
+                        "{} does not exist, so {} can't be written.",
+                        parent.display(),
+                        f.path
+                    ));
                 }
             }
         }
     }
     let mut written = Vec::with_capacity(files.len());
     for f in &files {
-        std::fs::write(&f.path, &f.contents)
-            .map_err(|e| format!("Writing {} failed: {e}", f.path))?;
+        std::fs::write(&f.path, &f.contents).map_err(|e| format!("Writing {} failed: {e}", f.path))?;
         written.push(f.path.clone());
     }
     Ok(written)
@@ -423,12 +419,7 @@ impl Disposer for TrashDisposer {
 /// Move a file or directory inside `root` to the Trash. `symlink_metadata` does
 /// not follow, so a symlink is checked as a link and trashed as one, never
 /// followed into. A missing target is an error, as it was when this unlinked.
-fn fs_delete_with(
-    root: &str,
-    path: &str,
-    noun: Option<&str>,
-    disposer: &dyn Disposer,
-) -> Result<(), String> {
+fn fs_delete_with(root: &str, path: &str, noun: Option<&str>, disposer: &dyn Disposer) -> Result<(), String> {
     let p = ensure_inside(root, path, noun)?;
     std::fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
     disposer.dispose(&p)
@@ -466,7 +457,11 @@ fn free_copy_name(dir: &Path, name: &str, is_dir: bool) -> PathBuf {
     }
     let mut n = 1;
     loop {
-        let suffix = if n == 1 { " copy".to_string() } else { format!(" copy {n}") };
+        let suffix = if n == 1 {
+            " copy".to_string()
+        } else {
+            format!(" copy {n}")
+        };
         let candidate = dir.join(format!("{stem}{suffix}{ext}"));
         if candidate.symlink_metadata().is_err() {
             return candidate;
@@ -594,7 +589,11 @@ fn touch_root(entries: &mut Vec<WatchEntry>, root: &str, cap: usize) -> bool {
     let is_new = existing.is_none();
     let entry = match existing {
         Some(i) => entries.remove(i),
-        None => WatchEntry { root: root.to_string(), muted: Arc::default(), watcher: None },
+        None => WatchEntry {
+            root: root.to_string(),
+            muted: Arc::default(),
+            watcher: None,
+        },
     };
     entries.push(entry);
     if entries.len() > cap {
@@ -632,7 +631,11 @@ fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> V
         match entries.iter().position(|e| &e.root == root) {
             Some(i) => kept.push(entries.remove(i)),
             None => {
-                kept.push(WatchEntry { root: root.clone(), muted: Arc::default(), watcher: None });
+                kept.push(WatchEntry {
+                    root: root.clone(),
+                    muted: Arc::default(),
+                    watcher: None,
+                });
                 fresh.push(root.clone());
             }
         }
@@ -653,8 +656,7 @@ fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> V
 /// three checkouts plus three cloned dependency trees inside the project, and
 /// without this the watcher would report every one of those files as a change
 /// to the project the user is actually looking at.
-const IGNORED_DIRS: &[&str] =
-    &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
+const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
 /// Topic worktrees of a plain repo live under `.tori/worktrees`: whole
 /// checkouts, like `.tori-attempts`. A parent-child pair rather than a name in
@@ -695,16 +697,9 @@ struct FsChanged {
 /// into a trailing-edge debounce thread that emits one
 /// `fs://changed { root, paths }` per burst.
 #[tauri::command]
-pub async fn fs_watch_start(
-    app: AppHandle,
-    state: State<'_, FsWatch>,
-    project_path: String,
-) -> Result<(), String> {
+pub async fn fs_watch_start(app: AppHandle, state: State<'_, FsWatch>, project_path: String) -> Result<(), String> {
     let state = state.inner().clone();
-    crate::exec::blocking("fs_watch_start", move || {
-        fs_watch_start_body(app, &state, project_path)
-    })
-    .await
+    crate::exec::blocking("fs_watch_start", move || fs_watch_start_body(app, &state, project_path)).await
 }
 
 fn fs_watch_start_body(app: AppHandle, state: &FsWatch, project_path: String) -> Result<(), String> {
@@ -731,8 +726,15 @@ struct GitChanged {
 
 /// Names directly in a git dir whose write means HEAD, the index or an
 /// in-progress operation moved.
-const GIT_SIGNAL_FILES: &[&str] =
-    &["HEAD", "index", "packed-refs", "MERGE_HEAD", "REBASE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"];
+const GIT_SIGNAL_FILES: &[&str] = &[
+    "HEAD",
+    "index",
+    "packed-refs",
+    "MERGE_HEAD",
+    "REBASE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+];
 
 /// A root's git dir and the common dir its refs live in. The same folder for a
 /// plain clone; for a linked worktree the git dir is `<common>/worktrees/<name>`.
@@ -753,7 +755,11 @@ impl GitDirs {
         } else {
             let text = std::fs::read_to_string(&dot).ok()?;
             let target = PathBuf::from(text.strip_prefix("gitdir:")?.trim());
-            if target.is_absolute() { target } else { root.join(target) }
+            if target.is_absolute() {
+                target
+            } else {
+                root.join(target)
+            }
         };
         let git = git.canonicalize().ok()?;
         let common = match std::fs::read_to_string(git.join("commondir")) {
@@ -777,7 +783,10 @@ impl GitDirs {
             return true;
         }
         let in_dir = p.parent().is_some_and(|d| d == self.git || d == self.common);
-        in_dir && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| GIT_SIGNAL_FILES.contains(&n))
+        in_dir
+            && p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| GIT_SIGNAL_FILES.contains(&n))
     }
 
     /// What the root's own recursive watch does not already cover. Not the
@@ -865,15 +874,22 @@ fn install_watcher(
                 .into_iter()
                 .partition(|p| dirs.as_ref().is_some_and(|d| d.contains(p)));
             if git.iter().any(|p| dirs.as_ref().is_some_and(|d| d.is_signal(p))) {
-                let _ = app_handle.emit("git://changed", GitChanged { root: emit_root.clone() });
+                let _ = app_handle.emit(
+                    "git://changed",
+                    GitChanged {
+                        root: emit_root.clone(),
+                    },
+                );
             }
-            let paths: Vec<String> = rest
-                .into_iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect();
+            let paths: Vec<String> = rest.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
             if !paths.is_empty() {
-                let _ = app_handle
-                    .emit("fs://changed", FsChanged { root: emit_root.clone(), paths });
+                let _ = app_handle.emit(
+                    "fs://changed",
+                    FsChanged {
+                        root: emit_root.clone(),
+                        paths,
+                    },
+                );
             }
         }
     });
@@ -886,11 +902,7 @@ fn install_watcher(
 /// is not an LRU - a Topic has no "the one root in front", so a warm entry
 /// from a previous set is either in this one or gone.
 #[tauri::command]
-pub async fn fs_watch_set(
-    app: AppHandle,
-    state: State<'_, FsWatch>,
-    roots: Vec<String>,
-) -> Result<(), String> {
+pub async fn fs_watch_set(app: AppHandle, state: State<'_, FsWatch>, roots: Vec<String>) -> Result<(), String> {
     let state = state.inner().clone();
     crate::exec::blocking("fs_watch_set", move || fs_watch_set_body(app, &state, roots)).await
 }
@@ -922,8 +934,8 @@ fn fs_watch_set_body(app: AppHandle, state: &FsWatch, roots: Vec<String>) -> Res
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
     use super::*;
+    use std::process::Command;
     use std::sync::Mutex;
 
     fn temp_tree(name: &str) -> PathBuf {
@@ -958,7 +970,9 @@ mod tests {
         assert!(touch_root(&mut entries, "/d", 3), "a fourth root installs");
         let roots: Vec<&str> = entries.iter().map(|e| e.root.as_str()).collect();
         assert_eq!(roots, vec!["/c", "/a", "/d"], "the coldest root is evicted");
-        assert!(entries.iter().all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/d")));
+        assert!(entries
+            .iter()
+            .all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/d")));
     }
 
     /// The Topic form: a whole set is foreground at once, a root already warm
@@ -970,7 +984,10 @@ mod tests {
         let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
         let mut entries: Vec<WatchEntry> = Vec::new();
-        assert!(touch_root(&mut entries, "/a", 3), "warm /a through the single-root path");
+        assert!(
+            touch_root(&mut entries, "/a", 3),
+            "warm /a through the single-root path"
+        );
 
         let fresh = touch_roots(&mut entries, &set(&["/a", "/b", "/c"]), 8);
         assert_eq!(fresh, vec!["/b", "/c"], "a warm root needs no new watcher");
@@ -983,7 +1000,9 @@ mod tests {
 
         // Back to a single root: the LRU's rule applies again to what is left.
         assert!(touch_root(&mut entries, "/x", MAX_WATCHED_ROOTS));
-        assert!(entries.iter().all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/x")));
+        assert!(entries
+            .iter()
+            .all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/x")));
 
         // Nine members, eight watched, in member order.
         let mut entries: Vec<WatchEntry> = Vec::new();
@@ -1012,10 +1031,8 @@ mod tests {
         std::fs::create_dir_all(root.join("busy/two")).unwrap();
         std::fs::write(root.join("readme.md"), "").unwrap();
 
-        let rows =
-            fs_read_dir_compact_body(&root.to_string_lossy(), true, &[".git".into()]).unwrap();
-        let by_label: Vec<(&str, bool)> =
-            rows.iter().map(|r| (r.label.as_str(), r.is_dir)).collect();
+        let rows = fs_read_dir_compact_body(&root.to_string_lossy(), true, &[".git".into()]).unwrap();
+        let by_label: Vec<(&str, bool)> = rows.iter().map(|r| (r.label.as_str(), r.is_dir)).collect();
         assert_eq!(
             by_label,
             vec![("busy", true), ("src/utils/helpers", true), ("readme.md", false)]
@@ -1042,8 +1059,7 @@ mod tests {
         std::fs::create_dir_all(root.join("src/only")).unwrap();
         std::fs::write(root.join("src/only/f.ts"), "").unwrap();
 
-        let rows =
-            fs_read_dir_compact_body(&root.to_string_lossy(), true, &[".git".into()]).unwrap();
+        let rows = fs_read_dir_compact_body(&root.to_string_lossy(), true, &[".git".into()]).unwrap();
         let dist = rows.iter().find(|r| r.name == "dist").expect("dist listed");
         assert!(dist.ignored, "dist is gitignored");
         assert_eq!(dist.label, "dist", "no compaction into an ignored dir");
@@ -1093,7 +1109,10 @@ mod tests {
     fn walk_files_skips_topic_worktrees_but_not_the_tori_dir() {
         let root = std::env::temp_dir().join(format!(
             "tori-walk-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(root.join(".tori/worktrees/x")).unwrap();
         std::fs::write(root.join(".tori/worktrees/x/a.rs"), "").unwrap();
@@ -1115,7 +1134,11 @@ mod tests {
     /// folder as a file and a click on it fails with "Is a directory".
     #[test]
     fn a_link_to_a_folder_lists_as_a_folder_and_a_dangling_one_does_not() {
-        let base = std::env::temp_dir().join(format!("tori-fs-link-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let base = std::env::temp_dir().join(format!(
+            "tori-fs-link-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let outside = base.join("shared");
         let inside = base.join("worktree");
         std::fs::create_dir_all(outside.join("config")).unwrap();
@@ -1130,7 +1153,10 @@ mod tests {
         let by = |n: &str| entries.iter().find(|e| e.name == n).unwrap().is_dir;
         assert!(by("config"), "a link to a folder is a folder");
         assert!(!by(".env"), "a link to a file is a file");
-        assert!(!by("gone"), "a link to nothing reads as a file, which is what it looks like");
+        assert!(
+            !by("gone"),
+            "a link to nothing reads as a file, which is what it looks like"
+        );
 
         // And the project file list finds the linked file, without walking the
         // linked folder, which is the half that could loop.
@@ -1197,8 +1223,7 @@ mod tests {
         perms.set_readonly(true);
         std::fs::set_permissions(&ro, perms).unwrap();
 
-        let err = fs_write_files(vec![write(&a, "should not land"), write(&ro, "nor this")])
-            .unwrap_err();
+        let err = fs_write_files(vec![write(&a, "should not land"), write(&ro, "nor this")]).unwrap_err();
         assert!(err.contains("read-only"), "{err}");
         assert!(err.contains("locked.ts"), "{err}");
         assert_eq!(std::fs::read_to_string(&a).unwrap(), "new a");
@@ -1334,15 +1359,12 @@ mod tests {
         // `..` out of the project is refused, and the refusal names the project.
         let rec = Recorder::default();
         let escape = project.join("../other-worktree/secret.txt");
-        let err = fs_delete_with(&project_s, &escape.to_string_lossy(), Some("project folder"), &rec)
-            .unwrap_err();
+        let err = fs_delete_with(&project_s, &escape.to_string_lossy(), Some("project folder"), &rec).unwrap_err();
         assert!(err.contains("project folder"), "{err}");
         assert!(secret.exists(), "the sibling worktree must be untouched");
 
         // So is an absolute path that never mentions `..`.
-        assert!(
-            fs_delete_with(&project_s, &secret.to_string_lossy(), Some("project folder"), &rec).is_err()
-        );
+        assert!(fs_delete_with(&project_s, &secret.to_string_lossy(), Some("project folder"), &rec).is_err());
         assert!(secret.exists());
         assert!(rec.taken().is_empty(), "no refused path may reach the Trash");
 
@@ -1361,8 +1383,12 @@ mod tests {
         // And the ordinary in-project case still works, so the fence is a fence
         // and not a wall: nested create, then rename within the project.
         let nested = project.join("src").join("utils");
-        fs_mkdir(project_s.clone(), nested.to_string_lossy().into_owned(), Some("project folder".into()))
-            .unwrap();
+        fs_mkdir(
+            project_s.clone(),
+            nested.to_string_lossy().into_owned(),
+            Some("project folder".into()),
+        )
+        .unwrap();
         assert!(nested.is_dir());
         fs_rename(
             project_s.clone(),

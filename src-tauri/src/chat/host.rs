@@ -18,11 +18,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use super::approval::{self, CaptureServer};
+use super::mirror::Mirror;
 use super::model::{
     cap_output, ChatCommand, ChatConfigValue, ChatEvent, ChatModeInfo, ChatModelInfo, ChatQuestion, ContentBlock,
     PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
-use super::mirror::Mirror;
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
@@ -118,12 +118,17 @@ impl Lifecycle {
         if let Some(held) = lock(&self.announced).get_mut(id) {
             *held = place.clone();
         }
-        publish(id, session_event("session.started", id, &place, serde_json::json!({ "agent": agent })));
+        publish(
+            id,
+            session_event("session.started", id, &place, serde_json::json!({ "agent": agent })),
+        );
     }
 
     fn note(&self, id: &str, kind: &str, fields: serde_json::Value) {
         let Some(publish) = self.publish.get() else { return };
-        let Some(place) = lock(&self.announced).get(id).cloned() else { return };
+        let Some(place) = lock(&self.announced).get(id).cloned() else {
+            return;
+        };
         publish(id, session_event(kind, id, &place, fields));
     }
 
@@ -143,24 +148,53 @@ impl Lifecycle {
             crate::rpc::watcher_touch(id);
         }
         match event {
-            ChatEvent::TurnStarted { turn_id, agent_initiated, .. } => {
+            ChatEvent::TurnStarted {
+                turn_id,
+                agent_initiated,
+                ..
+            } => {
                 let pending = lock(&self.origins).remove(id);
-                let by = if *agent_initiated { TurnBy::Agent } else { pending.unwrap_or(TurnBy::User) };
-                self.note(id, "session.turn_started", serde_json::json!({ "turn_id": turn_id, "by": by }));
+                let by = if *agent_initiated {
+                    TurnBy::Agent
+                } else {
+                    pending.unwrap_or(TurnBy::User)
+                };
+                self.note(
+                    id,
+                    "session.turn_started",
+                    serde_json::json!({ "turn_id": turn_id, "by": by }),
+                );
             }
             ChatEvent::TurnCompleted { turn_id, outcome, .. } => {
                 lock(&self.origins).remove(id);
-                self.note(id, "session.turn_ended", serde_json::json!({ "turn_id": turn_id, "outcome": outcome }));
+                self.note(
+                    id,
+                    "session.turn_ended",
+                    serde_json::json!({ "turn_id": turn_id, "outcome": outcome }),
+                );
             }
-            ChatEvent::Compacted { trigger, .. } => self.note(id, "session.compacted", serde_json::json!({ "trigger": trigger })),
-            ChatEvent::QuestionRequest { tool_use_id, request_id, questions, .. } => {
+            ChatEvent::Compacted { trigger, .. } => {
+                self.note(id, "session.compacted", serde_json::json!({ "trigger": trigger }))
+            }
+            ChatEvent::QuestionRequest {
+                tool_use_id,
+                request_id,
+                questions,
+                ..
+            } => {
                 self.note(
                     id,
                     "session.question",
                     serde_json::json!({ "tool_use_id": tool_use_id, "request_id": request_id, "questions": questions }),
                 );
             }
-            ChatEvent::PermissionRequest { tool_use_id, request_id, tool_name, input, .. } => {
+            ChatEvent::PermissionRequest {
+                tool_use_id,
+                request_id,
+                tool_name,
+                input,
+                ..
+            } => {
                 let detail = permission_detail(input);
                 self.note(
                     id,
@@ -185,7 +219,10 @@ impl Lifecycle {
             return;
         };
         if let Some(publish) = self.publish.get() {
-            publish(id, session_event("session.ended", id, &place, serde_json::json!({ "reason": reason })));
+            publish(
+                id,
+                session_event("session.ended", id, &place, serde_json::json!({ "reason": reason })),
+            );
         }
     }
 }
@@ -194,7 +231,9 @@ impl Lifecycle {
 // carries the file it is about to write.
 fn permission_detail(input: &serde_json::Value) -> Option<String> {
     const LONGEST: usize = 200;
-    let text = ["command", "file_path", "path", "url", "pattern"].iter().find_map(|key| input[key].as_str())?;
+    let text = ["command", "file_path", "path", "url", "pattern"]
+        .iter()
+        .find_map(|key| input[key].as_str())?;
     Some(text.chars().take(LONGEST).collect())
 }
 
@@ -243,7 +282,13 @@ type WaitingMap = Arc<Mutex<HashMap<String, Vec<(Waiting, ChatEvent)>>>>;
 fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) {
     let mut waiting = lock(waiting);
     match event {
-        ChatEvent::QuestionRequest { tool_use_id, request_id, agent_id, questions, .. } => {
+        ChatEvent::QuestionRequest {
+            tool_use_id,
+            request_id,
+            agent_id,
+            questions,
+            ..
+        } => {
             let asked = Waiting::Question {
                 id: tool_use_id.clone(),
                 request_id: request_id.clone(),
@@ -252,7 +297,14 @@ fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) {
             };
             waiting.entry(id.to_string()).or_default().push((asked, event.clone()));
         }
-        ChatEvent::PermissionRequest { tool_use_id, request_id, agent_id, tool_name, input, .. } => {
+        ChatEvent::PermissionRequest {
+            tool_use_id,
+            request_id,
+            agent_id,
+            tool_name,
+            input,
+            ..
+        } => {
             let asked = Waiting::Permission {
                 id: tool_use_id.clone(),
                 request_id: request_id.clone(),
@@ -277,7 +329,10 @@ fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) {
 }
 
 fn answer_to(question: &ChatQuestion, answer: &str) -> QuestionAnswer {
-    let pick = question.options.iter().find(|o| o.label.eq_ignore_ascii_case(answer.trim()));
+    let pick = question
+        .options
+        .iter()
+        .find(|o| o.label.eq_ignore_ascii_case(answer.trim()));
     QuestionAnswer {
         question: question.question.clone(),
         picks: pick.map(|o| vec![o.label.clone()]).unwrap_or_default(),
@@ -334,11 +389,15 @@ impl Identity {
     fn keep(&mut self, event: &ChatEvent) -> bool {
         match event {
             ChatEvent::SessionReady { .. } => self.ready = Some(event.clone()),
-            ChatEvent::SessionStarted { model, permission_mode, .. } => {
+            ChatEvent::SessionStarted {
+                model, permission_mode, ..
+            } => {
                 (self.confirmed_model, self.confirmed_mode) = (Some(model.clone()), Some(permission_mode.clone()));
                 self.started = Some(event.clone());
             }
-            ChatEvent::TurnStarted { model, permission_mode, .. } => {
+            ChatEvent::TurnStarted {
+                model, permission_mode, ..
+            } => {
                 (self.confirmed_model, self.confirmed_mode) = (Some(model.clone()), Some(permission_mode.clone()));
             }
             _ => return false,
@@ -397,7 +456,12 @@ pub struct OutputCache {
 
 impl OutputCache {
     pub fn new(cap: usize) -> Self {
-        Self { entries: HashMap::new(), order: VecDeque::new(), cap: cap.max(1), whole: HashSet::new() }
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            cap: cap.max(1),
+            whole: HashSet::new(),
+        }
     }
 
     /// Mark a call's output as one that must never be cut.
@@ -415,7 +479,9 @@ impl OutputCache {
         if self.whole.contains(tool_use_id) {
             return (output, false);
         }
-        let Some(cut) = cap_output(&output) else { return (output, false) };
+        let Some(cut) = cap_output(&output) else {
+            return (output, false);
+        };
         if self.entries.insert(tool_use_id.to_string(), output).is_none() {
             self.order.push_back(tool_use_id.to_string());
         }
@@ -446,7 +512,10 @@ impl OutputCache {
 }
 
 fn is_identity(event: &ChatEvent) -> bool {
-    matches!(event, ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. } | ChatEvent::TurnStarted { .. })
+    matches!(
+        event,
+        ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. } | ChatEvent::TurnStarted { .. }
+    )
 }
 
 /// The approval and snapshot machinery for one session.
@@ -463,7 +532,11 @@ pub struct SessionBridge {
 
 impl SessionBridge {
     pub fn new(server: Arc<CaptureServer>, snapshots: Arc<Mutex<SnapshotCache>>, session_id: &str) -> Self {
-        Self { server, snapshots, session_id: session_id.to_string() }
+        Self {
+            server,
+            snapshots,
+            session_id: session_id.to_string(),
+        }
     }
 
     /// Stop capturing for this session.
@@ -520,8 +593,19 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 // The panel draws a note as Tori's row only when it stands alone in a message.
 fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
     use crate::rpc::events::split_notes;
-    let ChatEvent::UserMessage { session_id, turn_id, blocks } = event else { return vec![event] };
-    let message = |blocks| ChatEvent::UserMessage { session_id: session_id.clone(), turn_id: turn_id.clone(), blocks };
+    let ChatEvent::UserMessage {
+        session_id,
+        turn_id,
+        blocks,
+    } = event
+    else {
+        return vec![event];
+    };
+    let message = |blocks| ChatEvent::UserMessage {
+        session_id: session_id.clone(),
+        turn_id: turn_id.clone(),
+        blocks,
+    };
     let mut out = Vec::new();
     let mut rest = blocks.into_iter().peekable();
     while let Some(ContentBlock::Text { text }) = rest.peek() {
@@ -529,11 +613,17 @@ fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
         if notes.is_empty() {
             break;
         }
-        out.extend(notes.iter().map(|n| message(vec![ContentBlock::Text { text: n.to_string() }])));
+        out.extend(
+            notes
+                .iter()
+                .map(|n| message(vec![ContentBlock::Text { text: n.to_string() }])),
+        );
         let after = after.to_string();
         rest.next();
         if !after.is_empty() {
-            let tail: Vec<ContentBlock> = std::iter::once(ContentBlock::Text { text: after }).chain(rest).collect();
+            let tail: Vec<ContentBlock> = std::iter::once(ContentBlock::Text { text: after })
+                .chain(rest)
+                .collect();
             out.push(message(tail));
             return out;
         }
@@ -633,7 +723,13 @@ impl ChatHost {
         let live = lock(&self.sessions).contains_key(session_id);
         let mut outputs = lock(&self.outputs);
         for event in events {
-            let ChatEvent::ToolCallCompleted { tool_use_id, output, output_truncated, .. } = event else {
+            let ChatEvent::ToolCallCompleted {
+                tool_use_id,
+                output,
+                output_truncated,
+                ..
+            } = event
+            else {
                 continue;
             };
             let Some(text) = output.take() else { continue };
@@ -683,7 +779,9 @@ impl ChatHost {
         reason: Option<&str>,
     ) -> Result<(), String> {
         let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
-        let Some(transport) = transport else { return Err(format!("no live session {session_id}")) };
+        let Some(transport) = transport else {
+            return Err(format!("no live session {session_id}"));
+        };
         // A `false` here means nothing is waiting on that id: the question timed
         // out, or its turn ended, and the click arrived after. Deliberately not
         // an error - the race is routine, and an error toast for it would report
@@ -707,7 +805,9 @@ impl ChatHost {
         answers: &[QuestionAnswer],
     ) -> Result<bool, String> {
         let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
-        let Some(transport) = transport else { return Err(format!("no live session {session_id}")) };
+        let Some(transport) = transport else {
+            return Err(format!("no live session {session_id}"));
+        };
         let landed = lock(&transport).respond_question(tool_use_id, request_id, answers)?;
         self.forget_waiting(session_id, tool_use_id);
         Ok(landed)
@@ -715,14 +815,24 @@ impl ChatHost {
 
     /// The native questions and permission prompts a session is blocked on.
     pub fn waiting(&self, session_id: &str) -> Vec<Waiting> {
-        lock(&self.waiting).get(session_id).into_iter().flatten().map(|(w, _)| w.clone()).collect()
+        lock(&self.waiting)
+            .get(session_id)
+            .into_iter()
+            .flatten()
+            .map(|(w, _)| w.clone())
+            .collect()
     }
 
     /// The events that raised what a session is still waiting on. A view that
     /// attached after they went out has them only from history, without the
     /// request id that makes them answerable.
     pub fn waiting_events(&self, session_id: &str) -> Vec<ChatEvent> {
-        lock(&self.waiting).get(session_id).into_iter().flatten().map(|(_, e)| e.clone()).collect()
+        lock(&self.waiting)
+            .get(session_id)
+            .into_iter()
+            .flatten()
+            .map(|(_, e)| e.clone())
+            .collect()
     }
 
     fn forget_waiting(&self, session_id: &str, id: &str) {
@@ -738,7 +848,11 @@ impl ChatHost {
     /// caller answered on someone's behalf and has to know it went nowhere.
     pub fn settle(&self, session_id: &str, id: &str, answers: &[String]) -> Result<(), String> {
         let gone = || format!("{id} is already answered or gone");
-        let waiting = self.waiting(session_id).into_iter().find(|w| w.id() == id).ok_or_else(gone)?;
+        let waiting = self
+            .waiting(session_id)
+            .into_iter()
+            .find(|w| w.id() == id)
+            .ok_or_else(gone)?;
         let landed = match waiting {
             Waiting::Permission { request_id, .. } => {
                 let decision = match answers {
@@ -747,20 +861,33 @@ impl ChatHost {
                     _ => return Err(format!("{id} is a permission: answer allow or deny")),
                 };
                 let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
-                let Some(transport) = transport else { return Err(format!("no live session {session_id}")) };
-                let landed = lock(&transport).respond_permission(id, &request_id, decision, PermissionScope::Once, None)?;
+                let Some(transport) = transport else {
+                    return Err(format!("no live session {session_id}"));
+                };
+                let landed =
+                    lock(&transport).respond_permission(id, &request_id, decision, PermissionScope::Once, None)?;
                 self.forget_waiting(session_id, id);
                 landed
             }
-            Waiting::Question { request_id, questions, .. } => {
+            Waiting::Question {
+                request_id, questions, ..
+            } => {
                 if answers.len() != questions.len() {
-                    return Err(format!("{id} asks {} questions: answer each, in order", questions.len()));
+                    return Err(format!(
+                        "{id} asks {} questions: answer each, in order",
+                        questions.len()
+                    ));
                 }
-                let answers: Vec<QuestionAnswer> = questions.iter().zip(answers).map(|(q, a)| answer_to(q, a)).collect();
+                let answers: Vec<QuestionAnswer> =
+                    questions.iter().zip(answers).map(|(q, a)| answer_to(q, a)).collect();
                 self.answer_question(session_id, id, &request_id, &answers)?
             }
         };
-        if landed { Ok(()) } else { Err(gone()) }
+        if landed {
+            Ok(())
+        } else {
+            Err(gone())
+        }
     }
 
     /// Tear a session's bridge down.
@@ -856,7 +983,11 @@ impl ChatHost {
         let mut transport = make();
         let cwd = spec.cwd.clone();
         // Before the start, so a child that dies immediately still ends after it began.
-        self.lifecycle.started(session_id, &self.registry.agent_of(session_id).unwrap_or_default(), &cwd);
+        self.lifecycle.started(
+            session_id,
+            &self.registry.agent_of(session_id).unwrap_or_default(),
+            &cwd,
+        );
         if let Err(e) = transport.start(spec, sink.clone()) {
             // The claim was taken before the spawn so a refusal never starts a
             // process; a spawn that then fails has to give it back, or the id
@@ -913,64 +1044,71 @@ impl ChatHost {
         let lifecycle = self.lifecycle.clone();
         let notes = self.notes.clone();
         let id = session_id.to_string();
-        Box::new(move |event| for mut event in split_user_notes(event) {
-            let fatal = ends_session(&event);
-            // Two frames per session and one per turn, so the lock is taken
-            // that often rather than once per event.
-            if is_identity(&event) {
-                lock(&identity).entry(id.clone()).or_default().keep(&event);
-            }
-            // The one place both transports' events meet before the UI, which
-            // is what makes it the place to cut. An adapter that cut instead
-            // would have to reach a cache it cannot see, and there are two of
-            // them; this is one choke point serving both.
-            match &mut event {
-                ChatEvent::QuestionRequest { tool_use_id, .. } => {
-                    lock(&outputs)
-                        .entry(id.clone())
-                        .or_insert_with(|| OutputCache::new(OUTPUT_CACHE_CAP))
-                        .keep_whole(tool_use_id);
+        Box::new(move |event| {
+            for mut event in split_user_notes(event) {
+                let fatal = ends_session(&event);
+                // Two frames per session and one per turn, so the lock is taken
+                // that often rather than once per event.
+                if is_identity(&event) {
+                    lock(&identity).entry(id.clone()).or_default().keep(&event);
                 }
-                ChatEvent::ToolCallCompleted { tool_use_id, output, output_truncated, .. } => {
-                    if let Some(text) = output.take() {
-                        let (cut, truncated) = lock(&outputs)
+                // The one place both transports' events meet before the UI, which
+                // is what makes it the place to cut. An adapter that cut instead
+                // would have to reach a cache it cannot see, and there are two of
+                // them; this is one choke point serving both.
+                match &mut event {
+                    ChatEvent::QuestionRequest { tool_use_id, .. } => {
+                        lock(&outputs)
                             .entry(id.clone())
                             .or_insert_with(|| OutputCache::new(OUTPUT_CACHE_CAP))
-                            .take(tool_use_id, text);
-                        *output = Some(cut);
-                        *output_truncated = truncated;
+                            .keep_whole(tool_use_id);
                     }
+                    ChatEvent::ToolCallCompleted {
+                        tool_use_id,
+                        output,
+                        output_truncated,
+                        ..
+                    } => {
+                        if let Some(text) = output.take() {
+                            let (cut, truncated) = lock(&outputs)
+                                .entry(id.clone())
+                                .or_insert_with(|| OutputCache::new(OUTPUT_CACHE_CAP))
+                                .take(tool_use_id, text);
+                            *output = Some(cut);
+                            *output_truncated = truncated;
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
-            }
-            // **After the cut, before the UI.** The log holds what the panel
-            // holds - a card's capped extract, not the megabytes behind it -
-            // and one `if let Some` is the whole of what a session without a
-            // log pays on the delta path.
-            if let Some(mirror) = &mirror {
-                mirror.note(&event);
-            }
-            track_waiting(&waiting, &id, &event);
-            lifecycle.observe(&id, &event);
-            crate::rpc::publish_chat(&id, &event);
-            emit(event);
-            if fatal {
-                let tab = lock(&sessions).remove(&id).map(|e| e.tab_id);
-                // Goes with the entry: a session that ended has no identity to
-                // hand anyone, and keeping it would be a leak per dead session.
-                lock(&identity).remove(&id);
-                // Same, and it matters more here: these entries are the large
-                // ones.
-                lock(&outputs).remove(&id);
-                lock(&waiting).remove(&id);
-                lock(&notes).remove(&id);
-                if let Some(bridge) = lock(&bridges).remove(&id) {
-                    bridge.teardown();
+                // **After the cut, before the UI.** The log holds what the panel
+                // holds - a card's capped extract, not the megabytes behind it -
+                // and one `if let Some` is the whole of what a session without a
+                // log pays on the delta path.
+                if let Some(mirror) = &mirror {
+                    mirror.note(&event);
                 }
-                if let Some(tab) = tab {
-                    registry.release(&id, &tab);
+                track_waiting(&waiting, &id, &event);
+                lifecycle.observe(&id, &event);
+                crate::rpc::publish_chat(&id, &event);
+                emit(event);
+                if fatal {
+                    let tab = lock(&sessions).remove(&id).map(|e| e.tab_id);
+                    // Goes with the entry: a session that ended has no identity to
+                    // hand anyone, and keeping it would be a leak per dead session.
+                    lock(&identity).remove(&id);
+                    // Same, and it matters more here: these entries are the large
+                    // ones.
+                    lock(&outputs).remove(&id);
+                    lock(&waiting).remove(&id);
+                    lock(&notes).remove(&id);
+                    if let Some(bridge) = lock(&bridges).remove(&id) {
+                        bridge.teardown();
+                    }
+                    if let Some(tab) = tab {
+                        registry.release(&id, &tab);
+                    }
+                    lifecycle.ended(&id, EndReason::Died);
                 }
-                lifecycle.ended(&id, EndReason::Died);
             }
         })
     }
@@ -1001,13 +1139,26 @@ impl ChatHost {
             ChatCommand::SendTurn { blocks, .. } => t.send(blocks),
             ChatCommand::Steer { blocks, .. } => t.steer(blocks),
             ChatCommand::Interrupt { .. } => t.interrupt(),
-            ChatCommand::RespondPermission { tool_use_id, request_id, decision, scope, reason, .. } => {
+            ChatCommand::RespondPermission {
+                tool_use_id,
+                request_id,
+                decision,
+                scope,
+                reason,
+                ..
+            } => {
                 // Whether the transport owned the request is routing information
                 // for `answer_permission`, which is the caller that acts on it;
                 // a bare dispatch has no second route to fall back to.
-                t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref()).map(|_| ())
+                t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref())
+                    .map(|_| ())
             }
-            ChatCommand::RespondQuestion { tool_use_id, request_id, answers, .. } => {
+            ChatCommand::RespondQuestion {
+                tool_use_id,
+                request_id,
+                answers,
+                ..
+            } => {
                 // Same reason the arm above drops its bool: which route owned
                 // the request is `answer_question`'s business, not a bare
                 // dispatch's.
@@ -1015,9 +1166,7 @@ impl ChatHost {
             }
             ChatCommand::SetMode { mode, .. } => t.set_mode(mode.clone()),
             ChatCommand::SetModel { model, effort, .. } => t.set_model(model, effort.clone()),
-            ChatCommand::SetConfigOption { config_id, value, .. } => {
-                t.set_config_option(config_id, value)
-            }
+            ChatCommand::SetConfigOption { config_id, value, .. } => t.set_config_option(config_id, value),
             ChatCommand::Close { .. } => {
                 drop(t);
                 self.close(&session_id, EndReason::Closed)
@@ -1029,10 +1178,20 @@ impl ChatHost {
     /// what they do rather than as enum construction.
     pub fn send(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
         let notes = lock(&self.notes).remove(session_id).unwrap_or_default();
-        let blocks = if notes.is_empty() { blocks } else { notes.iter().cloned().chain(blocks).collect() };
-        let sent = self.dispatch(&ChatCommand::SendTurn { session_id: session_id.to_string(), blocks });
+        let blocks = if notes.is_empty() {
+            blocks
+        } else {
+            notes.iter().cloned().chain(blocks).collect()
+        };
+        let sent = self.dispatch(&ChatCommand::SendTurn {
+            session_id: session_id.to_string(),
+            blocks,
+        });
         if sent.is_err() && !notes.is_empty() {
-            lock(&self.notes).entry(session_id.to_string()).or_default().splice(0..0, notes);
+            lock(&self.notes)
+                .entry(session_id.to_string())
+                .or_default()
+                .splice(0..0, notes);
         } else if !notes.is_empty() {
             self.draw_notes(session_id, notes);
         }
@@ -1042,13 +1201,22 @@ impl ChatHost {
     // The panel drew only what the user typed. A transport that echoes sent
     // turns hands the notes back itself, and `wrap` splits them off there.
     fn draw_notes(&self, session_id: &str, notes: Vec<ContentBlock>) {
-        let entry = lock(&self.sessions).get(session_id).map(|e| (e.sink.clone(), e.transport.clone()));
+        let entry = lock(&self.sessions)
+            .get(session_id)
+            .map(|e| (e.sink.clone(), e.transport.clone()));
         let Some((sink, transport)) = entry else { return };
         if lock(&transport).echoes_sent_turns() {
             return;
         }
         for note in notes {
-            emit(&sink, ChatEvent::UserMessage { session_id: session_id.to_string(), turn_id: String::new(), blocks: vec![note] });
+            emit(
+                &sink,
+                ChatEvent::UserMessage {
+                    session_id: session_id.to_string(),
+                    turn_id: String::new(),
+                    blocks: vec![note],
+                },
+            );
         }
     }
 
@@ -1062,7 +1230,10 @@ impl ChatHost {
     }
 
     pub fn steer(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
-        self.dispatch(&ChatCommand::Steer { session_id: session_id.to_string(), blocks })
+        self.dispatch(&ChatCommand::Steer {
+            session_id: session_id.to_string(),
+            blocks,
+        })
     }
 
     pub fn grant_dirs(&self, session_id: &str, dirs: &[String]) -> Result<(), String> {
@@ -1077,8 +1248,16 @@ impl ChatHost {
     // A message from outside the panel (the app socket). The panel did not draw
     // it, so the host does, unless the transport already puts sent turns in the
     // stream.
-    pub fn deliver(&self, session_id: &str, blocks: Vec<ContentBlock>, mid_turn: bool, by: TurnBy) -> Result<(), String> {
-        let entry = lock(&self.sessions).get(session_id).map(|e| (e.sink.clone(), e.transport.clone()));
+    pub fn deliver(
+        &self,
+        session_id: &str,
+        blocks: Vec<ContentBlock>,
+        mid_turn: bool,
+        by: TurnBy,
+    ) -> Result<(), String> {
+        let entry = lock(&self.sessions)
+            .get(session_id)
+            .map(|e| (e.sink.clone(), e.transport.clone()));
         let Some((sink, transport)) = entry else {
             return Err(format!("no live chat session {session_id}"));
         };
@@ -1093,13 +1272,22 @@ impl ChatHost {
             }
         }
         if !lock(&transport).echoes_sent_turns() {
-            emit(&sink, ChatEvent::UserMessage { session_id: session_id.to_string(), turn_id: String::new(), blocks });
+            emit(
+                &sink,
+                ChatEvent::UserMessage {
+                    session_id: session_id.to_string(),
+                    turn_id: String::new(),
+                    blocks,
+                },
+            );
         }
         Ok(())
     }
 
     pub fn interrupt(&self, session_id: &str) -> Result<(), String> {
-        self.dispatch(&ChatCommand::Interrupt { session_id: session_id.to_string() })
+        self.dispatch(&ChatCommand::Interrupt {
+            session_id: session_id.to_string(),
+        })
     }
 
     /// `None` for a session not live here.
@@ -1108,19 +1296,21 @@ impl ChatHost {
     }
 
     pub fn set_mode(&self, session_id: &str, mode: PermissionMode) -> Result<(), String> {
-        self.dispatch(&ChatCommand::SetMode { session_id: session_id.to_string(), mode })
+        self.dispatch(&ChatCommand::SetMode {
+            session_id: session_id.to_string(),
+            mode,
+        })
     }
 
     pub fn set_model(&self, session_id: &str, model: &str, effort: Option<String>) -> Result<(), String> {
-        self.dispatch(&ChatCommand::SetModel { session_id: session_id.to_string(), model: model.to_string(), effort })
+        self.dispatch(&ChatCommand::SetModel {
+            session_id: session_id.to_string(),
+            model: model.to_string(),
+            effort,
+        })
     }
 
-    pub fn set_config_option(
-        &self,
-        session_id: &str,
-        config_id: &str,
-        value: ChatConfigValue,
-    ) -> Result<(), String> {
+    pub fn set_config_option(&self, session_id: &str, config_id: &str, value: ChatConfigValue) -> Result<(), String> {
         self.dispatch(&ChatCommand::SetConfigOption {
             session_id: session_id.to_string(),
             config_id: config_id.to_string(),
@@ -1204,7 +1394,10 @@ impl ChatHost {
 
     /// Every live session with the cwd it was started in.
     pub fn live_sessions(&self) -> Vec<(String, String)> {
-        lock(&self.sessions).iter().map(|(id, e)| (id.clone(), e.cwd.clone())).collect()
+        lock(&self.sessions)
+            .iter()
+            .map(|(id, e)| (id.clone(), e.cwd.clone()))
+            .collect()
     }
 
     #[cfg(test)]
@@ -1260,7 +1453,13 @@ mod tests {
                 return Err("no such binary".into());
             }
             if self.dies_on_start {
-                emit(&sink, ChatEvent::SessionEnded { session_id: spec.session_id, reason: None });
+                emit(
+                    &sink,
+                    ChatEvent::SessionEnded {
+                        session_id: spec.session_id,
+                        reason: None,
+                    },
+                );
             }
             if let Some(out) = &self.sink_out {
                 *lock(out) = Some(sink);
@@ -1286,12 +1485,7 @@ mod tests {
         ) -> Result<bool, String> {
             Ok(self.owns_answers)
         }
-        fn respond_question(
-            &mut self,
-            _t: &str,
-            _r: &str,
-            _a: &[QuestionAnswer],
-        ) -> Result<bool, String> {
+        fn respond_question(&mut self, _t: &str, _r: &str, _a: &[QuestionAnswer]) -> Result<bool, String> {
             Ok(self.owns_answers)
         }
         fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
@@ -1324,7 +1518,10 @@ mod tests {
     }
 
     fn spec(id: &str) -> StartSpec {
-        StartSpec { session_id: id.to_string(), ..Default::default() }
+        StartSpec {
+            session_id: id.to_string(),
+            ..Default::default()
+        }
     }
 
     /// One turn's worth of conversation, at its emptiest.
@@ -1391,19 +1588,29 @@ mod tests {
     fn a_leading_note_is_split_off_into_its_own_message_however_it_arrives() {
         let note = crate::rpc::events::from_tori("topic", None, "# Auth");
         let text = |t: &str| ContentBlock::Text { text: t.to_string() };
-        let message = |blocks| ChatEvent::UserMessage { session_id: "s".into(), turn_id: "t".into(), blocks };
+        let message = |blocks| ChatEvent::UserMessage {
+            session_id: "s".into(),
+            turn_id: "t".into(),
+            blocks,
+        };
         let bodies = |events: Vec<ChatEvent>| -> Vec<Vec<ContentBlock>> {
-            events.into_iter().map(|e| match e {
-                ChatEvent::UserMessage { blocks, .. } => blocks,
-                other => panic!("{other:?}"),
-            }).collect()
+            events
+                .into_iter()
+                .map(|e| match e {
+                    ChatEvent::UserMessage { blocks, .. } => blocks,
+                    other => panic!("{other:?}"),
+                })
+                .collect()
         };
 
         let as_blocks = split_user_notes(message(vec![text(&note), text("fix the login")]));
         assert_eq!(bodies(as_blocks), vec![vec![text(&note)], vec![text("fix the login")]]);
         let joined = split_user_notes(message(vec![text(&format!("{note}\n\nfix the login"))]));
         assert_eq!(bodies(joined), vec![vec![text(&note)], vec![text("fix the login")]]);
-        assert_eq!(bodies(split_user_notes(message(vec![text(&note)]))), vec![vec![text(&note)]]);
+        assert_eq!(
+            bodies(split_user_notes(message(vec![text(&note)]))),
+            vec![vec![text(&note)]]
+        );
         let typed = split_user_notes(message(vec![text("about <tori kind=\"x\">")]));
         assert_eq!(bodies(typed), vec![vec![text("about <tori kind=\"x\">")]]);
     }
@@ -1423,7 +1630,12 @@ mod tests {
             Collector::default().emit(),
             spec("s-log"),
             Some(Arc::new(Mirror::with_writer(Box::new(log.clone())))),
-            move || Box::new(Puppet { sink_out: Some(out), ..Default::default() }),
+            move || {
+                Box::new(Puppet {
+                    sink_out: Some(out),
+                    ..Default::default()
+                })
+            },
         )
         .unwrap();
         let sink = lock(&holder).clone().expect("the puppet published its sink");
@@ -1475,7 +1687,10 @@ mod tests {
             let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
             let out = holder.clone();
             host.spawn(id, "tab-a", Collector::default().emit(), spec(id), mirror, move || {
-                Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+                Box::new(Puppet {
+                    sink_out: Some(out),
+                    ..Default::default()
+                })
             })
             .unwrap();
             sinks.push((id, lock(&holder).clone().expect("the puppet published its sink")));
@@ -1487,8 +1702,14 @@ mod tests {
             emit(sink, turn_done(id, "t1"));
         }
 
-        assert!(!dir.join("s-claude.jsonl").exists(), "a claude-shaped session writes no log");
-        assert!(dir.join("s-acp.jsonl").exists(), "and the ACP-shaped one beside it does");
+        assert!(
+            !dir.join("s-claude.jsonl").exists(),
+            "a claude-shaped session writes no log"
+        );
+        assert!(
+            dir.join("s-acp.jsonl").exists(),
+            "and the ACP-shaped one beside it does"
+        );
     }
 
     /// The idempotent-spawn contract this host inherits from `pty.rs`: a tab
@@ -1522,7 +1743,11 @@ mod tests {
             })
             .unwrap();
         assert_eq!(outcome, Spawned::Rewired);
-        assert_eq!(spawns.load(Ordering::SeqCst), 1, "a re-subscribe must not spawn a second process");
+        assert_eq!(
+            spawns.load(Ordering::SeqCst),
+            1,
+            "a re-subscribe must not spawn a second process"
+        );
         assert_eq!(host.generation("s1"), Some(1), "a re-subscribe bumps the generation");
 
         // The rewire is real: events now reach the new subscriber only.
@@ -1587,7 +1812,10 @@ mod tests {
         let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let out = sink_out.clone();
         host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
         let sink = lock(&sink_out).clone().expect("the puppet published its sink");
@@ -1596,7 +1824,11 @@ mod tests {
         crate::chat::transport::emit(&sink, completed("s1", "toolu_1", &big));
 
         match seen.events().as_slice() {
-            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+            [ChatEvent::ToolCallCompleted {
+                output,
+                output_truncated,
+                ..
+            }] => {
                 assert!(*output_truncated);
                 assert_eq!(
                     output.as_deref().unwrap_or_default().len(),
@@ -1620,7 +1852,10 @@ mod tests {
         let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let out = sink_out.clone();
         host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
         let sink = lock(&sink_out).clone().expect("the puppet published its sink");
@@ -1640,7 +1875,11 @@ mod tests {
 
         let last = seen.events().pop().expect("a completion");
         match last {
-            ChatEvent::ToolCallCompleted { output, output_truncated, .. } => {
+            ChatEvent::ToolCallCompleted {
+                output,
+                output_truncated,
+                ..
+            } => {
                 assert!(!output_truncated);
                 assert_eq!(output.map(|s| s.len()), Some(big.len()), "an answer record was cut");
             }
@@ -1664,11 +1903,19 @@ mod tests {
         host.cut_outputs("s1", &mut events);
 
         match events.as_slice() {
-            [
-                ChatEvent::ToolCallCompleted { output: cut, output_truncated: true, .. },
-                ChatEvent::ToolCallCompleted { output: whole, output_truncated: false, .. },
-            ] => {
-                assert_eq!(cut.as_deref().unwrap_or_default().len(), crate::chat::model::TOOL_OUTPUT_CAP);
+            [ChatEvent::ToolCallCompleted {
+                output: cut,
+                output_truncated: true,
+                ..
+            }, ChatEvent::ToolCallCompleted {
+                output: whole,
+                output_truncated: false,
+                ..
+            }] => {
+                assert_eq!(
+                    cut.as_deref().unwrap_or_default().len(),
+                    crate::chat::model::TOOL_OUTPUT_CAP
+                );
                 assert_eq!(whole.as_deref(), Some("short"));
             }
             other => panic!("expected two completions, got {other:?}"),
@@ -1688,9 +1935,16 @@ mod tests {
         host.cut_outputs("gone", &mut events);
 
         match events.as_slice() {
-            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+            [ChatEvent::ToolCallCompleted {
+                output,
+                output_truncated,
+                ..
+            }] => {
                 assert!(*output_truncated, "the user is still told it was cut");
-                assert_eq!(output.as_deref().unwrap_or_default().len(), crate::chat::model::TOOL_OUTPUT_CAP);
+                assert_eq!(
+                    output.as_deref().unwrap_or_default().len(),
+                    crate::chat::model::TOOL_OUTPUT_CAP
+                );
             }
             other => panic!("expected one completion, got {other:?}"),
         }
@@ -1722,7 +1976,10 @@ mod tests {
         let before = Collector::default();
         let out = sink_out.clone();
         host.spawn_plain("s1", "tab-a", before.emit(), spec("s1"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
 
@@ -1734,7 +1991,9 @@ mod tests {
 
         let after = Collector::default();
         let outcome = host
-            .spawn_plain("s1", "tab-b", after.emit(), spec("s1"), || unreachable!("a live session rewires"))
+            .spawn_plain("s1", "tab-b", after.emit(), spec("s1"), || {
+                unreachable!("a live session rewires")
+            })
             .unwrap();
         assert_eq!(outcome, Spawned::Rewired);
 
@@ -1756,12 +2015,23 @@ mod tests {
         let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let out = sink_out.clone();
         host.spawn_plain("s1", "tab-a", Collector::default().emit(), spec("s1"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
         let sink = lock(&sink_out).clone().expect("the puppet published its sink");
-        let opus = ChatModelInfo { value: "opus".into(), resolved_model: "claude-opus".into(), ..Default::default() };
-        let plan = ChatModeInfo { id: "plan".into(), label: "Plan".into(), hint: String::new() };
+        let opus = ChatModelInfo {
+            value: "opus".into(),
+            resolved_model: "claude-opus".into(),
+            ..Default::default()
+        };
+        let plan = ChatModeInfo {
+            id: "plan".into(),
+            label: "Plan".into(),
+            hint: String::new(),
+        };
         crate::chat::transport::emit(
             &sink,
             ChatEvent::SessionReady {
@@ -1786,8 +2056,15 @@ mod tests {
             },
         );
         let levers = host.levers("s1").expect("a live session has levers");
-        assert_eq!((levers.models, levers.modes), (vec![opus], vec![plan]), "an empty SessionStarted keeps the handshake's");
-        assert_eq!((levers.model.as_deref(), levers.mode), (Some("claude-opus"), Some(PermissionMode::new("plan"))));
+        assert_eq!(
+            (levers.models, levers.modes),
+            (vec![opus], vec![plan]),
+            "an empty SessionStarted keeps the handshake's"
+        );
+        assert_eq!(
+            (levers.model.as_deref(), levers.mode),
+            (Some("claude-opus"), Some(PermissionMode::new("plan")))
+        );
         assert_eq!(host.levers("gone"), None);
     }
 
@@ -1806,7 +2083,12 @@ mod tests {
         let out = sink_out.clone();
         let asked = replays.clone();
         host.spawn_plain("s3", "tab-a", Collector::default().emit(), spec("s3"), move || {
-            Box::new(Puppet { sink_out: Some(out), can_replay: true, replays: asked, ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                can_replay: true,
+                replays: asked,
+                ..Default::default()
+            })
         })
         .unwrap();
 
@@ -1815,10 +2097,16 @@ mod tests {
         crate::chat::transport::emit(&sink, started("s3"));
 
         let after = Collector::default();
-        host.spawn_plain("s3", "tab-b", after.emit(), spec("s3"), || unreachable!("a live session rewires"))
-            .unwrap();
+        host.spawn_plain("s3", "tab-b", after.emit(), spec("s3"), || {
+            unreachable!("a live session rewires")
+        })
+        .unwrap();
 
-        assert_eq!(replays.load(Ordering::SeqCst), 1, "the transport is asked exactly once per rewire");
+        assert_eq!(
+            replays.load(Ordering::SeqCst),
+            1,
+            "the transport is asked exactly once per rewire"
+        );
         let replayed = after.events();
         assert!(
             matches!(replayed.as_slice(), [ChatEvent::SessionReady { .. }]),
@@ -1831,14 +2119,21 @@ mod tests {
     #[test]
     fn a_rewire_replays_nothing_when_the_session_never_reported_itself() {
         let host = ChatHost::at(temp_store());
-        host.spawn_plain("s2", "tab-a", Collector::default().emit(), spec("s2"), || Box::<Puppet>::default())
-            .unwrap();
+        host.spawn_plain("s2", "tab-a", Collector::default().emit(), spec("s2"), || {
+            Box::<Puppet>::default()
+        })
+        .unwrap();
 
         let after = Collector::default();
-        host.spawn_plain("s2", "tab-b", after.emit(), spec("s2"), || unreachable!("a live session rewires"))
-            .unwrap();
+        host.spawn_plain("s2", "tab-b", after.emit(), spec("s2"), || {
+            unreachable!("a live session rewires")
+        })
+        .unwrap();
 
-        assert!(after.events().is_empty(), "nothing handshook, so there is nothing to replay");
+        assert!(
+            after.events().is_empty(),
+            "nothing handshook, so there is nothing to replay"
+        );
     }
 
     /// A mock child that dies mid-turn. All three consequences are asserted
@@ -1852,18 +2147,30 @@ mod tests {
 
         host.registry.claim(
             "s-dies",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-a".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
         assert!(host.registry.snapshot().contains_key("s-dies"));
 
         let sink_holder: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let holder = sink_holder.clone();
         host.spawn_plain("s-dies", "tab-a", seen.emit(), spec("s-dies"), move || {
-            Box::new(Puppet { sink_out: Some(holder), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(holder),
+                ..Default::default()
+            })
         })
         .unwrap();
 
-        let sink = lock(&sink_holder).clone().expect("the transport should have received a sink");
+        let sink = lock(&sink_holder)
+            .clone()
+            .expect("the transport should have received a sink");
         crate::chat::transport::emit(
             &sink,
             ChatEvent::SessionError {
@@ -1873,9 +2180,15 @@ mod tests {
             },
         );
 
-        assert!(matches!(seen.events().first(), Some(ChatEvent::SessionError { fatal: true, .. })));
+        assert!(matches!(
+            seen.events().first(),
+            Some(ChatEvent::SessionError { fatal: true, .. })
+        ));
         assert!(!host.is_live("s-dies"), "a dead session must not stay in the map");
-        assert!(!host.registry.snapshot().contains_key("s-dies"), "a dead session must release its claim");
+        assert!(
+            !host.registry.snapshot().contains_key("s-dies"),
+            "a dead session must release its claim"
+        );
     }
 
     /// The pacer is wired into the sink the transport writes to, not bolted on
@@ -1892,10 +2205,15 @@ mod tests {
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
         host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
-        let sink = lock(&holder).clone().expect("the transport should have received a sink");
+        let sink = lock(&holder)
+            .clone()
+            .expect("the transport should have received a sink");
 
         let fragments: Vec<String> = (0..300).map(|i| format!("{i} ")).collect();
         let burst = |sink: &Sink, id: &str| {
@@ -1919,11 +2237,16 @@ mod tests {
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
         host.spawn_plain("s2", "tab-b", seen.emit(), spec("s2"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
         assert!(host.set_visible("s2", false));
-        let sink = lock(&holder).clone().expect("the transport should have received a sink");
+        let sink = lock(&holder)
+            .clone()
+            .expect("the transport should have received a sink");
         burst(&sink, "s2");
         assert!(seen.events().len() < 10, "a hidden session must not pay per token");
 
@@ -1955,7 +2278,8 @@ mod tests {
     fn a_non_fatal_error_leaves_the_session_live() {
         let host = ChatHost::at(temp_store());
         let seen = Collector::default();
-        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), || Box::<Puppet>::default()).unwrap();
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), || Box::<Puppet>::default())
+            .unwrap();
 
         // Emitting through the host's own wrapper is what the transport does.
         assert!(!ends_session(&ChatEvent::SessionError {
@@ -1980,16 +2304,17 @@ mod tests {
     fn live_ids_are_session_ids_not_the_tabs_hosting_them() {
         let host = ChatHost::at(temp_store());
         for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
-            host.spawn_plain(id, tab, Box::new(|_| {}), spec(id), || {
-                Box::new(Puppet::default())
-            })
-            .unwrap();
+            host.spawn_plain(id, tab, Box::new(|_| {}), spec(id), || Box::new(Puppet::default()))
+                .unwrap();
         }
 
         let ids = host.live_ids();
 
         assert_eq!(ids, vec!["s1", "s2"], "sorted session ids");
-        assert!(!ids.iter().any(|id| id.starts_with("tab-")), "a hosting tab id must not appear in the session listing");
+        assert!(
+            !ids.iter().any(|id| id.starts_with("tab-")),
+            "a hosting tab id must not appear in the session listing"
+        );
     }
 
     /// App exit: every child killed, every claim released. A surviving `claude`
@@ -2003,11 +2328,22 @@ mod tests {
         for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
             host.registry.claim(
                 id,
-                Claim { surface: Surface::Chat, tab_id: tab.into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim {
+                    surface: Surface::Chat,
+                    tab_id: tab.into(),
+                    child_pid: None,
+                    tori_pid: std::process::id(),
+                    agent: "claude".into(),
+                    profile: "default".into(),
+                },
             );
             let closed = closes.clone();
             host.spawn_plain(id, tab, Box::new(|_| {}), spec(id), move || {
-                Box::new(Puppet { sink_out: None, closed, ..Default::default() })
+                Box::new(Puppet {
+                    sink_out: None,
+                    closed,
+                    ..Default::default()
+                })
             })
             .unwrap();
         }
@@ -2018,7 +2354,10 @@ mod tests {
         assert_eq!(closes.load(Ordering::SeqCst), 2, "every child must be closed");
         assert!(host.live_ids().is_empty());
         for id in ["s1", "s2"] {
-            assert!(!host.registry.snapshot().contains_key(id), "{id} must have released its claim");
+            assert!(
+                !host.registry.snapshot().contains_key(id),
+                "{id} must have released its claim"
+            );
         }
     }
 
@@ -2029,7 +2368,14 @@ mod tests {
         let host = ChatHost::at(temp_store());
         host.registry.claim(
             "s-bad",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-a".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
 
         struct Broken;
@@ -2056,12 +2402,7 @@ mod tests {
             ) -> Result<bool, String> {
                 Ok(false)
             }
-            fn respond_question(
-                &mut self,
-                _t: &str,
-                _r: &str,
-                _a: &[QuestionAnswer],
-            ) -> Result<bool, String> {
+            fn respond_question(&mut self, _t: &str, _r: &str, _a: &[QuestionAnswer]) -> Result<bool, String> {
                 Ok(false)
             }
             fn set_mode(&mut self, _m: PermissionMode) -> Result<(), String> {
@@ -2111,15 +2452,35 @@ mod tests {
 
         let first = host.registry.claim(
             &id,
-            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::PtyAgent,
+                tab_id: "pty-tab".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
         assert_eq!(first, ClaimOutcome::Granted { contested: false });
 
         let second = host.registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "chat-tab".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
-        assert_eq!(second, ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-tab".to_string() });
+        assert_eq!(
+            second,
+            ClaimOutcome::HeldByOther {
+                surface: Surface::PtyAgent,
+                tab_id: "pty-tab".to_string()
+            }
+        );
 
         // The refused claim is what stops the spawn, so nothing was started.
         let spawns = Arc::new(AtomicU32::new(0));
@@ -2131,8 +2492,16 @@ mod tests {
             })
             .unwrap();
         }
-        assert_eq!(spawns.load(Ordering::SeqCst), 0, "a refused claim must not start a second driver");
-        assert_eq!(std::fs::read(&transcript).unwrap(), before, "the refused attempt must not touch the transcript");
+        assert_eq!(
+            spawns.load(Ordering::SeqCst),
+            0,
+            "a refused claim must not start a second driver"
+        );
+        assert_eq!(
+            std::fs::read(&transcript).unwrap(),
+            before,
+            "the refused attempt must not touch the transcript"
+        );
 
         host.registry.forget(&id);
         let _ = std::fs::remove_file(&transcript);
@@ -2151,24 +2520,54 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let id = format!("s-chat-first-{}", std::process::id());
 
-        host.spawn_plain(&id, "chat-tab", Box::new(|_| {}), spec(&id), || Box::<Puppet>::default()).unwrap();
+        host.spawn_plain(&id, "chat-tab", Box::new(|_| {}), spec(&id), || {
+            Box::<Puppet>::default()
+        })
+        .unwrap();
         host.registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "chat-tab".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
 
         let outcome = host.registry.claim(
             &id,
-            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim {
+                surface: Surface::PtyAgent,
+                tab_id: "pty-tab".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "default".into(),
+            },
         );
-        assert_eq!(outcome, ClaimOutcome::HeldByOther { surface: Surface::Chat, tab_id: "chat-tab".to_string() });
+        assert_eq!(
+            outcome,
+            ClaimOutcome::HeldByOther {
+                surface: Surface::Chat,
+                tab_id: "chat-tab".to_string()
+            }
+        );
 
         // Closing the chat tab hands the session back to the terminal.
         host.close(&id, EndReason::Closed).unwrap();
         assert_eq!(
             host.registry.claim(
                 &id,
-                Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim {
+                    surface: Surface::PtyAgent,
+                    tab_id: "pty-tab".into(),
+                    child_pid: None,
+                    tori_pid: std::process::id(),
+                    agent: "claude".into(),
+                    profile: "default".into()
+                },
             ),
             ClaimOutcome::Granted { contested: false }
         );
@@ -2188,7 +2587,14 @@ mod tests {
             let id = format!("s-exit-{}-{n}", std::process::id());
             host.registry.claim(
                 &id,
-                Claim { surface: Surface::Chat, tab_id: id.clone(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim {
+                    surface: Surface::Chat,
+                    tab_id: id.clone(),
+                    child_pid: None,
+                    tori_pid: std::process::id(),
+                    agent: "claude".into(),
+                    profile: "default".into(),
+                },
             );
             let start = StartSpec {
                 session_id: id.clone(),
@@ -2198,14 +2604,22 @@ mod tests {
                 ..Default::default()
             };
             let factory_id = id.clone();
-            host.spawn_plain(&id, &id, Box::new(|_| {}), start, move || Box::new(ClaudeTransport::new(factory_id)))
-                .unwrap();
+            host.spawn_plain(&id, &id, Box::new(|_| {}), start, move || {
+                Box::new(ClaudeTransport::new(factory_id))
+            })
+            .unwrap();
             ids.push(id);
         }
 
         let pids: Vec<u32> = ids
             .iter()
-            .map(|id| host.registry.snapshot().get(id).and_then(|c| c.child_pid).expect("a claim should record its child pid"))
+            .map(|id| {
+                host.registry
+                    .snapshot()
+                    .get(id)
+                    .and_then(|c| c.child_pid)
+                    .expect("a claim should record its child pid")
+            })
             .collect();
         assert_eq!(pids.len(), 2);
 
@@ -2228,7 +2642,10 @@ mod tests {
             assert!(!alive, "pid {pid} survived shutdown");
         }
         for id in &ids {
-            assert!(!host.registry.snapshot().contains_key(id), "{id} left a stale claim behind");
+            assert!(
+                !host.registry.snapshot().contains_key(id),
+                "{id} left a stale claim behind"
+            );
         }
     }
 
@@ -2247,11 +2664,17 @@ mod tests {
 
         let first = crate::chat::approval::start(Box::new(|_| {})).unwrap();
         let first_dir = first.sock_path().parent().unwrap().to_path_buf();
-        host.install_bridge(&session, SessionBridge::new(first, Arc::new(Mutex::new(SnapshotCache::new(8))), &session));
+        host.install_bridge(
+            &session,
+            SessionBridge::new(first, Arc::new(Mutex::new(SnapshotCache::new(8))), &session),
+        );
         assert!(first_dir.exists());
 
         let second = crate::chat::approval::start(Box::new(|_| {})).unwrap();
-        host.install_bridge(&session, SessionBridge::new(second, Arc::new(Mutex::new(SnapshotCache::new(8))), &session));
+        host.install_bridge(
+            &session,
+            SessionBridge::new(second, Arc::new(Mutex::new(SnapshotCache::new(8))), &session),
+        );
 
         // The first server really stopped serving: its directory is gone once the
         // accept loop released its handle.
@@ -2259,7 +2682,10 @@ mod tests {
         while first_dir.exists() && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        assert!(!first_dir.exists(), "the replaced bridge must be torn down, which is why a remount must not replace one");
+        assert!(
+            !first_dir.exists(),
+            "the replaced bridge must be torn down, which is why a remount must not replace one"
+        );
 
         host.drop_bridge(&session);
     }
@@ -2275,7 +2701,9 @@ mod tests {
         let session = format!("teardown-{}", std::process::id());
         let server = crate::chat::approval::start(Box::new(|_| {})).unwrap();
         let transport = crate::agents::ChatTransport::ClaudeStreamJson;
-        let settings = crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport, false, None).unwrap();
+        let settings =
+            crate::chat::approval::settings_args(&session, server.sock_path(), server.token(), transport, false, None)
+                .unwrap();
         let settings_path = std::path::PathBuf::from(settings.last().unwrap());
         assert!(settings_path.exists(), "the session was launched with a settings file");
 
@@ -2293,17 +2721,25 @@ mod tests {
     #[test]
     fn dispatch_routes_each_command_to_the_transport() {
         let host = ChatHost::at(temp_store());
-        host.spawn_plain("s1", "tab-a", Box::new(|_| {}), spec("s1"), || Box::<MockTransport>::default()).unwrap();
+        host.spawn_plain("s1", "tab-a", Box::new(|_| {}), spec("s1"), || {
+            Box::<MockTransport>::default()
+        })
+        .unwrap();
 
-        host.send("s1", vec![ContentBlock::Text { text: "hello".into() }]).unwrap();
+        host.send("s1", vec![ContentBlock::Text { text: "hello".into() }])
+            .unwrap();
         host.interrupt("s1").unwrap();
         host.set_mode("s1", PermissionMode::new("plan")).unwrap();
         host.set_model("s1", "claude-opus-5", Some("high".to_string())).unwrap();
-        host.set_config_option("s1", "web_search", ChatConfigValue::Flag(true)).unwrap();
+        host.set_config_option("s1", "web_search", ChatConfigValue::Flag(true))
+            .unwrap();
 
         // Close goes through the host's own teardown, not straight to the
         // transport, so the map entry and the claim go with it.
-        host.dispatch(&ChatCommand::Close { session_id: "s1".into() }).unwrap();
+        host.dispatch(&ChatCommand::Close {
+            session_id: "s1".into(),
+        })
+        .unwrap();
         assert!(!host.is_live("s1"));
     }
 
@@ -2317,8 +2753,10 @@ mod tests {
     #[test]
     fn a_question_is_answered_at_the_transport_that_asked_it() {
         let host = ChatHost::at(temp_store());
-        host.spawn_plain("s-q", "tab-a", Box::new(|_| {}), spec("s-q"), || Box::<MockTransport>::default())
-            .unwrap();
+        host.spawn_plain("s-q", "tab-a", Box::new(|_| {}), spec("s-q"), || {
+            Box::<MockTransport>::default()
+        })
+        .unwrap();
 
         let answers = vec![QuestionAnswer {
             question: "Which answer channel?".into(),
@@ -2340,7 +2778,10 @@ mod tests {
         let err = host.answer_question("s-gone", "toolu_4", "op-10", &[]).unwrap_err();
         assert!(err.contains("no live session"), "{err}");
 
-        host.dispatch(&ChatCommand::Close { session_id: "s-q".into() }).unwrap();
+        host.dispatch(&ChatCommand::Close {
+            session_id: "s-q".into(),
+        })
+        .unwrap();
     }
 
     fn asked(id: &str, tool_use_id: &str, labels: &[&str]) -> ChatEvent {
@@ -2355,7 +2796,11 @@ mod tests {
                 multi_select: false,
                 options: labels
                     .iter()
-                    .map(|l| crate::chat::model::ChatQuestionOption { label: l.to_string(), description: String::new(), preview: None })
+                    .map(|l| crate::chat::model::ChatQuestionOption {
+                        label: l.to_string(),
+                        description: String::new(),
+                        preview: None,
+                    })
                     .collect(),
             }],
         }
@@ -2381,7 +2826,10 @@ mod tests {
     #[test]
     fn a_waiting_prompt_goes_with_a_tab_answer_a_completed_call_a_turn_end_and_a_session_end() {
         let host = ChatHost::at(temp_store());
-        host.spawn_plain("s-w", "tab-a", Box::new(|_| {}), spec("s-w"), || Box::<MockTransport>::default()).unwrap();
+        host.spawn_plain("s-w", "tab-a", Box::new(|_| {}), spec("s-w"), || {
+            Box::<MockTransport>::default()
+        })
+        .unwrap();
         let emit = host.emitter();
 
         emit("s-w", asked("s-w", "q1", &["Yes"]));
@@ -2397,7 +2845,13 @@ mod tests {
         assert!(host.waiting("s-w").is_empty());
 
         emit("s-w", permission("s-w", "p3"));
-        emit("s-w", ChatEvent::SessionEnded { session_id: "s-w".into(), reason: None });
+        emit(
+            "s-w",
+            ChatEvent::SessionEnded {
+                session_id: "s-w".into(),
+                reason: None,
+            },
+        );
         assert!(host.waiting("s-w").is_empty());
         assert!(lock(&host.waiting).is_empty(), "nothing kept for a dead session");
     }
@@ -2405,8 +2859,14 @@ mod tests {
     #[test]
     fn settle_answers_a_question_and_a_permission_and_errors_when_nothing_waits() {
         let host = ChatHost::at(temp_store());
-        let owner = || Box::new(Puppet { owns_answers: true, ..Default::default() }) as Box<dyn AgentTransport>;
-        host.spawn_plain("s-a", "tab-a", Box::new(|_| {}), spec("s-a"), owner).unwrap();
+        let owner = || {
+            Box::new(Puppet {
+                owns_answers: true,
+                ..Default::default()
+            }) as Box<dyn AgentTransport>
+        };
+        host.spawn_plain("s-a", "tab-a", Box::new(|_| {}), spec("s-a"), owner)
+            .unwrap();
         let emit = host.emitter();
 
         emit("s-a", asked("s-a", "q1", &["Yes", "No"]));
@@ -2425,9 +2885,14 @@ mod tests {
         assert!(err.contains("answer each"), "{err}");
         host.answer_question("s-a", "q2", "r-q2", &[]).unwrap();
         let err = host.settle("s-a", "q2", &["yes".into()]).unwrap_err();
-        assert!(err.contains("already answered or gone"), "answered in the tab first: {err}");
+        assert!(
+            err.contains("already answered or gone"),
+            "answered in the tab first: {err}"
+        );
 
-        let ChatEvent::QuestionRequest { questions, .. } = asked("s-a", "q3", &["Yes", "No"]) else { unreachable!() };
+        let ChatEvent::QuestionRequest { questions, .. } = asked("s-a", "q3", &["Yes", "No"]) else {
+            unreachable!()
+        };
         assert_eq!(answer_to(&questions[0], "no").picks, ["No"]);
         assert_eq!(answer_to(&questions[0], "later").free_text.as_deref(), Some("later"));
     }
@@ -2447,16 +2912,28 @@ mod tests {
     }
 
     fn began_then_ended(id: &str, reason: &str) -> Vec<(String, String)> {
-        vec![("session.started".into(), id.into()), (format!("session.ended {reason}"), id.into())]
+        vec![
+            ("session.started".into(), id.into()),
+            (format!("session.ended {reason}"), id.into()),
+        ]
     }
 
     #[test]
     fn a_closed_session_is_announced_once_each_way_and_a_rewire_says_nothing() {
         let host = ChatHost::at(temp_store());
         let seen = published(&host);
-        host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || Box::new(Puppet::default()))
-            .unwrap();
-        host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || unreachable!()).unwrap();
+        host.spawn_plain("s-life", "tab", Collector::default().emit(), spec("s-life"), || {
+            Box::new(Puppet::default())
+        })
+        .unwrap();
+        host.spawn_plain(
+            "s-life",
+            "tab",
+            Collector::default().emit(),
+            spec("s-life"),
+            || unreachable!(),
+        )
+        .unwrap();
         host.close("s-life", EndReason::Closed).unwrap();
         host.close("s-life", EndReason::Closed).unwrap();
         assert_eq!(*lock(&seen), began_then_ended("s-life", "closed"));
@@ -2466,8 +2943,10 @@ mod tests {
     fn a_session_closed_as_killed_says_so() {
         let host = ChatHost::at(temp_store());
         let seen = published(&host);
-        host.spawn_plain("s-kill", "tab", Collector::default().emit(), spec("s-kill"), || Box::new(Puppet::default()))
-            .unwrap();
+        host.spawn_plain("s-kill", "tab", Collector::default().emit(), spec("s-kill"), || {
+            Box::new(Puppet::default())
+        })
+        .unwrap();
         host.close("s-kill", EndReason::Killed).unwrap();
         host.close("s-kill", EndReason::Closed).unwrap();
         assert_eq!(*lock(&seen), began_then_ended("s-kill", "killed"));
@@ -2479,12 +2958,27 @@ mod tests {
         let seen = published(&host);
         let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
         let out = holder.clone();
-        host.spawn_plain("s-fatal", "tab", Collector::default().emit(), spec("s-fatal"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
-        })
+        host.spawn_plain(
+            "s-fatal",
+            "tab",
+            Collector::default().emit(),
+            spec("s-fatal"),
+            move || {
+                Box::new(Puppet {
+                    sink_out: Some(out),
+                    ..Default::default()
+                })
+            },
+        )
         .unwrap();
         let sink = lock(&holder).clone().unwrap();
-        emit(&sink, ChatEvent::SessionEnded { session_id: "s-fatal".into(), reason: None });
+        emit(
+            &sink,
+            ChatEvent::SessionEnded {
+                session_id: "s-fatal".into(),
+                reason: None,
+            },
+        );
         host.close("s-fatal", EndReason::Closed).unwrap();
         assert_eq!(*lock(&seen), began_then_ended("s-fatal", "died"));
     }
@@ -2494,7 +2988,10 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let seen = published(&host);
         host.spawn_plain("s-quick", "tab", Collector::default().emit(), spec("s-quick"), || {
-            Box::new(Puppet { dies_on_start: true, ..Default::default() })
+            Box::new(Puppet {
+                dies_on_start: true,
+                ..Default::default()
+            })
         })
         .unwrap();
         host.close("s-quick", EndReason::Closed).unwrap();
@@ -2506,7 +3003,10 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let seen = published(&host);
         let result = host.spawn_plain("s-never", "tab", Collector::default().emit(), spec("s-never"), || {
-            Box::new(Puppet { refuses_start: true, ..Default::default() })
+            Box::new(Puppet {
+                refuses_start: true,
+                ..Default::default()
+            })
         });
         assert!(result.is_err());
         assert_eq!(*lock(&seen), began_then_ended("s-never", "died"));
@@ -2549,7 +3049,10 @@ mod tests {
         let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
         let out = holder.clone();
         host.spawn_plain("s-by", "tab", Collector::default().emit(), spec("s-by"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
         })
         .unwrap();
         let sink = lock(&holder).clone().unwrap();
@@ -2557,13 +3060,15 @@ mod tests {
 
         emit(&sink, started("s-by"));
         emit(&sink, turn_started("s-by", "t1", false));
-        host.deliver("s-by", text(), true, TurnBy::Session("other".into())).unwrap();
+        host.deliver("s-by", text(), true, TurnBy::Session("other".into()))
+            .unwrap();
         emit(&sink, turn_completed("s-by", "t1"));
         host.send("s-by", text()).unwrap();
         emit(&sink, turn_started("s-by", "t2", false));
         emit(&sink, turn_completed("s-by", "t2"));
 
-        host.deliver("s-by", text(), false, TurnBy::Session("other".into())).unwrap();
+        host.deliver("s-by", text(), false, TurnBy::Session("other".into()))
+            .unwrap();
         emit(&sink, turn_started("s-by", "t3", false));
         emit(&sink, turn_completed("s-by", "t3"));
         emit(&sink, turn_started("s-by", "t4", true));
@@ -2585,9 +3090,18 @@ mod tests {
         let seen = published(&host);
         let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
         let out = holder.clone();
-        host.spawn_plain("s-load", "tab", Collector::default().emit(), spec("s-load"), move || {
-            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
-        })
+        host.spawn_plain(
+            "s-load",
+            "tab",
+            Collector::default().emit(),
+            spec("s-load"),
+            move || {
+                Box::new(Puppet {
+                    sink_out: Some(out),
+                    ..Default::default()
+                })
+            },
+        )
         .unwrap();
         let sink = lock(&holder).clone().unwrap();
         emit(&sink, turn_started("s-load", "old", false));
@@ -2596,7 +3110,10 @@ mod tests {
         emit(&sink, turn_started("s-load", "new", false));
         assert_eq!(
             *lock(&seen),
-            [("session.started".to_string(), "s-load".to_string()), ("session.turn_started".into(), "s-load".into())]
+            [
+                ("session.started".to_string(), "s-load".to_string()),
+                ("session.turn_started".into(), "s-load".into())
+            ]
         );
     }
 }

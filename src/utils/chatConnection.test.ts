@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vite-plus/test";
-import { applyEvent, beginReconnect, chatStatus, connectionHealth, enqueue, initialChat, queuedText } from "../panels/Chat/chatStore";
+import {
+  applyEvent,
+  beginReconnect,
+  chatStatus,
+  connectionHealth,
+  enqueue,
+  initialChat,
+  queuedText,
+} from "../panels/Chat/chatStore";
 import type { ChatEvent } from "./chatTypes";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
@@ -25,7 +33,8 @@ const turn = (turnId: string): ChatEvent => ({
   sessionId: SESSION,
   turnId,
   model: "claude-sonnet-5",
-  permissionMode: "default", agentInitiated: false
+  permissionMode: "default",
+  agentInitiated: false,
 });
 
 /** What `claude_transport` emits when the child's stdout hits EOF - i.e. what

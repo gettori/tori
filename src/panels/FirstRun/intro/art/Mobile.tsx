@@ -24,7 +24,12 @@ function qrModules(): [number, number][] {
       const dy = y - oy;
       return dx === 0 || dx === 6 || dy === 0 || dy === 6 || (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4);
     };
-    for (const [ox, oy] of [[0, 0], [QR_SIZE - 7, 0], [0, QR_SIZE - 7]]) if (at(ox, oy)) return ring(ox, oy) ? 1 : 0;
+    for (const [ox, oy] of [
+      [0, 0],
+      [QR_SIZE - 7, 0],
+      [0, QR_SIZE - 7],
+    ])
+      if (at(ox, oy)) return ring(ox, oy) ? 1 : 0;
     const near = (ox: number, oy: number) => x >= ox - 1 && x <= ox + 7 && y >= oy - 1 && y <= oy + 7;
     return near(0, 0) || near(QR_SIZE - 7, 0) || near(0, QR_SIZE - 7) ? 0 : -1;
   };
@@ -66,7 +71,11 @@ function PairingCard() {
   );
 }
 
-const noClient = { status: () => "open", request: () => new Promise(() => {}), subscribe: () => () => {} } as unknown as RemoteClient;
+const noClient = {
+  status: () => "open",
+  request: () => new Promise(() => {}),
+  subscribe: () => () => {},
+} as unknown as RemoteClient;
 
 function unit(folder: string, branch: string): Unit {
   return { label: branch, folder, branch, kind: "worktree", isCurrent: false };
@@ -79,25 +88,64 @@ const PHONE_SPACES: Space[] = [
     icon: null,
     color: null,
     projects: [
-      { name: "api", path: "~/Projects/work/api", units: [unit("~/Projects/work/api/fix", "fix/rate-limit"), unit("~/Projects/work/api/limits", "docs/limits")] },
-      { name: "web", path: "~/Projects/work/web", units: [unit("~/Projects/work/web/webhooks", "feat/webhooks"), unit("~/Projects/work/web/main", "main")] },
+      {
+        name: "api",
+        path: "~/Projects/work/api",
+        units: [unit("~/Projects/work/api/fix", "fix/rate-limit"), unit("~/Projects/work/api/limits", "docs/limits")],
+      },
+      {
+        name: "web",
+        path: "~/Projects/work/web",
+        units: [unit("~/Projects/work/web/webhooks", "feat/webhooks"), unit("~/Projects/work/web/main", "main")],
+      },
       { name: "infra", path: "~/Projects/work/infra", units: [unit("~/Projects/work/infra/main", "main")] },
     ],
   },
   { name: "personal", path: "~/Projects/personal", icon: null, color: null, projects: [] },
 ];
 
-const home = (project: string, folder: string, branch: string) => ({ project: `~/Projects/work/${project}`, folder: `~/Projects/work/${project}/${folder}`, branch });
+const home = (project: string, folder: string, branch: string) => ({
+  project: `~/Projects/work/${project}`,
+  folder: `~/Projects/work/${project}/${folder}`,
+  branch,
+});
 
 const PHONE_LIVE: SessionRow[] = [
-  { id: "s1", title: "Cap the rate limiter", live: true, dot: "needs", last_active: 0, home: home("api", "fix", "fix/rate-limit") },
-  { id: "s2", title: "Limits docs", live: true, dot: "working", last_active: 0, home: home("api", "limits", "docs/limits") },
-  { id: "s3", title: "Retry failed webhooks", live: true, dot: "working", last_active: 0, home: home("web", "webhooks", "feat/webhooks") },
+  {
+    id: "s1",
+    title: "Cap the rate limiter",
+    live: true,
+    dot: "needs",
+    last_active: 0,
+    home: home("api", "fix", "fix/rate-limit"),
+  },
+  {
+    id: "s2",
+    title: "Limits docs",
+    live: true,
+    dot: "working",
+    last_active: 0,
+    home: home("api", "limits", "docs/limits"),
+  },
+  {
+    id: "s3",
+    title: "Retry failed webhooks",
+    live: true,
+    dot: "working",
+    last_active: 0,
+    home: home("web", "webhooks", "feat/webhooks"),
+  },
 ];
 
 const PHONE_CHAT: ChatItem[] = [
   { kind: "user", id: "u1", blocks: [{ type: "text", text: "now send the Retry-After header" }], steer: false },
-  { kind: "text", id: "t1", turnId: "t", agentId: null, text: "Added `Retry-After` to the 429 response, set from the bucket's reset time, and a test for it. Running the suite now." },
+  {
+    kind: "text",
+    id: "t1",
+    turnId: "t",
+    agentId: null,
+    text: "Added `Retry-After` to the 429 response, set from the bucket's reset time, and a test for it. Running the suite now.",
+  },
 ];
 
 const PHONE_PENDING: PendingRow[] = [{ kind: "permission", id: "p1", tool: "Bash", detail: "pnpm test limiter" }];

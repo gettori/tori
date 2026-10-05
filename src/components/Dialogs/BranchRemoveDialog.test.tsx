@@ -14,8 +14,7 @@ import BranchRemoveDialog from "./BranchRemoveDialog";
 // with local delete off it is a *detach*, the branch stays in git and only
 // leaves Tori's list. That is the assertion a careless migration would lose,
 // because it lives in a `Show` that renders nothing until the box is cleared.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -39,10 +38,8 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   return { onConfirm, onCancel };
 }
 
-const remove = () =>
-  screen.getByRole("button", { name: /^Remove branch$|^Removing…$/ }) as HTMLButtonElement;
-const check = (name: string) =>
-  screen.getByRole("checkbox", { name }) as HTMLInputElement;
+const remove = () => screen.getByRole("button", { name: /^Remove branch$|^Removing…$/ }) as HTMLButtonElement;
+const check = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
 const LOCAL = "Delete local branch (git branch -D)";
 const REMOTE = "Delete remote branch (git push --delete)";
 
@@ -70,9 +67,7 @@ describe("BranchRemoveDialog", () => {
       open({ unpushed: true });
 
       expect(screen.getByText("unpushed commits")).toBeTruthy();
-      expect(
-        screen.getByText("This branch has commits not on its remote. Deleting it loses them."),
-      ).toBeTruthy();
+      expect(screen.getByText("This branch has commits not on its remote. Deleting it loses them.")).toBeTruthy();
     });
 
     it("deletes the local branch by default", () => {
@@ -96,15 +91,11 @@ describe("BranchRemoveDialog", () => {
     it("says it is only a detach once local delete is cleared", () => {
       open();
 
-      expect(
-        screen.queryByText("The branch stays in git; it is only removed from Tori’s list (detach)."),
-      ).toBeNull();
+      expect(screen.queryByText("The branch stays in git; it is only removed from Tori’s list (detach).")).toBeNull();
 
       fireEvent.click(check(LOCAL));
 
-      expect(
-        screen.getByText("The branch stays in git; it is only removed from Tori’s list (detach)."),
-      ).toBeTruthy();
+      expect(screen.getByText("The branch stays in git; it is only removed from Tori’s list (detach).")).toBeTruthy();
     });
 
     it("confirms with the checkbox state as it stands at confirm time", () => {

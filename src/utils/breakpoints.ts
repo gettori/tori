@@ -31,12 +31,7 @@ export function breakpointsFor(store: BreakpointStore, ws: string, path: string)
 
 /** Whether this line has a breakpoint, which is what the gutter's toggle
  *  reads. */
-export function isBreakpoint(
-  store: BreakpointStore,
-  ws: string,
-  path: string,
-  line: number,
-): boolean {
+export function isBreakpoint(store: BreakpointStore, ws: string, path: string, line: number): boolean {
   return breakpointsFor(store, ws, path).includes(line);
 }
 
@@ -66,12 +61,7 @@ export function setFileBreakpoints(
 /** Set the breakpoint, or clear it if the line already has one. A gutter click
  *  is a toggle rather than an add, because the same target has to be able to
  *  undo itself; there is nowhere else to click to remove one. */
-export function toggleBreakpoint(
-  store: BreakpointStore,
-  ws: string,
-  path: string,
-  line: number,
-): BreakpointStore {
+export function toggleBreakpoint(store: BreakpointStore, ws: string, path: string, line: number): BreakpointStore {
   const lines = breakpointsFor(store, ws, path);
   const next = lines.includes(line) ? lines.filter((l) => l !== line) : [...lines, line];
   return setFileBreakpoints(store, ws, path, next);
@@ -80,10 +70,7 @@ export function toggleBreakpoint(
 /** One workspace's files and their lines, by path. Paths sorted so the order
  *  does not move under a caller that iterates them, which the session
  *  configuration does once per session. */
-export function breakpointFiles(
-  store: BreakpointStore,
-  ws: string,
-): { path: string; lines: FileBreakpoints }[] {
+export function breakpointFiles(store: BreakpointStore, ws: string): { path: string; lines: FileBreakpoints }[] {
   const files = store[ws] ?? {};
   return Object.keys(files)
     .sort()
@@ -105,10 +92,7 @@ export function breakpointFiles(
  * same file now, and dropping either side would silently throw away something
  * set by hand.
  */
-export function mapBreakpointPaths(
-  store: BreakpointStore,
-  map: (path: string) => string | null,
-): BreakpointStore {
+export function mapBreakpointPaths(store: BreakpointStore, map: (path: string) => string | null): BreakpointStore {
   let changed = false;
   const out: Record<string, WorkspaceBreakpoints> = {};
   for (const [ws, files] of Object.entries(store)) {

@@ -143,7 +143,11 @@ pub struct AccountsFile {
 
 impl Default for AccountsFile {
     fn default() -> Self {
-        Self { version: FILE_VERSION, adapters: BTreeMap::new(), default_labels: BTreeMap::new() }
+        Self {
+            version: FILE_VERSION,
+            adapters: BTreeMap::new(),
+            default_labels: BTreeMap::new(),
+        }
     }
 }
 
@@ -160,11 +164,7 @@ pub fn profiles_for(file: &AccountsFile, adapter_id: &str) -> Vec<Profile> {
 ///
 /// The default is prepended rather than stored, so it cannot go missing from a
 /// hand-edited file.
-pub fn profiles_for_with(
-    file: &AccountsFile,
-    adapter_id: &str,
-    default_present: bool,
-) -> Vec<Profile> {
+pub fn profiles_for_with(file: &AccountsFile, adapter_id: &str, default_present: bool) -> Vec<Profile> {
     let mut out = Vec::new();
     if default_present {
         out.push(default_profile_for(file, adapter_id));
@@ -199,13 +199,11 @@ pub fn account_counts(file: &AccountsFile) -> BTreeMap<String, usize> {
 /// Rejects a duplicate id and rejects reusing [`DEFAULT_PROFILE_ID`], which
 /// would otherwise shadow the user's real login with a Tori-managed home and
 /// make it unreachable.
-pub fn add_profile(
-    file: &mut AccountsFile,
-    adapter_id: &str,
-    profile: Profile,
-) -> Result<(), String> {
+pub fn add_profile(file: &mut AccountsFile, adapter_id: &str, profile: Profile) -> Result<(), String> {
     if profile.id == DEFAULT_PROFILE_ID {
-        return Err(format!("`{DEFAULT_PROFILE_ID}` is the user's existing login and is not a profile Tori adds"));
+        return Err(format!(
+            "`{DEFAULT_PROFILE_ID}` is the user's existing login and is not a profile Tori adds"
+        ));
     }
     if profile.home.is_none() {
         return Err(format!(
@@ -225,11 +223,7 @@ pub fn add_profile(
 ///
 /// Refuses the default: there is nothing stored to remove, and "removing" it
 /// could only mean signing the user out of the login they had before Tori.
-pub fn remove_profile(
-    file: &mut AccountsFile,
-    adapter_id: &str,
-    profile_id: &str,
-) -> Result<Profile, String> {
+pub fn remove_profile(file: &mut AccountsFile, adapter_id: &str, profile_id: &str) -> Result<Profile, String> {
     if profile_id == DEFAULT_PROFILE_ID {
         return Err("the default profile is the user's existing login and cannot be removed".into());
     }
@@ -251,12 +245,7 @@ pub fn remove_profile(
 /// Relabel a profile, including the default one: the label is Tori's own name
 /// for an account and the agent never sees it, so renaming touches a word on
 /// screen and nothing about the login behind it.
-pub fn rename_profile(
-    file: &mut AccountsFile,
-    adapter_id: &str,
-    profile_id: &str,
-    label: &str,
-) -> Result<(), String> {
+pub fn rename_profile(file: &mut AccountsFile, adapter_id: &str, profile_id: &str, label: &str) -> Result<(), String> {
     let label = label.trim();
     if label.is_empty() {
         return Err("a profile label cannot be empty".into());
@@ -340,11 +329,11 @@ pub fn profile_pair(
             )),
         };
     }
-    let accounts = adapter.accounts.as_ref().ok_or_else(|| {
-        format!("`{}` declares no accounts, so it has no profile `{id}`", adapter.id)
-    })?;
-    let profile = profile(file, &adapter.id, id)
-        .ok_or_else(|| format!("no profile `{id}` for `{}`", adapter.id))?;
+    let accounts = adapter
+        .accounts
+        .as_ref()
+        .ok_or_else(|| format!("`{}` declares no accounts, so it has no profile `{id}`", adapter.id))?;
+    let profile = profile(file, &adapter.id, id).ok_or_else(|| format!("no profile `{id}` for `{}`", adapter.id))?;
     spawn_env(accounts, &profile)
 }
 
@@ -409,7 +398,12 @@ pub fn default_present(adapter: &crate::agents::AgentAdapter) -> bool {
 }
 
 fn absent_default_home(adapter: &crate::agents::AgentAdapter) -> Option<&Path> {
-    adapter.accounts.as_ref()?.home_default.as_deref().filter(|home| !home.exists())
+    adapter
+        .accounts
+        .as_ref()?
+        .home_default
+        .as_deref()
+        .filter(|home| !home.exists())
 }
 
 /// Canonicalize a path before it is stored or handed to a agent.
@@ -425,8 +419,8 @@ fn absent_default_home(adapter: &crate::agents::AgentAdapter) -> Option<&Path> {
 /// Requires the path to exist, which it does: Tori creates a profile home
 /// before it stores one.
 pub fn canonicalize_home(path: &Path) -> Result<String, String> {
-    let resolved = std::fs::canonicalize(path)
-        .map_err(|e| format!("cannot resolve profile home {}: {e}", path.display()))?;
+    let resolved =
+        std::fs::canonicalize(path).map_err(|e| format!("cannot resolve profile home {}: {e}", path.display()))?;
     resolved
         .to_str()
         .map(|s| s.to_string())
@@ -470,7 +464,10 @@ pub fn adopted_home(
     let home = canonicalize_home(&path)?;
     let default_home = accounts.home_default.as_deref().and_then(|d| canonicalize_home(d).ok());
     if default_home.as_deref() == Some(home.as_str()) {
-        return Err(format!("{home} is {}'s default account, which Tori already lists.", adapter.label));
+        return Err(format!(
+            "{home} is {}'s default account, which Tori already lists.",
+            adapter.label
+        ));
     }
     let mut stored = file.adapters.get(&adapter.id).into_iter().flatten();
     if let Some(taken) = stored.find(|p| p.home.as_deref() == Some(home.as_str())) {
@@ -503,11 +500,7 @@ pub fn create_profile_home(adapter_id: &str, profile_id: &str) -> Result<String,
 /// nobody else's business. The adapter level in the middle matters too, since a
 /// world-readable one leaks the profile names above the transcripts. Created
 /// before canonicalizing, because resolving symlinks needs something to resolve.
-fn create_profile_home_in(
-    root: &Path,
-    adapter_id: &str,
-    profile_id: &str,
-) -> Result<String, String> {
+fn create_profile_home_in(root: &Path, adapter_id: &str, profile_id: &str) -> Result<String, String> {
     let by_adapter = root.join(sanitize_segment(adapter_id));
     let dir = by_adapter.join(sanitize_segment(profile_id));
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create profile home: {e}"))?;
@@ -536,7 +529,13 @@ fn restrict_to_owner(path: &Path) -> Result<(), String> {
 pub fn sanitize_segment(value: &str) -> String {
     value
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -633,7 +632,9 @@ pub struct AccountsView {
 pub fn mark_duplicates(statuses: &mut [ProfileStatus]) {
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
     for status in statuses.iter_mut() {
-        let Some(account) = status.account.as_ref() else { continue };
+        let Some(account) = status.account.as_ref() else {
+            continue;
+        };
         let key = account.trim().to_lowercase();
         if key.is_empty() {
             continue;
@@ -718,10 +719,7 @@ pub fn removal_plan(revoke: bool, has_logout: bool, confirmed_without_logout: bo
 /// What it does instead is name the agent's own credential command, which is
 /// derived from what the adapter already declares rather than added as a field
 /// nobody could fill in. That is where the revocation actually happens.
-fn no_logout_warning(
-    adapter: &crate::agents::AgentAdapter,
-    accounts: &crate::agents::AccountsConfig,
-) -> String {
+fn no_logout_warning(adapter: &crate::agents::AgentAdapter, accounts: &crate::agents::AccountsConfig) -> String {
     let manage = accounts
         .login_args
         .first()
@@ -951,7 +949,10 @@ pub async fn add_agent_account(
 #[tauri::command(async)]
 pub fn pick_account_folder(default_path: Option<String>) -> Result<Option<String>, String> {
     if !cfg!(target_os = "macos") {
-        return Err(format!("the folder picker is not available on {}", std::env::consts::OS));
+        return Err(format!(
+            "the folder picker is not available on {}",
+            std::env::consts::OS
+        ));
     }
     let start = default_path
         .map(|p| crate::agents::expand_tilde(p.trim()))
@@ -974,7 +975,11 @@ pub fn pick_account_folder(default_path: Option<String>) -> Result<Option<String
     if !out.status.success() {
         let said = String::from_utf8_lossy(&out.stderr);
         // -128 is AppleScript's "User canceled".
-        return if said.contains("(-128)") { Ok(None) } else { Err(said.trim().to_string()) };
+        return if said.contains("(-128)") {
+            Ok(None)
+        } else {
+            Err(said.trim().to_string())
+        };
     }
     let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
     Ok((!path.is_empty()).then(|| path.trim_end_matches('/').to_string()))
@@ -989,7 +994,12 @@ fn mint_profile_id(file: &AccountsFile, adapter_id: &str, label: &str) -> String
     let base = sanitize_segment(&label.to_lowercase());
     let base = base.trim_matches('_');
     let base = if base.is_empty() { "account" } else { base };
-    let stored = file.adapters.get(adapter_id).into_iter().flatten().map(|p| p.id.clone());
+    let stored = file
+        .adapters
+        .get(adapter_id)
+        .into_iter()
+        .flatten()
+        .map(|p| p.id.clone());
     let taken: Vec<String> = stored.chain([DEFAULT_PROFILE_ID.to_string()]).collect();
     if !taken.iter().any(|id| id == base) {
         return base.to_string();
@@ -1017,7 +1027,9 @@ pub enum RemovalOutcome {
     Removed,
     /// This agent cannot sign out. The message says what that means; calling
     /// again with `confirmed_without_logout` proceeds.
-    NeedsConfirming { message: String },
+    NeedsConfirming {
+        message: String,
+    },
 }
 
 /// Sign a profile out and forget it, or say why not.
@@ -1075,9 +1087,8 @@ pub async fn remove_agent_account(
     let revoke = profile.managed || sign_out;
     match removal_plan(revoke, !accounts.logout_args.is_empty(), confirmed_without_logout) {
         RemovalStep::SignOutFirst => {
-            let path = crate::env::resolve_binary(&adapter.program).ok_or_else(|| {
-                format!("`{}` is not installed, so it cannot sign out", adapter.program)
-            })?;
+            let path = crate::env::resolve_binary(&adapter.program)
+                .ok_or_else(|| format!("`{}` is not installed, so it cannot sign out", adapter.program))?;
             let home = spawn_env(&accounts, &profile)?;
             crate::auth::logout(&path, &accounts, home.as_ref())
                 .map_err(|e| format!("{} would not sign out: {e}", adapter.label))?;
@@ -1107,7 +1118,9 @@ pub async fn remove_agent_account(
 }
 
 fn discard_home(removed: &Profile) -> Result<(), String> {
-    let Some(home) = removed.home.as_ref().filter(|_| removed.managed) else { return Ok(()) };
+    let Some(home) = removed.home.as_ref().filter(|_| removed.managed) else {
+        return Ok(());
+    };
     std::fs::remove_dir_all(home)
         .map_err(|e| format!("signed out and forgot the account, but its home is still at {home}: {e}"))
 }
@@ -1131,9 +1144,8 @@ pub async fn sign_out_agent_account(adapter_id: String, profile_id: String) -> R
     let file = load();
     let profile = profile(&file, &adapter_id, &profile_id)
         .ok_or_else(|| format!("no profile `{profile_id}` for `{adapter_id}`"))?;
-    let path = crate::env::resolve_binary(&adapter.program).ok_or_else(|| {
-        format!("`{}` is not installed, so it cannot sign out", adapter.program)
-    })?;
+    let path = crate::env::resolve_binary(&adapter.program)
+        .ok_or_else(|| format!("`{}` is not installed, so it cannot sign out", adapter.program))?;
     let home = spawn_env(&accounts, &profile)?;
     crate::auth::logout(&path, &accounts, home.as_ref())
         .map_err(|e| format!("{} would not sign out: {e}", adapter.label))
@@ -1162,8 +1174,8 @@ pub async fn complete_sign_in(adapter_id: String, profile_id: String) -> Result<
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(format!("could not read {}: {e}", path.display())),
         };
-        let mut state: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| format!("{} is not JSON: {e}", path.display()))?;
+        let mut state: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| format!("{} is not JSON: {e}", path.display()))?;
         let object = state
             .as_object_mut()
             .ok_or_else(|| format!("{} is not a JSON object", path.display()))?;
@@ -1181,11 +1193,7 @@ pub async fn complete_sign_in(adapter_id: String, profile_id: String) -> Result<
 /// Relabel a profile. The label is the only thing the user chose, so it is the
 /// only thing renaming touches.
 #[tauri::command]
-pub async fn rename_agent_account(
-    adapter_id: String,
-    profile_id: String,
-    label: String,
-) -> Result<(), String> {
+pub async fn rename_agent_account(adapter_id: String, profile_id: String, label: String) -> Result<(), String> {
     let mut file = load();
     rename_profile(&mut file, &adapter_id, &profile_id, &label)?;
     save(&file)
@@ -1272,8 +1280,10 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         add_profile(&mut file, "claude", added("personal", "/tmp/p")).unwrap();
-        let ids: Vec<String> =
-            profiles_for_with(&file, "claude", true).into_iter().map(|p| p.id).collect();
+        let ids: Vec<String> = profiles_for_with(&file, "claude", true)
+            .into_iter()
+            .map(|p| p.id)
+            .collect();
         assert_eq!(ids, ["default", "work", "personal"]);
     }
 
@@ -1289,7 +1299,11 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         assert_eq!(profiles_for_with(&file, "claude", true).len(), 2);
-        assert_eq!(profiles_for_with(&file, "codex", true).len(), 1, "codex sees only its default");
+        assert_eq!(
+            profiles_for_with(&file, "codex", true).len(),
+            1,
+            "codex sees only its default"
+        );
     }
 
     /// The Agents table's column: declared adapters count their default plus
@@ -1315,8 +1329,10 @@ mod tests {
         let mut file = AccountsFile::default();
         assert!(profiles_for_with(&file, "claude", false).is_empty());
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
-        let ids: Vec<String> =
-            profiles_for_with(&file, "claude", false).into_iter().map(|p| p.id).collect();
+        let ids: Vec<String> = profiles_for_with(&file, "claude", false)
+            .into_iter()
+            .map(|p| p.id)
+            .collect();
         assert_eq!(ids, ["work"]);
     }
 
@@ -1333,7 +1349,10 @@ mod tests {
         assert!(default_present(&declaring(root.clone())));
         assert!(!default_present(&declaring(root.join("missing"))));
         // Nothing declared to check, which is how Codex and OpenCode keep theirs.
-        assert!(default_present(&adapter_with(Some("CLAUDE_CONFIG_DIR"), true)), "no home_default");
+        assert!(
+            default_present(&adapter_with(Some("CLAUDE_CONFIG_DIR"), true)),
+            "no home_default"
+        );
         assert!(default_present(&crate::agents::test_adapter("x")), "no [accounts]");
 
         std::fs::remove_dir_all(&root).ok();
@@ -1353,7 +1372,10 @@ mod tests {
             let err = profile_env(&a, &file, id).unwrap_err();
             assert!(err.contains(&missing.display().to_string()), "{err}");
         }
-        assert!(profile_env(&a, &file, Some("globex")).is_ok(), "an added profile still resolves");
+        assert!(
+            profile_env(&a, &file, Some("globex")).is_ok(),
+            "an added profile still resolves"
+        );
     }
 
     #[test]
@@ -1361,7 +1383,11 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         let gone = remove_profile(&mut file, "claude", "work").unwrap();
-        assert_eq!(gone.home.as_deref(), Some("/tmp/w"), "the caller needs the home to clean up");
+        assert_eq!(
+            gone.home.as_deref(),
+            Some("/tmp/w"),
+            "the caller needs the home to clean up"
+        );
         assert!(file.adapters.is_empty(), "an empty list should not persist as an entry");
     }
 
@@ -1409,7 +1435,10 @@ mod tests {
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         let _ = profiles_for_with(&file, "claude", true);
         let text = serde_json::to_string(&file).unwrap();
-        assert!(!text.contains(DEFAULT_PROFILE_ID), "default leaked into the file: {text}");
+        assert!(
+            !text.contains(DEFAULT_PROFILE_ID),
+            "default leaked into the file: {text}"
+        );
     }
 
     #[test]
@@ -1489,7 +1518,10 @@ mod tests {
         add_profile(&mut file, "claude", added("globex", "/canonical/globex")).unwrap();
 
         let env = profile_env(&a, &file, Some("globex")).unwrap();
-        assert_eq!(env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/canonical/globex"));
+        assert_eq!(
+            env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some("/canonical/globex")
+        );
     }
 
     /// A tab persisted against a profile that has since been removed. An empty
@@ -1555,7 +1587,10 @@ mod tests {
         let home = create_profile_home_in(&root, "claude", "work").unwrap();
         let path = Path::new(&home);
         assert!(path.is_dir());
-        assert!(path.ends_with("claude/work"), "adapter and profile each get a segment: {home}");
+        assert!(
+            path.ends_with("claude/work"),
+            "adapter and profile each get a segment: {home}"
+        );
 
         #[cfg(unix)]
         {
@@ -1613,8 +1648,7 @@ mod tests {
     /// in the UI to tell them apart.
     #[test]
     fn a_second_profile_on_one_account_points_back_at_the_first() {
-        let mut rows =
-            [status("Default", Some("a@b.c")), status("Work", Some("a@b.c"))];
+        let mut rows = [status("Default", Some("a@b.c")), status("Work", Some("a@b.c"))];
         mark_duplicates(&mut rows);
         assert_eq!(rows[0].duplicate_of, None, "the first holder is the original");
         assert_eq!(rows[1].duplicate_of.as_deref(), Some("Default"));
@@ -1641,7 +1675,11 @@ mod tests {
     /// as "the same" would flag every second profile they ever had.
     #[test]
     fn profiles_with_no_reported_account_are_never_called_duplicates() {
-        let mut rows = [status("Work", None), status("Personal", None), status("Third", Some(" "))];
+        let mut rows = [
+            status("Work", None),
+            status("Personal", None),
+            status("Third", Some(" ")),
+        ];
         mark_duplicates(&mut rows);
         assert!(rows.iter().all(|r| r.duplicate_of.is_none()));
     }
@@ -1773,7 +1811,10 @@ mod tests {
         std::fs::write(root.join("adopted/.claude.json"), "{}").unwrap();
         std::fs::create_dir_all(root.join("made")).unwrap();
         let listing = |dir: &Path| {
-            let mut names: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+            let mut names: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
             names.sort();
             names
         };
@@ -1783,7 +1824,10 @@ mod tests {
         adopted.managed = false;
         discard_home(&adopted).unwrap();
         assert_eq!(listing(&root.join("adopted")), before);
-        assert_eq!(std::fs::read_to_string(root.join("adopted/.claude.json")).unwrap(), "{}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("adopted/.claude.json")).unwrap(),
+            "{}"
+        );
 
         discard_home(&added("made", root.join("made").to_str().unwrap())).unwrap();
         assert!(!root.join("made").exists(), "a home Tori made goes with its account");
@@ -1798,11 +1842,17 @@ mod tests {
     fn the_no_logout_warning_says_the_tokens_survive_and_where_to_revoke_them() {
         let opencode = crate::agents::find("opencode").expect("opencode ships bundled");
         let accounts = opencode.accounts.as_ref().expect("opencode declares accounts");
-        assert!(accounts.logout_args.is_empty(), "this test is about the no-logout branch");
+        assert!(
+            accounts.logout_args.is_empty(),
+            "this test is about the no-logout branch"
+        );
 
         let warning = no_logout_warning(opencode, accounts);
         assert!(warning.contains("valid until they expire"), "{warning}");
-        assert!(warning.contains("opencode auth"), "name where to revoke them: {warning}");
+        assert!(
+            warning.contains("opencode auth"),
+            "name where to revoke them: {warning}"
+        );
     }
 
     /// Derived from what the adapter declares, so an adapter that declares no
@@ -1914,7 +1964,11 @@ mod tests {
             let link = base.join("link");
             std::fs::remove_file(&link).ok();
             std::os::unix::fs::symlink(&real, &link).unwrap();
-            assert_eq!(plain, canonicalize_home(&link).unwrap(), "a symlinked home is the same home");
+            assert_eq!(
+                plain,
+                canonicalize_home(&link).unwrap(),
+                "a symlinked home is the same home"
+            );
         }
 
         std::fs::remove_dir_all(&base).ok();
@@ -1989,9 +2043,7 @@ mod tests {
         work.label = "Work".into();
         add_profile(&mut file, "claude", work).unwrap();
 
-        let refusal = |folder: &str| {
-            adopted_home(&a, &file, &root.join(folder).display().to_string()).unwrap_err()
-        };
+        let refusal = |folder: &str| adopted_home(&a, &file, &root.join(folder).display().to_string()).unwrap_err();
         assert!(refusal("default").contains("default account"));
         assert!(refusal("work").contains("already the Work account"));
 

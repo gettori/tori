@@ -73,7 +73,11 @@
     height: calc(48px * var(--ui-scale));
     border-radius: var(--tori-radius-pill);
     background:
-      radial-gradient(closest-side, var(--canvas-card) calc(100% - 4px * var(--ui-scale)), transparent calc(100% - 4px * var(--ui-scale) + 0.5px)),
+      radial-gradient(
+        closest-side,
+        var(--canvas-card) calc(100% - 4px * var(--ui-scale)),
+        transparent calc(100% - 4px * var(--ui-scale) + 0.5px)
+      ),
       conic-gradient(var(--ring) 0 var(--p), var(--progress-border) var(--p) 100%);
     font-family: var(--tori-font-mono);
     font-size: var(--tori-text-xs);
@@ -312,7 +316,8 @@
     border: none;
     background: var(--status-progress);
     color: var(--canvas-default);
-    box-shadow: 0 calc(4px * var(--ui-scale)) calc(14px * var(--ui-scale)) color-mix(in oklab, var(--status-progress) 40%, transparent);
+    box-shadow: 0 calc(4px * var(--ui-scale)) calc(14px * var(--ui-scale))
+      color-mix(in oklab, var(--status-progress) 40%, transparent);
   }
   .anchor {
     border: var(--tori-border-thin) solid var(--tori-scene-glass-border);

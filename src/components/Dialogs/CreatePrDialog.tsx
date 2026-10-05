@@ -97,11 +97,7 @@ export default function CreatePrDialog(props: {
           <Button disabled={props.busy} onClick={() => props.onCancel()}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            disabled={!!blocked()}
-            onClick={() => props.onConfirm({ draft: draft() })}
-          >
+          <Button variant="primary" disabled={!!blocked()} onClick={() => props.onConfirm({ draft: draft() })}>
             {props.busy ? "Opening…" : "Open pull request"}
           </Button>
         </>
@@ -156,16 +152,9 @@ export default function CreatePrDialog(props: {
           {props.head} into {props.base || "…"}
         </div>
 
-        <Checkbox
-          class={styles.wtCheck}
-          checked={draft()}
-          onChange={setDraft}
-          label="Open as a draft"
-        />
+        <Checkbox class={styles.wtCheck} checked={draft()} onChange={setDraft} label="Open as a draft" />
 
-        <Show when={blocked()}>
-          {(reason) => <div class={styles.msg}>{reason()}</div>}
-        </Show>
+        <Show when={blocked()}>{(reason) => <div class={styles.msg}>{reason()}</div>}</Show>
       </div>
     </Dialog>
   );

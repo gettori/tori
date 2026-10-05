@@ -12,8 +12,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SB_PORT = 6007;
 const SB_URL = `http://127.0.0.1:${SB_PORT}`;
-const CHROME =
-  process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const outIdx = process.argv.indexOf("--out");
 const OUT = outIdx > -1 ? process.argv[outIdx + 1] : join(tmpdir(), "keepalive-spike");
@@ -91,9 +90,7 @@ class Cdp {
       const msg = JSON.parse(ev.data);
       if (msg.method === "Runtime.exceptionThrown") {
         this.pageError =
-          msg.params.exceptionDetails?.exception?.description ??
-          msg.params.exceptionDetails?.text ??
-          "page exception";
+          msg.params.exceptionDetails?.exception?.description ?? msg.params.exceptionDetails?.text ?? "page exception";
       }
       if (msg.id && this.pending.has(msg.id)) {
         const { resolve, reject } = this.pending.get(msg.id);
@@ -145,9 +142,7 @@ async function runStory(cdpPort, storyId, firstStory) {
       returnByValue: true,
     });
     if (evaled.exceptionDetails) {
-      throw new Error(
-        `${storyId}: ${evaled.exceptionDetails.exception?.description ?? "run threw"}`,
-      );
+      throw new Error(`${storyId}: ${evaled.exceptionDetails.exception?.description ?? "run threw"}`);
     }
     const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(OUT, `${storyId.split("--")[1]}.png`), Buffer.from(shot.data, "base64"));

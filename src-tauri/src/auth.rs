@@ -76,7 +76,10 @@ pub struct Whoami {
 
 impl Whoami {
     fn state(state: SignIn) -> Self {
-        Self { state, ..Self::default() }
+        Self {
+            state,
+            ..Self::default()
+        }
     }
 }
 
@@ -115,9 +118,18 @@ fn parse_claude_json(stdout: &str) -> Whoami {
         None => SignIn::Unknown,
     };
     let string = |key: &str| {
-        value.get(key).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+        value
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
     };
-    Whoami { state, email: string("email"), api_key_source: string("apiKeySource") }
+    Whoami {
+        state,
+        email: string("email"),
+        api_key_source: string("apiKeySource"),
+    }
 }
 
 /// The first `{...}` in the output, so a CLI that prefixes a line of its own
@@ -209,11 +221,7 @@ pub fn probe_command(
 /// than signed out: plenty of agents have no way to say, and reporting them
 /// signed out would hide a working install behind a sign-in prompt it cannot
 /// satisfy.
-pub fn whoami(
-    path: &std::path::Path,
-    accounts: &AccountsConfig,
-    home: Option<&(String, String)>,
-) -> Whoami {
+pub fn whoami(path: &std::path::Path, accounts: &AccountsConfig, home: Option<&(String, String)>) -> Whoami {
     let Some(kind) = accounts.whoami_kind else {
         return Whoami::state(SignIn::Unknown);
     };
@@ -249,8 +257,8 @@ pub fn logout(
         return Err("this agent offers no logout command".into());
     }
     let mut cmd = probe_command(path, &accounts.logout_args, home);
-    let out = crate::env::output_with_timeout(&mut cmd)
-        .ok_or_else(|| "the logout command did not finish".to_string())?;
+    let out =
+        crate::env::output_with_timeout(&mut cmd).ok_or_else(|| "the logout command did not finish".to_string())?;
     if out.status.success() {
         return Ok(());
     }
@@ -278,7 +286,11 @@ pub enum LoginRoute {
     /// login` is browser OAuth with no non-interactive variant and that
     /// `setup-token` is interactive too, so this rung is a terminal or nothing:
     /// a captured login would hang rather than fail.
-    Terminal { program: String, args: Vec<String>, home: Option<(String, String)> },
+    Terminal {
+        program: String,
+        args: Vec<String>,
+        home: Option<(String, String)>,
+    },
     /// The agent states its own method, in its own words, and Tori relays it.
     ///
     /// Not a stub: this is already what happens. An ACP agent refusing
@@ -303,20 +315,29 @@ pub enum LoginRoute {
 /// button that signs the user in with a sentence telling them to do it
 /// themselves. The ACP rung is the fallback for an agent Tori has no login
 /// command for, which is what it was always doing.
-pub fn login_route(
-    adapter: &crate::agents::AgentAdapter,
-    home: Option<(String, String)>,
-) -> LoginRoute {
-    let args = adapter.accounts.as_ref().map(|a| a.login_args.clone()).unwrap_or_default();
+pub fn login_route(adapter: &crate::agents::AgentAdapter, home: Option<(String, String)>) -> LoginRoute {
+    let args = adapter
+        .accounts
+        .as_ref()
+        .map(|a| a.login_args.clone())
+        .unwrap_or_default();
     if !args.is_empty() {
-        return LoginRoute::Terminal { program: adapter.program.clone(), args, home };
+        return LoginRoute::Terminal {
+            program: adapter.program.clone(),
+            args,
+            home,
+        };
     }
-    if adapter.chat.as_ref().is_some_and(|c| {
-        matches!(c.transport, crate::agents::ChatTransport::Acp)
-    }) {
+    if adapter
+        .chat
+        .as_ref()
+        .is_some_and(|c| matches!(c.transport, crate::agents::ChatTransport::Acp))
+    {
         return LoginRoute::AgentStates;
     }
-    LoginRoute::Docs { url: ADAPTER_DOCS.to_string() }
+    LoginRoute::Docs {
+        url: ADAPTER_DOCS.to_string(),
+    }
 }
 
 /// The default profile's login route, for the setup steps on an agent's page.
@@ -430,7 +451,10 @@ mod tests {
     #[test]
     fn a_json_object_after_a_line_of_noise_still_parses() {
         let text = format!("warning: something\n{CLAUDE_IN}");
-        assert_eq!(parse_whoami(WhoamiKind::ClaudeJson, true, &text, "").state, SignIn::SignedIn);
+        assert_eq!(
+            parse_whoami(WhoamiKind::ClaudeJson, true, &text, "").state,
+            SignIn::SignedIn
+        );
     }
 
     // --- codex: the exit code is the whole answer ---
@@ -458,8 +482,7 @@ mod tests {
 
     // --- opencode: a count, from output that exits 0 either way ---
 
-    const OPENCODE_IN: &str =
-        "\u{250c}  Credentials \u{1b}[90m~/.local/share/opencode/auth.json\n\
+    const OPENCODE_IN: &str = "\u{250c}  Credentials \u{1b}[90m~/.local/share/opencode/auth.json\n\
          \u{2502}\n\
          \u{25cf}  GitHub Copilot \u{1b}[90moauth\n\
          \u{2502}\n\
@@ -493,8 +516,13 @@ mod tests {
     #[test]
     fn an_unreadable_opencode_table_is_unknown() {
         assert_eq!(
-            parse_whoami(WhoamiKind::OpencodeCredentials, true, "\u{250c}  Credentials /tmp/a\n", "")
-                .state,
+            parse_whoami(
+                WhoamiKind::OpencodeCredentials,
+                true,
+                "\u{250c}  Credentials /tmp/a\n",
+                ""
+            )
+            .state,
             SignIn::Unknown
         );
         assert_eq!(
@@ -534,10 +562,8 @@ mod tests {
     /// custody test below: a literal here would match itself.
     #[test]
     fn every_subprocess_in_this_module_goes_through_the_bounded_runner() {
-        let source = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/auth.rs"),
-        )
-        .expect("this file is readable");
+        let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/auth.rs"))
+            .expect("this file is readable");
         let unbounded = [
             concat!(".", "output()"),
             concat!(".", "status()"),
@@ -550,7 +576,10 @@ mod tests {
             .filter(|(_, line)| unbounded.iter().any(|needle| line.contains(needle)))
             .map(|(n, line)| (n + 1, line.trim()))
             .collect();
-        assert!(offenders.is_empty(), "run it through output_with_timeout: {offenders:?}");
+        assert!(
+            offenders.is_empty(),
+            "run it through output_with_timeout: {offenders:?}"
+        );
         // The positive half is behavioural rather than counted here:
         // `a_successful_logout_is_ok` and `a_failing_logout_reports_what_the_agent_said`
         // really do run `/bin/sh`, so a probe that spawned nothing would fail
@@ -632,14 +661,20 @@ mod tests {
     // --- the login ladder ---
 
     fn bundled(id: &str) -> crate::agents::AgentAdapter {
-        crate::agents::find(id).unwrap_or_else(|| panic!("{id} ships bundled")).clone()
+        crate::agents::find(id)
+            .unwrap_or_else(|| panic!("{id} ships bundled"))
+            .clone()
     }
 
     #[test]
     fn a_agent_with_login_args_opens_a_terminal_carrying_the_profile_home() {
         let home = Some(("CLAUDE_CONFIG_DIR".to_string(), "/canonical/work".to_string()));
         match login_route(&bundled("claude"), home.clone()) {
-            LoginRoute::Terminal { program, args, home: carried } => {
+            LoginRoute::Terminal {
+                program,
+                args,
+                home: carried,
+            } => {
                 assert_eq!(program, "claude");
                 assert_eq!(args, ["auth", "login"]);
                 assert_eq!(carried, home, "signing in to a profile must reach that profile's home");
@@ -664,10 +699,10 @@ mod tests {
     fn a_login_command_outranks_relaying_the_agents_own_instructions() {
         let opencode = bundled("opencode");
         assert!(
-            opencode.chat.as_ref().is_some_and(|c| matches!(
-                c.transport,
-                crate::agents::ChatTransport::Acp
-            )),
+            opencode
+                .chat
+                .as_ref()
+                .is_some_and(|c| matches!(c.transport, crate::agents::ChatTransport::Acp)),
             "this test is only meaningful while opencode speaks ACP"
         );
         assert!(matches!(login_route(&opencode, None), LoginRoute::Terminal { .. }));
@@ -757,7 +792,10 @@ mod tests {
         let needles = keychain_needles();
         let mut offenders = Vec::new();
         for (path, text) in files {
-            if std::path::Path::new(&path).file_name().is_some_and(|f| f == CUSTODY_EXEMPT) {
+            if std::path::Path::new(&path)
+                .file_name()
+                .is_some_and(|f| f == CUSTODY_EXEMPT)
+            {
                 continue;
             }
             for (n, line) in text.lines().enumerate() {
@@ -789,7 +827,10 @@ mod tests {
                 if path.extension().is_none_or(|e| e != "rs") {
                     continue;
                 }
-                out.push((path.display().to_string(), std::fs::read_to_string(&path).unwrap_or_default()));
+                out.push((
+                    path.display().to_string(),
+                    std::fs::read_to_string(&path).unwrap_or_default(),
+                ));
             }
         }
         out
@@ -814,21 +855,18 @@ mod tests {
     fn the_scan_catches_a_second_reader_and_lets_the_one_exempt_file_through() {
         let reaching = format!("let s = \"{}\";", concat!("Claude Code", "-credentials"));
 
-        let caught = keychain_offenders(
-            [("src/somewhere_else.rs".to_string(), reaching.as_str())].into_iter(),
-        );
+        let caught = keychain_offenders([("src/somewhere_else.rs".to_string(), reaching.as_str())].into_iter());
         assert_eq!(caught, ["src/somewhere_else.rs:1"], "a second reader is not allowed in");
 
-        let allowed = keychain_offenders(
-            [(format!("src/{CUSTODY_EXEMPT}"), reaching.as_str())].into_iter(),
+        let allowed = keychain_offenders([(format!("src/{CUSTODY_EXEMPT}"), reaching.as_str())].into_iter());
+        assert!(
+            allowed.is_empty(),
+            "the one file the opt-in lives in is exempt: {allowed:?}"
         );
-        assert!(allowed.is_empty(), "the one file the opt-in lives in is exempt: {allowed:?}");
 
         // The exemption is on the file name, not on a path fragment, so a file
         // that merely sits beside it or is named after it gains nothing.
-        let nearly = keychain_offenders(
-            [("src/usage_token_helpers.rs".to_string(), reaching.as_str())].into_iter(),
-        );
+        let nearly = keychain_offenders([("src/usage_token_helpers.rs".to_string(), reaching.as_str())].into_iter());
         assert_eq!(nearly.len(), 1, "only the exact name is exempt: {nearly:?}");
     }
 
@@ -836,7 +874,9 @@ mod tests {
     /// was granted for and quietly widen the guard's blind spot.
     #[test]
     fn the_exempt_file_is_a_real_one() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(CUSTODY_EXEMPT);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join(CUSTODY_EXEMPT);
         assert!(path.exists(), "{} names a file that is not there", CUSTODY_EXEMPT);
     }
 }

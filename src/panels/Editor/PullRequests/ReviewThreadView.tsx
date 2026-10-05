@@ -84,11 +84,7 @@ export default function ReviewThreadView(props: {
         <Show when={props.thread.isResolved}>
           <span class={styles.tag}>resolved</span>
         </Show>
-        <Button
-          variant="ghost"
-          disabled={props.busy}
-          onClick={() => props.onResolve(!props.thread.isResolved)}
-        >
+        <Button variant="ghost" disabled={props.busy} onClick={() => props.onResolve(!props.thread.isResolved)}>
           {props.thread.isResolved ? "Unresolve" : "Resolve"}
         </Button>
       </div>
@@ -116,11 +112,7 @@ export default function ReviewThreadView(props: {
       <Show when={props.send}>
         {(send) => (
           <div class={styles.sendRow} data-send-to={send().label}>
-            <Button
-              variant="ghost"
-              disabled={!send().ready || send().busy}
-              onClick={() => send().onSend()}
-            >
+            <Button variant="ghost" disabled={!send().ready || send().busy} onClick={() => send().onSend()}>
               Send to agent
             </Button>
             <span class={styles.sendTarget}>{send().label}</span>

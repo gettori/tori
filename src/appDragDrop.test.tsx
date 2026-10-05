@@ -37,8 +37,7 @@ vi.mock("./panels/Terminal/Terminal", async () => {
           renderMenuItem: (u) => <span>{u.id}</span>,
           activate: (u) => store.focusTab(u.workspace, u.id),
           close: () => {},
-          stripItems: () =>
-            unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
+          stripItems: () => unifiedTabs().filter((u) => u.kind !== "file" && u.workspace === store.activeWorkspace()),
           stripActiveId: store.visibleId,
           stripReorder: () => {},
           hostIds: () => store.open().map((t) => t.id),
@@ -64,8 +63,7 @@ vi.mock("./panels/Editor/Editor", async () => {
         stripItems: () => unifiedTabs().filter((u) => u.kind === "file"),
         stripActiveId: () => store.activeByWs()[REPO] ?? null,
         stripReorder: () => {},
-        hostIds: (paneId, tabs) =>
-          paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : [],
+        hostIds: (paneId, tabs) => (paneId === null ? ["editor-stage"] : tabs.length ? [`editor-stage:${paneId}`] : []),
       });
       return null;
     },
@@ -101,13 +99,14 @@ const term = (id: string) => ({
 
 const pane = (n: number) => document.querySelectorAll<HTMLElement>(".work-split .pane")[n];
 const panes = () => document.querySelectorAll(".work-split .pane").length;
-const tabsIn = (el: HTMLElement) => within(el).queryAllByRole("tab").map((t) => t.textContent ?? "");
-const tabEl = (el: HTMLElement, id: string) =>
-  el.querySelector<HTMLElement>(`.otab-list [data-tab-id="${id}"]`)!;
+const tabsIn = (el: HTMLElement) =>
+  within(el)
+    .queryAllByRole("tab")
+    .map((t) => t.textContent ?? "");
+const tabEl = (el: HTMLElement, id: string) => el.querySelector<HTMLElement>(`.otab-list [data-tab-id="${id}"]`)!;
 /** The PaneView column inside a leaf: the element that hit-tests a drop, and so
  *  the one an event has to be dispatched inside of. */
-const column = (n: number) => pane(n).querySelector<HTMLElement>(".otab-list")!.parentElement!
-  .parentElement!;
+const column = (n: number) => pane(n).querySelector<HTMLElement>(".otab-list")!.parentElement!.parentElement!;
 
 type Box = { left: number; top: number; width: number; height: number };
 function setRect(el: Element, b: Box) {
@@ -161,11 +160,7 @@ class FakeDataTransfer {
   }
 }
 
-function fire(
-  el: Element,
-  type: string,
-  o: { x?: number; y?: number; dt?: FakeDataTransfer } = {},
-): Event {
+function fire(el: Element, type: string, o: { x?: number; y?: number; dt?: FakeDataTransfer } = {}): Event {
   const e = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(e, {
     clientX: { value: o.x ?? 0 },
@@ -423,9 +418,7 @@ describe("what the stage still owns", () => {
     const dt = new FakeDataTransfer();
     fire(tabEl(pane(0), "sh:2"), "dragstart", { dt });
     fire(column(1), "dragover", { x: 410, y: 150, dt });
-    expect(pane(1).querySelector("[data-drop-zone]")?.getAttribute("data-drop-zone")).toBe(
-      "edge-left",
-    );
+    expect(pane(1).querySelector("[data-drop-zone]")?.getAttribute("data-drop-zone")).toBe("edge-left");
 
     fire(column(1), "dragover", { x: 500, y: 20, dt });
     expect(pane(1).querySelector("[data-drop-zone]")?.getAttribute("data-drop-zone")).toBe("strip");

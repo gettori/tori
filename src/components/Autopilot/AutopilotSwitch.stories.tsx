@@ -30,7 +30,13 @@ const meta = {
     popupOpen: { control: "boolean" },
   },
   args: { view: "workspace", state: "working", count: 2, popupOpen: false },
-  decorators: [(Story) => <TitleBar><Story /></TitleBar>],
+  decorators: [
+    (Story) => (
+      <TitleBar>
+        <Story />
+      </TitleBar>
+    ),
+  ],
 } satisfies Meta<typeof AutopilotSwitch>;
 
 export default meta;

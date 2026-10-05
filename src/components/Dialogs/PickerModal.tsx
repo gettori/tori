@@ -54,9 +54,7 @@ export default function PickerModal(props: {
 
   // Ranking stays here because it is this dialog's, not the surface's: the
   // surface never re-orders what it is given.
-  const options = createMemo<ComboboxOption[]>(() =>
-    results().map((item) => ({ value: item, label: item })),
-  );
+  const options = createMemo<ComboboxOption[]>(() => results().map((item) => ({ value: item, label: item })));
 
   // Clear the filter and refocus the input so keyboard nav keeps working after
   // a mouse click on the clear button.
@@ -129,13 +127,7 @@ export default function PickerModal(props: {
         emptyLabel="No matches"
         trailing={
           <Show when={query()}>
-            <Button
-              class={styles.pickerClear}
-              variant="ghost"
-              size="xs"
-              aria-label="Clear"
-              onClick={clear}
-            >
+            <Button class={styles.pickerClear} variant="ghost" size="xs" aria-label="Clear" onClick={clear}>
               ×
             </Button>
           </Show>

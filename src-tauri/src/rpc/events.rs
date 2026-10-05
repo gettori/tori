@@ -77,7 +77,9 @@ pub fn split_notes(text: &str) -> (Vec<&str>, &str) {
     let mut rest = text;
     loop {
         let t = rest.trim_start();
-        let Some(end) = t.starts_with("<tori kind=\"").then(|| t.find(END)).flatten() else { break };
+        let Some(end) = t.starts_with("<tori kind=\"").then(|| t.find(END)).flatten() else {
+            break;
+        };
         notes.push(&t[..end + END.len()]);
         rest = &t[end + END.len()..];
     }
@@ -106,7 +108,10 @@ pub fn same_folder(a: &str, b: &str) -> bool {
 }
 
 pub fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or_default()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
 }
 
 pub fn session_event(kind: &str, id: &str, place: &Place, fields: Value) -> Value {
@@ -130,19 +135,28 @@ mod tests {
     #[test]
     fn a_worktree_belongs_to_the_deepest_project_holding_it() {
         let projects = vec![PathBuf::from("/code/work"), PathBuf::from("/code/work/tori")];
-        assert_eq!(project_of("/code/work/tori/wt/feat", &projects).as_deref(), Some("/code/work/tori"));
+        assert_eq!(
+            project_of("/code/work/tori/wt/feat", &projects).as_deref(),
+            Some("/code/work/tori")
+        );
         assert_eq!(project_of("/elsewhere", &projects), None);
     }
 
     #[test]
     fn a_wake_is_credited_to_the_watcher_on_the_wire() {
         assert_eq!(serde_json::to_value(TurnBy::Watcher).unwrap(), "watcher");
-        assert_eq!(serde_json::to_value(TurnBy::Session("s1".into())).unwrap(), json!({ "session": "s1" }));
+        assert_eq!(
+            serde_json::to_value(TurnBy::Session("s1".into())).unwrap(),
+            json!({ "session": "s1" })
+        );
     }
 
     #[test]
     fn fields_sit_beside_the_envelope() {
-        let place = Place { project: Some("/p".into()), folder: Some("/p/wt".into()) };
+        let place = Place {
+            project: Some("/p".into()),
+            folder: Some("/p/wt".into()),
+        };
         let event = session_event("session.ended", "s1", &place, json!({ "reason": EndReason::Killed }));
         assert_eq!(event["kind"], "session.ended");
         assert_eq!(event["id"], "s1");

@@ -53,13 +53,7 @@ export function lastRun(store: TaskRunStore, ws: string | null): Task | null {
  * body updates what a rerun will do. The count is carried across that, since it
  * counts runs of the *name*, which is what the tab id needs to stay unique.
  */
-export function noteRun(
-  store: TaskRunStore,
-  ws: string,
-  task: Task,
-  now: number,
-  cap = MAX_RECENTS,
-): TaskRunStore {
+export function noteRun(store: TaskRunStore, ws: string, task: Task, now: number, cap = MAX_RECENTS): TaskRunStore {
   if (!ws) return store;
   const prev = runsFor(store, ws);
   const runs = (prev.find((r) => r.task.id === task.id)?.runs ?? 0) + 1;

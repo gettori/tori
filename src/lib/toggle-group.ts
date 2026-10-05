@@ -3,10 +3,7 @@ import type { PolymorphicProps } from "@kobalte/core/polymorphic";
 import { Item, Root, type ToggleGroupItemProps } from "@kobalte/core/toggle-group";
 
 /** An item's props instantiated at `as="button"`, its own default. */
-export type ToggleGroupButtonItemProps = PolymorphicProps<
-  "button",
-  ToggleGroupItemProps<"button">
->;
+export type ToggleGroupButtonItemProps = PolymorphicProps<"button", ToggleGroupItemProps<"button">>;
 
 /**
  * Kobalte's toggle group, and the only door it comes through.

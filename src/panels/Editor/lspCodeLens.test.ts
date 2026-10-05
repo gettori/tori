@@ -23,8 +23,7 @@ let calls: string[] = [];
 
 vi.mock("./lspClient", () => ({ lspTargetFor: () => target }));
 
-const { normalizeCodeLenses, requestCodeLenses, refreshCodeLenses, MAX_CODE_LENSES } =
-  await import("./lspCodeLens");
+const { normalizeCodeLenses, requestCodeLenses, refreshCodeLenses, MAX_CODE_LENSES } = await import("./lspCodeLens");
 
 /** One lens as a server sends it. `data` is the private state the resolve round
  *  trip exists to carry back. */
@@ -78,10 +77,7 @@ describe("reading what the server sent", () => {
   });
 
   it("reads a lens that already carries its title, and marks one that does not", () => {
-    expect(normalizeCodeLenses([lens(0, "3 references"), lens(1)]).map((l) => l.title)).toEqual([
-      "3 references",
-      null,
-    ]);
+    expect(normalizeCodeLenses([lens(0, "3 references"), lens(1)]).map((l) => l.title)).toEqual(["3 references", null]);
   });
 
   it("drops an unreadable entry rather than throwing", () => {

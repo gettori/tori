@@ -73,7 +73,13 @@ pub fn parse(url: &str) -> Result<Remote, ForgeError> {
     if !plain(owner) || !repo.split('/').all(plain) {
         return Err(ForgeError::UnsupportedRemote { host });
     }
-    Ok(Remote { host, repo: RepoRef { owner: owner.to_string(), repo: repo.to_string() } })
+    Ok(Remote {
+        host,
+        repo: RepoRef {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+        },
+    })
 }
 
 #[cfg(test)]
@@ -83,7 +89,10 @@ mod tests {
     fn tori() -> Remote {
         Remote {
             host: "github.com".into(),
-            repo: RepoRef { owner: "skarif2".into(), repo: "tori".into() },
+            repo: RepoRef {
+                owner: "skarif2".into(),
+                repo: "tori".into(),
+            },
         }
     }
 

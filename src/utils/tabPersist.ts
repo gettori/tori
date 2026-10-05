@@ -117,8 +117,7 @@ export type OpenTabLike = {
   pick?: DraftPick;
 };
 
-const isPersistable = (kind: string): kind is PersistedKind =>
-  kind === "shell" || kind === "agent" || kind === "chat";
+const isPersistable = (kind: string): kind is PersistedKind => kind === "shell" || kind === "agent" || kind === "chat";
 
 // Fold the whole open set into a per-workspace store. Called on every open-set,
 // order, or active-tab change, so the stored order always matches what is on

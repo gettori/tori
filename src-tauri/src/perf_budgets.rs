@@ -47,10 +47,16 @@ fn drift(rows: &[Row], measured: &BTreeMap<String, u64>) -> Vec<String> {
         let budget = row.budget;
         match row.unit {
             Unit::Count if actual != budget => {
-                out.push(format!("{}: budget {budget}, measured {actual} ({})", row.name, row.reason));
+                out.push(format!(
+                    "{}: budget {budget}, measured {actual} ({})",
+                    row.name, row.reason
+                ));
             }
             Unit::Bytes if actual > budget => {
-                out.push(format!("{}: budget {budget} bytes, measured {actual} ({})", row.name, row.reason));
+                out.push(format!(
+                    "{}: budget {budget} bytes, measured {actual} ({})",
+                    row.name, row.reason
+                ));
             }
             Unit::Bytes if actual * 100 <= budget * (100 - BYTES_SLACK_PERCENT) => {
                 out.push(format!(
@@ -128,7 +134,11 @@ fn git(dir: &Path, args: &[&str]) {
         .env("GIT_COMMITTER_EMAIL", "t@t.test")
         .output()
         .unwrap();
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 // A worktree container and a plain repo: the two shapes the sidebar probes
@@ -151,7 +161,10 @@ fn sidebar_fixture() -> PathBuf {
     std::fs::create_dir_all(&cont).unwrap();
     git(&root, &["init", "-q", "--bare", cont.join(".bare").to_str().unwrap()]);
     std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
-    git(&plain, &["push", "-q", cont.join(".bare").to_str().unwrap(), "main", "feat"]);
+    git(
+        &plain,
+        &["push", "-q", cont.join(".bare").to_str().unwrap(), "main", "feat"],
+    );
     git(&cont, &["worktree", "add", "-q", "main"]);
     git(&cont, &["worktree", "add", "-q", "feat"]);
     root
@@ -171,7 +184,10 @@ fn sidebar_spawns() -> (u64, u64) {
         .flat_map(|g| &g.projects)
         .flat_map(|p| &p.branch_units)
         .filter(|u| matches!(u.kind, ProjectKind::Worktree | ProjectKind::Plain))
-        .map(|u| SyncUnit { path: u.folder_path.clone(), branch: u.branch.clone().unwrap_or_default() })
+        .map(|u| SyncUnit {
+            path: u.folder_path.clone(),
+            branch: u.branch.clone().unwrap_or_default(),
+        })
         .collect();
     assert_eq!(units.len(), 3, "two worktrees, and the plain repo's checked out branch");
     git_branch_sync_many(units).unwrap();
@@ -189,9 +205,18 @@ fn measure() -> BTreeMap<String, u64> {
     BTreeMap::from([
         ("git.spawns.sidebar.cold".into(), cold),
         ("git.spawns.sidebar.warm".into(), warm),
-        ("chat_history.bytes.small".into(), history_bytes("small", &transcript(3, short))),
-        ("chat_history.bytes.2000_turns".into(), history_bytes("2000_turns", &transcript(2000, short))),
-        ("chat_history.bytes.5mb_tool_output".into(), history_bytes("5mb_tool_output", &transcript(1, big))),
+        (
+            "chat_history.bytes.small".into(),
+            history_bytes("small", &transcript(3, short)),
+        ),
+        (
+            "chat_history.bytes.2000_turns".into(),
+            history_bytes("2000_turns", &transcript(2000, short)),
+        ),
+        (
+            "chat_history.bytes.5mb_tool_output".into(),
+            history_bytes("5mb_tool_output", &transcript(1, big)),
+        ),
     ])
 }
 
@@ -209,7 +234,11 @@ fn the_table_names_every_row_once_with_a_reason() {
     names.dedup();
     assert_eq!(names.len(), all.len(), "a row name appears twice");
     for row in &all {
-        assert!(["rust", "webview"].contains(&row.runtime.as_str()), "{}: unknown runtime", row.name);
+        assert!(
+            ["rust", "webview"].contains(&row.runtime.as_str()),
+            "{}: unknown runtime",
+            row.name
+        );
         assert!(!row.reason.trim().is_empty(), "{}: no reason", row.name);
     }
 }
@@ -218,7 +247,13 @@ mod drift {
     use super::*;
 
     fn row(name: &str, unit: Unit, budget: u64) -> Row {
-        Row { name: name.into(), runtime: "rust".into(), unit, budget, reason: "why".into() }
+        Row {
+            name: name.into(),
+            runtime: "rust".into(),
+            unit,
+            budget,
+            reason: "why".into(),
+        }
     }
 
     fn check(rows: &[Row], measured: &[(&str, u64)]) -> Vec<String> {

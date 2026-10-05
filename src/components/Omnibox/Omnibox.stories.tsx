@@ -1,15 +1,8 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import Omnibox from "./Omnibox";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
-import {
-  clearEditorState,
-  publishEditorState,
-} from "../../utils/editorState";
-import {
-  clearSymbols,
-  normalizeDocumentSymbols,
-  publishSymbols,
-} from "../../utils/symbols";
+import { clearEditorState, publishEditorState } from "../../utils/editorState";
+import { clearSymbols, normalizeDocumentSymbols, publishSymbols } from "../../utils/symbols";
 import { note, saveFrecency } from "../../utils/frecency";
 
 // The command palette, one story per mode, since a mode is the whole shape of

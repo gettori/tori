@@ -46,7 +46,9 @@ pub(super) fn run_to_breakpoint(
         conns: Vec::new(),
         output: String::new(),
     };
-    let result = client.open(started.reader, started.writer, config).and_then(|()| client.run());
+    let result = client
+        .open(started.reader, started.writer, config)
+        .and_then(|()| client.run());
     stop(&mut Server {
         child: started.child,
         socket: started.socket,
@@ -92,7 +94,13 @@ impl Client<'_> {
                 let _ = tx.send((id, msg));
             }
         });
-        self.conns.push(Conn { writer, seq: 0, config, configured: false, breakpoints_seq: None });
+        self.conns.push(Conn {
+            writer,
+            seq: 0,
+            config,
+            configured: false,
+            breakpoints_seq: None,
+        });
         // `initializeArguments` in dapClient.ts.
         let args = json!({
             "clientID": "tori",
@@ -119,7 +127,10 @@ impl Client<'_> {
     }
 
     fn request(&mut self, id: usize, command: &str, arguments: Value) -> Result<u64, String> {
-        self.send(id, json!({ "type": "request", "command": command, "arguments": arguments }))
+        self.send(
+            id,
+            json!({ "type": "request", "command": command, "arguments": arguments }),
+        )
     }
 
     fn fail(&self, what: String) -> String {
@@ -156,7 +167,11 @@ impl Client<'_> {
             // Not awaited, as in `handshake`: js-debug answers `launch` only
             // after `configurationDone`, which waits on `initialized`.
             let config = conn.config.clone();
-            let verb = if config["request"] == "attach" { "attach" } else { "launch" };
+            let verb = if config["request"] == "attach" {
+                "attach"
+            } else {
+                "launch"
+            };
             self.request(id, verb, config)?;
         } else if command == "setBreakpoints" && res["request_seq"].as_u64() == conn.breakpoints_seq {
             self.request(id, "configurationDone", json!({}))?;
@@ -167,7 +182,10 @@ impl Client<'_> {
     fn on_request(&mut self, id: usize, req: &Value) -> Result<(), String> {
         let command = req["command"].as_str().unwrap_or_default();
         let child = command == "startDebugging" && self.adapter.child_sessions;
-        self.send(id, json!({ "type": "response", "request_seq": req["seq"], "command": command, "success": child }))?;
+        self.send(
+            id,
+            json!({ "type": "response", "request_seq": req["seq"], "command": command, "success": child }),
+        )?;
         if !child {
             return Ok(());
         }
@@ -178,7 +196,10 @@ impl Client<'_> {
         if config.get("request").is_none() {
             config["request"] = args.get("request").cloned().unwrap_or_else(|| "launch".into());
         }
-        let socket = self.socket.clone().ok_or("startDebugging from an adapter with no socket")?;
+        let socket = self
+            .socket
+            .clone()
+            .ok_or("startDebugging from an adapter with no socket")?;
         let stream = connect_retry(&socket, CONNECT_TIMEOUT)?;
         let reader = stream.try_clone().map_err(|e| e.to_string())?;
         self.open(Box::new(reader), Box::new(stream), config)
@@ -224,7 +245,11 @@ fn it_hits_a_breakpoint_in_a_js_file_under_the_real_js_debug() {
     let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("sample.js");
-    std::fs::write(&file, "let total = 0;\nfor (let i = 0; i < 3; i++) {\n  total += i;\n}\nconsole.log(total);\n").unwrap();
+    std::fs::write(
+        &file,
+        "let total = 0;\nfor (let i = 0; i < 3; i++) {\n  total += i;\n}\nconsole.log(total);\n",
+    )
+    .unwrap();
 
     // `fileConfig` in debugTargets.ts.
     let config = json!({
@@ -255,20 +280,33 @@ fn it_hits_a_breakpoint_in_a_python_file_whose_venv_has_no_debugpy() {
         .or_else(|| crate::env::resolve_binary("python3"))
         .expect("python3 is on PATH");
     let project = dir.join("project");
-    let status = std::process::Command::new(project_base).args(["-m", "venv"]).arg(project.join(".venv")).status();
+    let status = std::process::Command::new(project_base)
+        .args(["-m", "venv"])
+        .arg(project.join(".venv"))
+        .status();
     assert!(status.is_ok_and(|s| s.success()), "the project venv is created");
     let python = project.join(".venv/bin/python3");
     let module = debugpy.launch.module().unwrap();
-    assert_eq!(super::managed::package_version(&python, "debugpy", module), None, "the project venv has no debugpy");
+    assert_eq!(
+        super::managed::package_version(&python, "debugpy", module),
+        None,
+        "the project venv has no debugpy"
+    );
 
     let file = project.join("sample.py");
     std::fs::write(&file, "total = 0\nfor i in range(3):\n    total += i\nprint(total)\n").unwrap();
 
     // Pointed at the temp install: `resolve = "managed"` looks in the real home.
-    let Launch::Stdio { args, .. } = &debugpy.launch else { panic!("{:?}", debugpy.launch) };
+    let Launch::Stdio { args, .. } = &debugpy.launch else {
+        panic!("{:?}", debugpy.launch)
+    };
     let mut adapter = debugpy.clone();
     adapter.launch = Launch::Stdio {
-        program: dir.join("debuggers/debugpy").join(&installed.bin).to_string_lossy().into_owned(),
+        program: dir
+            .join("debuggers/debugpy")
+            .join(&installed.bin)
+            .to_string_lossy()
+            .into_owned(),
         args: args.clone(),
         resolve: registry::Resolve::Path,
     };
@@ -328,7 +366,10 @@ fn it_hits_a_breakpoint_in_a_go_package_and_in_its_test() {
     let package = run_to_breakpoint(delve, &dir, &main, 8, launch("debug", "Debug sample"));
     let tests = run_to_breakpoint(delve, &dir, &test, 7, launch("test", "Debug tests in sample"));
     std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(package.expect("the package's breakpoint is hit")["reason"], "breakpoint");
+    assert_eq!(
+        package.expect("the package's breakpoint is hit")["reason"],
+        "breakpoint"
+    );
     assert_eq!(tests.expect("the test's breakpoint is hit")["reason"], "breakpoint");
 }
 
@@ -349,7 +390,11 @@ fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
     )
     .unwrap();
     let binary = dir.join("sample");
-    let built = std::process::Command::new("cc").args(["-g", "-O0", "-o"]).arg(&binary).arg(&source).status();
+    let built = std::process::Command::new("cc")
+        .args(["-g", "-O0", "-o"])
+        .arg(&binary)
+        .arg(&source)
+        .status();
     assert!(built.is_ok_and(|s| s.success()), "the sample builds");
 
     let config = json!({
@@ -376,7 +421,11 @@ fn it_hits_a_breakpoint_in_a_cargo_binary_it_built() {
     std::fs::create_dir_all(dir.join("src")).unwrap();
     // rustc records the physical path, and the temp dir sits under a symlink.
     let dir = std::fs::canonicalize(&dir).unwrap();
-    std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
     let main = dir.join("src/main.rs");
     std::fs::write(&main, "fn main() {\n    let mut total = 0;\n    for i in 0..3 {\n        total += i;\n    }\n    println!(\"{total}\");\n}\n").unwrap();
     assert_eq!(super::cargo::bins(&dir).expect("cargo metadata runs"), ["sample"]);

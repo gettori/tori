@@ -57,15 +57,8 @@ vi.mock("../../utils/chatSessions", () => ({
 const { default: Terminal } = await import("./Terminal");
 const { emitWith, emit, CLOSE_TAB, TAB_JUMP, FOCUS_SESSION_TAB } = await import("../../utils/events");
 const { open, setOpen, focusTab, visibleId } = await import("./terminalTabStore");
-const {
-  ensureEnvelope,
-  envelopeFor,
-  focusedPaneId,
-  resetPaneLayoutModel,
-  seedTwoPane,
-  setFocusedPane,
-  updateLayout,
-} = await import("../../layout/layoutStore");
+const { ensureEnvelope, envelopeFor, focusedPaneId, resetPaneLayoutModel, seedTwoPane, setFocusedPane, updateLayout } =
+  await import("../../layout/layoutStore");
 const { findPane, setPaneHidden } = await import("../../layout/paneLayout");
 type OpenTerm = import("./terminalTabStore").OpenTerm;
 type Selection = import("../LeftSidebar/LeftSidebar").Selection;

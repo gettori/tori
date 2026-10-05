@@ -182,12 +182,7 @@ const REQUIRES = {
   "permission-deadline": ["control_request/can_use_tool"],
   // The question must be asked *and* answered: without the `tool_result` the
   // scenario would pass while measuring nothing about the answer channel.
-  "ask-user-question": [
-    "control_request/can_use_tool",
-    "assistant/tool_use",
-    "user/tool_result",
-    "result/success",
-  ],
+  "ask-user-question": ["control_request/can_use_tool", "assistant/tool_use", "user/tool_result", "result/success"],
   // The compaction channel, which is two frames the CLI reports on its own:
   // `system/status` carries `status: "compacting"` when it starts and, when it
   // ends, `compact_result` plus a `compact_error` on failure. Without the
@@ -848,7 +843,8 @@ const SCENARIOS = {
     await p.close();
 
     const asked = p.permissionRequests.map((r) => r.tool_name);
-    if (!asked.includes("Write")) throw new Error(`Write did not raise can_use_tool; asked: ${asked.join(", ") || "nothing"}`);
+    if (!asked.includes("Write"))
+      throw new Error(`Write did not raise can_use_tool; asked: ${asked.join(", ") || "nothing"}`);
     if (asked.includes("Read")) throw new Error("Read raised can_use_tool, which contradicts the read-only auto-allow");
     return p;
   },
@@ -881,7 +877,9 @@ const SCENARIOS = {
 
     const fired = existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : [];
     if (!fired.includes("Edit") || !fired.includes("Write")) {
-      throw new Error(`the matcher did not select the write tools it names; it fired on: ${fired.join(", ") || "nothing"}`);
+      throw new Error(
+        `the matcher did not select the write tools it names; it fired on: ${fired.join(", ") || "nothing"}`,
+      );
     }
     if (fired.includes("Read")) throw new Error("the matcher selected Read, so the alternation is not a selector");
 
@@ -899,7 +897,9 @@ const SCENARIOS = {
     const echoed = responses.filter((e) => typeof e.output === "string" && e.output.includes("toriApproval"));
     if (!echoed.length) {
       const seen = responses.map((e) => JSON.stringify({ output: e.output, stdout: e.stdout, outcome: e.outcome }));
-      throw new Error(`no hook_response carried the marker back; saw: ${seen.join(" | ") || "no hook_response at all"}`);
+      throw new Error(
+        `no hook_response carried the marker back; saw: ${seen.join(" | ") || "no hook_response at all"}`,
+      );
     }
     return p;
   },
@@ -1129,9 +1129,7 @@ const SCENARIOS = {
       cwd: scratch,
       extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio"],
       answerPermission: (request) =>
-        request.tool_name === "AskUserQuestion"
-          ? { behavior: "deny", message: MESSAGE }
-          : { behavior: "allow" },
+        request.tool_name === "AskUserQuestion" ? { behavior: "deny", message: MESSAGE } : { behavior: "allow" },
     });
     p.sendTurn(ask);
     await p.waitForResult();
@@ -1176,9 +1174,7 @@ const SCENARIOS = {
       cwd: bypassCwd,
       extraArgs: ["--permission-mode", "bypassPermissions", "--permission-prompt-tool", "stdio"],
       answerPermission: (request) =>
-        request.tool_name === "AskUserQuestion"
-          ? { behavior: "deny", message: MESSAGE }
-          : { behavior: "allow" },
+        request.tool_name === "AskUserQuestion" ? { behavior: "deny", message: MESSAGE } : { behavior: "allow" },
     });
     bypass.sendTurn(ask);
     await bypass.waitForResult();
@@ -1334,9 +1330,7 @@ async function main() {
 
     // The grammar holds on every run, captured or checked - a fixture recorded
     // from a malformed stream would bake the malformation in.
-    const grammar = checkGrammar(probe.events).filter(
-      (p) => !(TRUNCATED_BY_DESIGN.has(name) && DANGLING.includes(p)),
-    );
+    const grammar = checkGrammar(probe.events).filter((p) => !(TRUNCATED_BY_DESIGN.has(name) && DANGLING.includes(p)));
     const missing = (REQUIRES[name] ?? []).filter((k) => !kinds.includes(k));
 
     if (WRITE) {
@@ -1348,10 +1342,7 @@ async function main() {
         continue;
       }
       writeFileSync(rawPath, `${probe.events.map((e) => JSON.stringify(e)).join("\n")}\n`);
-      writeFileSync(
-        kindsPath,
-        `${JSON.stringify({ verifiedAgainst: version, required, optional }, null, 2)}\n`,
-      );
+      writeFileSync(kindsPath, `${JSON.stringify({ verifiedAgainst: version, required, optional }, null, 2)}\n`);
       console.log(`  ✓ ${name}: captured ${probe.events.length} events, ${kinds.length} kinds`);
       continue;
     }

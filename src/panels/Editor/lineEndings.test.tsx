@@ -86,7 +86,8 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(),
+  stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");
@@ -199,9 +200,7 @@ describe("opening a file whose lines end in CRLF", () => {
     // was read against. A CRLF file used to drift the instant it opened, so
     // blame never appeared on one at all.
     const { view } = await open(CRLF_FILE, { blame: true });
-    await waitFor(() =>
-      expect(view.dom.querySelectorAll('[class*="cm-blame-age-"]').length).toBeGreaterThan(0),
-    );
+    await waitFor(() => expect(view.dom.querySelectorAll('[class*="cm-blame-age-"]').length).toBeGreaterThan(0));
   });
 });
 

@@ -246,8 +246,7 @@
 
 .detailHead {
   flex: none;
-  padding: calc(14px * var(--ui-scale)) calc(20px * var(--ui-scale))
-    calc(12px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(20px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -305,8 +304,7 @@
 .rowHead {
   display: flex;
   align-items: center;
-  padding: calc(10px * var(--ui-scale)) calc(20px * var(--ui-scale))
-    calc(6px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale)) calc(20px * var(--ui-scale)) calc(6px * var(--ui-scale));
   color: var(--fg-subtle);
   font-size: var(--tori-text-xs);
   letter-spacing: 0.06em;

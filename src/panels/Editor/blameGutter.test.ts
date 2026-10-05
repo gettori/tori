@@ -41,7 +41,6 @@ function stateWith(doc: string, blame: Blame): EditorState {
 const THREE = ["one", "two", "three"].join("\n");
 const COMMITS = [commit(1, 2), commit(2, 400)];
 
-
 describe("blame positions as the buffer changes", () => {
   it("reads each line's own commit", () => {
     const state = stateWith(THREE, blameOf([0, 0, 1], COMMITS));
@@ -181,9 +180,7 @@ describe("the agent turn behind an uncommitted line", () => {
 
   function withAgent(doc: string, blame: Blame, agent: AgentLines): EditorState {
     const start = EditorState.create({ doc, extensions: [blameExtension()] });
-    return start
-      .update({ effects: [blameEffect(start, blame), agentEffect(start, agent)] })
-      .state;
+    return start.update({ effects: [blameEffect(start, blame), agentEffect(start, agent)] }).state;
   }
 
   const AGENT: AgentLines = { lines: [-1, 0, 1], turns: [TURN_A, TURN_B] };

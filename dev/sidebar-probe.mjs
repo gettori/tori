@@ -57,7 +57,7 @@ function connect(sock) {
 }
 
 const home = homedir();
-const short = (path) => (path && path.startsWith(home) ? `~${path.slice(home.length)}` : path ?? "");
+const short = (path) => (path && path.startsWith(home) ? `~${path.slice(home.length)}` : (path ?? ""));
 const inside = (cwd, folder) => !!cwd && !!folder && (cwd === folder || cwd.startsWith(`${folder}/`));
 
 // The order the rollup badge ranks them in: what needs you wins the row.
@@ -87,8 +87,15 @@ function draw(tree, rows) {
       const top = rollup(mine);
       lines.push(`  ${project.name}  ${short(project.path)}${top !== "none" ? `  (${top})` : ""}`);
       for (const unit of project.units) {
-        const here = mine.filter((r) => r.home.folder === unit.folder && (r.home.branch ?? null) === (unit.branch ?? null));
-        const tags = [unit.kind, unit.isCurrent ? "current" : "", unit.issue ?? "", rollup(here) !== "none" ? rollup(here) : ""];
+        const here = mine.filter(
+          (r) => r.home.folder === unit.folder && (r.home.branch ?? null) === (unit.branch ?? null),
+        );
+        const tags = [
+          unit.kind,
+          unit.isCurrent ? "current" : "",
+          unit.issue ?? "",
+          rollup(here) !== "none" ? rollup(here) : "",
+        ];
         lines.push(`    ${unit.label}  ${tags.filter(Boolean).join("  ")}`);
         list(here, "      ");
       }

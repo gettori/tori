@@ -96,10 +96,7 @@ describe("the envelope store", () => {
   });
 
   it("falls back to the seed when the stored envelope is malformed", () => {
-    localStorage.setItem(
-      "tori.panes.v1",
-      JSON.stringify({ "/w/a": { version: 1, layout: { type: "grid" } } }),
-    );
+    localStorage.setItem("tori.panes.v1", JSON.stringify({ "/w/a": { version: 1, layout: { type: "grid" } } }));
     relaunch();
     expect(envelopeFor("/w/a", seed).layout).toEqual(seed().layout);
   });

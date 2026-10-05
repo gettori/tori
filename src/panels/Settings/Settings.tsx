@@ -1,14 +1,4 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-  onMount,
-  For,
-  Show,
-  type Component,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, type Component } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import {
   Bot,
@@ -529,8 +519,7 @@ export default function Settings(props: {
                     }
                   >
                     Written to <code>{SETTINGS_PATH}</code>. Rows marked{" "}
-                    <span class={styles.originBadge}>workspace</span> come from{" "}
-                    <code>{workspaceName()}</code> instead.
+                    <span class={styles.originBadge}>workspace</span> come from <code>{workspaceName()}</code> instead.
                   </Show>
                 </div>
               </div>

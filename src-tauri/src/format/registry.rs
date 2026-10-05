@@ -125,14 +125,23 @@ pub struct DirScan {
 
 impl DirScan {
     pub fn new(dir: &Path) -> Self {
-        Self { dir: dir.to_path_buf(), names: None, parsed: HashMap::new() }
+        Self {
+            dir: dir.to_path_buf(),
+            names: None,
+            parsed: HashMap::new(),
+        }
     }
 
     fn names(&mut self) -> &[String] {
         let dir = &self.dir;
         self.names.get_or_insert_with(|| {
             std::fs::read_dir(dir)
-                .map(|entries| entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .collect()
+                })
                 .unwrap_or_default()
         })
     }
@@ -150,7 +159,9 @@ impl DirScan {
         let doc = self.parsed.entry(marker.file.clone()).or_insert_with(|| {
             let text = std::fs::read_to_string(dir.join(&marker.file)).ok()?;
             if marker.file.ends_with(".toml") {
-                toml::from_str::<toml::Value>(&text).ok().and_then(|v| serde_json::to_value(v).ok())
+                toml::from_str::<toml::Value>(&text)
+                    .ok()
+                    .and_then(|v| serde_json::to_value(v).ok())
             } else {
                 serde_json::from_str(&text).ok()
             }
@@ -205,9 +216,15 @@ pub(crate) struct KeyMarkerToml {
 impl KeyMarkerToml {
     pub(crate) fn validate(self, field: &str, source: &str) -> Result<KeyMarker, String> {
         if !(self.file.ends_with(".json") || self.file.ends_with(".toml")) {
-            return Err(format!("{source}: {field} can only read a .json or .toml file, not `{}`", self.file));
+            return Err(format!(
+                "{source}: {field} can only read a .json or .toml file, not `{}`",
+                self.file
+            ));
         }
-        Ok(KeyMarker { file: self.file, path: self.key.split('.').map(str::to_string).collect() })
+        Ok(KeyMarker {
+            file: self.file,
+            path: self.key.split('.').map(str::to_string).collect(),
+        })
     }
 }
 
@@ -251,8 +268,11 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
                 eprintln!("tori: formatter {source}: unknown field `{key}`, ignoring");
             }
         }
-        let missing: Vec<&str> =
-            REQUIRED_TOP_LEVEL.iter().filter(|k| !table.contains_key(**k)).copied().collect();
+        let missing: Vec<&str> = REQUIRED_TOP_LEVEL
+            .iter()
+            .filter(|k| !table.contains_key(**k))
+            .copied()
+            .collect();
         if !missing.is_empty() {
             return Err(format!("{source}: missing required field(s): {}", missing.join(", ")));
         }
@@ -272,15 +292,23 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
         "project_bin" => LaunchKind::ProjectBin,
         "path" => LaunchKind::Path,
         other => {
-            return Err(format!("{source}: unknown launch.kind `{other}` (tori implements: project_bin, path)"))
+            return Err(format!(
+                "{source}: unknown launch.kind `{other}` (tori implements: project_bin, path)"
+            ))
         }
     };
 
     let extensions = match raw.extensions {
         Some(list) if list.is_empty() => {
-            return Err(format!("{source}: `extensions` is empty; leave it out to take any file"))
+            return Err(format!(
+                "{source}: `extensions` is empty; leave it out to take any file"
+            ))
         }
-        Some(list) => Some(list.into_iter().map(|e| e.trim_start_matches('.').to_lowercase()).collect()),
+        Some(list) => Some(
+            list.into_iter()
+                .map(|e| e.trim_start_matches('.').to_lowercase())
+                .collect(),
+        ),
         None => None,
     };
 
@@ -290,19 +318,26 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
         .into_iter()
         .map(|k| k.validate("markers.keys", source))
         .collect::<Result<Vec<_>, _>>()?;
-    let markers = Markers { files: raw.markers.files, prefixes: raw.markers.prefixes, keys };
+    let markers = Markers {
+        files: raw.markers.files,
+        prefixes: raw.markers.prefixes,
+        keys,
+    };
 
     // An empty table would match every failure, which would hand a file with a
     // syntax error on to the next formatter instead of saying what is wrong.
     let not_applicable = match raw.not_applicable {
         None => None,
-        Some(NotApplicableToml { exit_code: None, stderr: None }) => {
-            return Err(format!("{source}: not_applicable needs `exit_code`, `stderr`, or both"))
-        }
+        Some(NotApplicableToml {
+            exit_code: None,
+            stderr: None,
+        }) => return Err(format!("{source}: not_applicable needs `exit_code`, `stderr`, or both")),
         Some(NotApplicableToml { exit_code, stderr }) => Some(NotApplicable {
             exit_code,
             stderr: stderr
-                .map(|p| Regex::new(&p).map_err(|e| format!("{source}: not_applicable.stderr is not a valid pattern: {e}")))
+                .map(|p| {
+                    Regex::new(&p).map_err(|e| format!("{source}: not_applicable.stderr is not a valid pattern: {e}"))
+                })
                 .transpose()?,
         }),
     };
@@ -455,8 +490,11 @@ args = ["--stdin", "{file}"]
 
     #[test]
     fn not_applicable_needs_every_condition_it_names() {
-        let f = load_formatter_str(&format!("{VALID}\n[not_applicable]\nexit_code = 2\nstderr = \"No parser\"\n"), "test")
-            .unwrap();
+        let f = load_formatter_str(
+            &format!("{VALID}\n[not_applicable]\nexit_code = 2\nstderr = \"No parser\"\n"),
+            "test",
+        )
+        .unwrap();
         let na = f.not_applicable.unwrap();
         assert!(na.matches(2, "[error] No parser could be inferred"));
         assert!(!na.matches(2, "SyntaxError: '}' expected"));
@@ -492,7 +530,10 @@ args = ["--stdin", "{file}"]
         let dir = temp_dir("keys");
         std::fs::write(dir.join("pyproject.toml"), "[tool.ruff]\nline-length = 100\n").unwrap();
         std::fs::write(dir.join("package.json"), r#"{"devDependencies":{"vite-plus":"1"}}"#).unwrap();
-        let key = |file: &str, key: &str| KeyMarker { file: file.into(), path: key.split('.').map(Into::into).collect() };
+        let key = |file: &str, key: &str| KeyMarker {
+            file: file.into(),
+            path: key.split('.').map(Into::into).collect(),
+        };
         let mut scan = DirScan::new(&dir);
         assert!(scan.has_key(&key("pyproject.toml", "tool.ruff")));
         assert!(!scan.has_key(&key("pyproject.toml", "tool.black")));
@@ -506,12 +547,19 @@ args = ["--stdin", "{file}"]
     #[test]
     fn every_toml_block_in_formatters_md_loads() {
         let doc = include_str!("../../../docs/FORMATTERS.md");
-        let blocks: Vec<&str> =
-            doc.split("```toml").skip(1).map(|rest| rest.split("```").next().unwrap()).collect();
+        let blocks: Vec<&str> = doc
+            .split("```toml")
+            .skip(1)
+            .map(|rest| rest.split("```").next().unwrap())
+            .collect();
         assert_eq!(blocks.len(), 3, "the schema, the from-scratch example and the override");
         let ids: Vec<String> = blocks
             .iter()
-            .map(|b| load_formatter_str(b, "FORMATTERS.md").unwrap_or_else(|e| panic!("{e}")).id)
+            .map(|b| {
+                load_formatter_str(b, "FORMATTERS.md")
+                    .unwrap_or_else(|e| panic!("{e}"))
+                    .id
+            })
             .collect();
         assert_eq!(ids, vec!["prettier", "clang-format", "prettier"]);
     }
@@ -519,8 +567,11 @@ args = ["--stdin", "{file}"]
     #[test]
     fn a_user_file_whole_replaces_a_builtin_by_id() {
         let dir = temp_dir("override");
-        std::fs::write(dir.join("prettier.toml"), VALID.replace("\"demo\"", "\"prettier\"").replace("Demo", "Mine"))
-            .unwrap();
+        std::fs::write(
+            dir.join("prettier.toml"),
+            VALID.replace("\"demo\"", "\"prettier\"").replace("Demo", "Mine"),
+        )
+        .unwrap();
         let list = build_registry_from(&dir);
         let prettier = list.iter().find(|f| f.id == "prettier").unwrap();
         assert_eq!(prettier.label, "Mine");

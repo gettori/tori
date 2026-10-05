@@ -29,10 +29,7 @@ export default function OutlinePanel(props: { path: string | null }) {
 
   return (
     <div class={styles.outlinePanel}>
-      <Show
-        when={nodes().length}
-        fallback={<div class={styles.empty}>No symbols in this file.</div>}
-      >
+      <Show when={nodes().length} fallback={<div class={styles.empty}>No symbols in this file.</div>}>
         <Rows nodes={nodes()} depth={0} onReveal={reveal} />
       </Show>
     </div>

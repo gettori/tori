@@ -39,9 +39,8 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use agent_client_protocol::schema::v1::{
-    SessionNotification,
-    CloseSessionRequest, SessionConfigId, SessionConfigOption, SessionConfigOptionValue,
-    SessionConfigValueId, SetSessionConfigOptionRequest,
+    CloseSessionRequest, SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId,
+    SessionNotification, SetSessionConfigOptionRequest,
 };
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode};
 use serde::{Deserialize, Serialize};
@@ -52,8 +51,7 @@ use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::{self, ClaudeMapper};
 use crate::chat::model::{
-    ChatAccount, ChatCapabilities, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo,
-    SlashCommand,
+    ChatAccount, ChatCapabilities, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo, SlashCommand,
 };
 use crate::chat::transport::{build_command, StartSpec};
 
@@ -82,7 +80,9 @@ const STDERR_TAIL: usize = 4096;
 /// failure.
 fn tail_of(text: &str) -> &str {
     let want = text.len().saturating_sub(STDERR_TAIL);
-    let cut = (want..=text.len()).find(|i| text.is_char_boundary(*i)).unwrap_or(text.len());
+    let cut = (want..=text.len())
+        .find(|i| text.is_char_boundary(*i))
+        .unwrap_or(text.len());
     &text[cut..]
 }
 
@@ -144,7 +144,11 @@ pub struct ProbeFailure {
 
 impl ProbeFailure {
     fn now(reason: FailureReason, detail: impl Into<String>) -> Self {
-        Self { reason, detail: detail.into(), at_ms: now_ms() }
+        Self {
+            reason,
+            detail: detail.into(),
+            at_ms: now_ms(),
+        }
     }
 }
 
@@ -330,7 +334,13 @@ impl ModelCatalog {
             (None, Some(_)) => CatalogState::Probed,
             (None, None) => CatalogState::NeverProbed,
         };
-        Self { agent_id, profile_id, state, catalogue, last_failure }
+        Self {
+            agent_id,
+            profile_id,
+            state,
+            catalogue,
+            last_failure,
+        }
     }
 
     pub fn never_probed(agent_id: impl Into<String>, profile_id: impl Into<String>) -> Self {
@@ -347,9 +357,7 @@ impl ModelCatalog {
         let (agent, profile) = (self.agent_id.clone(), self.profile_id.clone());
         match outcome {
             Ok(catalogue) => *self = Self::settled(agent, profile, Some(catalogue), None),
-            Err(failure) => {
-                *self = Self::settled(agent, profile, self.catalogue.take(), Some(failure))
-            }
+            Err(failure) => *self = Self::settled(agent, profile, self.catalogue.take(), Some(failure)),
         }
     }
 
@@ -390,7 +398,13 @@ pub fn catalog_root() -> PathBuf {
 fn sanitize_segment(value: &str) -> String {
     value
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -422,9 +436,12 @@ pub fn load_from(root: &Path, agent_id: &str, profile_id: &str) -> ModelCatalog 
         return ModelCatalog::never_probed(agent_id, profile_id);
     };
     match serde_json::from_str::<ModelCatalog>(&text) {
-        Ok(stored) if stored.agent_id == agent_id && stored.profile_id == profile_id => {
-            ModelCatalog::settled(stored.agent_id, stored.profile_id, stored.catalogue, stored.last_failure)
-        }
+        Ok(stored) if stored.agent_id == agent_id && stored.profile_id == profile_id => ModelCatalog::settled(
+            stored.agent_id,
+            stored.profile_id,
+            stored.catalogue,
+            stored.last_failure,
+        ),
         _ => ModelCatalog::never_probed(agent_id, profile_id),
     }
 }
@@ -452,7 +469,10 @@ fn forget_in(root: &Path, agent_id: &str, profile_id: &str) {
 // --- the probe ---
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Kill a child we are about to stop holding a handle to.
@@ -534,13 +554,20 @@ fn probe_claude(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| ProbeFailure::now(FailureReason::SpawnFailed, format!("could not start {}: {e}", spec.program)))?;
+        .map_err(|e| {
+            ProbeFailure::now(
+                FailureReason::SpawnFailed,
+                format!("could not start {}: {e}", spec.program),
+            )
+        })?;
 
-    let (Some(stdout), Some(stderr), Some(mut stdin)) =
-        (child.stdout.take(), child.stderr.take(), child.stdin.take())
+    let (Some(stdout), Some(stderr), Some(mut stdin)) = (child.stdout.take(), child.stderr.take(), child.stdin.take())
     else {
         abandon(&mut child);
-        return Err(ProbeFailure::now(FailureReason::SpawnFailed, "the child produced no pipes"));
+        return Err(ProbeFailure::now(
+            FailureReason::SpawnFailed,
+            "the child produced no pipes",
+        ));
     };
     let tail = tail_stderr(stderr);
 
@@ -558,7 +585,14 @@ fn probe_claude(
                 continue;
             };
             for event in mapper.map(&frame) {
-                if let ChatEvent::SessionReady { models, modes, account, slash_commands, .. } = event {
+                if let ChatEvent::SessionReady {
+                    models,
+                    modes,
+                    account,
+                    slash_commands,
+                    ..
+                } = event
+                {
                     let _ = tx.send(Some((models, modes, account, slash_commands)));
                     return;
                 }
@@ -723,7 +757,9 @@ async fn per_model_options(
     let mut out = HashMap::new();
     // By category, never by id: `category` is the spec's word for what an option
     // is, and Codex calls its effort selector `reasoning_effort`.
-    let Some(config_id) = acp::model_config_id(options) else { return out };
+    let Some(config_id) = acp::model_config_id(options) else {
+        return out;
+    };
     let models: Vec<String> = acp::model_catalogue(options)
         .into_iter()
         .map(|m| m.value)
@@ -734,7 +770,9 @@ async fn per_model_options(
         let request = SetSessionConfigOptionRequest::new(
             session_id.clone(),
             SessionConfigId::new(config_id.as_str()),
-            SessionConfigOptionValue::ValueId { value: SessionConfigValueId::new(model.as_str()) },
+            SessionConfigOptionValue::ValueId {
+                value: SessionConfigValueId::new(model.as_str()),
+            },
         );
         if let Ok(answer) = conn.send_request(request).block_task().await {
             out.insert(model, answer.config_options);
@@ -785,7 +823,11 @@ fn acp_catalogue(
                 .into_iter()
                 .find(|m| m.value == info.value)
                 .unwrap_or(info);
-            CatalogModel { info: row, user_configured: false, options: acp::config_options(mine) }
+            CatalogModel {
+                info: row,
+                user_configured: false,
+                options: acp::config_options(mine),
+            }
         })
         .collect();
 
@@ -874,13 +916,18 @@ fn probe_acp(
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| {
-        ProbeFailure::now(FailureReason::SpawnFailed, format!("could not start {}: {e}", spec.program))
+        ProbeFailure::now(
+            FailureReason::SpawnFailed,
+            format!("could not start {}: {e}", spec.program),
+        )
     })?;
-    let (Some(stdin), Some(stdout), Some(mut stderr)) =
-        (child.stdin.take(), child.stdout.take(), child.stderr.take())
+    let (Some(stdin), Some(stdout), Some(mut stderr)) = (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {
         abandon_group(&mut child);
-        return Err(ProbeFailure::now(FailureReason::SpawnFailed, "the child produced no pipes"));
+        return Err(ProbeFailure::now(
+            FailureReason::SpawnFailed,
+            "the child produced no pipes",
+        ));
     };
 
     let init_request = initialize_request(overrides);
@@ -900,7 +947,10 @@ fn probe_acp(
                     // Through the same mapper a live session reads, so the
                     // probe and the chat cannot disagree about one list.
                     for event in acp::map_update("catalog-probe", "probe-turn", &notification.update, None) {
-                        if let ChatEvent::SlashCommands { commands: published, .. } = event {
+                        if let ChatEvent::SlashCommands {
+                            commands: published, ..
+                        } = event
+                        {
                             if let Ok(mut held) = collected.lock() {
                                 *held = published;
                             }
@@ -911,37 +961,37 @@ fn probe_acp(
                 agent_client_protocol::on_receive_notification!(),
             )
             .connect_with(
-            ByteStreams::new(stdin, stdout),
-            async move |conn: ConnectionTo<Agent>| {
-                let init = conn.send_request(init_request).block_task().await?;
-                let opened = conn.send_request(session_request).block_task().await?;
-                let options = opened.config_options.unwrap_or_default();
+                ByteStreams::new(stdin, stdout),
+                async move |conn: ConnectionTo<Agent>| {
+                    let init = conn.send_request(init_request).block_task().await?;
+                    let opened = conn.send_request(session_request).block_task().await?;
+                    let options = opened.config_options.unwrap_or_default();
 
-                // **Measured, not assumed**: both agents re-cut their options per
-                // model, so one session's set describes one model. See
-                // `per_model_options` for what this costs and why it is worth it.
-                let per_model = per_model_options(&conn, &opened.session_id, &options).await;
+                    // **Measured, not assumed**: both agents re-cut their options per
+                    // model, so one session's set describes one model. See
+                    // `per_model_options` for what this costs and why it is worth it.
+                    let per_model = per_model_options(&conn, &opened.session_id, &options).await;
 
-                // Best effort, and gated on the advertisement so an agent that
-                // does not serve it is never sent a method it would answer with
-                // `method not found`. Its failure is not the probe's failure:
-                // the catalogue is already in hand, and a session that would not
-                // close is exactly what the cwd filter covers.
-                if closes_sessions(&init) {
-                    let _ = conn
-                        .send_request(CloseSessionRequest::new(opened.session_id.clone()))
-                        .block_task()
-                        .await;
-                }
-                // The commands ride a notification, so there is nothing to
-                // await: this is the beat that lets one arrive before the
-                // connection is torn down. Short, because it is spent on every
-                // ACP probe whether or not the agent sends any.
-                async_io::Timer::after(COMMANDS_GRACE).await;
+                    // Best effort, and gated on the advertisement so an agent that
+                    // does not serve it is never sent a method it would answer with
+                    // `method not found`. Its failure is not the probe's failure:
+                    // the catalogue is already in hand, and a session that would not
+                    // close is exactly what the cwd filter covers.
+                    if closes_sessions(&init) {
+                        let _ = conn
+                            .send_request(CloseSessionRequest::new(opened.session_id.clone()))
+                            .block_task()
+                            .await;
+                    }
+                    // The commands ride a notification, so there is nothing to
+                    // await: this is the beat that lets one arrive before the
+                    // connection is torn down. Short, because it is spent on every
+                    // ACP probe whether or not the agent sends any.
+                    async_io::Timer::after(COMMANDS_GRACE).await;
 
-                Ok((options, per_model, acp::capabilities(&init)))
-            },
-        );
+                    Ok((options, per_model, acp::capabilities(&init)))
+                },
+            );
         futures::pin_mut!(work);
         let timer = async_io::Timer::after(deadline);
         futures::pin_mut!(timer);
@@ -1018,11 +1068,7 @@ fn abandon_group(child: &mut async_process::Child) {
 /// The env is the whole of the account binding, and it is the same pair a
 /// session spawns with. Without it every probe answered as whichever login the
 /// process inherited, so one account's models were cached under another's name.
-fn probe_spec(
-    adapter: &AgentAdapter,
-    chat: &crate::agents::ChatConfig,
-    home: Option<&(String, String)>,
-) -> StartSpec {
+fn probe_spec(adapter: &AgentAdapter, chat: &crate::agents::ChatConfig, home: Option<&(String, String)>) -> StartSpec {
     StartSpec {
         session_id: String::new(),
         // Inherited for a claude probe, which never opens a session and so has
@@ -1065,13 +1111,11 @@ pub fn probe_with(
     // Exhaustive, so a new transport is a compile error here rather than a
     // agent that silently never gets a catalogue.
     let outcome = match chat.transport {
-        ChatTransport::ClaudeStreamJson => {
-            probe_claude(&spec, version, deadline, &chat.effort_extras).map(|mut c| {
-                let extras = user_configured_models(&claude_settings_path(home), &c.models);
-                c.models.extend(extras);
-                c
-            })
-        }
+        ChatTransport::ClaudeStreamJson => probe_claude(&spec, version, deadline, &chat.effort_extras).map(|mut c| {
+            let extras = user_configured_models(&claude_settings_path(home), &c.models);
+            c.models.extend(extras);
+            c
+        }),
         ChatTransport::Acp => match probe_cwd_ready() {
             Ok(cwd) => {
                 spec.cwd = cwd;
@@ -1106,17 +1150,15 @@ pub fn probe_with(
 /// default account, so a Globex probe that failed while the personal account was
 /// signed in kept a reason it had no evidence for, and the reverse read as an
 /// accusation against an account that was signed in.
-fn refine_signed_out(
-    adapter: &AgentAdapter,
-    home: Option<&(String, String)>,
-    failure: ProbeFailure,
-) -> ProbeFailure {
-    let (Some(path), Some(accounts)) = (crate::env::resolve_binary(&adapter.program), adapter.accounts.as_ref())
-    else {
+fn refine_signed_out(adapter: &AgentAdapter, home: Option<&(String, String)>, failure: ProbeFailure) -> ProbeFailure {
+    let (Some(path), Some(accounts)) = (crate::env::resolve_binary(&adapter.program), adapter.accounts.as_ref()) else {
         return failure;
     };
     if crate::auth::whoami(&path, accounts, home).state == crate::auth::SignIn::SignedOut {
-        return ProbeFailure { reason: FailureReason::SignedOut, ..failure };
+        return ProbeFailure {
+            reason: FailureReason::SignedOut,
+            ..failure
+        };
     }
     failure
 }
@@ -1225,7 +1267,9 @@ fn agent_lock(agent_id: &str, profile_id: &str) -> Arc<Mutex<()>> {
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    map.entry((agent_id.to_string(), profile_id.to_string())).or_default().clone()
+    map.entry((agent_id.to_string(), profile_id.to_string()))
+        .or_default()
+        .clone()
 }
 
 /// Every agent that could have a catalogue, in adapter order.
@@ -1257,7 +1301,11 @@ fn refresh_one(
 /// sweep. Reused rather than re-probed so the recorded version and the staleness
 /// comparison are the same measurement.
 async fn versions() -> HashMap<String, Option<String>> {
-    crate::health::agent_health().await.into_iter().map(|h| (h.id, h.version)).collect::<HashMap<_, _>>()
+    crate::health::agent_health()
+        .await
+        .into_iter()
+        .map(|h| (h.id, h.version))
+        .collect::<HashMap<_, _>>()
 }
 
 /// What Tori remembers, one row per (agent with a chat transport, account).
@@ -1294,10 +1342,7 @@ pub async fn model_catalogs() -> Vec<ModelCatalog> {
 /// a removal racing an open picker), so a cache file recording it would outlive
 /// the account it names.
 #[tauri::command]
-pub async fn refresh_model_catalog(
-    agent_id: String,
-    profile_id: Option<String>,
-) -> Result<ModelCatalog, String> {
+pub async fn refresh_model_catalog(agent_id: String, profile_id: Option<String>) -> Result<ModelCatalog, String> {
     let adapter = crate::agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
     let profile = profile_id.as_deref().unwrap_or(crate::accounts::DEFAULT_PROFILE_ID);
     let home = crate::accounts::profile_pair(adapter, &crate::accounts::load(), Some(profile))?;
@@ -1433,10 +1478,21 @@ mod tests {
         catalog.absorb(Ok(a_catalogue(Some("2.1.231"))));
         catalog.absorb(Err(ProbeFailure::now(FailureReason::TimedOut, String::new())));
 
-        assert_eq!(catalog.state, CatalogState::Failed, "the surface must be able to show the error");
-        let kept = catalog.catalogue.as_ref().expect("the good catalogue survived the failure");
+        assert_eq!(
+            catalog.state,
+            CatalogState::Failed,
+            "the surface must be able to show the error"
+        );
+        let kept = catalog
+            .catalogue
+            .as_ref()
+            .expect("the good catalogue survived the failure");
         assert_eq!(kept.models[0].info.value, "sonnet");
-        assert_eq!(kept.version.as_deref(), Some("2.1.231"), "and it still reports its own age");
+        assert_eq!(
+            kept.version.as_deref(),
+            Some("2.1.231"),
+            "and it still reports its own age"
+        );
     }
 
     /// And an answer clears the failure, so an error does not stick around
@@ -1470,7 +1526,10 @@ mod tests {
         let root = temp_root("roundtrip-failure");
         let mut written = ModelCatalog::never_probed("claude", "default");
         written.absorb(Ok(a_catalogue(Some("2.1.231"))));
-        written.absorb(Err(ProbeFailure::now(FailureReason::SignedOut, "run `claude auth login`")));
+        written.absorb(Err(ProbeFailure::now(
+            FailureReason::SignedOut,
+            "run `claude auth login`",
+        )));
         save_to(&root, &written).expect("the file should write");
 
         let read = load_from(&root, "claude", "default");
@@ -1509,7 +1568,10 @@ mod tests {
     #[test]
     fn a_agent_id_cannot_escape_the_catalog_directory() {
         let root = Path::new("/tmp/tori-catalogs");
-        assert_eq!(catalog_path(root, "../../etc/passwd", "default"), root.join("______etc_passwd.json"));
+        assert_eq!(
+            catalog_path(root, "../../etc/passwd", "default"),
+            root.join("______etc_passwd.json")
+        );
     }
 
     // --- one catalogue per account ---
@@ -1553,7 +1615,10 @@ mod tests {
         save_to(&root, &default).unwrap();
         save_to(&root, &globex).unwrap();
 
-        assert!(root.join("claude__globex.json").exists(), "the added account writes its own file");
+        assert!(
+            root.join("claude__globex.json").exists(),
+            "the added account writes its own file"
+        );
         assert_eq!(load_from(&root, "claude", "default"), default);
         assert_eq!(load_from(&root, "claude", "globex"), globex);
         let _ = std::fs::remove_dir_all(&root);
@@ -1593,7 +1658,10 @@ mod tests {
             catalog_path(&root, "claude..globex", "default"),
             catalog_path(&root, "claude", "globex"),
         );
-        assert_eq!(load_from(&root, "claude..globex", "default").state, CatalogState::NeverProbed);
+        assert_eq!(
+            load_from(&root, "claude..globex", "default").state,
+            CatalogState::NeverProbed
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1610,7 +1678,10 @@ mod tests {
 
         assert!(taken, "the other account's lock is a different lock");
         assert!(started.elapsed() < Duration::from_secs(1), "and it was not waited on");
-        assert!(agent_lock("claude", "default").try_lock().is_err(), "while this one is held");
+        assert!(
+            agent_lock("claude", "default").try_lock().is_err(),
+            "while this one is held"
+        );
     }
 
     // --- user-configured extras ---
@@ -1642,7 +1713,10 @@ mod tests {
         let mut ids: Vec<&str> = extras.iter().map(|m| m.info.value.as_str()).collect();
         ids.sort_unstable();
         assert_eq!(ids, ["claude-haiku-4-5-20251001", "claude-opus-5-20260101", "opusplan"]);
-        assert!(extras.iter().all(|m| m.user_configured), "provenance rides every extra row");
+        assert!(
+            extras.iter().all(|m| m.user_configured),
+            "provenance rides every extra row"
+        );
         assert!(
             extras.iter().all(|m| m.info.resolved_model.is_empty()),
             "Tori cannot resolve a configured string, so it claims no resolution"
@@ -1654,9 +1728,15 @@ mod tests {
     /// published must not appear twice in a picker, under two provenances.
     #[test]
     fn a_configured_id_the_agent_already_published_is_not_added_again() {
-        let path = write_settings("settings-dupe", r#"{"model": "sonnet", "env": {"ANTHROPIC_MODEL": "claude-sonnet-5"}}"#);
+        let path = write_settings(
+            "settings-dupe",
+            r#"{"model": "sonnet", "env": {"ANTHROPIC_MODEL": "claude-sonnet-5"}}"#,
+        );
         let extras = user_configured_models(&path, &a_catalogue(None).models);
-        assert!(extras.is_empty(), "`sonnet` is a published value and `claude-sonnet-5` its resolution");
+        assert!(
+            extras.is_empty(),
+            "`sonnet` is a published value and `claude-sonnet-5` its resolution"
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -1674,7 +1754,10 @@ mod tests {
     /// Tori inherited, so it answers for the default one and nobody else.
     #[test]
     fn the_configured_models_come_from_the_account_being_probed() {
-        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-globex".to_string());
+        let home = (
+            "CLAUDE_CONFIG_DIR".to_string(),
+            "/tmp/tori-homes/claude-globex".to_string(),
+        );
         assert_eq!(
             claude_settings_path(Some(&home)),
             Path::new("/tmp/tori-homes/claude-globex/settings.json"),
@@ -1690,11 +1773,20 @@ mod tests {
     fn a_probe_runs_in_the_accounts_own_home() {
         let claude = crate::agents::find("claude").expect("claude is a registered adapter");
         let chat = claude.chat.as_ref().expect("claude has a chat transport");
-        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-globex".to_string());
+        let home = (
+            "CLAUDE_CONFIG_DIR".to_string(),
+            "/tmp/tori-homes/claude-globex".to_string(),
+        );
 
         let scoped = probe_spec(claude, chat, Some(&home));
-        assert_eq!(scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/tori-homes/claude-globex"));
-        assert!(probe_spec(claude, chat, None).env.is_empty(), "the default account sets nothing");
+        assert_eq!(
+            scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some("/tmp/tori-homes/claude-globex")
+        );
+        assert!(
+            probe_spec(claude, chat, None).env.is_empty(),
+            "the default account sets nothing"
+        );
     }
 
     #[test]
@@ -1731,7 +1823,10 @@ mod tests {
             .expect_err("a child that never answers cannot produce a catalogue");
 
         assert_eq!(failure.reason, FailureReason::TimedOut);
-        assert!(started.elapsed() < Duration::from_secs(5), "the probe returned on its own deadline");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the probe returned on its own deadline"
+        );
     }
 
     /// A child that exits without answering is a different sentence from one
@@ -1745,8 +1840,13 @@ mod tests {
     /// And it quotes the agent rather than paraphrasing it.
     #[test]
     fn a_failure_carries_the_agents_own_stderr() {
-        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE, &[])
-            .expect_err("nothing was answered");
+        let failure = probe_claude(
+            &sh("echo 'credit balance too low' >&2; exit 1"),
+            None,
+            PROBE_DEADLINE,
+            &[],
+        )
+        .expect_err("nothing was answered");
         assert_eq!(failure.detail, "credit balance too low");
     }
 
@@ -1763,8 +1863,15 @@ mod tests {
 
         let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
 
-        assert!(failure.detail.ends_with("LAST"), "the tail keeps the end, which is where the reason is");
-        assert!(failure.detail.len() <= STDERR_TAIL, "and stays bounded: {} bytes", failure.detail.len());
+        assert!(
+            failure.detail.ends_with("LAST"),
+            "the tail keeps the end, which is where the reason is"
+        );
+        assert!(
+            failure.detail.len() <= STDERR_TAIL,
+            "and stays bounded: {} bytes",
+            failure.detail.len()
+        );
     }
 
     #[test]
@@ -1845,8 +1952,7 @@ mod tests {
             .collect();
         let current = SessionConfigValueId::new(entries[0].0);
         let select = SessionConfigSelect::new(current, SessionConfigSelectOptions::Ungrouped(options));
-        let mut option =
-            SessionConfigOption::new(SessionConfigId::new(id), id, SessionConfigKind::Select(select));
+        let mut option = SessionConfigOption::new(SessionConfigId::new(id), id, SessionConfigKind::Select(select));
         option.category = category;
         option
     }
@@ -1880,10 +1986,17 @@ mod tests {
 
         let auth = acp_failure(&Error::auth_required());
         assert_eq!(auth.reason, FailureReason::SignedOut);
-        assert!(!auth.detail.is_empty(), "and it quotes the agent rather than paraphrasing it");
+        assert!(
+            !auth.detail.is_empty(),
+            "and it quotes the agent rather than paraphrasing it"
+        );
 
         let other = acp_failure(&Error::internal_error());
-        assert_eq!(other.reason, FailureReason::NoAnswer, "not everything that fails is a login");
+        assert_eq!(
+            other.reason,
+            FailureReason::NoAnswer,
+            "not everything that fails is a login"
+        );
     }
 
     /// The catalogue keeps the agent's **whole** option set, not the three
@@ -1907,10 +2020,18 @@ mod tests {
             ChatCapabilities::default(),
         );
 
-        assert_eq!(catalogue.models.len(), 1, "the model selector still becomes the model list");
+        assert_eq!(
+            catalogue.models.len(),
+            1,
+            "the model selector still becomes the model list"
+        );
         assert_eq!(catalogue.models[0].info.value, "sonnet");
         let ids: Vec<&str> = catalogue.options.iter().map(|o| o.id.as_str()).collect();
-        assert_eq!(ids, ["model", "reasoning-depth"], "and the uncategorized one survives beside it");
+        assert_eq!(
+            ids,
+            ["model", "reasoning-depth"],
+            "and the uncategorized one survives beside it"
+        );
     }
 
     /// **An ACP row carries its own levers, because the agents re-cut them.**
@@ -1970,11 +2091,19 @@ mod tests {
                 .clone()
         };
         assert_eq!(levels("terra"), ["low", "high", "ultra"]);
-        assert_eq!(levels("mini"), ["low", "high"], "a level this model refuses is not offered for it");
+        assert_eq!(
+            levels("mini"),
+            ["low", "high"],
+            "a level this model refuses is not offered for it"
+        );
 
         // And the row's whole option set is cached beside the levels, so a
         // mirrored option that varies is right per model too.
-        let mini = catalogue.models.iter().find(|m| m.info.value == "mini").expect("mini is listed");
+        let mini = catalogue
+            .models
+            .iter()
+            .find(|m| m.info.value == "mini")
+            .expect("mini is listed");
         assert_eq!(
             mini.options.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
             ["model", "reasoning_effort"]
@@ -2000,9 +2129,16 @@ mod tests {
             Vec::new(),
             ChatCapabilities::default(),
         );
-        let mini = catalogue.models.iter().find(|m| m.info.value == "mini").expect("mini is listed");
+        let mini = catalogue
+            .models
+            .iter()
+            .find(|m| m.info.value == "mini")
+            .expect("mini is listed");
         assert_eq!(mini.info.supported_effort_levels, ["low"]);
-        assert!(!mini.options.is_empty(), "a refused switch is not an agent that publishes nothing");
+        assert!(
+            !mini.options.is_empty(),
+            "a refused switch is not an agent that publishes nothing"
+        );
     }
 
     /// And it survives the round trip to disk, which is what Phase 4's settings
@@ -2068,13 +2204,20 @@ mod tests {
         let catalogue =
             probe_with(claude, None, Some("live".into()), PROBE_DEADLINE).expect("claude should answer the handshake");
 
-        assert!(!catalogue.models.is_empty(), "an empty answer from a real binary is a bug");
+        assert!(
+            !catalogue.models.is_empty(),
+            "an empty answer from a real binary is a bug"
+        );
         assert!(
             catalogue.models.iter().any(|m| !m.user_configured),
             "at least one row came from the agent itself"
         );
         assert!(
-            catalogue.models.iter().filter(|m| !m.user_configured).all(|m| !m.info.resolved_model.is_empty()),
+            catalogue
+                .models
+                .iter()
+                .filter(|m| !m.user_configured)
+                .all(|m| !m.info.resolved_model.is_empty()),
             "every published row names what it resolves to"
         );
         assert_eq!(session_files(), before, "the probe wrote no transcript");
@@ -2106,12 +2249,19 @@ mod tests {
         let catalogue =
             probe_with(opencode, None, Some("live".into()), PROBE_DEADLINE).expect("opencode should answer");
 
-        assert!(catalogue.models.len() > 2, "a real answer names the user's providers: {:?}", catalogue.models);
+        assert!(
+            catalogue.models.len() > 2,
+            "a real answer names the user's providers: {:?}",
+            catalogue.models
+        );
         assert!(
             catalogue.models.iter().all(|m| !m.info.value.is_empty()),
             "every row carries the id a switch would have to name"
         );
-        assert!(!catalogue.options.is_empty(), "and the agent's own option set is kept whole");
+        assert!(
+            !catalogue.options.is_empty(),
+            "and the agent's own option set is kept whole"
+        );
     }
 
     /// The same probe against Codex, and **the first live agent to publish an
@@ -2152,20 +2302,28 @@ mod tests {
     fn the_real_codex_answers_a_catalogue_from_one_session() {
         let codex = crate::agents::find("codex").expect("the bundled codex adapter");
 
-        let catalogue =
-            probe_with(codex, None, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
+        let catalogue = probe_with(codex, None, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
 
-        assert!(!catalogue.models.is_empty(), "the handshake names this account's models");
         assert!(
-            catalogue.models.iter().all(|m| !m.info.supported_effort_levels.is_empty()),
+            !catalogue.models.is_empty(),
+            "the handshake names this account's models"
+        );
+        assert!(
+            catalogue
+                .models
+                .iter()
+                .all(|m| !m.info.supported_effort_levels.is_empty()),
             "every model publishes its own levels: {:?}",
             catalogue.models
         );
         // Structural rather than by count: whether this account's models happen
         // to disagree today is its entitlement, and the claim worth pinning is
         // that each row carries *its own* answer rather than one copied set.
-        let per_row: Vec<&Vec<String>> =
-            catalogue.models.iter().map(|m| &m.info.supported_effort_levels).collect();
+        let per_row: Vec<&Vec<String>> = catalogue
+            .models
+            .iter()
+            .map(|m| &m.info.supported_effort_levels)
+            .collect();
         assert!(
             per_row.iter().any(|l| *l != per_row[0]) || catalogue.models.len() == 1,
             "the levels are read per model, so a catalogue whose models differ shows it: {per_row:?}"
@@ -2313,9 +2471,11 @@ mod tests {
             title: None,
             updated_at: None,
         };
-        let adopted =
-            crate::chat::acp_sessions::adopt("opencode", &[listed], &[], 0, &probe_cwd_spellings());
-        assert!(adopted.is_empty(), "a row in the probe directory is never adopted as the user's history");
+        let adopted = crate::chat::acp_sessions::adopt("opencode", &[listed], &[], 0, &probe_cwd_spellings());
+        assert!(
+            adopted.is_empty(),
+            "a row in the probe directory is never adopted as the user's history"
+        );
     }
 
     /// Every jsonl under claude's discovery dir, so the live test can prove it

@@ -38,7 +38,10 @@ export const States: Story = {
     <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-5)" }}>
       <RadioGroup {...args} label="Nothing chosen" value={null} />
       <RadioGroup {...args} label="Chosen" value="modal" />
-      <RadioGroup {...args} label="One option disabled" value="inline"
+      <RadioGroup
+        {...args}
+        label="One option disabled"
+        value="inline"
         options={[
           { value: "inline", label: "Inline" },
           { value: "modal", label: "Modal" },

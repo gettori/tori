@@ -82,14 +82,22 @@ const EXITED: &str = "lsp://exited";
 impl LspState {
     fn stop(&self, handle: &LspHandle) -> Result<Option<LspExited>, String> {
         let session = self.sessions.lock().map_err(|e| e.to_string())?.remove(handle);
-        Ok(session.map(|mut s| LspExited { handle: handle.clone(), status: stop(&mut s), deliberate: true }))
+        Ok(session.map(|mut s| LspExited {
+            handle: handle.clone(),
+            status: stop(&mut s),
+            deliberate: true,
+        }))
     }
 
     fn stop_all(&self) -> Result<Vec<LspExited>, String> {
         let drained: Vec<_> = self.sessions.lock().map_err(|e| e.to_string())?.drain().collect();
         Ok(drained
             .into_iter()
-            .map(|(handle, mut s)| LspExited { status: stop(&mut s), handle, deliberate: true })
+            .map(|(handle, mut s)| LspExited {
+                status: stop(&mut s),
+                handle,
+                deliberate: true,
+            })
             .collect())
     }
 
@@ -103,7 +111,11 @@ impl LspState {
             }
             sessions.remove(handle)?
         };
-        Some(LspExited { handle: handle.clone(), status: stop(&mut session), deliberate: false })
+        Some(LspExited {
+            handle: handle.clone(),
+            status: stop(&mut session),
+            deliberate: false,
+        })
     }
 
     fn log(&self, handle: &LspHandle) -> String {
@@ -135,9 +147,8 @@ fn bundled_entry(app: &AppHandle, rel: &str) -> Option<PathBuf> {
 fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path) -> Result<Command, String> {
     match &server.launch {
         Launch::BundledNode { entry, args } => {
-            let path = bundled_entry(app, entry).ok_or_else(|| {
-                format!("{}: bundled server not found (run `pnpm lsp:install`)", server.id)
-            })?;
+            let path = bundled_entry(app, entry)
+                .ok_or_else(|| format!("{}: bundled server not found (run `pnpm lsp:install`)", server.id))?;
             let mut cmd = Command::new("node");
             cmd.arg(path).args(args);
             Ok(cmd)
@@ -147,16 +158,18 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
             // installed via rustup/mise/asdf is invisible to a naive lookup
             // from a Finder-launched app, and reporting it missing would send
             // the user chasing a problem that is not there.
-            let path = crate::env::resolve_binary(program).ok_or_else(|| {
-                format!("{}: `{program}` was not found on your PATH", server.id)
-            })?;
+            let path = crate::env::resolve_binary(program)
+                .ok_or_else(|| format!("{}: `{program}` was not found on your PATH", server.id))?;
             let mut cmd = Command::new(path);
             cmd.args(args);
             Ok(cmd)
         }
         Launch::ProjectBin { program, args } => {
             let path = crate::format::project_bin(program, root, project).ok_or_else(|| {
-                format!("{}: `{program}` is not installed in this project or on your PATH", server.id)
+                format!(
+                    "{}: `{program}` is not installed in this project or on your PATH",
+                    server.id
+                )
             })?;
             let mut cmd = Command::new(path);
             cmd.args(args);
@@ -265,11 +278,7 @@ fn stop(session: &mut LspSession) -> Option<String> {
 /// the process, so overwriting the map entry would leave a second language
 /// server running with nothing able to reach it. For rust-analyzer that is an
 /// orphan indexing a project at full tilt until the user logs out.
-fn install_session(
-    sessions: &mut HashMap<LspHandle, LspSession>,
-    handle: &LspHandle,
-    mut session: LspSession,
-) -> bool {
+fn install_session(sessions: &mut HashMap<LspHandle, LspSession>, handle: &LspHandle, mut session: LspSession) -> bool {
     if sessions.contains_key(handle) {
         // The session already in the map is the one whose frames a live
         // subscriber is reading, so it is the one that survives.
@@ -303,8 +312,7 @@ pub fn lsp_start(
     project_path: String,
     on_message: Channel<String>,
 ) -> Result<LspHandle, String> {
-    let server =
-        registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
+    let server = registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
     let root = registry::root_for(server, Path::new(&file_path), Path::new(&project_path));
     // Before the trust gate, so a missing server fails as missing, not as a trust
     // prompt. No lock: a login-shell lookup is too slow to hold every other send
@@ -359,7 +367,11 @@ fn start_session(
         if !install_session(&mut sessions, handle, session) {
             return Ok(());
         }
-        state.logs.lock().map_err(|e| e.to_string())?.insert(handle.clone(), log.clone());
+        state
+            .logs
+            .lock()
+            .map_err(|e| e.to_string())?
+            .insert(handle.clone(), log.clone());
     }
     pump_log(stderr, log);
     pump_frames(stdout, sink, move || on_eof(serial));
@@ -532,7 +544,11 @@ fn same_file(a: &Path, b: &Path) -> bool {
 ///
 /// `bundled_entry_missing` is passed in rather than resolved here so this stays
 /// free of `AppHandle` and testable off a real Tauri app.
-fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(PathBuf, managed::Installed)>) -> LspHealth {
+fn check(
+    server: &LspServer,
+    bundled_entry_missing: bool,
+    installed: Option<(PathBuf, managed::Installed)>,
+) -> LspHealth {
     let program = server.launch.program().to_string();
     let on_path = crate::env::resolve_binary(&program);
     let proxy_gap = on_path.as_deref().and_then(missing_rustup_component);
@@ -567,9 +583,7 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
 
     let status = match (&resolved, &detail) {
         (None, _) | (Some(_), Some(_)) => crate::health::BinaryStatus::NotFound,
-        (Some(_), None) => {
-            crate::health::compare(version.as_deref(), server.verified_against.as_deref())
-        }
+        (Some(_), None) => crate::health::compare(version.as_deref(), server.verified_against.as_deref()),
     };
 
     LspHealth {
@@ -590,14 +604,23 @@ fn check(server: &LspServer, bundled_entry_missing: bool, installed: Option<(Pat
             .activation_markers
             .iter()
             .cloned()
-            .chain(server.activation_keys.iter().map(|k| format!("{} [{}]", k.file, k.path.join("."))))
+            .chain(
+                server
+                    .activation_keys
+                    .iter()
+                    .map(|k| format!("{} [{}]", k.file, k.path.join("."))),
+            )
             .collect(),
         runs_per_project: matches!(server.launch, Launch::ProjectBin { .. }),
         hint: match &server.install {
             Some(registry::Install::Hint { text, .. }) => Some(text.clone()),
             _ => None,
         },
-        available_version: server.install.as_ref().and_then(|i| i.available_version()).map(str::to_string),
+        available_version: server
+            .install
+            .as_ref()
+            .and_then(|i| i.available_version())
+            .map(str::to_string),
         installed_version: installed.map(|(_, manifest)| manifest.version),
         update,
         uninstall,
@@ -634,8 +657,7 @@ pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> 
 /// version this build pins.
 #[tauri::command(async)]
 pub fn lsp_install(server_id: String) -> Result<(), String> {
-    let server =
-        registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
+    let server = registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
     managed::install(server, &managed::servers_dir()).map(|_| ())
 }
 
@@ -658,8 +680,12 @@ pub struct Resolution {
 #[tauri::command(async)]
 pub fn lsp_resolve(file_path: String, project_path: String) -> Resolution {
     let disabled = disabled_servers(crate::settings::get_settings().lsp.disabled, Some(&project_path));
-    let (primary, secondaries) =
-        registry::resolve(registry::registry(), Path::new(&file_path), Path::new(&project_path), &disabled);
+    let (primary, secondaries) = registry::resolve(
+        registry::registry(),
+        Path::new(&file_path),
+        Path::new(&project_path),
+        &disabled,
+    );
     Resolution {
         primary: primary.map(|s| s.id.clone()),
         secondaries: secondaries.iter().map(|s| s.id.clone()).collect(),
@@ -712,20 +738,28 @@ mod tests {
     }
 
     fn alive(pid: u32) -> bool {
-        Command::new("kill").arg("-0").arg(pid.to_string()).stderr(Stdio::null()).status().unwrap().success()
+        Command::new("kill")
+            .arg("-0")
+            .arg(pid.to_string())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
     }
 
     /// Start `cmd` the way `lsp_start` does, with every EOF's `reap` sent back.
-    fn start_reaped(
-        state: &Arc<LspState>,
-        handle: &LspHandle,
-        cmd: Command,
-    ) -> mpsc::Receiver<Option<LspExited>> {
+    fn start_reaped(state: &Arc<LspState>, handle: &LspHandle, cmd: Command) -> mpsc::Receiver<Option<LspExited>> {
         let (tx, rx) = mpsc::channel();
         let (reaper, h) = (state.clone(), handle.clone());
-        start_session(state, handle, cmd, |_| {}, move |serial| {
-            let _ = tx.send(reaper.reap(&h, serial));
-        })
+        start_session(
+            state,
+            handle,
+            cmd,
+            |_| {},
+            move |serial| {
+                let _ = tx.send(reaper.reap(&h, serial));
+            },
+        )
         .unwrap();
         rx
     }
@@ -754,11 +788,17 @@ mod tests {
     #[test]
     fn stderr_is_kept_as_a_bounded_tail_that_outlives_the_server() {
         let state = Arc::new(LspState::default());
-        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let handle = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
 
         let _exits = start_reaped(&state, &handle, sh("echo 'booting demo' >&2; exec cat"));
         let log = wait_for_log(&state, &handle, |l| l.contains("booting demo"));
-        assert!(log.contains("booting demo"), "stderr on start never reached the log: {log:?}");
+        assert!(
+            log.contains("booting demo"),
+            "stderr on start never reached the log: {log:?}"
+        );
         state.stop(&handle).unwrap();
 
         // A restart of the handle starts a fresh log, and a flood keeps only its tail.
@@ -767,26 +807,41 @@ mod tests {
             &handle,
             sh("echo first >&2; head -c 1048576 /dev/zero | tr '\\0' x >&2; echo last >&2"),
         );
-        assert!(exits.recv_timeout(Duration::from_secs(10)).unwrap().is_some(), "the flood never exited");
+        assert!(
+            exits.recv_timeout(Duration::from_secs(10)).unwrap().is_some(),
+            "the flood never exited"
+        );
         let log = wait_for_log(&state, &handle, |l| l.ends_with("last\n"));
         assert!(log.ends_with("last\n"), "the tail is missing its last line");
         assert!(log.len() <= LOG_CAP, "kept {} bytes", log.len());
         assert!(!log.contains("first") && !log.contains("booting demo"));
-        assert!(!state.sessions.lock().unwrap().contains_key(&handle), "the log is read after the session is gone");
+        assert!(
+            !state.sessions.lock().unwrap().contains_key(&handle),
+            "the log is read after the session is gone"
+        );
     }
 
     #[test]
     fn a_crashed_server_is_reaped_reported_and_respawned_on_the_next_start() {
         let state = Arc::new(LspState::default());
-        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let handle = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
         let exits = start_reaped(&state, &handle, echo_server());
         let pid = pid_of(&state, &handle);
 
         Command::new("kill").arg("-9").arg(pid.to_string()).status().unwrap();
-        let exited = exits.recv_timeout(Duration::from_secs(5)).unwrap().expect("a crash is reported");
+        let exited = exits
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .expect("a crash is reported");
         assert_eq!(exited.handle, handle);
         assert!(!exited.deliberate);
-        assert!(exited.status.is_some_and(|s| s.contains("signal")), "the status says how it died");
+        assert!(
+            exited.status.is_some_and(|s| s.contains("signal")),
+            "the status says how it died"
+        );
         // `kill -0` succeeds on a zombie, so failing here means it was reaped.
         assert!(!alive(pid), "pid {pid} is still in the process table");
 
@@ -800,14 +855,20 @@ mod tests {
     #[test]
     fn a_deliberate_stop_is_reported_as_one_and_never_as_a_crash() {
         let state = Arc::new(LspState::default());
-        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let handle = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
         let exits = start_reaped(&state, &handle, echo_server());
         let pid = pid_of(&state, &handle);
 
         let exited = state.stop(&handle).unwrap().expect("a live session reports its stop");
         assert!(exited.deliberate);
         assert!(!alive(pid));
-        assert!(exits.recv_timeout(Duration::from_secs(5)).unwrap().is_none(), "the EOF after a stop reported a crash");
+        assert!(
+            exits.recv_timeout(Duration::from_secs(5)).unwrap().is_none(),
+            "the EOF after a stop reported a crash"
+        );
 
         let _exits = start_reaped(&state, &handle, echo_server());
         let all = state.stop_all().unwrap();
@@ -839,8 +900,14 @@ mod tests {
     #[test]
     fn two_sessions_of_one_server_at_two_roots_are_independently_addressable() {
         let mut map: HashMap<LspHandle, LspSession> = HashMap::new();
-        let a = LspHandle { server_id: "demo".into(), root: "/".into() };
-        let b = LspHandle { server_id: "demo".into(), root: "/tmp".into() };
+        let a = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
+        let b = LspHandle {
+            server_id: "demo".into(),
+            root: "/tmp".into(),
+        };
 
         let (sa, rx_a) = start_echo(&a.root);
         let (sb, rx_b) = start_echo(&b.root);
@@ -874,19 +941,28 @@ mod tests {
     #[test]
     fn the_handle_is_what_addresses_a_session() {
         let mut map: HashMap<LspHandle, LspSession> = HashMap::new();
-        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let handle = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
         let (session, rx) = start_echo(&handle.root);
         map.insert(handle.clone(), session);
 
         // A handle rebuilt from its own fields addresses the same session:
         // this is what lets the frontend hold the value `lsp_start` returned
         // and hand it back later.
-        let same = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let same = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
         write_frame(&mut map.get_mut(&same).unwrap().stdin, r#"{"ok":1}"#).unwrap();
         assert_eq!(recv(&rx), r#"{"ok":1}"#);
 
         // A different root is a different session, and simply is not there.
-        let other = LspHandle { server_id: "demo".into(), root: "/tmp".into() };
+        let other = LspHandle {
+            server_id: "demo".into(),
+            root: "/tmp".into(),
+        };
         assert!(map.get_mut(&other).is_none());
 
         for (_, mut s) in map.drain() {
@@ -905,8 +981,10 @@ mod tests {
 
     #[test]
     fn health_reports_one_card_per_registered_server() {
-        let cards =
-            registry::registry().iter().map(|s| check(s, false, None)).collect::<Vec<_>>();
+        let cards = registry::registry()
+            .iter()
+            .map(|s| check(s, false, None))
+            .collect::<Vec<_>>();
         assert_eq!(cards.len(), registry::registry().len());
 
         let ts = cards.iter().find(|c| c.id == "typescript").expect("bundled TS server");
@@ -977,7 +1055,10 @@ mod tests {
     #[test]
     fn a_racing_start_kills_the_loser_instead_of_leaking_it() {
         let mut map: HashMap<LspHandle, LspSession> = HashMap::new();
-        let handle = LspHandle { server_id: "demo".into(), root: "/".into() };
+        let handle = LspHandle {
+            server_id: "demo".into(),
+            root: "/".into(),
+        };
 
         let (winner, rx) = start_echo(&handle.root);
         assert!(install_session(&mut map, &handle, winner));
@@ -987,7 +1068,10 @@ mod tests {
         // `Child` has no `Drop` that stops the process.
         let (loser, _loser_rx) = start_echo(&handle.root);
         let loser_pid = loser.child.id();
-        assert!(!install_session(&mut map, &handle, loser), "the racer must not be installed");
+        assert!(
+            !install_session(&mut map, &handle, loser),
+            "the racer must not be installed"
+        );
 
         // The loser is actually dead, not merely forgotten.
         let reaped = Command::new("kill")
@@ -995,7 +1079,10 @@ mod tests {
             .arg(loser_pid.to_string())
             .status()
             .expect("kill -0");
-        assert!(!reaped.success(), "pid {loser_pid} is still alive after losing the race");
+        assert!(
+            !reaped.success(),
+            "pid {loser_pid} is still alive after losing the race"
+        );
 
         // And the winner is untouched: still the one in the map, still serving.
         assert_eq!(map.len(), 1);
@@ -1009,7 +1096,10 @@ mod tests {
 
     #[test]
     fn a_handle_serializes_camel_case_for_the_frontend() {
-        let handle = LspHandle { server_id: "typescript".into(), root: "/p".into() };
+        let handle = LspHandle {
+            server_id: "typescript".into(),
+            root: "/p".into(),
+        };
         let json = serde_json::to_string(&handle).unwrap();
         assert_eq!(json, r#"{"serverId":"typescript","root":"/p"}"#);
         // Round-trips, so the frontend can hand back exactly what it was given.
@@ -1044,10 +1134,18 @@ mod tests {
             })
             .collect();
 
-        assert!(defined.len() >= 8, "the parse found no commands, so this test proves nothing: {defined:?}");
-        let missing: Vec<&&str> =
-            defined.iter().filter(|name| !lib.contains(&format!("lsp::{name},"))).collect();
-        assert!(missing.is_empty(), "add these to `generate_handler!` in lib.rs: {missing:?}");
+        assert!(
+            defined.len() >= 8,
+            "the parse found no commands, so this test proves nothing: {defined:?}"
+        );
+        let missing: Vec<&&str> = defined
+            .iter()
+            .filter(|name| !lib.contains(&format!("lsp::{name},")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "add these to `generate_handler!` in lib.rs: {missing:?}"
+        );
     }
 
     /// The settings schemas have to be *bundled*, not merely present.
@@ -1061,7 +1159,9 @@ mod tests {
     fn the_settings_schemas_are_bundled_as_resources() {
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json parses");
-        let resources = conf["bundle"]["resources"].as_array().expect("bundle.resources is a list");
+        let resources = conf["bundle"]["resources"]
+            .as_array()
+            .expect("bundle.resources is a list");
         let listed: Vec<&str> = resources.iter().filter_map(|r| r.as_str()).collect();
         assert!(
             listed.iter().any(|r| r.starts_with("resources/schemas/")),
@@ -1089,7 +1189,11 @@ mod tests {
         std::fs::create_dir_all(project.join(".tori")).unwrap();
         std::fs::write(project.join("eslint.config.js"), "").unwrap();
         std::fs::write(project.join("deno.json"), "{}").unwrap();
-        std::fs::write(project.join(".tori/settings.json"), r#"{ "lsp": { "disabled": ["eslint"] } }"#).unwrap();
+        std::fs::write(
+            project.join(".tori/settings.json"),
+            r#"{ "lsp": { "disabled": ["eslint"] } }"#,
+        )
+        .unwrap();
 
         let config = |id: &str, extra: &str| {
             registry::load_server_str(
@@ -1103,13 +1207,19 @@ mod tests {
         };
         let servers = [
             registry::load_server_str(include_str!("../lsp/typescript.toml"), "bundled:typescript").unwrap(),
-            config("eslint", "role = \"secondary\"\nactivation_markers = [\"eslint.config.js\"]"),
+            config(
+                "eslint",
+                "role = \"secondary\"\nactivation_markers = [\"eslint.config.js\"]",
+            ),
             config("deno", "activation_markers = [\"deno.json\"]"),
         ];
         let root = project.to_string_lossy().into_owned();
 
         let disabled = disabled_servers(vec!["deno".to_string()], Some(&root));
-        assert!(disabled.contains("eslint") && disabled.contains("deno"), "the workspace adds to the user's list");
+        assert!(
+            disabled.contains("eslint") && disabled.contains("deno"),
+            "the workspace adds to the user's list"
+        );
 
         let (primary, secondaries) = registry::resolve(&servers, &file, &project, &disabled);
         assert_eq!(primary.map(|s| s.id.as_str()), Some("typescript"));

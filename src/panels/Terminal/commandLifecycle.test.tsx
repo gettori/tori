@@ -19,8 +19,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     bridge.invoked.push({ cmd, args });
-    if (cmd === "list_sessions" || cmd === "sessions_running" || cmd === "chat_orphans")
-      return Promise.resolve([]);
+    if (cmd === "list_sessions" || cmd === "sessions_running" || cmd === "chat_orphans") return Promise.resolve([]);
     if (cmd === "refresh_agent_health" || cmd === "list_agents") return Promise.resolve([]);
     if (cmd === "session_running") return Promise.resolve(false);
     return Promise.resolve(null);
@@ -113,9 +112,7 @@ const killed = () => bridge.invoked.filter((i) => i.cmd === "pty_kill").map((i) 
  *  a tick before the strip does, so this waits rather than reading straight. A
  *  failed tab's name carries its verdict, so callers match the start of it. */
 const closeButton = async (name: string | RegExp) =>
-  (await screen.findByRole("tab", { name })).parentElement!.querySelector<HTMLElement>(
-    "[data-tab-close]",
-  )!;
+  (await screen.findByRole("tab", { name })).parentElement!.querySelector<HTMLElement>("[data-tab-close]")!;
 
 let offToast: (() => void) | undefined;
 let offFocused: (() => void) | undefined;

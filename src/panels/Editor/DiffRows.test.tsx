@@ -52,7 +52,11 @@ describe("DiffRows", () => {
   it("offers a changed line to a caller that stages lines, and a context line to nobody", () => {
     const picked: number[] = [];
     const { container } = render(() => (
-      <DiffRows rows={buildRows(HUNK)} twoColumn={false} selection={{ has: () => false, toggle: (i) => picked.push(i) }} />
+      <DiffRows
+        rows={buildRows(HUNK)}
+        twoColumn={false}
+        selection={{ has: () => false, toggle: (i) => picked.push(i) }}
+      />
     ));
     const lines = [...container.children] as HTMLElement[];
     // The body indices, which is what the backend selects by: 0 is the removal,
@@ -191,9 +195,7 @@ describe("DiffRows", () => {
   });
 
   it("moves the roving stop with the arrow keys and leaves the rest alone", () => {
-    const { container } = render(() => (
-      <DiffRows rows={buildRows(HUNK)} twoColumn={false} keyboard="roving" />
-    ));
+    const { container } = render(() => <DiffRows rows={buildRows(HUNK)} twoColumn={false} keyboard="roving" />);
     const rows = [...container.children] as HTMLElement[];
     expect(rows.map((r) => r.getAttribute("tabindex"))).toEqual(["0", "-1", "-1"]);
 

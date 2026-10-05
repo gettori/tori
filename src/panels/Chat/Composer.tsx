@@ -391,7 +391,10 @@ export default function Composer(props: {
     setMenuIndex(0);
     if (next?.kind === "file" && !filesRequested) {
       filesRequested = true;
-      void props.loadFiles().then(setFiles).catch(() => setFiles([]));
+      void props
+        .loadFiles()
+        .then(setFiles)
+        .catch(() => setFiles([]));
     }
   }
 
@@ -442,7 +445,11 @@ export default function Composer(props: {
     const accepted: UploadFile[] = [];
     let count = props.attachments.length;
     for (const file of files) {
-      const verdict = checkAttachment({ name: file.name, mediaType: file.type, bytes: file.size }, count, props.uploads);
+      const verdict = checkAttachment(
+        { name: file.name, mediaType: file.type, bytes: file.size },
+        count,
+        props.uploads,
+      );
       if (!verdict.ok) {
         props.onAttachRejected(verdict.reason);
         continue;
@@ -785,7 +792,11 @@ export default function Composer(props: {
             {(q) => {
               const text = () => queuedText(q);
               const attached = () => q.blocks.filter((b) => b.type !== "text");
-              const named = () => text() || attached().map((b) => tokenOf(b) ?? tileName(b)).join(" ");
+              const named = () =>
+                text() ||
+                attached()
+                  .map((b) => tokenOf(b) ?? tileName(b))
+                  .join(" ");
               const row = drag.rowProps(q.id);
               return (
                 <div
@@ -912,7 +923,9 @@ export default function Composer(props: {
               >
                 <span class={styles.completionDesc}>{entry.text.split("\n")[0].trim() || "(attachments only)"}</span>
                 <Show when={entry.chips.length}>
-                  {(n) => <span class={styles.completionHint}>{n() === 1 ? "1 attachment" : `${n()} attachments`}</span>}
+                  {(n) => (
+                    <span class={styles.completionHint}>{n() === 1 ? "1 attachment" : `${n()} attachments`}</span>
+                  )}
                 </Show>
                 <span class={styles.completionHint}>{ago(Math.floor(entry.at / 1000))}</span>
                 {/* Pointer only: an option may hold no control of its own, and
@@ -972,9 +985,7 @@ export default function Composer(props: {
                 onClick={accept}
               >
                 <span class={styles.completionName}>/{cmd.name}</span>
-                <Show when={cmd.argumentHint}>
-                  {(hint) => <span class={styles.completionHint}>{hint()}</span>}
-                </Show>
+                <Show when={cmd.argumentHint}>{(hint) => <span class={styles.completionHint}>{hint()}</span>}</Show>
                 <Show when={cmd.description}>
                   <span class={styles.completionDesc}>{cmd.description}</span>
                 </Show>
@@ -1004,7 +1015,15 @@ export default function Composer(props: {
               const [missing, setMissing] = createSignal(false);
               if (path && props.fileExists) {
                 const ask = props.fileExists;
-                createEffect(on(focusTick, () => void ask(path).then((ok) => setMissing(!ok)).catch(() => {})));
+                createEffect(
+                  on(
+                    focusTick,
+                    () =>
+                      void ask(path)
+                        .then((ok) => setMissing(!ok))
+                        .catch(() => {}),
+                  ),
+                );
               }
               const reason = () => (missing() && path ? `. No file at ${path}` : "");
               function open(e: MouseEvent, at: string) {
@@ -1096,9 +1115,7 @@ export default function Composer(props: {
       <Show when={dragging()}>
         <div class={styles.dropHint}>{dropHint(props.uploads)}</div>
       </Show>
-      <Show when={props.notice}>
-        {(notice) => <div class={styles.composerNotice}>{notice()}</div>}
-      </Show>
+      <Show when={props.notice}>{(notice) => <div class={styles.composerNotice}>{notice()}</div>}</Show>
       <div class={styles.composerBox}>
         <textarea
           ref={input}

@@ -37,9 +37,7 @@ const config = {
     {
       name: "other",
       path: "/root/other",
-      projects: [
-        { name: "solo", path: SOLO, branchUnits: [unit(SOLO, "main")] },
-      ],
+      projects: [{ name: "solo", path: SOLO, branchUnits: [unit(SOLO, "main")] }],
     },
   ],
 };
@@ -66,7 +64,14 @@ const LISTINGS: Record<string, ReturnType<typeof session>[]> = {
 };
 
 const liveTabs = [
-  { id: "tab-1", workspace: MAIN, kind: "agent" as const, sessionId: "live-1", agent: "claude" as const, state: "live" as const },
+  {
+    id: "tab-1",
+    workspace: MAIN,
+    kind: "agent" as const,
+    sessionId: "live-1",
+    agent: "claude" as const,
+    state: "live" as const,
+  },
 ];
 
 const bridge = vi.hoisted(() => ({
@@ -110,12 +115,10 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { sessions, resetSessionStoreForTests } = await import("../../utils/sessionStore");
-const { liveSessionStatuses, noteDots, sessionStatus, resetSessionActivityForTests } = await import(
-  "../../utils/sessionActivity"
-);
+const { liveSessionStatuses, noteDots, sessionStatus, resetSessionActivityForTests } =
+  await import("../../utils/sessionActivity");
 
-const listedFolders = () =>
-  bridge.calls.filter((c) => c.cmd === "list_sessions").map((c) => String(c.args.folder));
+const listedFolders = () => bridge.calls.filter((c) => c.cmd === "list_sessions").map((c) => String(c.args.folder));
 
 const probedIds = () =>
   bridge.calls
@@ -141,8 +144,7 @@ describe("what the sidebar can see without being expanded", () => {
     render(() => <LeftSidebar selected={null} onSelect={(s) => picked.push(s)} liveTabs={liveTabs} />);
     await waitFor(() => expect(bridge.handlers["tray://focus-session"]).toBeTruthy());
     await waitFor(() => expect(sessions()[MAIN]).toBeTruthy());
-    const pickedIds = () =>
-      picked.map((s) => (s as { sessionId?: string } | null)?.sessionId).filter(Boolean);
+    const pickedIds = () => picked.map((s) => (s as { sessionId?: string } | null)?.sessionId).filter(Boolean);
 
     bridge.handlers["tray://focus-session"]({ payload: "detached-1" });
     await waitFor(() => expect(pickedIds()).toContain("detached-1"));
@@ -192,9 +194,7 @@ describe("what the sidebar can see without being expanded", () => {
 
     expect(sessions()[MAIN]?.map((s) => s.id)).toEqual(["live-1", "detached-1", "chat-1"]);
     // And the join still resolves, which is what the notification depends on.
-    await waitFor(() =>
-      expect(liveSessionStatuses().map((s) => s.sessionId)).toEqual(["live-1"]),
-    );
+    await waitFor(() => expect(liveSessionStatuses().map((s) => s.sessionId)).toEqual(["live-1"]));
   });
 
   // Rust's dot end to end, through the event the scanner actually raises, from
@@ -204,14 +204,17 @@ describe("what the sidebar can see without being expanded", () => {
     await waitFor(() => expect(bridge.handlers["sessions://changed"]).toBeTruthy());
 
     noteDots([
-      { id: "live-1", dot: "needsYou", certainty: "exact", home: { project: "/root/work/repo", folder: MAIN, branch: "main" } },
+      {
+        id: "live-1",
+        dot: "needsYou",
+        certainty: "exact",
+        home: { project: "/root/work/repo", folder: MAIN, branch: "main" },
+      },
     ]);
     bridge.handlers["sessions://changed"]({ payload: null });
 
     await waitFor(() =>
-      expect(liveSessionStatuses().find((s) => s.sessionId === "live-1")?.status).toBe(
-        "waitingForApproval",
-      ),
+      expect(liveSessionStatuses().find((s) => s.sessionId === "live-1")?.status).toBe("waitingForApproval"),
     );
   });
 
@@ -225,7 +228,12 @@ describe("what the sidebar can see without being expanded", () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
 
     noteDots([
-      { id: "detached-1", dot: "hollow", certainty: "inferred", home: { project: "/root/work/repo", folder: MAIN, branch: "main" } },
+      {
+        id: "detached-1",
+        dot: "hollow",
+        certainty: "inferred",
+        home: { project: "/root/work/repo", folder: MAIN, branch: "main" },
+      },
     ]);
     await waitFor(() => expect(sessionStatus("detached-1")).toBe("running"));
   });
@@ -248,9 +256,7 @@ describe("what the sidebar can see without being expanded", () => {
     ));
     await waitFor(() => expect(sessions()[MAIN]).toBeTruthy());
 
-    window.dispatchEvent(
-      new CustomEvent("tori:terminal-tab-focused", { detail: { folderPath: MAIN, sessionId } }),
-    );
+    window.dispatchEvent(new CustomEvent("tori:terminal-tab-focused", { detail: { folderPath: MAIN, sessionId } }));
 
     const last = () => picked[picked.length - 1];
     await waitFor(() => expect(last()?.sessionId).toBe(sessionId));

@@ -148,9 +148,7 @@ describe("scrollTopFor and placeAt", () => {
     const wide = [1600, 800, 1600];
     const place = placeAt(scrollTopFor(3, heights, 0.5), 0, heights);
     // The same fraction of the same page, at twice the scale.
-    expect(scrollTopFor(place.page, wide, place.offset)).toBe(
-      COLUMN_PADDING + 1600 + PAGE_GAP + 800 + PAGE_GAP + 800,
-    );
+    expect(scrollTopFor(place.page, wide, place.offset)).toBe(COLUMN_PADDING + 1600 + PAGE_GAP + 800 + PAGE_GAP + 800);
   });
 
   it("answers the top of an empty document", () => {
@@ -179,9 +177,7 @@ describe("zoom", () => {
   });
 
   it("falls back to fit-width for a viewport with no measured height", () => {
-    expect(fitPageScale(LETTER_VIEWPORT.width, 0, LETTER)).toBe(
-      fitWidthScale(LETTER_VIEWPORT.width, LETTER),
-    );
+    expect(fitPageScale(LETTER_VIEWPORT.width, 0, LETTER)).toBe(fitWidthScale(LETTER_VIEWPORT.width, LETTER));
   });
 
   it("takes a percentage as a percentage of actual size", () => {

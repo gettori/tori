@@ -140,14 +140,17 @@ export function Thread(props: {
           <Show
             when={m.from === "system"}
             fallback={
-              <Show when={m.from === "me"} fallback={
-                <div class={styles.theirs}>
-                  <Show when={!props.dense}>
-                    <ReplyMark />
-                  </Show>
-                  <span>{props.reply ? props.reply(m.text) : m.text}</span>
-                </div>
-              }>
+              <Show
+                when={m.from === "me"}
+                fallback={
+                  <div class={styles.theirs}>
+                    <Show when={!props.dense}>
+                      <ReplyMark />
+                    </Show>
+                    <span>{props.reply ? props.reply(m.text) : m.text}</span>
+                  </div>
+                }
+              >
                 <div class={styles.mine}>{m.text}</div>
               </Show>
             }
@@ -165,7 +168,12 @@ export function Thread(props: {
 }
 
 /** The popup's one-line composer: Enter sends and clears. */
-export function Composer(props: { placeholder: string; disabled?: boolean; dense?: boolean; onSend: (text: string) => void }) {
+export function Composer(props: {
+  placeholder: string;
+  disabled?: boolean;
+  dense?: boolean;
+  onSend: (text: string) => void;
+}) {
   const [text, setText] = createSignal("");
   const send = () => {
     const t = text().trim();
@@ -174,7 +182,11 @@ export function Composer(props: { placeholder: string; disabled?: boolean; dense
     setText("");
   };
   return (
-    <div class={styles.composer} data-disabled={props.disabled ? "true" : "false"} data-dense={props.dense ? "true" : "false"}>
+    <div
+      class={styles.composer}
+      data-disabled={props.disabled ? "true" : "false"}
+      data-dense={props.dense ? "true" : "false"}
+    >
       <div class={styles.composerField}>
         <input
           class={styles.input}
@@ -191,7 +203,13 @@ export function Composer(props: { placeholder: string; disabled?: boolean; dense
           }}
         />
       </div>
-      <button type="button" class={styles.send} aria-label="Send" disabled={props.disabled || !text().trim()} onClick={send}>
+      <button
+        type="button"
+        class={styles.send}
+        aria-label="Send"
+        disabled={props.disabled || !text().trim()}
+        onClick={send}
+      >
         <Icon icon={ArrowUp} class={styles.sendIcon} />
       </button>
     </div>
@@ -199,9 +217,18 @@ export function Composer(props: { placeholder: string; disabled?: boolean; dense
 }
 
 /** A picture of the composer: the real one is the Chat panel's, wired in #205. */
-export function ComposerShell(props: { placeholder: string; disabled?: boolean; hints?: JSX.Element; dense?: boolean }) {
+export function ComposerShell(props: {
+  placeholder: string;
+  disabled?: boolean;
+  hints?: JSX.Element;
+  dense?: boolean;
+}) {
   return (
-    <div class={styles.composer} data-disabled={props.disabled ? "true" : "false"} data-dense={props.dense ? "true" : "false"}>
+    <div
+      class={styles.composer}
+      data-disabled={props.disabled ? "true" : "false"}
+      data-dense={props.dense ? "true" : "false"}
+    >
       <div class={styles.composerField}>
         <span class={styles.placeholder}>{props.placeholder}</span>
         <Show when={props.hints}>

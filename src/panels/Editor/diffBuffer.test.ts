@@ -49,7 +49,14 @@ function load(diff = DIFF): EditorState {
   return state.update({ effects: setDiffHunks.of({ hunks: parseDiffHunks(diff), language: null }) }).state;
 }
 
-type Found = { line: number; from: number; to: number; cls?: string; removed?: string[]; removedOld?: (number | null)[] };
+type Found = {
+  line: number;
+  from: number;
+  to: number;
+  cls?: string;
+  removed?: string[];
+  removedOld?: (number | null)[];
+};
 
 function decorations(state: EditorState): Found[] {
   const out: Found[] = [];

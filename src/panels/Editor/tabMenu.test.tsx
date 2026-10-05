@@ -105,8 +105,7 @@ async function mountEditor() {
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 
-const strip = () =>
-  Array.from(document.querySelectorAll("[data-tab-id]")).map((t) => t.getAttribute("data-tab-id"));
+const strip = () => Array.from(document.querySelectorAll("[data-tab-id]")).map((t) => t.getAttribute("data-tab-id"));
 
 async function open(path: string) {
   emitWith(OPEN_IN_EDITOR, { path });

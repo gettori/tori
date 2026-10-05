@@ -2,8 +2,8 @@
   "name": "tori",
   "version": "26.1005.1-alpha",
   "description": "Dev workflow manager: session tree + Claude terminal + editor",
+  "license": "Apache-2.0",
   "type": "module",
-  "packageManager": "pnpm@10.32.1",
   "scripts": {
     "start": "vp dev",
     "dev": "vp dev",
@@ -18,7 +18,6 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
-  "license": "Apache-2.0",
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
@@ -81,5 +80,6 @@
     "vite": "catalog:",
     "vite-plugin-solid": "^2.11.14",
     "vite-plus": "catalog:"
-  }
+  },
+  "packageManager": "pnpm@10.32.1"
 }

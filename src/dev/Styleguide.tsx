@@ -38,48 +38,95 @@ const BRAND_NOTES: Record<string, string> = {
 };
 
 /** The 16-slot ANSI ramp, in the order a terminal indexes it. */
-const ANSI_SLOTS = ROLES.filter(
-  (r) => r.group === "ansi" && r.id !== "ansi.cursor" && r.id !== "ansi.selection",
-);
+const ANSI_SLOTS = ROLES.filter((r) => r.group === "ansi" && r.id !== "ansi.cursor" && r.id !== "ansi.selection");
 
 /** A code sample that exercises one syntax role per span, so a ramp with two
  *  categories accidentally equal is visible rather than merely measurable. */
 const SYNTAX_SAMPLE: [string, string][] = [
-  ["syntax.comment", "// resolve a theme"], ["", "\n"],
-  ["syntax.keyword", "export"], ["", " "],
-  ["syntax.control", "async"], ["", " "],
-  ["syntax.keyword", "function"], ["", " "],
-  ["syntax.function", "resolve"], ["syntax.punctuation", "("],
-  ["syntax.parameter", "id"], ["syntax.punctuation", ":"], ["", " "],
-  ["syntax.type", "ThemeId"], ["syntax.punctuation", ")"], ["", " "],
-  ["syntax.punctuation", "{"], ["", "\n  "],
-  ["syntax.control", "const"], ["", " "],
-  ["syntax.variable", "raw"], ["", " "],
-  ["syntax.operator", "="], ["", " "],
-  ["syntax.control", "await"], ["", " "],
-  ["syntax.namespace", "fs"], ["syntax.punctuation", "."],
-  ["syntax.method", "readFile"], ["syntax.punctuation", "("],
-  ["syntax.string", '"palette.json"'], ["syntax.punctuation", ");"], ["", "\n  "],
-  ["syntax.control", "return"], ["", " "],
-  ["syntax.class", "Palette"], ["syntax.punctuation", "."],
-  ["syntax.method", "parse"], ["syntax.punctuation", "("],
-  ["syntax.variable", "raw"], ["syntax.punctuation", ","], ["", " "],
-  ["syntax.number", "1"], ["syntax.punctuation", ","], ["", " "],
-  ["syntax.constant", "STRICT"], ["syntax.punctuation", ");"], ["", "\n"],
-  ["syntax.punctuation", "}"], ["", "\n"],
-  ["syntax.regexp", "/\\btori-[a-z]+\\b/"], ["", "  "],
-  ["syntax.string", '"tab\\t"'], ["syntax.escape", "\\n"], ["", "\n"],
-  ["syntax.punctuation", "<"], ["syntax.tag", "button"], ["", " "],
-  ["syntax.attribute", "disabled"], ["syntax.punctuation", "/>"],
+  ["syntax.comment", "// resolve a theme"],
+  ["", "\n"],
+  ["syntax.keyword", "export"],
+  ["", " "],
+  ["syntax.control", "async"],
+  ["", " "],
+  ["syntax.keyword", "function"],
+  ["", " "],
+  ["syntax.function", "resolve"],
+  ["syntax.punctuation", "("],
+  ["syntax.parameter", "id"],
+  ["syntax.punctuation", ":"],
+  ["", " "],
+  ["syntax.type", "ThemeId"],
+  ["syntax.punctuation", ")"],
+  ["", " "],
+  ["syntax.punctuation", "{"],
+  ["", "\n  "],
+  ["syntax.control", "const"],
+  ["", " "],
+  ["syntax.variable", "raw"],
+  ["", " "],
+  ["syntax.operator", "="],
+  ["", " "],
+  ["syntax.control", "await"],
+  ["", " "],
+  ["syntax.namespace", "fs"],
+  ["syntax.punctuation", "."],
+  ["syntax.method", "readFile"],
+  ["syntax.punctuation", "("],
+  ["syntax.string", '"palette.json"'],
+  ["syntax.punctuation", ");"],
+  ["", "\n  "],
+  ["syntax.control", "return"],
+  ["", " "],
+  ["syntax.class", "Palette"],
+  ["syntax.punctuation", "."],
+  ["syntax.method", "parse"],
+  ["syntax.punctuation", "("],
+  ["syntax.variable", "raw"],
+  ["syntax.punctuation", ","],
+  ["", " "],
+  ["syntax.number", "1"],
+  ["syntax.punctuation", ","],
+  ["", " "],
+  ["syntax.constant", "STRICT"],
+  ["syntax.punctuation", ");"],
+  ["", "\n"],
+  ["syntax.punctuation", "}"],
+  ["", "\n"],
+  ["syntax.regexp", "/\\btori-[a-z]+\\b/"],
+  ["", "  "],
+  ["syntax.string", '"tab\\t"'],
+  ["syntax.escape", "\\n"],
+  ["", "\n"],
+  ["syntax.punctuation", "<"],
+  ["syntax.tag", "button"],
+  ["", " "],
+  ["syntax.attribute", "disabled"],
+  ["syntax.punctuation", "/>"],
 ];
 
 /** Chosen so all eleven `scale.*` hues are on screen at once: a hue with no file
  *  in this list is a hue nobody would notice going wrong. */
 const ICON_SAMPLE = [
-  "index.ts", "readme.md", "styles.css", "main.rs", "app.py", "Cargo.toml",
-  "package.json", "logo.svg", "Dockerfile", "notes.txt", "script.sh",
-  "photo.png", "index.html", "query.sql", "vite.config.ts",
-  "Main.java", "pom.xml", ".gitconfig", ".dockerignore",
+  "index.ts",
+  "readme.md",
+  "styles.css",
+  "main.rs",
+  "app.py",
+  "Cargo.toml",
+  "package.json",
+  "logo.svg",
+  "Dockerfile",
+  "notes.txt",
+  "script.sh",
+  "photo.png",
+  "index.html",
+  "query.sql",
+  "vite.config.ts",
+  "Main.java",
+  "pom.xml",
+  ".gitconfig",
+  ".dockerignore",
 ];
 
 const SPACE = ["1", "2", "3", "4", "5", "6", "7", "8"] as const;
@@ -161,8 +208,8 @@ export default function Styleguide() {
               <For each={gate().failures}>
                 {(f) => (
                   <li class={styles.gateFail}>
-                    <code>{f.cssVar}</code> on <code>{f.surface}</code> is{" "}
-                    {f.ratio.toFixed(2)}, needs {f.required.toFixed(1)} ({f.tier})
+                    <code>{f.cssVar}</code> on <code>{f.surface}</code> is {f.ratio.toFixed(2)}, needs{" "}
+                    {f.required.toFixed(1)} ({f.tier})
                   </li>
                 )}
               </For>
@@ -175,10 +222,7 @@ export default function Styleguide() {
           <div class={styles.ansiRow}>
             <For each={ANSI_SLOTS}>
               {(role) => (
-                <div
-                  class={styles.ansiCell}
-                  classList={{ [styles.failing]: failedVars().has(role.cssVar) }}
-                >
+                <div class={styles.ansiCell} classList={{ [styles.failing]: failedVars().has(role.cssVar) }}>
                   <div class={styles.ansiChip} style={{ background: `var(${role.cssVar})` }} />
                   <code>{role.id.slice("ansi.".length)}</code>
                 </div>
@@ -254,7 +298,9 @@ export default function Styleguide() {
         </section>
 
         <section>
-          <h2>Roles ({ROLES.length} across {new Set(ROLES.map((r) => r.group)).size} families)</h2>
+          <h2>
+            Roles ({ROLES.length} across {new Set(ROLES.map((r) => r.group)).size} families)
+          </h2>
           <For each={[...new Set(ROLES.map((r) => r.group))]}>
             {(group) => (
               <>
@@ -262,10 +308,7 @@ export default function Styleguide() {
                 <div class={styles.roleGrid}>
                   <For each={ROLES.filter((r) => r.group === group)}>
                     {(role) => (
-                      <div
-                        class={styles.roleCell}
-                        classList={{ [styles.failing]: failedVars().has(role.cssVar) }}
-                      >
+                      <div class={styles.roleCell} classList={{ [styles.failing]: failedVars().has(role.cssVar) }}>
                         <div class={styles.roleChip} style={{ background: `var(${role.cssVar})` }} />
                         <code>{role.cssVar}</code>
                       </div>
@@ -297,9 +340,7 @@ export default function Styleguide() {
           <p style={{ "font-weight": 600 }}>600 — semibold. The quick brown fox jumps over the lazy dog.</p>
           <p style={{ "font-weight": 700 }}>700 — bold. The quick brown fox jumps over the lazy dog.</p>
           <div class={styles.typeScale}>
-            <For each={TYPE}>
-              {(t) => <span style={{ "font-size": `var(--tori-text-${t})` }}>text-{t}</span>}
-            </For>
+            <For each={TYPE}>{(t) => <span style={{ "font-size": `var(--tori-text-${t})` }}>text-{t}</span>}</For>
           </div>
         </section>
 
@@ -346,8 +387,8 @@ export default function Styleguide() {
         <section>
           <h2>Controls (icon button, segmented, tab)</h2>
           <p class={styles.note}>
-            Each control of a size is exactly one fixed height (28 / 24 / 20 &times; scale), so a
-            button, an icon button, a segmented strip, and a tab all line up.
+            Each control of a size is exactly one fixed height (28 / 24 / 20 &times; scale), so a button, an icon
+            button, a segmented strip, and a tab all line up.
           </p>
           <For each={SIZES as ControlSize[]}>
             {(size) => (
@@ -382,18 +423,11 @@ export default function Styleguide() {
               is a Kobalte trigger and reads its selection from the strip above
               it. The signal stays so the demo still shows what a controlled
               strip looks like. */}
-          <Tabs.Root
-            value={String(activeTab())}
-            onChange={(v) => setActiveTab(Number(v))}
-          >
+          <Tabs.Root value={String(activeTab())} onChange={(v) => setActiveTab(Number(v))}>
             <Tabs.List class={styles.btnRow} aria-label="Tab pill">
               <For each={["README.md", "tokens.css", "settings.rs"]}>
                 {(name, i) => (
-                  <Tab
-                    value={String(i())}
-                    icon={<Icon icon={FileText} />}
-                    onClose={() => {}}
-                  >
+                  <Tab value={String(i())} icon={<Icon icon={FileText} />} onClose={() => {}}>
                     {name}
                   </Tab>
                 )}

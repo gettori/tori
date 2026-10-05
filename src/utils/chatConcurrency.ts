@@ -109,4 +109,3 @@ export function chatTabLabel(baseName: string, taken: readonly string[]): string
     if (!used.has(label)) return label;
   }
 }
-

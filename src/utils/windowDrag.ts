@@ -46,6 +46,12 @@ export function windowDragStart(e: MouseEvent) {
   if (target.closest(INTERACTIVE)) return;
   // One mousedown carries both gestures, the way Tauri's own drag region reads
   // them: `detail` is 2 on the second press of a double click.
-  if (e.detail === 2) void getCurrentWindow().toggleMaximize().catch(() => {});
-  else void getCurrentWindow().startDragging().catch(() => {});
+  if (e.detail === 2)
+    void getCurrentWindow()
+      .toggleMaximize()
+      .catch(() => {});
+  else
+    void getCurrentWindow()
+      .startDragging()
+      .catch(() => {});
 }

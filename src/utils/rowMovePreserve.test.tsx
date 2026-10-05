@@ -75,9 +75,7 @@ describe("preserveScrollAndFocus", () => {
 
     preserveScrollAndFocus(container, () => setItems([rows[1], rows[2], rows[0]]));
 
-    const order = Array.from(container.querySelectorAll("[data-id]")).map((el) =>
-      el.getAttribute("data-id"),
-    );
+    const order = Array.from(container.querySelectorAll("[data-id]")).map((el) => el.getAttribute("data-id"));
     expect(order).toEqual(["f1", "c2", "c1"]);
     expect(Math.abs(scroller.scrollTop - 640)).toBeLessThanOrEqual(1);
     expect(document.activeElement).toBe(composer);

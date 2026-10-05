@@ -16,7 +16,12 @@ type Entry = { name: string; glyph: () => JSX.Element; on?: boolean; dim?: boole
 const BASE = "~/Projects";
 const at = (project: string) => `${BASE}/work/${project}`;
 const dir = (name: string, on?: boolean): Entry => ({ name, glyph: () => <Icon icon={Folder} />, on, folder: true });
-const project = (name: string, on?: boolean): Entry => ({ name, glyph: () => <ProjectIcon seed={at(name)} />, on, folder: true });
+const project = (name: string, on?: boolean): Entry => ({
+  name,
+  glyph: () => <ProjectIcon seed={at(name)} />,
+  on,
+  folder: true,
+});
 const worktree = (name: string, on?: boolean): Entry => ({ name, glyph: () => <WorktreeMark active={false} />, on });
 
 const COLUMNS: { level: string; entries: Entry[] }[] = [
@@ -123,10 +128,22 @@ function Sidebar() {
           <span class={sidebar.spaceHeaderKind}>{"\u00b7 Spaces"}</span>
           <Level n={2} class={styles.inTree} />
         </div>
-        <Button class={sidebar.searchToggle} variant="ghost" size="md" aria-label="Filter" icon={<Icon icon={Search} />} />
+        <Button
+          class={sidebar.searchToggle}
+          variant="ghost"
+          size="md"
+          aria-label="Filter"
+          icon={<Icon icon={Search} />}
+        />
       </div>
       <div class={`${sidebar.treeScroll} ${styles.scroll}`}>
-        <ProjectRow name="api" icon={<ProjectIcon seed={at("api")} />} disclosure open end={<Level n={3} class={styles.inTree} />}>
+        <ProjectRow
+          name="api"
+          icon={<ProjectIcon seed={at("api")} />}
+          disclosure
+          open
+          end={<Level n={3} class={styles.inTree} />}
+        >
           <BranchRow label="main" icon={<WorktreeMark active={false} />} />
           <BranchRow
             label="fix/rate-limit"

@@ -73,9 +73,7 @@ export default function GitSection() {
             <GitLogo size="calc(34px * var(--ui-scale))" />
           </div>
           <div class={styles.connectMain}>
-            <div class={styles.connectTitle}>
-              {ready()?.version ? `git ${ready()!.version}` : "git"}
-            </div>
+            <div class={styles.connectTitle}>{ready()?.version ? `git ${ready()!.version}` : "git"}</div>
             <div class={styles.cardStatus}>
               <Show when={missing()} fallback={<code>{ready()?.path}</code>}>
                 {(kind) => <>{(started() ? WAITING : STATUS)[kind()]}</>}
@@ -93,9 +91,7 @@ export default function GitSection() {
                     {INSTALL_LABEL[kind()]}
                   </Button>
                 </Show>
-                <Button
-                  onClick={() => void probe("refresh_git_health").then(() => setStarted(false))}
-                >
+                <Button onClick={() => void probe("refresh_git_health").then(() => setStarted(false))}>
                   Check again
                 </Button>
               </>

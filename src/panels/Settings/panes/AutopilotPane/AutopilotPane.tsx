@@ -50,11 +50,7 @@ export default function AutopilotPane(props: PaneProps) {
   return (
     <Group {...props} title="Autopilot" ids={idsIn("autopilot")}>
       <Row {...props} id="autopilot-on" label="Enable autopilot">
-        <Switch
-          checked={settings.autopilot.available}
-          onChange={setAutopilotAvailable}
-          aria-label="Enable autopilot"
-        />
+        <Switch checked={settings.autopilot.available} onChange={setAutopilotAvailable} aria-label="Enable autopilot" />
       </Row>
 
       <Row {...props} id="autopilot-model" label="Autopilot model">

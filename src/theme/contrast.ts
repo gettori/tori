@@ -29,7 +29,11 @@ export function parseColor(value: string): { rgb: Rgb; a: number } | null {
   const hex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.exec(value.trim());
   if (hex) {
     let body = hex[1];
-    if (body.length === 3) body = body.split("").map((c) => c + c).join("");
+    if (body.length === 3)
+      body = body
+        .split("")
+        .map((c) => c + c)
+        .join("");
     const at = (i: number) => parseInt(body.slice(i, i + 2), 16);
     return { rgb: [at(0), at(2), at(4)], a: body.length === 8 ? at(6) / 255 : 1 };
   }
@@ -272,7 +276,9 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   // shell mixes it down to 14% (4% in light) against the canvas, and
   // `shell.glow` above is that mix, measured as the surface it actually is.
   // Measuring the raw stop would gate a colour nothing ever renders.
-  "shell.glowRgb": exempt("a bare channel triple, not a colour. The shell mixes its own alpha from it, and what that produces is a wash over canvas.default rather than a surface of its own"),
+  "shell.glowRgb": exempt(
+    "a bare channel triple, not a colour. The shell mixes its own alpha from it, and what that produces is a wash over canvas.default rather than a surface of its own",
+  ),
   "shell.cardShadow": exempt("a box-shadow value, not a colour"),
 
   "tree.rowHover": surface(),
@@ -381,8 +387,7 @@ export function checkPalette(palette: Palette, rules = CONTRAST_RULES): Contrast
       const ratio = ratioOn(values[role.id], values[surfaceId]);
       if (ratio === null) {
         problems.push(
-          `role ${role.id} on ${surfaceId} could not be measured ` +
-            `("${values[role.id]}" on "${values[surfaceId]}")`,
+          `role ${role.id} on ${surfaceId} could not be measured ` + `("${values[role.id]}" on "${values[surfaceId]}")`,
         );
         continue;
       }

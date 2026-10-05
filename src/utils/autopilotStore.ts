@@ -13,7 +13,16 @@ import type { ChatEvent, HistoryTail } from "./chatTypes";
 import { pushToast } from "../components/Toasts/Toasts";
 import { NAVIGATE, on, TOGGLE_AUTOPILOT_POPUP, TOGGLE_AUTOPILOT_VIEW } from "./events";
 import { allAsks, answerAsk } from "./socketAsks";
-import { activityOf, applyItem, autopilotState, decisionOf, decisionsFor, type AutopilotEvent, type Hold, type ItemRow } from "./autopilotRows";
+import {
+  activityOf,
+  applyItem,
+  autopilotState,
+  decisionOf,
+  decisionsFor,
+  type AutopilotEvent,
+  type Hold,
+  type ItemRow,
+} from "./autopilotRows";
 import { findSession } from "./sessionStore";
 import { toriNote } from "./toriNote";
 import { saveSettings, settings } from "../panels/Settings/settingsStore";
@@ -44,8 +53,7 @@ export { view, setView, popupOpen, setPopupOpen };
 
 /** Whether a view can attach to the session: it exists once a turn has started,
  *  and attaching before that would spawn a second child on the same id. */
-export const attachable = (s: RunnerStatus) =>
-  s.session !== null && (s.state === "idle" || s.state === "working");
+export const attachable = (s: RunnerStatus) => s.session !== null && (s.state === "idle" || s.state === "working");
 
 const THREAD_KEPT = 6;
 
@@ -58,9 +66,7 @@ export function threadFrom(events: ChatEvent[]): ThreadMessage[] {
     if (e.type === "userMessage") {
       reply = null;
       if (toriNote(e.blocks)) continue;
-      const text = e.blocks
-        .flatMap((b) => (b.type === "text" ? [b.text] : []))
-        .join("\n");
+      const text = e.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
       if (text) out.push({ from: "me", text });
     } else if (e.type === "textDelta" && e.agentId === null) {
       if (!reply) {
@@ -139,7 +145,10 @@ async function loadAutopilot() {
   }
   const logged = await invoke<AutopilotEvent[]>("autopilot_log", { limit: ACTIVITY_KEPT }).catch(() => []);
   // A line at or after the first live event was already added by it.
-  addActivity(logged.filter((e) => firstLive === null || e.ts < firstLive), true);
+  addActivity(
+    logged.filter((e) => firstLive === null || e.ts < firstLive),
+    true,
+  );
 }
 
 let started = false;
@@ -152,7 +161,10 @@ export function watchAutopilot() {
     setPopupOpen(false);
     setView(view() === "autopilot" ? "workspace" : "autopilot");
   });
-  on(TOGGLE_AUTOPILOT_POPUP, () => settings.autopilot.available && view() === "workspace" && setPopupOpen(!popupOpen()));
+  on(
+    TOGGLE_AUTOPILOT_POPUP,
+    () => settings.autopilot.available && view() === "workspace" && setPopupOpen(!popupOpen()),
+  );
   // Wherever it is going is in the workspace.
   on(NAVIGATE, () => {
     setPopupOpen(false);
@@ -193,7 +205,13 @@ const openView = () => {
 export function decide(action: DecisionAction, decision: Decision) {
   const ask = allAsks().find((a) => a.id === decision.id);
   if (!ask) return;
-  const answer = !ask.approval ? undefined : action === "approve" ? "Approve" : action === "dismiss" ? "Reject" : undefined;
+  const answer = !ask.approval
+    ? undefined
+    : action === "approve"
+      ? "Approve"
+      : action === "dismiss"
+        ? "Reject"
+        : undefined;
   if (answer === undefined) return openView();
   answerAsk(ask.id, answer).catch((e) => pushToast(`The answer did not reach the asker: ${String(e)}`));
 }

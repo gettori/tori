@@ -93,7 +93,11 @@ fn redact_headers(headers: &[(String, String)]) -> Vec<(&str, &str)> {
     headers
         .iter()
         .map(|(k, v)| {
-            let value = if k.eq_ignore_ascii_case("authorization") { REDACTED } else { v.as_str() };
+            let value = if k.eq_ignore_ascii_case("authorization") {
+                REDACTED
+            } else {
+                v.as_str()
+            };
             (k.as_str(), value)
         })
         .collect()
@@ -152,7 +156,9 @@ pub struct UreqTransport {
 
 impl Default for UreqTransport {
     fn default() -> Self {
-        Self { timeout: std::time::Duration::from_secs(15) }
+        Self {
+            timeout: std::time::Duration::from_secs(15),
+        }
     }
 }
 
@@ -276,9 +282,15 @@ pub const PAGE_CAP: usize = 20;
 fn grant_of(resp: &HttpResponse) -> Grant {
     Grant {
         scopes: resp.header("X-OAuth-Scopes").map(|s| {
-            s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+            s.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
         }),
-        expires_at: resp.header("GitHub-Authentication-Token-Expiration").and_then(epoch_secs),
+        expires_at: resp
+            .header("GitHub-Authentication-Token-Expiration")
+            .and_then(epoch_secs),
     }
 }
 
@@ -296,7 +308,10 @@ pub fn sso_challenge(resp: &HttpResponse) -> Option<OrgAccess> {
     }
     let url = params.split(';').find_map(|p| p.trim().strip_prefix("url="))?.trim();
     let org = url.split("/orgs/").nth(1)?.split('/').next()?;
-    (!org.is_empty()).then(|| OrgAccess { org: org.to_string(), url: url.to_string() })
+    (!org.is_empty()).then(|| OrgAccess {
+        org: org.to_string(),
+        url: url.to_string(),
+    })
 }
 
 /// What a response said about the rate budget, in either spelling.
@@ -306,11 +321,14 @@ pub fn sso_challenge(resp: &HttpResponse) -> Option<OrgAccess> {
 /// up disagreeing about which budget a response reported.
 pub fn rate_snapshot(resp: &HttpResponse) -> RateSnapshot {
     let field = |names: [&str; 2]| {
-        names.iter().find_map(|n| resp.header(n)).map(str::trim).filter(|v| !v.is_empty())
+        names
+            .iter()
+            .find_map(|n| resp.header(n))
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
     };
     RateSnapshot {
-        remaining: field(["X-RateLimit-Remaining", "RateLimit-Remaining"])
-            .and_then(|v| v.parse().ok()),
+        remaining: field(["X-RateLimit-Remaining", "RateLimit-Remaining"]).and_then(|v| v.parse().ok()),
         limit: field(["X-RateLimit-Limit", "RateLimit-Limit"]).and_then(|v| v.parse().ok()),
         reset_at: field(["X-RateLimit-Reset", "RateLimit-Reset"]).and_then(|v| v.parse().ok()),
     }
@@ -359,9 +377,7 @@ pub fn classify(resp: &HttpResponse) -> Option<ForgeError> {
         // status. Creating a PR with nothing to merge, or from a head the server
         // cannot see, lands here too, and reporting those as "a PR already
         // exists" sends the user looking for a PR that is not there.
-        422 if message.to_ascii_lowercase().contains("already exists") => {
-            ForgeError::AlreadyExists { message }
-        }
+        422 if message.to_ascii_lowercase().contains("already exists") => ForgeError::AlreadyExists { message },
         422 => ForgeError::Api { status: 422, message },
         429 => ForgeError::RateLimited {
             kind: RateLimitKind::Secondary,
@@ -387,7 +403,10 @@ fn error_message(body: &str) -> Option<String> {
         .get("errors")
         .and_then(|e| e.as_array())
         .map(|errs| {
-            errs.iter().filter_map(|e| e.get("message")?.as_str()).map(|s| s.to_string()).collect()
+            errs.iter()
+                .filter_map(|e| e.get("message")?.as_str())
+                .map(|s| s.to_string())
+                .collect()
         })
         .unwrap_or_default();
     if details.is_empty() {
@@ -417,7 +436,9 @@ pub fn parse_link_next(header: &str) -> Option<String> {
 
 fn origin_of(url: &str) -> &str {
     let after_scheme = url.find("://").map_or(0, |i| i + 3);
-    let end = url[after_scheme..].find(['/', '?', '#']).map_or(url.len(), |i| after_scheme + i);
+    let end = url[after_scheme..]
+        .find(['/', '?', '#'])
+        .map_or(url.len(), |i| after_scheme + i);
     &url[..end]
 }
 
@@ -438,8 +459,8 @@ pub fn paginate_rest(
         if let Some(err) = classify(&resp) {
             return Err(err);
         }
-        let page: Value = serde_json::from_str(&resp.body)
-            .map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
+        let page: Value =
+            serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
         match page {
             Value::Array(items) => out.extend(items),
             // Some list endpoints wrap the array (the Checks API returns
@@ -474,7 +495,9 @@ pub fn paginate_rest(
             // The request carries the token, so the next page has to be on the
             // host that was asked.
             Some(next) if origin_of(&next) != origin_of(&req.url) => {
-                return Err(ForgeError::Malformed { message: format!("the next page is on another host: {next}") })
+                return Err(ForgeError::Malformed {
+                    message: format!("the next page is on another host: {next}"),
+                })
             }
             Some(next) => req.url = next,
             None => return Ok((out, false)),
@@ -548,8 +571,7 @@ pub fn graphql_data(resp: &HttpResponse) -> Result<Value, ForgeError> {
     if let Some(err) = classify(resp) {
         return Err(err);
     }
-    let v: Value = serde_json::from_str(&resp.body)
-        .map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
+    let v: Value = serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
     if let Some(errors) = v.get("errors").and_then(|e| e.as_array()) {
         if !errors.is_empty() {
             let message = errors
@@ -559,17 +581,18 @@ pub fn graphql_data(resp: &HttpResponse) -> Result<Value, ForgeError> {
                 .join("; ");
             // A revoked or under-scoped token shows up here rather than as a
             // 401, so the credential states stay reachable through GraphQL too.
-            if errors.iter().any(|e| {
-                e.get("type").and_then(|t| t.as_str()) == Some("FORBIDDEN")
-            }) {
+            if errors
+                .iter()
+                .any(|e| e.get("type").and_then(|t| t.as_str()) == Some("FORBIDDEN"))
+            {
                 return Err(ForgeError::Forbidden { message });
             }
             return Err(ForgeError::Api { status: 200, message });
         }
     }
-    v.get("data")
-        .cloned()
-        .ok_or_else(|| ForgeError::Malformed { message: "no data in GraphQL response".into() })
+    v.get("data").cloned().ok_or_else(|| ForgeError::Malformed {
+        message: "no data in GraphQL response".into(),
+    })
 }
 
 /// Walks an outer connection to exhaustion, then fills in every node's nested
@@ -639,15 +662,19 @@ fn fill_nested(
     node: &mut Value,
     cap: usize,
 ) -> Result<bool, ForgeError> {
-    let Some(conn) = node.get(&spec.key) else { return Ok(false) };
+    let Some(conn) = node.get(&spec.key) else {
+        return Ok(false);
+    };
     let mut collected: Vec<Value> = conn
         .get("nodes")
         .and_then(|n| n.as_array())
         .cloned()
         .unwrap_or_default();
     let info = conn.get("pageInfo");
-    let mut has_next =
-        info.and_then(|i| i.get("hasNextPage")).and_then(|h| h.as_bool()).unwrap_or(false);
+    let mut has_next = info
+        .and_then(|i| i.get("hasNextPage"))
+        .and_then(|h| h.as_bool())
+        .unwrap_or(false);
     let mut cursor = info
         .and_then(|i| i.get("endCursor"))
         .and_then(|c| c.as_str())
@@ -678,8 +705,10 @@ fn fill_nested(
             collected.extend(page.clone());
         }
         let info = inner.get("pageInfo");
-        has_next =
-            info.and_then(|i| i.get("hasNextPage")).and_then(|h| h.as_bool()).unwrap_or(false);
+        has_next = info
+            .and_then(|i| i.get("hasNextPage"))
+            .and_then(|h| h.as_bool())
+            .unwrap_or(false);
         cursor = info
             .and_then(|i| i.get("endCursor"))
             .and_then(|c| c.as_str())
@@ -716,7 +745,11 @@ pub(crate) mod test_support {
         }
 
         pub fn json(status: u16, body: &str) -> HttpResponse {
-            HttpResponse { status, headers: vec![], body: body.to_string() }
+            HttpResponse {
+                status,
+                headers: vec![],
+                body: body.to_string(),
+            }
         }
 
         pub fn with_headers(status: u16, headers: &[(&str, &str)], body: &str) -> HttpResponse {
@@ -740,7 +773,12 @@ pub(crate) mod test_support {
 
         /// The request bodies, which is where a GraphQL document ends up.
         pub fn bodies(&self) -> Vec<String> {
-            self.seen.lock().unwrap().iter().map(|r| r.body.clone().unwrap_or_default()).collect()
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|r| r.body.clone().unwrap_or_default())
+                .collect()
         }
     }
 
@@ -751,7 +789,9 @@ pub(crate) mod test_support {
                 .lock()
                 .unwrap()
                 .pop_front()
-                .ok_or_else(|| ForgeError::Transport { message: "stub ran out of responses".into() })
+                .ok_or_else(|| ForgeError::Transport {
+                    message: "stub ran out of responses".into(),
+                })
         }
     }
 
@@ -810,7 +850,9 @@ mod tests {
         let forbidden = StubTransport::json(403, r#"{"message":"Resource not accessible"}"#);
         assert_eq!(
             classify(&forbidden),
-            Some(ForgeError::Forbidden { message: "Resource not accessible".into() })
+            Some(ForgeError::Forbidden {
+                message: "Resource not accessible".into()
+            })
         );
     }
 
@@ -847,7 +889,10 @@ mod tests {
         );
         assert!(matches!(
             classify(&exhausted),
-            Some(ForgeError::RateLimited { kind: RateLimitKind::Primary, .. })
+            Some(ForgeError::RateLimited {
+                kind: RateLimitKind::Primary,
+                ..
+            })
         ));
 
         // Both families feed the one snapshot the scheduler paces itself by.
@@ -862,14 +907,20 @@ mod tests {
         let resp = StubTransport::json(500, r#"{"message":"Server Error"}"#);
         assert_eq!(
             classify(&resp),
-            Some(ForgeError::Api { status: 500, message: "Server Error".into() })
+            Some(ForgeError::Api {
+                status: 500,
+                message: "Server Error".into()
+            })
         );
 
         // An unparseable body still has to say something useful.
         let raw = StubTransport::json(502, "<html>bad gateway</html>");
         assert_eq!(
             classify(&raw),
-            Some(ForgeError::Api { status: 502, message: "<html>bad gateway</html>".into() })
+            Some(ForgeError::Api {
+                status: 502,
+                message: "<html>bad gateway</html>".into()
+            })
         );
 
         // A 401 never becomes a generic API error: it is the credential state.
@@ -978,7 +1029,12 @@ mod tests {
     }
 
     fn get(url: &str) -> HttpRequest {
-        HttpRequest { method: "GET", url: url.into(), headers: vec![], body: None }
+        HttpRequest {
+            method: "GET",
+            url: url.into(),
+            headers: vec![],
+            body: None,
+        }
     }
 
     #[test]
@@ -1102,7 +1158,11 @@ mod tests {
 
         let nested = nested_spec();
         let (nodes, truncated) = paginate_graphql(
-            &GraphqlEndpoint { transport: &t, url: "https://api.test/graphql", headers: &[] },
+            &GraphqlEndpoint {
+                transport: &t,
+                url: "https://api.test/graphql",
+                headers: &[],
+            },
             "query($after:String){ ... }",
             &serde_json::json!({}),
             &outer_spec(),
@@ -1132,7 +1192,11 @@ mod tests {
             StubTransport::json(200, &threads_page(&thread("T2", "", false, ""), false, "tc2")),
         ]);
         paginate_graphql(
-            &GraphqlEndpoint { transport: &t, url: "https://api.test/graphql", headers: &[] },
+            &GraphqlEndpoint {
+                transport: &t,
+                url: "https://api.test/graphql",
+                headers: &[],
+            },
             "q",
             &serde_json::json!({}),
             &outer_spec(),
@@ -1157,7 +1221,11 @@ mod tests {
             r#"{"errors":[{"type":"FORBIDDEN","message":"Resource not accessible by integration"}]}"#,
         )]);
         let err = paginate_graphql(
-            &GraphqlEndpoint { transport: &t, url: "https://api.test/graphql", headers: &[] },
+            &GraphqlEndpoint {
+                transport: &t,
+                url: "https://api.test/graphql",
+                headers: &[],
+            },
             "q",
             &serde_json::json!({}),
             &outer_spec(),
@@ -1175,7 +1243,11 @@ mod tests {
             StubTransport::json(200, &threads_page(&thread("T2", "", false, ""), true, "c2")),
         ]);
         let (nodes, truncated) = paginate_graphql(
-            &GraphqlEndpoint { transport: &t, url: "https://api.test/graphql", headers: &[] },
+            &GraphqlEndpoint {
+                transport: &t,
+                url: "https://api.test/graphql",
+                headers: &[],
+            },
             "q",
             &serde_json::json!({}),
             &outer_spec(),
@@ -1197,7 +1269,11 @@ mod tests {
                "pageInfo":{"hasNextPage":true}}}}}}"#,
         )]);
         let (nodes, truncated) = paginate_graphql(
-            &GraphqlEndpoint { transport: &t, url: "https://api.test/graphql", headers: &[] },
+            &GraphqlEndpoint {
+                transport: &t,
+                url: "https://api.test/graphql",
+                headers: &[],
+            },
             "q",
             &serde_json::json!({}),
             &outer_spec(),

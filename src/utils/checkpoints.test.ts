@@ -3,9 +3,7 @@ import { stepCheckpointTrigger, type PromptTick } from "./checkpoints";
 
 describe("stepCheckpointTrigger", () => {
   it("fires on a session's very first prompt", () => {
-    const step = stepCheckpointTrigger({}, [
-      { sessionId: "s1", repoPath: "/p", promptCount: 1, lastPromptTs: 100 },
-    ]);
+    const step = stepCheckpointTrigger({}, [{ sessionId: "s1", repoPath: "/p", promptCount: 1, lastPromptTs: 100 }]);
     expect(step.fired).toEqual([{ sessionId: "s1", repoPath: "/p", promptCount: 1, lastPromptTs: 100 }]);
   });
 

@@ -51,12 +51,7 @@ export type Recallable = { savedText: string };
  * end, or a file that keeps being reopened would be evicted as though it had
  * been sitting untouched since the first time.
  */
-export function rememberClosed<T>(
-  store: Map<string, T>,
-  path: string,
-  buf: T,
-  cap = MAX_CLOSED_BUFFERS,
-): void {
+export function rememberClosed<T>(store: Map<string, T>, path: string, buf: T, cap = MAX_CLOSED_BUFFERS): void {
   store.delete(path);
   store.set(path, buf);
   // A loop rather than one delete: the cap is a parameter, so it can move down

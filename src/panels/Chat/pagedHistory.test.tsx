@@ -11,7 +11,14 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-type Case = { name: string; start: number; pages: [number, number][]; cursor: unknown; summary: unknown; full: unknown[] };
+type Case = {
+  name: string;
+  start: number;
+  pages: [number, number][];
+  cursor: unknown;
+  summary: unknown;
+  full: unknown[];
+};
 const rich = (golden as Case[]).find((c) => c.name === "rich") as Case;
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
@@ -128,11 +135,17 @@ describe("load earlier on a chat opened with its tail", () => {
       pending.shift()?.();
       await waitFor(() => expect(served).toBe(i + 1));
     }
-    for (let i = 0; i < 50 && screen.queryByText("Load earlier"); i++) fireEvent.click(screen.getByText("Load earlier"));
+    for (let i = 0; i < 50 && screen.queryByText("Load earlier"); i++)
+      fireEvent.click(screen.getByText("Load earlier"));
 
     await screen.findByText("prompt 0");
     expect(pageCalls()).toHaveLength(rich.pages.length);
-    expect(pageCalls()[0].args).toMatchObject({ sessionId: "s", fromSessionId: null, agentId: "claude", cursor: rich.cursor });
+    expect(pageCalls()[0].args).toMatchObject({
+      sessionId: "s",
+      fromSessionId: null,
+      agentId: "claude",
+      cursor: rich.cursor,
+    });
   });
 
   it("holds the reader in place while a page lands above them", async () => {

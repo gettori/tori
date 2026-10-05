@@ -101,19 +101,8 @@ export const Disabled: Story = {
     const [value, setValue] = createSignal("squash");
     return (
       <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
-        <Select
-          options={METHODS}
-          value={value()}
-          onChange={setValue}
-          disabled
-          aria-label="How to merge (disabled)"
-        />
-        <Select
-          options={METHODS}
-          value={value()}
-          onChange={setValue}
-          aria-label="How to merge"
-        />
+        <Select options={METHODS} value={value()} onChange={setValue} disabled aria-label="How to merge (disabled)" />
+        <Select options={METHODS} value={value()} onChange={setValue} aria-label="How to merge" />
       </div>
     );
   },
@@ -125,8 +114,6 @@ export const Disabled: Story = {
 export const Groups: Story = {
   render: () => {
     const [value, setValue] = createSignal("dark-plus");
-    return (
-      <Select options={THEMES} value={value()} onChange={setValue} aria-label="Theme" />
-    );
+    return <Select options={THEMES} value={value()} onChange={setValue} aria-label="Theme" />;
   },
 };

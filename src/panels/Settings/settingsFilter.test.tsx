@@ -13,7 +13,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-
 import Settings from "./Settings";
 import { loadWorkspaceSettings } from "./settingsStore";
 import { SETTING_TABS } from "../../utils/settingsCatalog";
@@ -21,9 +20,8 @@ import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   invoke.mockReset();
-  invoke.mockImplementation(
-    async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : unstubbed(cmd),
+  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+    cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   // The overlay outlives any one test, so a workspace selected elsewhere would
   // otherwise still be adding its buttons to these rows.
@@ -34,18 +32,15 @@ const box = () => screen.getByLabelText("Search settings") as HTMLInputElement;
 const type = (q: string) => fireEvent.input(box(), { target: { value: q } });
 
 /** A list, not one element: all six show at once while a search is running. */
-const panes = () =>
-  [...document.querySelectorAll("[data-pane]:not([hidden])")] as HTMLElement[];
+const panes = () => [...document.querySelectorAll("[data-pane]:not([hidden])")] as HTMLElement[];
 
 /** Null while results are showing: the rail claims no place then. */
-const activeTab = () =>
-  document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
+const activeTab = () => document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
 
 /** The labelled rows on screen, wherever they came from. */
 const rows = () => panes().flatMap((p) => [...p.querySelectorAll("label")].map((el) => el.textContent));
 
-const clickTab = (label: string) =>
-  fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${label}`) }));
+const clickTab = (label: string) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${label}`) }));
 
 describe("the settings search box", () => {
   it("opens on Agents with that category's content and no query", () => {

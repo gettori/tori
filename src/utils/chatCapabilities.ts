@@ -303,9 +303,10 @@ export function attachmentSources(
   tier: ChatTier,
   advertised?: ChatCapabilities | null,
 ): { mentions: AttachmentSource; uploads: AttachmentSource } {
-  const uploadKinds = advertised?.imageInput && !tier.attachmentUploads.includes("image")
-    ? ["image" as const, ...tier.attachmentUploads]
-    : tier.attachmentUploads;
+  const uploadKinds =
+    advertised?.imageInput && !tier.attachmentUploads.includes("image")
+      ? ["image" as const, ...tier.attachmentUploads]
+      : tier.attachmentUploads;
   return {
     mentions: { kinds: tier.attachmentMentions, gap: tier.gaps.attachmentMentions ?? null },
     uploads: {
@@ -356,8 +357,7 @@ export function publishedCapabilities(
   live?: ChatCapabilities | null,
 ): PublishedCapability[] {
   const out: PublishedCapability[] = [];
-  const add = (key: PublishedCapability["key"], value: string) =>
-    out.push({ key, value, label: `${key}: ${value}` });
+  const add = (key: PublishedCapability["key"], value: string) => out.push({ key, value, label: `${key}: ${value}` });
   if (tier.rewind !== "none") add("rewind", tier.rewind);
   if (tier.steer !== "none") add("steer", tier.steer);
   // Each of these was once folded into one `hooks: pretooluse` entry, which

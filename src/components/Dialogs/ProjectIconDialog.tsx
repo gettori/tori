@@ -67,9 +67,7 @@ export default function ProjectIconDialog(props: {
   // Seeded from what is stored, so reopening shows the current state rather
   // than resetting to automatic. Each mode keeps its own value while the strip
   // moves: switching away and back must not throw away a file just chosen.
-  const [source, setSource] = createSignal<Source>(
-    props.iconFile ? "upload" : props.icon ? "pick" : "auto",
-  );
+  const [source, setSource] = createSignal<Source>(props.iconFile ? "upload" : props.icon ? "pick" : "auto");
   const [icon, setIcon] = createSignal<string | null>(props.icon);
   const [file, setFile] = createSignal<string | null>(props.iconFile);
   const [picking, setPicking] = createSignal(false);
@@ -91,8 +89,7 @@ export default function ProjectIconDialog(props: {
     if (source() === "pick") return icon() ? { icon: icon()! } : {};
     return {};
   };
-  const canSave = () =>
-    source() === "auto" || (source() === "upload" ? !!file() : !!icon());
+  const canSave = () => source() === "auto" || (source() === "upload" ? !!file() : !!icon());
 
   const copy = () => {
     switch (source()) {

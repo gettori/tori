@@ -31,11 +31,10 @@ use serde_json::Value;
 use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo,
-    ChatQuestion, ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
-    PatchHunk, PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus,
-    SubagentUsage, ToolSummary, PATCH_LINE_CAP,
-    TurnOutcome, Usage, UsageWindow,
+    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo, ChatQuestion,
+    ChatQuestionOption, Extra, HookPhase, McpServer, PatchHunk, PermissionDenial, PermissionMode, PermissionSuggestion,
+    QuestionAnswer, SlashCommand, SubagentUsage, SuggestedRule, ToolKind, ToolStatus, ToolSummary, TurnOutcome, Usage,
+    UsageWindow, PATCH_LINE_CAP,
 };
 
 /// The call an event is about. Only the four a subagent can produce: measured,
@@ -96,12 +95,24 @@ const FAST_MODE_REFUSAL: &str = "Set when the chat starts; there is no mid-sessi
 /// refusal at all but the check still running.
 const FAST_MODE_REASONS: [(&str, &str); 8] = [
     ("preference", "Fast mode has been disabled by your organization"),
-    ("extra_usage_disabled", "Fast mode requires usage credits · /usage-credits to turn them on"),
-    ("network_error", "Fast mode unavailable due to network connectivity issues"),
+    (
+        "extra_usage_disabled",
+        "Fast mode requires usage credits · /usage-credits to turn them on",
+    ),
+    (
+        "network_error",
+        "Fast mode unavailable due to network connectivity issues",
+    ),
     ("unknown", "Fast mode is currently unavailable"),
-    ("not_first_party", "Fast mode is only available when using the Anthropic API directly"),
+    (
+        "not_first_party",
+        "Fast mode is only available when using the Anthropic API directly",
+    ),
     ("disabled_by_env", "Fast mode is not available"),
-    ("model_not_allowed", "This model is not in your organization's allowed models"),
+    (
+        "model_not_allowed",
+        "This model is not in your organization's allowed models",
+    ),
     // Kept even though `claude.toml` now passes the opt-in, because the flag is
     // a *setting* and a policy or project settings file outranks it. A user
     // whose org pins `fastMode: false` lands back here.
@@ -210,11 +221,7 @@ pub fn config_options(model: &ChatModelInfo, fast_mode_reason: Option<&str>) -> 
 /// claim nobody has re-checked. Degraded rather than dropped: a level that
 /// vanishes on a CLI upgrade tells the user nothing, and a row that says why
 /// tells them to re-run the probe.
-pub fn effort_levels(
-    model: &ChatModelInfo,
-    extras: &[ChatEffortExtra],
-    cli_version: &str,
-) -> Vec<ChatEffortLevel> {
+pub fn effort_levels(model: &ChatModelInfo, extras: &[ChatEffortExtra], cli_version: &str) -> Vec<ChatEffortLevel> {
     if model.supported_effort_levels.is_empty() {
         return Vec::new();
     }
@@ -274,7 +281,10 @@ pub fn effort_levels(
 enum OpenBlock {
     Text,
     Thinking,
-    ToolUse { tool_use_id: String, name: String },
+    ToolUse {
+        tool_use_id: String,
+        name: String,
+    },
     /// A block type we do not render specially. Its deltas are dropped rather
     /// than guessed at.
     Other,
@@ -414,7 +424,10 @@ impl ClaudeMapper {
             .iter()
             .find(|m| m.resolved_model == model)
             .cloned()
-            .unwrap_or_else(|| ChatModelInfo { resolved_model: model.to_string(), ..Default::default() });
+            .unwrap_or_else(|| ChatModelInfo {
+                resolved_model: model.to_string(),
+                ..Default::default()
+            });
         Some(ChatEvent::ConfigOptions {
             session_id: self.session_id.clone(),
             options: config_options(&row, self.fast_mode_reason.as_deref()),
@@ -466,9 +479,7 @@ impl ClaudeMapper {
                         effort_levels: Vec::new(),
                         supports_auto_mode: m["supportsAutoMode"].as_bool().unwrap_or(false),
                         supports_fast_mode: m["supportsFastMode"].as_bool().unwrap_or(false),
-                        supports_adaptive_thinking: m["supportsAdaptiveThinking"]
-                            .as_bool()
-                            .unwrap_or(false),
+                        supports_adaptive_thinking: m["supportsAdaptiveThinking"].as_bool().unwrap_or(false),
                     })
                 })
                 .collect();
@@ -595,8 +606,7 @@ impl ClaudeMapper {
         // correlated and the child would block forever; without `tool_use_id`
         // the prompt cannot find its tool card. A frame missing either is
         // dropped rather than half-rendered.
-        let (Some(request_id), Some(tool_use_id)) =
-            (frame["request_id"].as_str(), request["tool_use_id"].as_str())
+        let (Some(request_id), Some(tool_use_id)) = (frame["request_id"].as_str(), request["tool_use_id"].as_str())
         else {
             return Vec::new();
         };
@@ -666,9 +676,7 @@ impl ClaudeMapper {
             Some("task_started") => self.map_task_started(frame),
             // Three frames, one variant: each patches the same record.
             // `background_tasks_changed` is not mapped: it names no task.
-            Some("task_progress") | Some("task_updated") | Some("task_notification") => {
-                self.map_task_update(frame)
-            }
+            Some("task_progress") | Some("task_updated") | Some("task_notification") => self.map_task_update(frame),
             _ => Vec::new(),
         }
     }
@@ -681,15 +689,12 @@ impl ClaudeMapper {
     /// shell task's own tool card belongs to the main conversation, and stamping
     /// it with a lane would file it under a transcript that does not exist.
     fn map_task_started(&mut self, frame: &Value) -> Vec<ChatEvent> {
-        let (Some(agent_id), Some(tool_use_id)) =
-            (frame["task_id"].as_str(), frame["tool_use_id"].as_str())
-        else {
+        let (Some(agent_id), Some(tool_use_id)) = (frame["task_id"].as_str(), frame["tool_use_id"].as_str()) else {
             return Vec::new();
         };
         let task_type = frame["task_type"].as_str().unwrap_or_default().to_string();
         if task_type == SUBAGENT_TASK {
-            self.lane_of_call
-                .insert(tool_use_id.to_string(), agent_id.to_string());
+            self.lane_of_call.insert(tool_use_id.to_string(), agent_id.to_string());
         }
         vec![ChatEvent::SubagentStarted {
             session_id: self.session_id.clone(),
@@ -874,7 +879,14 @@ impl ClaudeMapper {
             };
 
             let mut extra = Extra::new();
-            for key in ["claude_code_version", "capabilities", "memory_paths", "skills", "agents", "plugins"] {
+            for key in [
+                "claude_code_version",
+                "capabilities",
+                "memory_paths",
+                "skills",
+                "agents",
+                "plugins",
+            ] {
                 if let Some(v) = frame.get(key) {
                     extra.insert(camel(key), v.clone());
                 }
@@ -1687,7 +1699,10 @@ pub(crate) fn structured_patch(raw: &Value) -> Vec<PatchHunk> {
             return Vec::new();
         }
         let at = |key: &str, fallback: u32| {
-            hunk.get(key).and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()).unwrap_or(fallback)
+            hunk.get(key)
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+                .unwrap_or(fallback)
         };
         out.push(PatchHunk {
             old_start: at("oldStart", 1),
@@ -1741,8 +1756,14 @@ pub(crate) fn summarise_result(raw: &Value) -> Option<ToolSummary> {
     if let Some(mode) = obj.get("mode").and_then(Value::as_str) {
         let files = num(obj, "numFiles").filter(|n| *n > 0);
         return match mode {
-            "content" => Some(ToolSummary::Search { hits: num(obj, "numLines")?, files }),
-            "count" => Some(ToolSummary::Search { hits: num(obj, "numMatches")?, files }),
+            "content" => Some(ToolSummary::Search {
+                hits: num(obj, "numLines")?,
+                files,
+            }),
+            "count" => Some(ToolSummary::Search {
+                hits: num(obj, "numMatches")?,
+                files,
+            }),
             // The total rather than the returned list, so a truncated answer
             // still says how much it matched.
             "files_with_matches" => Some(ToolSummary::Paths {
@@ -1848,9 +1869,12 @@ mod tests {
         let started: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::SubagentStarted { agent_id, tool_use_id, agent_type, .. } => {
-                    Some((agent_id.as_str(), tool_use_id.as_str(), agent_type.as_str()))
-                }
+                ChatEvent::SubagentStarted {
+                    agent_id,
+                    tool_use_id,
+                    agent_type,
+                    ..
+                } => Some((agent_id.as_str(), tool_use_id.as_str(), agent_type.as_str())),
                 _ => None,
             })
             .collect();
@@ -1879,13 +1903,20 @@ mod tests {
         let started: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::SubagentStarted { task_type, agent_type, prompt, .. } => {
-                    Some((task_type.as_str(), agent_type.as_str(), prompt.as_str()))
-                }
+                ChatEvent::SubagentStarted {
+                    task_type,
+                    agent_type,
+                    prompt,
+                    ..
+                } => Some((task_type.as_str(), agent_type.as_str(), prompt.as_str())),
                 _ => None,
             })
             .collect();
-        assert_eq!(started, [("local_bash", "", "")], "the shell task, with neither of a subagent's fields");
+        assert_eq!(
+            started,
+            [("local_bash", "", "")],
+            "the shell task, with neither of a subagent's fields"
+        );
 
         // The load-bearing half: its call is the main conversation's, so nothing
         // nested may be attributed to it.
@@ -1915,9 +1946,9 @@ mod tests {
         let announced: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::SubagentCall { agent_id, tool_use_id, .. } => {
-                    Some((agent_id.as_str(), tool_use_id.as_str()))
-                }
+                ChatEvent::SubagentCall {
+                    agent_id, tool_use_id, ..
+                } => Some((agent_id.as_str(), tool_use_id.as_str())),
                 _ => None,
             })
             .collect();
@@ -1944,9 +1975,12 @@ mod tests {
         let named: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::ToolCallStarted { tool_use_id, name, input, .. } => {
-                    Some((name.as_str(), tool_use_id.as_str(), input))
-                }
+                ChatEvent::ToolCallStarted {
+                    tool_use_id,
+                    name,
+                    input,
+                    ..
+                } => Some((name.as_str(), tool_use_id.as_str(), input)),
                 _ => None,
             })
             .collect();
@@ -1954,7 +1988,9 @@ mod tests {
         let write: Vec<_> = named.iter().filter(|(n, ..)| *n == "Write").collect();
         assert_eq!(write.len(), 1, "the nested call, announced once, got {named:?}");
         assert!(
-            write[0].2["file_path"].as_str().is_some_and(|p| p.ends_with("bg-made.txt")),
+            write[0].2["file_path"]
+                .as_str()
+                .is_some_and(|p| p.ends_with("bg-made.txt")),
             "and carrying the arguments the subagent sent, got {}",
             write[0].2
         );
@@ -1977,7 +2013,11 @@ mod tests {
         let laned: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::TextDelta { text, agent_id: Some(lane), .. } => Some((lane.as_str(), text.as_str())),
+                ChatEvent::TextDelta {
+                    text,
+                    agent_id: Some(lane),
+                    ..
+                } => Some((lane.as_str(), text.as_str())),
                 _ => None,
             })
             .collect();
@@ -1988,11 +2028,16 @@ mod tests {
         let main: String = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::TextDelta { text, agent_id: None, .. } => Some(text.as_str()),
+                ChatEvent::TextDelta {
+                    text, agent_id: None, ..
+                } => Some(text.as_str()),
                 _ => None,
             })
             .collect();
-        assert!(main.contains("launched"), "the main agent's own text is untouched, got {main:?}");
+        assert!(
+            main.contains("launched"),
+            "the main agent's own text is untouched, got {main:?}"
+        );
         assert!(main.contains("The background subagent finished"));
         assert!(!main.contains("Done. Created"), "and the lane's report is not in it");
     }
@@ -2062,7 +2107,10 @@ mod tests {
         let events = run("subagent-parallel");
         let mut lanes: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
         for ev in &events {
-            if let ChatEvent::SubagentCall { agent_id, tool_use_id, .. } = ev {
+            if let ChatEvent::SubagentCall {
+                agent_id, tool_use_id, ..
+            } = ev
+            {
                 lanes.entry(agent_id).or_default().push(tool_use_id);
             }
         }
@@ -2088,7 +2136,10 @@ mod tests {
             });
             let mut m = ClaudeMapper::new("s1");
             let events = m.map(&frame);
-            let Some(ChatEvent::SubagentUpdate { status: Some(mapped), .. }) = events.first() else {
+            let Some(ChatEvent::SubagentUpdate {
+                status: Some(mapped), ..
+            }) = events.first()
+            else {
                 panic!("{status}: expected one SubagentUpdate carrying a status, got {events:?}");
             };
             assert_eq!(mapped, status, "the mapper reported the agent's own word");
@@ -2131,9 +2182,9 @@ mod tests {
 
         // Twice, not once: both terminal frames report the status and both are
         // carried. They patch one record, so applying both lands in one place.
-        let settled = events.iter().filter(|e| {
-            matches!(e, ChatEvent::SubagentUpdate { status: Some(s), .. } if s == "completed")
-        });
+        let settled = events
+            .iter()
+            .filter(|e| matches!(e, ChatEvent::SubagentUpdate { status: Some(s), .. } if s == "completed"));
         assert_eq!(settled.count(), 2, "both terminal frames reach the lane");
 
         // The report *is* a turn and has to be mapped as one, or the paragraph
@@ -2145,9 +2196,13 @@ mod tests {
         // byte-identical bar their `uuid`, so it leaves every turn at the
         // default and the transport corrects the ones the user actually sent.
         assert!(
-            events
-                .iter()
-                .all(|e| !matches!(e, ChatEvent::TurnStarted { agent_initiated: true, .. })),
+            events.iter().all(|e| !matches!(
+                e,
+                ChatEvent::TurnStarted {
+                    agent_initiated: true,
+                    ..
+                }
+            )),
             "the mapper does not guess at an attribution the wire cannot support"
         );
     }
@@ -2323,14 +2378,8 @@ mod tests {
             1,
             "system/init re-emits per turn; only the first may open the session"
         );
-        assert_eq!(
-            count(&events, |e| matches!(e, ChatEvent::TurnStarted { .. })),
-            2
-        );
-        assert_eq!(
-            count(&events, |e| matches!(e, ChatEvent::TurnCompleted { .. })),
-            2
-        );
+        assert_eq!(count(&events, |e| matches!(e, ChatEvent::TurnStarted { .. })), 2);
+        assert_eq!(count(&events, |e| matches!(e, ChatEvent::TurnCompleted { .. })), 2);
     }
 
     /// Turn ids must actually separate the turns, or grouping in the UI is
@@ -2348,9 +2397,9 @@ mod tests {
         assert_eq!(ids, vec!["turn-1", "turn-2"]);
 
         // Text from the second turn must not be filed under the first.
-        let second_turn_text = events.iter().any(|e| {
-            matches!(e, ChatEvent::TextDelta { turn_id, .. } if turn_id == "turn-2")
-        });
+        let second_turn_text = events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::TextDelta { turn_id, .. } if turn_id == "turn-2"));
         assert!(second_turn_text, "no text was attributed to the second turn");
     }
 
@@ -2381,7 +2430,15 @@ mod tests {
             .expect("a rejected reading with its reset");
         let completed = events
             .iter()
-            .position(|e| matches!(e, ChatEvent::TurnCompleted { outcome: TurnOutcome::Errored, .. }))
+            .position(|e| {
+                matches!(
+                    e,
+                    ChatEvent::TurnCompleted {
+                        outcome: TurnOutcome::Errored,
+                        ..
+                    }
+                )
+            })
             .expect("an errored turn");
         assert!(rejected < completed, "the reading has to land before the turn ends");
     }
@@ -2392,9 +2449,12 @@ mod tests {
         let started: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                ChatEvent::ToolCallStarted { name, input, tool_use_id, .. } => {
-                    Some((name.clone(), input.clone(), tool_use_id.clone()))
-                }
+                ChatEvent::ToolCallStarted {
+                    name,
+                    input,
+                    tool_use_id,
+                    ..
+                } => Some((name.clone(), input.clone(), tool_use_id.clone())),
                 _ => None,
             })
             .collect();
@@ -2473,10 +2533,19 @@ mod tests {
                 }
             }
         }
-        let read = per_tool.iter().find(|(name, _)| name == "Read").expect("the capture reads first");
+        let read = per_tool
+            .iter()
+            .find(|(name, _)| name == "Read")
+            .expect("the capture reads first");
         assert!(read.1.is_empty(), "a read is not a write: {:?}", read.1);
-        let edit = per_tool.iter().find(|(name, _)| name == "Edit").expect("the capture then edits");
-        assert!(edit.1.iter().any(|f| f.contains("probe.txt")), "the edit still reports its file");
+        let edit = per_tool
+            .iter()
+            .find(|(name, _)| name == "Edit")
+            .expect("the capture then edits");
+        assert!(
+            edit.1.iter().any(|f| f.contains("probe.txt")),
+            "the edit still reports its file"
+        );
     }
 
     /// The distinction the composer queue depends on: a cancelled turn is not
@@ -2639,7 +2708,16 @@ mod tests {
             "outcome": "blocking_error", "session_id": "s1"
         }));
         match evs.as_slice() {
-            [ChatEvent::HookFired { name, event, outcome, exit_code, output, stderr, tori_owned, .. }] => {
+            [ChatEvent::HookFired {
+                name,
+                event,
+                outcome,
+                exit_code,
+                output,
+                stderr,
+                tori_owned,
+                ..
+            }] => {
                 assert_eq!(name, "SessionStart:startup");
                 assert_eq!(event, "SessionStart");
                 assert_eq!(outcome.as_deref(), Some("blocking_error"));
@@ -2661,17 +2739,27 @@ mod tests {
         let with_windows = events
             .iter()
             .find_map(|e| match e {
-                ChatEvent::RateLimit { windows, overage_status, .. } if !windows.is_empty() => {
-                    Some((windows.clone(), overage_status.clone()))
-                }
+                ChatEvent::RateLimit {
+                    windows,
+                    overage_status,
+                    ..
+                } if !windows.is_empty() => Some((windows.clone(), overage_status.clone())),
                 _ => None,
             })
             .expect("the capture carries a frame with unifiedWindows");
         assert_eq!(
             with_windows.0,
             vec![
-                UsageWindow { kind: "five_hour".into(), utilization: 0.06, resets_at: Some(1_788_537_600) },
-                UsageWindow { kind: "seven_day".into(), utilization: 0.42, resets_at: Some(1_788_742_800) },
+                UsageWindow {
+                    kind: "five_hour".into(),
+                    utilization: 0.06,
+                    resets_at: Some(1_788_537_600)
+                },
+                UsageWindow {
+                    kind: "seven_day".into(),
+                    utilization: 0.42,
+                    resets_at: Some(1_788_742_800)
+                },
             ]
         );
         // `allowed` with overage `rejected` is the common capture: overage is
@@ -2688,9 +2776,13 @@ mod tests {
         let warning = events
             .iter()
             .find_map(|e| match e {
-                ChatEvent::RateLimit { status, utilization, windows, limit_type, .. } if status == "allowed_warning" => {
-                    Some((*utilization, windows.len(), limit_type.clone()))
-                }
+                ChatEvent::RateLimit {
+                    status,
+                    utilization,
+                    windows,
+                    limit_type,
+                    ..
+                } if status == "allowed_warning" => Some((*utilization, windows.len(), limit_type.clone())),
                 _ => None,
             })
             .expect("the capture carries an allowed_warning frame");
@@ -2795,7 +2887,9 @@ mod tests {
 
         let events = m.map(control);
         let (commands, models) = match events.as_slice() {
-            [ChatEvent::SessionReady { slash_commands, models, .. }] => (slash_commands.clone(), models.clone()),
+            [ChatEvent::SessionReady {
+                slash_commands, models, ..
+            }] => (slash_commands.clone(), models.clone()),
             other => panic!("expected exactly one SessionReady, got {other:?}"),
         };
         // The catalogues ride the ready event so the UI is off its fallbacks
@@ -2809,7 +2903,10 @@ mod tests {
             "type": "system", "subtype": "init", "model": "m", "permissionMode": "default",
             "cwd": "/w", "tools": [], "slash_commands": [], "mcp_servers": []
         }));
-        assert!(m.map(control).is_empty(), "a control response after init re-reported ready");
+        assert!(
+            m.map(control).is_empty(),
+            "a control response after init re-reported ready"
+        );
     }
 
     /// The account rides the handshake, and rides it onto the first
@@ -2838,7 +2935,11 @@ mod tests {
         }));
         match started.first() {
             Some(ChatEvent::SessionStarted { account, .. }) => {
-                assert_eq!(account.as_ref(), Some(&ready), "the account did not survive onto SessionStarted");
+                assert_eq!(
+                    account.as_ref(),
+                    Some(&ready),
+                    "the account did not survive onto SessionStarted"
+                );
             }
             other => panic!("expected SessionStarted, got {other:?}"),
         }
@@ -2858,7 +2959,9 @@ mod tests {
             "response": { "response": { "account": { "apiProvider": "firstParty" } } },
         });
         match m.map(&control).as_slice() {
-            [ChatEvent::SessionReady { account: Some(account), .. }] => {
+            [ChatEvent::SessionReady {
+                account: Some(account), ..
+            }] => {
                 assert_eq!(account.api_provider, "firstParty");
                 assert!(account.organization.is_empty(), "an absent field reads as absent");
             }
@@ -3025,7 +3128,13 @@ mod tests {
             "an allow or deny cannot answer a form: {events:?}"
         );
         match events.as_slice() {
-            [ChatEvent::QuestionRequest { session_id, tool_use_id, request_id, agent_id, questions }] => {
+            [ChatEvent::QuestionRequest {
+                session_id,
+                tool_use_id,
+                request_id,
+                agent_id,
+                questions,
+            }] => {
                 assert_eq!(session_id, "s1");
                 assert_eq!(tool_use_id, "toolu_q");
                 assert_eq!(request_id, "req-q");
@@ -3117,7 +3226,13 @@ mod tests {
     fn the_kill_switch_puts_the_question_back_on_the_permission_path() {
         let mut m = ClaudeMapper::new("s1").with_questions_as_permissions(true);
         match m.map(&ask_user_question()).as_slice() {
-            [ChatEvent::PermissionRequest { tool_name, tool_use_id, request_id, input, .. }] => {
+            [ChatEvent::PermissionRequest {
+                tool_name,
+                tool_use_id,
+                request_id,
+                input,
+                ..
+            }] => {
                 assert_eq!(tool_name, "AskUserQuestion");
                 assert_eq!(tool_use_id, "toolu_q");
                 assert_eq!(request_id, "req-q");
@@ -3199,7 +3314,10 @@ mod tests {
              clarification, changes, or that you not proceed \u{2014} and follow what they actually say."
         );
         assert_eq!(message.matches('\u{2014}').count(), 2, "em dashes, not hyphens");
-        assert!(!message.contains(" - "), "a hyphen here is the transcription bug this pins");
+        assert!(
+            !message.contains(" - "),
+            "a hyphen here is the transcription bug this pins"
+        );
     }
 
     /// The picked option's preview rides back with it, after the entry.
@@ -3260,7 +3378,13 @@ mod tests {
         let mut m = ClaudeMapper::new("s1");
         match m.map(&can_use_tool(None)).first() {
             Some(ChatEvent::PermissionRequest {
-                session_id, tool_use_id, tool_name, request_id, agent_id, input, ..
+                session_id,
+                tool_use_id,
+                tool_name,
+                request_id,
+                agent_id,
+                input,
+                ..
             }) => {
                 assert_eq!(session_id, "s1");
                 assert_eq!(tool_use_id, "toolu_1");
@@ -3279,7 +3403,9 @@ mod tests {
     fn a_subagent_request_carries_the_agent_that_made_it() {
         let mut m = ClaudeMapper::new("s1");
         match m.map(&can_use_tool(Some("affdd797eddcfa753"))).first() {
-            Some(ChatEvent::PermissionRequest { agent_id, session_id, .. }) => {
+            Some(ChatEvent::PermissionRequest {
+                agent_id, session_id, ..
+            }) => {
                 assert_eq!(agent_id.as_deref(), Some("affdd797eddcfa753"));
                 // Still the one session: a subagent is work inside this chat,
                 // not a second transcript.
@@ -3305,7 +3431,9 @@ mod tests {
                     && rules[0].tool_name == "Bash"
                     && rules[0].rule_content.as_deref() == Some("touch a.txt")
         ));
-        assert!(matches!(&suggestions[2], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "acceptEdits"));
+        assert!(
+            matches!(&suggestions[2], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "acceptEdits")
+        );
     }
 
     /// A suggestion type Tori does not know must cost only itself. Failing the
@@ -3322,7 +3450,11 @@ mod tests {
         let Some(ChatEvent::PermissionRequest { suggestions, .. }) = events.first() else {
             panic!("expected PermissionRequest");
         };
-        assert_eq!(suggestions.len(), 1, "the unknown offer is skipped, the known one survives");
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "the unknown offer is skipped, the known one survives"
+        );
         assert!(matches!(&suggestions[0], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "plan"));
     }
 
@@ -3393,7 +3525,9 @@ mod tests {
         // absorb. Measured: `argumentHint` is present but empty on most
         // commands, so this asserts at least one real one rather than all.
         assert!(
-            described.iter().any(|c| c.argument_hint.as_deref().is_some_and(|h| !h.is_empty())),
+            described
+                .iter()
+                .any(|c| c.argument_hint.as_deref().is_some_and(|h| !h.is_empty())),
             "the catalogue carried no argument hints"
         );
 
@@ -3439,9 +3573,7 @@ mod tests {
         let mut m = ClaudeMapper::new("s1");
         m.map(&fixture("initialize")[0]);
 
-        let ids = |events: &[ChatEvent]| {
-            options_of(events).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>())
-        };
+        let ids = |events: &[ChatEvent]| options_of(events).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>());
 
         // Sonnet has no fast mode, and adaptive thinking is not a lever, so it
         // opens with an empty set. Empty rather than absent: the event still
@@ -3453,9 +3585,16 @@ mod tests {
         assert_eq!(options_of(&m.map(&an_init("claude-sonnet-5"))), None);
 
         let switched = m.map(&an_init("claude-opus-5[1m]"));
-        assert_eq!(ids(&switched), Some(vec!["fast_mode".to_string()]), "the Opus row declares it");
+        assert_eq!(
+            ids(&switched),
+            Some(vec!["fast_mode".to_string()]),
+            "the Opus row declares it"
+        );
         let fast = options_of(&switched).unwrap().remove(0);
-        assert!(fast.disabled, "a lever this transport cannot reach is published refused");
+        assert!(
+            fast.disabled,
+            "a lever this transport cannot reach is published refused"
+        );
         assert_eq!(fast.note, FAST_MODE_REFUSAL);
 
         // And back, so a row is not a one-way addition to the set.
@@ -3534,7 +3673,11 @@ mod tests {
         // selection rather than everything the fixture had.
         assert_eq!(m.model_catalogue.len(), 5);
         // Nothing is invented for a row that declares none.
-        let haiku = m.model_catalogue.iter().find(|r| r.value == "haiku").expect("haiku is listed");
+        let haiku = m
+            .model_catalogue
+            .iter()
+            .find(|r| r.value == "haiku")
+            .expect("haiku is listed");
         assert!(config_options(haiku, None).is_empty());
     }
 
@@ -3554,7 +3697,10 @@ mod tests {
         let mut m = ClaudeMapper::new("s1");
         m.map(&fixture("initialize")[0]);
         let row = |value: &str| {
-            m.model_catalogue.iter().find(|r| r.value == value).unwrap_or_else(|| panic!("{value} is listed"))
+            m.model_catalogue
+                .iter()
+                .find(|r| r.value == value)
+                .unwrap_or_else(|| panic!("{value} is listed"))
         };
 
         // Sonnet declares the capability and still gets no lever, which is the
@@ -3640,7 +3786,10 @@ mod tests {
     fn a_measured_level_joins_the_ones_the_agent_published() {
         let extras = ultracode(EffortExtraState::Working, "2.1.237");
         let levels = effort_levels(&a_model(&["low", "high"]), &extras, "2.1.237");
-        assert_eq!(rows(&levels), vec![("low", false), ("high", false), ("ultracode", false)]);
+        assert_eq!(
+            rows(&levels),
+            vec![("low", false), ("high", false), ("ultracode", false)]
+        );
         assert!(levels.iter().all(|l| l.note.is_empty()));
     }
 
@@ -3649,7 +3798,11 @@ mod tests {
     /// brings nothing into being.
     #[test]
     fn a_model_with_no_effort_gains_none_from_a_measurement() {
-        let levels = effort_levels(&a_model(&[]), &ultracode(EffortExtraState::Working, "2.1.237"), "2.1.237");
+        let levels = effort_levels(
+            &a_model(&[]),
+            &ultracode(EffortExtraState::Working, "2.1.237"),
+            "2.1.237",
+        );
         assert!(levels.is_empty(), "{levels:?}");
     }
 
@@ -3658,7 +3811,11 @@ mod tests {
     /// rather than quietly carrying a claim nobody re-checked.
     #[test]
     fn a_measurement_does_not_outlive_the_version_it_names() {
-        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Working, "2.1.237"), "2.1.240");
+        let levels = effort_levels(
+            &a_model(&["low"]),
+            &ultracode(EffortExtraState::Working, "2.1.237"),
+            "2.1.240",
+        );
         assert_eq!(rows(&levels), vec![("low", false), ("ultracode", true)]);
         let note = &levels[1].note;
         assert!(note.contains("2.1.237") && note.contains("2.1.240"), "{note}");
@@ -3686,7 +3843,11 @@ mod tests {
     /// words, rather than as a level that silently is not there.
     #[test]
     fn a_refused_level_renders_disabled_carrying_its_reason() {
-        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Refused, "2.1.237"), "2.1.237");
+        let levels = effort_levels(
+            &a_model(&["low"]),
+            &ultracode(EffortExtraState::Refused, "2.1.237"),
+            "2.1.237",
+        );
         assert_eq!(rows(&levels), vec![("low", false), ("ultracode", true)]);
         assert_eq!(levels[1].note, "the CLI said no");
     }
@@ -3696,7 +3857,11 @@ mod tests {
     /// thing that no longer applies.
     #[test]
     fn a_refusal_measured_elsewhere_is_not_quoted_as_this_binarys_answer() {
-        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Refused, "2.1.237"), "2.1.240");
+        let levels = effort_levels(
+            &a_model(&["low"]),
+            &ultracode(EffortExtraState::Refused, "2.1.237"),
+            "2.1.240",
+        );
         assert_eq!(rows(&levels), vec![("low", false), ("ultracode", true)]);
         assert!(levels[1].note.contains("2.1.240"), "{}", levels[1].note);
         assert!(!levels[1].note.contains("the CLI said no"), "{}", levels[1].note);
@@ -3741,18 +3906,24 @@ mod tests {
                 })
                 .expect("a catalogue")
         };
-        assert_eq!(rows(&sonnet(&ready)), vec![
-            ("low", false),
-            ("medium", false),
-            ("high", false),
-            ("xhigh", false),
-            ("max", false)
-        ]);
+        assert_eq!(
+            rows(&sonnet(&ready)),
+            vec![
+                ("low", false),
+                ("medium", false),
+                ("high", false),
+                ("xhigh", false),
+                ("max", false)
+            ]
+        );
 
         let mut init = an_init("claude-sonnet-5");
         init["claude_code_version"] = serde_json::json!("2.1.237");
         let started = m.map(&init);
-        assert_eq!(sonnet(&started).last().map(|l| l.level.clone()), Some("ultracode".to_string()));
+        assert_eq!(
+            sonnet(&started).last().map(|l| l.level.clone()),
+            Some("ultracode".to_string())
+        );
     }
 
     /// The model catalogue rides the same control response as the commands and
@@ -3775,7 +3946,11 @@ mod tests {
                 fast_mode_state,
                 fast_mode_disabled_reason,
                 ..
-            } => (models.clone(), fast_mode_state.clone(), fast_mode_disabled_reason.clone()),
+            } => (
+                models.clone(),
+                fast_mode_state.clone(),
+                fast_mode_disabled_reason.clone(),
+            ),
             other => panic!("expected SessionStarted, got {other:?}"),
         };
         assert_eq!(models.len(), 5, "the catalogue was not absorbed");
@@ -3788,17 +3963,26 @@ mod tests {
         // shape is asserted and the identity is only read from the fixture,
         // rather than pinning a name that drifts on Anthropic's schedule.
         let default = models.iter().find(|m| m.value == "default").expect("default present");
-        assert_ne!(default.resolved_model, default.value, "a resolved id is not the value you pass");
+        assert_ne!(
+            default.resolved_model, default.value,
+            "a resolved id is not the value you pass"
+        );
         assert_eq!(default.display_name, "Default (recommended)");
         // Two distinct values resolving to one id is exactly why agreement
         // cannot be checked by comparing the picked value against init's model.
         assert_eq!(
-            models.iter().filter(|m| m.resolved_model == default.resolved_model).count(),
+            models
+                .iter()
+                .filter(|m| m.resolved_model == default.resolved_model)
+                .count(),
             2
         );
         let sonnet = models.iter().find(|m| m.value == "sonnet").expect("sonnet present");
         assert!(sonnet.supports_effort);
-        assert_eq!(sonnet.supported_effort_levels, ["low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(
+            sonnet.supported_effort_levels,
+            ["low", "medium", "high", "xhigh", "max"]
+        );
         // Measured: haiku omits both effort keys entirely rather than declaring
         // them empty, which is the hidden-control case the effort task needs.
         let haiku = models.iter().find(|m| m.value == "haiku").expect("haiku present");
@@ -4044,92 +4228,142 @@ mod tests {
     /// holds an owned host and a `const` cannot allocate one.
     fn summaries() -> Vec<(&'static str, &'static str, &'static str, Option<ToolSummary>)> {
         vec![
-        (
-            "bash-call",
-            "Bash",
-            "",
-            Some(ToolSummary::Execute { exit_code: None, lines: 1 }),
-        ),
-        // Empty output is zero lines, not one. `str::lines` on an empty string
-        // yields nothing, which is the behaviour a row wants here.
-        (
-            "permission-coverage",
-            "Bash",
-            "",
-            Some(ToolSummary::Execute { exit_code: None, lines: 0 }),
-        ),
-        (
-            "read-call",
-            "Read",
-            "",
-            Some(ToolSummary::Read { lines: 13, from: 1, total: Some(13) }),
-        ),
-        (
-            "edit-call",
-            "Read",
-            "",
-            Some(ToolSummary::Read { lines: 4, from: 1, total: Some(4) }),
-        ),
-        (
-            "hook-matcher",
-            "Read",
-            "",
-            Some(ToolSummary::Read { lines: 2, from: 1, total: Some(2) }),
-        ),
-        (
-            "permission-coverage",
-            "Read",
-            "",
-            Some(ToolSummary::Read { lines: 2, from: 1, total: Some(2) }),
-        ),
-        ("edit-call", "Edit", "", Some(ToolSummary::Edit { added: 1, removed: 1 })),
-        ("hook-matcher", "Edit", "", Some(ToolSummary::Edit { added: 1, removed: 1 })),
-        // A write to a new path, whose patch is empty and whose size is only in
-        // its content. `removed: 0` because there was nothing there.
-        ("hook-matcher", "Write", "", Some(ToolSummary::Edit { added: 1, removed: 0 })),
-        ("permission-coverage", "Write", "", Some(ToolSummary::Edit { added: 1, removed: 0 })),
-        ("permission-grant", "Write", "", Some(ToolSummary::Edit { added: 1, removed: 0 })),
-        ("glob-call", "Glob", "", Some(ToolSummary::Paths { count: 3 })),
-        // The three greps, and the whole reason dispatch is on the payload.
-        // `content` reports no usable file count: its own hits span two files
-        // and it still says `numFiles: 0`, so the summary declines to name one.
-        (
-            "grep-modes",
-            "Grep",
-            "content",
-            Some(ToolSummary::Search { hits: 2, files: None }),
-        ),
-        (
-            "grep-modes",
-            "Grep",
-            "files_with_matches",
-            Some(ToolSummary::Paths { count: 2 }),
-        ),
-        (
-            "grep-modes",
-            "Grep",
-            "count",
-            Some(ToolSummary::Search { hits: 2, files: Some(2) }),
-        ),
-        (
-            "webfetch-call",
-            "WebFetch",
-            "",
-            Some(ToolSummary::Fetch {
-                host: "example.com".to_string(),
-                status: Some(200),
-                bytes: Some(559),
-            }),
-        ),
-        // A subagent's own result is rich and still unsummarisable: none of its
-        // keys is a count of anything a row can say.
-        ("permission-subagent", "Agent", "", None),
-        // The non-object shapes, which are the ones that would panic an
-        // unwrapping summariser rather than merely mis-report.
-        ("ask-user-question", "AskUserQuestion", "", None),
-        ("hook-denied", "Bash", "", None),
-        ("permission-deadline", "Write", "", None),
-        ("permission-subagent", "Write", "", None),
+            (
+                "bash-call",
+                "Bash",
+                "",
+                Some(ToolSummary::Execute {
+                    exit_code: None,
+                    lines: 1,
+                }),
+            ),
+            // Empty output is zero lines, not one. `str::lines` on an empty string
+            // yields nothing, which is the behaviour a row wants here.
+            (
+                "permission-coverage",
+                "Bash",
+                "",
+                Some(ToolSummary::Execute {
+                    exit_code: None,
+                    lines: 0,
+                }),
+            ),
+            (
+                "read-call",
+                "Read",
+                "",
+                Some(ToolSummary::Read {
+                    lines: 13,
+                    from: 1,
+                    total: Some(13),
+                }),
+            ),
+            (
+                "edit-call",
+                "Read",
+                "",
+                Some(ToolSummary::Read {
+                    lines: 4,
+                    from: 1,
+                    total: Some(4),
+                }),
+            ),
+            (
+                "hook-matcher",
+                "Read",
+                "",
+                Some(ToolSummary::Read {
+                    lines: 2,
+                    from: 1,
+                    total: Some(2),
+                }),
+            ),
+            (
+                "permission-coverage",
+                "Read",
+                "",
+                Some(ToolSummary::Read {
+                    lines: 2,
+                    from: 1,
+                    total: Some(2),
+                }),
+            ),
+            (
+                "edit-call",
+                "Edit",
+                "",
+                Some(ToolSummary::Edit { added: 1, removed: 1 }),
+            ),
+            (
+                "hook-matcher",
+                "Edit",
+                "",
+                Some(ToolSummary::Edit { added: 1, removed: 1 }),
+            ),
+            // A write to a new path, whose patch is empty and whose size is only in
+            // its content. `removed: 0` because there was nothing there.
+            (
+                "hook-matcher",
+                "Write",
+                "",
+                Some(ToolSummary::Edit { added: 1, removed: 0 }),
+            ),
+            (
+                "permission-coverage",
+                "Write",
+                "",
+                Some(ToolSummary::Edit { added: 1, removed: 0 }),
+            ),
+            (
+                "permission-grant",
+                "Write",
+                "",
+                Some(ToolSummary::Edit { added: 1, removed: 0 }),
+            ),
+            ("glob-call", "Glob", "", Some(ToolSummary::Paths { count: 3 })),
+            // The three greps, and the whole reason dispatch is on the payload.
+            // `content` reports no usable file count: its own hits span two files
+            // and it still says `numFiles: 0`, so the summary declines to name one.
+            (
+                "grep-modes",
+                "Grep",
+                "content",
+                Some(ToolSummary::Search { hits: 2, files: None }),
+            ),
+            (
+                "grep-modes",
+                "Grep",
+                "files_with_matches",
+                Some(ToolSummary::Paths { count: 2 }),
+            ),
+            (
+                "grep-modes",
+                "Grep",
+                "count",
+                Some(ToolSummary::Search {
+                    hits: 2,
+                    files: Some(2),
+                }),
+            ),
+            (
+                "webfetch-call",
+                "WebFetch",
+                "",
+                Some(ToolSummary::Fetch {
+                    host: "example.com".to_string(),
+                    status: Some(200),
+                    bytes: Some(559),
+                }),
+            ),
+            // A subagent's own result is rich and still unsummarisable: none of its
+            // keys is a count of anything a row can say.
+            ("permission-subagent", "Agent", "", None),
+            // The non-object shapes, which are the ones that would panic an
+            // unwrapping summariser rather than merely mis-report.
+            ("ask-user-question", "AskUserQuestion", "", None),
+            ("hook-denied", "Bash", "", None),
+            ("permission-deadline", "Write", "", None),
+            ("permission-subagent", "Write", "", None),
         ]
     }
 
@@ -4328,16 +4562,20 @@ mod tests {
                     panic!(
                         "{fixture_name}: {tool}{} answered with an unrecorded result shape; \
                          add a row to RESULT_SHAPES saying what it carries",
-                        if mode.is_empty() { String::new() } else { format!(" ({mode})") }
+                        if mode.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({mode})")
+                        }
                     );
                 };
                 *seen.get_mut(&(fixture_name, row_tool, row_mode)).unwrap() += 1;
 
                 match shape {
                     ResultShape::Structured(paths) => {
-                        let obj = result.as_ref().unwrap_or_else(|| {
-                            panic!("{fixture_name}: {tool} lost its tool_use_result entirely")
-                        });
+                        let obj = result
+                            .as_ref()
+                            .unwrap_or_else(|| panic!("{fixture_name}: {tool} lost its tool_use_result entirely"));
                         assert!(
                             obj.is_object(),
                             "{fixture_name}: {tool} answered with {obj:?}, not an object"
@@ -4352,9 +4590,9 @@ mod tests {
                         }
                     }
                     ResultShape::ErrorText => {
-                        let v = result.as_ref().unwrap_or_else(|| {
-                            panic!("{fixture_name}: {tool} lost its tool_use_result entirely")
-                        });
+                        let v = result
+                            .as_ref()
+                            .unwrap_or_else(|| panic!("{fixture_name}: {tool} lost its tool_use_result entirely"));
                         assert!(
                             v.is_string(),
                             "{fixture_name}: {tool} now answers with {v:?} rather than a bare \
@@ -4409,9 +4647,7 @@ mod tests {
             );
             let events = run(name);
             assert!(
-                events
-                    .iter()
-                    .any(|e| matches!(e, ChatEvent::ToolCallCompleted { .. })),
+                events.iter().any(|e| matches!(e, ChatEvent::ToolCallCompleted { .. })),
                 "{name} produced no ToolCallCompleted"
             );
         }

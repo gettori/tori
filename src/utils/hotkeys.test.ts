@@ -272,11 +272,7 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     dispatchWindowHotkey(key("p", { meta: true }));
     dispatchHotkey(key("k", { meta: true }));
     dispatchHotkey(key("/", { meta: true }));
-    expect(dispatched.map((e) => e.type)).toEqual([
-      "tori:open-omnibox",
-      "tori:open-omnibox",
-      "tori:toggle-shortcuts",
-    ]);
+    expect(dispatched.map((e) => e.type)).toEqual(["tori:open-omnibox", "tori:open-omnibox", "tori:toggle-shortcuts"]);
   });
 
   it("opens the one box at the mode each of its two keys is for", () => {

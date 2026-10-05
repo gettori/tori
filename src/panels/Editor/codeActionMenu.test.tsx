@@ -110,16 +110,16 @@ vi.mock("./lspClient", async () => {
     onLspChange: () => () => {},
     setSemanticRefreshListener: () => () => {},
     setCodeLensRefreshListener: () => () => {},
-    stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
+    stopAllLsp: () => Promise.resolve(),
+    stopEvictedLspRoots: () => Promise.resolve(),
   };
 });
 
 const { default: CodeEditor } = await import("./CodeEditor");
 const { emit, emitWith, onWith, EDITOR_LSP_CODE_ACTION, EDITOR_LSP_SOURCE_ACTION, SOURCE_KINDS, TOAST } =
   await import("../../utils/events");
-const { offersAnySourceAction, publishSourceActionKinds, sourceActionKinds } = await import(
-  "../../utils/sourceActions"
-);
+const { offersAnySourceAction, publishSourceActionKinds, sourceActionKinds } =
+  await import("../../utils/sourceActions");
 const { clearCodeActions, refreshCodeActions } = await import("./lspCodeActions");
 const { CODE_ACTION_MARKER_CLASS } = await import("./codeActionBulb");
 
@@ -291,10 +291,18 @@ describe("a linter running beside the file's own server", () => {
   it("lists both servers' fixes in one menu, and runs each on the server that offered it", async () => {
     commands = { commands: ["_typescript.applyCodeAction"] };
     offered = [
-      { title: "Add import from './b'", kind: "quickfix", command: { title: "t", command: "_typescript.applyCodeAction" } },
+      {
+        title: "Add import from './b'",
+        kind: "quickfix",
+        command: { title: "t", command: "_typescript.applyCodeAction" },
+      },
     ];
     const lint = eslint([
-      { title: "Fix this no-unused-vars problem", kind: "quickfix", command: { title: "e", command: "eslint.applySingleFix" } },
+      {
+        title: "Fix this no-unused-vars problem",
+        kind: "quickfix",
+        command: { title: "e", command: "eslint.applySingleFix" },
+      },
     ]);
     secondaries = [lint];
     await mount();

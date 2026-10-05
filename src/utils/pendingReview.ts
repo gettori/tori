@@ -73,9 +73,7 @@ export function anchorFor(input: AnchorInput): Omit<DraftComment, "body"> | null
  *  lands somewhere other than where it was drawn. */
 export function anchorLabel(a: Omit<DraftComment, "body">): string {
   const side = a.side === "LEFT" ? " (base)" : "";
-  return a.startLine !== null
-    ? `${a.path}:${a.startLine}-${a.line}${side}`
-    : `${a.path}:${a.line}${side}`;
+  return a.startLine !== null ? `${a.path}:${a.startLine}-${a.line}${side}` : `${a.path}:${a.line}${side}`;
 }
 
 /** Whether the signed-in account wrote this pull request.
@@ -90,10 +88,8 @@ export function isSelfAuthored(pr: PullRequest, viewerLogin: string | null): boo
 
 export type SubmitBlock = { event: ReviewEvent; reason: string };
 
-export const STALE_ANCHOR_REASON =
-  "Some comments no longer match the diff. Fix or remove them first.";
-export const DRIFT_REASON =
-  "This pull request has new commits. Reload the diff before submitting.";
+export const STALE_ANCHOR_REASON = "Some comments no longer match the diff. Fix or remove them first.";
+export const DRIFT_REASON = "This pull request has new commits. Reload the diff before submitting.";
 
 /** Why the review cannot go out at all, whatever verdict it carries.
  *

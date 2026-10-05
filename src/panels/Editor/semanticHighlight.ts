@@ -27,7 +27,15 @@
 //     anyone is typing, so the ranges are mapped through the change and simply
 //     go stale until the next answer lands.
 
-import { Prec, StateEffect, StateField, type EditorState, type Extension, type Range, type Text } from "@codemirror/state";
+import {
+  Prec,
+  StateEffect,
+  StateField,
+  type EditorState,
+  type Extension,
+  type Range,
+  type Text,
+} from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import { SEMANTIC_ROLES, tokenClasses, type SemanticToken } from "../../utils/semanticTokens";
 

@@ -79,19 +79,16 @@ let mounted: ReturnType<typeof render> | null = null;
 
 /** Seed the tab store the way last run's quit would have left it. */
 function storeTabs(paths: string[], active: string) {
-  localStorage.setItem(
-    "tori.editor.tabs.v1",
-    JSON.stringify({ [REPO]: { paths, active, savedAt: Date.now() } }),
-  );
+  localStorage.setItem("tori.editor.tabs.v1", JSON.stringify({ [REPO]: { paths, active, savedAt: Date.now() } }));
 }
 
 async function relaunch() {
   mounted = render(() => (
-      <>
-        <Editor selected={selectionFor(REPO) as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selectionFor(REPO) as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
 }
@@ -102,9 +99,7 @@ async function relaunch() {
  *  unscoped count is exactly double. It is `aria-hidden`, which is why the
  *  role-based helpers never saw it and this one does. */
 function dirtyDots(): number {
-  return [...mounted!.container.querySelectorAll(".tab-dirty")].filter(
-    (el) => !el.closest(".otab-ghost"),
-  ).length;
+  return [...mounted!.container.querySelectorAll(".tab-dirty")].filter((el) => !el.closest(".otab-ghost")).length;
 }
 
 beforeEach(() => {

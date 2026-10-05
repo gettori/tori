@@ -4,15 +4,7 @@ import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import SegmentedControl, { type SegmentedOption } from "../../components/SegmentedControl/SegmentedControl";
 import { jumpToPdfPage, pdfView, setPdfView } from "./pdfDocument";
-import {
-  MAX_PERCENT,
-  MIN_PERCENT,
-  clampPage,
-  parsePercent,
-  percentOf,
-  zoomStep,
-  type PdfZoom,
-} from "./pdfLayout";
+import { MAX_PERCENT, MIN_PERCENT, clampPage, parsePercent, percentOf, zoomStep, type PdfZoom } from "./pdfLayout";
 import styles from "./PdfToolbar.module.css";
 
 type FitMode = "fitWidth" | "fitPage" | "actual";
@@ -70,20 +62,19 @@ export default function PdfToolbar(props: { path: string }) {
 
   /** Enter commits, Escape abandons. Both stop here: this sits inside a pane,
    *  and a bare Enter reaching the window is a command somewhere else. */
-  const keys =
-    (commit: (el: HTMLInputElement) => void, revert: () => string) => (e: KeyboardEvent) => {
-      const el = e.currentTarget as HTMLInputElement;
-      if (e.key === "Enter") {
-        e.preventDefault();
-        e.stopPropagation();
-        commit(el);
-        el.blur();
-      } else if (e.key === "Escape") {
-        e.stopPropagation();
-        el.value = revert();
-        el.blur();
-      }
-    };
+  const keys = (commit: (el: HTMLInputElement) => void, revert: () => string) => (e: KeyboardEvent) => {
+    const el = e.currentTarget as HTMLInputElement;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      commit(el);
+      el.blur();
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      el.value = revert();
+      el.blur();
+    }
+  };
 
   return (
     <div class={styles.toolbar}>

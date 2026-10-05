@@ -10,7 +10,7 @@ use std::thread;
 use serde_json::{json, Map, Value};
 
 use crate::rpc::client::{self, Client, ClientError};
-use crate::rpc::frame::{to_line, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR};
+use crate::rpc::frame::{to_line, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use crate::rpc::table::{self, Method};
 
 // Under codex-acp's 300s kill of a tool call, see [[concept_blocking_tool_call_ceiling]].
@@ -35,8 +35,12 @@ pub fn run() -> io::Result<()> {
 pub fn serve(input: impl BufRead, out: Out, connect: Connect) -> io::Result<Vec<thread::JoinHandle<()>>> {
     let mut calls = Vec::new();
     for line in input.lines() {
-        let Ok(message) = serde_json::from_str::<Value>(&line?) else { continue };
-        let Some(id) = message.get("id").filter(|id| !id.is_null()).cloned() else { continue };
+        let Ok(message) = serde_json::from_str::<Value>(&line?) else {
+            continue;
+        };
+        let Some(id) = message.get("id").filter(|id| !id.is_null()).cloned() else {
+            continue;
+        };
         let params = message.get("params").cloned().unwrap_or(Value::Null);
         match message["method"].as_str().unwrap_or("") {
             "initialize" => {
@@ -83,7 +87,9 @@ fn internal(e: ClientError) -> (i64, String) {
 // Read per request rather than once at startup, since a session's kind can
 // change after its MCP server has started.
 fn tools_list(connect: &Connect) -> Result<Value, (i64, String)> {
-    let me = connect().and_then(|mut c| c.call("caller", Value::Null)).map_err(internal)?;
+    let me = connect()
+        .and_then(|mut c| c.call("caller", Value::Null))
+        .map_err(internal)?;
     let kind = me["kind"].as_str().unwrap_or("local");
     let tools: Vec<Value> = table::METHODS
         .iter()
@@ -106,7 +112,11 @@ fn tools_call(connect: &Connect, params: &Value) -> Result<Value, (i64, String)>
         .find(|m| tool_name(m) == name)
         .ok_or_else(|| (INVALID_PARAMS, format!("no tool {name}")))?;
     let mut args = params["arguments"].as_object().cloned().unwrap_or_default();
-    if matches!(method.name, "ask.create" | "ask.wait" | "session.wait" | "topic.member.promote") && !args.contains_key("timeout") {
+    if matches!(
+        method.name,
+        "ask.create" | "ask.wait" | "session.wait" | "topic.member.promote"
+    ) && !args.contains_key("timeout")
+    {
         args.insert("timeout".into(), json!(BLOCKING_CALL_TIMEOUT_SECS));
     }
     let mut socket = connect().map_err(internal)?;
@@ -132,7 +142,10 @@ fn relative(value: &Value) -> bool {
 
 fn has_relative_path(args: &Map<String, Value>) -> bool {
     PATH_ARGS.iter().any(|key| args.get(*key).is_some_and(relative))
-        || args.get("attach").and_then(Value::as_array).is_some_and(|all| all.iter().any(relative))
+        || args
+            .get("attach")
+            .and_then(Value::as_array)
+            .is_some_and(|all| all.iter().any(relative))
 }
 
 // The same rule the CLI applies, against the caller's folder rather than this
@@ -169,7 +182,11 @@ mod tests {
 
     impl Fake {
         fn start(kind: &'static str) -> Self {
-            let dir = std::env::temp_dir().join(format!("tori-mcp-{}-{kind}-{:?}", std::process::id(), thread::current().id()));
+            let dir = std::env::temp_dir().join(format!(
+                "tori-mcp-{}-{kind}-{:?}",
+                std::process::id(),
+                thread::current().id()
+            ));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             let sock = dir.join("s");
@@ -210,16 +227,32 @@ mod tests {
                     });
                 }
             });
-            Fake { sock, seen, connections }
+            Fake {
+                sock,
+                seen,
+                connections,
+            }
         }
 
         fn connect(&self) -> Connect {
             let sock = self.sock.to_string_lossy().into_owned();
-            Arc::new(move || Client::connect(&Endpoint { sock: sock.clone(), token: "t".into(), found: Found::Env }))
+            Arc::new(move || {
+                Client::connect(&Endpoint {
+                    sock: sock.clone(),
+                    token: "t".into(),
+                    found: Found::Env,
+                })
+            })
         }
 
         fn params_of(&self, method: &str) -> Vec<Value> {
-            self.seen.lock().unwrap().iter().filter(|(m, _)| m == method).map(|(_, p)| p.clone()).collect()
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(m, _)| m == method)
+                .map(|(_, p)| p.clone())
+                .collect()
         }
     }
 
@@ -230,7 +263,11 @@ mod tests {
             call.join().unwrap();
         }
         let bytes = out.lock().unwrap().clone();
-        String::from_utf8(bytes).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+        String::from_utf8(bytes)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
     }
 
     fn call(id: u64, tool: &str, arguments: Value) -> Value {
@@ -240,7 +277,13 @@ mod tests {
     #[test]
     fn a_blocking_call_does_not_hold_up_the_one_after_it() {
         let fake = Fake::start("chat");
-        let replies = run(&fake, &[call(1, "ask_create", json!({ "question": "q" })), call(2, "sessions_list", json!({}))]);
+        let replies = run(
+            &fake,
+            &[
+                call(1, "ask_create", json!({ "question": "q" })),
+                call(2, "sessions_list", json!({})),
+            ],
+        );
         let order: Vec<u64> = replies.iter().map(|r| r["id"].as_u64().unwrap()).collect();
         assert_eq!(order, [2, 1]);
     }
@@ -278,10 +321,16 @@ mod tests {
             assert!(chat.iter().any(|t| t == tool), "{tool} missing from {chat:?}");
         }
         let terminal = listed("terminal");
-        assert!(!terminal.iter().any(|t| t == "ask_create"), "a terminal was offered ask_create");
+        assert!(
+            !terminal.iter().any(|t| t == "ask_create"),
+            "a terminal was offered ask_create"
+        );
         let worker = listed("worker");
         assert!(worker.iter().any(|t| t == "ask_create"), "{worker:?}");
-        assert!(!worker.iter().any(|t| t == "session_spawn"), "a worker was offered session_spawn");
+        assert!(
+            !worker.iter().any(|t| t == "session_spawn"),
+            "a worker was offered session_spawn"
+        );
     }
 
     #[test]
@@ -298,8 +347,14 @@ mod tests {
         );
         assert_eq!(*fake.connections.lock().unwrap(), 4);
         assert_eq!(fake.params_of("sessions.list"), [json!({ "limit": 3 })]);
-        assert_eq!(fake.params_of("ask.wait"), [json!({ "id": "a1", "timeout": BLOCKING_CALL_TIMEOUT_SECS })]);
-        assert_eq!(fake.params_of("session.wait"), [json!({ "id": "w1", "timeout": BLOCKING_CALL_TIMEOUT_SECS })]);
+        assert_eq!(
+            fake.params_of("ask.wait"),
+            [json!({ "id": "a1", "timeout": BLOCKING_CALL_TIMEOUT_SECS })]
+        );
+        assert_eq!(
+            fake.params_of("session.wait"),
+            [json!({ "id": "w1", "timeout": BLOCKING_CALL_TIMEOUT_SECS })]
+        );
         let refused = replies.iter().find(|r| r["id"] == json!(3)).unwrap();
         assert_eq!(refused["result"]["isError"], json!(true));
         assert_eq!(refused["result"]["content"][0]["text"], json!("no window"));
@@ -310,7 +365,17 @@ mod tests {
     #[test]
     fn relative_paths_resolve_against_the_callers_folder() {
         let fake = Fake::start("chat");
-        run(&fake, &[call(1, "session_spawn", json!({ "attach": ["notes/a.md", "/abs/b.md"], "folder": "wt" }))]);
-        assert_eq!(fake.params_of("session.spawn"), [json!({ "attach": ["/w/notes/a.md", "/abs/b.md"], "folder": "/w/wt" })]);
+        run(
+            &fake,
+            &[call(
+                1,
+                "session_spawn",
+                json!({ "attach": ["notes/a.md", "/abs/b.md"], "folder": "wt" }),
+            )],
+        );
+        assert_eq!(
+            fake.params_of("session.spawn"),
+            [json!({ "attach": ["/w/notes/a.md", "/abs/b.md"], "folder": "/w/wt" })]
+        );
     }
 }

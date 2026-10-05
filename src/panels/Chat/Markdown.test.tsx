@@ -5,7 +5,10 @@ import { expectNoAxeViolations } from "../../test/axe";
 import Markdown from "./Markdown";
 
 vi.mock("../../utils/clipboard", () => ({ copyText: vi.fn(async () => true) }));
-const hl = vi.hoisted(() => ({ html: vi.fn<(code: string, lang: string, slot?: string) => string | null>(() => null), lines: vi.fn(() => null) }));
+const hl = vi.hoisted(() => ({
+  html: vi.fn<(code: string, lang: string, slot?: string) => string | null>(() => null),
+  lines: vi.fn(() => null),
+}));
 vi.mock("./highlight", () => ({ createHighlight: () => hl }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 // The real engine measures text through `getBBox`, which jsdom does not have.
@@ -41,7 +44,9 @@ describe("Markdown block splitting", () => {
   });
 
   it("leaves the corner empty for a bare fence, which still gets its copy button", () => {
-    const { container, queryByText, getByLabelText } = render(() => <Markdown text={"```\nno lang here\n```"} cwd="/repo" />);
+    const { container, queryByText, getByLabelText } = render(() => (
+      <Markdown text={"```\nno lang here\n```"} cwd="/repo" />
+    ));
     expect(container.querySelector("pre")?.textContent).toBe("no lang here");
     expect(queryByText("no lang here", { selector: "span" })).toBeNull();
     getByLabelText("Copy code");
@@ -90,9 +95,9 @@ describe("code block controls", () => {
   });
 
   it("offers a preview only on a markdown fence, and toggles it", () => {
-    const { container, getByLabelText, queryByLabelText } = render(
-      () => <Markdown text={"```md\n# A heading\n```"} cwd="/repo" />,
-    );
+    const { container, getByLabelText, queryByLabelText } = render(() => (
+      <Markdown text={"```md\n# A heading\n```"} cwd="/repo" />
+    ));
     expect(container.querySelector("h1")).toBeNull();
     fireEvent.click(getByLabelText("Preview markdown"));
     expect(container.querySelector("h1")?.textContent).toBe("A heading");
@@ -163,7 +168,9 @@ describe("a transcript loads nothing from the network", () => {
   it("shows raw HTML as the text it is", () => {
     const { container } = render(() => (
       <Markdown
-        text={'<video poster="https://x.dev/p"></video>\n\nand <div style="background:url(https://x.dev/b)">inline</div>'}
+        text={
+          '<video poster="https://x.dev/p"></video>\n\nand <div style="background:url(https://x.dev/b)">inline</div>'
+        }
         cwd="/repo"
       />
     ));
@@ -184,7 +191,7 @@ describe("a transcript loads nothing from the network", () => {
 
   it("holds inside a previewed md fence too", () => {
     const { container, getByLabelText } = render(() => (
-      <Markdown text={"```md\n![chart](https://x.dev/y)\n\n<img src=\"https://x.dev/z\">\n```"} cwd="/repo" />
+      <Markdown text={'```md\n![chart](https://x.dev/y)\n\n<img src="https://x.dev/z">\n```'} cwd="/repo" />
     ));
     fireEvent.click(getByLabelText("Preview markdown"));
     expect(container.querySelector(LOADERS)).toBeNull();

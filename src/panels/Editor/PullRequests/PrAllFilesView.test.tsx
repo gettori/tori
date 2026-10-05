@@ -197,15 +197,12 @@ function openTab() {
 
 const sections = () => document.querySelectorAll("[data-file-section]");
 const bodies = () => document.querySelectorAll("[data-file-body]");
-const toggleFor = (path: string) =>
-  document.querySelector<HTMLButtonElement>(`[data-file-section="${path}"] button`)!;
+const toggleFor = (path: string) => document.querySelector<HTMLButtonElement>(`[data-file-section="${path}"] button`)!;
 
 const pane = () => document.querySelector<HTMLElement>("[class*=allFiles]")!;
 
 const rowFor = (text: string) =>
-  Array.from(document.querySelectorAll("[class*=commentable]")).find((r) =>
-    r.textContent?.includes(text),
-  )!;
+  Array.from(document.querySelectorAll("[class*=commentable]")).find((r) => r.textContent?.includes(text))!;
 
 describe("a pull request's files stacked in one tab", () => {
   beforeEach(async () => {

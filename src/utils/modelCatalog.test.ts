@@ -69,7 +69,13 @@ describe("counting what a agent offers", () => {
   it("answers zero for a agent with nothing remembered", () => {
     expect(distinctModelCount(undefined)).toBe(0);
     expect(
-      distinctModelCount({ agentId: "solo", profileId: "default", state: "neverProbed", catalogue: null, lastFailure: null }),
+      distinctModelCount({
+        agentId: "solo",
+        profileId: "default",
+        state: "neverProbed",
+        catalogue: null,
+        lastFailure: null,
+      }),
     ).toBe(0);
   });
 });
@@ -114,18 +120,14 @@ describe("whether a remembered answer still describes the binary", () => {
 
     it("is stale when the cache is stamped below the shape this build wants", () => {
       const old = withModels([]);
-      expect(isStale({ ...old, catalogue: { ...old.catalogue!, shape: CACHE_SHAPE - 1 } }, "2.1.231")).toBe(
-        true,
-      );
+      expect(isStale({ ...old, catalogue: { ...old.catalogue!, shape: CACHE_SHAPE - 1 } }, "2.1.231")).toBe(true);
     });
 
     // A cache from a *newer* Tori carries every field this one reads, so there
     // is nothing to re-probe for. A downgrade is not a reason to spawn a binary.
     it("leaves a catalogue stamped above this build alone", () => {
       const newer = withModels([]);
-      expect(
-        isStale({ ...newer, catalogue: { ...newer.catalogue!, shape: CACHE_SHAPE + 1 } }, "2.1.231"),
-      ).toBe(false);
+      expect(isStale({ ...newer, catalogue: { ...newer.catalogue!, shape: CACHE_SHAPE + 1 } }, "2.1.231")).toBe(false);
     });
 
     // Written in Rust, judged here, so the number lives twice. Pinned rather
@@ -224,9 +226,7 @@ describe("the shared store", () => {
 
   it("hands each agent its own remembered answer and nobody else's", async () => {
     await ensureModelCatalogsLoaded();
-    expect(cachedModels(catalogFor("opencode")).map((m) => m.value)).toEqual([
-      "anthropic/claude-sonnet-4.6",
-    ]);
+    expect(cachedModels(catalogFor("opencode")).map((m) => m.value)).toEqual(["anthropic/claude-sonnet-4.6"]);
     // The row an unasked agent gets is an empty list, which `pickableModels`
     // reads as "no models" rather than as a list worth offering.
     expect(cachedModels(catalogFor("claude"))).toEqual([]);
@@ -363,7 +363,16 @@ describe("the levers a draft can read before it has a session", () => {
       {
         ...model("haiku", "claude-haiku-4-5"),
         options: [
-          { id: "fast_mode", name: "Fast mode", description: "", category: "", disabled: true, note: "", kind: "boolean", value: false },
+          {
+            id: "fast_mode",
+            name: "Fast mode",
+            description: "",
+            category: "",
+            disabled: true,
+            note: "",
+            kind: "boolean",
+            value: false,
+          },
         ],
       },
     ]);
@@ -380,9 +389,7 @@ describe("the levers a draft can read before it has a session", () => {
   // along.
   it("hands a draft the commands the last handshake published", () => {
     const claude = withModels([model("sonnet", "claude-sonnet-5")]);
-    claude.catalogue!.commands = [
-      { name: "review", description: "Review the diff", argumentHint: "", aliases: [] },
-    ];
+    claude.catalogue!.commands = [{ name: "review", description: "Review the diff", argumentHint: "", aliases: [] }];
     expect(cachedCommands(claude).map((c) => c.name)).toEqual(["review"]);
   });
 

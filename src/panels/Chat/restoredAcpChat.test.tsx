@@ -246,9 +246,7 @@ describe("a restored ACP chat with nothing saved yet", () => {
 
     push(sessionStarted());
 
-    await waitFor(() =>
-      expect(screen.queryByText(/keeps the conversation itself/)).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText(/keeps the conversation itself/)).toBeNull());
   });
 
   it("says nothing when there are turns to show", async () => {

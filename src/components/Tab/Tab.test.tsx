@@ -27,8 +27,7 @@ function mount(props: { onClose?: (e: MouseEvent | KeyboardEvent) => void } = {}
   ));
 }
 
-const closeOf = (name: string) =>
-  screen.getByRole("tab", { name }).parentElement!.querySelector("[data-tab-close]")!;
+const closeOf = (name: string) => screen.getByRole("tab", { name }).parentElement!.querySelector("[data-tab-close]")!;
 
 describe("the tab pill", () => {
   it("takes its selection and its tab stop from the strip above it", () => {

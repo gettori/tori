@@ -72,7 +72,13 @@ const member = (repo: string, wt: string, order: number) => ({
   state: { kind: "present" },
   order,
 });
-const AUTH = { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: [member("/w/api", A, 0), member("/w/web", B, 1)] };
+const AUTH = {
+  id: "f1",
+  name: "Auth",
+  branch: "feat/auth",
+  createdAt: 1,
+  members: [member("/w/api", A, 0), member("/w/web", B, 1)],
+};
 const PAY = { id: "f2", name: "Payments", branch: "feat/payments", createdAt: 2, members: [member("/w/api", A, 0)] };
 
 const topicSel = {
@@ -182,10 +188,7 @@ describe("selecting a Topic", () => {
     // run remembered, its attach port and its watches. The Topic key going
     // never reached them.
     const seed = (key: string, value: unknown) =>
-      localStorage.setItem(
-        key,
-        JSON.stringify({ "topic:f1": value, [A]: value, [B]: value }),
-      );
+      localStorage.setItem(key, JSON.stringify({ "topic:f1": value, [A]: value, [B]: value }));
     seed("tori.watches", ["req.body"]);
     seed("tori.debugAttachPorts", 9229);
     seed("tori.debugLastTarget", { kind: "attach", port: 9229 });
@@ -204,11 +207,7 @@ describe("selecting a Topic", () => {
 
     await waitFor(() => expect(storesHolding("topic:f1")).toEqual([]));
     for (const root of [A, B]) {
-      expect(storesHolding(root)).toEqual([
-        "tori.editor.tabs.v1",
-        "tori.terminalTabs",
-        "tori.treeExpanded.v1",
-      ]);
+      expect(storesHolding(root)).toEqual(["tori.editor.tabs.v1", "tori.terminalTabs", "tori.treeExpanded.v1"]);
     }
   });
 });

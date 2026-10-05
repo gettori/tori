@@ -104,9 +104,7 @@ describe("a prompt shows what it attached", () => {
   });
 
   it("keeps an image-only prompt visible", () => {
-    const items: ChatItem[] = [
-      { kind: "user", id: "u1", blocks: [{ type: "imageRef" }], steer: false },
-    ];
+    const items: ChatItem[] = [{ kind: "user", id: "u1", blocks: [{ type: "imageRef" }], steer: false }];
     const { container } = render(() => list({ items }));
     expect(container.textContent).toContain("[Image #1]");
   });
@@ -599,8 +597,7 @@ describe("the ambient rows say what kind they are", () => {
 
   /** The glyph a row draws, identified by the markup rather than by the icon's
    *  name: the point of the assertion is that the four rows differ. */
-  const glyphs = (container: HTMLElement) =>
-    [...container.querySelectorAll("svg")].map((svg) => svg.outerHTML);
+  const glyphs = (container: HTMLElement) => [...container.querySelectorAll("svg")].map((svg) => svg.outerHTML);
 
   it("draws a different glyph for a thought, a hook and each level of notice", () => {
     const { container } = render(() => list({ items: AMBIENT }));

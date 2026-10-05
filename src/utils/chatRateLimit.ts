@@ -272,7 +272,9 @@ export function resetsAtMs(resetsAt: number | null): number | null {
 function whenLabel(at: number, now: number): string {
   const d = new Date(at);
   const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return d.toDateString() === new Date(now).toDateString() ? time : `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return d.toDateString() === new Date(now).toDateString()
+    ? time
+    : `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
 }
 
 /**
@@ -300,9 +302,7 @@ export function windowSentence(r: QuotaReading, warnAt: number, now: number): st
   if (state === "reached") return `${Subject} has been reached.${resets}`;
 
   const pct = r.utilization === null ? null : Math.round(r.utilization * 100);
-  return pct === null
-    ? `${Subject} is close.${resets}`
-    : `You have used ${pct}% of ${subject}.${resets}`;
+  return pct === null ? `${Subject} is close.${resets}` : `You have used ${pct}% of ${subject}.${resets}`;
 }
 
 /**

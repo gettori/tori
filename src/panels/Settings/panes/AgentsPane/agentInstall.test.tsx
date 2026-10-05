@@ -121,9 +121,7 @@ describe("installing an agent from its detail page", () => {
   // counts only what is done, and the later steps wait rather than vanish.
   it("shows the command, the counter, and the waiting steps before anything is done", async () => {
     const { container, getByText } = await open(mount());
-    await waitFor(() =>
-      expect(container.textContent).toContain("npm install -g @github/copilot"),
-    );
+    await waitFor(() => expect(container.textContent).toContain("npm install -g @github/copilot"));
     expect(container.textContent).toContain("0 of 3");
     expect(getByText("copy")).toBeTruthy();
     expect(container.textContent).toContain("Available once the binary is installed.");

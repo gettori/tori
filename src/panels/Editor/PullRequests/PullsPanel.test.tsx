@@ -91,22 +91,17 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "list_branches")
-      return Promise.resolve(bridge.branch ? [{ name: bridge.branch, current: true }] : []);
+    if (cmd === "list_branches") return Promise.resolve(bridge.branch ? [{ name: bridge.branch, current: true }] : []);
     if (cmd === "git_branch_sync") return Promise.resolve(bridge.sync);
     if (cmd === "git_origin") return Promise.resolve(bridge.origin);
     if (cmd === "git_default_base_branch") return Promise.resolve(bridge.base);
     if (cmd === "git_ahead_behind") return Promise.resolve(bridge.aheadBehind);
     if (cmd === "git_branch_paths") return Promise.resolve(bridge.branchPaths);
     if (cmd === "forge_push_and_create_pr")
-      return bridge.createFails
-        ? Promise.reject(bridge.createFails)
-        : Promise.resolve(bridge.createdPr);
+      return bridge.createFails ? Promise.reject(bridge.createFails) : Promise.resolve(bridge.createdPr);
     if (cmd === "forge_pr_for_branch") {
       if (bridge.directPrPending) return new Promise(() => {});
-      return bridge.directPrFails
-        ? Promise.reject(bridge.directPrFails)
-        : Promise.resolve(bridge.directPr);
+      return bridge.directPrFails ? Promise.reject(bridge.directPrFails) : Promise.resolve(bridge.directPr);
     }
     if (cmd === "forge_unit_statuses")
       return Promise.resolve({
@@ -115,30 +110,28 @@ vi.mock("@tauri-apps/api/core", () => ({
         rate: { remaining: 4800, limit: 5000, resetAt: null },
       });
     if (cmd === "forge_pr_summary")
-      return bridge.summaryFails
-        ? Promise.reject(bridge.summaryFails)
-        : Promise.resolve(bridge.summary);
-    if (cmd === "forge_merge")
-      return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
+      return bridge.summaryFails ? Promise.reject(bridge.summaryFails) : Promise.resolve(bridge.summary);
+    if (cmd === "forge_merge") return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
     if (cmd === "forge_update_branch")
       return bridge.updateFails ? Promise.reject(bridge.updateFails) : Promise.resolve(null);
     if (cmd === "forge_pr_files")
       return bridge.filesFail
         ? Promise.reject(bridge.filesFail)
         : Promise.resolve({ items: bridge.files, truncated: bridge.filesTruncated });
-    if (cmd === "forge_review_threads")
-      return Promise.resolve({ items: bridge.threads, truncated: false });
+    if (cmd === "forge_review_threads") return Promise.resolve({ items: bridge.threads, truncated: false });
     if (cmd === "forge_list_prs") return Promise.resolve({ items: [], truncated: false });
     if (cmd === "forge_repo_account")
       return bridge.accountPending
         ? new Promise(() => {})
-        : Promise.resolve(bridge.repoAccount ?? {
-            kind: "account",
-            accountId: "personal",
-            host: "github.com",
-            auth: { kind: "signedIn", login: "skarif2" },
-            capabilities: {},
-          });
+        : Promise.resolve(
+            bridge.repoAccount ?? {
+              kind: "account",
+              accountId: "personal",
+              host: "github.com",
+              auth: { kind: "signedIn", login: "skarif2" },
+              capabilities: {},
+            },
+          );
     return Promise.resolve(null);
   },
 }));
@@ -178,9 +171,7 @@ const { onWith, ADD_BRANCH_UNIT, OPEN_IN_EDITOR, SEND_TO_SESSION, SEND_TO_SESSIO
   await import("../../../utils/events");
 const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
 const { enterRoots, refreshMeta } = await import("../../../utils/gitActions");
-const { noteForgeUnits, resetSessionActivityForTests } = await import(
-  "../../../utils/sessionActivity"
-);
+const { noteForgeUnits, resetSessionActivityForTests } = await import("../../../utils/sessionActivity");
 const { REMOVE_BRANCH_UNIT } = await import("../../../utils/events");
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
@@ -342,9 +333,7 @@ describe("the branch's pull request", () => {
     // one belonging to the state it is in.
     signIn();
     const onBase = await open({ branch: "main", sync: { ...SYNC, base: null } });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="onBase"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="onBase"]')).toBeTruthy());
     onBase.unmount();
 
     resetForgeStatusForTests();
@@ -364,9 +353,7 @@ describe("the branch's pull request", () => {
     resetForgeStatusForTests();
     signIn();
     const noPr = await open({ directPr: null });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy());
     noPr.unmount();
   });
 
@@ -443,9 +430,7 @@ describe("the three verdict rows", () => {
     await pollNow("manual");
 
     await waitFor(() => expect(screen.getByText("1 approval, 2 change requests")).toBeTruthy());
-    expect(
-      document.querySelector('[data-verdict="reviews"]')!.getAttribute("data-decision"),
-    ).toBe("changesRequested");
+    expect(document.querySelector('[data-verdict="reviews"]')!.getAttribute("data-decision")).toBe("changesRequested");
   });
 
   it("shows the honest blank for a pull request no poll tick covered", async () => {
@@ -483,9 +468,7 @@ describe("landing it", () => {
     await open({ statuses: [unit()], summary: summaryOf("blocked") });
     await pollNow("manual");
 
-    await waitFor(() =>
-      expect(screen.getByText("A rule on the base branch is holding this merge.")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText("A rule on the base branch is holding this merge.")).toBeTruthy());
     await showTab("Merge");
     expect(mergeButton().textContent).toBe("Merge");
     expect(mergeButton().hasAttribute("disabled")).toBe(true);
@@ -522,9 +505,7 @@ describe("landing it", () => {
 
     fireEvent.click(mergeButton());
 
-    await waitFor(() =>
-      expect(screen.getByText("At least 1 approving review is required")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText("At least 1 approving review is required")).toBeTruthy());
   });
 
   it("tells the listing when one has been landed", async () => {
@@ -565,8 +546,26 @@ describe("the file rows", () => {
       statuses: [unit()],
       files: [file()],
       threads: [
-        { id: "t1", path: "src/utils/forgeChip.ts", line: 4, startLine: null, diffHunk: "", isResolved: false, isOutdated: false, comments: [] },
-        { id: "t2", path: "src/utils/forgeChip.ts", line: 6, startLine: null, diffHunk: "", isResolved: true, isOutdated: false, comments: [] },
+        {
+          id: "t1",
+          path: "src/utils/forgeChip.ts",
+          line: 4,
+          startLine: null,
+          diffHunk: "",
+          isResolved: false,
+          isOutdated: false,
+          comments: [],
+        },
+        {
+          id: "t2",
+          path: "src/utils/forgeChip.ts",
+          line: 6,
+          startLine: null,
+          diffHunk: "",
+          isResolved: true,
+          isOutdated: false,
+          comments: [],
+        },
       ],
     });
     await pollNow("manual");
@@ -592,9 +591,7 @@ describe("the file rows", () => {
     await waitFor(() => expect(screen.getByText("forgeChip.ts")).toBeTruthy());
     expect(screen.getByText("src/utils")).toBeTruthy();
     expect(screen.getByText("M")).toBeTruthy();
-    expect(
-      screen.getByRole("checkbox", { name: "Viewed, src/utils/forgeChip.ts" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Viewed, src/utils/forgeChip.ts" })).toBeTruthy();
     expect(screen.queryByText("+84")).toBeNull();
   });
 
@@ -749,9 +746,7 @@ describe("landing it, once it has landed", () => {
       },
     ]);
     const asked: { projectPath: string; branch: string }[] = [];
-    const off = onWith<{ projectPath: string; branch: string }>(REMOVE_BRANCH_UNIT, (d) =>
-      asked.push(d),
-    );
+    const off = onWith<{ projectPath: string; branch: string }>(REMOVE_BRANCH_UNIT, (d) => asked.push(d));
 
     signIn();
     await open({ statuses: [unit()], summary: summaryOf("clean") });
@@ -899,7 +894,10 @@ describe("starting a pull request from the panel", () => {
   };
 
   const button = (label: string) =>
-    screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    screen
+      .getAllByText(label)
+      .find((n) => n.closest("button"))!
+      .closest("button")!;
 
   it("hands a new branch to the sidebar rather than cutting one here", async () => {
     // The sidebar owns the branch-unit list and the dialog that adds to it, and
@@ -907,9 +905,7 @@ describe("starting a pull request from the panel", () => {
     // second create path here would be a second place to get that wrong.
     signIn();
     await open({ branch: "main", sync: { ...SYNC, base: null } });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="onBase"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="onBase"]')).toBeTruthy());
 
     const asked: unknown[] = [];
     const off = onWith(ADD_BRANCH_UNIT, (d) => asked.push(d));
@@ -922,9 +918,7 @@ describe("starting a pull request from the panel", () => {
   it("opens the form in place on a host this account can serve", async () => {
     signIn();
     await open({ sync: UNPUSHED });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="noPrUnpushed"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="noPrUnpushed"]')).toBeTruthy());
 
     const opened = vi.spyOn(window, "open").mockImplementation(() => null);
     fireEvent.click(button("Push and open a pull request"));
@@ -943,9 +937,7 @@ describe("starting a pull request from the panel", () => {
     // closing a dialog.
     signIn();
     await open({ sync: UNPUSHED });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="noPrUnpushed"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="noPrUnpushed"]')).toBeTruthy());
 
     fireEvent.click(button("Push only"));
     await waitFor(() => expect(cmds("git_push")).toHaveLength(1));
@@ -962,9 +954,7 @@ describe("starting a pull request from the panel", () => {
     // panel holds what the create handed back rather than the older answer.
     signIn();
     await open({ sync: SYNC, directPr: null, createdPr: pr({ number: 77 }) });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy());
 
     fireEvent.click(button("Open a pull request"));
     const title = await screen.findByPlaceholderText("What this branch does");
@@ -990,9 +980,7 @@ describe("starting a pull request from the panel", () => {
       directPr: null,
       branchPaths: ["src/panels/Editor/PullRequests/PullsPanel.tsx"],
     });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy());
     fireEvent.click(button("Open a pull request"));
     await screen.findByPlaceholderText("What this branch does");
 
@@ -1028,9 +1016,7 @@ describe("starting a pull request from the panel", () => {
     // label follows that decision rather than being written once and hoped for.
     signIn();
     await open({ accountPending: true, directPr: null });
-    await waitFor(() =>
-      expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy(),
-    );
+    await waitFor(() => expect(document.querySelector('[data-panel-state="noPrPushed"]')).toBeTruthy());
 
     const opened = vi.spyOn(window, "open").mockImplementation(() => null);
     fireEvent.click(button("Open compare on github.com"));
@@ -1055,11 +1041,7 @@ describe("the keyboard", () => {
     signIn();
     await open({
       statuses: [unit()],
-      files: [
-        file(),
-        file({ path: "src/utils/forgeStatus.ts" }),
-        file({ path: "src/utils/prUrl.ts" }),
-      ],
+      files: [file(), file({ path: "src/utils/forgeStatus.ts" }), file({ path: "src/utils/prUrl.ts" })],
     });
     await pollNow("manual");
     await waitFor(() => expect(rows()).toHaveLength(3));
@@ -1133,26 +1115,99 @@ describe("accessibility", () => {
   /// looks finished. The empty states share one block of markup, so the part
   /// that actually differs between these rows is which controls it offers.
   const STATES: { state: string; go: () => ReturnType<typeof open> }[] = [
-    { state: "paused", go: async () => { noteForgeEnabled(false); noteAuth({ kind: "signedIn", login: "skarif2" }); return open(); } },
-    { state: "paused", go: async () => { noteAuth({ kind: "signedOut" }); return open(); } },
-    { state: "paused", go: async () => { noteAuth({ kind: "suspect", login: "skarif2" }); noteForgeEnabled(true); return open(); } },
-    { state: "paused", go: async () => { signIn(); return open({ repoAccount: { kind: "pick", host: "github.com", candidates: [] } }); } },
-    { state: "noBranch", go: async () => { signIn(); return open({ branch: null }); } },
-    { state: "noRemote", go: async () => { signIn(); return open({ origin: null }); } },
-    { state: "inert", go: async () => { signIn(); return open({ origin: "git@bitbucket.org:skarif2/tori.git" }); } },
-    { state: "onBase", go: async () => { signIn(); return open({ branch: "main", sync: { ...SYNC, base: null } }); } },
+    {
+      state: "paused",
+      go: async () => {
+        noteForgeEnabled(false);
+        noteAuth({ kind: "signedIn", login: "skarif2" });
+        return open();
+      },
+    },
+    {
+      state: "paused",
+      go: async () => {
+        noteAuth({ kind: "signedOut" });
+        return open();
+      },
+    },
+    {
+      state: "paused",
+      go: async () => {
+        noteAuth({ kind: "suspect", login: "skarif2" });
+        noteForgeEnabled(true);
+        return open();
+      },
+    },
+    {
+      state: "paused",
+      go: async () => {
+        signIn();
+        return open({ repoAccount: { kind: "pick", host: "github.com", candidates: [] } });
+      },
+    },
+    {
+      state: "noBranch",
+      go: async () => {
+        signIn();
+        return open({ branch: null });
+      },
+    },
+    {
+      state: "noRemote",
+      go: async () => {
+        signIn();
+        return open({ origin: null });
+      },
+    },
+    {
+      state: "inert",
+      go: async () => {
+        signIn();
+        return open({ origin: "git@bitbucket.org:skarif2/tori.git" });
+      },
+    },
+    {
+      state: "onBase",
+      go: async () => {
+        signIn();
+        return open({ branch: "main", sync: { ...SYNC, base: null } });
+      },
+    },
     {
       state: "noPrUnpushed",
       go: async () => {
         signIn();
-        return open({ sync: { ...SYNC, upstream: { ahead: 3, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false } } });
+        return open({
+          sync: {
+            ...SYNC,
+            upstream: { ahead: 3, behind: 0, has_upstream: true, gone: false, rewritten: false, superseded: false },
+          },
+        });
       },
     },
-    { state: "noPrPushed", go: async () => { signIn(); return open(); } },
-    { state: "error", go: async () => { signIn(); return open({ directPrFails: { kind: "http", message: "GitHub said no." } }); } },
+    {
+      state: "noPrPushed",
+      go: async () => {
+        signIn();
+        return open();
+      },
+    },
+    {
+      state: "error",
+      go: async () => {
+        signIn();
+        return open({ directPrFails: { kind: "http", message: "GitHub said no." } });
+      },
+    },
     // The direct read left hanging, which is the window every branch the poll
     // has not reached yet sits in.
-    { state: "loading", go: async () => { signIn(); return open({ directPrPending: true }); } },
+    {
+      state: "loading",
+      go: async () => {
+        signIn();
+        return open({ directPrPending: true });
+      },
+    },
   ];
 
   it("gives every empty state a name a screen reader can read", async () => {
@@ -1202,7 +1257,16 @@ describe("accessibility", () => {
       files: [file()],
       summary: summaryOf("dirty"),
       threads: [
-        { id: "t1", path: "src/utils/forgeChip.ts", line: 4, startLine: null, diffHunk: "", isResolved: false, isOutdated: false, comments: [] },
+        {
+          id: "t1",
+          path: "src/utils/forgeChip.ts",
+          line: 4,
+          startLine: null,
+          diffHunk: "",
+          isResolved: false,
+          isOutdated: false,
+          comments: [],
+        },
       ],
     });
     await pollNow("manual");

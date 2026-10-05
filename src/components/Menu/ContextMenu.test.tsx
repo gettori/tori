@@ -24,9 +24,7 @@ function elementOutside() {
 }
 
 function mountRow(props: Parameters<typeof ContextMenu>[0] = {}) {
-  const result = render(() => (
-    <ContextMenu {...props}>{props.children ?? "a row"}</ContextMenu>
-  ));
+  const result = render(() => <ContextMenu {...props}>{props.children ?? "a row"}</ContextMenu>);
   return { ...result, row: screen.getByText("a row") };
 }
 
@@ -54,11 +52,7 @@ describe("ContextMenu", () => {
       expect(rightClick(row)).toBe(true);
 
       const menu = await screen.findByRole("menu");
-      expect(
-        screen
-          .getAllByRole("menuitem")
-          .map((r) => r.textContent),
-      ).toEqual(["Rename", "Delete"]);
+      expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual(["Rename", "Delete"]);
       // The separator is the primitive's own `<hr>`, so it is announced as a
       // separator and skipped by arrow navigation without this file saying so.
       // Queried by role rather than by attribute: `<hr>` carries the role
@@ -197,10 +191,7 @@ describe("ContextMenu", () => {
       await screen.findByRole("menu");
 
       // Skipped by the arrows and by typeahead because it is not a row at all.
-      expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual([
-        "Rename",
-        "Delete",
-      ]);
+      expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual(["Rename", "Delete"]);
       // The name reaches a screen reader through the group it labels, rather
       // than being read out a second time where it sits.
       const group = screen.getByRole("group", { name: "web" });

@@ -50,9 +50,7 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvicted
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR } = await import("../../utils/events");
 const { editorState } = await import("../../utils/editorState");
-const { ensureEnvelope, resetPaneLayoutModel, seedTwoPane, setFocusedPane } = await import(
-  "../../layout/layoutStore"
-);
+const { ensureEnvelope, resetPaneLayoutModel, seedTwoPane, setFocusedPane } = await import("../../layout/layoutStore");
 const { moveTabToPane, resetTabPlacement } = await import("../../layout/tabPlacement");
 const { envelopeFor } = await import("../../layout/layoutStore");
 

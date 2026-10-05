@@ -73,7 +73,13 @@ const meta = {
     disclosure: true,
     menu: MENU,
   },
-  decorators: [(Story) => <Tree><Story /></Tree>],
+  decorators: [
+    (Story) => (
+      <Tree>
+        <Story />
+      </Tree>
+    ),
+  ],
 } satisfies Meta<typeof ProjectRow>;
 
 export default meta;
@@ -104,12 +110,31 @@ export const Open: Story = {
     menu: MENU,
     children: (
       <>
-        <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU}
-          end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
-        <BranchRow label="feat/billing" icon={<WorktreeMark active />} selected menu={MENU}
-          end={<><SyncMarks marks={MARKS.diverged} label="diverged" />{bubble({ waitingForApproval: 1 })}</>} />
-        <BranchRow label="fix/session-leak" icon={<WorktreeMark active={false} />} menu={MENU}
-          end={bubble({ idle: 1 })} />
+        <BranchRow
+          label="main"
+          icon={<BranchMark active={false} current />}
+          iconLabel="Current checkout"
+          menu={MENU}
+          end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />}
+        />
+        <BranchRow
+          label="feat/billing"
+          icon={<WorktreeMark active />}
+          selected
+          menu={MENU}
+          end={
+            <>
+              <SyncMarks marks={MARKS.diverged} label="diverged" />
+              {bubble({ waitingForApproval: 1 })}
+            </>
+          }
+        />
+        <BranchRow
+          label="fix/session-leak"
+          icon={<WorktreeMark active={false} />}
+          menu={MENU}
+          end={bubble({ idle: 1 })}
+        />
       </>
     ),
   },
@@ -171,7 +196,13 @@ export const TheEndCluster: Story = {
           end={
             <>
               <SyncMarks marks={MARKS.conflict} label="main has moved on" />
-              <IconButton size="xs" class={rows.topicChip} icon={<Icon icon={Tag} />} aria-label="Open Topic Billing" tooltip="Billing" />
+              <IconButton
+                size="xs"
+                class={rows.topicChip}
+                icon={<Icon icon={Tag} />}
+                aria-label="Open Topic Billing"
+                tooltip="Billing"
+              />
               {bubble({ waitingForAnswer: 1, executing: 2 })}
             </>
           }
@@ -192,15 +223,24 @@ export const Stub: Story = {
     () => (
       <Tree>
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
-          <BranchRow label="feat/billing" icon={<WorktreeMark active={false} />} menu={MENU}
-            end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
+          <BranchRow
+            label="feat/billing"
+            icon={<WorktreeMark active={false} />}
+            menu={MENU}
+            end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />}
+          />
           <BranchRow
             label="feat/abandoned"
             icon={<WorktreeMark active={false} stub />}
             iconLabel="A .bare with no worktrees (right-click to add one or remove it)"
             menu={MENU}
           />
-          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
+          <BranchRow
+            label="main"
+            icon={<BranchMark active={false} current />}
+            iconLabel="Current checkout"
+            menu={MENU}
+          />
         </ProjectRow>
       </Tree>
     ),
@@ -218,11 +258,26 @@ export const Current: Story = {
     () => (
       <Tree>
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU}
-            end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
+          <BranchRow
+            label="main"
+            icon={<BranchMark active={false} current />}
+            iconLabel="Current checkout"
+            menu={MENU}
+            end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />}
+          />
           <BranchRow label="release/26.9" icon={<BranchMark active={false} />} menu={MENU} />
-          <BranchRow label="feat/billing" icon={<WorktreeMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
-          <BranchRow label="fix/session-leak" icon={<WorktreeMark active={false} />} menu={MENU} end={bubble({ idle: 1 })} />
+          <BranchRow
+            label="feat/billing"
+            icon={<WorktreeMark active={false} current />}
+            iconLabel="Current checkout"
+            menu={MENU}
+          />
+          <BranchRow
+            label="fix/session-leak"
+            icon={<WorktreeMark active={false} />}
+            menu={MENU}
+            end={bubble({ idle: 1 })}
+          />
         </ProjectRow>
       </Tree>
     ),
@@ -272,7 +327,12 @@ export const Truncated: Story = {
     () => (
       <Tree>
         <ProjectRow name="monorepo" icon={<ProjectIcon seed="/w/mono" />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
+          <BranchRow
+            label="main"
+            icon={<BranchMark active={false} current />}
+            iconLabel="Current checkout"
+            menu={MENU}
+          />
           <BranchRow label="release/26.9" icon={<BranchMark active={false} />} menu={MENU} />
           <MoreRow count={14} open={false} end={bubble({ executing: 1, idle: 3 })} />
         </ProjectRow>
@@ -289,8 +349,18 @@ export const Untruncated: Story = {
       <Tree>
         <ProjectRow name="monorepo" icon={<ProjectIcon seed="/w/mono" />} disclosure open menu={MENU}>
           <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
-          <BranchRow label="release/26.9" icon={<BranchMark active={false} />} menu={MENU} end={bubble({ executing: 1 })} />
-          <BranchRow label="chore/bump-deps" icon={<BranchMark active={false} />} menu={MENU} end={bubble({ idle: 3 })} />
+          <BranchRow
+            label="release/26.9"
+            icon={<BranchMark active={false} />}
+            menu={MENU}
+            end={bubble({ executing: 1 })}
+          />
+          <BranchRow
+            label="chore/bump-deps"
+            icon={<BranchMark active={false} />}
+            menu={MENU}
+            end={bubble({ idle: 3 })}
+          />
           <MoreRow count={14} open={true} />
         </ProjectRow>
       </Tree>
@@ -307,7 +377,12 @@ export const AttemptGroupClosed: Story = {
       <Tree>
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
           <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
-          <GroupRow goal="Make the importer idempotent" count={3} open={false} end={bubble({ executing: 2, idle: 1 })} />
+          <GroupRow
+            goal="Make the importer idempotent"
+            count={3}
+            open={false}
+            end={bubble({ executing: 2, idle: 1 })}
+          />
         </ProjectRow>
       </Tree>
     ),
@@ -324,9 +399,28 @@ export const AttemptGroupOpen: Story = {
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
           <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
           <GroupRow goal="Make the importer idempotent" count={3} open>
-            <BranchRow nested label="importer-1" icon={<WorktreeMark active />} menu={MENU} end={bubble({ executing: 1 })} />
-            <BranchRow nested label="importer-2" icon={<WorktreeMark active={false} />} selected menu={MENU} end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />} />
-            <BranchRow nested label="importer-3" icon={<WorktreeMark active={false} />} menu={MENU} end={bubble({ idle: 1 })} />
+            <BranchRow
+              nested
+              label="importer-1"
+              icon={<WorktreeMark active />}
+              menu={MENU}
+              end={bubble({ executing: 1 })}
+            />
+            <BranchRow
+              nested
+              label="importer-2"
+              icon={<WorktreeMark active={false} />}
+              selected
+              menu={MENU}
+              end={<SyncMarks marks={MARKS.ahead} label="3 commits to push" />}
+            />
+            <BranchRow
+              nested
+              label="importer-3"
+              icon={<WorktreeMark active={false} />}
+              menu={MENU}
+              end={bubble({ idle: 1 })}
+            />
           </GroupRow>
         </ProjectRow>
       </Tree>
@@ -356,10 +450,27 @@ export const AColumn: Story = {
   decorators: [
     () => (
       <Tree>
-        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} end={bubble({ waitingForApproval: 1 })} />
+        <ProjectRow
+          name="api"
+          icon={<ProjectIcon seed="/w/api" />}
+          disclosure
+          menu={MENU}
+          end={bubble({ waitingForApproval: 1 })}
+        />
         <ProjectRow name="web" icon={<ProjectIcon seed="/w/web" />} disclosure open menu={MENU}>
-          <BranchRow label="main" icon={<BranchMark active={false} current />} iconLabel="Current checkout" menu={MENU} />
-          <BranchRow label="feat/onboarding" icon={<WorktreeMark active />} selected menu={MENU} end={bubble({ executing: 1 })} />
+          <BranchRow
+            label="main"
+            icon={<BranchMark active={false} current />}
+            iconLabel="Current checkout"
+            menu={MENU}
+          />
+          <BranchRow
+            label="feat/onboarding"
+            icon={<WorktreeMark active />}
+            selected
+            menu={MENU}
+            end={bubble({ executing: 1 })}
+          />
         </ProjectRow>
         <ProjectRow name="infra" icon={<ProjectIcon seed="/w/infra" />} disclosure menu={MENU} />
         <ProjectRow name="notes" icon={<Icon icon={Folder} />} menu={MENU} end={bubble({ idle: 2 })} />

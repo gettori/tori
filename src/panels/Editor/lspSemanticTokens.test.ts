@@ -99,11 +99,7 @@ describe("the initialize payload", () => {
     };
     const client = new LSPClient({
       rootUri: "file:///proj",
-      extensions: [
-        ...languageServerExtensions(),
-        symbolClientCapabilities,
-        semanticTokensClientCapabilities,
-      ],
+      extensions: [...languageServerExtensions(), symbolClientCapabilities, semanticTokensClientCapabilities],
     }).connect(transport);
     const init = JSON.parse(sent[0]);
     // Answered so the client's own request timer clears and `initializing`
@@ -254,9 +250,7 @@ describe("refreshSemanticTokens", () => {
     targets = [target({ legend: LEGEND, res: { data: [0, 0, 3, 1, 0] } })];
     const { deps, state } = editor();
     expect(await refreshSemanticTokens(deps, PATH)).toBe("painted");
-    expect(state.paints).toEqual([
-      [{ line: 0, char: 0, length: 3, type: "parameter", modifiers: [] }],
-    ]);
+    expect(state.paints).toEqual([[{ line: 0, char: 0, length: 3, type: "parameter", modifiers: [] }]]);
   });
 
   it("clears a file that has lost its server", async () => {

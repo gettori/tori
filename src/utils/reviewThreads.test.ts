@@ -53,16 +53,12 @@ describe("newSideLines", () => {
   it("numbers only the lines that exist in the head file", () => {
     // A deletion is not in the head file, so it has no head-file line, and
     // counting it would shift every line after it in the hunk.
-    const [hunk] = parseDiffHunks(
-      ["@@ -10,3 +10,3 @@", " ten", "-eleven", "+eleven edited", " twelve"].join("\n"),
-    );
+    const [hunk] = parseDiffHunks(["@@ -10,3 +10,3 @@", " ten", "-eleven", "+eleven edited", " twelve"].join("\n"));
     expect(newSideLines(hunk)).toEqual([10, null, 11, 12]);
   });
 
   it("skips the no-newline marker without spending a number on it", () => {
-    const [hunk] = parseDiffHunks(
-      ["@@ -1,2 +1,2 @@", " one", "+two", "\\ No newline at end of file"].join("\n"),
-    );
+    const [hunk] = parseDiffHunks(["@@ -1,2 +1,2 @@", " one", "+two", "\\ No newline at end of file"].join("\n"));
     expect(newSideLines(hunk)).toEqual([1, 2, null]);
   });
 
@@ -107,15 +103,22 @@ describe("groupThreads", () => {
     const { byLine, outdated } = groupThreads([current, noLine, stale]);
     expect(outdated.map((t) => t.id)).toEqual(["B", "C"]);
     // And neither of them landed on line 12 alongside the current one.
-    expect(byLine.get("src/a.rs")!.get(12)!.map((t) => t.id)).toEqual(["A"]);
+    expect(
+      byLine
+        .get("src/a.rs")!
+        .get(12)!
+        .map((t) => t.id),
+    ).toEqual(["A"]);
   });
 
   it("keeps several threads on one line, in the order the server sent them", () => {
-    const { byLine } = groupThreads([
-      thread({ id: "A", line: 12 }),
-      thread({ id: "B", line: 12 }),
-    ]);
-    expect(byLine.get("src/a.rs")!.get(12)!.map((t) => t.id)).toEqual(["A", "B"]);
+    const { byLine } = groupThreads([thread({ id: "A", line: 12 }), thread({ id: "B", line: 12 })]);
+    expect(
+      byLine
+        .get("src/a.rs")!
+        .get(12)!
+        .map((t) => t.id),
+    ).toEqual(["A", "B"]);
   });
 
   it("keeps two files' threads apart even on the same line number", () => {
@@ -125,8 +128,18 @@ describe("groupThreads", () => {
       thread({ id: "A", path: "src/a.rs", line: 12 }),
       thread({ id: "B", path: "src/b.rs", line: 12 }),
     ]);
-    expect(byLine.get("src/a.rs")!.get(12)!.map((t) => t.id)).toEqual(["A"]);
-    expect(byLine.get("src/b.rs")!.get(12)!.map((t) => t.id)).toEqual(["B"]);
+    expect(
+      byLine
+        .get("src/a.rs")!
+        .get(12)!
+        .map((t) => t.id),
+    ).toEqual(["A"]);
+    expect(
+      byLine
+        .get("src/b.rs")!
+        .get(12)!
+        .map((t) => t.id),
+    ).toEqual(["B"]);
   });
 });
 
@@ -137,10 +150,7 @@ describe("an optimistic reply", () => {
     body,
     createdAt: "2026-08-03T09:00:00Z",
   });
-  const two = () => [
-    thread({ id: "T1", comments: [stored("C1", "first")] }),
-    thread({ id: "T2", comments: [] }),
-  ];
+  const two = () => [thread({ id: "T1", comments: [stored("C1", "first")] }), thread({ id: "T2", comments: [] })];
 
   it("shows itself as unsent, not as a comment the server has", () => {
     // If a pending reply looked like a stored one, a post that failed would
@@ -176,11 +186,7 @@ describe("an optimistic reply", () => {
     // The second one answers first, which is exactly when order goes wrong.
     list = withComment(list, "T1", stored("Cb", "second reply"), b.id);
     list = withComment(list, "T1", stored("Ca", "first reply"), a.id);
-    expect(list[0].comments.map((c) => c.body)).toEqual([
-      "first",
-      "first reply",
-      "second reply",
-    ]);
+    expect(list[0].comments.map((c) => c.body)).toEqual(["first", "first reply", "second reply"]);
   });
 
   it("takes itself back out when the server refuses it", () => {

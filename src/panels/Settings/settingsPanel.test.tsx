@@ -13,7 +13,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-
 import Settings, { FOCUSABLE } from "./Settings";
 import { loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
@@ -34,9 +33,8 @@ import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   invoke.mockReset();
-  invoke.mockImplementation(
-    async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : unstubbed(cmd),
+  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+    cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
   await loadWorkspaceSettings(null);
 });
@@ -87,8 +85,7 @@ const tabs = () => [...document.querySelectorAll('[role="tab"]')] as HTMLElement
 const panes = () => [...document.querySelectorAll('[role="tabpanel"]')] as HTMLElement[];
 /** The selected rail item's label alone: an item's `textContent` also carries
  *  its standing count where it has one. */
-const activeTab = () =>
-  document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
+const activeTab = () => document.querySelector('[role="tab"][aria-selected="true"] span')?.textContent;
 /** Every rail item's label, in rail order. */
 const tabLabels = () => tabs().map((t) => t.querySelector("span")?.textContent);
 const strip = () => document.querySelector('[role="tablist"]') as HTMLElement;
@@ -98,8 +95,7 @@ const box = () => screen.getByLabelText("Search settings") as HTMLInputElement;
 /** Every pane the panel is currently showing. **A list, not one element**: one
  *  category is on screen when nothing is typed, and all six are while a search
  *  is running, because results are grouped across them. */
-const shownPanes = () =>
-  [...document.querySelectorAll("[data-pane]:not([hidden])")] as HTMLElement[];
+const shownPanes = () => [...document.querySelectorAll("[data-pane]:not([hidden])")] as HTMLElement[];
 const shownRows = () => shownPanes().flatMap((p) => [...p.querySelectorAll("label")]);
 const shownMarks = () => shownPanes().flatMap((p) => [...p.querySelectorAll("mark")]);
 
@@ -190,8 +186,7 @@ describe("the settings rail", () => {
 });
 
 describe("searching across every category at once", () => {
-  const type = (q: string) =>
-    fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+  const type = (q: string) => fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
   const count = () => document.querySelector(`.${styles.resultCount}`)?.textContent;
 
   it("shows one category and no count until something is typed", () => {
@@ -268,8 +263,7 @@ describe("searching across every category at once", () => {
 });
 
 describe("marking what matched, in the pane", () => {
-  const type = (q: string) =>
-    fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+  const type = (q: string) => fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
   const pane = () => document.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement;
 
   it("marks the matched part of a label", () => {
@@ -344,8 +338,7 @@ describe("marking what matched, in the pane", () => {
 });
 
 describe("what a screen reader is told about the search", () => {
-  const type = (q: string) =>
-    fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
+  const type = (q: string) => fireEvent.input(screen.getByLabelText("Search settings"), { target: { value: q } });
   const live = () => document.querySelector('[aria-live="polite"]') as HTMLElement;
 
   beforeEach(() => vi.useFakeTimers());

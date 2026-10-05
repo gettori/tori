@@ -11,7 +11,6 @@ const PALETTES: [string, Palette][] = [
   ["tori-light", light],
 ];
 
-
 describe("derivation helpers", () => {
   it("alpha() washes a hex to an rgba() string", () => {
     expect(alpha("#c8d7ff", 0.08)).toBe("rgba(200, 215, 255, 0.08)");

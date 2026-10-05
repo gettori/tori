@@ -29,7 +29,10 @@ export type MemberRisk = {
 export function RiskTags(props: { member: MemberRisk }) {
   return (
     <span class={styles.delEntryTags}>
-      <Show when={props.member.worktreePath} fallback={<span class={`${styles.delTag} ${styles.muted}`}>{props.member.state}</span>}>
+      <Show
+        when={props.member.worktreePath}
+        fallback={<span class={`${styles.delTag} ${styles.muted}`}>{props.member.state}</span>}
+      >
         <Show when={props.member.dirty === null || props.member.unpushed === null}>
           <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
         </Show>
@@ -73,8 +76,8 @@ export default function ConfirmDeleteTopic(props: {
       }
     >
       <div class={styles.msg}>
-        This deletes the Topic record. {props.branch} stays checked out in every repository, and what
-        happens to each worktree is asked next, one row at a time.
+        This deletes the Topic record. {props.branch} stays checked out in every repository, and what happens to each
+        worktree is asked next, one row at a time.
       </div>
 
       <div class={styles.delEntries}>

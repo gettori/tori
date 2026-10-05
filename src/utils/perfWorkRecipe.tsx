@@ -64,7 +64,11 @@ export async function startWorkRecipe(): Promise<void> {
     const END = "End of the large fixture.";
     publishBufferText(path, `${bigMarkdown()}\n\n${END}\n`);
     let host: HTMLElement | undefined;
-    const unmount = mount(() => <div ref={(el) => (host = el)}><MarkdownPreview path={path} /></div>);
+    const unmount = mount(() => (
+      <div ref={(el) => (host = el)}>
+        <MarkdownPreview path={path} />
+      </div>
+    ));
     // Until the last block is in, so a slow lex is measured rather than cut off.
     const began = performance.now();
     while (!host?.textContent?.includes(END) && performance.now() - began < PREVIEW_MAX_MS) await sleep(200);
@@ -115,7 +119,14 @@ async function stream(): Promise<void> {
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
   const turnId = "perf-turn";
   edit((s) =>
-    applyEvent(s, { type: "turnStarted", sessionId: SESSION, turnId, model: "perf", permissionMode: "default", agentInitiated: false }),
+    applyEvent(s, {
+      type: "turnStarted",
+      sessionId: SESSION,
+      turnId,
+      model: "perf",
+      permissionMode: "default",
+      agentInitiated: false,
+    }),
   );
   const unmount = mount(() => (
     <MessageList

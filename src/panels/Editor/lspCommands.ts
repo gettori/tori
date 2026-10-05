@@ -22,11 +22,7 @@ import { jumpToDefinition, LSPPlugin } from "@codemirror/lsp-client";
  * selection, not the mouse, so without this it would answer about wherever the
  * caret happened to be.
  */
-export function cmdClickDefinition(
-  event: MouseEvent,
-  view: EditorView,
-  jump: Command = jumpToDefinition,
-): boolean {
+export function cmdClickDefinition(event: MouseEvent, view: EditorView, jump: Command = jumpToDefinition): boolean {
   if (!cmdAlone(event) || event.button !== 0) return false;
   const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
   // Null below the last line or outside the content, where there is no symbol

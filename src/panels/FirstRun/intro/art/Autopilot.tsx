@@ -1,13 +1,22 @@
 import AutopilotSwitch from "../../../../components/Autopilot/AutopilotSwitch";
 import AutopilotView from "../../../../components/Autopilot/AutopilotView";
 import { pickScene } from "../../../../components/Autopilot/Horizon";
-import type { Decision, QueuedItem, ThreadMessage, TicketRef, WorkerCard } from "../../../../components/Autopilot/autopilot";
+import type {
+  Decision,
+  QueuedItem,
+  ThreadMessage,
+  TicketRef,
+  WorkerCard,
+} from "../../../../components/Autopilot/autopilot";
 import { heroFor } from "../../../../utils/autopilotRows";
 import MiniWindow from "./MiniWindow";
 import styles from "./Autopilot.module.css";
 
 const ref = (n: number) => `#${n}`;
-const ticket = (n: number, project: string, branch: string): TicketRef => ({ label: ref(n), place: ["work", project, branch] });
+const ticket = (n: number, project: string, branch: string): TicketRef => ({
+  label: ref(n),
+  place: ["work", project, branch],
+});
 
 // The real cockpit on made up data, with the ship's log left out so the crew
 // and the conversation keep a readable size inside the slide.
@@ -31,11 +40,23 @@ export default function AutopilotArt() {
       progress: 0.6,
     },
   ];
-  const queue: QueuedItem[] = [{ ticket: { label: ref(215), place: ["work", "web"] }, title: "Document webhook retries", after: workers[1].ticket }];
+  const queue: QueuedItem[] = [
+    {
+      ticket: { label: ref(215), place: ["work", "web"] },
+      title: "Document webhook retries",
+      after: workers[1].ticket,
+    },
+  ];
   const messages: ThreadMessage[] = [
     { from: "me", text: `work on ${ref(212)} and ${ref(214)}, then ${ref(215)}` },
-    { from: "autopilot", text: `Started two workers: ${ref(212)} in api and ${ref(214)} in web. ${ref(215)} waits for ${ref(214)}, since it documents that change.` },
-    { from: "autopilot", text: `${ref(212)} is done and all 18 limiter tests pass. Opening its PR sends it to GitHub, so I need your approval.` },
+    {
+      from: "autopilot",
+      text: `Started two workers: ${ref(212)} in api and ${ref(214)} in web. ${ref(215)} waits for ${ref(214)}, since it documents that change.`,
+    },
+    {
+      from: "autopilot",
+      text: `${ref(212)} is done and all 18 limiter tests pass. Opening its PR sends it to GitHub, so I need your approval.`,
+    },
   ];
   const decisions: Decision[] = [
     {
@@ -47,7 +68,11 @@ export default function AutopilotArt() {
     },
   ];
   return (
-    <MiniWindow height={470} zoom={0.7} end={<AutopilotSwitch view="autopilot" state="needs" count={decisions.length} />}>
+    <MiniWindow
+      height={470}
+      zoom={0.7}
+      end={<AutopilotSwitch view="autopilot" state="needs" count={decisions.length} />}
+    >
       <div class={styles.cockpit}>
         <AutopilotView
           state="needs"

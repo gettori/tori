@@ -345,9 +345,7 @@ describe("runLabel", () => {
   };
 
   it("counts what a settled run holds", () => {
-    expect(runLabel([thinking("a", 500), tool("b"), tool("c"), question], false).text).toBe(
-      "2 tool calls, 1 question",
-    );
+    expect(runLabel([thinking("a", 500), tool("b"), tool("c"), question], false).text).toBe("2 tool calls, 1 question");
     expect(runLabel([tool("b")], false).text).toBe("1 tool call");
   });
 

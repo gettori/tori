@@ -121,11 +121,7 @@
   width: min(calc(480px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
 }
 .wide {
-  width: clamp(
-    calc(680px * var(--ui-scale)),
-    52vw,
-    calc(1040px * var(--ui-scale))
-  );
+  width: clamp(calc(680px * var(--ui-scale)), 52vw, calc(1040px * var(--ui-scale)));
   max-width: calc(100vw - calc(48px * var(--ui-scale)));
 }
 

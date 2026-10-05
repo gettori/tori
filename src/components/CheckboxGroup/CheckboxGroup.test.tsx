@@ -17,13 +17,7 @@ const OPTIONS: CheckboxOption[] = [
 function renderControlled(over: Partial<Parameters<typeof CheckboxGroup>[0]> = {}) {
   const [value, setValue] = createSignal<string[]>([]);
   const r = render(() => (
-    <CheckboxGroup
-      options={OPTIONS}
-      value={value()}
-      onChange={setValue}
-      label="Which should I address?"
-      {...over}
-    />
+    <CheckboxGroup options={OPTIONS} value={value()} onChange={setValue} label="Which should I address?" {...over} />
   ));
   return { ...r, value };
 }
@@ -78,9 +72,7 @@ describe("CheckboxGroup", () => {
 
   it("stays where the caller puts it, so a rejected change cannot drift", () => {
     const onChange = vi.fn();
-    render(() => (
-      <CheckboxGroup options={OPTIONS} value={[]} onChange={onChange} label="Pick" />
-    ));
+    render(() => <CheckboxGroup options={OPTIONS} value={[]} onChange={onChange} label="Pick" />);
 
     fireEvent.click(box("Add check 9"));
     expect(onChange).toHaveBeenCalledWith(["check"]);
@@ -98,9 +90,7 @@ describe("CheckboxGroup", () => {
   });
 
   it("names itself from aria-label when there is no visible label", () => {
-    render(() => (
-      <CheckboxGroup options={OPTIONS} value={[]} onChange={() => {}} aria-label="Fixes" />
-    ));
+    render(() => <CheckboxGroup options={OPTIONS} value={[]} onChange={() => {}} aria-label="Fixes" />);
     expect(screen.getByRole("group", { name: "Fixes" })).toBeTruthy();
   });
 

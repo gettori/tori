@@ -16,19 +16,17 @@
 use std::path::Path;
 
 use agent_client_protocol::schema::v1::{
-    AvailableCommandInput, ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse,
-    PermissionOption,
-    RequestPermissionRequest, SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory,
-    SessionConfigSelect, SessionConfigSelectOption, SessionConfigSelectOptions, SessionUpdate,
-    StopReason, ToolCall, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
+    AvailableCommandInput, ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse, PermissionOption,
+    RequestPermissionRequest, SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory, SessionConfigSelect,
+    SessionConfigSelectOption, SessionConfigSelectOptions, SessionUpdate, StopReason, ToolCall, ToolCallContent,
+    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
 };
 
 use super::model;
 use super::model::{
-    ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
-    file_ref_locator, ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Extra, FileEditKind,
-    PermissionSuggestion, PlanItem, PlanItemStatus, SlashCommand, ToolLocation, ToolStatus,
-    ToolSummary, TurnOutcome, Usage,
+    file_ref_locator, ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
+    ChatModeInfo, ChatModelInfo, ContentBlock, Extra, FileEditKind, PermissionSuggestion, PlanItem, PlanItemStatus,
+    SlashCommand, ToolLocation, ToolStatus, ToolSummary, TurnOutcome, Usage,
 };
 use super::snapshot;
 
@@ -99,9 +97,7 @@ fn select_of(
 fn select_entries(select: &SessionConfigSelect) -> Vec<&SessionConfigSelectOption> {
     match &select.options {
         SessionConfigSelectOptions::Ungrouped(entries) => entries.iter().collect(),
-        SessionConfigSelectOptions::Grouped(groups) => {
-            groups.iter().flat_map(|g| g.options.iter()).collect()
-        }
+        SessionConfigSelectOptions::Grouped(groups) => groups.iter().flat_map(|g| g.options.iter()).collect(),
         _ => Vec::new(),
     }
 }
@@ -245,7 +241,10 @@ pub fn effort_levels(options: &[SessionConfigOption]) -> Vec<String> {
     let Some((_, select)) = select_of(options, SessionConfigOptionCategory::ThoughtLevel) else {
         return Vec::new();
     };
-    select_entries(select).into_iter().map(|entry| entry.value.0.to_string()).collect()
+    select_entries(select)
+        .into_iter()
+        .map(|entry| entry.value.0.to_string())
+        .collect()
 }
 
 /// The level this session is running right now, as the agent reports it.
@@ -312,9 +311,9 @@ pub fn config_options(options: &[SessionConfigOption]) -> Vec<ChatConfigOption> 
                         })
                         .collect(),
                 },
-                SessionConfigKind::Boolean(toggle) => {
-                    ChatConfigKind::Boolean { value: toggle.current_value }
-                }
+                SessionConfigKind::Boolean(toggle) => ChatConfigKind::Boolean {
+                    value: toggle.current_value,
+                },
                 other => {
                     eprintln!(
                         "tori: ignoring config option `{}`, this build has no control for {other:?}",
@@ -435,7 +434,9 @@ impl AcpToolCalls {
                 ChatEvent::ToolCallStarted { tool_use_id, kind, .. } if *kind != model::ToolKind::Other => {
                     self.kinds.insert(tool_use_id.clone(), *kind);
                 }
-                ChatEvent::ToolCallCompleted { tool_use_id, summary, .. } => {
+                ChatEvent::ToolCallCompleted {
+                    tool_use_id, summary, ..
+                } => {
                     let kind = self.kinds.remove(tool_use_id).unwrap_or_default();
                     *summary = raw_output_summary(kind, raw_output_of(update));
                 }
@@ -497,12 +498,7 @@ fn raw_output_summary(kind: model::ToolKind, raw: Option<&serde_json::Value>) ->
 /// object store is reached through the repo. `None` for a caller with no
 /// directory to offer, which degrades a diff block to a `FileEdit` with no
 /// before-state rather than dropping the edit.
-pub fn map_update(
-    session_id: &str,
-    turn_id: &str,
-    update: &SessionUpdate,
-    cwd: Option<&Path>,
-) -> Vec<ChatEvent> {
+pub fn map_update(session_id: &str, turn_id: &str, update: &SessionUpdate, cwd: Option<&Path>) -> Vec<ChatEvent> {
     match update {
         // No lane, ever: ACP has no subagent concept on the wire, so an
         // agent's chunk is the agent's own.
@@ -653,7 +649,10 @@ fn plan_item(entry: &agent_client_protocol::schema::v1::PlanEntry) -> Option<Pla
         PlanEntryStatus::Completed => PlanItemStatus::Completed,
         _ => return None,
     };
-    Some(PlanItem { text: entry.content.clone(), status })
+    Some(PlanItem {
+        text: entry.content.clone(),
+        status,
+    })
 }
 
 /// The file edits a tool call's content blocks describe.
@@ -893,12 +892,7 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
 /// "unchanged": an absent `raw_input` here is the agent saying nothing about the
 /// arguments, not the agent clearing them, and a consumer that overwrote the
 /// card with these blanks would erase what the opening frame established.
-fn describe_tool_call(
-    session_id: &str,
-    turn_id: &str,
-    tool_use_id: String,
-    update: &ToolCallUpdate,
-) -> Vec<ChatEvent> {
+fn describe_tool_call(session_id: &str, turn_id: &str, tool_use_id: String, update: &ToolCallUpdate) -> Vec<ChatEvent> {
     let f = &update.fields;
     if f.kind.is_none() && f.title.is_none() && f.locations.is_none() {
         return Vec::new();
@@ -909,7 +903,11 @@ fn describe_tool_call(
         tool_use_id,
         // Empty unless this patch named a kind, since the token is derived from
         // the kind and a defaulted one would overwrite a good name with "tool".
-        name: f.kind.as_ref().map(|k| tool_kind_token(k).to_string()).unwrap_or_default(),
+        name: f
+            .kind
+            .as_ref()
+            .map(|k| tool_kind_token(k).to_string())
+            .unwrap_or_default(),
         input: f.raw_input.clone().unwrap_or(serde_json::Value::Null),
         kind: f.kind.as_ref().map(tool_kind).unwrap_or_default(),
         locations: f.locations.as_deref().map(tool_locations).unwrap_or_default(),
@@ -965,9 +963,7 @@ fn option_as_suggestion(option: &PermissionOption) -> PermissionSuggestion {
     PermissionSuggestion::AddRules {
         rules: Vec::new(),
         behavior: match option.kind {
-            PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways => {
-                "allow".to_string()
-            }
+            PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways => "allow".to_string(),
             _ => "deny".to_string(),
         },
         destination: option.option_id.0.to_string(),
@@ -987,9 +983,7 @@ pub fn map_stop_reason(session_id: &str, turn_id: &str, reason: StopReason) -> C
         // Not errors in the transport sense - the turn ran and ended for a
         // stated reason - but each leaves the conversation in a state the user
         // has to be told about, so none of them may render as a clean finish.
-        StopReason::MaxTokens | StopReason::MaxTurnRequests | StopReason::Refusal => {
-            TurnOutcome::Errored
-        }
+        StopReason::MaxTokens | StopReason::MaxTurnRequests | StopReason::Refusal => TurnOutcome::Errored,
         // `StopReason` is `#[non_exhaustive]`. A reason added later is reported
         // as completed with its own wire spelling attached, rather than being
         // guessed at as a failure.
@@ -1031,10 +1025,17 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
         .iter()
         .filter_map(|b| match b {
             ContentBlock::Text { text } => Some(AcpContentBlock::Text(TextContent::new(text.clone()))),
-            ContentBlock::Image { media_type, data } => {
-                Some(AcpContentBlock::Image(ImageContent::new(data.clone(), media_type.clone())))
-            }
-            ContentBlock::FileRef { path, start_line, end_line, text, label } => {
+            ContentBlock::Image { media_type, data } => Some(AcpContentBlock::Image(ImageContent::new(
+                data.clone(),
+                media_type.clone(),
+            ))),
+            ContentBlock::FileRef {
+                path,
+                start_line,
+                end_line,
+                text,
+                label,
+            } => {
                 let mut rendered = file_ref_locator(path, *start_line, *end_line);
                 if let Some(l) = label {
                     rendered = format!("{l}: {rendered}");
@@ -1055,8 +1056,8 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
 mod tests {
     use super::*;
     use agent_client_protocol::schema::v1::{
-        AvailableCommand, AvailableCommandsUpdate, PermissionOptionId, PermissionOptionKind,
-        TextContent, ToolCallId, ToolCallUpdateFields, UnstructuredCommandInput,
+        AvailableCommand, AvailableCommandsUpdate, PermissionOptionId, PermissionOptionKind, TextContent, ToolCallId,
+        ToolCallUpdateFields, UnstructuredCommandInput,
     };
 
     fn text_chunk(text: &str) -> ContentChunk {
@@ -1074,10 +1075,9 @@ mod tests {
     #[test]
     fn the_commands_an_agent_publishes_reach_the_panel() {
         let update = SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![
-            AvailableCommand::new("plan".to_string(), "Plan before building".to_string())
-                .input(AvailableCommandInput::Unstructured(UnstructuredCommandInput::new(
-                    "what to plan".to_string(),
-                ))),
+            AvailableCommand::new("plan".to_string(), "Plan before building".to_string()).input(
+                AvailableCommandInput::Unstructured(UnstructuredCommandInput::new("what to plan".to_string())),
+            ),
             AvailableCommand::new("lint".to_string(), "Check the toolkit's own files".to_string()),
         ]));
 
@@ -1111,10 +1111,7 @@ mod tests {
         let entries: Vec<SessionConfigSelectOption> = values
             .iter()
             .map(|(value, label)| {
-                SessionConfigSelectOption::new(
-                    SessionConfigValueId::new(*value),
-                    (*label).to_string(),
-                )
+                SessionConfigSelectOption::new(SessionConfigValueId::new(*value), (*label).to_string())
             })
             .collect();
         let mut option = SessionConfigOption::new(
@@ -1197,9 +1194,7 @@ mod tests {
         let mut option = SessionConfigOption::new(
             SessionConfigId::new(id),
             name.to_string(),
-            SessionConfigKind::Boolean(
-                agent_client_protocol::schema::v1::SessionConfigBoolean::new(on),
-            ),
+            SessionConfigKind::Boolean(agent_client_protocol::schema::v1::SessionConfigBoolean::new(on)),
         );
         option.description = Some(description.to_string());
         option
@@ -1269,7 +1264,10 @@ mod tests {
         // Every model gets the same list: ACP publishes one selector for the
         // session where Claude's catalogue names them per model.
         for model in &models {
-            assert_eq!(model.supported_effort_levels, vec!["low", "medium", "high", "xhigh", "max", "ultra"]);
+            assert_eq!(
+                model.supported_effort_levels,
+                vec!["low", "medium", "high", "xhigh", "max", "ultra"]
+            );
             // Rows too, and every one of them takeable: these are the agent's
             // own answer about itself, so there is nothing to refuse.
             let rows: Vec<&str> = model.effort_levels.iter().map(|l| l.level.as_str()).collect();
@@ -1326,11 +1324,16 @@ mod tests {
         // *This agent* publishes no thought-level selector, so no level is
         // claimed and the control stays hidden rather than rendering inert.
         // Not a fact about ACP: `codex-acp` does publish one, see below.
-        assert!(models.iter().all(|m| !m.supports_effort && m.supported_effort_levels.is_empty()));
+        assert!(models
+            .iter()
+            .all(|m| !m.supports_effort && m.supported_effort_levels.is_empty()));
         // No separate resolution exists on the wire, so the value is its own.
         assert!(models.iter().all(|m| m.value == m.resolved_model));
 
-        assert_eq!(current_model(&opencode_options()).as_deref(), Some("opencode/big-pickle"));
+        assert_eq!(
+            current_model(&opencode_options()).as_deref(),
+            Some("opencode/big-pickle")
+        );
         assert_eq!(model_config_id(&opencode_options()).as_deref(), Some("model"));
     }
 
@@ -1357,7 +1360,10 @@ mod tests {
             "build",
             &[("build", "build")],
         )];
-        assert!(model_catalogue(&misleading).is_empty(), "a mode selector is not a catalogue");
+        assert!(
+            model_catalogue(&misleading).is_empty(),
+            "a mode selector is not a catalogue"
+        );
         assert_eq!(model_config_id(&misleading), None, "and offers nothing to switch");
     }
 
@@ -1459,10 +1465,20 @@ mod tests {
             [AcpContentBlock::Text(t)] => t.text.clone(),
             other => panic!("one text block, got {other:?}"),
         };
-        let events = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk(&rendered)), None);
+        let events = map_update(
+            "s1",
+            "t1",
+            &SessionUpdate::UserMessageChunk(text_chunk(&rendered)),
+            None,
+        );
         assert!(matches!(events.as_slice(), [ChatEvent::UserMessage { blocks, .. }] if blocks == &sent));
 
-        let typed = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk("about [File 1]")), None);
+        let typed = map_update(
+            "s1",
+            "t1",
+            &SessionUpdate::UserMessageChunk(text_chunk("about [File 1]")),
+            None,
+        );
         assert!(matches!(
             typed.as_slice(),
             [ChatEvent::UserMessage { blocks, .. }] if blocks == &[ContentBlock::Text { text: "about [File 1]".into() }]
@@ -1512,7 +1528,13 @@ mod tests {
         call.locations = vec![ToolCallLocation::new("/tmp/w/README.md").line(3u32)];
 
         match map_update("s1", "t1", &SessionUpdate::ToolCall(call), None).as_slice() {
-            [ChatEvent::ToolCallStarted { name, title, kind, locations, .. }] => {
+            [ChatEvent::ToolCallStarted {
+                name,
+                title,
+                kind,
+                locations,
+                ..
+            }] => {
                 assert_eq!(name, "read", "the row's token has to be a token");
                 assert_eq!(title.as_deref(), Some("Read the file README.md in this directory"));
                 assert_eq!(*kind, model::ToolKind::Read);
@@ -1542,7 +1564,13 @@ mod tests {
         let patch = ToolCallUpdate::new(ToolCallId::new("call-1"), fields);
 
         match map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(patch), None).as_slice() {
-            [ChatEvent::ToolCallStarted { tool_use_id, locations, name, input, .. }] => {
+            [ChatEvent::ToolCallStarted {
+                tool_use_id,
+                locations,
+                name,
+                input,
+                ..
+            }] => {
                 assert_eq!(tool_use_id, "call-1", "an upsert onto the same card");
                 assert_eq!(locations.len(), 1);
                 assert_eq!(locations[0].path, "/tmp/w/late.rs");
@@ -1599,7 +1627,10 @@ mod tests {
             [ChatEvent::ToolCallCompleted { summary, .. }] => {
                 assert_eq!(
                     *summary,
-                    Some(ToolSummary::Execute { exit_code: Some(1), lines: 3 }),
+                    Some(ToolSummary::Execute {
+                        exit_code: Some(1),
+                        lines: 3
+                    }),
                     "the completing update names no kind; only the opening frame did"
                 );
             }
@@ -1644,7 +1675,11 @@ mod tests {
             None,
         );
         match events.as_slice() {
-            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+            [ChatEvent::ToolCallCompleted {
+                output,
+                output_truncated,
+                ..
+            }] => {
                 assert_eq!(*output, None, "a null output is no output block at all");
                 assert!(!output_truncated);
             }
@@ -1658,7 +1693,10 @@ mod tests {
         let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), None);
         assert!(matches!(
             events.as_slice(),
-            [ChatEvent::ToolCallCompleted { status: ToolStatus::Error, .. }]
+            [ChatEvent::ToolCallCompleted {
+                status: ToolStatus::Error,
+                ..
+            }]
         ));
     }
 
@@ -1691,8 +1729,7 @@ mod tests {
 
     /// A repo to hash into, so a before-state has somewhere to land.
     fn tmp_repo(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("tori-acp-diff-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-acp-diff-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::process::Command::new("git")
             .current_dir(&dir)
@@ -1717,15 +1754,17 @@ mod tests {
             Some("one\ntwo\nthree\n"),
             "one\ntwo\nTHREE\n",
         );
-        let events =
-            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
 
         let edit = events
             .iter()
             .find_map(|e| match e {
-                ChatEvent::FileEdit { path, kind, before_blob, .. } => {
-                    Some((path.clone(), *kind, before_blob.clone()))
-                }
+                ChatEvent::FileEdit {
+                    path,
+                    kind,
+                    before_blob,
+                    ..
+                } => Some((path.clone(), *kind, before_blob.clone())),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no file edit: {events:?}"));
@@ -1767,8 +1806,7 @@ mod tests {
             None,
             "hello\n",
         );
-        let events =
-            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
         let edit = events
             .iter()
             .find_map(|e| match e {
@@ -1787,15 +1825,8 @@ mod tests {
     #[test]
     fn a_diff_arrives_even_when_the_patch_reports_no_status() {
         let repo = tmp_repo("statusless");
-        let update = tool_update_with_diff(
-            "call-1",
-            None,
-            "/tmp/hello.txt",
-            Some("before\n"),
-            "after\n",
-        );
-        let events =
-            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        let update = tool_update_with_diff("call-1", None, "/tmp/hello.txt", Some("before\n"), "after\n");
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
         assert!(
             events.iter().any(|e| matches!(e, ChatEvent::FileEdit { .. })),
             "the edit survives a statusless patch: {events:?}"
@@ -1823,9 +1854,7 @@ mod tests {
         let edit = events
             .iter()
             .find_map(|e| match e {
-                ChatEvent::FileEdit { path, before_blob, .. } => {
-                    Some((path.clone(), before_blob.clone()))
-                }
+                ChatEvent::FileEdit { path, before_blob, .. } => Some((path.clone(), before_blob.clone())),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no file edit: {events:?}"));
@@ -1840,9 +1869,11 @@ mod tests {
     fn an_agent_that_sends_no_diff_produces_no_file_edit() {
         let repo = tmp_repo("nodiff");
         let update = tool_update("call-1", Some(ToolCallStatus::Completed));
-        let events =
-            map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
-        assert!(!events.iter().any(|e| matches!(e, ChatEvent::FileEdit { .. })), "{events:?}");
+        let events = map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), Some(repo.as_path()));
+        assert!(
+            !events.iter().any(|e| matches!(e, ChatEvent::FileEdit { .. })),
+            "{events:?}"
+        );
         std::fs::remove_dir_all(&repo).ok();
     }
 
@@ -1852,8 +1883,7 @@ mod tests {
     #[test]
     fn an_update_with_no_tori_counterpart_maps_to_no_events() {
         use agent_client_protocol::schema::v1::{CurrentModeUpdate, SessionModeId};
-        let update =
-            SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new("plan")));
+        let update = SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new("plan")));
         assert!(map_update("s1", "t1", &update, None).is_empty());
     }
 
@@ -1877,7 +1907,10 @@ mod tests {
         let event = map_stop_reason("s1", "t1", StopReason::Cancelled);
         assert!(matches!(
             event,
-            ChatEvent::TurnCompleted { outcome: TurnOutcome::Cancelled, .. }
+            ChatEvent::TurnCompleted {
+                outcome: TurnOutcome::Cancelled,
+                ..
+            }
         ));
     }
 
@@ -1906,7 +1939,10 @@ mod tests {
         );
 
         let event = map_permission_request("s1", "req-1", &request, None);
-        let ChatEvent::PermissionRequest { suggestions, tool_name, .. } = event else {
+        let ChatEvent::PermissionRequest {
+            suggestions, tool_name, ..
+        } = event
+        else {
             panic!("expected a permission request");
         };
         assert_eq!(tool_name, "Bash");
@@ -1914,9 +1950,9 @@ mod tests {
         let ids: Vec<_> = suggestions
             .iter()
             .map(|s| match s {
-                PermissionSuggestion::AddRules { destination, behavior, .. } => {
-                    (destination.clone(), behavior.clone())
-                }
+                PermissionSuggestion::AddRules {
+                    destination, behavior, ..
+                } => (destination.clone(), behavior.clone()),
                 _ => panic!("an ACP option must carry across as a rule suggestion"),
             })
             .collect();

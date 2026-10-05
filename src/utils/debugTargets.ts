@@ -434,11 +434,7 @@ export type LastTargetStore = Readonly<Record<string, readonly DebugTarget[]>>;
 
 /** The target F5 repeats: `adapterId`'s last one, or with no adapter to go by,
  *  whatever the workspace ran most recently. */
-export function lastTargetFor(
-  store: LastTargetStore,
-  ws: string,
-  adapterId: string | null,
-): DebugTarget | null {
+export function lastTargetFor(store: LastTargetStore, ws: string, adapterId: string | null): DebugTarget | null {
   const targets = store[ws] ?? [];
   return (adapterId === null ? targets[0] : targets.find((t) => t.adapterId === adapterId)) ?? null;
 }

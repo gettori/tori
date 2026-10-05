@@ -126,14 +126,7 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   // TypeScript type is erased at runtime, so this literal *is* the mirror. A
   // field added on the Rust side fails here until it is added to the type
   // above, which is the whole point.
-  const ACCOUNTS_KEYS = [
-    "home_env",
-    "login_args",
-    "logout_args",
-    "whoami_args",
-    "whoami_kind",
-    "supports_isolation",
-  ];
+  const ACCOUNTS_KEYS = ["home_env", "login_args", "logout_args", "whoami_args", "whoami_kind", "supports_isolation"];
 
   it("serializes exactly the fields the TypeScript type declares", () => {
     expect(claude.accounts, "claude declares [accounts]").toBeTruthy();
@@ -172,9 +165,7 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   // holds any credentials, so an adapter that read the exit code would report it
   // signed in while its `auth.json` was empty.
   it("gives each measured agent its own answer shape", () => {
-    const kinds = Object.fromEntries(
-      resolved.filter((a) => a.accounts).map((a) => [a.id, a.accounts!.whoami_kind]),
-    );
+    const kinds = Object.fromEntries(resolved.filter((a) => a.accounts).map((a) => [a.id, a.accounts!.whoami_kind]));
     expect(kinds).toEqual({
       claude: "claude_json",
       codex: "exit_code",
@@ -293,10 +284,7 @@ describe("mode/effort/model arg resolution", () => {
     // no build has heard of. That is the point: the levels come from the
     // agent's catalogue, and a level that resolved to nothing here would spawn
     // the session flagless with the pill still showing it.
-    expect(effortArgsFor(bare, "a-level-no-toml-mentions")).toEqual([
-      "--effort",
-      "a-level-no-toml-mentions",
-    ]);
+    expect(effortArgsFor(bare, "a-level-no-toml-mentions")).toEqual(["--effort", "a-level-no-toml-mentions"]);
   });
 
   it("resolves a model from the template", () => {
@@ -316,10 +304,7 @@ describe("mode/effort/model arg resolution", () => {
   // unknown to. Gating here meant a model the CLI offered but the TOML lacked
   // produced no `--model` flag and silently ran something else.
   it("fills the model template for any id, because the catalogue is the check", () => {
-    expect(modelArgsFor(chat, "a-model-no-toml-mentions")).toEqual([
-      "--model",
-      "a-model-no-toml-mentions",
-    ]);
+    expect(modelArgsFor(chat, "a-model-no-toml-mentions")).toEqual(["--model", "a-model-no-toml-mentions"]);
   });
 
   // The frontend and backend must resolve identically, so the bundled
@@ -342,9 +327,7 @@ describe("the bundled usage ladders", () => {
   const resolved = bundled as unknown as Adapter[];
 
   it("gives claude the free rung then the opt-in one, and codex the read Tori schedules", () => {
-    const ladders = Object.fromEntries(
-      resolved.filter((a) => a.usage).map((a) => [a.id, a.usage!.sources]),
-    );
+    const ladders = Object.fromEntries(resolved.filter((a) => a.usage).map((a) => [a.id, a.usage!.sources]));
     expect(ladders).toEqual({ claude: ["sessions", "token"], codex: ["cli"] });
   });
 

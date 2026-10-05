@@ -30,14 +30,24 @@ export default function InstallBanner(props: { path: string | null }) {
               <span>
                 Could not install {o().label}: {o().error}
               </span>
-              <Button size="sm" onClick={() => install(o().serverId)}>Try again</Button>
-              <Button size="sm" onClick={() => dismissOffer(o().serverId)}>Not now</Button>
+              <Button size="sm" onClick={() => install(o().serverId)}>
+                Try again
+              </Button>
+              <Button size="sm" onClick={() => dismissOffer(o().serverId)}>
+                Not now
+              </Button>
             </Match>
             <Match when={o().status === "offered"}>
               <span>Tori can install {o().label} for completion and diagnostics in this file.</span>
-              <Button size="sm" variant="primary" onClick={() => install(o().serverId)}>Install</Button>
-              <Button size="sm" onClick={() => dismissOffer(o().serverId)}>Not now</Button>
-              <Button size="sm" onClick={() => never(o().serverId)}>Never for this language</Button>
+              <Button size="sm" variant="primary" onClick={() => install(o().serverId)}>
+                Install
+              </Button>
+              <Button size="sm" onClick={() => dismissOffer(o().serverId)}>
+                Not now
+              </Button>
+              <Button size="sm" onClick={() => never(o().serverId)}>
+                Never for this language
+              </Button>
             </Match>
           </Switch>
         </div>

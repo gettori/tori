@@ -10,13 +10,7 @@ import styles from "./Menu.module.css";
  *  local is what lets this file expose a placement type without the app
  *  importing one from the primitives package - which `boundary.test.ts` would
  *  fail it for, this file included. */
-export type MenuPlacement =
-  | "bottom-start"
-  | "bottom-end"
-  | "top-start"
-  | "top-end"
-  | "right-start"
-  | "left-start";
+export type MenuPlacement = "bottom-start" | "bottom-end" | "top-start" | "top-end" | "right-start" | "left-start";
 
 /** The gutter between a trigger and its menu, in px. Not a token: Kobalte takes
  *  a number and passes it to floating-ui, so it never reaches CSS and cannot
@@ -43,8 +37,7 @@ export function cursorRect(anchor: { x: number; y: number } | undefined) {
   return { x: anchor?.x ?? 0, y: anchor?.y ?? 0 };
 }
 
-export interface DropdownProps<T extends HTMLElement = HTMLButtonElement>
-  extends JSX.ButtonHTMLAttributes<T> {
+export interface DropdownProps<T extends HTMLElement = HTMLButtonElement> extends JSX.ButtonHTMLAttributes<T> {
   /** A flat menu, the common case. Ignored when `menu` is given. */
   items?: MenuItem[];
   /** Custom rows (`MenuRow`, `MenuSeparator`), for a menu whose entries carry
@@ -102,9 +95,7 @@ export interface DropdownProps<T extends HTMLElement = HTMLButtonElement>
  * The element focused at open time is captured and restored here. Trigger mode
  * needs none of this: Kobalte's own restore has something to aim at.
  */
-export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
-  props: DropdownProps<T>,
-) {
+export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(props: DropdownProps<T>) {
   const [local, trigger] = splitProps(props, [
     "items",
     "menu",
@@ -156,10 +147,7 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
     // whatever the menu interrupted. Not prevented: the menu still wants focus,
     // this only records where to hand it back.
     const previous = document.activeElement;
-    restoreTo =
-      previous instanceof HTMLElement && previous !== document.body
-        ? previous
-        : null;
+    restoreTo = previous instanceof HTMLElement && previous !== document.body ? previous : null;
   }
 
   function onCloseAutoFocus(e: Event) {

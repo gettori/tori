@@ -262,7 +262,10 @@ fn markers_are_coherent(body: &[String]) -> bool {
 /// can only mean the caller counted rows it did not offer); at least one changed
 /// line must survive or there is nothing to apply.
 pub fn build_line_patch(patch: &FilePatch, hunk: usize, lines: &[usize], reverse: bool) -> Result<String, String> {
-    let h = patch.hunks.get(hunk).ok_or_else(|| format!("Hunk {} is out of range", hunk))?;
+    let h = patch
+        .hunks
+        .get(hunk)
+        .ok_or_else(|| format!("Hunk {} is out of range", hunk))?;
     if let Some(&bad) = lines.iter().find(|&&i| i >= h.body.len()) {
         return Err(format!("Line {} is out of range", bad));
     }
@@ -368,7 +371,10 @@ index 111..222 100644\n\
     #[test]
     fn fingerprint_is_stable_and_content_sensitive() {
         let p = parse_patch(SAMPLE);
-        assert_eq!(p.hunks[0].fingerprint, fingerprint(&p.hunks[0].header, &p.hunks[0].body));
+        assert_eq!(
+            p.hunks[0].fingerprint,
+            fingerprint(&p.hunks[0].header, &p.hunks[0].body)
+        );
         assert_ne!(p.hunks[0].fingerprint, p.hunks[1].fingerprint);
 
         // A one-character body edit must change it, or a stale hunk passes.
@@ -449,7 +455,12 @@ index 111..222 100644\n\
     const SCATTERED: &str = "diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -1,7 +1,7 @@\n one\n-two\n+TWO\n three\n-four\n+FOUR\n five\n-six\n+SIX\n seven\n";
 
     fn body_of(patch: &str) -> Vec<String> {
-        patch.lines().skip_while(|l| !l.starts_with("@@")).skip(1).map(str::to_string).collect()
+        patch
+            .lines()
+            .skip_while(|l| !l.starts_with("@@"))
+            .skip(1)
+            .map(str::to_string)
+            .collect()
     }
 
     #[test]
@@ -485,7 +496,10 @@ index 111..222 100644\n\
         let out = build_line_patch(&p, 0, &[1, 2, 7, 8], false).unwrap();
         assert_eq!(out.matches("@@ ").count(), 1, "one hunk, not one per run: {out}");
         let body = body_of(&out);
-        assert_eq!(body[4], " four", "the skipped change becomes the context between the two runs");
+        assert_eq!(
+            body[4], " four",
+            "the skipped change becomes the context between the two runs"
+        );
         assert!(body.contains(&"+TWO".to_string()) && body.contains(&"+SIX".to_string()));
         assert!(!body.contains(&"+FOUR".to_string()));
     }
@@ -508,8 +522,12 @@ index 111..222 100644\n\
         // Old and new start differ, so an anchor taken from the wrong side
         // would place the patch several lines off.
         let p = parse_patch("--- a/f\n+++ b/f\n@@ -4,2 +9,2 @@\n-a\n+b\n c\n");
-        assert!(build_line_patch(&p, 0, &[0, 1], true).unwrap().contains("@@ -9,2 +9,2 @@"));
-        assert!(build_line_patch(&p, 0, &[0, 1], false).unwrap().contains("@@ -4,2 +4,2 @@"));
+        assert!(build_line_patch(&p, 0, &[0, 1], true)
+            .unwrap()
+            .contains("@@ -9,2 +9,2 @@"));
+        assert!(build_line_patch(&p, 0, &[0, 1], false)
+            .unwrap()
+            .contains("@@ -4,2 +4,2 @@"));
     }
 
     #[test]

@@ -23,9 +23,9 @@
 
 use super::http::{classify, paginate_rest, HttpRequest, Recording, Transport, PAGE_CAP};
 use super::model::{
-    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
-    MergeableState, OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest, RateSnapshot,
-    RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant, MergeableState,
+    OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision,
+    ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -54,12 +54,7 @@ pub struct GitLabForge {
 
 impl GitLabForge {
     /// `base_url` is the instance's web URL, as the account records it.
-    pub fn new(
-        transport: Box<dyn Transport>,
-        base_url: &str,
-        token: Option<String>,
-        login: Option<String>,
-    ) -> Self {
+    pub fn new(transport: Box<dyn Transport>, base_url: &str, token: Option<String>, login: Option<String>) -> Self {
         Self {
             transport: std::sync::Arc::new(Recording::new(transport)),
             token,
@@ -110,24 +105,21 @@ impl GitLabForge {
         if resp.body.trim().is_empty() {
             return Ok(Value::Null);
         }
-        serde_json::from_str(&resp.body)
-            .map_err(|e| ForgeError::Malformed { message: e.to_string() })
+        serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed { message: e.to_string() })
     }
 
     fn merge_request(&self, repo: &RepoRef, iid: u64) -> Result<Value, ForgeError> {
-        self.send(self.rest("GET", &format!("/projects/{}/merge_requests/{iid}", project(repo)), None))
+        self.send(self.rest(
+            "GET",
+            &format!("/projects/{}/merge_requests/{iid}", project(repo)),
+            None,
+        ))
     }
 
     /// Each changed file's patch, as the line pairs a position is built from.
-    fn diff_lines(
-        &self,
-        repo: &RepoRef,
-        iid: u64,
-    ) -> Result<BTreeMap<String, Vec<(u32, u32)>>, ForgeError> {
-        let path =
-            format!("/projects/{}/merge_requests/{iid}/diffs?per_page=100", project(repo));
-        let (items, _) =
-            paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+    fn diff_lines(&self, repo: &RepoRef, iid: u64) -> Result<BTreeMap<String, Vec<(u32, u32)>>, ForgeError> {
+        let path = format!("/projects/{}/merge_requests/{iid}/diffs?per_page=100", project(repo));
+        let (items, _) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
         Ok(items
             .iter()
             .filter_map(|f| {
@@ -151,9 +143,7 @@ fn encode(value: &str) -> String {
     value
         .bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
             other => format!("%{other:02X}"),
         })
         .collect()
@@ -167,7 +157,9 @@ fn thread_id(repo: &RepoRef, iid: u64, discussion: &str) -> String {
 }
 
 fn unpack_thread(id: &str) -> Result<(String, u64, String), ForgeError> {
-    let bad = || ForgeError::Malformed { message: "unreadable thread id".into() };
+    let bad = || ForgeError::Malformed {
+        message: "unreadable thread id".into(),
+    };
     let mut parts = id.splitn(3, '#');
     let path = parts.next().ok_or_else(bad)?;
     let iid: u64 = parts.next().ok_or_else(bad)?.parse().map_err(|_| bad())?;
@@ -226,7 +218,10 @@ fn hunk_start(part: &str) -> Option<u32> {
 }
 
 fn pair_for(pairs: &[(u32, u32)], line: u32, head: bool) -> Option<(u32, u32)> {
-    pairs.iter().copied().find(|(old, new)| if head { *new == line } else { *old == line })
+    pairs
+        .iter()
+        .copied()
+        .find(|(old, new)| if head { *new == line } else { *old == line })
 }
 
 fn side_word(head: bool) -> &'static str {
@@ -258,8 +253,9 @@ fn mergeable_from(v: &Value) -> MergeableState {
         Some("broken_status") | Some("conflict") => return MergeableState::Dirty,
         Some("need_rebase") => return MergeableState::Behind,
         Some("ci_still_running") | Some("ci_must_pass") => return MergeableState::Unstable,
-        Some("not_approved") | Some("blocked_status") | Some("policies_denied")
-        | Some("discussions_not_resolved") => return MergeableState::Blocked,
+        Some("not_approved") | Some("blocked_status") | Some("policies_denied") | Some("discussions_not_resolved") => {
+            return MergeableState::Blocked
+        }
         Some("checking") | Some("unchecked") | Some("preparing") => return MergeableState::Unknown,
         _ => {}
     }
@@ -274,7 +270,9 @@ fn pr_from(v: &Value) -> Result<PullRequest, ForgeError> {
     let number = v
         .get("iid")
         .and_then(|n| n.as_u64())
-        .ok_or_else(|| ForgeError::Malformed { message: "merge request has no iid".into() })?;
+        .ok_or_else(|| ForgeError::Malformed {
+            message: "merge request has no iid".into(),
+        })?;
     let state = match v.get("state").and_then(|s| s.as_str()) {
         Some("merged") => PrState::Merged,
         Some("opened") | Some("reopened") => PrState::Open,
@@ -312,8 +310,12 @@ fn checks_from_pipeline(pipeline: Option<&Value>) -> CheckRollup {
     let state = match pipeline.map(|p| str_at(p, "status")).as_deref() {
         Some("success") => CheckState::Success,
         Some("failed") | Some("canceled") => CheckState::Failure,
-        Some("running") | Some("pending") | Some("created") | Some("preparing")
-        | Some("waiting_for_resource") | Some("scheduled") => CheckState::Pending,
+        Some("running")
+        | Some("pending")
+        | Some("created")
+        | Some("preparing")
+        | Some("waiting_for_resource")
+        | Some("scheduled") => CheckState::Pending,
         _ => CheckState::None,
     };
     // No per-job list for the same reason there are no per-job counts: naming
@@ -321,8 +323,18 @@ fn checks_from_pipeline(pipeline: Option<&Value>) -> CheckRollup {
     // rollup already says.
     match state {
         CheckState::None => CheckRollup::none(),
-        CheckState::Failure => CheckRollup { state, total: 1, failing: 1, contexts: Vec::new() },
-        _ => CheckRollup { state, total: 1, failing: 0, contexts: Vec::new() },
+        CheckState::Failure => CheckRollup {
+            state,
+            total: 1,
+            failing: 1,
+            contexts: Vec::new(),
+        },
+        _ => CheckRollup {
+            state,
+            total: 1,
+            failing: 0,
+            contexts: Vec::new(),
+        },
     }
 }
 
@@ -348,7 +360,11 @@ fn decision_from_approvals(v: &Value) -> ReviewDecision {
         return ReviewDecision::Approved;
     }
     let left = v.get("approvals_left").and_then(|a| a.as_u64()).unwrap_or(0);
-    let approved_by = v.get("approved_by").and_then(|a| a.as_array()).map(|a| a.len()).unwrap_or(0);
+    let approved_by = v
+        .get("approved_by")
+        .and_then(|a| a.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
     if approved_by > 0 {
         return ReviewDecision::Approved;
     }
@@ -385,7 +401,11 @@ fn file_from(v: &Value) -> PrFile {
             .unwrap_or(0)
     };
     PrFile {
-        path: if new_path.is_empty() { old_path.clone() } else { new_path },
+        path: if new_path.is_empty() {
+            old_path.clone()
+        } else {
+            new_path
+        },
         previous_path: (status == FileStatus::Renamed).then_some(old_path),
         status,
         additions: count('+'),
@@ -461,12 +481,22 @@ impl GitLabForge {
                 }
             }
         }
-        let path = format!("/projects/{}/merge_requests?state=all&order_by=updated_at&per_page=100", project(repo));
+        let path = format!(
+            "/projects/{}/merge_requests?state=all&order_by=updated_at&per_page=100",
+            project(repo)
+        );
         let Ok(Value::Array(list)) = self.send(self.rest("GET", &path, None)) else {
             return vec![];
         };
         let mut cache = HISTORY.lock().unwrap_or_else(|e| e.into_inner());
-        cache.insert(key, History { read_at: Instant::now(), unmatched, list: list.clone() });
+        cache.insert(
+            key,
+            History {
+                read_at: Instant::now(),
+                unmatched,
+                list: list.clone(),
+            },
+        );
         list
     }
 }
@@ -501,9 +531,10 @@ impl Forge for GitLabForge {
             return Grant::default();
         };
         Grant {
-            scopes: v.get("scopes").and_then(|s| s.as_array()).map(|list| {
-                list.iter().filter_map(|s| s.as_str()).map(str::to_string).collect()
-            }),
+            scopes: v
+                .get("scopes")
+                .and_then(|s| s.as_array())
+                .map(|list| list.iter().filter_map(|s| s.as_str()).map(str::to_string).collect()),
             expires_at: opt_str(&v, "expires_at").as_deref().and_then(epoch_secs),
         }
     }
@@ -525,24 +556,25 @@ impl Forge for GitLabForge {
     fn auth_state(&self) -> AuthState {
         match (&self.token, self.transport.suspect()) {
             (None, _) => AuthState::SignedOut,
-            (Some(_), true) => AuthState::Suspect { login: self.login.clone() },
-            (Some(_), false) => {
-                AuthState::SignedIn { login: self.login.clone().unwrap_or_default() }
-            }
+            (Some(_), true) => AuthState::Suspect {
+                login: self.login.clone(),
+            },
+            (Some(_), false) => AuthState::SignedIn {
+                login: self.login.clone().unwrap_or_default(),
+            },
         }
     }
 
     fn viewer(&self) -> Result<Viewer, ForgeError> {
         self.require_token()?;
         let v = self.send(self.rest("GET", "/user", None))?;
-        Ok(Viewer { login: str_at(&v, "username"), avatar_url: opt_str(&v, "avatar_url") })
+        Ok(Viewer {
+            login: str_at(&v, "username"),
+            avatar_url: opt_str(&v, "avatar_url"),
+        })
     }
 
-    fn pull_request_for_branch(
-        &self,
-        repo: &RepoRef,
-        branch: &str,
-    ) -> Result<Option<PullRequest>, ForgeError> {
+    fn pull_request_for_branch(&self, repo: &RepoRef, branch: &str) -> Result<Option<PullRequest>, ForgeError> {
         self.require_token()?;
         let path = format!(
             "/projects/{}/merge_requests?state=opened&source_branch={}&per_page=1",
@@ -567,31 +599,35 @@ impl Forge for GitLabForge {
             return Ok(vec![]);
         }
         let iids: String = numbers.iter().map(|n| format!("&iids[]={n}")).collect();
-        let path = format!("/projects/{}/merge_requests?state=all&per_page=100{iids}", project(repo));
+        let path = format!(
+            "/projects/{}/merge_requests?state=all&per_page=100{iids}",
+            project(repo)
+        );
         let (items, _) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
-        items.iter().map(|v| pr_from(v).map(|pr| (pr.number, pr.state))).collect()
+        items
+            .iter()
+            .map(|v| pr_from(v).map(|pr| (pr.number, pr.state)))
+            .collect()
     }
 
     fn list_pull_requests(&self, repo: &RepoRef) -> Result<Paged<PullRequest>, ForgeError> {
         self.require_token()?;
-        let path =
-            format!("/projects/{}/merge_requests?state=opened&per_page=100", project(repo));
-        let (items, truncated) =
-            paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        let path = format!("/projects/{}/merge_requests?state=opened&per_page=100", project(repo));
+        let (items, truncated) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
         let items = items.iter().map(pr_from).collect::<Result<Vec<_>, _>>()?;
         Ok(Paged { items, truncated })
     }
 
-    fn create_pull_request(
-        &self,
-        repo: &RepoRef,
-        req: &CreatePr,
-    ) -> Result<PullRequest, ForgeError> {
+    fn create_pull_request(&self, repo: &RepoRef, req: &CreatePr) -> Result<PullRequest, ForgeError> {
         self.require_token()?;
         // A draft is a title prefix on GitLab, not a flag: the API has no
         // `draft` parameter on create, and the prefix is what the server itself
         // reads back as `draft: true`.
-        let title = if req.draft { format!("Draft: {}", req.title) } else { req.title.clone() };
+        let title = if req.draft {
+            format!("Draft: {}", req.title)
+        } else {
+            req.title.clone()
+        };
         let body = serde_json::json!({
             "source_branch": req.head,
             "target_branch": req.base,
@@ -609,23 +645,21 @@ impl Forge for GitLabForge {
     /// GitLab has no batched equivalent of GitHub's aliased query, so the list
     /// is what keeps this off one-request-per-branch: the branches are matched
     /// against it locally.
-    fn unit_statuses(
-        &self,
-        repo: &RepoRef,
-        branches: &[String],
-    ) -> Result<Vec<UnitStatus>, ForgeError> {
+    fn unit_statuses(&self, repo: &RepoRef, branches: &[String]) -> Result<Vec<UnitStatus>, ForgeError> {
         self.require_token()?;
         if branches.is_empty() {
             return Ok(vec![]);
         }
-        let path =
-            format!("/projects/{}/merge_requests?state=opened&per_page=100", project(repo));
-        let (open, _) =
-            paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        let path = format!("/projects/{}/merge_requests?state=opened&per_page=100", project(repo));
+        let (open, _) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
         let has_open = |branch: &str| open.iter().any(|mr| str_at(mr, "source_branch") == branch);
 
         let unmatched: BTreeSet<String> = branches.iter().filter(|b| !has_open(b)).cloned().collect();
-        let ended = if unmatched.is_empty() { vec![] } else { self.history(repo, unmatched) };
+        let ended = if unmatched.is_empty() {
+            vec![]
+        } else {
+            self.history(repo, unmatched)
+        };
 
         let mut asked = 0;
         Ok(branches
@@ -649,16 +683,10 @@ impl Forge for GitLabForge {
                 let pull_request = pr_from(mr).ok();
                 let review_decision = match pull_request.as_ref() {
                     // Free, and the common half of the answer.
-                    Some(_) if verdict_from_list(mr).is_some() => {
-                        verdict_from_list(mr).unwrap_or(ReviewDecision::None)
-                    }
+                    Some(_) if verdict_from_list(mr).is_some() => verdict_from_list(mr).unwrap_or(ReviewDecision::None),
                     Some(pr) if asked < APPROVAL_LOOKUPS => {
                         asked += 1;
-                        let path = format!(
-                            "/projects/{}/merge_requests/{}/approvals",
-                            project(repo),
-                            pr.number
-                        );
+                        let path = format!("/projects/{}/merge_requests/{}/approvals", project(repo), pr.number);
                         self.send(self.rest("GET", &path, None))
                             .map(|v| decision_from_approvals(&v))
                             .unwrap_or(ReviewDecision::None)
@@ -675,47 +703,31 @@ impl Forge for GitLabForge {
             .collect())
     }
 
-    fn pull_request_files(
-        &self,
-        repo: &RepoRef,
-        number: u64,
-    ) -> Result<Paged<PrFile>, ForgeError> {
+    fn pull_request_files(&self, repo: &RepoRef, number: u64) -> Result<Paged<PrFile>, ForgeError> {
         self.require_token()?;
-        let path = format!(
-            "/projects/{}/merge_requests/{number}/diffs?per_page=100",
-            project(repo)
-        );
-        let (items, truncated) =
-            paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
-        Ok(Paged { items: items.iter().map(file_from).collect(), truncated })
+        let path = format!("/projects/{}/merge_requests/{number}/diffs?per_page=100", project(repo));
+        let (items, truncated) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        Ok(Paged {
+            items: items.iter().map(file_from).collect(),
+            truncated,
+        })
     }
 
-    fn review_threads(
-        &self,
-        repo: &RepoRef,
-        number: u64,
-    ) -> Result<Paged<ReviewThread>, ForgeError> {
+    fn review_threads(&self, repo: &RepoRef, number: u64) -> Result<Paged<ReviewThread>, ForgeError> {
         self.require_token()?;
         let path = format!(
             "/projects/{}/merge_requests/{number}/discussions?per_page=100",
             project(repo)
         );
-        let (items, truncated) =
-            paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
+        let (items, truncated) = paginate_rest(self.transport.as_ref(), self.rest("GET", &path, None), PAGE_CAP)?;
         let items = items.iter().filter_map(|d| thread_from(repo, number, d)).collect();
         Ok(Paged { items, truncated })
     }
 
-    fn reply_to_thread(
-        &self,
-        _repo: &RepoRef,
-        thread_id: &str,
-        body: &str,
-    ) -> Result<ReviewComment, ForgeError> {
+    fn reply_to_thread(&self, _repo: &RepoRef, thread_id: &str, body: &str) -> Result<ReviewComment, ForgeError> {
         self.require_token()?;
         let (project, iid, discussion) = unpack_thread(thread_id)?;
-        let path =
-            format!("/projects/{project}/merge_requests/{iid}/discussions/{discussion}/notes");
+        let path = format!("/projects/{project}/merge_requests/{iid}/discussions/{discussion}/notes");
         let v = self.send(self.rest("POST", &path, Some(serde_json::json!({ "body": body }))))?;
         Ok(comment_from(&v))
     }
@@ -723,9 +735,7 @@ impl Forge for GitLabForge {
     fn set_thread_resolved(&self, thread_id: &str, resolved: bool) -> Result<(), ForgeError> {
         self.require_token()?;
         let (project, iid, discussion) = unpack_thread(thread_id)?;
-        let path = format!(
-            "/projects/{project}/merge_requests/{iid}/discussions/{discussion}?resolved={resolved}"
-        );
+        let path = format!("/projects/{project}/merge_requests/{iid}/discussions/{discussion}?resolved={resolved}");
         self.send(self.rest("PUT", &path, None))?;
         Ok(())
     }
@@ -760,9 +770,15 @@ impl Forge for GitLabForge {
         // A discussion names no commit of its own, so a pinned review can only
         // be refused once the head has moved, before anything is posted.
         if let Some(sha) = head_sha {
-            let now = mr.get("diff_refs").and_then(|r| r.get("head_sha")).and_then(Value::as_str).unwrap_or_default();
+            let now = mr
+                .get("diff_refs")
+                .and_then(|r| r.get("head_sha"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if now != sha {
-                return Err(ForgeError::Invalid { message: format!("the merge request moved past {sha} to {now}, ask again") });
+                return Err(ForgeError::Invalid {
+                    message: format!("the merge request moved past {sha} to {now}, ask again"),
+                });
             }
         }
         if !comments.is_empty() {
@@ -774,8 +790,11 @@ impl Forge for GitLabForge {
             // own number, while the ends of a range are named by a code built
             // from both sides' numbers.
             let ranged = comments.iter().any(|c| c.start_line.is_some());
-            let diffs =
-                if ranged { self.diff_lines(repo, number)? } else { BTreeMap::new() };
+            let diffs = if ranged {
+                self.diff_lines(repo, number)?
+            } else {
+                BTreeMap::new()
+            };
             for c in comments {
                 let mut position = serde_json::json!({
                     "position_type": "text",
@@ -797,9 +816,7 @@ impl Forge for GitLabForge {
                     .start_line
                     .filter(|_| c.start_side == Some(c.side))
                     .zip(diffs.get(&c.path))
-                    .and_then(|(start, pairs)| {
-                        Some((pair_for(pairs, start, head)?, pair_for(pairs, c.line, head)?))
-                    });
+                    .and_then(|(start, pairs)| Some((pair_for(pairs, start, head)?, pair_for(pairs, c.line, head)?)));
                 if let Some((from, to)) = ends {
                     position["line_range"] = serde_json::json!({
                         "start": {
@@ -833,12 +850,11 @@ impl Forge for GitLabForge {
             // The comments and the summary are already posted, so a refused
             // approval has to say so: re-submitting the whole review would post
             // every one of them a second time.
-            self.send(self.rest("POST", &path, Some(serde_json::json!({})))).map_err(|e| {
-                ForgeError::Api {
+            self.send(self.rest("POST", &path, Some(serde_json::json!({}))))
+                .map_err(|e| ForgeError::Api {
                     status: 0,
                     message: format!("your comments were posted, but the approval was not: {e}"),
-                }
-            })?;
+                })?;
         }
         Ok(None)
     }
@@ -880,12 +896,17 @@ impl Forge for GitLabForge {
     /// project whether a merge commit or a rebase is used. `Rebase` is refused
     /// rather than quietly merged the project's way: a picker that says rebase
     /// and produces a merge commit is worse than one that says it cannot.
-    fn merge(&self, repo: &RepoRef, number: u64, method: MergeMethod, expected_head: Option<&str>) -> Result<(), ForgeError> {
+    fn merge(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        method: MergeMethod,
+        expected_head: Option<&str>,
+    ) -> Result<(), ForgeError> {
         self.require_token()?;
         if method == MergeMethod::Rebase {
             return Err(ForgeError::Invalid {
-                message: "GitLab merges the way its project is configured. Use merge or squash."
-                    .into(),
+                message: "GitLab merges the way its project is configured. Use merge or squash.".into(),
             });
         }
         let path = format!("/projects/{}/merge_requests/{number}/merge", project(repo));
@@ -923,14 +944,15 @@ mod tests {
     /// A subgroup project, because the slash inside the owner is the part every
     /// GitLab URL gets wrong: it belongs to the project's name, not to the path.
     fn repo() -> RepoRef {
-        RepoRef { owner: "group/sub".into(), repo: "project".into() }
+        RepoRef {
+            owner: "group/sub".into(),
+            repo: "project".into(),
+        }
     }
 
     const PROJECT: &str = "group%2Fsub%2Fproject";
 
-    fn forge(
-        responses: Vec<super::super::http::HttpResponse>,
-    ) -> (GitLabForge, std::sync::Arc<StubTransport>) {
+    fn forge(responses: Vec<super::super::http::HttpResponse>) -> (GitLabForge, std::sync::Arc<StubTransport>) {
         let stub = std::sync::Arc::new(StubTransport::new(responses));
         let f = GitLabForge::new(
             Box::new(stub.clone()),
@@ -1034,11 +1056,15 @@ mod tests {
     fn a_branch_with_no_open_mr_takes_its_newest_finished_one_from_one_page() {
         let history = format!(
             "[{},{},{}]",
-            mr(r#","iid":9,"source_branch":"done","state":"merged","created_at":"2026-09-20T00:00:00Z",
-                "source_project_id":2,"target_project_id":1"#),
+            mr(
+                r#","iid":9,"source_branch":"done","state":"merged","created_at":"2026-09-20T00:00:00Z",
+                "source_project_id":2,"target_project_id":1"#
+            ),
             mr(r#","iid":3,"source_branch":"done","state":"closed","created_at":"2026-08-01T00:00:00Z""#),
-            mr(r#","iid":4,"source_branch":"done","state":"merged","created_at":"2026-09-01T00:00:00Z",
-                "merged_at":"2026-09-02T00:00:00Z","source_project_id":1,"target_project_id":1"#),
+            mr(
+                r#","iid":4,"source_branch":"done","state":"merged","created_at":"2026-09-01T00:00:00Z",
+                "merged_at":"2026-09-02T00:00:00Z","source_project_id":1,"target_project_id":1"#
+            ),
         );
         let (f, stub) = forge(vec![StubTransport::json(200, "[]"), StubTransport::json(200, &history)]);
         let statuses = f.unit_statuses(&repo(), &["done".to_string()]).unwrap();
@@ -1071,7 +1097,11 @@ mod tests {
         let base_only = ["cache-main".to_string(), "cache-b".to_string()];
         f.unit_statuses(&repo(), &base_only).unwrap();
         f.unit_statuses(&repo(), &base_only).unwrap();
-        assert_eq!(stub.request_count(), 5, "the second tick reused the page read for cache-main");
+        assert_eq!(
+            stub.request_count(),
+            5,
+            "the second tick reused the page read for cache-main"
+        );
 
         // cache-b's merge request is no longer open: its history is news.
         f.unit_statuses(&repo(), &base_only).unwrap();
@@ -1093,7 +1123,10 @@ mod tests {
         ]"#;
         let (f, stub) = forge(vec![
             StubTransport::json(200, discussions),
-            StubTransport::json(200, r#"{"id":9,"body":"fixed","created_at":"t","author":{"username":"arif"}}"#),
+            StubTransport::json(
+                200,
+                r#"{"id":9,"body":"fixed","created_at":"t","author":{"username":"arif"}}"#,
+            ),
             StubTransport::json(200, "{}"),
         ]);
 
@@ -1127,7 +1160,10 @@ mod tests {
         ]"#;
         let (f, _stub) = forge(vec![StubTransport::json(200, discussions)]);
         let threads = f.review_threads(&repo(), 7).unwrap();
-        assert!(threads.items[0].is_outdated, "no head line means the thread no longer anchors");
+        assert!(
+            threads.items[0].is_outdated,
+            "no head line means the thread no longer anchors"
+        );
         assert_eq!(threads.items[0].line, None);
     }
 
@@ -1172,10 +1208,15 @@ mod tests {
             start_side: None,
             body: "here".into(),
         }];
-        f.submit_review(&repo(), 7, ReviewEvent::Approve, "looks good", &comments, None).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Approve, "looks good", &comments, None)
+            .unwrap();
 
         let sent = stub.requests();
-        assert!(sent[1].url.ends_with("/merge_requests/7/discussions"), "got {}", sent[1].url);
+        assert!(
+            sent[1].url.ends_with("/merge_requests/7/discussions"),
+            "got {}",
+            sent[1].url
+        );
         // The three shas the position needs: without them GitLab refuses a
         // positioned discussion outright.
         let position: Value = serde_json::from_str(&stub.bodies()[1]).unwrap();
@@ -1191,10 +1232,7 @@ mod tests {
         // remark about three lines landing on one. The ends are named by a code
         // built from both sides' numbers, so the patch is what recovers them.
         let (f, stub) = forge(vec![
-            StubTransport::json(
-                200,
-                r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"h"}}"#,
-            ),
+            StubTransport::json(200, r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"h"}}"#),
             StubTransport::json(
                 200,
                 r#"[{"old_path":"src/a.rs","new_path":"src/a.rs","new_file":false,
@@ -1211,7 +1249,8 @@ mod tests {
             start_side: Some(DiffSide::Right),
             body: "both of these".into(),
         }];
-        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments, None).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments, None)
+            .unwrap();
 
         let sent: Value = serde_json::from_str(&stub.bodies()[2]).unwrap();
         let range = &sent["position"]["line_range"];
@@ -1232,10 +1271,7 @@ mod tests {
         // land on whatever now holds that number, which is a review comment
         // about code the author never wrote.
         let (f, stub) = forge(vec![
-            StubTransport::json(
-                200,
-                r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"h"}}"#,
-            ),
+            StubTransport::json(200, r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"h"}}"#),
             StubTransport::json(200, r#"{"id":1}"#),
         ]);
         let comments = [DraftComment {
@@ -1246,7 +1282,8 @@ mod tests {
             start_side: None,
             body: "this dropped the error".into(),
         }];
-        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments, None).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Comment, "", &comments, None)
+            .unwrap();
 
         let sent: Value = serde_json::from_str(&stub.bodies()[1]).unwrap();
         assert_eq!(sent["position"]["old_line"], 41);
@@ -1299,14 +1336,26 @@ mod tests {
     #[test]
     fn a_pinned_review_is_refused_before_posting_once_the_head_moved() {
         let (f, stub) = forge(vec![
-            StubTransport::json(200, r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"new"}}"#),
-            StubTransport::json(200, r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"new"}}"#),
+            StubTransport::json(
+                200,
+                r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"new"}}"#,
+            ),
+            StubTransport::json(
+                200,
+                r#"{"diff_refs":{"base_sha":"b","start_sha":"s","head_sha":"new"}}"#,
+            ),
             StubTransport::json(200, r#"{"id":1}"#),
         ]);
-        let err = f.submit_review(&repo(), 7, ReviewEvent::Comment, "body", &[], Some("old")).unwrap_err();
-        assert!(matches!(&err, ForgeError::Invalid { message } if message.contains("moved past old")), "got {err:?}");
+        let err = f
+            .submit_review(&repo(), 7, ReviewEvent::Comment, "body", &[], Some("old"))
+            .unwrap_err();
+        assert!(
+            matches!(&err, ForgeError::Invalid { message } if message.contains("moved past old")),
+            "got {err:?}"
+        );
         assert_eq!(stub.request_count(), 1, "only the read went out");
-        f.submit_review(&repo(), 7, ReviewEvent::Comment, "body", &[], Some("new")).unwrap();
+        f.submit_review(&repo(), 7, ReviewEvent::Comment, "body", &[], Some("new"))
+            .unwrap();
         assert_eq!(stub.request_count(), 3);
     }
 
@@ -1335,8 +1384,15 @@ mod tests {
         f.reopen(&repo(), 7).unwrap();
         let sent = stub.requests();
         assert_eq!(sent[0].method, "PUT");
-        assert!(sent[0].url.ends_with(&format!("/projects/{PROJECT}/merge_requests/7")), "got {}", sent[0].url);
-        assert_eq!(serde_json::from_str::<Value>(sent[0].body.as_deref().unwrap()).unwrap()["state_event"], "reopen");
+        assert!(
+            sent[0].url.ends_with(&format!("/projects/{PROJECT}/merge_requests/7")),
+            "got {}",
+            sent[0].url
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(sent[0].body.as_deref().unwrap()).unwrap()["state_event"],
+            "reopen"
+        );
     }
 
     #[test]

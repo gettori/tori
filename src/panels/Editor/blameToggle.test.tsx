@@ -80,11 +80,11 @@ let mounted: ReturnType<typeof render> | null = null;
 
 async function mountWithFile() {
   mounted = render(() => (
-      <>
-        <Editor selected={selection as never} />
-        <PaneView pinKind="file" />
-      </>
-    ));
+    <>
+      <Editor selected={selection as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
   await waitFor(() => expect(listening.ready).toBe(true));
   emitWith(OPEN_IN_EDITOR, { path: FILE });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());

@@ -251,9 +251,7 @@ describe("building the resolved file", () => {
     const taken = buildResult(stages, regions, all("theirs")).text;
 
     expect(taken).toContain("EXTRA");
-    expect(taken).toBe(
-      ["one", "THEIRS-A", "three", "EXTRA", "four", "five", "THEIRS-B", "seven", ""].join("\n"),
-    );
+    expect(taken).toBe(["one", "THEIRS-A", "three", "EXTRA", "four", "five", "THEIRS-B", "seven", ""].join("\n"));
   });
 
   it("keeps both versions in git's own order when both are accepted", () => {
@@ -271,9 +269,7 @@ describe("building the resolved file", () => {
 
     const taken = buildResult(stages, regions, { [first.id]: "theirs", [second.id]: "ours" }).text;
 
-    expect(taken).toBe(
-      ["one", "THEIRS-A", "three", "EXTRA", "four", "five", "OURS-B", "seven", ""].join("\n"),
-    );
+    expect(taken).toBe(["one", "THEIRS-A", "three", "EXTRA", "four", "five", "OURS-B", "seven", ""].join("\n"));
   });
 
   it("holds a line open for each conflict still undecided", () => {
@@ -284,9 +280,7 @@ describe("building the resolved file", () => {
     const [first] = conflictsOnly(regions);
 
     expect(unresolved(regions, {})).toHaveLength(2);
-    expect(seedResult(stages, regions).slots.map((s) => s.id)).toEqual(
-      conflictsOnly(regions).map((r) => r.id),
-    );
+    expect(seedResult(stages, regions).slots.map((s) => s.id)).toEqual(conflictsOnly(regions).map((r) => r.id));
     expect(seedResult(stages, regions).text).toBe(
       ["one", "", "three", "EXTRA", "four", "five", "", "seven", ""].join("\n"),
     );
@@ -303,8 +297,7 @@ describe("building the resolved file", () => {
     // one newline here lands the chosen version inside its neighbour.
     const seed = seedResult(stages, regions);
     const [first, second] = conflictsOnly(regions);
-    const splice = (text: string, from: number, to: number, put: string) =>
-      text.slice(0, from) + put + text.slice(to);
+    const splice = (text: string, from: number, to: number, put: string) => text.slice(0, from) + put + text.slice(to);
 
     // Back to front, so the first splice does not move the second's offsets.
     const slotOf = (id: string) => seed.slots.find((s) => s.id === id)!;
@@ -363,17 +356,10 @@ describe("a conflict about whether the file exists", () => {
     // The stage is absent, not empty: "accept theirs" here means the file is
     // gone, and offering it as a way to produce an empty file would resolve the
     // merge into something neither side asked for.
-    expect(deletedSides({ base: "one\n", ours: "OURS\n", theirs: null, binary: false })).toEqual([
-      "theirs",
-    ]);
-    expect(deletedSides({ base: "one\n", ours: null, theirs: "THEIRS\n", binary: false })).toEqual([
-      "ours",
-    ]);
+    expect(deletedSides({ base: "one\n", ours: "OURS\n", theirs: null, binary: false })).toEqual(["theirs"]);
+    expect(deletedSides({ base: "one\n", ours: null, theirs: "THEIRS\n", binary: false })).toEqual(["ours"]);
     // Both deleted it, differently enough that git could not say so itself.
-    expect(deletedSides({ base: "one\n", ours: null, theirs: null, binary: false })).toEqual([
-      "ours",
-      "theirs",
-    ]);
+    expect(deletedSides({ base: "one\n", ours: null, theirs: null, binary: false })).toEqual(["ours", "theirs"]);
   });
 
   it("is not what an add/add conflict is", () => {

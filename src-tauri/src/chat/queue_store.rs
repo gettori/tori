@@ -17,7 +17,9 @@ fn dir() -> PathBuf {
 /// value arrives from the webview and is joined into a path.
 fn path_in(dir: &Path, session_id: &str) -> Option<PathBuf> {
     let safe = !session_id.is_empty()
-        && session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        && session_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     safe.then(|| dir.join(format!("{session_id}.json")))
 }
 

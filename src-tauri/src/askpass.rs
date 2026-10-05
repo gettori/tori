@@ -136,13 +136,11 @@ pub fn run_helper() -> i32 {
     }
 }
 
-fn helper_exchange(
-    sock: &Path,
-    token: &str,
-    op_id: &str,
-    prompt: &str,
-) -> std::io::Result<String> {
-    exchange(sock, serde_json::json!({ "token": token, "op_id": op_id, "prompt": prompt }))
+fn helper_exchange(sock: &Path, token: &str, op_id: &str, prompt: &str) -> std::io::Result<String> {
+    exchange(
+        sock,
+        serde_json::json!({ "token": token, "op_id": op_id, "prompt": prompt }),
+    )
 }
 
 /// The credential helper's question on the same socket: no prompt, and the
@@ -168,8 +166,8 @@ fn exchange(sock: &Path, req: serde_json::Value) -> std::io::Result<String> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    let resp: Response = serde_json::from_str(line.trim_end())
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let resp: Response =
+        serde_json::from_str(line.trim_end()).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     Ok(resp.value)
 }
 
@@ -243,10 +241,7 @@ pub fn start(emit: Box<dyn Fn(PromptEvent) + Send + Sync>) -> std::io::Result<Ar
     start_with(emit, RESOLVE_TIMEOUT)
 }
 
-fn start_with(
-    emit: Box<dyn Fn(PromptEvent) + Send + Sync>,
-    timeout: Duration,
-) -> std::io::Result<Arc<AskpassInner>> {
+fn start_with(emit: Box<dyn Fn(PromptEvent) + Send + Sync>, timeout: Duration) -> std::io::Result<Arc<AskpassInner>> {
     let token = random_token();
 
     // Short path: `$TMPDIR` is already short on macOS; the dir + socket names

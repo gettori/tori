@@ -52,7 +52,17 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
     />
   ));
   const input = result.container.querySelector("textarea") as HTMLTextAreaElement;
-  return { ...result, input, onSend, onInterrupt, onDropAttachment, onAttachFile, onAttachUploads, onAttachRejected, onAttachPaths };
+  return {
+    ...result,
+    input,
+    onSend,
+    onInterrupt,
+    onDropAttachment,
+    onAttachFile,
+    onAttachUploads,
+    onAttachRejected,
+    onAttachPaths,
+  };
 }
 
 // Claude's upload source, which every test not about a refusal runs under.
@@ -73,7 +83,11 @@ function stubMetrics(input: HTMLTextAreaElement, opts: { line: number; padding: 
     configurable: true,
   });
   Object.defineProperty(input, "scrollHeight", { get: opts.needed, configurable: true });
-  const style = { lineHeight: `${opts.line}px`, paddingTop: `${opts.padding / 2}px`, paddingBottom: `${opts.padding / 2}px` };
+  const style = {
+    lineHeight: `${opts.line}px`,
+    paddingTop: `${opts.padding / 2}px`,
+    paddingBottom: `${opts.padding / 2}px`,
+  };
   vi.spyOn(window, "getComputedStyle").mockReturnValue(style as unknown as CSSStyleDeclaration);
 }
 
@@ -212,7 +226,14 @@ describe("Composer keys", () => {
     const chip: PendingBlock[] = [
       {
         id: "att-1",
-        block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[Image 1]" },
+        block: {
+          type: "fileRef",
+          path: "/store/1a2b-0/shot.png",
+          startLine: null,
+          endLine: null,
+          text: null,
+          label: "[Image 1]",
+        },
       },
     ];
     const { input, onDropAttachment } = setup({ attachments: chip });
@@ -552,14 +573,14 @@ describe("file uploads", () => {
   it("filters the picker to what the agent opens, and not at all when that is any file", () => {
     const any = setup().container.querySelector('input[type="file"]');
     expect(any?.getAttribute("accept")).toBeNull();
-    const imagesOnly = setup({ uploads: { kinds: ["image"], gap: null } }).container.querySelector('input[type="file"]');
+    const imagesOnly = setup({ uploads: { kinds: ["image"], gap: null } }).container.querySelector(
+      'input[type="file"]',
+    );
     expect(imagesOnly?.getAttribute("accept")).toBe("image/png,image/jpeg,image/gif,image/webp");
   });
 
   it("renders an image chip as the image itself", () => {
-    const chips: PendingBlock[] = [
-      { id: "att-1", block: { type: "image", mediaType: "image/png", data: "AAAA" } },
-    ];
+    const chips: PendingBlock[] = [{ id: "att-1", block: { type: "image", mediaType: "image/png", data: "AAAA" } }];
     const { container } = setup({ attachments: chips });
     const img = container.querySelector("img");
     expect(img?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
@@ -722,13 +743,27 @@ describe("an attachment chip", () => {
   const shot: PendingBlock[] = [
     {
       id: "att-1",
-      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[Image 2]" },
+      block: {
+        type: "fileRef",
+        path: "/store/1a2b-0/shot.png",
+        startLine: null,
+        endLine: null,
+        text: null,
+        label: "[Image 2]",
+      },
     },
   ];
   const notes: PendingBlock[] = [
     {
       id: "att-2",
-      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[PDF 1]" },
+      block: {
+        type: "fileRef",
+        path: "/store/1a2b-1/notes.pdf",
+        startLine: null,
+        endLine: null,
+        text: null,
+        label: "[PDF 1]",
+      },
     },
   ];
 
@@ -794,7 +829,14 @@ describe("a chip whose file has gone", () => {
   const notes: PendingBlock[] = [
     {
       id: "att-2",
-      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[PDF 1]" },
+      block: {
+        type: "fileRef",
+        path: "/store/1a2b-1/notes.pdf",
+        startLine: null,
+        endLine: null,
+        text: null,
+        label: "[PDF 1]",
+      },
     },
   ];
   // Asked by role and a tolerant name: the chip's name is built from adjacent
@@ -804,7 +846,9 @@ describe("a chip whose file has gone", () => {
 
   it("is marked missing and says where the file was, on both of its controls", async () => {
     const r = setup({ attachments: notes, fileExists: async () => false });
-    await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/));
+    await vi.waitFor(() =>
+      expect(insert(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/),
+    );
     expect(remove(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/);
     expect(r.container.querySelector("[class*='attachmentMissing']")).not.toBeNull();
   });
@@ -872,7 +916,9 @@ describe("a draft being edited in the editor", () => {
     const r = setup({ onOpenInEditor });
     fireEvent.click(r.getByLabelText("Open in editor"));
     expect(onOpenInEditor).toHaveBeenCalledTimes(1);
-    expect((setup({ onOpenInEditor, linked: "Untitled-3" }).getByLabelText("Open in editor") as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (setup({ onOpenInEditor, linked: "Untitled-3" }).getByLabelText("Open in editor") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   // One writer at a time. The browser refuses typing into a read-only box;
@@ -920,7 +966,14 @@ describe("dragging a chip into the sentence", () => {
   const shot: PendingBlock[] = [
     {
       id: "att-1",
-      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[Image 1]" },
+      block: {
+        type: "fileRef",
+        path: "/store/1a2b-0/shot.png",
+        startLine: null,
+        endLine: null,
+        text: null,
+        label: "[Image 1]",
+      },
     },
   ];
 
@@ -965,7 +1018,10 @@ describe("dragging a chip into the sentence", () => {
 });
 
 describe("under an agent that takes no uploads", () => {
-  const ACP_UPLOADS: AttachmentSource = { kinds: [], gap: "Nothing has measured whether this agent can read outside its project." };
+  const ACP_UPLOADS: AttachmentSource = {
+    kinds: [],
+    gap: "Nothing has measured whether this agent can read outside its project.",
+  };
 
   it("still takes a tree-dragged source file, which is a mention", () => {
     const { container, onAttachPaths, onAttachRejected } = setup({ uploads: ACP_UPLOADS });
@@ -1007,7 +1063,9 @@ describe("what the composer says it can take", () => {
   it("names the attach button after what this agent opens", () => {
     expect(setup().getByRole("button", { name: "Attach a file" })).toBeTruthy();
     expect(
-      setup({ uploads: { kinds: ["image", "pdf"], gap: null } }).getByRole("button", { name: "Attach an image or a PDF" }),
+      setup({ uploads: { kinds: ["image", "pdf"], gap: null } }).getByRole("button", {
+        name: "Attach an image or a PDF",
+      }),
     ).toBeTruthy();
   });
 });
@@ -1095,9 +1153,7 @@ describe("draft and history", () => {
         onDiscardQueued={() => {}}
       />
     ));
-    expect((second.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
-      "half a thought, continued",
-    );
+    expect((second.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("half a thought, continued");
   });
 
   it("walks back through what was sent, and forward again to nothing", () => {

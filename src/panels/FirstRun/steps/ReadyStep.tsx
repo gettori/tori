@@ -43,7 +43,11 @@ function rows(s: ReadySummary, home: string): Row[] {
     project.made
       ? { label: "Project", value: project.made, done: true, mono: true }
       : project.count > 0
-        ? { label: "Project", value: `${project.count} project${project.count === 1 ? "" : "s"} in ${s.space.name}`, done: true }
+        ? {
+            label: "Project",
+            value: `${project.count} project${project.count === 1 ? "" : "s"} in ${s.space.name}`,
+            done: true,
+          }
         : { label: "Project", value: `Skipped${DOT}add one from the sidebar`, done: false },
   ];
 }

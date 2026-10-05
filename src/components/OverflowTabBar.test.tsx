@@ -90,11 +90,7 @@ describe("what fits", () => {
     mountMany(500);
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
-    expect(screen.getAllByRole("tab").map((el) => el.textContent)).toEqual([
-      "tab 0",
-      "tab 1",
-      "tab 2",
-    ]);
+    expect(screen.getAllByRole("tab").map((el) => el.textContent)).toEqual(["tab 0", "tab 1", "tab 2"]);
     expect(await screen.findByRole("button", { name: "9 more" })).toBeTruthy();
   });
 
@@ -255,11 +251,7 @@ describe("what fits", () => {
 
     // Slot 2 is the last visible one at this width, so the pick lands there.
     await waitFor(() =>
-      expect(screen.getAllByRole("tab").map((el) => el.textContent)).toEqual([
-        "tab 0",
-        "tab 1",
-        "tab 7",
-      ]),
+      expect(screen.getAllByRole("tab").map((el) => el.textContent)).toEqual(["tab 0", "tab 1", "tab 7"]),
     );
     const picked = screen.getByRole("tab", { name: "tab 7" });
     expect(active()).toBe("t7");
@@ -335,9 +327,7 @@ describe("what fits", () => {
     mountActive(500, null);
 
     await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
-    expect(
-      screen.getAllByRole("tab").filter((el) => el.getAttribute("aria-selected") === "true"),
-    ).toHaveLength(0);
+    expect(screen.getAllByRole("tab").filter((el) => el.getAttribute("aria-selected") === "true")).toHaveLength(0);
   });
 
   it("brings an overflowed tab into the row it was picked from", async () => {

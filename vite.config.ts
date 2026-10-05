@@ -24,11 +24,7 @@ const PDFJS_FILES: Record<string, string> = { "pdf.worker.min.mjs": "build/pdf.w
 const PDFJS_BASE = "/pdfjs/";
 
 const mimeOf = (name: string) =>
-  name.endsWith(".wasm")
-    ? "application/wasm"
-    : name.endsWith(".mjs")
-      ? "text/javascript"
-      : "application/octet-stream";
+  name.endsWith(".wasm") ? "application/wasm" : name.endsWith(".mjs") ? "text/javascript" : "application/octet-stream";
 
 /** Where a `/pdfjs/` request reads from on disk, or null if it names nothing we
  *  serve. Everything is spelled out, which is also what keeps a `..` or an

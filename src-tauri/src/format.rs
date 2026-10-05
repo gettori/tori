@@ -60,10 +60,15 @@ pub fn detect<'a>(formatters: &'a [Formatter], file: &Path, project_root: &Path)
     let mut dir = file.parent();
     while let Some(current) = dir {
         let mut scan = DirScan::new(current);
-        let mut here: Vec<&Formatter> =
-            formatters.iter().filter(|f| f.claims(ext) && f.is_configured_in(&mut scan)).collect();
+        let mut here: Vec<&Formatter> = formatters
+            .iter()
+            .filter(|f| f.claims(ext) && f.is_configured_in(&mut scan))
+            .collect();
         here.sort_by_key(|f| std::cmp::Reverse((f.names(ext), f.priority, std::cmp::Reverse(f.id.as_str()))));
-        found.extend(here.into_iter().map(|formatter| Detected { formatter, dir: current.to_path_buf() }));
+        found.extend(here.into_iter().map(|formatter| Detected {
+            formatter,
+            dir: current.to_path_buf(),
+        }));
         if current == project_root {
             break;
         }
@@ -111,7 +116,11 @@ const PROJECT_BIN_DIRS: [&str; 3] = ["node_modules/.bin", ".venv/bin", "venv/bin
 pub fn project_bin(program: &str, from: &Path, project_root: &Path) -> Option<PathBuf> {
     let mut dir = Some(from);
     while let Some(current) = dir {
-        if let Some(candidate) = PROJECT_BIN_DIRS.iter().map(|d| current.join(d).join(program)).find(|c| c.is_file()) {
+        if let Some(candidate) = PROJECT_BIN_DIRS
+            .iter()
+            .map(|d| current.join(d).join(program))
+            .find(|c| c.is_file())
+        {
             return Some(candidate);
         }
         if current == project_root {
@@ -133,12 +142,19 @@ struct Failure {
 
 impl Failure {
     fn other(message: String) -> Self {
-        Self { code: None, stderr: String::new(), message }
+        Self {
+            code: None,
+            stderr: String::new(),
+            message,
+        }
     }
 
     fn is_decline_by(&self, formatter: &Formatter) -> bool {
         let Some(code) = self.code else { return false };
-        formatter.not_applicable.as_ref().is_some_and(|na| na.matches(code, &self.stderr))
+        formatter
+            .not_applicable
+            .as_ref()
+            .is_some_and(|na| na.matches(code, &self.stderr))
     }
 }
 
@@ -161,7 +177,10 @@ fn run(program: &Path, args: &[String], cwd: &Path, input: &str) -> Result<Strin
         .map_err(|e| Failure::other(format!("could not run {}: {e}", program.display())))?;
     let pid = child.id();
 
-    let mut stdin = child.stdin.take().ok_or_else(|| Failure::other("the formatter took no input".into()))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| Failure::other("the formatter took no input".into()))?;
     let owned = input.to_string();
     let writer = std::thread::spawn(move || {
         use std::io::Write;
@@ -197,7 +216,11 @@ fn run(program: &Path, args: &[String], cwd: &Path, input: &str) -> Result<Strin
         } else {
             stderr.clone()
         };
-        return Err(Failure { code: output.status.code(), stderr, message });
+        return Err(Failure {
+            code: output.status.code(),
+            stderr,
+            message,
+        });
     }
     String::from_utf8(output.stdout).map_err(|_| Failure::other("the formatter returned invalid UTF-8".into()))
 }
@@ -221,11 +244,19 @@ pub struct FormatResult {
 
 impl FormatResult {
     fn none(text: String) -> Self {
-        Self { text, formatter: None, error: None }
+        Self {
+            text,
+            formatter: None,
+            error: None,
+        }
     }
 
     fn refused(text: String, formatter: &str, error: String) -> Self {
-        Self { text, formatter: Some(formatter.to_string()), error: Some(error) }
+        Self {
+            text,
+            formatter: Some(formatter.to_string()),
+            error: Some(error),
+        }
     }
 }
 
@@ -239,7 +270,10 @@ pub struct Choices {
 }
 
 fn by_extension(pairs: impl IntoIterator<Item = (String, String)>) -> BTreeMap<String, String> {
-    pairs.into_iter().map(|(ext, id)| (ext.trim_start_matches('.').to_lowercase(), id)).collect()
+    pairs
+        .into_iter()
+        .map(|(ext, id)| (ext.trim_start_matches('.').to_lowercase(), id))
+        .collect()
 }
 
 fn workspace_choices(root: &str) -> BTreeMap<String, String> {
@@ -250,7 +284,10 @@ fn workspace_choices(root: &str) -> BTreeMap<String, String> {
     let Some(map) = overlay.pointer("/format/byExtension").and_then(|v| v.as_object()) else {
         return BTreeMap::new();
     };
-    by_extension(map.iter().filter_map(|(ext, id)| Some((ext.clone(), id.as_str()?.to_string()))))
+    by_extension(
+        map.iter()
+            .filter_map(|(ext, id)| Some((ext.clone(), id.as_str()?.to_string()))),
+    )
 }
 
 // Only a `not_applicable` decline moves on down the chain. Any other refusal
@@ -274,7 +311,10 @@ fn format_with(
     let ext = registry::extension_of(file).unwrap_or_default();
     let named = |map: &BTreeMap<String, String>| {
         map.get(&ext).map(|id| match formatters.iter().find(|f| &f.id == id) {
-            Some(formatter) => Ok(Detected { formatter, dir: config_dir(formatter, file, root) }),
+            Some(formatter) => Ok(Detected {
+                formatter,
+                dir: config_dir(formatter, file, root),
+            }),
             None => Err(id.clone()),
         })
     };
@@ -309,7 +349,13 @@ fn format_with(
             return FormatResult::refused(text, &formatter.id, refusal);
         }
         match run(&program, &formatter.args_for(path), &dir, &text) {
-            Ok(formatted) => return FormatResult { text: formatted, formatter: Some(formatter.id.clone()), error: None },
+            Ok(formatted) => {
+                return FormatResult {
+                    text: formatted,
+                    formatter: Some(formatter.id.clone()),
+                    error: None,
+                }
+            }
             Err(failure) if failure.is_decline_by(formatter) => continue,
             Err(failure) => return FormatResult::refused(text, &formatter.id, failure.message),
         }
@@ -332,7 +378,14 @@ pub fn format_document(path: String, text: String, project_path: String) -> Form
         user: by_extension(format.by_extension),
         disabled: format.disabled,
     };
-    format_with(registry::registry(), &path, text, Path::new(&project_path), &choices, crate::trust::gate_project)
+    format_with(
+        registry::registry(),
+        &path,
+        text,
+        Path::new(&project_path),
+        &choices,
+        crate::trust::gate_project,
+    )
 }
 
 /// A formatter's card in Settings, read the way `lsp::LspHealth` reads.
@@ -384,7 +437,12 @@ pub fn formatter_health() -> Vec<FormatterHealth> {
                     .iter()
                     .cloned()
                     .chain(markers.prefixes.iter().map(|p| format!("{p}*")))
-                    .chain(markers.keys.iter().map(|k| format!("{} [{}]", k.file, k.path.join("."))))
+                    .chain(
+                        markers
+                            .keys
+                            .iter()
+                            .map(|k| format!("{} [{}]", k.file, k.path.join("."))),
+                    )
                     .collect(),
                 runs_per_project: f.launch == LaunchKind::ProjectBin,
                 disabled: disabled.contains(&f.id),
@@ -427,7 +485,10 @@ mod tests {
     }
 
     fn bundled() -> Vec<Formatter> {
-        registry::BUILTINS.iter().map(|(source, text)| load_formatter_str(text, source).unwrap()).collect()
+        registry::BUILTINS
+            .iter()
+            .map(|(source, text)| load_formatter_str(text, source).unwrap())
+            .collect()
     }
 
     fn bundled_one(id: &str) -> Formatter {
@@ -435,7 +496,11 @@ mod tests {
     }
 
     fn bundled_one_text(id: &str) -> &'static str {
-        registry::BUILTINS.iter().find(|(source, _)| source.strip_prefix("bundled:") == Some(id)).unwrap().1
+        registry::BUILTINS
+            .iter()
+            .find(|(source, _)| source.strip_prefix("bundled:") == Some(id))
+            .unwrap()
+            .1
     }
 
     /// A formatter config run from the project's `node_modules/.bin/<id>`.
@@ -452,11 +517,16 @@ mod tests {
     }
 
     fn format(formatters: &[Formatter], file: &Path, text: &str, root: &Path, choices: &Choices) -> FormatResult {
-        format_with(formatters, &file.to_string_lossy(), text.into(), root, choices, |_| Ok(()))
+        format_with(formatters, &file.to_string_lossy(), text.into(), root, choices, |_| {
+            Ok(())
+        })
     }
 
     fn choose(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs.iter().map(|(ext, id)| (ext.to_string(), id.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(ext, id)| (ext.to_string(), id.to_string()))
+            .collect()
     }
 
     const DECLINE: &str = "cat >/dev/null\necho 'No parser could be inferred' >&2\nexit 2";
@@ -504,7 +574,10 @@ mod tests {
         let root = tmp_tree();
         touch(&root.join("package.json"), r#"{"name":"x","prettier":{"semi":false}}"#);
         touch(&root.join("a.ts"), "");
-        assert_eq!(detected(&bundled(), &root.join("a.ts"), &root).as_deref(), Some("prettier"));
+        assert_eq!(
+            detected(&bundled(), &root.join("a.ts"), &root).as_deref(),
+            Some("prettier")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -540,7 +613,10 @@ mod tests {
         assert_eq!(found.formatter.id, "prettier");
         assert_eq!(found.dir, root.join("packages/a"));
         // And a file outside that package still gets the repo's own.
-        assert_eq!(detected(&bundled(), &root.join("tools/y.ts"), &root).as_deref(), Some("biome"));
+        assert_eq!(
+            detected(&bundled(), &root.join("tools/y.ts"), &root).as_deref(),
+            Some("biome")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -552,7 +628,10 @@ mod tests {
         touch(&root.join("biome.json"), "{}");
         touch(&root.join(".prettierrc"), "{}");
         touch(&root.join("a.ts"), "");
-        assert_eq!(detected(&bundled(), &root.join("a.ts"), &root).as_deref(), Some("biome"));
+        assert_eq!(
+            detected(&bundled(), &root.join("a.ts"), &root).as_deref(),
+            Some("biome")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -580,9 +659,19 @@ mod tests {
         touch(&root.join("biome.json"), "{}");
         touch(&root.join("py.toml"), "");
         let mut formatters = bundled();
-        formatters.push(formatter("pyfmt", "extensions = [\"py\"]", "[markers]\nfiles = [\"py.toml\"]"));
-        assert_eq!(detected(&formatters, &root.join("a.py"), &root).as_deref(), Some("pyfmt"));
-        assert_eq!(detected(&formatters, &root.join("a.ts"), &root).as_deref(), Some("biome"));
+        formatters.push(formatter(
+            "pyfmt",
+            "extensions = [\"py\"]",
+            "[markers]\nfiles = [\"py.toml\"]",
+        ));
+        assert_eq!(
+            detected(&formatters, &root.join("a.py"), &root).as_deref(),
+            Some("pyfmt")
+        );
+        assert_eq!(
+            detected(&formatters, &root.join("a.ts"), &root).as_deref(),
+            Some("biome")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -620,7 +709,10 @@ mod tests {
         touch(&root.join("biome.json"), "{}");
         touch(&root.join("a.ts"), "");
         assert_eq!(detected(&bundled(), &root.join("a.ts"), Path::new("")), None);
-        let choices = Choices { user: choose(&[("ts", "biome")]), ..Choices::default() };
+        let choices = Choices {
+            user: choose(&[("ts", "biome")]),
+            ..Choices::default()
+        };
         let out = format(&bundled(), &root.join("a.ts"), "const  x=1\n", Path::new(""), &choices);
         assert_eq!(out, FormatResult::none("const  x=1\n".into()));
         std::fs::remove_dir_all(&root).ok();
@@ -635,8 +727,14 @@ mod tests {
         assert_eq!(args("biome", "/p/a.ts"), vec!["format", "--stdin-file-path", "/p/a.ts"]);
         assert_eq!(args("prettier", "/p/a.ts"), vec!["--stdin-filepath", "/p/a.ts"]);
         assert_eq!(args("oxfmt", "/p/a.ts"), vec!["--stdin-filepath", "/p/a.ts"]);
-        assert_eq!(args("ruff", "/p/a.py"), vec!["format", "--stdin-filename", "/p/a.py", "-"]);
-        assert_eq!(args("black", "/p/a.py"), vec!["--quiet", "--stdin-filename", "/p/a.py", "-"]);
+        assert_eq!(
+            args("ruff", "/p/a.py"),
+            vec!["format", "--stdin-filename", "/p/a.py", "-"]
+        );
+        assert_eq!(
+            args("black", "/p/a.py"),
+            vec!["--quiet", "--stdin-filename", "/p/a.py", "-"]
+        );
         assert_eq!(args("gofmt", "/p/a.go"), Vec::<String>::new());
         assert_eq!(args("shfmt", "/p/a.sh"), vec!["--filename", "/p/a.sh"]);
         assert_eq!(args("stylua", "/p/a.lua"), vec!["--stdin-filepath", "/p/a.lua", "-"]);
@@ -663,8 +761,17 @@ mod tests {
         .unwrap();
         let mut formatters: Vec<Formatter> = bundled().into_iter().filter(|f| f.id != "ruff").collect();
         formatters.push(ruff);
-        let out = format(&formatters, &root.join("app/main.py"), "x  =  1\n", &root, &Choices::default());
-        assert_eq!((out.formatter.as_deref(), out.text.as_str(), out.error), (Some("ruff"), "x = 1\n", None));
+        let out = format(
+            &formatters,
+            &root.join("app/main.py"),
+            "x  =  1\n",
+            &root,
+            &Choices::default(),
+        );
+        assert_eq!(
+            (out.formatter.as_deref(), out.text.as_str(), out.error),
+            (Some("ruff"), "x = 1\n", None)
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -729,7 +836,10 @@ mod tests {
         let root = tmp_tree();
         let hoisted = stub(&root.join("node_modules/.bin"), "biome", "cat");
         std::fs::create_dir_all(root.join("packages/a")).unwrap();
-        assert_eq!(resolve(&bundled_one("biome"), &root.join("packages/a"), &root), Some(hoisted));
+        assert_eq!(
+            resolve(&bundled_one("biome"), &root.join("packages/a"), &root),
+            Some(hoisted)
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -790,7 +900,13 @@ mod tests {
     fn a_project_with_no_formatter_returns_the_text_untouched() {
         let root = tmp_tree();
         touch(&root.join("a.ts"), "");
-        let out = format(&bundled(), &root.join("a.ts"), "const  x=1\n", &root, &Choices::default());
+        let out = format(
+            &bundled(),
+            &root.join("a.ts"),
+            "const  x=1\n",
+            &root,
+            &Choices::default(),
+        );
         assert_eq!(out, FormatResult::none("const  x=1\n".into()));
         std::fs::remove_dir_all(&root).ok();
     }
@@ -807,7 +923,10 @@ mod tests {
         // installed) `biome` on this machine out of the test.
         std::fs::create_dir_all(root.join("node_modules/.bin/biome")).unwrap();
         let biome = load_formatter_str(
-            &bundled_one_text("biome").replace("program = \"biome\"", &format!("program = \"{}\"", root.join("node_modules/.bin/biome").display())),
+            &bundled_one_text("biome").replace(
+                "program = \"biome\"",
+                &format!("program = \"{}\"", root.join("node_modules/.bin/biome").display()),
+            ),
             "test",
         )
         .unwrap();
@@ -824,7 +943,13 @@ mod tests {
         touch(&root.join(".prettierrc"), "{}");
         touch(&root.join("a.ts"), "");
         stub(&root.join("node_modules/.bin"), "prettier", "tr -d ' '");
-        let out = format(&bundled(), &root.join("a.ts"), "const  x = 1\n", &root, &Choices::default());
+        let out = format(
+            &bundled(),
+            &root.join("a.ts"),
+            "const  x = 1\n",
+            &root,
+            &Choices::default(),
+        );
         assert_eq!(out.formatter.as_deref(), Some("prettier"));
         assert_eq!(out.error, None);
         assert_eq!(out.text, "constx=1\n");
@@ -839,7 +964,11 @@ mod tests {
         touch(&root.join("prettier.config.js"), "module.exports = {}");
         touch(&root.join("a.ts"), "");
         let ran = root.join("ran");
-        stub(&root.join("node_modules/.bin"), "prettier", &format!("touch '{}'\ntr -d ' '", ran.display()));
+        stub(
+            &root.join("node_modules/.bin"),
+            "prettier",
+            &format!("touch '{}'\ntr -d ' '", ran.display()),
+        );
         let markers = "[markers]\nprefixes = [\"prettier.config.\"]";
         let local = formatter("prettier", "", markers);
         let on_path = load_formatter_str(
@@ -852,12 +981,31 @@ mod tests {
 
         for one in [local, on_path] {
             let formatters = [one];
-            let out = format_with(&formatters, &file, "const  x = 1\n".into(), &root, &Choices::default(), untrusted);
-            assert_eq!(out.error.as_deref(), Some(crate::trust::UNTRUSTED), "{}", formatters[0].id);
+            let out = format_with(
+                &formatters,
+                &file,
+                "const  x = 1\n".into(),
+                &root,
+                &Choices::default(),
+                untrusted,
+            );
+            assert_eq!(
+                out.error.as_deref(),
+                Some(crate::trust::UNTRUSTED),
+                "{}",
+                formatters[0].id
+            );
             assert_eq!(out.text, "const  x = 1\n");
             assert!(!ran.exists(), "{} ran in an untrusted project", formatters[0].id);
 
-            let out = format_with(&formatters, &file, "const  x = 1\n".into(), &root, &Choices::default(), |_| Ok(()));
+            let out = format_with(
+                &formatters,
+                &file,
+                "const  x = 1\n".into(),
+                &root,
+                &Choices::default(),
+                |_| Ok(()),
+            );
             assert_eq!(out.error, None, "{}", formatters[0].id);
             assert_eq!(out.text, "constx=1\n");
             assert_eq!(ran.exists(), formatters[0].launch == LaunchKind::ProjectBin);
@@ -873,7 +1021,11 @@ mod tests {
         let root = tmp_tree();
         touch(&root.join(".prettierrc"), "{}");
         touch(&root.join("a.ts"), "");
-        stub(&root.join("node_modules/.bin"), "prettier", "echo 'unexpected token' >&2\nexit 2");
+        stub(
+            &root.join("node_modules/.bin"),
+            "prettier",
+            "echo 'unexpected token' >&2\nexit 2",
+        );
         let original = "const x = {\n";
         let out = format(&bundled(), &root.join("a.ts"), original, &root, &Choices::default());
         assert_eq!(out.text, original);
@@ -893,9 +1045,15 @@ mod tests {
         stub(&root.join("node_modules/.bin"), "prettier", "tr -d ' '");
         let mut formatters = bundled();
         formatters.push(upper(&root));
-        let choices = Choices { workspace: by_extension(choose(&[(".TS", "upper")])), ..Choices::default() };
+        let choices = Choices {
+            workspace: by_extension(choose(&[(".TS", "upper")])),
+            ..Choices::default()
+        };
         let out = format(&formatters, &root.join("a.ts"), "const x\n", &root, &choices);
-        assert_eq!((out.formatter.as_deref(), out.text.as_str()), (Some("upper"), "CONST X\n"));
+        assert_eq!(
+            (out.formatter.as_deref(), out.text.as_str()),
+            (Some("upper"), "CONST X\n")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -906,9 +1064,15 @@ mod tests {
         stub(&root.join("node_modules/.bin"), "prettier", "tr -d ' '");
         let mut formatters = bundled();
         formatters.push(upper(&root));
-        let choices = Choices { user: choose(&[("ts", "upper")]), ..Choices::default() };
+        let choices = Choices {
+            user: choose(&[("ts", "upper")]),
+            ..Choices::default()
+        };
         let out = format(&formatters, &root.join("a.ts"), "const x\n", &root, &choices);
-        assert_eq!((out.formatter.as_deref(), out.text.as_str()), (Some("prettier"), "constx\n"));
+        assert_eq!(
+            (out.formatter.as_deref(), out.text.as_str()),
+            (Some("prettier"), "constx\n")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -921,7 +1085,10 @@ mod tests {
         touch(&file, "");
         let none = format(&formatters, &file, "x\n", &root, &Choices::default());
         assert_eq!(none, FormatResult::none("x\n".into()));
-        let choices = Choices { user: choose(&[("py", "upper")]), ..Choices::default() };
+        let choices = Choices {
+            user: choose(&[("py", "upper")]),
+            ..Choices::default()
+        };
         let out = format(&formatters, &file, "x\n", &root, &choices);
         assert_eq!((out.formatter.as_deref(), out.text.as_str()), (Some("upper"), "X\n"));
         std::fs::remove_dir_all(&root).ok();
@@ -938,14 +1105,21 @@ mod tests {
         let mut formatters = bundled();
         formatters.push(formatter("first", "", "[not_applicable]\nexit_code = 3"));
         formatters.push(formatter("last", "", "[not_applicable]\nexit_code = 3"));
-        let choices = Choices { workspace: choose(&[("rs", "first")]), user: choose(&[("rs", "last")]), ..Choices::default() };
+        let choices = Choices {
+            workspace: choose(&[("rs", "first")]),
+            user: choose(&[("rs", "last")]),
+            ..Choices::default()
+        };
         let out = format(&formatters, &root.join("main.rs"), "fn main(){}\n", &root, &choices);
         assert_eq!(out, FormatResult::none("fn main(){}\n".into()));
 
         // And a rung that does take the file is where it stops.
         stub(&bin, "last", "tr -d '{}'");
         let out = format(&formatters, &root.join("main.rs"), "fn main(){}\n", &root, &choices);
-        assert_eq!((out.formatter.as_deref(), out.text.as_str()), (Some("last"), "fn main()\n"));
+        assert_eq!(
+            (out.formatter.as_deref(), out.text.as_str()),
+            (Some("last"), "fn main()\n")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -955,7 +1129,13 @@ mod tests {
         let root = tmp_tree();
         touch(&root.join(".prettierrc"), "{}");
         stub(&root.join("node_modules/.bin"), "prettier", DECLINE);
-        let out = format(&bundled(), &root.join("src/main.rs"), "fn main(){}\n", &root, &Choices::default());
+        let out = format(
+            &bundled(),
+            &root.join("src/main.rs"),
+            "fn main(){}\n",
+            &root,
+            &Choices::default(),
+        );
         assert_eq!(out, FormatResult::none("fn main(){}\n".into()));
         std::fs::remove_dir_all(&root).ok();
     }
@@ -965,8 +1145,17 @@ mod tests {
         let root = tmp_tree();
         touch(&root.join(".prettierrc"), r#"{"plugins":["prettier-plugin-svelte"]}"#);
         stub(&root.join("node_modules/.bin"), "prettier", "tr -d ' '");
-        let out = format(&bundled(), &root.join("src/App.svelte"), "<p> x </p>\n", &root, &Choices::default());
-        assert_eq!((out.formatter.as_deref(), out.text.as_str()), (Some("prettier"), "<p>x</p>\n"));
+        let out = format(
+            &bundled(),
+            &root.join("src/App.svelte"),
+            "<p> x </p>\n",
+            &root,
+            &Choices::default(),
+        );
+        assert_eq!(
+            (out.formatter.as_deref(), out.text.as_str()),
+            (Some("prettier"), "<p>x</p>\n")
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -975,10 +1164,17 @@ mod tests {
         // A syntax error is the same error whoever formats next.
         let root = tmp_tree();
         touch(&root.join(".prettierrc"), "{}");
-        stub(&root.join("node_modules/.bin"), "prettier", "echo \"SyntaxError: '}' expected\" >&2\nexit 2");
+        stub(
+            &root.join("node_modules/.bin"),
+            "prettier",
+            "echo \"SyntaxError: '}' expected\" >&2\nexit 2",
+        );
         let mut formatters = bundled();
         formatters.push(upper(&root));
-        let choices = Choices { user: choose(&[("ts", "upper")]), ..Choices::default() };
+        let choices = Choices {
+            user: choose(&[("ts", "upper")]),
+            ..Choices::default()
+        };
         let out = format(&formatters, &root.join("a.ts"), "const x = {\n", &root, &choices);
         assert_eq!(out.formatter.as_deref(), Some("prettier"));
         assert_eq!(out.text, "const x = {\n");
@@ -991,9 +1187,16 @@ mod tests {
         let root = tmp_tree();
         touch(&root.join(".prettierrc"), "{}");
         let log = root.join("calls");
-        stub(&root.join("node_modules/.bin"), "prettier", &format!("echo x >> '{}'\n{DECLINE}", log.display()));
-        let choices =
-            Choices { workspace: choose(&[("rs", "prettier")]), user: choose(&[("rs", "prettier")]), ..Choices::default() };
+        stub(
+            &root.join("node_modules/.bin"),
+            "prettier",
+            &format!("echo x >> '{}'\n{DECLINE}", log.display()),
+        );
+        let choices = Choices {
+            workspace: choose(&[("rs", "prettier")]),
+            user: choose(&[("rs", "prettier")]),
+            ..Choices::default()
+        };
         format(&bundled(), &root.join("a.rs"), "x\n", &root, &choices);
         assert_eq!(std::fs::read_to_string(&log).unwrap().lines().count(), 1);
         std::fs::remove_dir_all(&root).ok();
@@ -1002,7 +1205,10 @@ mod tests {
     #[test]
     fn an_unknown_id_in_a_setting_is_reported_not_skipped() {
         let root = tmp_tree();
-        let choices = Choices { user: choose(&[("py", "ruf")]), ..Choices::default() };
+        let choices = Choices {
+            user: choose(&[("py", "ruf")]),
+            ..Choices::default()
+        };
         let out = format(&bundled(), &root.join("a.py"), "x\n", &root, &choices);
         assert_eq!(out.formatter.as_deref(), Some("ruf"));
         assert!(out.error.unwrap().contains("`ruf`"));
@@ -1014,7 +1220,9 @@ mod tests {
     /// neither exists.
     #[test]
     fn prettier_declines_a_file_it_has_no_parser_for_and_nothing_else() {
-        let Some(bin) = std::env::var_os("TORI_PRETTIER").map(PathBuf::from).or_else(|| crate::env::resolve_binary("prettier"))
+        let Some(bin) = std::env::var_os("TORI_PRETTIER")
+            .map(PathBuf::from)
+            .or_else(|| crate::env::resolve_binary("prettier"))
         else {
             return;
         };
@@ -1028,7 +1236,10 @@ mod tests {
         let broken = run(&bin, &prettier.args_for(&path("a.ts")), &root, "const x = {\n").unwrap_err();
         assert!(!broken.is_decline_by(&prettier), "{broken:?}");
 
-        assert_eq!(run(&bin, &prettier.args_for(&path("a.ts")), &root, "const  x=1\n").unwrap(), "const x = 1;\n");
+        assert_eq!(
+            run(&bin, &prettier.args_for(&path("a.ts")), &root, "const  x=1\n").unwrap(),
+            "const x = 1;\n"
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 }

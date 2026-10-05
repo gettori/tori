@@ -182,12 +182,23 @@ export default function AutopilotView(props: AutopilotViewProps) {
             fallback={
               <ComposerShell
                 disabled={off() || props.state === "error"}
-                placeholder={off() ? "Set sail to message the autopilot" : props.state === "error" ? "Reconnecting..." : "Tell the autopilot..."}
+                placeholder={
+                  off()
+                    ? "Set sail to message the autopilot"
+                    : props.state === "error"
+                      ? "Reconnecting..."
+                      : "Tell the autopilot..."
+                }
                 hints={
                   <KeyHints
                     hints={
                       props.decisions.length
-                        ? [[["\u2318\u21e7J"], "workspace"], [["J", "K"], "move"], [["A"], "approve"], [["R"], "reply"]]
+                        ? [
+                            [["\u2318\u21e7J"], "workspace"],
+                            [["J", "K"], "move"],
+                            [["A"], "approve"],
+                            [["R"], "reply"],
+                          ]
                         : [[["\u2318\u21e7J"], "workspace"]]
                     }
                   />
@@ -211,7 +222,11 @@ export default function AutopilotView(props: AutopilotViewProps) {
                   <Show when={a.ticket}>
                     {(ticket) => (
                       <>
-                        <TicketLink ticket={ticket()} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />{" "}
+                        <TicketLink
+                          ticket={ticket()}
+                          onOpenLink={props.onOpenLink}
+                          onNavigate={props.onNavigate}
+                        />{" "}
                       </>
                     )}
                   </Show>
@@ -234,7 +249,9 @@ export default function AutopilotView(props: AutopilotViewProps) {
 }
 
 /** The time of day over the water: the banner, with the state on its first line. */
-function Hero(props: CockpitHero & { state: AutopilotState; scene: SceneKey; onStart?: () => void; onStop?: () => void }) {
+function Hero(
+  props: CockpitHero & { state: AutopilotState; scene: SceneKey; onStart?: () => void; onStop?: () => void },
+) {
   return (
     <header class={styles.hero} data-state={props.state}>
       <Horizon scene={props.scene} />

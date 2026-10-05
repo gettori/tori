@@ -215,7 +215,10 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
                             {(hunk) => (
                               <div>
                                 <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
-                                <DiffRows rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })} twoColumn={twoColumn()} />
+                                <DiffRows
+                                  rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
+                                  twoColumn={twoColumn()}
+                                />
                               </div>
                             )}
                           </For>

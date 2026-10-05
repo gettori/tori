@@ -37,8 +37,7 @@ import SpaceDialog from "./SpaceDialog";
 // line, so the announcement matches what is on screen and the placeholder is
 // back to being a hint. Edit mode has no control left to name: its name is
 // static text, read in order after that same line.
-const frame = () =>
-  new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
 // press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -70,8 +69,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   const panel = () => screen.getByRole("dialog", { name: /New space|Edit/ });
   const chip = (label: string) => screen.getByRole("button", { name: label });
 
-  const group = (label: string) =>
-    Array.from(screen.getByRole("group", { name: label }).querySelectorAll("button"));
+  const group = (label: string) => Array.from(screen.getByRole("group", { name: label }).querySelectorAll("button"));
   // Each picker opens its own popover, so reaching one is pressing its chip.
   // Idempotent on purpose: a test that picks twice should not have to track
   // whether the previous pick closed the panel (it did).
@@ -87,14 +85,12 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
     tiles();
     return screen.getByLabelText("Search icons") as HTMLInputElement;
   };
-  const pressed = (buttons: HTMLElement[]) =>
-    buttons.find((b) => b.getAttribute("aria-pressed") === "true");
+  const pressed = (buttons: HTMLElement[]) => buttons.find((b) => b.getAttribute("aria-pressed") === "true");
 
   return { onConfirm, onCancel, name, panel, chip, swatches, tiles, search, pressed };
 }
 
-const submit = (label: string) =>
-  screen.getByRole("button", { name: label }) as HTMLButtonElement;
+const submit = (label: string) => screen.getByRole("button", { name: label }) as HTMLButtonElement;
 
 describe("SpaceDialog", () => {
   describe("contract", () => {
@@ -115,18 +111,14 @@ describe("SpaceDialog", () => {
     it("says where the folder lands, while the name can still be set", () => {
       open();
 
-      expect(
-        screen.getByText("Becomes a folder in your base folder. Pick something short."),
-      ).toBeTruthy();
+      expect(screen.getByText("Becomes a folder in your base folder. Pick something short.")).toBeTruthy();
     });
 
     it("says the name is the folder's, in edit mode", () => {
       open({ mode: "edit", name: "work" });
 
       expect(
-        screen.getByText(
-          "The folder on disk carries this name, so it can’t change here. Colour and icon can.",
-        ),
+        screen.getByText("The folder on disk carries this name, so it can’t change here. Colour and icon can."),
       ).toBeTruthy();
     });
 
@@ -144,9 +136,7 @@ describe("SpaceDialog", () => {
 
       fireEvent.input(name(), { target: { value: " WORK " } });
 
-      expect(
-        screen.getByText("A space named WORK already exists in this base folder."),
-      ).toBeTruthy();
+      expect(screen.getByText("A space named WORK already exists in this base folder.")).toBeTruthy();
       expect(submit("Create space").disabled).toBe(true);
     });
 

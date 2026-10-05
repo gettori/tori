@@ -56,7 +56,9 @@ function Shell(props: {
           onJump={() => {}}
         />
       }
-      railFooter={<span class={styles.railNote}>Agents, base folder and space show on every launch until a space exists.</span>}
+      railFooter={
+        <span class={styles.railNote}>Agents, base folder and space show on every launch until a space exists.</span>
+      }
       heading={props.heading}
       required={props.required}
       lead={props.lead}
@@ -127,9 +129,19 @@ const NONE = [
 ];
 
 const FOUND = [
-  agent("claude", "Claude", { status: "versionMatch", version: "2.1.268", verifiedAgainst: "claude 2.1.231", signIn: "signedIn" }),
+  agent("claude", "Claude", {
+    status: "versionMatch",
+    version: "2.1.268",
+    verifiedAgainst: "claude 2.1.231",
+    signIn: "signedIn",
+  }),
   agent("codex", "Codex", { status: "versionMatch", version: "0.147.0", signIn: "signedOut" }),
-  agent("opencode", "OpenCode", { status: "versionDrift", version: "1.17.2", verifiedAgainst: "opencode 1.18.3", signIn: "signedIn" }),
+  agent("opencode", "OpenCode", {
+    status: "versionDrift",
+    version: "1.17.2",
+    verifiedAgainst: "opencode 1.18.3",
+    signIn: "signedIn",
+  }),
   ...NONE.filter((h) => !["claude", "codex", "opencode"].includes(h.id)),
 ];
 
@@ -171,7 +183,15 @@ const baseHint = "Required. You can change it later in Settings.";
 /** Nothing chosen: the primary waits on the picker. */
 export const BaseFolderEmpty: Story = {
   render: () => (
-    <Shell current="base" heading="Base folder" required lead={BASE_FOLDER_LEAD} primary="Continue" primaryDisabled hint={baseHint}>
+    <Shell
+      current="base"
+      heading="Base folder"
+      required
+      lead={BASE_FOLDER_LEAD}
+      primary="Continue"
+      primaryDisabled
+      hint={baseHint}
+    >
       <BaseFolderStep root={null} spaces={[]} home={HOME} onChoose={() => {}} />
     </Shell>
   ),
@@ -203,7 +223,15 @@ function SpaceStory(props: { spaces: FirstRunSpace[]; mode: SpaceMode }) {
   const [name, setName] = createSignal("");
   const creating = () => mode() === "create" || props.spaces.length === 0;
   return (
-    <Shell current="space" heading="Space" required lead={SPACE_LEAD} primary={creating() ? "Create space" : "Continue"} primaryDisabled={creating() && !name().trim()} hint={spaceHint}>
+    <Shell
+      current="space"
+      heading="Space"
+      required
+      lead={SPACE_LEAD}
+      primary={creating() ? "Create space" : "Continue"}
+      primaryDisabled={creating() && !name().trim()}
+      hint={spaceHint}
+    >
       <SpaceStep
         root={ROOT}
         spaces={props.spaces}
@@ -253,11 +281,7 @@ const OCTOCAT: ForgeHost = {
   appId: null,
 };
 
-function HostsStory(props: {
-  hosts?: ForgeHost[];
-  waitingFor?: Cloud;
-  failure?: { cloud: Cloud; failure: Failure };
-}) {
+function HostsStory(props: { hosts?: ForgeHost[]; waitingFor?: Cloud; failure?: { cloud: Cloud; failure: Failure } }) {
   return (
     <Shell
       current="hosts"
@@ -274,7 +298,12 @@ function HostsStory(props: {
         wait={
           <DeviceWaitCard
             host={props.waitingFor ?? ""}
-            prompt={{ userCode: "WDJB-MJHT", verificationUri: "https://github.com/login/device", expiresInSecs: 900, intervalSecs: 5 }}
+            prompt={{
+              userCode: "WDJB-MJHT",
+              verificationUri: "https://github.com/login/device",
+              expiresInSecs: 900,
+              intervalSecs: 5,
+            }}
             remainingMs={14 * 60 * 1000 + 32 * 1000}
             clipboardOk
             onCopyAgain={() => {}}
@@ -307,7 +336,10 @@ export const HostsError: Story = {
   render: () => <HostsStory failure={{ cloud: "github.com", failure: { kind: "expired", code: "expired_token" } }} />,
 };
 
-const GIT_READY: GitReport = { health: { kind: "ready", path: "/usr/bin/git", version: "2.46.0" }, install: { type: "undeclared" } };
+const GIT_READY: GitReport = {
+  health: { kind: "ready", path: "/usr/bin/git", version: "2.46.0" },
+  install: { type: "undeclared" },
+};
 const GIT_MISSING: GitReport = {
   health: { kind: "toolsMissing" },
   install: { type: "terminal", program: "/usr/bin/xcode-select", args: ["--install"] },
@@ -362,7 +394,10 @@ export const ProjectFound: Story = {
     <ProjectStory
       space={{
         ...space("work", 0),
-        projects: ["api", "web", "infra", "docs", "sdk-go", "sdk-ts"].map((n) => ({ name: n, path: `${ROOT}/work/${n}` })),
+        projects: ["api", "web", "infra", "docs", "sdk-go", "sdk-ts"].map((n) => ({
+          name: n,
+          path: `${ROOT}/work/${n}`,
+        })),
       }}
       git={GIT_READY}
     />

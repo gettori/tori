@@ -113,7 +113,11 @@ check(hungUp, "and its connection is closed");
 if (issue) {
   const { project, key } = issue;
   const assigned = await c.call("issues.assigned", { project });
-  check(Array.isArray(assigned.result), "issues.assigned", JSON.stringify(assigned.error ?? assigned.result?.map((i) => `${i.display} ${i.kind}`)));
+  check(
+    Array.isArray(assigned.result),
+    "issues.assigned",
+    JSON.stringify(assigned.error ?? assigned.result?.map((i) => `${i.display} ${i.kind}`)),
+  );
   const got = await c.call("issues.get", { project, key });
   check(!!got.result?.suggestedBranch, "issues.get", JSON.stringify(got.error ?? got.result?.suggestedBranch));
   const branch = got.result?.suggestedBranch;
@@ -121,7 +125,11 @@ if (issue) {
     const link = await c.call("issues.link_branch", { project, key, branch });
     check(!!link.result?.outcome, "issues.link_branch", JSON.stringify(link.error ?? link.result));
     const again = await c.call("issues.link_branch", { project, key, branch });
-    check(again.result?.outcome === "alreadyLinked", "a second link is not a second branch", JSON.stringify(again.error ?? again.result));
+    check(
+      again.result?.outcome === "alreadyLinked",
+      "a second link is not a second branch",
+      JSON.stringify(again.error ?? again.result),
+    );
     const wt = await c.call("worktree.new", { project, branch, issue: key });
     check(!!wt.result?.path, "worktree.new with the issue", JSON.stringify(wt.error ?? wt.result));
   }
@@ -129,14 +137,20 @@ if (issue) {
 
 if (mint) {
   const minted = await c.call("device.mint", { name: mint });
-  check(!!minted.result?.credential, "device.mint", JSON.stringify(minted.error ?? { id: minted.result.id, name: minted.result.name }));
+  check(
+    !!minted.result?.credential,
+    "device.mint",
+    JSON.stringify(minted.error ?? { id: minted.result.id, name: minted.result.name }),
+  );
   if (minted.result) console.log(`     credential ${minted.result.credential}`);
 }
 
 if (wait) {
   console.log(`waiting up to ${timeoutMs} ms: start a chat session in Tori`);
   const started = await Promise.race([
-    new Promise((resolve) => c.onEvent((p) => p.topic === "sessions" && p.data.kind === "session.started" && resolve(p.data))),
+    new Promise((resolve) =>
+      c.onEvent((p) => p.topic === "sessions" && p.data.kind === "session.started" && resolve(p.data)),
+    ),
     new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs)),
   ]);
   check(started !== null, "a started event arrives", JSON.stringify(started));

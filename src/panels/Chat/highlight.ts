@@ -84,7 +84,11 @@ const workerMs: number[] = [];
  *  recipe: a slow worker shows up as colours that lag, never as a frame. */
 export function takeHighlightTimes(): { n: number; p50: number | null; max: number | null } {
   const v = workerMs.splice(0).sort((a, b) => a - b);
-  return { n: v.length, p50: v.length ? Math.round(v[v.length >> 1]) : null, max: v.length ? Math.round(v[v.length - 1]) : null };
+  return {
+    n: v.length,
+    p50: v.length ? Math.round(v[v.length >> 1]) : null,
+    max: v.length ? Math.round(v[v.length - 1]) : null,
+  };
 }
 
 /**
@@ -133,7 +137,8 @@ export function createHighlight() {
     asked.add(slot);
     queue.request(slot, code, name, form, done(slot));
     const prev = last.get(slot);
-    if (prev && prev.lang === name && code.startsWith(prev.code)) return extend(prev.value, code.slice(prev.code.length));
+    if (prev && prev.lang === name && code.startsWith(prev.code))
+      return extend(prev.value, code.slice(prev.code.length));
     return null;
   }
 

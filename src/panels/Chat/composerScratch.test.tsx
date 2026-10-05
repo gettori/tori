@@ -8,7 +8,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     invokes.push({ cmd, args });
     switch (cmd) {
       case "scratch_new":
-        return scratchBroken ? Promise.reject(new Error("no dir")) : Promise.resolve("/home/me/.config/tori/scratch/Untitled-4");
+        return scratchBroken
+          ? Promise.reject(new Error("no dir"))
+          : Promise.resolve("/home/me/.config/tori/scratch/Untitled-4");
       default:
         return Promise.resolve(null);
     }

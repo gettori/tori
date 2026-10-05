@@ -161,9 +161,7 @@ describe("CreatePrDialog", () => {
       // A disabled button fires no pointer events of its own, so the reason is
       // reached through the `tooltipWhenDisabled` hover surface around it.
       fireEvent.pointerEnter(ask.closest("[data-tooltip-hover-surface]")!);
-      await waitFor(() =>
-        expect(screen.getByRole("tooltip").textContent).toBe("No session can take a request"),
-      );
+      await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("No session can take a request"));
 
       fireEvent.click(ask);
 
@@ -173,9 +171,7 @@ describe("CreatePrDialog", () => {
     it("says the agent is drafting", () => {
       open({ drafting: true });
 
-      expect((screen.getByRole("button", { name: "Asking…" }) as HTMLButtonElement).disabled).toBe(
-        true,
-      );
+      expect((screen.getByRole("button", { name: "Asking…" }) as HTMLButtonElement).disabled).toBe(true);
     });
 
     it("says it is opening, and blocks a second submit", () => {

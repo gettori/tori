@@ -192,12 +192,7 @@ export const transitionKey = (
  * level moved; the dedupe is what turns one-per-turn into one-per-window. `ok`
  * and `expired` are never announced, so they can never be marked.
  */
-export function shouldAnnounce(
-  agentId: string,
-  profile: string | null,
-  r: WindowReading,
-  state: QuotaState,
-): boolean {
+export function shouldAnnounce(agentId: string, profile: string | null, r: WindowReading, state: QuotaState): boolean {
   if (state !== "approaching" && state !== "reached") return false;
   const key = transitionKey(agentId, profile, r.kind, r.resetsAt, state);
   if (key in fired()) return false;

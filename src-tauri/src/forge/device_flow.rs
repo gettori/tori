@@ -124,9 +124,15 @@ fn token_set(v: &Value) -> Option<TokenSet> {
 /// waiting" would lose the backoff and earn a harder throttle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PollOutcome {
-    Authorized { token: TokenSet },
-    Pending { next_interval_secs: u64 },
-    SlowDown { next_interval_secs: u64 },
+    Authorized {
+        token: TokenSet,
+    },
+    Pending {
+        next_interval_secs: u64,
+    },
+    SlowDown {
+        next_interval_secs: u64,
+    },
     /// The user pressed cancel on the instance's page.
     Denied,
     /// The device code aged out; the flow has to start over.
@@ -140,13 +146,16 @@ pub enum PollOutcome {
 /// through so a `slow_down` can be applied to whatever the caller is using now,
 /// rather than to a constant.
 pub fn classify_poll(body: &str, current_interval_secs: u64) -> Result<PollOutcome, ForgeError> {
-    let v: Value = serde_json::from_str(body)
-        .map_err(|e| ForgeError::Malformed { message: format!("device poll: {e}") })?;
+    let v: Value = serde_json::from_str(body).map_err(|e| ForgeError::Malformed {
+        message: format!("device poll: {e}"),
+    })?;
 
     if v.get("access_token").is_some() {
         return match token_set(&v) {
             Some(set) => Ok(PollOutcome::Authorized { token: set }),
-            None => Err(ForgeError::Malformed { message: "empty access_token".into() }),
+            None => Err(ForgeError::Malformed {
+                message: "empty access_token".into(),
+            }),
         };
     }
 
@@ -180,18 +189,27 @@ pub fn classify_poll(body: &str, current_interval_secs: u64) -> Result<PollOutco
 
 /// Reads the response to step 1.
 pub fn parse_device_code(body: &str) -> Result<(DevicePrompt, PendingFlow), ForgeError> {
-    let v: Value = serde_json::from_str(body)
-        .map_err(|e| ForgeError::Malformed { message: format!("device code: {e}") })?;
+    let v: Value = serde_json::from_str(body).map_err(|e| ForgeError::Malformed {
+        message: format!("device code: {e}"),
+    })?;
     if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
-        return Err(ForgeError::Api { status: 200, message: err.to_string() });
+        return Err(ForgeError::Api {
+            status: 200,
+            message: err.to_string(),
+        });
     }
     let field = |k: &str| {
         v.get(k)
             .and_then(|x| x.as_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| ForgeError::Malformed { message: format!("device code: no {k}") })
+            .ok_or_else(|| ForgeError::Malformed {
+                message: format!("device code: no {k}"),
+            })
     };
-    let interval_secs = v.get("interval").and_then(|i| i.as_u64()).unwrap_or(DEFAULT_INTERVAL_SECS);
+    let interval_secs = v
+        .get("interval")
+        .and_then(|i| i.as_u64())
+        .unwrap_or(DEFAULT_INTERVAL_SECS);
     Ok((
         DevicePrompt {
             user_code: field("user_code")?,
@@ -199,7 +217,10 @@ pub fn parse_device_code(body: &str) -> Result<(DevicePrompt, PendingFlow), Forg
             expires_in_secs: v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(900),
             interval_secs,
         },
-        PendingFlow { device_code: field("device_code")?, interval_secs },
+        PendingFlow {
+            device_code: field("device_code")?,
+            interval_secs,
+        },
     ))
 }
 
@@ -294,10 +315,12 @@ pub fn refresh_with(
     if let Some(err) = super::http::classify(&resp) {
         return Err(err);
     }
-    let v: Value = serde_json::from_str(&resp.body)
-        .map_err(|e| ForgeError::Malformed { message: format!("refresh: {e}") })?;
-    token_set(&v)
-        .ok_or_else(|| ForgeError::Malformed { message: "refresh returned no token".into() })
+    let v: Value = serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed {
+        message: format!("refresh: {e}"),
+    })?;
+    token_set(&v).ok_or_else(|| ForgeError::Malformed {
+        message: "refresh returned no token".into(),
+    })
 }
 
 #[cfg(test)]
@@ -351,8 +374,7 @@ mod tests {
             200,
             r#"{"access_token":"glpat_b","refresh_token":"glrt_s","expires_in":7200}"#,
         )]);
-        let set = refresh_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), "glrt_r")
-            .unwrap();
+        let set = refresh_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), "glrt_r").unwrap();
         assert_eq!(set.access_token, "glpat_b");
         assert_eq!(set.refresh_token.as_deref(), Some("glrt_s"));
         assert_eq!(set.expires_in_secs, Some(7200));
@@ -363,17 +385,8 @@ mod tests {
 
         // A refused refresh is an error rather than a half-applied change: the
         // caller is what decides the account is suspect.
-        let refused = StubTransport::new(vec![StubTransport::json(
-            401,
-            r#"{"error":"invalid_grant"}"#,
-        )]);
-        assert!(refresh_with(
-            &refused,
-            "app-id",
-            &gitlab_endpoints("https://git.acme.test"),
-            "glrt_r"
-        )
-        .is_err());
+        let refused = StubTransport::new(vec![StubTransport::json(401, r#"{"error":"invalid_grant"}"#)]);
+        assert!(refresh_with(&refused, "app-id", &gitlab_endpoints("https://git.acme.test"), "glrt_r").is_err());
     }
 
     #[test]
@@ -414,8 +427,14 @@ mod tests {
     fn denial_and_expiry_are_distinct_endings() {
         // The user cancelling and the code ageing out need different wording:
         // one is "you said no", the other is "start again".
-        assert_eq!(classify_poll(r#"{"error":"access_denied"}"#, 5).unwrap(), PollOutcome::Denied);
-        assert_eq!(classify_poll(r#"{"error":"expired_token"}"#, 5).unwrap(), PollOutcome::Expired);
+        assert_eq!(
+            classify_poll(r#"{"error":"access_denied"}"#, 5).unwrap(),
+            PollOutcome::Denied
+        );
+        assert_eq!(
+            classify_poll(r#"{"error":"expired_token"}"#, 5).unwrap(),
+            PollOutcome::Expired
+        );
     }
 
     #[test]
@@ -427,7 +446,13 @@ mod tests {
             5,
         )
         .unwrap_err();
-        assert_eq!(err, ForgeError::Api { status: 200, message: "bad grant".into() });
+        assert_eq!(
+            err,
+            ForgeError::Api {
+                status: 200,
+                message: "bad grant".into()
+            }
+        );
 
         // A body with neither field is malformed, not pending.
         assert!(matches!(
@@ -459,16 +484,17 @@ mod tests {
         // The prompt is what crosses to the frontend, and it must not carry the
         // device code: whoever holds one can finish the exchange.
         let json = serde_json::to_string(&prompt).unwrap();
-        assert!(!json.contains("dc_secret"), "device code leaked to the frontend: {json}");
+        assert!(
+            !json.contains("dc_secret"),
+            "device code leaked to the frontend: {json}"
+        );
         assert!(json.contains("WDJB-MJHT"));
     }
 
     #[test]
     fn step_one_defaults_the_interval_when_the_server_omits_it() {
-        let (prompt, flow) = parse_device_code(
-            r#"{"device_code":"d","user_code":"U","verification_uri":"https://x"}"#,
-        )
-        .unwrap();
+        let (prompt, flow) =
+            parse_device_code(r#"{"device_code":"d","user_code":"U","verification_uri":"https://x"}"#).unwrap();
         assert_eq!(prompt.interval_secs, DEFAULT_INTERVAL_SECS);
         assert_eq!(flow.interval_secs, DEFAULT_INTERVAL_SECS);
     }
@@ -481,8 +507,14 @@ mod tests {
         let t = StubTransport::new(vec![]);
         let acme = gitlab_endpoints("https://git.acme.test");
         assert_eq!(start_with(&t, "", &acme).unwrap_err(), ForgeError::NotAuthenticated);
-        let flow = PendingFlow { device_code: "d".into(), interval_secs: 5 };
-        assert_eq!(poll_once_with(&t, "", &acme, &flow).unwrap_err(), ForgeError::NotAuthenticated);
+        let flow = PendingFlow {
+            device_code: "d".into(),
+            interval_secs: 5,
+        };
+        assert_eq!(
+            poll_once_with(&t, "", &acme, &flow).unwrap_err(),
+            ForgeError::NotAuthenticated
+        );
         assert_eq!(t.request_count(), 0, "nothing reached the wire");
     }
 
@@ -504,13 +536,19 @@ mod tests {
         assert!(body.contains("client_id=app-id"));
         // Without an explicit Accept a server may answer form-encoded, and the
         // JSON parser above would have nothing to read.
-        assert!(req.headers.iter().any(|(k, v)| k == "Accept" && v == "application/json"));
+        assert!(req
+            .headers
+            .iter()
+            .any(|(k, v)| k == "Accept" && v == "application/json"));
     }
 
     #[test]
     fn the_poll_sends_the_device_grant_type() {
         let t = StubTransport::new(vec![StubTransport::json(200, r#"{"access_token":"glpat_x"}"#)]);
-        let flow = PendingFlow { device_code: "dc".into(), interval_secs: 5 };
+        let flow = PendingFlow {
+            device_code: "dc".into(),
+            interval_secs: 5,
+        };
         let out = poll_once_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), &flow).unwrap();
         assert_eq!(out, authorized("glpat_x"));
 
@@ -526,11 +564,11 @@ mod tests {
     fn a_pending_poll_is_read_from_the_body_not_the_status() {
         // A server may answer 200 while waiting, so a status-first reading would
         // treat every wait as success and every success as indistinguishable.
-        let t = StubTransport::new(vec![StubTransport::json(
-            200,
-            r#"{"error":"authorization_pending"}"#,
-        )]);
-        let flow = PendingFlow { device_code: "dc".into(), interval_secs: 5 };
+        let t = StubTransport::new(vec![StubTransport::json(200, r#"{"error":"authorization_pending"}"#)]);
+        let flow = PendingFlow {
+            device_code: "dc".into(),
+            interval_secs: 5,
+        };
         assert_eq!(
             poll_once_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), &flow).unwrap(),
             PollOutcome::Pending { next_interval_secs: 5 }
@@ -556,7 +594,10 @@ mod tests {
         let sent = t.requests();
         assert_eq!(sent[0].url, "https://git.acme.test/oauth/authorize_device");
         assert_eq!(sent[1].url, "https://git.acme.test/oauth/token");
-        assert!(sent[0].body.clone().unwrap().contains("scope=api"), "api, and nothing wider");
+        assert!(
+            sent[0].body.clone().unwrap().contains("scope=api"),
+            "api, and nothing wider"
+        );
     }
 
     #[test]

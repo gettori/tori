@@ -28,30 +28,37 @@ export function failureText(host: string, failure: Failure, lifetimeSecs: number
     case "denied":
       return (
         <>
-          {host} says the sign-in was denied: <code>{failure.code}</code>. Nothing was stored, and starting
-          again issues a fresh code.
+          {host} says the sign-in was denied: <code>{failure.code}</code>. Nothing was stored, and starting again issues
+          a fresh code.
         </>
       );
     case "expired":
       return (
         <>
           {host} expired the code before it was entered: <code>{failure.code}</code>.
-          {minutes > 0 ? ` Codes last about ${minutes} minute${minutes === 1 ? "" : "s"}.` : ""} Starting again
-          issues a fresh one.
+          {minutes > 0 ? ` Codes last about ${minutes} minute${minutes === 1 ? "" : "s"}.` : ""} Starting again issues a
+          fresh one.
         </>
       );
     case "error":
       return (
         <>
           {failure.message}
-          {failure.code === null ? "" : <> <code>{failure.code}</code></>}
+          {failure.code === null ? (
+            ""
+          ) : (
+            <>
+              {" "}
+              <code>{failure.code}</code>
+            </>
+          )}
         </>
       );
     case "needsToken":
       return (
         <>
-          {failure.host} needs a personal access token, and Tori asks for one in Settings {">"} Hosts. Install
-          the GitHub CLI and sign in with it to skip that.
+          {failure.host} needs a personal access token, and Tori asks for one in Settings {">"} Hosts. Install the
+          GitHub CLI and sign in with it to skip that.
         </>
       );
   }

@@ -22,15 +22,10 @@ export type RevertPermission =
   /** Something verifiably is. Say why and write nothing. */
   | { kind: "refuse"; reason: string };
 
-export function hunkRevertPermission(
-  candidates: readonly RevertCandidate[],
-  folderPath: string,
-): RevertPermission {
+export function hunkRevertPermission(candidates: readonly RevertCandidate[], folderPath: string): RevertPermission {
   // `allowDetached` stays false: the point here is to *surface* the detached
   // tier as a question rather than to skip it.
   const verdict = revertGuard(candidates, { folderPath });
   if (verdict.allow) return { kind: "allow" };
-  return verdict.overridable
-    ? { kind: "confirm", reason: verdict.reason }
-    : { kind: "refuse", reason: verdict.reason };
+  return verdict.overridable ? { kind: "confirm", reason: verdict.reason } : { kind: "refuse", reason: verdict.reason };
 }

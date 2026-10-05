@@ -81,12 +81,7 @@ export function saveSearch(
  * already belongs to another entry: silently merging two saved searches into
  * one would destroy whichever the user was not looking at.
  */
-export function renameSearch(
-  store: SavedSearchStore,
-  ws: string,
-  from: string,
-  to: string,
-): SavedSearchStore {
+export function renameSearch(store: SavedSearchStore, ws: string, from: string, to: string): SavedSearchStore {
   const trimmed = to.trim();
   if (!trimmed || trimmed === from) return store;
   const here = savedFor(store, ws);

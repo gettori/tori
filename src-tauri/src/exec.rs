@@ -62,7 +62,11 @@ static GIT_SPAWNS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
 #[cfg(test)]
 fn count_git(repo: &std::ffi::OsStr) {
     let spawns = GIT_SPAWNS.get_or_init(Default::default);
-    *spawns.lock().unwrap_or_else(PoisonError::into_inner).entry(PathBuf::from(repo)).or_default() += 1;
+    *spawns
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry(PathBuf::from(repo))
+        .or_default() += 1;
 }
 
 /// Every git process built for a repo under `dir` so far.
@@ -70,7 +74,11 @@ fn count_git(repo: &std::ffi::OsStr) {
 pub(crate) fn git_spawns_under(dir: &std::path::Path) -> usize {
     let spawns = GIT_SPAWNS.get_or_init(Default::default);
     let spawns = spawns.lock().unwrap_or_else(PoisonError::into_inner);
-    spawns.iter().filter(|(repo, _)| repo.starts_with(dir)).map(|(_, n)| n).sum()
+    spawns
+        .iter()
+        .filter(|(repo, _)| repo.starts_with(dir))
+        .map(|(_, n)| n)
+        .sum()
 }
 
 /// `git` for a subcommand that opens no repository, so there is no config of
@@ -84,10 +92,7 @@ pub fn git_outside_a_repo() -> Command {
 /// `spawn_blocking` rather than `#[tauri::command(async)]`: the attribute form
 /// runs a sync body inside `async_runtime::spawn`, pinning a tokio worker for
 /// the duration, and it leaves no seam to log the body span from.
-pub async fn blocking<T: Send + 'static>(
-    name: &'static str,
-    f: impl FnOnce() -> T + Send + 'static,
-) -> T {
+pub async fn blocking<T: Send + 'static>(name: &'static str, f: impl FnOnce() -> T + Send + 'static) -> T {
     let task = tauri::async_runtime::spawn_blocking(move || {
         if !trace::enabled() {
             return f();
@@ -145,11 +150,7 @@ pub fn repo_lock(path: &str) -> Arc<Mutex<()>> {
 /// `git_init`/`bare_init` call `forget_common_dir` for exactly that case.
 pub(crate) fn common_dir(path: &str) -> PathBuf {
     let cache = COMMON_DIRS.get_or_init(Default::default);
-    if let Some(hit) = cache
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(path)
-    {
+    if let Some(hit) = cache.lock().unwrap_or_else(PoisonError::into_inner).get(path) {
         return hit.clone();
     }
     let resolved = crate::exec::git_in(path)
@@ -161,7 +162,11 @@ pub(crate) fn common_dir(path: &str) -> PathBuf {
         .filter(|s| !s.is_empty())
         .map(|s| {
             let p = PathBuf::from(&s);
-            let abs = if p.is_absolute() { p } else { PathBuf::from(path).join(p) };
+            let abs = if p.is_absolute() {
+                p
+            } else {
+                PathBuf::from(path).join(p)
+            };
             abs.canonicalize().unwrap_or(abs)
         })
         // Not a repo: key by the path itself, so the lock still exists.
@@ -190,10 +195,7 @@ pub fn named_lock(name: &'static str) -> Arc<Mutex<()>> {
 /// change the answer after the cache has already learned "not a repo".
 pub fn forget_common_dir(path: &str) {
     if let Some(cache) = COMMON_DIRS.get() {
-        cache
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(path);
+        cache.lock().unwrap_or_else(PoisonError::into_inner).remove(path);
     }
 }
 
@@ -213,17 +215,29 @@ mod tests {
     fn a_refused_git_never_runs_the_folders_own_config() {
         let dir = temp_repo("hostile");
         let marker = dir.join("ran");
-        git(&dir, &["config", "core.fsmonitor", &format!("touch {}", marker.display())]);
+        git(
+            &dir,
+            &["config", "core.fsmonitor", &format!("touch {}", marker.display())],
+        );
         let _ = std::fs::remove_file(&marker);
 
-        let refused = git_gated(dir.as_os_str(), false).args(["status", "--porcelain"]).output().unwrap();
+        let refused = git_gated(dir.as_os_str(), false)
+            .args(["status", "--porcelain"])
+            .output()
+            .unwrap();
         assert!(!refused.status.success());
         assert_eq!(String::from_utf8_lossy(&refused.stderr).trim(), crate::trust::UNTRUSTED);
         assert!(!marker.exists(), "a refused git ran the folder's fsmonitor command");
 
-        let allowed = git_gated(dir.as_os_str(), true).args(["status", "--porcelain"]).output().unwrap();
+        let allowed = git_gated(dir.as_os_str(), true)
+            .args(["status", "--porcelain"])
+            .output()
+            .unwrap();
         assert!(allowed.status.success());
-        assert!(marker.exists(), "the fixture is not hostile: git status did not run core.fsmonitor");
+        assert!(
+            marker.exists(),
+            "the fixture is not hostile: git status did not run core.fsmonitor"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -251,7 +265,10 @@ mod tests {
                 outside.push(file.strip_prefix(&src).unwrap().display().to_string());
             }
         }
-        assert!(outside.is_empty(), "use `exec::git_in` so the trust gate sees it: {outside:?}");
+        assert!(
+            outside.is_empty(),
+            "use `exec::git_in` so the trust gate sees it: {outside:?}"
+        );
     }
 
     fn temp_repo(name: &str) -> PathBuf {
@@ -264,7 +281,20 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
-        git(&dir, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "init"]);
+        git(
+            &dir,
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "init",
+            ],
+        );
         dir
     }
 
@@ -274,10 +304,7 @@ mod tests {
     #[test]
     fn worktrees_of_one_repo_share_one_lock() {
         let main = temp_repo("share");
-        let wt = main.with_file_name(format!(
-            "{}-wt",
-            main.file_name().unwrap().to_string_lossy()
-        ));
+        let wt = main.with_file_name(format!("{}-wt", main.file_name().unwrap().to_string_lossy()));
         let out = git(&main, &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "wt"]);
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 
@@ -296,11 +323,11 @@ mod tests {
     #[test]
     fn concurrent_writes_queue_instead_of_failing() {
         let main = temp_repo("stress");
-        let wt = main.with_file_name(format!(
-            "{}-wt",
-            main.file_name().unwrap().to_string_lossy()
-        ));
-        let out = git(&main, &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "stress-wt"]);
+        let wt = main.with_file_name(format!("{}-wt", main.file_name().unwrap().to_string_lossy()));
+        let out = git(
+            &main,
+            &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "stress-wt"],
+        );
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 
         const ROUNDS: usize = 12;
@@ -313,11 +340,9 @@ mod tests {
             for i in 0..ROUNDS {
                 std::fs::write(dir.join("f.txt"), format!("{i}")).unwrap();
                 let p = path.clone();
-                let out = tauri::async_runtime::block_on(git_write(
-                    "test_stage",
-                    path.clone(),
-                    move || git(std::path::Path::new(&p), &["add", "f.txt"]),
-                ));
+                let out = tauri::async_runtime::block_on(git_write("test_stage", path.clone(), move || {
+                    git(std::path::Path::new(&p), &["add", "f.txt"])
+                }));
                 assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
             }
         }));
@@ -328,16 +353,22 @@ mod tests {
             let path = dir.to_str().unwrap().to_string();
             for _ in 0..ROUNDS {
                 let p = path.clone();
-                let out = tauri::async_runtime::block_on(git_write(
-                    "test_commit",
-                    path.clone(),
-                    move || {
-                        git(std::path::Path::new(&p), &[
-                            "-c", "user.email=t@t", "-c", "user.name=t",
-                            "commit", "--allow-empty", "-q", "-m", "x",
-                        ])
-                    },
-                ));
+                let out = tauri::async_runtime::block_on(git_write("test_commit", path.clone(), move || {
+                    git(
+                        std::path::Path::new(&p),
+                        &[
+                            "-c",
+                            "user.email=t@t",
+                            "-c",
+                            "user.name=t",
+                            "commit",
+                            "--allow-empty",
+                            "-q",
+                            "-m",
+                            "x",
+                        ],
+                    )
+                }));
                 assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
             }
         }));
@@ -350,11 +381,9 @@ mod tests {
             for i in 0..ROUNDS {
                 let refname = format!("refs/tori/test/{i}");
                 let p = path.clone();
-                let out = tauri::async_runtime::block_on(git_write(
-                    "test_ref",
-                    path.clone(),
-                    move || git(std::path::Path::new(&p), &["update-ref", &refname, "HEAD"]),
-                ));
+                let out = tauri::async_runtime::block_on(git_write("test_ref", path.clone(), move || {
+                    git(std::path::Path::new(&p), &["update-ref", &refname, "HEAD"])
+                }));
                 assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
             }
         }));
@@ -369,8 +398,7 @@ mod tests {
             let path = dir.to_str().unwrap();
             for _ in 0..ROUNDS {
                 crate::git::git_status_body(path).expect("status read failed");
-                crate::git::git_diff_file_body(path.to_string(), "f.txt".into(), None)
-                    .expect("diff read failed");
+                crate::git::git_diff_file_body(path.to_string(), "f.txt".into(), None).expect("diff read failed");
             }
         }));
 

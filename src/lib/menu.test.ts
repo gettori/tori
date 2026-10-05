@@ -13,16 +13,7 @@ import { ContextMenu, DropdownMenu } from "./menu";
 // with a missing-context error at some call site months later.
 describe("the two menu primitives", () => {
   it("share every part the row layer is built from", () => {
-    const parts = [
-      "Item",
-      "Separator",
-      "Portal",
-      "Sub",
-      "SubTrigger",
-      "SubContent",
-      "Group",
-      "GroupLabel",
-    ] as const;
+    const parts = ["Item", "Separator", "Portal", "Sub", "SubTrigger", "SubContent", "Group", "GroupLabel"] as const;
     for (const part of parts) {
       expect(ContextMenu[part], part).toBe(DropdownMenu[part]);
     }

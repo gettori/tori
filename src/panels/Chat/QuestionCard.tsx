@@ -192,15 +192,18 @@ export default function QuestionCard(props: {
             }));
           return (
             <div class={styles.questionRow}>
-              <Show when={question.multiSelect} fallback={
-                <RadioGroup
-                  label={question.question}
-                  options={options()}
-                  value={picks()[0] ?? null}
-                  onChange={(value) => setDrafts(i(), { ...draft(), picks: [value] })}
-                  disabled={!open()}
-                />
-              }>
+              <Show
+                when={question.multiSelect}
+                fallback={
+                  <RadioGroup
+                    label={question.question}
+                    options={options()}
+                    value={picks()[0] ?? null}
+                    onChange={(value) => setDrafts(i(), { ...draft(), picks: [value] })}
+                    disabled={!open()}
+                  />
+                }
+              >
                 <CheckboxGroup
                   label={question.question}
                   options={options()}
@@ -262,9 +265,7 @@ export default function QuestionCard(props: {
       {/* The agent's record, quoted only where nothing better exists: a
           replayed answer the options could not confirm, free text mostly.
           Everywhere else the selected picks say it themselves. */}
-      <Show when={recordToQuote()}>
-        {(result) => <pre class={styles.questionRecord}>{result()}</pre>}
-      </Show>
+      <Show when={recordToQuote()}>{(result) => <pre class={styles.questionRecord}>{result()}</pre>}</Show>
     </form>
   );
 }

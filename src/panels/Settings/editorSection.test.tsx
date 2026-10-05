@@ -13,7 +13,6 @@ const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-
 import Settings, { EDITOR_TOGGLES } from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings, loadWorkspaceSettings, type EditorDefaults } from "./settingsStore";
 import { unstubbed } from "../../test/settingsBackend";
@@ -21,9 +20,8 @@ import { unstubbed } from "../../test/settingsBackend";
 beforeEach(() => {
   invoke.mockReset();
   // `set_settings` echoes what it was handed, the way the backend does.
-  invoke.mockImplementation(
-    async (cmd: string, args: Record<string, unknown>) =>
-      cmd === "set_settings" ? args.settings : unstubbed(cmd),
+  invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+    cmd === "set_settings" ? args.settings : unstubbed(cmd),
   );
 });
 
@@ -116,15 +114,13 @@ describe("overriding a setting for one workspace", () => {
    * user layer that has drifted is exactly what these assertions are about.
    */
   async function useWorkspace(root: string | null, overlay: Record<string, unknown> = {}) {
-    invoke.mockImplementation(
-      async (cmd: string, args: Record<string, unknown>) => {
-        if (cmd === "set_settings") return args.settings;
-        if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
-        if (cmd === "get_workspace_settings") return { editor: overlay };
-        if (cmd === "set_workspace_settings") return args.settings;
-        return unstubbed(cmd);
-      },
-    );
+    invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "set_settings") return args.settings;
+      if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, editorDefaults: structuredClone(PRISTINE) };
+      if (cmd === "get_workspace_settings") return { editor: overlay };
+      if (cmd === "set_workspace_settings") return args.settings;
+      return unstubbed(cmd);
+    });
     await loadSettings();
     await loadWorkspaceSettings(root);
   }

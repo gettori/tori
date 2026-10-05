@@ -45,8 +45,7 @@ vi.mock("./panels/Terminal/Terminal", async () => {
         renderMenuItem: (u) => <span>{u.id}</span>,
         activate: (u) => store.focusTab(u.workspace, u.id),
         close: () => {},
-        stripItems: () =>
-          unifiedTabs().filter((u) => u.kind === "shell" && u.workspace === store.activeWorkspace()),
+        stripItems: () => unifiedTabs().filter((u) => u.kind === "shell" && u.workspace === store.activeWorkspace()),
         stripActiveId: store.visibleId,
         stripReorder: () => {},
         hostIds: () => store.open().map((t) => t.id),
@@ -58,21 +57,8 @@ vi.mock("./panels/Terminal/Terminal", async () => {
 vi.mock("./panels/Editor/Editor", () => ({ default: () => null }));
 
 import { DEFAULT_SETTINGS } from "./panels/Settings/settingsStore";
-import {
-  on as onEvent,
-  emit,
-  emitWith,
-  REFIT_PANES,
-  TOGGLE_SIDEBAR,
-  SPLIT_PANE,
-  type SplitPane,
-} from "./utils/events";
-import {
-  setOpen,
-  setActiveWorkspace,
-  setActiveByWorkspace,
-  open,
-} from "./panels/Terminal/terminalTabStore";
+import { on as onEvent, emit, emitWith, REFIT_PANES, TOGGLE_SIDEBAR, SPLIT_PANE, type SplitPane } from "./utils/events";
+import { setOpen, setActiveWorkspace, setActiveByWorkspace, open } from "./panels/Terminal/terminalTabStore";
 import { __measuresForTests } from "./components/OverflowTabBar";
 import { setPaneActive } from "./layout/tabPlacement";
 
@@ -169,7 +155,6 @@ describe("a warm switch between two same-shape worktrees", () => {
     switchTo(WS_A);
     expect(panes()).toEqual(before.panes);
   });
-
 });
 
 describe("what still refits", () => {

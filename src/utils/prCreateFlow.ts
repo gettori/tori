@@ -62,8 +62,7 @@ export function createPrFlow(deps: {
     const repo = forgeRepo(deps.root());
     return repo?.kind === "account" ? repo.auth : { kind: "signedOut" };
   };
-  const path = (): PrPath =>
-    prPath(deps.origin(), forgeHosts(), auth(), settings.forge.enabled);
+  const path = (): PrPath => prPath(deps.origin(), forgeHosts(), auth(), settings.forge.enabled);
 
   function toastError(message: string) {
     emitWith<ToastEvent>(TOAST, { message, kind: "error" });

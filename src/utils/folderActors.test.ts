@@ -12,8 +12,7 @@ const sessions = [
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { sessions?: { id: string }[] }) => {
     if (cmd === "list_sessions") return Promise.resolve(sessions);
-    if (cmd === "sessions_running")
-      return Promise.resolve((args?.sessions ?? []).map((s) => s.id));
+    if (cmd === "sessions_running") return Promise.resolve((args?.sessions ?? []).map((s) => s.id));
     return Promise.resolve(null);
   },
 }));

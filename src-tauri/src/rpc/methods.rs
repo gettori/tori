@@ -16,18 +16,21 @@ use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, TopicPromoteParams, Before, BudgetParams, HistoryParams, InfoParams, InterruptParams, LogParams, ModeParams, ModelParams, ProjectIconParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, DEFAULT_LOG_LIMIT, CheckpointDiffParams, CheckpointParams, CheckpointsParams, HoldResolveParams, IssueGetParams, MintParams, PendingParams, PrGetParams, PrWatchParams, SessionAnswerParams,
-    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ProjectSetParams, ListParams, OpenParams, PrCreateParams, PrMergeParams, ReviewSubmitParams, SpawnParams,
-    SteerParams, TailParams, WaitParams, WorktreeParams,
+    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, CheckpointDiffParams, CheckpointParams,
+    CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
+    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
+    ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
+    ProjectIconParams, ProjectSetParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
 use crate::autopilot::{AutopilotStore, Contract, Observed};
-use crate::issues::Issue;
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
 use crate::chat::host::{ChatState, Levers, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock, PermissionMode};
 use crate::chat::ownership::Registry;
+use crate::issues::Issue;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 
 const DEFAULT_LIST_LIMIT: usize = 50;
@@ -92,7 +95,11 @@ fn list(
             // webview's report is the only thing saying it is live.
             let state = states.get(&meta.id).copied();
             let live = live.contains_key(&meta.id) || state.is_some();
-            Row { state: state.or((!live).then_some(SessionState::Ended)), live, meta }
+            Row {
+                state: state.or((!live).then_some(SessionState::Ended)),
+                live,
+                meta,
+            }
         })
         .filter(|row| !params.live.unwrap_or(false) || row.live)
         .take(params.limit.unwrap_or(DEFAULT_LIST_LIMIT))
@@ -112,7 +119,12 @@ fn tail(mut events: Vec<ChatEvent>, limit: usize) -> Vec<ChatEvent> {
 
 fn cap_outputs(events: &mut [ChatEvent]) {
     for event in events {
-        if let ChatEvent::ToolCallCompleted { output: Some(output), output_truncated, .. } = event {
+        if let ChatEvent::ToolCallCompleted {
+            output: Some(output),
+            output_truncated,
+            ..
+        } = event
+        {
             if let Some(cut) = cap_output(output) {
                 *output = cut;
                 *output_truncated = true;
@@ -125,7 +137,8 @@ type Read = Arc<(Vec<ChatEvent>, Vec<(u64, usize)>)>;
 
 // A client pages one session back a page at a time, so its last read is kept
 // until the file under it changes rather than mapped again for every page.
-static LAST_READ: std::sync::Mutex<Option<(String, Option<(std::time::SystemTime, u64)>, Read)>> = std::sync::Mutex::new(None);
+static LAST_READ: std::sync::Mutex<Option<(String, Option<(std::time::SystemTime, u64)>, Read)>> =
+    std::sync::Mutex::new(None);
 
 fn read_cached(id: &str, from: &HistorySource, agent: &str) -> Read {
     let path = match from {
@@ -133,9 +146,14 @@ fn read_cached(id: &str, from: &HistorySource, agent: &str) -> Read {
         HistorySource::Log(path) => Some(path.as_path()),
         HistorySource::Missing => None,
     };
-    let stamp = path.and_then(|p| std::fs::metadata(p).ok()).and_then(|m| Some((m.modified().ok()?, m.len())));
+    let stamp = path
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| Some((m.modified().ok()?, m.len())));
     let mut last = LAST_READ.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((_, _, read)) = last.as_ref().filter(|(at, was, _)| at == id && stamp.is_some() && *was == stamp) {
+    if let Some((_, _, read)) = last
+        .as_ref()
+        .filter(|(at, was, _)| at == id && stamp.is_some() && *was == stamp)
+    {
         return read.clone();
     }
     let read: Read = Arc::new(read_with_prompts(id, from, agent));
@@ -151,7 +169,12 @@ const PAGE_EVENTS: usize = 500;
 ///
 /// Whole turns while they fit, since a page that splits a turn can split a tool
 /// call from its result. A turn bigger than a page is walked by event instead.
-fn history_page(prompts: &[(u64, usize)], total: usize, before: Option<&Before>, limit: usize) -> (std::ops::Range<usize>, Option<Before>) {
+fn history_page(
+    prompts: &[(u64, usize)],
+    total: usize,
+    before: Option<&Before>,
+    limit: usize,
+) -> (std::ops::Range<usize>, Option<Before>) {
     // Each turn as (its prompt's ts, first event); what precedes the first
     // prompt is a turn with no prompt. An empty one is dropped. A ts no later
     // than the one before is bumped past it, or a cursor could name two turns.
@@ -174,7 +197,10 @@ fn history_page(prompts: &[(u64, usize)], total: usize, before: Option<&Before>,
     let walk = |i: usize, end: usize| {
         let start = spans[i].1.max(end.saturating_sub(PAGE_EVENTS));
         let next = match start > spans[i].1 {
-            true => Some(Before::Event { ts: spans[i].0, event: start - spans[i].1 }),
+            true => Some(Before::Event {
+                ts: spans[i].0,
+                event: start - spans[i].1,
+            }),
             false => before_span(i),
         };
         (start..end, next)
@@ -188,7 +214,9 @@ fn history_page(prompts: &[(u64, usize)], total: usize, before: Option<&Before>,
         Some(Before::Turn(ts)) => span_of(Some(*ts)).map_or(total, |i| spans[i].1),
         None => total,
     };
-    let Some(last) = spans.iter().rposition(|s| s.1 < end) else { return (0..0, None) };
+    let Some(last) = spans.iter().rposition(|s| s.1 < end) else {
+        return (0..0, None);
+    };
     let mut first = None;
     for i in (0..=last).rev().take(limit.max(1)) {
         if end - spans[i].1 > PAGE_EVENTS {
@@ -205,11 +233,21 @@ fn history_page(prompts: &[(u64, usize)], total: usize, before: Option<&Before>,
 /// The main agent's text from the latest turn that has any, whole.
 fn last_assistant_text(events: &[ChatEvent]) -> Option<String> {
     let main = |event: &ChatEvent| match event {
-        ChatEvent::TextDelta { turn_id, text, agent_id: None, .. } => Some((turn_id.clone(), text.clone())),
+        ChatEvent::TextDelta {
+            turn_id,
+            text,
+            agent_id: None,
+            ..
+        } => Some((turn_id.clone(), text.clone())),
         _ => None,
     };
     let (last_turn, _) = events.iter().rev().find_map(main)?;
-    let text: String = events.iter().filter_map(main).filter(|(turn, _)| *turn == last_turn).map(|(_, text)| text).collect();
+    let text: String = events
+        .iter()
+        .filter_map(main)
+        .filter(|(turn, _)| *turn == last_turn)
+        .map(|(_, text)| text)
+        .collect();
     Some(text)
 }
 
@@ -226,14 +264,24 @@ fn chat_identity(registry: &Registry, live: &[(String, String)], id: &str) -> Id
     Identity {
         agent: registry.agent_of(id),
         account: registry.profile_of(id),
-        cwd: live.iter().find(|(live_id, _)| live_id == id).map(|(_, cwd)| cwd.clone()),
+        cwd: live
+            .iter()
+            .find(|(live_id, _)| live_id == id)
+            .map(|(_, cwd)| cwd.clone()),
     }
 }
 
 // `given`, else the caller's own, else an error naming the flag to pass.
-pub fn or_callers(given: Option<String>, callers: impl FnOnce() -> Option<String>, flag: &str) -> Result<String, RpcError> {
+pub fn or_callers(
+    given: Option<String>,
+    callers: impl FnOnce() -> Option<String>,
+    flag: &str,
+) -> Result<String, RpcError> {
     given.or_else(callers).ok_or_else(|| {
-        RpcError::new(INVALID_PARAMS, format!("pass --{flag}: the caller has no {flag} of its own to default to"))
+        RpcError::new(
+            INVALID_PARAMS,
+            format!("pass --{flag}: the caller has no {flag} of its own to default to"),
+        )
     })
 }
 
@@ -275,7 +323,11 @@ fn web_ref(key: &str, kinds: &[&str]) -> Option<(String, String)> {
     repo.contains('/').then(|| (repo.to_lowercase(), number.to_string()))
 }
 
-fn project_for_repo(repo: &str, dirs: &[std::path::PathBuf], origin: impl Fn(&str) -> Option<String>) -> Result<String, RpcError> {
+fn project_for_repo(
+    repo: &str,
+    dirs: &[std::path::PathBuf],
+    origin: impl Fn(&str) -> Option<String>,
+) -> Result<String, RpcError> {
     let matches: Vec<String> = dirs
         .iter()
         .map(|dir| dir.to_string_lossy().into_owned())
@@ -286,8 +338,17 @@ fn project_for_repo(repo: &str, dirs: &[std::path::PathBuf], origin: impl Fn(&st
         .collect();
     match matches.as_slice() {
         [one] => Ok(one.clone()),
-        [] => Err(RpcError::new(INVALID_PARAMS, format!("no project here has {repo} as its origin: pass project"))),
-        many => Err(RpcError::new(INVALID_PARAMS, format!("several projects have {repo} as their origin, pass one as project: {}", many.join(", ")))),
+        [] => Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("no project here has {repo} as its origin: pass project"),
+        )),
+        many => Err(RpcError::new(
+            INVALID_PARAMS,
+            format!(
+                "several projects have {repo} as their origin, pass one as project: {}",
+                many.join(", ")
+            ),
+        )),
     }
 }
 
@@ -302,7 +363,9 @@ fn answered_by(principal: &Principal) -> By {
 
 // An ask lists wherever its card shows, so a worker's approval lists under its root too.
 fn pending_rows(session: &str, asks: Vec<Ask>, native: Vec<Waiting>) -> Vec<Value> {
-    let asks = asks.into_iter().filter(|ask| ask.session == session || ask.shown_in.iter().any(|s| s == session));
+    let asks = asks
+        .into_iter()
+        .filter(|ask| ask.session == session || ask.shown_in.iter().any(|s| s == session));
     let mut rows: Vec<Value> = asks
         .map(|ask| {
             let mut row = json!({ "kind": "ask", "id": ask.id, "session": ask.session, "text": ask.question, "options": ask.options });
@@ -312,7 +375,11 @@ fn pending_rows(session: &str, asks: Vec<Ask>, native: Vec<Waiting>) -> Vec<Valu
             row
         })
         .collect();
-    rows.extend(native.into_iter().filter_map(|waiting| serde_json::to_value(waiting).ok()));
+    rows.extend(
+        native
+            .into_iter()
+            .filter_map(|waiting| serde_json::to_value(waiting).ok()),
+    );
     rows
 }
 
@@ -329,7 +396,10 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
 fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
     match principal {
         Principal::Local | Principal::Device(_) => (TurnBy::Local, text),
-        Principal::Session(Caller::Chat(from)) => (TurnBy::Session(from.clone()), super::events::from_tori("steer", Some(from), &text)),
+        Principal::Session(Caller::Chat(from)) => (
+            TurnBy::Session(from.clone()),
+            super::events::from_tori("steer", Some(from), &text),
+        ),
         Principal::Session(Caller::Terminal(tab)) => (TurnBy::Tab(tab.clone()), text),
     }
 }
@@ -339,7 +409,9 @@ fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Re
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
         // A paired device is a person at the prompt, for any session.
         (Principal::Device(_), _) => Ok(()),
-        _ => Err(refused(format!("only the session that spawned {session}, or a paired device, answers for it"))),
+        _ => Err(refused(format!(
+            "only the session that spawned {session}, or a paired device, answers for it"
+        ))),
     }
 }
 
@@ -368,7 +440,10 @@ struct Picks {
 fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity, caller: &Levers) -> Picks {
     let empty = Contract::default();
     let contract = contract.unwrap_or(&empty);
-    let agent = given.agent.or_else(|| contract.agent.clone()).or_else(|| me.agent.clone());
+    let agent = given
+        .agent
+        .or_else(|| contract.agent.clone())
+        .or_else(|| me.agent.clone());
     let contract_applies = contract.agent.is_none() || contract.agent == agent;
     let account = given
         .account
@@ -379,8 +454,17 @@ fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity, caller: 
         .model
         .or_else(|| contract_applies.then(|| contract.model.clone()).flatten())
         .or_else(|| same_agent.then(|| caller.model.clone()).flatten());
-    let mode = given.mode.or_else(|| same_agent.then(|| caller.mode.as_ref().map(|m| m.as_str().to_string())).flatten());
-    Picks { agent, account, model, mode }
+    let mode = given.mode.or_else(|| {
+        same_agent
+            .then(|| caller.mode.as_ref().map(|m| m.as_str().to_string()))
+            .flatten()
+    });
+    Picks {
+        agent,
+        account,
+        model,
+        mode,
+    }
 }
 
 // A phone opens a plain chat in a folder it names: an attachment would read any
@@ -389,7 +473,9 @@ fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity, caller: 
 fn device_may_spawn(params: &SpawnParams, is_chat: impl Fn(&str) -> bool) -> Result<(), RpcError> {
     let attaches = params.attach.as_ref().is_some_and(|files| !files.is_empty());
     if attaches || params.new_worktree.is_some() || params.background.unwrap_or(false) || params.mode.is_some() {
-        return Err(refused("a device spawns a plain chat: attach, new_worktree, background and mode are the desktop's".into()));
+        return Err(refused(
+            "a device spawns a plain chat: attach, new_worktree, background and mode are the desktop's".into(),
+        ));
     }
     if params.folder.is_none() {
         return Err(RpcError::new(INVALID_PARAMS, "a device passes the folder to start in"));
@@ -441,9 +527,19 @@ fn postable(
     approval: &Approval,
     view_of: impl FnOnce(&str, u64) -> Result<crate::forge::pr_view::PrView, crate::forge::ForgeError>,
 ) -> Result<(), RpcError> {
-    let Draft::ReviewSubmit { number, event, comments, head_sha, .. } = &approval.draft else { return Ok(()) };
+    let Draft::ReviewSubmit {
+        number,
+        event,
+        comments,
+        head_sha,
+        ..
+    } = &approval.draft
+    else {
+        return Ok(());
+    };
     let view = view_of(&approval.project, *number).map_err(forge_refused)?;
-    crate::forge::pr_view::check_review(&view, head_sha, *event, comments).map_err(|why| RpcError::new(INVALID_PARAMS, why))
+    crate::forge::pr_view::check_review(&view, head_sha, *event, comments)
+        .map_err(|why| RpcError::new(INVALID_PARAMS, why))
 }
 
 // GitHub takes an older commit_id without complaint and anchors to it, so the
@@ -470,7 +566,11 @@ fn setup_fields(project: &str, worktree: &Path, skipped: bool, cap: std::time::D
     if skipped {
         return json!({ "setup": "skipped", "setup_log": null });
     }
-    let report = if prefs.setup_wait { crate::setup::wait(worktree, cap) } else { crate::setup::status(worktree) };
+    let report = if prefs.setup_wait {
+        crate::setup::wait(worktree, cap)
+    } else {
+        crate::setup::status(worktree)
+    };
     match report {
         Some(report) => json!({ "setup": report.state, "setup_log": report.log }),
         None => json!({ "setup": "none", "setup_log": null }),
@@ -511,7 +611,15 @@ impl TauriBackend {
             .registry
             .held_here()
             .into_iter()
-            .map(|(id, agent)| (id, Live { agent, cwd: String::new() }))
+            .map(|(id, agent)| {
+                (
+                    id,
+                    Live {
+                        agent,
+                        cwd: String::new(),
+                    },
+                )
+            })
             .collect();
         for (id, cwd) in host.live_sessions() {
             live.entry(id).or_default().cwd = cwd;
@@ -522,9 +630,11 @@ impl TauriBackend {
     pub fn identity(&self, principal: &Principal) -> Identity {
         match principal {
             Principal::Local | Principal::Device(_) => Identity::default(),
-            Principal::Session(Caller::Terminal(tab)) => {
-                self.app.state::<crate::pty::PtyState>().identity(tab).unwrap_or_default()
-            }
+            Principal::Session(Caller::Terminal(tab)) => self
+                .app
+                .state::<crate::pty::PtyState>()
+                .identity(tab)
+                .unwrap_or_default(),
             Principal::Session(Caller::Chat(id)) => {
                 let host = &self.app.state::<ChatState>().0;
                 chat_identity(&host.registry, &host.live_sessions(), id)
@@ -539,7 +649,10 @@ impl TauriBackend {
             .find(|(live, _)| live == id)
             .map(|(_, cwd)| cwd)
             .or_else(|| {
-                listed_sessions(&self.app.state::<SessionIndex>(), None).into_iter().find(|m| m.id == id).map(|m| m.cwd)
+                listed_sessions(&self.app.state::<SessionIndex>(), None)
+                    .into_iter()
+                    .find(|m| m.id == id)
+                    .map(|m| m.cwd)
             })
             .filter(|cwd| !cwd.is_empty())
             .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {id}")))
@@ -549,7 +662,10 @@ impl TauriBackend {
         let cwd = self.session_cwd(id)?;
         let list = crate::checkpoint::checkpoint_list(cwd.clone(), id.to_string()).map_err(refused)?;
         let entry = turn.checked_sub(1).and_then(|i| list.get(i)).ok_or_else(|| {
-            RpcError::new(INVALID_PARAMS, format!("no turn {turn}: {id} has {} checkpoints", list.len()))
+            RpcError::new(
+                INVALID_PARAMS,
+                format!("no turn {turn}: {id} has {} checkpoints", list.len()),
+            )
         })?;
         Ok((cwd, entry.prompt_ts))
     }
@@ -558,15 +674,21 @@ impl TauriBackend {
     // out from under.
     fn others_in(&self, cwd: &str, id: &str, principal: &Principal) -> Vec<String> {
         let host = &self.app.state::<ChatState>().0;
-        let mut others: Vec<String> =
-            host.live_sessions().into_iter().filter(|(live, at)| live != id && same_folder(at, cwd)).map(|(live, _)| live).collect();
+        let mut others: Vec<String> = host
+            .live_sessions()
+            .into_iter()
+            .filter(|(live, at)| live != id && same_folder(at, cwd))
+            .map(|(live, _)| live)
+            .collect();
         let ptys = self.app.state::<crate::pty::PtyState>();
         let own_tab = match principal {
             Principal::Session(Caller::Terminal(tab)) => Some(tab.as_str()),
             _ => None,
         };
         for tab in ptys.live_ids().unwrap_or_default() {
-            let here = ptys.identity(&tab).is_some_and(|i| i.agent.is_some() && i.cwd.is_some_and(|at| same_folder(&at, cwd)));
+            let here = ptys
+                .identity(&tab)
+                .is_some_and(|i| i.agent.is_some() && i.cwd.is_some_and(|at| same_folder(&at, cwd)));
             if here && Some(tab.as_str()) != own_tab {
                 others.push(format!("terminal tab {tab}"));
             }
@@ -575,8 +697,11 @@ impl TauriBackend {
     }
 
     fn project(&self, principal: &Principal, given: Option<String>) -> Result<String, RpcError> {
-        let callers =
-            || self.identity(principal).cwd.and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()));
+        let callers = || {
+            self.identity(principal)
+                .cwd
+                .and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()))
+        };
         or_callers(given, callers, "project")
     }
 
@@ -587,20 +712,33 @@ impl TauriBackend {
     }
 
     fn remember_issue(&self, project: &str, branch: &str, issue: &Issue, path: &str) -> Result<(), RpcError> {
-        crate::issues::store::record(project, branch, issue.into())
-            .map_err(|e| refused(format!("the worktree is at {path}, but remembering its issue failed: {e}")))?;
+        crate::issues::store::record(project, branch, issue.into()).map_err(|e| {
+            refused(format!(
+                "the worktree is at {path}, but remembering its issue failed: {e}"
+            ))
+        })?;
         let _ = self.app.emit("config://changed", ());
         Ok(())
     }
 
     fn wait_for_answer(&self, id: &str, timeout: Option<u64>) -> Result<Value, RpcError> {
-        match self.asks.wait(id, std::time::Duration::from_secs(timeout.unwrap_or(DEFAULT_ASK_WAIT))) {
-            Waited::Answered { answer, approval_id: None } => Ok(json!({ "id": id, "answer": answer })),
-            Waited::Answered { answer, approval_id: Some(approval_id) } => {
-                Ok(json!({ "id": id, "answer": answer, "approval_id": approval_id }))
-            }
+        match self
+            .asks
+            .wait(id, std::time::Duration::from_secs(timeout.unwrap_or(DEFAULT_ASK_WAIT)))
+        {
+            Waited::Answered {
+                answer,
+                approval_id: None,
+            } => Ok(json!({ "id": id, "answer": answer })),
+            Waited::Answered {
+                answer,
+                approval_id: Some(approval_id),
+            } => Ok(json!({ "id": id, "answer": answer, "approval_id": approval_id })),
             Waited::Pending => Ok(json!({ "id": id, "answer": null })),
-            Waited::Unknown => Err(RpcError::new(INVALID_PARAMS, format!("no ask {id}, or its answer was already read"))),
+            Waited::Unknown => Err(RpcError::new(
+                INVALID_PARAMS,
+                format!("no ask {id}, or its answer was already read"),
+            )),
         }
     }
 
@@ -643,20 +781,41 @@ impl TauriBackend {
         approval_id: Option<&str>,
         call: impl FnOnce(&str) -> Result<Value, RpcError>,
     ) -> Result<Value, RpcError> {
-        let wanted = Approval { project: self.project(principal, project)?, draft };
-        gated_by_approval(&self.asks.approvals, self.background_session(principal), &wanted, approval_id, || call(&wanted.project))
+        let wanted = Approval {
+            project: self.project(principal, project)?,
+            draft,
+        };
+        gated_by_approval(
+            &self.asks.approvals,
+            self.background_session(principal),
+            &wanted,
+            approval_id,
+            || call(&wanted.project),
+        )
     }
 
-    fn pr_target(&self, principal: &Principal, key: String, project: Option<String>) -> Result<(String, u64), RpcError> {
+    fn pr_target(
+        &self,
+        principal: &Principal,
+        key: String,
+        project: Option<String>,
+    ) -> Result<(String, u64), RpcError> {
         let (project, number) = match (project, pr_ref(&key)) {
             (Some(project), named) => (project, named.map_or(key, |(_, n)| n)),
             (None, Some((repo, n))) => {
                 let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
-                (project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?, n)
+                (
+                    project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?,
+                    n,
+                )
             }
             (None, None) => (self.project(principal, None)?, key),
         };
-        let number = number.trim().trim_start_matches('#').parse::<u64>().map_err(|_| RpcError::new(INVALID_PARAMS, format!("{number} is not a pull request number or URL")))?;
+        let number = number
+            .trim()
+            .trim_start_matches('#')
+            .parse::<u64>()
+            .map_err(|_| RpcError::new(INVALID_PARAMS, format!("{number} is not a pull request number or URL")))?;
         Ok((project, number))
     }
 
@@ -674,7 +833,10 @@ impl TauriBackend {
         if let Some(live) = self.live().remove(id).filter(|l| !l.agent.is_empty()) {
             return Some(live.agent);
         }
-        listed_sessions(&self.app.state::<SessionIndex>(), None).into_iter().find(|m| m.id == id).map(|m| m.agent)
+        listed_sessions(&self.app.state::<SessionIndex>(), None)
+            .into_iter()
+            .find(|m| m.id == id)
+            .map(|m| m.agent)
     }
 }
 
@@ -743,12 +905,18 @@ impl Backend for TauriBackend {
             .unwrap_or(0);
         let mut rows = list(indexed, &self.live(), &self.states.snapshot(), &params, now);
         let background = self.states.background();
-        for row in rows.iter_mut().filter(|row| row["id"].as_str().is_some_and(|id| background.contains(id))) {
+        for row in rows
+            .iter_mut()
+            .filter(|row| row["id"].as_str().is_some_and(|id| background.contains(id)))
+        {
             row["background"] = json!(true);
         }
         let (spaces, topics) = match rows.is_empty() {
             true => Default::default(),
-            false => (crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()), crate::unit_home::topics()),
+            false => (
+                crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()),
+                crate::unit_home::topics(),
+            ),
         };
         super::refresh_dots_if_stale();
         let host = &self.app.state::<ChatState>().0;
@@ -792,7 +960,9 @@ impl Backend for TauriBackend {
     fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError> {
         let agent = match params.agent {
             Some(agent) => agent,
-            None => self.agent_of(&params.id).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
+            None => self
+                .agent_of(&params.id)
+                .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
         };
         let read = read_cached(&params.id, &history_source(&params.id, &agent), &agent);
         let (events, prompts) = &*read;
@@ -806,7 +976,10 @@ impl Backend for TauriBackend {
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError> {
         let host = &self.app.state::<ChatState>().0;
         if !host.is_live(&params.id) {
-            return Err(RpcError::new(INVALID_PARAMS, format!("no live chat session {}", params.id)));
+            return Err(RpcError::new(
+                INVALID_PARAMS,
+                format!("no live chat session {}", params.id),
+            ));
         }
         let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
@@ -817,10 +990,15 @@ impl Backend for TauriBackend {
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
         let agent = match params.agent {
             Some(agent) => agent,
-            None => self.agent_of(&params.id).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
+            None => self
+                .agent_of(&params.id)
+                .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
         };
         let from = history_source(&params.id, &agent);
-        let events = tail(read_history(&params.id, &from, &agent, None), params.limit.unwrap_or(DEFAULT_TAIL_LIMIT));
+        let events = tail(
+            read_history(&params.id, &from, &agent, None),
+            params.limit.unwrap_or(DEFAULT_TAIL_LIMIT),
+        );
         serde_json::to_value(events).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
 
@@ -846,21 +1024,28 @@ impl Backend for TauriBackend {
         let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
         // A session waiting on a prompt is still inside its turn.
-        let mid_turn = matches!(self.states.snapshot().get(&params.id), Some(SessionState::Working | SessionState::NeedsYou));
+        let mid_turn = matches!(
+            self.states.snapshot().get(&params.id),
+            Some(SessionState::Working | SessionState::NeedsYou)
+        );
         let (by, text) = steered(principal, params.text);
-        host.deliver(&params.id, vec![ContentBlock::Text { text }], mid_turn, by).map_err(refused)?;
+        host.deliver(&params.id, vec![ContentBlock::Text { text }], mid_turn, by)
+            .map_err(refused)?;
         Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
     }
 
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError> {
         let host = &self.app.state::<ChatState>().0;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
         let state = loop {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
             match self.states.wait_settled(&params.id, left) {
                 Some(state) => break state,
                 // Live but not yet in the webview's first report after its spawn.
-                None if host.is_live(&params.id) && !left.is_zero() => std::thread::sleep(std::time::Duration::from_millis(200)),
+                None if host.is_live(&params.id) && !left.is_zero() => {
+                    std::thread::sleep(std::time::Duration::from_millis(200))
+                }
                 None if host.is_live(&params.id) => break SessionState::Working,
                 None => return Err(RpcError::new(INVALID_PARAMS, format!("no live session {}", params.id))),
             }
@@ -879,7 +1064,10 @@ impl Backend for TauriBackend {
 
     fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError> {
         // A retired autopilot id stands for the current one.
-        let spawner = self.states.spawner_of(&params.session).map(|s| super::current_spawner(&s));
+        let spawner = self
+            .states
+            .spawner_of(&params.session)
+            .map(|s| super::current_spawner(&s));
         answers_for(principal, spawner, &params.session)?;
         let host = &self.app.state::<ChatState>().0;
         let waits_on_a_permission = host
@@ -889,17 +1077,23 @@ impl Backend for TauriBackend {
         if waits_on_a_permission {
             permission_needs_a_person(principal, |caller| self.states.is_background(caller), &params.id)?;
         }
-        host.settle(&params.session, &params.id, &params.answer.into_list()).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        host.settle(&params.session, &params.id, &params.answer.into_list())
+            .map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
         Ok(json!({ "answered": params.id }))
     }
 
     fn session_info(&self, params: InfoParams) -> Result<Value, RpcError> {
         let host = &self.app.state::<ChatState>().0;
-        let levers = host.levers(&params.id).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no live chat session {}", params.id)))?;
+        let levers = host
+            .levers(&params.id)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no live chat session {}", params.id)))?;
         let modes = match levers.modes.is_empty() {
             false => json!(levers.modes),
             true => {
-                let chat = self.agent_of(&params.id).and_then(|agent| crate::agents::find(&agent)).and_then(|a| a.chat.as_ref());
+                let chat = self
+                    .agent_of(&params.id)
+                    .and_then(|agent| crate::agents::find(&agent))
+                    .and_then(|a| a.chat.as_ref());
                 let rows: Vec<Value> = chat
                     .map(|c| &c.modes)
                     .into_iter()
@@ -913,12 +1107,16 @@ impl Backend for TauriBackend {
     }
 
     fn session_model(&self, principal: &Principal, params: ModelParams) -> Result<Value, RpcError> {
-        self.live_chat(principal, &params.id)?.set_model(&params.id, &params.model, params.effort).map_err(refused)?;
+        self.live_chat(principal, &params.id)?
+            .set_model(&params.id, &params.model, params.effort)
+            .map_err(refused)?;
         Ok(json!({ "model": params.model }))
     }
 
     fn session_mode(&self, principal: &Principal, params: ModeParams) -> Result<Value, RpcError> {
-        self.live_chat(principal, &params.id)?.set_mode(&params.id, PermissionMode::new(params.mode.clone())).map_err(refused)?;
+        self.live_chat(principal, &params.id)?
+            .set_mode(&params.id, PermissionMode::new(params.mode.clone()))
+            .map_err(refused)?;
         Ok(json!({ "mode": params.mode }))
     }
 
@@ -927,13 +1125,23 @@ impl Backend for TauriBackend {
     }
 
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError> {
-        let units = params.units.into_iter().map(|u| crate::git::SyncUnit { path: u.path, branch: u.branch }).collect();
-        crate::git::git_branch_sync_many(units).map_err(|e| RpcError::new(INTERNAL_ERROR, e)).and_then(to_json)
+        let units = params
+            .units
+            .into_iter()
+            .map(|u| crate::git::SyncUnit {
+                path: u.path,
+                branch: u.branch,
+            })
+            .collect();
+        crate::git::git_branch_sync_many(units)
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))
+            .and_then(to_json)
     }
 
     // A PR body can run to kilobytes and no row draws it, so it stays off the wire.
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError> {
-        let mut report = crate::forge::commands::unit_statuses(params.project.clone(), params.branches, false).map_err(|e| refused(e.message))?;
+        let mut report = crate::forge::commands::unit_statuses(params.project.clone(), params.branches, false)
+            .map_err(|e| refused(e.message))?;
         crate::forge::commands::adopt_pr_bases(&self.app, &params.project, &report.statuses);
         for status in &mut report.statuses {
             if let Some(pr) = status.pull_request.as_mut() {
@@ -949,7 +1157,10 @@ impl Backend for TauriBackend {
             let branch = format!("pr-{number}");
             let named = params.branch.trim();
             if params.issue.is_some() || params.from.is_some() || !(named.is_empty() || named == branch) {
-                return Err(RpcError::new(INVALID_PARAMS, format!("pr goes alone: its branch is {branch}, and it takes no from or issue")));
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    format!("pr goes alone: its branch is {branch}, and it takes no from or issue"),
+                ));
             }
             let pr = crate::forge::commands::pull_request(&project, number).map_err(forge_refused)?;
             let sha = pr.head_sha;
@@ -958,20 +1169,35 @@ impl Backend for TauriBackend {
             {
                 let lock = crate::exec::repo_lock(&project);
                 let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                crate::git::fetch_pr_head(&project, &head_ref, &sha, askpass.sock_path(), askpass.token()).map_err(refused)?;
+                crate::git::fetch_pr_head(&project, &head_ref, &sha, askpass.sock_path(), askpass.token())
+                    .map_err(refused)?;
                 // Best effort: a stale base only widens what the worker reads, and ask.create refuses any comment off the real diff.
                 let _ = crate::git::fetch_branch_quiet(&project, &pr.base_ref);
             }
             let fork = !pr.head_repo_is_origin;
-            let create = crate::worktree::create_pr_worktree(self.app.clone(), project.clone(), number, sha.clone(), !fork);
+            let create =
+                crate::worktree::create_pr_worktree(self.app.clone(), project.clone(), number, sha.clone(), !fork);
             let path = tauri::async_runtime::block_on(create).map_err(refused)?;
             let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
-            return Ok(with_fields(json!({ "path": path, "branch": branch, "head_sha": sha }), setup));
+            return Ok(with_fields(
+                json!({ "path": path, "branch": branch, "head_sha": sha }),
+                setup,
+            ));
         }
         // Asked before the worktree exists, so a bad key leaves nothing behind.
-        let issue = params.issue.map(|key| crate::issues::commands::get(&project, &key)).transpose().map_err(forge_refused)?;
+        let issue = params
+            .issue
+            .map(|key| crate::issues::commands::get(&project, &key))
+            .transpose()
+            .map_err(forge_refused)?;
         let branch = params.branch.trim().to_string();
-        let created = WorktreeParams { branch: branch.clone(), project: Some(project.clone()), from: params.from, issue: None, pr: None };
+        let created = WorktreeParams {
+            branch: branch.clone(),
+            project: Some(project.clone()),
+            from: params.from,
+            issue: None,
+            pr: None,
+        };
         let path = self.create_worktree(principal, created)?;
         if let Some(issue) = issue {
             self.remember_issue(&project, &branch, &issue, &path)?;
@@ -995,14 +1221,17 @@ impl Backend for TauriBackend {
         let (cwd, ts) = self.checkpoint(&params.id, params.turn)?;
         if let Some(to) = params.to.filter(|to| *to != params.turn) {
             let (_, to_ts) = self.checkpoint(&params.id, to)?;
-            let (files, diff) = crate::checkpoint::checkpoint_range_diff(&cwd, &params.id, ts, to_ts).map_err(refused)?;
+            let (files, diff) =
+                crate::checkpoint::checkpoint_range_diff(&cwd, &params.id, ts, to_ts).map_err(refused)?;
             return Ok(json!({ "files": files, "diff": diff }));
         }
-        let files = crate::checkpoint::checkpoint_turn_files(cwd.clone(), params.id.clone(), ts, None, None).map_err(refused)?;
+        let files = crate::checkpoint::checkpoint_turn_files(cwd.clone(), params.id.clone(), ts, None, None)
+            .map_err(refused)?;
         let mut diff = String::new();
         for file in &files {
-            let one = crate::checkpoint::checkpoint_diff_file(cwd.clone(), params.id.clone(), ts, file.path.clone(), None)
-                .map_err(refused)?;
+            let one =
+                crate::checkpoint::checkpoint_diff_file(cwd.clone(), params.id.clone(), ts, file.path.clone(), None)
+                    .map_err(refused)?;
             diff.push_str(&one);
         }
         Ok(json!({ "files": files, "diff": diff }))
@@ -1012,7 +1241,10 @@ impl Backend for TauriBackend {
         let (cwd, ts) = self.checkpoint(&params.id, params.turn)?;
         let others = self.others_in(&cwd, &params.id, principal);
         if !others.is_empty() && !params.force.unwrap_or(false) {
-            let message = format!("other live sessions in {cwd}: {}. Pass --force to revert anyway", others.join(", "));
+            let message = format!(
+                "other live sessions in {cwd}: {}. Pass --force to revert anyway",
+                others.join(", ")
+            );
             return Err(refused(message));
         }
         let revert = crate::checkpoint::checkpoint_revert_tree(cwd, params.id, ts, None);
@@ -1022,7 +1254,9 @@ impl Backend for TauriBackend {
 
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError> {
         if let Principal::Device(_) = principal {
-            device_may_spawn(&params, |agent| crate::agents::find(agent).is_some_and(|a| a.chat.is_some()))?;
+            device_may_spawn(&params, |agent| {
+                crate::agents::find(agent).is_some_and(|a| a.chat.is_some())
+            })?;
         }
         let me = self.identity(principal);
         let attach = params.attach.unwrap_or_default();
@@ -1030,13 +1264,22 @@ impl Backend for TauriBackend {
             return Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}")));
         }
         let folder = match params.new_worktree {
-            Some(branch) => {
-                self.create_worktree(principal, WorktreeParams { branch, project: params.project.clone(), from: params.from, issue: None, pr: None })?
-            }
+            Some(branch) => self.create_worktree(
+                principal,
+                WorktreeParams {
+                    branch,
+                    project: params.project.clone(),
+                    from: params.from,
+                    issue: None,
+                    pr: None,
+                },
+            )?,
             None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
         };
         // Left out everywhere, the webview picks the folder's remembered agent and account.
-        let project = params.project.or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
+        let project = params
+            .project
+            .or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
         if let Some(project) = &project {
             wait_for_setup(project, Path::new(&folder), crate::setup::WAIT_CAP);
         }
@@ -1045,8 +1288,18 @@ impl Backend for TauriBackend {
             Principal::Session(Caller::Chat(id)) => self.app.state::<ChatState>().0.levers(id),
             _ => None,
         };
-        let given = Picks { agent: params.agent, account: params.account, model: params.model, mode: params.mode };
-        let Picks { agent, account, model, mode } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
+        let given = Picks {
+            agent: params.agent,
+            account: params.account,
+            model: params.model,
+            mode: params.mode,
+        };
+        let Picks {
+            agent,
+            account,
+            model,
+            mode,
+        } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
         let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
         let request = json!({
             "folder": folder,
@@ -1075,7 +1328,8 @@ impl Backend for TauriBackend {
         if !Path::new(&params.path).is_file() {
             return Err(RpcError::new(INVALID_PARAMS, format!("no file {}", params.path)));
         }
-        self.bridge.request("window.open", json!({ "path": params.path, "line": params.line }))
+        self.bridge
+            .request("window.open", json!({ "path": params.path, "line": params.line }))
     }
 
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError> {
@@ -1092,11 +1346,16 @@ impl Backend for TauriBackend {
         let file = crate::chat::usage::load(&crate::chat::usage::usage_path(&folder));
         let session = id.as_ref().map(|id| file.sessions.get(id).cloned().unwrap_or_default());
         let (agent, account) = match &id {
-            Some(id) => (self.agent_of(id), self.app.state::<ChatState>().0.registry.profile_of(id)),
+            Some(id) => (
+                self.agent_of(id),
+                self.app.state::<ChatState>().0.registry.profile_of(id),
+            ),
             None => (me.agent, me.account),
         };
         let quota = match &agent {
-            Some(agent) => self.bridge.request("usage.windows", json!({ "agent": agent, "account": account }))?,
+            Some(agent) => self
+                .bridge
+                .request("usage.windows", json!({ "agent": agent, "account": account }))?,
             None => Value::Null,
         };
         Ok(json!({
@@ -1114,7 +1373,10 @@ impl Backend for TauriBackend {
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError> {
         let principal = Principal::Session(Caller::Chat(session.to_string()));
         let approval = match params.approval {
-            Some(draft) => Some(Approval { project: self.project(&principal, params.project)?, draft }),
+            Some(draft) => Some(Approval {
+                project: self.project(&principal, params.project)?,
+                draft,
+            }),
             None => None,
         };
         if let Some(approval) = &approval {
@@ -1122,14 +1384,24 @@ impl Backend for TauriBackend {
         }
         if let Some(item) = &params.item {
             if approval.is_none() {
-                return Err(RpcError::new(INVALID_PARAMS, "item goes with an approval: only an approval holds an item up"));
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    "item goes with an approval: only an approval holds an item up",
+                ));
             }
             if !self.autopilot.has(item) {
                 return Err(RpcError::new(INVALID_PARAMS, format!("no autopilot item {item}")));
             }
         }
         let mirror = self.states.root_background(session);
-        let ask = self.asks.create(session.to_string(), params.question, params.options.unwrap_or_default(), approval, mirror, params.item);
+        let ask = self.asks.create(
+            session.to_string(),
+            params.question,
+            params.options.unwrap_or_default(),
+            approval,
+            mirror,
+            params.item,
+        );
         if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
             self.asks.forget(&ask.id);
             return Err(e);
@@ -1156,10 +1428,16 @@ impl Backend for TauriBackend {
         match self.asks.answer(&params.id, params.answer, answered_by(principal)) {
             Ok(()) => {}
             Err(NotAnswered::Unknown) => {
-                return Err(RpcError::new(INVALID_PARAMS, format!("no ask {}, or it was already answered", params.id)))
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    format!("no ask {}, or it was already answered", params.id),
+                ))
             }
             Err(NotAnswered::UsersOnly) => {
-                return Err(refused(format!("{} asks for an approval, which only the user gives, on its card in Tori", params.id)))
+                return Err(refused(format!(
+                    "{} asks for an approval, which only the user gives, on its card in Tori",
+                    params.id
+                )))
             }
         }
         let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
@@ -1171,7 +1449,8 @@ impl Backend for TauriBackend {
         let topics = crate::unit_home::topics();
         let topic = crate::unit_home::topic_of(&topics, &cwd)
             .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("{session} is not a Topic chat")))?;
-        let member = crate::topics::member_named(topic, &params.member).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        let member =
+            crate::topics::member_named(topic, &params.member).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
         let index = self.app.state::<crate::config::ProjectIndex>().inner().clone();
         let promoted = crate::topics::promote_for_chat(
             topic,
@@ -1188,7 +1467,10 @@ impl Backend for TauriBackend {
         // The sidebar's own promote moves the Topic's tabs itself; this one
         // happened behind its back.
         let from = crate::topics::member_root(member);
-        let _ = self.app.emit("topics://promoted", json!({ "topic": promoted, "from": from, "to": root }));
+        let _ = self.app.emit(
+            "topics://promoted",
+            json!({ "topic": promoted, "from": from, "to": root }),
+        );
         Ok(json!({ "member": member.display_name, "branch": promoted.branch, "worktree": root }))
     }
 
@@ -1202,7 +1484,10 @@ impl Backend for TauriBackend {
             (Some(project), named) => (project, named.map_or(params.key, |(_, key)| key)),
             (None, Some((repo, key))) => {
                 let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
-                (project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?, key)
+                (
+                    project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?,
+                    key,
+                )
             }
             (None, None) => (self.project(principal, None)?, params.key),
         };
@@ -1242,7 +1527,9 @@ impl Backend for TauriBackend {
         };
         let (project, number) = self.pr_target(principal, params.key, params.project)?;
         let held = super::pr_watch::store().list().into_iter().find(|w| {
-            &w.session == session && super::pr_watch::same_folder(&w.project, &project) && super::pr_watch::parse_url(&w.url).is_some_and(|(_, _, n)| n == number)
+            &w.session == session
+                && super::pr_watch::same_folder(&w.project, &project)
+                && super::pr_watch::parse_url(&w.url).is_some_and(|(_, _, n)| n == number)
         });
         let stopped = match held {
             Some(watch) => super::pr_watch::stop(session, &watch.url).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?,
@@ -1262,46 +1549,85 @@ impl Backend for TauriBackend {
             draft: params.draft.unwrap_or(false),
         };
         let askpass = self.app.state::<crate::askpass::AskpassState>().0.clone();
-        self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
-            let push = || {
-                let lock = crate::exec::repo_lock(project);
-                let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                crate::git::push_sha(project, "origin", &req.head, &sha, askpass.sock_path(), askpass.token())
-            };
-            let create = || crate::forge::commands::create_pr(project, &req);
-            to_json(crate::forge::prs::push_then_create(push, create).map_err(forge_refused)?)
-        })
+        self.gated_outward(
+            principal,
+            params.project,
+            draft,
+            params.approval_id.as_deref(),
+            |project| {
+                let push = || {
+                    let lock = crate::exec::repo_lock(project);
+                    let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    crate::git::push_sha(project, "origin", &req.head, &sha, askpass.sock_path(), askpass.token())
+                };
+                let create = || crate::forge::commands::create_pr(project, &req);
+                to_json(crate::forge::prs::push_then_create(push, create).map_err(forge_refused)?)
+            },
+        )
     }
 
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError> {
         let draft = params.draft();
         let comments = params.comments.unwrap_or_default();
-        self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
-            let posted = submit_pinned(
-                params.number,
-                &params.head_sha,
-                || crate::forge::commands::pull_request(project, params.number).map(|pr| pr.head_sha),
-                || crate::forge::commands::submit_review(project, params.number, params.event, &params.body, &comments, Some(&params.head_sha)),
-            )?;
-            if let (Some(id), Principal::Session(Caller::Chat(session))) = (posted, principal) {
-                super::pr_watch::tori_posted(session, project, params.number, &id);
-            }
-            Ok(json!({}))
-        })
+        self.gated_outward(
+            principal,
+            params.project,
+            draft,
+            params.approval_id.as_deref(),
+            |project| {
+                let posted = submit_pinned(
+                    params.number,
+                    &params.head_sha,
+                    || crate::forge::commands::pull_request(project, params.number).map(|pr| pr.head_sha),
+                    || {
+                        crate::forge::commands::submit_review(
+                            project,
+                            params.number,
+                            params.event,
+                            &params.body,
+                            &comments,
+                            Some(&params.head_sha),
+                        )
+                    },
+                )?;
+                if let (Some(id), Principal::Session(Caller::Chat(session))) = (posted, principal) {
+                    super::pr_watch::tori_posted(session, project, params.number, &id);
+                }
+                Ok(json!({}))
+            },
+        )
     }
 
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError> {
         let draft = params.draft();
-        self.gated_outward(principal, params.project, draft, params.approval_id.as_deref(), |project| {
-            crate::forge::commands::merge(project, params.number, params.method, Some(&params.head_sha)).map_err(forge_refused)?;
-            Ok(json!({}))
-        })
+        self.gated_outward(
+            principal,
+            params.project,
+            draft,
+            params.approval_id.as_deref(),
+            |project| {
+                crate::forge::commands::merge(project, params.number, params.method, Some(&params.head_sha))
+                    .map_err(forge_refused)?;
+                Ok(json!({}))
+            },
+        )
     }
 
     fn autopilot_state(&self) -> Result<Value, RpcError> {
         let mut state = super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
-            let reported = self.states.snapshot().into_iter().filter(|(_, state)| *state != SessionState::Ended).map(|(id, _)| id);
-            let chats = self.app.state::<ChatState>().0.live_sessions().into_iter().map(|(id, _)| id);
+            let reported = self
+                .states
+                .snapshot()
+                .into_iter()
+                .filter(|(_, state)| *state != SessionState::Ended)
+                .map(|(id, _)| id);
+            let chats = self
+                .app
+                .state::<ChatState>()
+                .0
+                .live_sessions()
+                .into_iter()
+                .map(|(id, _)| id);
             let prs = crate::autopilot::open_prs(items)
                 .into_iter()
                 .filter_map(|(project, numbers)| {
@@ -1310,7 +1636,11 @@ impl Backend for TauriBackend {
                     Some((project, states))
                 })
                 .collect();
-            Observed { live: reported.chain(chats).collect(), worktrees: crate::autopilot::list_worktrees(items), prs }
+            Observed {
+                live: reported.chain(chats).collect(),
+                worktrees: crate::autopilot::list_worktrees(items),
+                prs,
+            }
         })?;
         state["runner"] = json!(self.runner.status());
         state["limits"] = json!({ "max_workers": crate::settings::autopilot_worker_cap() });
@@ -1318,7 +1648,9 @@ impl Backend for TauriBackend {
     }
 
     fn autopilot_log(&self, params: LogParams) -> Result<Value, RpcError> {
-        Ok(json!(self.autopilot.recent_log(params.limit.unwrap_or(DEFAULT_LOG_LIMIT))))
+        Ok(json!(self
+            .autopilot
+            .recent_log(params.limit.unwrap_or(DEFAULT_LOG_LIMIT))))
     }
 
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError> {
@@ -1351,7 +1683,10 @@ impl Backend for TauriBackend {
     }
 
     fn device_mint(&self, params: MintParams) -> Result<Value, RpcError> {
-        let (device, credential) = self.devices.mint(&params.name).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        let (device, credential) = self
+            .devices
+            .mint(&params.name)
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
     }
 }
@@ -1365,7 +1700,11 @@ mod tests {
     #[test]
     fn worktree_new_reports_setup_and_waits_only_when_the_project_asks() {
         use std::time::{Duration, Instant};
-        let base = std::env::temp_dir().join(format!("tori-rpc-setup-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let base = std::env::temp_dir().join(format!(
+            "tori-rpc-setup-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let project = base.to_string_lossy().into_owned();
         let folder = |name: &str| {
             let dir = base.join(name);
@@ -1374,7 +1713,13 @@ mod tests {
         };
         let seam = |command: &str, wait: bool| {
             let mut prefs = HashMap::new();
-            prefs.insert(project.clone(), crate::settings::WorktreePrefs { setup_command: command.into(), setup_wait: wait });
+            prefs.insert(
+                project.clone(),
+                crate::settings::WorktreePrefs {
+                    setup_command: command.into(),
+                    setup_wait: wait,
+                },
+            );
             crate::setup::seam(prefs, base.join("logs"));
         };
         let long = Duration::from_secs(10);
@@ -1389,12 +1734,20 @@ mod tests {
         seam("sleep 3", false);
         let slow = folder("slow");
         crate::setup::on_created(&project, &slow);
-        assert_eq!(state(setup_fields(&project, &slow, false, long)), "running", "no wait asked");
+        assert_eq!(
+            state(setup_fields(&project, &slow, false, long)),
+            "running",
+            "no wait asked"
+        );
 
         seam("sleep 3", true);
         let capped = folder("capped");
         crate::setup::on_created(&project, &capped);
-        assert_eq!(state(setup_fields(&project, &capped, false, Duration::from_millis(100))), "running", "past the cap");
+        assert_eq!(
+            state(setup_fields(&project, &capped, false, Duration::from_millis(100))),
+            "running",
+            "past the cap"
+        );
 
         seam("true", true);
         let done = folder("done");
@@ -1409,7 +1762,10 @@ mod tests {
         assert_eq!(state(setup_fields(&project, &failed, false, long)), "failed");
         let started = Instant::now();
         wait_for_setup(&project, &failed, long);
-        assert!(started.elapsed() < Duration::from_secs(1), "a failed setup holds a spawn no longer, and refuses nothing");
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "a failed setup holds a spawn no longer, and refuses nothing"
+        );
 
         std::fs::remove_dir_all(&base).ok();
     }
@@ -1449,7 +1805,13 @@ mod tests {
         let prompts = [(100, 0), (200, 10), (300, 1210)];
         let pages = page_back(&prompts, 1215, 5);
         covered_once(&pages, 1215);
-        assert_eq!(history_page(&prompts, 1215, Some(&Before::Turn(300)), 5).1, Some(Before::Event { ts: Some(200), event: 700 }));
+        assert_eq!(
+            history_page(&prompts, 1215, Some(&Before::Turn(300)), 5).1,
+            Some(Before::Event {
+                ts: Some(200),
+                event: 700
+            })
+        );
     }
 
     fn claim(agent: &str, profile: &str) -> crate::chat::ownership::Claim {
@@ -1464,7 +1826,12 @@ mod tests {
     }
 
     fn delta(turn: &str, text: &str, agent_id: Option<&str>) -> ChatEvent {
-        ChatEvent::TextDelta { session_id: "s1".into(), turn_id: turn.into(), text: text.into(), agent_id: agent_id.map(String::from) }
+        ChatEvent::TextDelta {
+            session_id: "s1".into(),
+            turn_id: turn.into(),
+            text: text.into(),
+            agent_id: agent_id.map(String::from),
+        }
     }
 
     #[test]
@@ -1477,7 +1844,10 @@ mod tests {
             delta("t2", "a subagent's aside", Some("sub-1")),
         ];
         assert_eq!(last_assistant_text(&events).as_deref(), Some("second"));
-        assert_eq!(last_assistant_text(&[delta("t3", "only a subagent", Some("sub-1"))]), None);
+        assert_eq!(
+            last_assistant_text(&[delta("t3", "only a subagent", Some("sub-1"))]),
+            None
+        );
         assert_eq!(last_assistant_text(&[]), None);
     }
 
@@ -1492,14 +1862,24 @@ mod tests {
             Principal::Session(Caller::Chat("another-chat".into())),
         ] {
             let refused = may_steer(&person, true, pilot).unwrap_err();
-            assert!(refused.message.contains("stop the autopilot to type"), "{}", refused.message);
-            assert!(may_steer(&person, false, pilot).is_ok(), "an unlocked session is anyone's");
+            assert!(
+                refused.message.contains("stop the autopilot to type"),
+                "{}",
+                refused.message
+            );
+            assert!(
+                may_steer(&person, false, pilot).is_ok(),
+                "an unlocked session is anyone's"
+            );
         }
     }
 
     #[test]
     fn a_device_steers_as_the_user_types() {
-        assert_eq!(steered(&Principal::Device("d1".into()), "go on".into()), (TurnBy::Local, "go on".into()));
+        assert_eq!(
+            steered(&Principal::Device("d1".into()), "go on".into()),
+            (TurnBy::Local, "go on".into())
+        );
         let (by, text) = steered(&Principal::Session(Caller::Chat("s1".into())), "go on".into());
         assert_eq!(by, TurnBy::Session("s1".into()));
         assert_ne!(text, "go on", "a chat's steer is wrapped as a note");
@@ -1511,7 +1891,12 @@ mod tests {
         states.mark_background("autopilot");
         let autopilot = Principal::Session(Caller::Chat("autopilot".into()));
         assert!(spawns_background(&states, &autopilot, false));
-        record_spawn(&states, &autopilot, "worker", spawns_background(&states, &autopilot, false));
+        record_spawn(
+            &states,
+            &autopilot,
+            "worker",
+            spawns_background(&states, &autopilot, false),
+        );
         assert!(states.is_background("worker") && states.is_worker("worker"));
         let foreground = Principal::Session(Caller::Chat("mine".into()));
         assert!(!spawns_background(&states, &foreground, false));
@@ -1522,8 +1907,18 @@ mod tests {
     #[test]
     fn only_a_spawn_by_a_chat_makes_a_worker() {
         let states = SessionStates::default();
-        record_spawn(&states, &Principal::Session(Caller::Chat("boss".into())), "by-chat", false);
-        record_spawn(&states, &Principal::Session(Caller::Terminal("t1".into())), "by-tab", true);
+        record_spawn(
+            &states,
+            &Principal::Session(Caller::Chat("boss".into())),
+            "by-chat",
+            false,
+        );
+        record_spawn(
+            &states,
+            &Principal::Session(Caller::Terminal("t1".into())),
+            "by-tab",
+            true,
+        );
         record_spawn(&states, &Principal::Local, "by-local", false);
         assert!(states.is_worker("by-chat"));
         assert!(!states.is_worker("by-tab") && !states.is_worker("by-local"));
@@ -1558,7 +1953,13 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(err.code, REFUSED);
-        for named in ["pr.create", "a pull request from 1-x at abc into main", "/p", "no approval_id", "ask_create"] {
+        for named in [
+            "pr.create",
+            "a pull request from 1-x at abc into main",
+            "/p",
+            "no approval_id",
+            "ask_create",
+        ] {
             assert!(err.message.contains(named), "{named} missing from: {}", err.message);
         }
         assert!(!ran.get(), "the forge is never reached");
@@ -1568,7 +1969,10 @@ mod tests {
     fn a_background_pr_create_with_its_approval_reaches_the_forge_once() {
         let approvals = Approvals::default();
         let id = approvals.grant("s1", pr_draft());
-        assert_eq!(gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap(), json!({ "number": 12 }));
+        assert_eq!(
+            gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap(),
+            json!({ "number": 12 })
+        );
         let again = gated_by_approval(&approvals, Some("s1"), &pr_draft(), Some(&id), opened).unwrap_err();
         assert!(again.message.contains("already spent"), "{}", again.message);
     }
@@ -1584,7 +1988,11 @@ mod tests {
                     || push,
                     || {
                         creates.set(creates.get() + 1);
-                        create.map(|()| sample_pr()).map_err(|message| crate::forge::ForgeError::Transport { message: message.into() })
+                        create
+                            .map(|()| sample_pr())
+                            .map_err(|message| crate::forge::ForgeError::Transport {
+                                message: message.into(),
+                            })
                     },
                 );
                 to_json(opened.map_err(forge_refused)?)
@@ -1596,7 +2004,11 @@ mod tests {
         assert_eq!(creates.get(), 0, "a rejected push never reaches the forge");
         assert!(attempt(Ok(()), Err("422")).is_err());
         assert_eq!(creates.get(), 1);
-        assert_eq!(attempt(Ok(()), Ok(())).unwrap()["number"], json!(12), "the same approval opens it on retry");
+        assert_eq!(
+            attempt(Ok(()), Ok(())).unwrap()["number"],
+            json!(12),
+            "the same approval opens it on retry"
+        );
         let spent = attempt(Ok(()), Ok(())).unwrap_err();
         assert!(spent.message.contains("already spent"), "{}", spent.message);
     }
@@ -1627,16 +2039,27 @@ mod tests {
         let approvals = Approvals::default();
         let review = Approval {
             project: "/p".into(),
-            draft: Draft::ReviewSubmit { number: 45, event: crate::forge::model::ReviewEvent::Comment, body: "B".into(), comments: vec![], head_sha: "abc".into() },
+            draft: Draft::ReviewSubmit {
+                number: 45,
+                event: crate::forge::model::ReviewEvent::Comment,
+                body: "B".into(),
+                comments: vec![],
+                head_sha: "abc".into(),
+            },
         };
         let id = approvals.grant("s1", review.clone());
         let posts = std::cell::Cell::new(0);
         let attempt = |head: &str| {
             gated_by_approval(&approvals, Some("s1"), &review, Some(&id), || {
-                submit_pinned(45, "abc", || Ok(head.to_string()), || {
-                    posts.set(posts.get() + 1);
-                    Ok(None)
-                })
+                submit_pinned(
+                    45,
+                    "abc",
+                    || Ok(head.to_string()),
+                    || {
+                        posts.set(posts.get() + 1);
+                        Ok(None)
+                    },
+                )
                 .map(|_| json!({}))
             })
         };
@@ -1670,7 +2093,12 @@ mod tests {
                 comment_review: true,
                 single_comment: true,
             };
-            Ok(crate::forge::pr_view::view(sample_pr(), Paged::complete(vec![file]), "me", caps))
+            Ok(crate::forge::pr_view::view(
+                sample_pr(),
+                Paged::complete(vec![file]),
+                "me",
+                caps,
+            ))
         };
         let review = |line| Approval {
             project: "/p".into(),
@@ -1678,7 +2106,14 @@ mod tests {
                 number: 12,
                 event: ReviewEvent::Approve,
                 body: "B".into(),
-                comments: vec![DraftComment { path: "src/a.rs".into(), line, side: DiffSide::Right, start_line: None, start_side: None, body: "c".into() }],
+                comments: vec![DraftComment {
+                    path: "src/a.rs".into(),
+                    line,
+                    side: DiffSide::Right,
+                    start_line: None,
+                    start_side: None,
+                    body: "c".into(),
+                }],
                 head_sha: "abc".into(),
             },
         };
@@ -1686,7 +2121,10 @@ mod tests {
         let err = postable(&review(9), view).unwrap_err();
         assert_eq!(err.code, INVALID_PARAMS);
         assert!(err.message.contains("comment 1: line 9"), "{}", err.message);
-        assert!(postable(&pr_draft(), |_: &str, _: u64| unreachable!("a pull request draft reads no review")).is_ok());
+        assert!(postable(&pr_draft(), |_: &str, _: u64| unreachable!(
+            "a pull request draft reads no review"
+        ))
+        .is_ok());
     }
 
     #[test]
@@ -1701,7 +2139,12 @@ mod tests {
         let err = or_callers(None, || local.cwd.clone(), "project").unwrap_err();
         assert_eq!(err.code, INVALID_PARAMS);
         assert!(err.message.contains("--project"), "{}", err.message);
-        assert_eq!(or_callers(Some("/p".into()), || local.cwd.clone(), "project").ok().as_deref(), Some("/p"));
+        assert_eq!(
+            or_callers(Some("/p".into()), || local.cwd.clone(), "project")
+                .ok()
+                .as_deref(),
+            Some("/p")
+        );
     }
 
     #[test]
@@ -1712,14 +2155,28 @@ mod tests {
         let live = vec![("s1".to_string(), "/p/wt".to_string())];
         assert_eq!(
             chat_identity(&registry, &live, "s1"),
-            Identity { agent: Some("codex".into()), account: Some("work".into()), cwd: Some("/p/wt".into()) }
+            Identity {
+                agent: Some("codex".into()),
+                account: Some("work".into()),
+                cwd: Some("/p/wt".into())
+            }
         );
         assert_eq!(chat_identity(&registry, &live, "gone"), Identity::default());
         let _ = std::fs::remove_dir_all(dir);
     }
 
     fn meta(id: &str, cwd: &str, last_active: u64) -> SessionMeta {
-        SessionMeta { last_active, ..live_row(id, &Live { agent: "claude".into(), cwd: cwd.into() }, last_active) }
+        SessionMeta {
+            last_active,
+            ..live_row(
+                id,
+                &Live {
+                    agent: "claude".into(),
+                    cwd: cwd.into(),
+                },
+                last_active,
+            )
+        }
     }
 
     fn ids(rows: &[Value]) -> Vec<&str> {
@@ -1727,30 +2184,83 @@ mod tests {
     }
 
     fn live(entries: &[(&str, &str)]) -> BTreeMap<String, Live> {
-        entries.iter().map(|(id, cwd)| (id.to_string(), Live { agent: "codex".into(), cwd: cwd.to_string() })).collect()
+        entries
+            .iter()
+            .map(|(id, cwd)| {
+                (
+                    id.to_string(),
+                    Live {
+                        agent: "codex".into(),
+                        cwd: cwd.to_string(),
+                    },
+                )
+            })
+            .collect()
     }
 
     #[test]
     fn rows_are_stamped_live_and_a_live_session_not_yet_indexed_comes_first() {
         let indexed = vec![meta("a", "/p", 30), meta("b", "/p", 20)];
-        let rows = list(indexed, &live(&[("b", "/p"), ("new", "/p/wt")]), &HashMap::new(), &ListParams::default(), 99);
+        let rows = list(
+            indexed,
+            &live(&[("b", "/p"), ("new", "/p/wt")]),
+            &HashMap::new(),
+            &ListParams::default(),
+            99,
+        );
         assert_eq!(ids(&rows), ["new", "a", "b"]);
-        assert_eq!(rows.iter().map(|r| r["live"].as_bool().unwrap()).collect::<Vec<_>>(), [true, false, true]);
-        assert_eq!((rows[0]["agent"].clone(), rows[0]["cwd"].clone()), (json!("codex"), json!("/p/wt")));
+        assert_eq!(
+            rows.iter().map(|r| r["live"].as_bool().unwrap()).collect::<Vec<_>>(),
+            [true, false, true]
+        );
+        assert_eq!(
+            (rows[0]["agent"].clone(), rows[0]["cwd"].clone()),
+            (json!("codex"), json!("/p/wt"))
+        );
     }
 
     #[test]
     fn live_only_limit_and_cwd_narrow_the_list() {
         let indexed = vec![meta("a", "/p", 30), meta("b", "/p", 20)];
-        let only_live = ListParams { live: Some(true), ..Default::default() };
-        assert_eq!(ids(&list(indexed.clone(), &live(&[("b", "/p")]), &HashMap::new(), &only_live, 99)), ["b"]);
+        let only_live = ListParams {
+            live: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(
+            ids(&list(
+                indexed.clone(),
+                &live(&[("b", "/p")]),
+                &HashMap::new(),
+                &only_live,
+                99
+            )),
+            ["b"]
+        );
 
-        let one = ListParams { limit: Some(1), ..Default::default() };
-        assert_eq!(ids(&list(indexed.clone(), &live(&[]), &HashMap::new(), &one, 99)), ["a"]);
+        let one = ListParams {
+            limit: Some(1),
+            ..Default::default()
+        };
+        assert_eq!(
+            ids(&list(indexed.clone(), &live(&[]), &HashMap::new(), &one, 99)),
+            ["a"]
+        );
 
         // The indexed rows arrive already narrowed; the fresh live ones are narrowed here.
-        let under = ListParams { cwd: Some("/p".into()), ..Default::default() };
-        assert_eq!(ids(&list(indexed, &live(&[("x", "/elsewhere"), ("y", "/p/sub")]), &HashMap::new(), &under, 99)), ["y", "a", "b"]);
+        let under = ListParams {
+            cwd: Some("/p".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            ids(&list(
+                indexed,
+                &live(&[("x", "/elsewhere"), ("y", "/p/sub")]),
+                &HashMap::new(),
+                &under,
+                99
+            )),
+            ["y", "a", "b"]
+        );
     }
 
     #[test]
@@ -1762,9 +2272,21 @@ mod tests {
             icon: icon.map(Into::into),
             color: color.map(Into::into),
         };
-        let tree = projects_tree(&[space("work", Some("Briefcase"), Some("teal")), space("plain", None, None)], vec![]);
-        assert_eq!((&tree["spaces"][0]["icon"], &tree["spaces"][0]["color"]), (&json!("Briefcase"), &json!("teal")));
-        assert_eq!((&tree["spaces"][1]["icon"], &tree["spaces"][1]["color"]), (&Value::Null, &Value::Null));
+        let tree = projects_tree(
+            &[
+                space("work", Some("Briefcase"), Some("teal")),
+                space("plain", None, None),
+            ],
+            vec![],
+        );
+        assert_eq!(
+            (&tree["spaces"][0]["icon"], &tree["spaces"][0]["color"]),
+            (&json!("Briefcase"), &json!("teal"))
+        );
+        assert_eq!(
+            (&tree["spaces"][1]["icon"], &tree["spaces"][1]["color"]),
+            (&Value::Null, &Value::Null)
+        );
     }
 
     fn fixture(name: &str) -> String {
@@ -1781,13 +2303,20 @@ mod tests {
         let all = read_history("s1", &from, "claude", None);
         assert!(all.len() > 2, "the fixture has more than the tail: {}", all.len());
         let last = tail(all.clone(), 2);
-        assert_eq!(serde_json::to_value(&last).unwrap(), serde_json::to_value(&all[all.len() - 2..]).unwrap());
+        assert_eq!(
+            serde_json::to_value(&last).unwrap(),
+            serde_json::to_value(&all[all.len() - 2..]).unwrap()
+        );
         assert_eq!(tail(all.clone(), 10_000).len(), all.len());
     }
 
     #[test]
     fn a_log_tail_is_the_last_events_in_order() {
-        let path = std::env::temp_dir().join(format!("tori-rpc-tail-{}-{:?}.jsonl", std::process::id(), std::thread::current().id()));
+        let path = std::env::temp_dir().join(format!(
+            "tori-rpc-tail-{}-{:?}.jsonl",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let lines: Vec<String> = ["one", "two", "three"]
             .iter()
             .map(|t| {
@@ -1802,7 +2331,15 @@ mod tests {
         std::fs::write(&path, lines.join("\n")).unwrap();
         let got = tail(read_history("s1", &HistorySource::Log(path.clone()), "codex", None), 2);
         let _ = std::fs::remove_file(&path);
-        let texts: Vec<String> = got.iter().map(|e| serde_json::to_value(e).unwrap()["blocks"][0]["text"].as_str().unwrap().to_string()).collect();
+        let texts: Vec<String> = got
+            .iter()
+            .map(|e| {
+                serde_json::to_value(e).unwrap()["blocks"][0]["text"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
         assert_eq!(texts, ["two", "three"]);
     }
 
@@ -1831,7 +2368,12 @@ mod tests {
             options: Vec::new(),
         };
         let native = vec![
-            Waiting::Question { id: "toolu_q".into(), request_id: "r1".into(), agent_id: None, questions: vec![question] },
+            Waiting::Question {
+                id: "toolu_q".into(),
+                request_id: "r1".into(),
+                agent_id: None,
+                questions: vec![question],
+            },
             Waiting::Permission {
                 id: "toolu_p".into(),
                 request_id: "r2".into(),
@@ -1851,20 +2393,46 @@ mod tests {
             },
         });
         let rows = pending_rows("w1", vec![ask("ask-1", "w1"), ask("ask-2", "other"), mirrored], native);
-        let kinds: Vec<(&str, &str)> = rows.iter().map(|r| (r["kind"].as_str().unwrap(), r["id"].as_str().unwrap())).collect();
-        assert_eq!(kinds, [("ask", "ask-1"), ("ask", "ask-3"), ("question", "toolu_q"), ("permission", "toolu_p")]);
+        let kinds: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|r| (r["kind"].as_str().unwrap(), r["id"].as_str().unwrap()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("ask", "ask-1"),
+                ("ask", "ask-3"),
+                ("question", "toolu_q"),
+                ("permission", "toolu_p")
+            ]
+        );
         assert_eq!(rows[0]["text"], "ship it?");
         assert!(rows[0].get("approval").is_none());
-        assert_eq!(rows[1]["session"], "worker", "a worker's approval lists under the root it shows in");
-        assert_eq!(rows[1]["approval"]["head_sha"], "abc", "with the whole draft: {}", rows[1]);
+        assert_eq!(
+            rows[1]["session"], "worker",
+            "a worker's approval lists under the root it shows in"
+        );
+        assert_eq!(
+            rows[1]["approval"]["head_sha"], "abc",
+            "with the whole draft: {}",
+            rows[1]
+        );
         assert_eq!(rows[3]["tool"], "Bash");
-        assert!(rows[2].get("request_id").is_none(), "the host's request id stays inside: {}", rows[2]);
+        assert!(
+            rows[2].get("request_id").is_none(),
+            "the host's request id stays inside: {}",
+            rows[2]
+        );
     }
 
     #[test]
     fn only_a_device_answers_an_ask_as_a_person() {
         assert_eq!(answered_by(&Principal::Device("d1".into())), By::Device);
-        for other in [Principal::Local, Principal::Session(Caller::Chat("s1".into())), Principal::Session(Caller::Terminal("t1".into()))] {
+        for other in [
+            Principal::Local,
+            Principal::Session(Caller::Chat("s1".into())),
+            Principal::Session(Caller::Terminal("t1".into())),
+        ] {
             assert_eq!(answered_by(&other), By::Socket, "{other:?}");
         }
     }
@@ -1875,8 +2443,15 @@ mod tests {
         assert!(answers_for(&chat("pilot"), Some("pilot".into()), "w1").is_ok());
         let device = Principal::Device("d1".into());
         assert!(answers_for(&device, Some("pilot".into()), "w1").is_ok());
-        assert!(answers_for(&device, None, "s1").is_ok(), "a device answers a session nobody spawned");
-        for (caller, spawner) in [(chat("other"), Some("pilot".into())), (chat("pilot"), None), (Principal::Local, Some("pilot".into()))] {
+        assert!(
+            answers_for(&device, None, "s1").is_ok(),
+            "a device answers a session nobody spawned"
+        );
+        for (caller, spawner) in [
+            (chat("other"), Some("pilot".into())),
+            (chat("pilot"), None),
+            (Principal::Local, Some("pilot".into())),
+        ] {
             let err = answers_for(&caller, spawner, "w1").unwrap_err();
             assert_eq!(err.code, REFUSED, "{}", err.message);
         }
@@ -1888,70 +2463,192 @@ mod tests {
         let unattended = |id: &str| id == "pilot";
         let err = permission_needs_a_person(&chat("pilot"), unattended, "p1").unwrap_err();
         assert_eq!(err.code, REFUSED, "{}", err.message);
-        assert!(permission_needs_a_person(&chat("watched"), unattended, "p1").is_ok(), "a foreground session's own harness asks the user");
-        assert!(permission_needs_a_person(&Principal::Device("d1".into()), unattended, "p1").is_ok(), "a device is a person");
+        assert!(
+            permission_needs_a_person(&chat("watched"), unattended, "p1").is_ok(),
+            "a foreground session's own harness asks the user"
+        );
+        assert!(
+            permission_needs_a_person(&Principal::Device("d1".into()), unattended, "p1").is_ok(),
+            "a device is a person"
+        );
     }
 
     #[test]
     fn a_device_spawns_only_a_plain_chat_in_a_folder_it_names() {
         let is_chat = |agent: &str| agent == "claude";
-        let plain = || SpawnParams { folder: Some("/p".into()), agent: Some("claude".into()), prompt: Some("hi".into()), ..Default::default() };
+        let plain = || SpawnParams {
+            folder: Some("/p".into()),
+            agent: Some("claude".into()),
+            prompt: Some("hi".into()),
+            ..Default::default()
+        };
         assert!(device_may_spawn(&plain(), is_chat).is_ok());
         let refusals = [
-            SpawnParams { attach: Some(vec!["/etc/hosts".into()]), ..plain() },
-            SpawnParams { new_worktree: Some("b".into()), ..plain() },
-            SpawnParams { background: Some(true), ..plain() },
-            SpawnParams { mode: Some("bypassPermissions".into()), ..plain() },
-            SpawnParams { agent: Some("pty-only".into()), ..plain() },
+            SpawnParams {
+                attach: Some(vec!["/etc/hosts".into()]),
+                ..plain()
+            },
+            SpawnParams {
+                new_worktree: Some("b".into()),
+                ..plain()
+            },
+            SpawnParams {
+                background: Some(true),
+                ..plain()
+            },
+            SpawnParams {
+                mode: Some("bypassPermissions".into()),
+                ..plain()
+            },
+            SpawnParams {
+                agent: Some("pty-only".into()),
+                ..plain()
+            },
             SpawnParams { agent: None, ..plain() },
         ];
         for params in refusals {
-            assert_eq!(device_may_spawn(&params, is_chat).unwrap_err().code, REFUSED, "{params:?}");
+            assert_eq!(
+                device_may_spawn(&params, is_chat).unwrap_err().code,
+                REFUSED,
+                "{params:?}"
+            );
         }
-        assert_eq!(device_may_spawn(&SpawnParams { folder: None, ..plain() }, is_chat).unwrap_err().code, INVALID_PARAMS);
-        assert!(device_may_spawn(&SpawnParams { attach: Some(vec![]), ..plain() }, is_chat).is_ok());
+        assert_eq!(
+            device_may_spawn(
+                &SpawnParams {
+                    folder: None,
+                    ..plain()
+                },
+                is_chat
+            )
+            .unwrap_err()
+            .code,
+            INVALID_PARAMS
+        );
+        assert!(device_may_spawn(
+            &SpawnParams {
+                attach: Some(vec![]),
+                ..plain()
+            },
+            is_chat
+        )
+        .is_ok());
     }
 
     #[test]
     fn spawn_picks_fill_from_the_contract_and_an_explicit_value_wins() {
-        let me = Identity { agent: Some("claude".into()), account: Some("work".into()), cwd: None };
+        let me = Identity {
+            agent: Some("claude".into()),
+            account: Some("work".into()),
+            cwd: None,
+        };
         let s = |v: &str| Some(v.to_string());
-        let contract = Contract { agent: s("codex"), account: s("team"), model: s("gpt-5"), ..Default::default() };
+        let contract = Contract {
+            agent: s("codex"),
+            account: s("team"),
+            model: s("gpt-5"),
+            ..Default::default()
+        };
         let none = Levers::default();
 
         let filled = fill_picks(Picks::default(), Some(&contract), &me, &none);
-        assert_eq!(filled, Picks { agent: s("codex"), account: s("team"), model: s("gpt-5"), mode: None });
+        assert_eq!(
+            filled,
+            Picks {
+                agent: s("codex"),
+                account: s("team"),
+                model: s("gpt-5"),
+                mode: None
+            }
+        );
 
-        let explicit = Picks { model: s("gpt-5-mini"), ..Default::default() };
+        let explicit = Picks {
+            model: s("gpt-5-mini"),
+            ..Default::default()
+        };
         assert_eq!(fill_picks(explicit, Some(&contract), &me, &none).model, s("gpt-5-mini"));
 
-        let other_agent = Picks { agent: s("claude"), ..Default::default() };
+        let other_agent = Picks {
+            agent: s("claude"),
+            ..Default::default()
+        };
         let filled = fill_picks(other_agent, Some(&contract), &me, &none);
-        assert_eq!(filled, Picks { agent: s("claude"), account: s("work"), model: None, mode: None }, "codex's model is not claude's");
+        assert_eq!(
+            filled,
+            Picks {
+                agent: s("claude"),
+                account: s("work"),
+                model: None,
+                mode: None
+            },
+            "codex's model is not claude's"
+        );
 
-        let any_agent = Contract { model: s("opus"), ..Default::default() };
-        assert_eq!(fill_picks(Picks::default(), Some(&any_agent), &me, &none).model, s("opus"));
+        let any_agent = Contract {
+            model: s("opus"),
+            ..Default::default()
+        };
+        assert_eq!(
+            fill_picks(Picks::default(), Some(&any_agent), &me, &none).model,
+            s("opus")
+        );
 
-        assert_eq!(fill_picks(Picks::default(), None, &me, &none), Picks { agent: s("claude"), account: s("work"), model: None, mode: None });
+        assert_eq!(
+            fill_picks(Picks::default(), None, &me, &none),
+            Picks {
+                agent: s("claude"),
+                account: s("work"),
+                model: None,
+                mode: None
+            }
+        );
     }
 
     #[test]
     fn spawn_picks_inherit_the_calling_chats_model_and_mode_only_on_its_agent() {
-        let me = Identity { agent: Some("claude".into()), account: Some("work".into()), cwd: None };
+        let me = Identity {
+            agent: Some("claude".into()),
+            account: Some("work".into()),
+            cwd: None,
+        };
         let s = |v: &str| Some(v.to_string());
-        let caller = Levers { model: s("claude-opus-5-5"), mode: Some(PermissionMode::new("bypassPermissions")), ..Default::default() };
+        let caller = Levers {
+            model: s("claude-opus-5-5"),
+            mode: Some(PermissionMode::new("bypassPermissions")),
+            ..Default::default()
+        };
 
         let filled = fill_picks(Picks::default(), None, &me, &caller);
-        assert_eq!((filled.model, filled.mode), (s("claude-opus-5-5"), s("bypassPermissions")));
+        assert_eq!(
+            (filled.model, filled.mode),
+            (s("claude-opus-5-5"), s("bypassPermissions"))
+        );
 
-        let explicit = Picks { mode: s("plan"), ..Default::default() };
+        let explicit = Picks {
+            mode: s("plan"),
+            ..Default::default()
+        };
         assert_eq!(fill_picks(explicit, None, &me, &caller).mode, s("plan"));
 
-        let contract = Contract { model: s("sonnet"), ..Default::default() };
-        assert_eq!(fill_picks(Picks::default(), Some(&contract), &me, &caller).model, s("sonnet"), "the contract outranks the caller");
+        let contract = Contract {
+            model: s("sonnet"),
+            ..Default::default()
+        };
+        assert_eq!(
+            fill_picks(Picks::default(), Some(&contract), &me, &caller).model,
+            s("sonnet"),
+            "the contract outranks the caller"
+        );
 
-        let codex = Picks { agent: s("codex"), ..Default::default() };
+        let codex = Picks {
+            agent: s("codex"),
+            ..Default::default()
+        };
         let filled = fill_picks(codex, None, &me, &caller);
-        assert_eq!((filled.model, filled.mode), (None, None), "claude's mode names nothing on codex");
+        assert_eq!(
+            (filled.model, filled.mode),
+            (None, None),
+            "claude's mode names nothing on codex"
+        );
     }
 }

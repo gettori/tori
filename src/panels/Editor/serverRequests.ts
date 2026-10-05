@@ -85,8 +85,7 @@ export function createRequestRouter<Ctx>(handlers: Record<string, ServerRequestH
     // to something that carries no id would put a response with `"id":
     // undefined` on the wire.
     if (typeof frame.method !== "string" || frame.id === undefined) return false;
-    const handler =
-      handlers[frame.method] ?? handlers[`${frame.method.slice(0, frame.method.indexOf("/") + 1)}*`];
+    const handler = handlers[frame.method] ?? handlers[`${frame.method.slice(0, frame.method.indexOf("/") + 1)}*`];
     if (!handler) return false;
 
     const { id } = frame;

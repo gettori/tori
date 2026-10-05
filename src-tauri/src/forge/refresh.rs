@@ -92,9 +92,8 @@ impl Refresher {
         if !due(expires_at(), now()) {
             return Ok(Renewed::Current);
         }
-        let set =
-            refresh_with(transport, renewal.client_id, renewal.endpoints, renewal.refresh_token)
-                .map_err(RefreshFailure::Rejected)?;
+        let set = refresh_with(transport, renewal.client_id, renewal.endpoints, renewal.refresh_token)
+            .map_err(RefreshFailure::Rejected)?;
         persist(&set).map_err(RefreshFailure::NotStored)?;
         Ok(Renewed::Fresh(set.access_token))
     }
@@ -181,7 +180,11 @@ mod tests {
             &renewal(&endpoints),
             || Some(NOW),
             || NOW,
-            |_| Err(ForgeError::Transport { message: "keychain: busy".into() }),
+            |_| {
+                Err(ForgeError::Transport {
+                    message: "keychain: busy".into(),
+                })
+            },
         );
         assert!(matches!(out, Err(RefreshFailure::NotStored(_))), "got {out:?}");
     }
@@ -189,8 +192,7 @@ mod tests {
     #[test]
     fn a_refused_refresh_is_the_one_failure_that_ends_the_credential() {
         let endpoints = gitlab_endpoints("https://gitlab.test");
-        let stub =
-            StubTransport::new(vec![StubTransport::json(401, r#"{"error":"invalid_grant"}"#)]);
+        let stub = StubTransport::new(vec![StubTransport::json(401, r#"{"error":"invalid_grant"}"#)]);
         let out = Refresher::default().ensure(
             &stub,
             &renewal(&endpoints),

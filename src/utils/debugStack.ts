@@ -91,11 +91,7 @@ export function currentSourceTab(): string | null {
 function sourceTabId(sessionId: string, frame: StackFrame): string | null {
   const session = debugSession(sessionId);
   if (!session) return null;
-  return syntheticId(
-    "dapsource",
-    session.projectPath,
-    `${sessionId}:${frame.sourceReference}:${frame.sourceName}`,
-  );
+  return syntheticId("dapsource", session.projectPath, `${sessionId}:${frame.sourceReference}:${frame.sourceName}`);
 }
 
 /** Whether the program is paused, which is what every step control asks. */

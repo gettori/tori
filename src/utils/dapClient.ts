@@ -65,8 +65,7 @@ const REFUSALS: Record<ReverseRequest, string> = {
   launchUnelevated: "Tori does not relaunch debug targets with elevated privileges.",
   launchVSCode: "Tori is not VS Code and cannot open a VS Code window.",
   remoteFileExists: "Tori does not debug over a remote connection.",
-  runInTerminal:
-    "Tori runs debug targets in its own debug console; use `console: \"internalConsole\"`.",
+  runInTerminal: 'Tori runs debug targets in its own debug console; use `console: "internalConsole"`.',
   startDebugging: "This debug connection has no child-session handler.",
 };
 
@@ -176,16 +175,13 @@ type Frame = {
  * no message.
  */
 function failureText(frame: Frame): string {
-  const error = (frame.body as { error?: { format?: unknown; variables?: unknown } } | undefined)
-    ?.error;
+  const error = (frame.body as { error?: { format?: unknown; variables?: unknown } } | undefined)?.error;
   const format = typeof error?.format === "string" ? error.format : null;
   if (format) {
     const vars = error?.variables;
     if (!vars || typeof vars !== "object") return format;
     const table = vars as Record<string, unknown>;
-    return format.replace(/\{(\w+)\}/g, (whole, name: string) =>
-      name in table ? String(table[name]) : whole,
-    );
+    return format.replace(/\{(\w+)\}/g, (whole, name: string) => (name in table ? String(table[name]) : whole));
   }
   return String(frame.message ?? "failed");
 }
@@ -340,7 +336,10 @@ export function createDapConnection(send: (message: string) => void): DapConnect
     on(event, handler) {
       events.set(event, [...(events.get(event) ?? []), handler]);
       return () => {
-        events.set(event, (events.get(event) ?? []).filter((h) => h !== handler));
+        events.set(
+          event,
+          (events.get(event) ?? []).filter((h) => h !== handler),
+        );
       };
     },
 

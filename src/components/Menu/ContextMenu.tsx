@@ -5,8 +5,10 @@ import { MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
-export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement>
-  extends Omit<JSX.HTMLAttributes<T>, "onContextMenu"> {
+export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement> extends Omit<
+  JSX.HTMLAttributes<T>,
+  "onContextMenu"
+> {
   /** Runs before the menu opens, and can stop it: Kobalte's trigger calls this
    *  first and bails if it finds the event already prevented.
    *
@@ -75,18 +77,8 @@ export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement>
  * prevented, so a row that wants the browser's menu conditionally can say so
  * there rather than toggling `disabled`.
  */
-export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(
-  props: ContextMenuProps<T>,
-) {
-  const [local, trigger] = splitProps(props, [
-    "items",
-    "menu",
-    "as",
-    "disabled",
-    "modal",
-    "onOpenChange",
-    "mount",
-  ]);
+export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(props: ContextMenuProps<T>) {
+  const [local, trigger] = splitProps(props, ["items", "menu", "as", "disabled", "modal", "onOpenChange", "mount"]);
 
   const dialogSurface = useDialogSurface();
   const mount = () => local.mount ?? dialogSurface();
@@ -100,15 +92,8 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(
     // Published rather than only used here: a flyout inside this menu is its own
     // portal and mounts where the menu it belongs to does. See `surface.ts`.
     <MenuSurface.Provider value={mount}>
-      <Primitive.Root
-        modal={local.modal ?? false}
-        onOpenChange={local.onOpenChange}
-      >
-        <Primitive.Trigger
-          as={local.as ?? "div"}
-          disabled={local.disabled}
-          {...triggerProps}
-        />
+      <Primitive.Root modal={local.modal ?? false} onOpenChange={local.onOpenChange}>
+        <Primitive.Trigger as={local.as ?? "div"} disabled={local.disabled} {...triggerProps} />
         <Primitive.Portal mount={mount()}>
           <Primitive.Content
             class={styles.content}
