@@ -147,9 +147,9 @@ export default function BranchLine(props: {
     ].filter((line): line is string => Boolean(line));
   };
 
-  // Ordered by what a reader most wants, because a fact that does not fit is
-  // dropped whole from the end (see `.line`): the number and its standing, the
-  // size of the change, and last the age and the comment count.
+  // Ordered by what a reader most wants, because a fact that does not fit
+  // wraps whole to the next line (see `.items`): the number and its standing,
+  // the size of the change, and last the age and the comment count.
   const standing = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
     <>
       <span class={`${styles.item} ${styles[`pr_${state()}`]}`} data-pr-state={state()}>
@@ -223,9 +223,11 @@ export default function BranchLine(props: {
           data-pr-line={pr() ? "" : undefined}
           label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
         >
-          <Show when={pr()}>{(p) => standing(p)}</Show>
-          <Show when={stat()}>{(s) => size(s)}</Show>
-          <Show when={pr()}>{(p) => history(p)}</Show>
+          <span class={styles.items}>
+            <Show when={pr()}>{(p) => standing(p)}</Show>
+            <Show when={stat()}>{(s) => size(s)}</Show>
+            <Show when={pr()}>{(p) => history(p)}</Show>
+          </span>
         </Tooltip>
       )}
     </Show>
