@@ -16,3 +16,4 @@ On a branch cut before #257 the old rule holds: no formatter, edit by hand. Move
 - [[component_autopilot_cockpit]]: where it was hit
 - [[gotcha_no_formatter_config_so_prettier_defaults_to_80_columns_here]]
 - [[gotcha_bare_npx_prettier_reformats_this_repo_wholesale]]
+- [[adr_vite_plus_toolchain]] why Oxfmt, and what it skips
