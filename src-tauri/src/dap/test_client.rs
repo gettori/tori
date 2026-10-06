@@ -420,7 +420,7 @@ fn it_hits_a_breakpoint_in_a_cargo_binary_it_built() {
     let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     // rustc records the physical path, and the temp dir sits under a symlink.
-    let dir = std::fs::canonicalize(&dir).unwrap();
+    let dir = crate::platform::fs::canonical(&dir).unwrap();
     std::fs::write(
         dir.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",

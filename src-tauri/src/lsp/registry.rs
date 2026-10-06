@@ -1097,7 +1097,7 @@ version = "1.2.3"
             .unwrap_err()
             .contains("inside the install"));
         let absolute = release(&format!(
-            "file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"/bin/sh\""
+            "file = \"demo.tar.gz\"\nsha256 = \"{sha}\"\nbin = \"/opt/tool\""
         ));
         assert!(load_server_str(&absolute, "test")
             .unwrap_err()

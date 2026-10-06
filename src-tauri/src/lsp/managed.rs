@@ -245,15 +245,7 @@ fn unpack(archive: &Path, into: &Path) -> Result<(), String> {
 }
 
 fn make_executable(path: &Path) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("cannot make {} executable: {e}", path.display()))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
+    crate::platform::fs::make_executable(path).map_err(|e| format!("cannot make {} executable: {e}", path.display()))
 }
 
 fn download(url: &str) -> Result<Vec<u8>, String> {

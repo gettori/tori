@@ -81,8 +81,8 @@ fn create_in(dir: &Path, stem: &str) -> Result<PathBuf, String> {
 /// path, so nothing outside the scratch folder is reachable. No Trash, since
 /// the composer's draft store already holds the text; a copy there is litter.
 fn remove_in(dir: &Path, path: &Path) -> Result<(), String> {
-    let dir = dir.canonicalize().map_err(|e| e.to_string())?;
-    let target = path.canonicalize().map_err(|e| e.to_string())?;
+    let dir = crate::platform::fs::canonical(dir).map_err(|e| e.to_string())?;
+    let target = crate::platform::fs::canonical(path).map_err(|e| e.to_string())?;
     if target.parent() != Some(dir.as_path()) {
         return Err(format!("{} is not a scratch file", path.display()));
     }

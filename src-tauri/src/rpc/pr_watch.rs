@@ -588,7 +588,7 @@ pub fn session_deleted(session: &str) {
 
 // One project spelled two ways (a symlink, a trailing slash) is still one project.
 pub fn same_folder(a: &str, b: &str) -> bool {
-    a == b || matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+    a == b || matches!((crate::platform::fs::canonical(a), crate::platform::fs::canonical(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 pub fn posted_into(watches: &[Watch], session: &str, project: &str, number: u64, id: &str) -> Vec<Watch> {

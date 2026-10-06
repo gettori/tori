@@ -160,11 +160,10 @@ pub fn refresh_git_health() -> GitReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::process::ExitStatusExt;
 
     fn recorded(code: i32, stdout: &str, stderr: &str) -> Output {
         Output {
-            status: std::process::ExitStatus::from_raw(code << 8),
+            status: crate::platform::testing::exit_status(code),
             stdout: stdout.as_bytes().to_vec(),
             stderr: stderr.as_bytes().to_vec(),
         }

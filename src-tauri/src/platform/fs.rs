@@ -103,6 +103,19 @@ pub fn write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
     create_private(path)?.write_all(contents)
 }
 
+/// Sets the executable bits (`0755`) on Unix. Windows has none: whether a file
+/// runs is its extension, so this does nothing there.
+pub fn make_executable(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    #[cfg(windows)]
+    let _ = path;
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkKind {
     Symlink,
@@ -141,6 +154,48 @@ pub fn link_entry(target: &Path, link: &Path) -> io::Result<LinkKind> {
             Err(_) => std::fs::hard_link(&anchored, link).map(|()| LinkKind::Hardlink),
         }
     }
+}
+
+/// Copies `from` to `to`, a directory recursively, with each link copied as a
+/// link (through [`link_entry`]) rather than followed.
+pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+    let meta = from.symlink_metadata()?;
+    if meta.file_type().is_symlink() {
+        link_entry(&std::fs::read_link(from)?, to).map(|_| ())
+    } else if meta.is_dir() {
+        std::fs::create_dir(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_tree(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        Ok(())
+    } else {
+        std::fs::copy(from, to).map(|_| ())
+    }
+}
+
+/// [`copy_tree`] at near zero disk cost where the volume can share blocks: an
+/// APFS clone (`cp -c`) on macOS, which fails rather than fall back to a byte
+/// copy. Elsewhere it is a plain [`copy_tree`].
+pub fn clone_tree(from: &Path, to: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let out = super::process::command("/bin/cp")
+            .arg("-c")
+            .arg("-R")
+            .arg(from)
+            .arg(to)
+            .output()?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(io::Error::other(
+                String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            ))
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    copy_tree(from, to)
 }
 
 /// Removes the link at `link` and never what it points to. A directory
@@ -200,7 +255,7 @@ pub fn same_file(a: &Path, b: &Path) -> bool {
 /// The one spelling of `path` used as a key: symlinks resolved, no `\\?\`
 /// prefix, and the drive letter upper case, since `c:/x` and `C:/x` name the
 /// same folder.
-pub fn canonical(path: &Path) -> io::Result<PathBuf> {
+pub fn canonical(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let resolved = dunce::canonicalize(path)?;
     #[cfg(windows)]
     {
@@ -217,12 +272,28 @@ pub fn canonical(path: &Path) -> io::Result<PathBuf> {
 
 /// `path` as the backend emits it: forward slashes on every OS, as git prints
 /// paths on Windows too.
-pub fn display(path: &Path) -> String {
+pub fn display(path: impl AsRef<Path>) -> String {
+    let path = path.as_ref();
     #[cfg(unix)]
     let text = path.to_string_lossy().into_owned();
     #[cfg(windows)]
     let text = path.to_string_lossy().replace('\\', "/");
     text
+}
+
+/// A path string as a lookup key without touching the disk: [`display`]'s
+/// forward slashes and no trailing one, so `C:\x\` and `C:/x` are one key.
+pub fn normalize(path: &str) -> String {
+    display(Path::new(path)).trim_end_matches('/').to_string()
+}
+
+/// `~/rest` (or `~\rest`) under the home directory; any other path as given.
+pub fn expand_home(path: &str) -> PathBuf {
+    let rest = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"));
+    match (rest, dirs::home_dir()) {
+        (Some(rest), Some(home)) => home.join(rest),
+        _ => PathBuf::from(path),
+    }
 }
 
 #[cfg(test)]
@@ -290,6 +361,19 @@ mod tests {
     }
 
     #[test]
+    fn normalize_and_expand_home_take_either_separator() {
+        assert_eq!(normalize("/p/a/"), "/p/a");
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(expand_home("~/x"), home.join("x"));
+        assert_eq!(expand_home("/abs"), PathBuf::from("/abs"));
+        #[cfg(windows)]
+        {
+            assert_eq!(normalize(r"C:\p\a\"), "C:/p/a");
+            assert_eq!(expand_home(r"~\x"), home.join("x"));
+        }
+    }
+
+    #[test]
     fn canonical_resolves_a_link_to_its_target() {
         let dir = scratch("canonical");
         let target = dir.join("real");
@@ -297,7 +381,7 @@ mod tests {
         let link = dir.join("alias");
         link_entry(&target, &link).unwrap();
         assert_eq!(canonical(&link).unwrap(), canonical(&target).unwrap());
-        assert!(!display(&canonical(&target).unwrap()).contains('\\'));
+        assert!(!display(canonical(&target).unwrap()).contains('\\'));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

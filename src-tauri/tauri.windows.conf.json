@@ -4,6 +4,14 @@
     "beforeDevCommand": "pnpm lsp:install && pnpm dap:install && pnpm cli:build && pnpm dev",
     "beforeBuildCommand": "pnpm lsp:install && pnpm dap:install && pnpm cli:build && pnpm build"
   },
+  "app": {
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**", "$TEMP/**", "?:/**", "\\\\?\\?:/**"]
+      }
+    }
+  },
   "bundle": {
     "externalBin": ["binaries/tori-cli"]
   }

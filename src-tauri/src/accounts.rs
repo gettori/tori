@@ -419,8 +419,8 @@ fn absent_default_home(adapter: &crate::agents::AgentAdapter) -> Option<&Path> {
 /// Requires the path to exist, which it does: Tori creates a profile home
 /// before it stores one.
 pub fn canonicalize_home(path: &Path) -> Result<String, String> {
-    let resolved =
-        std::fs::canonicalize(path).map_err(|e| format!("cannot resolve profile home {}: {e}", path.display()))?;
+    let resolved = crate::platform::fs::canonical(path)
+        .map_err(|e| format!("cannot resolve profile home {}: {e}", path.display()))?;
     resolved
         .to_str()
         .map(|s| s.to_string())
@@ -505,22 +505,9 @@ fn create_profile_home_in(root: &Path, adapter_id: &str, profile_id: &str) -> Re
     let dir = by_adapter.join(sanitize_segment(profile_id));
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create profile home: {e}"))?;
     for level in [root, &by_adapter, &dir] {
-        restrict_to_owner(level)?;
+        crate::platform::fs::private_dir(level).map_err(|e| format!("cannot restrict {}: {e}", level.display()))?;
     }
     canonicalize_home(&dir)
-}
-
-/// `0700`, on unix. A no-op elsewhere, where the mode has no meaning.
-fn restrict_to_owner(path: &Path) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("cannot restrict {}: {e}", path.display()))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
 }
 
 /// Reduce an id to a bare path segment, for the same reason
@@ -1592,18 +1579,12 @@ mod tests {
             "adapter and profile each get a segment: {home}"
         );
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode(path), 0o700, "the profile home must be owner-only");
-            assert_eq!(mode(&std::fs::canonicalize(&root).unwrap()), 0o700, "so must the root");
-            assert_eq!(
-                mode(path.parent().unwrap()),
-                0o700,
-                "and the adapter level between them, or the profile names leak"
-            );
-        }
+        // The home, the root, and the adapter level between them, or the
+        // profile names leak.
+        use crate::platform::testing::assert_private;
+        assert_private(path);
+        assert_private(&root);
+        assert_private(path.parent().unwrap());
 
         std::fs::remove_dir_all(&root).ok();
     }
@@ -1615,7 +1596,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("tori-escape-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(&root).unwrap();
-        let canonical_root = std::fs::canonicalize(&root).unwrap();
+        let canonical_root = crate::platform::fs::canonical(&root).unwrap();
 
         let home = create_profile_home_in(&root, "../../etc", "x/../../y").unwrap();
         assert!(
@@ -1963,7 +1944,7 @@ mod tests {
         {
             let link = base.join("link");
             std::fs::remove_file(&link).ok();
-            std::os::unix::fs::symlink(&real, &link).unwrap();
+            crate::platform::testing::symlink(&real, &link);
             assert_eq!(
                 plain,
                 canonicalize_home(&link).unwrap(),

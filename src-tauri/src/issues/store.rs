@@ -41,7 +41,7 @@ type RepoIssues = HashMap<String, UnitIssue>;
 pub struct IssueStore(HashMap<String, RepoIssues>);
 
 fn norm(path: &str) -> String {
-    path.trim_end_matches('/').to_string()
+    crate::platform::fs::normalize(path)
 }
 
 fn store_path() -> PathBuf {

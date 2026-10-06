@@ -1384,26 +1384,20 @@ pub(crate) fn write_blob_to_disk(repo: &str, change: &RawChange, abs: &Path) -> 
     // An existing entry of the wrong shape (file where a symlink belongs, or
     // vice versa) has to go before the right one can be created.
     if abs.symlink_metadata().is_ok() {
-        std::fs::remove_file(abs).map_err(|e| e.to_string())?;
+        crate::platform::fs::unlink_entry(abs).map_err(|e| e.to_string())?;
     }
     if change.dst_mode == "120000" {
-        #[cfg(unix)]
-        {
-            let target = String::from_utf8_lossy(&out.stdout).into_owned();
-            std::os::unix::fs::symlink(target, abs).map_err(|e| e.to_string())?;
-            return Ok(());
-        }
-        #[cfg(not(unix))]
-        {
+        let target = String::from_utf8_lossy(&out.stdout).into_owned();
+        // Where no link can be made (Windows without Developer Mode, a target
+        // that is gone), the plain file git itself writes with `core.symlinks` off.
+        if crate::platform::fs::link_entry(Path::new(&target), abs).is_err() {
             std::fs::write(abs, &out.stdout).map_err(|e| e.to_string())?;
-            return Ok(());
         }
+        return Ok(());
     }
     std::fs::write(abs, &out.stdout).map_err(|e| e.to_string())?;
-    #[cfg(unix)]
     if change.dst_mode == "100755" {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(abs, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        crate::platform::fs::make_executable(abs).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -2752,22 +2746,14 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         let script = dir.join("run.sh");
         std::fs::write(&script, "#!/bin/sh\necho v1\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        crate::platform::fs::make_executable(&script).unwrap();
         checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
         std::fs::write(&script, "#!/bin/sh\necho v2\n").unwrap();
 
         checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
 
         assert_eq!(std::fs::read_to_string(&script).unwrap(), "#!/bin/sh\necho v1\n");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(std::fs::metadata(&script).unwrap().permissions().mode() & 0o111, 0o111);
-        }
+        crate::platform::testing::assert_executable(&script);
         cleanup(&dir, &sid);
     }
 

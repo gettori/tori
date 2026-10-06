@@ -169,9 +169,9 @@ fn absolutize(args: &mut Map<String, Value>, cwd: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::ipc::UnixListener;
     use crate::rpc::client::{Endpoint, Found};
     use std::io::{BufReader, Cursor};
-    use std::os::unix::net::UnixListener;
     use std::time::Duration;
 
     struct Fake {

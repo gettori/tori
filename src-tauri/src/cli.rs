@@ -357,9 +357,13 @@ fn home_relative(path: &str) -> String {
     let Some(home) = dirs::home_dir() else {
         return path.to_string();
     };
-    match path.strip_prefix(&*home.to_string_lossy()) {
+    let (path, home) = (
+        crate::platform::fs::normalize(path),
+        crate::platform::fs::display(&home),
+    );
+    match path.strip_prefix(&home) {
         Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("~{rest}"),
-        _ => path.to_string(),
+        _ => path,
     }
 }
 

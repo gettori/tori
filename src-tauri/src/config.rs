@@ -196,12 +196,7 @@ fn config_path() -> PathBuf {
 }
 
 fn expand_tilde(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest).to_string_lossy().into_owned();
-        }
-    }
-    path.to_string()
+    crate::platform::fs::expand_home(path).to_string_lossy().into_owned()
 }
 
 fn basename(p: &Path) -> String {
@@ -296,7 +291,7 @@ fn parse_worktrees(text: &str) -> Vec<WtEntry> {
 // adopted.json (sessions.rs). Keyed by normalized repo path.
 
 fn norm(path: &str) -> String {
-    path.trim_end_matches('/').to_string()
+    crate::platform::fs::normalize(path)
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -387,7 +382,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
             }
             units.push(BranchUnit {
                 label: name.clone(),
-                folder_path: path.to_string_lossy().into_owned(),
+                folder_path: crate::platform::fs::display(path),
                 branch: Some(name),
                 kind: ProjectKind::Plain,
                 is_current: current,
@@ -403,7 +398,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
         match current_branch(path) {
             Some(b) => units.push(BranchUnit {
                 label: b.clone(),
-                folder_path: path.to_string_lossy().into_owned(),
+                folder_path: crate::platform::fs::display(path),
                 branch: Some(b),
                 kind: ProjectKind::Plain,
                 is_current: true,
@@ -411,7 +406,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
             }),
             None => units.push(BranchUnit {
                 label: basename(path),
-                folder_path: path.to_string_lossy().into_owned(),
+                folder_path: crate::platform::fs::display(path),
                 branch: None,
                 kind: ProjectKind::Plain,
                 is_current: false,
@@ -478,7 +473,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
         // Not a git repo at all.
         return vec![BranchUnit {
             label: basename(path),
-            folder_path: path.to_string_lossy().into_owned(),
+            folder_path: crate::platform::fs::display(path),
             branch: None,
             kind: ProjectKind::PlainDir,
             is_current: false,
@@ -507,7 +502,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     if real.is_empty() {
         return vec![BranchUnit {
             label: basename(path),
-            folder_path: path.to_string_lossy().into_owned(),
+            folder_path: crate::platform::fs::display(path),
             branch: None,
             kind: ProjectKind::Incomplete,
             is_current: false,
@@ -610,7 +605,7 @@ fn ensure_space_idx(spaces: &mut Vec<Space>, name: &str, path: &Path) -> usize {
     }
     spaces.push(Space {
         name: name.to_string(),
-        path: path.to_string_lossy().into_owned(),
+        path: crate::platform::fs::display(path),
         projects: Vec::new(),
         icon: None,
         color: None,
@@ -690,7 +685,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 
     let unit_issues = crate::issues::store::IssueStore::load();
     let mut add_project = |spaces: &mut Vec<Space>, gi: usize, ppath: PathBuf| {
-        let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
+        let canon = crate::platform::fs::canonical(&ppath).unwrap_or_else(|_| ppath.clone());
         if !seen.insert(canon) {
             return; // reachable more than once: keep the first
         }
@@ -699,7 +694,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         crate::issues::store::attach(&mut branch_units, unit_issues.for_repo(&ppath.to_string_lossy()));
         let project = Project {
             name: basename(&ppath),
-            path: ppath.to_string_lossy().into_owned(),
+            path: crate::platform::fs::display(&ppath),
             favicon: project_favicon(&ppath, &branch_units),
             branch_units,
             icon: None,
@@ -756,12 +751,12 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         for (gi, g) in spaces.iter().enumerate() {
             for (pi, p) in g.projects.iter().enumerate() {
                 let pp = PathBuf::from(&p.path);
-                by_path.insert(pp.canonicalize().unwrap_or(pp), (gi, pi));
+                by_path.insert(crate::platform::fs::canonical(&pp).unwrap_or(pp), (gi, pi));
             }
         }
         for meta in &raw.project_meta {
             let want = PathBuf::from(expand_tilde(&meta.path));
-            let want = want.canonicalize().unwrap_or(want);
+            let want = crate::platform::fs::canonical(&want).unwrap_or(want);
             let Some(&(gi, pi)) = by_path.get(&want) else {
                 continue; // an entry for a project that is no longer discovered
             };
@@ -801,7 +796,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     }
 
     ResolvedConfig {
-        path: config_path().to_string_lossy().into_owned(),
+        path: crate::platform::fs::display(config_path()),
         roots,
         spaces,
     }
@@ -812,7 +807,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 #[cfg(test)]
 pub(crate) fn resolve_root(root: &Path, index: &ProjectIndex) -> ResolvedConfig {
     let discovery = RawDiscovery {
-        roots: vec![root.to_string_lossy().into_owned()],
+        roots: vec![crate::platform::fs::display(root)],
         ignore: Vec::new(),
     };
     resolve(
@@ -1472,7 +1467,7 @@ pub fn add_space(
         write_space_meta(&n, icon, color)?;
     }
     let _ = app.emit("config://changed", ()); // explicit re-discovery
-    Ok(dir.to_string_lossy().into_owned())
+    Ok(crate::platform::fs::display(&dir))
 }
 
 /// Set (or clear) a space's icon, keyed by name. The edit path only: creates no
@@ -1539,7 +1534,7 @@ pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<St
     // Tori created it: adopt so a path reused over old sessions is not historical.
     let _ = crate::sessions::adopt(&dir.to_string_lossy());
     let _ = app.emit("config://changed", ()); // explicit re-discovery
-    Ok(dir.to_string_lossy().into_owned())
+    Ok(crate::platform::fs::display(&dir))
 }
 
 /// Explicitly ask the UI to re-discover (emits the same event the watchers do).
@@ -1579,8 +1574,9 @@ pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
 /// a symlinked space resolving outside the root is refused, never followed.
 fn do_delete_space(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     let root = root.ok_or("No base folder configured")?;
-    let root_c = std::fs::canonicalize(expand_tilde(root)).map_err(|_| "Base folder does not exist".to_string())?;
-    let dir_c = std::fs::canonicalize(path).map_err(|_| "Space folder does not exist".to_string())?;
+    let root_c =
+        crate::platform::fs::canonical(expand_tilde(root)).map_err(|_| "Base folder does not exist".to_string())?;
+    let dir_c = crate::platform::fs::canonical(path).map_err(|_| "Space folder does not exist".to_string())?;
     if dir_c == root_c {
         return Err("Refusing to delete the base folder itself".into());
     }
@@ -1621,8 +1617,9 @@ pub fn delete_space(app: AppHandle, path: String) -> Result<(), String> {
 /// checked by the caller (probe), not here.
 fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     let root = root.ok_or("No base folder configured")?;
-    let root_c = std::fs::canonicalize(expand_tilde(root)).map_err(|_| "Base folder does not exist".to_string())?;
-    let dir_c = std::fs::canonicalize(path).map_err(|_| "Folder does not exist".to_string())?;
+    let root_c =
+        crate::platform::fs::canonical(expand_tilde(root)).map_err(|_| "Base folder does not exist".to_string())?;
+    let dir_c = crate::platform::fs::canonical(path).map_err(|_| "Folder does not exist".to_string())?;
     if dir_c == root_c {
         return Err("Refusing to delete the base folder itself".into());
     }
@@ -2740,7 +2737,7 @@ mod tests {
         let rs = root.to_str().unwrap();
         // A direct child of the root is a space: accepted, returns the canonical dir.
         let ok = do_delete_space(Some(rs), space_dir.to_str().unwrap()).unwrap();
-        assert_eq!(ok, std::fs::canonicalize(&space_dir).unwrap());
+        assert_eq!(ok, crate::platform::fs::canonical(&space_dir).unwrap());
         // The root itself, a grandchild (a project), and an outside path are refused.
         assert!(do_delete_space(Some(rs), rs).is_err());
         assert!(do_delete_space(Some(rs), nested.to_str().unwrap()).is_err());
@@ -2765,7 +2762,7 @@ mod tests {
         let rs = root.to_str().unwrap();
         // A folder under a space (grandchild of the root) is accepted.
         let ok = do_remove_folder(Some(rs), folder.to_str().unwrap()).unwrap();
-        assert_eq!(ok, std::fs::canonicalize(&folder).unwrap());
+        assert_eq!(ok, crate::platform::fs::canonical(&folder).unwrap());
         // The root itself, a space (direct child of the root), and an outside path
         // are all refused.
         assert!(do_remove_folder(Some(rs), rs).is_err());

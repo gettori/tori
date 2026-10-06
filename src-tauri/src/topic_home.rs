@@ -221,14 +221,17 @@ pub struct HomeLaunch {
 pub fn launch_for(store: &crate::topics::Store, cwd: &str) -> Option<HomeLaunch> {
     // Checked before the listing, which reconciles every member against git:
     // most chats are not in a home, and they should not pay for it.
-    let homes = std::fs::canonicalize(store.path().parent()?.join("topics")).ok()?;
-    let target = std::fs::canonicalize(cwd).ok()?;
+    let homes = crate::platform::fs::canonical(store.path().parent()?.join("topics")).ok()?;
+    let target = crate::platform::fs::canonical(cwd).ok()?;
     if target.parent() != Some(homes.as_path()) {
         return None;
     }
-    let topic = crate::topics::list_topics(store)
-        .into_iter()
-        .find(|t| std::fs::canonicalize(home_dir(store.path(), &t.id)).ok().as_ref() == Some(&target))?;
+    let topic = crate::topics::list_topics(store).into_iter().find(|t| {
+        crate::platform::fs::canonical(home_dir(store.path(), &t.id))
+            .ok()
+            .as_ref()
+            == Some(&target)
+    })?;
     let mut out = HomeLaunch {
         note: crate::rpc::events::from_tori("topic", None, &note(&topic)),
         ..Default::default()
@@ -371,9 +374,9 @@ pub fn tell_home_chats(
         .filter(|r| !before.roots.contains(r))
         .collect();
     let text = format!("The Topic {} changed. This is how it stands now.\n\n{now}", topic.name);
-    let home = std::fs::canonicalize(home).unwrap_or_else(|_| PathBuf::from(home));
+    let home = crate::platform::fs::canonical(home).unwrap_or_else(|_| PathBuf::from(home));
     for (session, cwd) in live {
-        if std::fs::canonicalize(cwd).unwrap_or_else(|_| PathBuf::from(cwd)) != home {
+        if crate::platform::fs::canonical(cwd).unwrap_or_else(|_| PathBuf::from(cwd)) != home {
             continue;
         }
         if !added.is_empty() {

@@ -556,7 +556,7 @@ pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
     };
     // Canonical, as the spawn's own lookup is, so a cwd spelled another way
     // still finds its Topic.
-    let real = |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
+    let real = |p: &str| crate::platform::fs::canonical(p).unwrap_or_else(|_| p.into());
     let topics = crate::unit_home::topics();
     let Some(topic) = topics
         .iter()

@@ -1469,7 +1469,6 @@ mod tests {
     #[test]
     fn debugpy_reads_found_only_while_toris_own_venv_runs() {
         use crate::health::BinaryStatus;
-        use std::os::unix::fs::PermissionsExt;
 
         let debugpy = registry::find("debugpy").expect("debugpy is registered");
         let pinned = debugpy
@@ -1491,7 +1490,7 @@ mod tests {
                 let python = staging.join("venv/bin/python");
                 std::fs::create_dir_all(python.parent().unwrap()).unwrap();
                 std::fs::write(&python, format!("#!/bin/sh\n{script}\n")).unwrap();
-                std::fs::set_permissions(&python, std::fs::Permissions::from_mode(0o755)).unwrap();
+                crate::platform::fs::make_executable(&python).unwrap();
                 Ok(crate::lsp::managed::Installed {
                     version: pinned.clone(),
                     bin: "venv/bin/python".into(),

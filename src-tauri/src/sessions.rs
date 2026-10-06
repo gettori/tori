@@ -98,7 +98,7 @@ pub struct SessionIndex(Mutex<HashMap<PathBuf, CacheEntry>>);
 pub struct SessionWatch(pub Mutex<Option<RecommendedWatcher>>);
 
 fn norm(path: &str) -> String {
-    path.trim_end_matches('/').to_string()
+    crate::platform::fs::normalize(path)
 }
 
 fn epoch_secs(t: SystemTime) -> u64 {
@@ -415,7 +415,7 @@ fn parse_session(path: &PathBuf, mtime: SystemTime, created: SystemTime, agent_i
     let cwd = cwd?;
     Some(SessionMeta {
         id,
-        path: path.to_string_lossy().into_owned(),
+        path: crate::platform::fs::display(path),
         cwd,
         branch: branch.unwrap_or_default(),
         title: title.unwrap_or_else(|| "(untitled session)".into()),
@@ -1399,12 +1399,12 @@ pub(crate) struct TouchAcc {
 /// attempted beyond that (best-effort, matching the Bash inference it mostly
 /// serves).
 pub(crate) fn normalize_touch_path(path: &str, cwd: &str) -> String {
-    let p = path.trim();
-    if p.starts_with('/') {
-        p.to_string()
+    let p = crate::platform::fs::display(Path::new(path.trim()));
+    if Path::new(&p).is_absolute() {
+        p
     } else {
-        let p = p.strip_prefix("./").unwrap_or(p);
-        format!("{}/{}", cwd.trim_end_matches('/'), p)
+        let p = p.strip_prefix("./").unwrap_or(&p);
+        format!("{}/{}", crate::platform::fs::normalize(cwd), p)
     }
 }
 
@@ -2205,7 +2205,7 @@ fn find_transcript(roots: &[Root<'_>], session_id: &str) -> Option<Transcript> {
             for f in files.flatten() {
                 if f.file_name().to_str().is_some_and(matches) {
                     return Some(Transcript {
-                        path: f.path().to_string_lossy().into_owned(),
+                        path: crate::platform::fs::display(f.path()),
                         profile: root.profile.clone(),
                     });
                 }

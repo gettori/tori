@@ -305,14 +305,13 @@ pub fn delete_in_home(entry: &ConfigEntry, home: &Path, name: &str) -> Result<Pa
     // rules out the filesystem. A `root` reached through a link is fine (its
     // canonical form is the link's target, and the child canonicalizes under
     // the same one); a child that escapes it is not.
-    let canonical_root = root
-        .canonicalize()
-        .map_err(|e| format!("cannot resolve {}: {e}", root.display()))?;
+    let canonical_root =
+        crate::platform::fs::canonical(&root).map_err(|e| format!("cannot resolve {}: {e}", root.display()))?;
     let parent = child
         .parent()
-        .ok_or_else(|| format!("{} has no parent", child.display()))?
-        .canonicalize()
-        .map_err(|e| format!("cannot resolve {}: {e}", child.display()))?;
+        .ok_or_else(|| format!("{} has no parent", child.display()))?;
+    let parent =
+        crate::platform::fs::canonical(parent).map_err(|e| format!("cannot resolve {}: {e}", child.display()))?;
     if parent != canonical_root {
         return Err(format!("{} is not inside {}", child.display(), root.display()));
     }
@@ -507,8 +506,8 @@ mod tests {
             },
         ];
         std::fs::write(home.join("here.md"), "x").unwrap();
-        std::os::unix::fs::symlink(home.join("here.md"), home.join("linked.md")).unwrap();
-        std::os::unix::fs::symlink(home.join("nowhere.md"), home.join("broken.md")).unwrap();
+        crate::platform::testing::symlink(&home.join("here.md"), &home.join("linked.md"));
+        crate::platform::testing::symlink(&home.join("nowhere.md"), &home.join("broken.md"));
 
         let views = entries_for_home(&entries, &home);
         assert_eq!(views[0].state, EntryState::Missing);
@@ -621,7 +620,7 @@ mod tests {
     #[test]
     fn a_dangling_entry_refuses_to_be_written_through() {
         let home = tmp_home();
-        std::os::unix::fs::symlink(home.join("gone-elsewhere"), home.join("skills")).unwrap();
+        crate::platform::testing::symlink(&home.join("gone-elsewhere"), &home.join("skills"));
 
         let err = create_in_home(&dir_entry(), &home, "anything").unwrap_err();
         assert!(
@@ -684,7 +683,7 @@ mod tests {
         std::fs::create_dir_all(real.join("inner")).unwrap();
         std::fs::write(real.join("SKILL.md"), "x").unwrap();
         std::fs::create_dir_all(home.join("skills")).unwrap();
-        std::os::unix::fs::symlink(&real, home.join("skills/linked")).unwrap();
+        crate::platform::testing::symlink(&real, &home.join("skills/linked"));
 
         delete_in_home(&dir_entry(), &home, "linked").unwrap();
 

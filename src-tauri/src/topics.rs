@@ -215,7 +215,7 @@ pub fn new_id(branch: &str) -> String {
 }
 
 fn canon(path: &str) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+    crate::platform::fs::canonical(path).unwrap_or_else(|_| PathBuf::from(path))
 }
 
 fn same_path(a: &str, b: &str) -> bool {
@@ -1274,7 +1274,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tori-topics-{}-{seq}", now_ms()));
         std::fs::create_dir_all(&dir).unwrap();
         // git reports resolved paths, and macOS resolves `/var` to `/private/var`.
-        std::fs::canonicalize(dir).unwrap()
+        crate::platform::fs::canonical(dir).unwrap()
     }
 
     fn git(dir: &Path, args: &[&str]) {

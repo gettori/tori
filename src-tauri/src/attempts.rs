@@ -98,7 +98,7 @@ fn live_worktree_paths(root: &str) -> Option<Vec<PathBuf>> {
 }
 
 fn canon(path: &str) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+    crate::platform::fs::canonical(path).unwrap_or_else(|_| PathBuf::from(path))
 }
 
 /// The attempts that still exist, reconciled against git.
@@ -147,18 +147,9 @@ fn forget(root: &str, path: &str) -> Result<(), String> {
     write_map(root, &map)
 }
 
-/// Clone the dependency and build directories an attempt needs to run.
-///
-/// `cp -c` asks APFS for a copy-on-write clone and **fails** rather than falling
-/// back to a byte copy, which is what makes the disk cost of three attempts a
-/// rounding error instead of three `node_modules`. A failure is not fatal: the
-/// attempt is still a valid worktree, it just needs its own install, so this
-/// returns the names it could not clone rather than aborting the creation.
-///
-/// `-R` keeps symlinks as symlinks, which is the half that matters for
-/// `node_modules/.bin`: those entries are *relative* links into sibling
-/// packages, so copying them as links resolves inside the attempt, while
-/// following them would flatten each into a copy of the original.
+// An APFS clone fails rather than byte-copying, and a failure only means the
+// attempt needs its own install, so the names that failed come back. Links stay
+// links: `.bin` entries are relative and must resolve inside the attempt.
 fn clone_dep_dirs(source: &Path, dest: &Path) -> Vec<String> {
     let mut failed = Vec::new();
     for name in CLONED_DIRS {
@@ -170,15 +161,7 @@ fn clone_dep_dirs(source: &Path, dest: &Path) -> Vec<String> {
         if to.symlink_metadata().is_ok() {
             continue; // the branch tracks it; never clobber real content
         }
-        let ok = crate::platform::process::command("cp")
-            .arg("-c")
-            .arg("-R")
-            .arg(&from)
-            .arg(&to)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if !ok {
+        if crate::platform::fs::clone_tree(&from, &to).is_err() {
             let _ = std::fs::remove_dir_all(&to);
             failed.push((*name).to_string());
         }
@@ -466,7 +449,7 @@ mod tests {
             // Canonicalized because macOS resolves `/var` to `/private/var`, and
             // git reports the resolved form: an uncanonicalized root would make
             // every path comparison in here a false negative.
-            let path = std::fs::canonicalize(&path).expect("canonical scratch");
+            let path = crate::platform::fs::canonical(&path).expect("canonical scratch");
             let root = path.to_string_lossy().into_owned();
             Self { path, root }
         }
@@ -755,7 +738,8 @@ mod tests {
     ///
     /// Disk growth is asserted as a ratio rather than an absolute, because a
     /// clone's cost on APFS is metadata and the point is that three attempts do
-    /// not cost three trees.
+    /// not cost three trees. Only APFS shares blocks, so only macOS runs it.
+    #[cfg(target_os = "macos")]
     #[test]
     fn cloned_dependencies_are_usable_and_cost_far_less_than_three_copies() {
         let dir = repo("clone");
@@ -770,7 +754,7 @@ mod tests {
         std::fs::write(nm.join("left/bin/cli.js"), vec![b'x'; 24 * MB]).unwrap();
         std::fs::write(nm.join("left/index.js"), vec![b'y'; 24 * MB]).unwrap();
         // The real shape: a *relative* link, which is why it can travel at all.
-        std::os::unix::fs::symlink("../left/bin/cli.js", nm.join(".bin/cli")).unwrap();
+        crate::platform::testing::symlink(std::path::Path::new("../left/bin/cli.js"), &nm.join(".bin/cli"));
 
         let baseline = free_kb(root);
         let container = root.join(ATTEMPTS_DIR);
@@ -794,9 +778,9 @@ mod tests {
                 ".bin entries must stay symlinks, not become copies"
             );
             // Resolves inside this attempt, not back at the origin.
-            let resolved = std::fs::canonicalize(&link).expect(".bin link resolves");
+            let resolved = crate::platform::fs::canonical(&link).expect(".bin link resolves");
             assert!(
-                resolved.starts_with(std::fs::canonicalize(&target).unwrap()),
+                resolved.starts_with(crate::platform::fs::canonical(&target).unwrap()),
                 "the .bin link escaped its attempt: {resolved:?}"
             );
         }
@@ -816,8 +800,9 @@ mod tests {
     /// nothing about blocks two files share, so a perfect clone reads there as a
     /// full second copy. Measured directly while writing this: three clones of a
     /// 200MB tree consumed zero blocks and `du` still reported 200MB apiece.
+    #[cfg(target_os = "macos")]
     fn free_kb(path: &Path) -> i64 {
-        let out = crate::platform::process::command("df")
+        let out = crate::platform::process::command(crate::env::resolve_binary("df").expect("df is installed"))
             .arg("-k")
             .arg(path)
             .output()
@@ -831,8 +816,9 @@ mod tests {
     }
 
     /// What one copy *would* cost, which is what `du` is actually good for.
+    #[cfg(target_os = "macos")]
     fn apparent_kb(path: &Path) -> i64 {
-        let out = crate::platform::process::command("du")
+        let out = crate::platform::process::command(crate::env::resolve_binary("du").expect("du is installed"))
             .arg("-sk")
             .arg(path)
             .output()

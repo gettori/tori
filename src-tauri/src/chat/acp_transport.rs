@@ -1313,7 +1313,7 @@ async fn refresh_listing(conn: &ConnectionTo<Agent>, agent: &str, cwd: &str) -> 
 /// a listed row becomes is testable without a filesystem, and this is the one
 /// part of the question only the filesystem can answer.
 fn canonical(path: &str) -> Option<String> {
-    std::fs::canonicalize(path)
+    crate::platform::fs::canonical(path)
         .ok()
         .map(|p| p.to_string_lossy().into_owned())
 }

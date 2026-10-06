@@ -262,7 +262,7 @@ fn pick_worktree_folder(container: &Path, branch: &str) -> Result<String, String
     ))
 }
 
-/// Symlink each top-level entry of `<container>/.shared/` into a freshly created
+/// Link each top-level entry of `<container>/.shared/` into a freshly created
 /// worktree, skipping names the worktree already has (a branch tracking the file
 /// is never clobbered). Bare-container convention; a no-op when `.shared/` is absent.
 pub(crate) fn link_shared(container: &Path, worktree: &Path) {
@@ -276,7 +276,24 @@ pub(crate) fn link_shared(container: &Path, worktree: &Path) {
         if dest.symlink_metadata().is_ok() {
             continue;
         }
-        let _ = std::os::unix::fs::symlink(e.path(), &dest);
+        let _ = crate::platform::fs::link_entry(&e.path(), &dest);
+    }
+}
+
+// Before git deletes the folder: on Windows it can walk into a junction and
+// empty the shared entry it points at.
+fn unlink_shared(worktree: &Path) {
+    let Some(shared_dir) = worktree.parent().map(shared_dir) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&shared_dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let link = worktree.join(e.file_name());
+        if crate::platform::fs::is_link_into(&link, &e.path()) {
+            let _ = crate::platform::fs::unlink_entry(&link);
+        }
     }
 }
 
@@ -322,7 +339,7 @@ pub(crate) fn create_worktree_body(
     }
 
     let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path), base.as_deref())?;
-    let target_str = target.to_string_lossy().into_owned();
+    let target_str = crate::platform::fs::display(&target);
     // Tori created this folder: adopt it so reusing a path that held old sessions
     // does not surface them as historical.
     let _ = crate::sessions::adopt(&target_str);
@@ -344,7 +361,7 @@ pub async fn create_pr_worktree(
 ) -> Result<String, String> {
     crate::exec::git_write("create_pr_worktree", repo_path.clone(), move || {
         let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path), setup)?;
-        let target = target.to_string_lossy().into_owned();
+        let target = crate::platform::fs::display(&target);
         let _ = crate::sessions::adopt(&target);
         let _ = app.emit("config://changed", ());
         Ok(target)
@@ -435,7 +452,7 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
 
     let folder = pick_worktree_folder(container, branch)?;
     let target = container.join(&folder);
-    let target_str = target.to_string_lossy().into_owned();
+    let target_str = crate::platform::fs::display(&target);
 
     if branch_exists(repo, branch) {
         git_ok(repo, &["worktree", "add", &target_str, branch])?;
@@ -474,12 +491,9 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
     Ok((target, true))
 }
 
-/// Is the worktree dirty in a way that should block removal? Tracked
-/// modifications and genuine untracked files count; an untracked symlink that
-/// points into the sibling `.shared/` does NOT (we created it and it is a
-/// regenerable pointer to a shared file, not user work). Without this exception a
-/// freshly created worktree that linked any `.shared/` file would read as dirty and
-/// could never be removed. See [[gotchas#shared-symlinks-read-as-untracked-and-block-worktree-removal]].
+// An untracked link into the sibling `.shared/` is ours and regenerable, not
+// work; counting it would make every linked worktree unremovable. See
+// [[gotchas#shared-symlinks-read-as-untracked-and-block-worktree-removal]].
 fn tree_dirty(worktree: &Path) -> Result<bool, String> {
     let out = crate::exec::git_in(worktree)
         .args(["status", "--porcelain"])
@@ -489,17 +503,21 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    let shared_canon = worktree
-        .parent()
-        .map(|c| c.join(SHARED_DIR))
-        .and_then(|d| std::fs::canonicalize(d).ok());
+    let shared = worktree.parent().map(|c| c.join(SHARED_DIR));
+    let shared_canon = shared.as_ref().and_then(|d| crate::platform::fs::canonical(d).ok());
 
     for line in text.lines() {
         if line.is_empty() {
             continue;
         }
         if let Some(name) = line.strip_prefix("?? ") {
-            // An untracked entry: a .shared symlink is not dirt, anything else is.
+            // An untracked entry: a .shared link is not dirt, anything else is.
+            let entry = name.trim_end_matches('/');
+            if shared.as_ref().is_some_and(|dir| {
+                !entry.contains('/') && crate::platform::fs::is_link_into(&worktree.join(entry), &dir.join(entry))
+            }) {
+                continue;
+            }
             if let Some(ref lc) = shared_canon {
                 let p = worktree.join(name);
                 let is_link = p
@@ -507,7 +525,7 @@ fn tree_dirty(worktree: &Path) -> Result<bool, String> {
                     .map(|m| m.file_type().is_symlink())
                     .unwrap_or(false);
                 if is_link {
-                    if let Ok(target) = std::fs::canonicalize(&p) {
+                    if let Ok(target) = crate::platform::fs::canonical(&p) {
                         if target.starts_with(lc) {
                             continue;
                         }
@@ -714,6 +732,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
     crate::setup::kill(Path::new(worktree_path));
+    unlink_shared(Path::new(worktree_path));
     git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?;
     prune_worktrees(repo_path);
     Ok(())
@@ -904,7 +923,7 @@ mod tests {
         // A linked .shared/ file shows as untracked but must NOT count as dirty.
         std::fs::create_dir_all(cont.join(".shared")).unwrap();
         std::fs::write(cont.join(".shared/.env"), "x").unwrap();
-        std::os::unix::fs::symlink(cont.join(".shared/.env"), wt.join(".env")).unwrap();
+        crate::platform::fs::link_entry(&cont.join(".shared/.env"), &wt.join(".env")).unwrap();
         assert!(!tree_dirty(&wt).unwrap(), "a .shared symlink alone is not dirty");
 
         // A genuine untracked file makes it dirty.
@@ -1032,8 +1051,8 @@ mod tests {
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first);
         let again = create_pr_worktree_in(repo, 7, &first, &cont, true).unwrap();
         assert_eq!(
-            again.canonicalize().unwrap(),
-            wt.canonicalize().unwrap(),
+            crate::platform::fs::canonical(&again).unwrap(),
+            crate::platform::fs::canonical(&wt).unwrap(),
             "the same head reuses it"
         );
 
@@ -1200,7 +1219,7 @@ mod tests {
 
     #[test]
     fn a_created_worktree_runs_setup_once_and_removing_it_kills_the_run() {
-        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let tmp = crate::platform::fs::canonical(unique_tmp()).unwrap();
         let repo = tmp.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-q"]);
@@ -1251,7 +1270,7 @@ mod tests {
     #[test]
     fn create_worktree_in_fills_a_plain_repo_container_and_never_adopts_main() {
         // Canonical up front: git lists resolved paths and macOS resolves /var.
-        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let tmp = crate::platform::fs::canonical(unique_tmp()).unwrap();
         let repo = tmp.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-q"]);
@@ -1293,7 +1312,7 @@ mod tests {
 
     #[test]
     fn a_worktree_for_a_branch_only_on_origin_tracks_it() {
-        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let tmp = crate::platform::fs::canonical(unique_tmp()).unwrap();
         let src = tmp.join("src");
         std::fs::create_dir_all(&src).unwrap();
         git(&src, &["init", "-q"]);

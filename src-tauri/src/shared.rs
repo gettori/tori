@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::platform;
 use crate::worktree::shared_dir;
 
 /// What one worktree holds at an entry's name.
@@ -85,15 +86,13 @@ fn link_state(worktree: &Path, shared: &Path, name: &str) -> LinkState {
     let Ok(meta) = dest.symlink_metadata() else {
         return LinkState::Missing;
     };
-    if !meta.file_type().is_symlink() {
-        return LinkState::Shadowed;
-    }
     let want = shared.join(name);
-    let same = std::fs::read_link(&dest).is_ok_and(|t| {
-        let t = if t.is_absolute() { t } else { worktree.join(t) };
-        t == want || (t.canonicalize().ok() == want.canonicalize().ok() && want.exists())
-    });
-    if same {
+    let names_it = meta.file_type().is_symlink()
+        && std::fs::read_link(&dest).is_ok_and(|t| {
+            let t = if t.is_absolute() { t } else { worktree.join(t) };
+            t == want
+        });
+    if names_it || platform::fs::is_link_into(&dest, &want) {
         LinkState::Linked
     } else {
         LinkState::Shadowed
@@ -291,7 +290,7 @@ fn link_in(shared: &Path, worktrees: &[PathBuf], name: &str) -> Result<u32, Stri
         if link_state(w, shared, name) != LinkState::Missing {
             continue;
         }
-        std::os::unix::fs::symlink(&src, w.join(name)).map_err(|e| e.to_string())?;
+        platform::fs::link_entry(&src, &w.join(name)).map_err(|e| e.to_string())?;
         linked += 1;
     }
     Ok(linked)
@@ -304,7 +303,7 @@ fn remove_in(shared: &Path, worktrees: &[PathBuf], name: &str) -> Result<(), Str
     }
     for w in worktrees {
         if link_state(w, shared, name) == LinkState::Linked {
-            let _ = std::fs::remove_file(w.join(name));
+            let _ = platform::fs::unlink_entry(&w.join(name));
         }
     }
     if target.is_dir() && !target.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
@@ -406,7 +405,7 @@ pub fn shared_add(container: String, worktree: String, name: String) -> Result<u
     }
     std::fs::create_dir_all(&shared).map_err(|e| e.to_string())?;
     std::fs::rename(&src, &dest).map_err(|e| e.to_string())?;
-    std::os::unix::fs::symlink(&dest, &src).map_err(|e| e.to_string())?;
+    platform::fs::link_entry(&dest, &src).map_err(|e| e.to_string())?;
     Ok(link_in(&shared, &live_worktrees(&container), name)? + 1)
 }
 
@@ -430,7 +429,7 @@ pub fn shared_keep_in(container: String, worktree: String, name: String) -> Resu
         if link_state(&other, &shared, name) != LinkState::Linked {
             continue;
         }
-        std::fs::remove_file(other.join(name)).map_err(|e| e.to_string())?;
+        platform::fs::unlink_entry(&other.join(name)).map_err(|e| e.to_string())?;
         if other != w {
             dropped += 1;
         }
@@ -439,7 +438,7 @@ pub fn shared_keep_in(container: String, worktree: String, name: String) -> Resu
     // A worktree git does not list keeps its link through the loop, and the
     // guard below would take that link for a file of its own.
     if link_state(&w, &shared, name) == LinkState::Linked {
-        std::fs::remove_file(&dest).map_err(|e| e.to_string())?;
+        platform::fs::unlink_entry(&dest).map_err(|e| e.to_string())?;
     }
     // Its link is gone by now, so anything still here is the worktree's own and
     // the move would silently replace it.
@@ -476,7 +475,7 @@ pub fn shared_unlink(container: String, worktree: String, name: String) -> Resul
     if link_state(&w, &shared, name) != LinkState::Linked {
         return Err(format!("That worktree has no link to \"{name}\"."));
     }
-    std::fs::remove_file(w.join(name)).map_err(|e| e.to_string())
+    platform::fs::unlink_entry(&w.join(name)).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -524,7 +523,7 @@ mod tests {
         let (root, shared, wts) = container(3);
         let src = put(&shared, ".env", "x");
 
-        std::os::unix::fs::symlink(&src, wts[0].join(".env")).unwrap();
+        platform::fs::link_entry(&src, &wts[0].join(".env")).unwrap();
         fs::write(wts[1].join(".env"), "mine").unwrap();
 
         assert_eq!(link_state(&wts[0], &shared, ".env"), LinkState::Linked);
@@ -534,7 +533,7 @@ mod tests {
         assert_eq!(link_state(&wts[2], &shared, ".env"), LinkState::Missing);
 
         let elsewhere = put(&root, "other", "x");
-        std::os::unix::fs::symlink(&elsewhere, wts[2].join(".env")).unwrap();
+        platform::fs::link_entry(&elsewhere, &wts[2].join(".env")).unwrap();
         assert_eq!(link_state(&wts[2], &shared, ".env"), LinkState::Shadowed);
 
         fs::remove_dir_all(&root).ok();
@@ -544,7 +543,7 @@ mod tests {
     fn link_reaches_only_the_worktrees_holding_nothing_of_that_name() {
         let (root, shared, wts) = container(3);
         let src = put(&shared, ".env", "x");
-        std::os::unix::fs::symlink(&src, wts[0].join(".env")).unwrap();
+        platform::fs::link_entry(&src, &wts[0].join(".env")).unwrap();
         fs::write(wts[1].join(".env"), "mine").unwrap();
 
         // Only wt2 is reachable: wt0 already holds ours, and wt1's own file is
@@ -560,7 +559,7 @@ mod tests {
     fn remove_takes_the_links_with_it_and_leaves_a_shadowing_file() {
         let (root, shared, wts) = container(3);
         let src = put(&shared, ".env", "x");
-        std::os::unix::fs::symlink(&src, wts[0].join(".env")).unwrap();
+        platform::fs::link_entry(&src, &wts[0].join(".env")).unwrap();
         fs::write(wts[1].join(".env"), "mine").unwrap();
 
         remove_in(&shared, &wts, ".env").unwrap();
@@ -581,7 +580,7 @@ mod tests {
         let (root, shared, wts) = container(3);
         let src = put(&shared, ".env", "x");
         put(&shared, ".npmrc", "x");
-        std::os::unix::fs::symlink(&src, wts[0].join(".env")).unwrap();
+        platform::fs::link_entry(&src, &wts[0].join(".env")).unwrap();
 
         // Two entries over three worktrees, one link written: five gaps.
         assert_eq!(drift_in(&shared, &wts), 5);
@@ -656,7 +655,7 @@ mod tests {
         let (root, shared, wts) = container(3);
         let src = put(&shared, ".env", "secret");
         for w in &wts {
-            std::os::unix::fs::symlink(&src, w.join(".env")).unwrap();
+            platform::fs::link_entry(&src, &w.join(".env")).unwrap();
         }
 
         let dropped = shared_keep_in(

@@ -120,19 +120,12 @@ fn probe_binary(program: &str) -> Option<PathBuf> {
 /// `None` when it is not installed. Never consults the GUI process PATH.
 pub fn resolve_binary(program: &str) -> Option<PathBuf> {
     if program.contains('/') || program.contains(std::path::MAIN_SEPARATOR) {
-        let path = expand_tilde(program);
+        let path = crate::platform::fs::expand_home(program);
         return shell::is_executable(&path).then_some(path);
     }
     match login_path() {
         Some(path) => shell::resolve_binary(program, path),
         None => probe_binary(program),
-    }
-}
-
-fn expand_tilde(path: &str) -> PathBuf {
-    match path.strip_prefix("~/") {
-        Some(rest) => dirs::home_dir().unwrap_or_default().join(rest),
-        None => PathBuf::from(path),
     }
 }
 

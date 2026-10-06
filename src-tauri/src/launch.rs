@@ -44,7 +44,7 @@ mod tests {
         assert!(err.contains("cannot reveal"), "{err}");
 
         let broken = dir.join("broken.md");
-        std::os::unix::fs::symlink(dir.join("nowhere.md"), &broken).unwrap();
+        crate::platform::testing::symlink(&dir.join("nowhere.md"), &broken);
         check_reveal_target(&broken.to_string_lossy()).expect("a dangling link is still an entry Finder can show");
 
         std::fs::remove_dir_all(&dir).ok();

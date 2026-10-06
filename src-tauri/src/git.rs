@@ -622,13 +622,13 @@ const STALE_DISCARD: &str = "The diff changed, refreshed. Nothing was discarded.
 /// filesystem directly, where `..` or an absolute path would simply escape, so
 /// the confinement git was providing has to be re-established explicitly.
 pub(crate) fn inside_repo(project_path: &str, file: &str) -> Result<PathBuf, String> {
-    let root = std::fs::canonicalize(project_path).map_err(|e| e.to_string())?;
+    let root = crate::platform::fs::canonical(project_path).map_err(|e| e.to_string())?;
     let target = root.join(file);
     // The file must still exist to be canonicalised, so the parent is what gets
     // resolved: that is enough, since the last component cannot be `..` without
     // the parent check already having caught the escape.
     let parent = target.parent().ok_or("That path has no parent directory.")?;
-    let parent = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+    let parent = crate::platform::fs::canonical(parent).map_err(|e| e.to_string())?;
     if !parent.starts_with(&root) {
         return Err("That path is outside this folder.".into());
     }
@@ -4294,7 +4294,7 @@ diff --git a/f b/f
         for name in ["pre-commit", "pre-push"] {
             let hook = hooks.join(name);
             std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
-            std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            crate::platform::fs::make_executable(&hook).unwrap();
         }
         git(&local, &["config", "core.hooksPath", &hooks.to_string_lossy()]);
         git(&local, &["config", "user.name", "t"]);

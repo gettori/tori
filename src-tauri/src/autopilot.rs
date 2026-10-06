@@ -577,7 +577,7 @@ impl PrStates {
 }
 
 fn canon(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::platform::fs::canonical(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 pub fn reconcile(

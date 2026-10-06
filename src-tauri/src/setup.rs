@@ -73,7 +73,7 @@ static PUBLISH: OnceLock<Publish> = OnceLock::new();
 // Git lists worktrees by canonical path and a caller may not, so both sides of
 // every lookup are canonicalized ([[gotcha_git_worktree_list_reports_canonical_paths]]).
 fn canonical(path: &Path) -> String {
-    std::fs::canonicalize(path)
+    crate::platform::fs::canonical(path)
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()

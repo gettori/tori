@@ -147,7 +147,7 @@ fn sidebar_fixture() -> PathBuf {
     let root = std::env::temp_dir().join(format!("tori-perf-sidebar-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("space")).unwrap();
-    let root = root.canonicalize().unwrap();
+    let root = crate::platform::fs::canonical(&root).unwrap();
 
     let plain = root.join("space/plain");
     std::fs::create_dir_all(&plain).unwrap();

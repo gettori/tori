@@ -38,8 +38,11 @@ export function groupByFile(matches: readonly SearchMatch[]): FileGroup[] {
   return order.map((path) => ({ path, matches: byPath.get(path)! }));
 }
 
-export const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-export const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+// Either separator: the backend emits `/`, but a path a Windows picker or
+// drop handed over can still carry `\`.
+const lastSep = (path: string) => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+export const baseName = (path: string) => path.slice(lastSep(path) + 1);
+export const dirName = (path: string) => path.slice(0, Math.max(0, lastSep(path)));
 
 /** The files as a folder tree: folders first, then files, each by name. */
 export function folderTree<T extends Pathed>(files: readonly T[]): FolderNode<T> {
@@ -47,7 +50,7 @@ export function folderTree<T extends Pathed>(files: readonly T[]): FolderNode<T>
   for (const f of files) {
     let at = root;
     const dir = dirName(f.path);
-    for (const seg of dir ? dir.split("/") : []) {
+    for (const seg of dir ? dir.split(/[\\/]/) : []) {
       const path = at.path ? `${at.path}/${seg}` : seg;
       let next = at.folders.find((c) => c.path === path);
       if (!next) at.folders.push((next = { path, name: seg, folders: [], files: [] }));

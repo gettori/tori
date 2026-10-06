@@ -834,7 +834,7 @@ impl ContentBlock {
     pub fn from_replayed_text(text: &str) -> ContentBlock {
         text.strip_prefix('[')
             .and_then(|rest| rest.split_once("]: @"))
-            .filter(|(token, path)| is_label(token) && path.starts_with('/') && !path.contains('\n'))
+            .filter(|(token, path)| is_label(token) && std::path::Path::new(path).is_absolute() && !path.contains('\n'))
             .map(|(token, rendered)| {
                 let (path, start_line, end_line) = split_range(rendered);
                 ContentBlock::FileRef {

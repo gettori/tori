@@ -88,6 +88,48 @@ fn command(argv: Vec<String>) -> Command {
     cmd
 }
 
+/// The status of a process that exited with `code`, for a recorded `Output`.
+pub fn exit_status(code: i32) -> std::process::ExitStatus {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(code << 8)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(code as u32)
+    }
+}
+
+/// A real symlink, for a test about symlinks themselves (a dangling one, one
+/// a walker must not follow). On Windows that takes Developer Mode or an
+/// elevated shell; [`super::fs::link_entry`] is the one that falls back.
+pub fn symlink(target: &Path, link: &Path) {
+    #[cfg(unix)]
+    let made = std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    let made = if target.is_dir() {
+        std::os::windows::fs::symlink_dir(target, link)
+    } else {
+        std::os::windows::fs::symlink_file(target, link)
+    };
+    made.unwrap_or_else(|e| panic!("cannot symlink {} (Developer Mode off?): {e}", link.display()));
+}
+
+/// Fails unless `path` has its executable bits. Windows keeps none, so there
+/// it only checks the file exists.
+pub fn assert_executable(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111, "{} is mode {mode:o}", path.display());
+    }
+    #[cfg(windows)]
+    assert!(path.is_file(), "{} is missing", path.display());
+}
+
 /// Fails unless only this user can reach `path`: no group or other mode bits
 /// on Unix. Windows has no mode bits to check, so there it asserts the path is
 /// under the user profile, whose ACL is what keeps it private.

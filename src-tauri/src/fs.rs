@@ -58,7 +58,7 @@ fn read_sorted(path: &str) -> Result<Vec<DirEntry>, String> {
         };
         entries.push(DirEntry {
             name: entry.file_name().to_string_lossy().into_owned(),
-            path: entry.path().to_string_lossy().into_owned(),
+            path: crate::platform::fs::display(entry.path()),
             is_dir,
             ignored: false,
         });
@@ -340,7 +340,7 @@ fn resolve_existing_prefix(p: &Path) -> PathBuf {
     let mut cur = p;
     let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
     loop {
-        if let Ok(c) = std::fs::canonicalize(cur) {
+        if let Ok(c) = crate::platform::fs::canonical(cur) {
             let mut out = c;
             for seg in tail.iter().rev() {
                 out.push(seg);
@@ -470,22 +470,6 @@ fn free_copy_name(dir: &Path, name: &str, is_dir: bool) -> PathBuf {
     }
 }
 
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
-    let meta = from.symlink_metadata()?;
-    if meta.file_type().is_symlink() {
-        std::os::unix::fs::symlink(std::fs::read_link(from)?, to)
-    } else if meta.is_dir() {
-        std::fs::create_dir(to)?;
-        for entry in std::fs::read_dir(from)? {
-            let entry = entry?;
-            copy_tree(&entry.path(), &to.join(entry.file_name()))?;
-        }
-        Ok(())
-    } else {
-        std::fs::copy(from, to).map(|_| ())
-    }
-}
-
 /// Copy `from` into the directory `into`, which must stay inside `root`, and
 /// return where it landed. Never overwrites: a taken name gets a ` copy` suffix.
 #[tauri::command(async)]
@@ -503,8 +487,8 @@ pub fn fs_copy(root: String, from: String, into: String, noun: Option<String>) -
         return Err("A folder cannot be copied inside itself.".into());
     }
     let to = free_copy_name(&dir, name, meta.is_dir());
-    copy_tree(&src, &to).map_err(|e| e.to_string())?;
-    Ok(to.to_string_lossy().into_owned())
+    crate::platform::fs::copy_tree(&src, &to).map_err(|e| e.to_string())?;
+    Ok(crate::platform::fs::display(&to))
 }
 
 /// All project files (paths relative to `project_path`) for the quick-open
@@ -555,7 +539,7 @@ fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) {
             // still not walked, since a link pointing at an ancestor would send
             // this recursion around forever.
             if let Ok(rel) = path.strip_prefix(root) {
-                out.push(rel.to_string_lossy().into_owned());
+                out.push(crate::platform::fs::display(rel));
             }
         }
     }
@@ -761,9 +745,9 @@ impl GitDirs {
                 root.join(target)
             }
         };
-        let git = git.canonicalize().ok()?;
+        let git = crate::platform::fs::canonical(&git).ok()?;
         let common = match std::fs::read_to_string(git.join("commondir")) {
-            Ok(rel) => git.join(rel.trim()).canonicalize().ok()?,
+            Ok(rel) => crate::platform::fs::canonical(git.join(rel.trim())).ok()?,
             Err(_) => git.clone(),
         };
         Some(Self { git, common })
@@ -792,7 +776,7 @@ impl GitDirs {
     /// What the root's own recursive watch does not already cover. Not the
     /// common dir recursively: `objects` churns on every write.
     fn extra_watches(&self, root: &Path) -> Vec<(PathBuf, RecursiveMode)> {
-        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let root = crate::platform::fs::canonical(root).unwrap_or_else(|_| root.to_path_buf());
         let mut out = Vec::new();
         if !self.git.starts_with(&root) {
             out.push((self.git.clone(), RecursiveMode::NonRecursive));
@@ -881,7 +865,7 @@ fn install_watcher(
                     },
                 );
             }
-            let paths: Vec<String> = rest.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
+            let paths: Vec<String> = rest.into_iter().map(|p| crate::platform::fs::display(&p)).collect();
             if !paths.is_empty() {
                 let _ = app_handle.emit(
                     "fs://changed",
@@ -1149,9 +1133,10 @@ mod tests {
         std::fs::create_dir_all(&inside).unwrap();
         std::fs::write(outside.join(".env"), "K=1").unwrap();
 
-        std::os::unix::fs::symlink(outside.join("config"), inside.join("config")).unwrap();
-        std::os::unix::fs::symlink(outside.join(".env"), inside.join(".env")).unwrap();
-        std::os::unix::fs::symlink(outside.join("gone"), inside.join("gone")).unwrap();
+        use crate::platform::testing::symlink;
+        symlink(&outside.join("config"), &inside.join("config"));
+        symlink(&outside.join(".env"), &inside.join(".env"));
+        symlink(&outside.join("gone"), &inside.join("gone"));
 
         let entries = fs_read_dir_body(&inside.to_string_lossy()).unwrap();
         let by = |n: &str| entries.iter().find(|e| e.name == n).unwrap().is_dir;

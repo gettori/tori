@@ -146,7 +146,7 @@ pub struct RestoreOutcome {
 }
 
 fn canonical(path: &str) -> String {
-    std::fs::canonicalize(path)
+    crate::platform::fs::canonical(path)
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.to_string())
 }

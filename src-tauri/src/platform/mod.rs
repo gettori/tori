@@ -23,6 +23,14 @@ pub mod shell;
 #[cfg(test)]
 pub mod testing;
 
+// Leading arguments for every git Tori runs. Windows git refuses a path past
+// 260 characters without `core.longpaths`, and a deep `node_modules` gets there.
+pub const GIT_ARGS: &[&str] = if cfg!(windows) {
+    &["-c", "core.longpaths=true"]
+} else {
+    &[]
+};
+
 pub const CLI_NAME: &str = if cfg!(windows) { "tori.exe" } else { "tori" };
 
 // On Windows the console `tori-cli.exe` beside the app, since a shell cannot
@@ -43,27 +51,12 @@ mod gate {
     /// Each migration phase deletes its entries; the list ends empty.
     const KNOWN: &[&str] = &[
         "accounts.rs",
-        "agent_config.rs",
-        "attempts.rs",
-        "auth.rs",
-        "checkpoint.rs",
         "config.rs",
         "crash.rs",
         "dap.rs",
-        "forge/token.rs",
-        "fs.rs",
-        "git.rs",
-        "git_health.rs",
         "icons.rs",
         "launch.rs",
-        "lsp/managed.rs",
-        "lsp/registry.rs",
-        "mcp.rs",
-        "owned_state.rs",
-        "search.rs",
-        "shared.rs",
         "update.rs",
-        "worktree.rs",
     ];
 
     fn sources(dir: &Path, root: &Path, out: &mut Vec<(String, String)>) {

@@ -262,8 +262,10 @@ fn parse_rg_json(stdout: &[u8]) -> Vec<Candidate> {
             continue;
         };
         // rg is run from inside `root` against `.`, so paths arrive relative
-        // with a `./` prefix, the same shape `plain_grep` produces.
-        let rel = path.strip_prefix("./").unwrap_or(path).to_string();
+        // with a `./` prefix (`.\` on Windows), the same shape `plain_grep`
+        // produces.
+        let path = crate::platform::fs::display(path);
+        let rel = path.strip_prefix("./").unwrap_or(&path).to_string();
         let line_no = data["line_number"].as_u64().unwrap_or(0) as u32;
         let text = normalise_line(data["lines"]["text"].as_str().unwrap_or("")).to_string();
         out.push(Candidate {
@@ -436,7 +438,8 @@ fn run_git_grep(root: &str, literal: Option<&str>, opts: &SearchOptions) -> Resu
 /// reported to the UI as an unsupported option rather than left to look like a
 /// working toggle.
 fn plain_grep(root: &str, literal: Option<&str>, opts: &SearchOptions) -> Result<Vec<Candidate>, String> {
-    let mut cmd = crate::platform::process::command("grep");
+    let grep = crate::env::resolve_binary("grep").unwrap_or_else(|| "grep".into());
+    let mut cmd = crate::platform::process::command(grep);
     cmd.arg("-rn");
     if !opts.case {
         cmd.arg("-i");
@@ -1801,7 +1804,7 @@ mod tests {
 
         // A parent-dir escape, and a symlink that resolves out of the root.
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&outside, dir.join("escape")).unwrap();
+        crate::platform::testing::symlink(&outside, &dir.join("escape"));
 
         let targets = vec![
             ReplaceTarget {

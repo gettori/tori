@@ -43,7 +43,7 @@ fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
     if !allowed {
         return crate::platform::shell::refusing_command(crate::trust::UNTRUSTED, 128);
     }
-    let mut cmd = crate::platform::process::command("git");
+    let mut cmd = git_outside_a_repo();
     cmd.arg("-C").arg(repo);
     cmd
 }
@@ -79,7 +79,9 @@ pub(crate) fn git_spawns_under(dir: &std::path::Path) -> usize {
 /// `git` for a subcommand that opens no repository, so there is no config of
 /// anyone else's to run.
 pub fn git_outside_a_repo() -> Command {
-    crate::platform::process::command("git")
+    let mut cmd = crate::platform::process::command("git");
+    cmd.args(crate::platform::GIT_ARGS);
+    cmd
 }
 
 /// Run `f` on the blocking pool and await its result.
@@ -162,7 +164,7 @@ pub(crate) fn common_dir(path: &str) -> PathBuf {
             } else {
                 PathBuf::from(path).join(p)
             };
-            abs.canonicalize().unwrap_or(abs)
+            crate::platform::fs::canonical(&abs).unwrap_or(abs)
         })
         // Not a repo: key by the path itself, so the lock still exists.
         .unwrap_or_else(|| PathBuf::from(path));

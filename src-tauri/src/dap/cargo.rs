@@ -70,7 +70,7 @@ pub fn bins(root: &Path) -> Result<Vec<String>, String> {
     }
     // cargo reports the physical path, and a temp dir or a project under a
     // symlink would otherwise never match.
-    let manifest = std::fs::canonicalize(root.join("Cargo.toml")).map_err(|e| e.to_string())?;
+    let manifest = crate::platform::fs::canonical(root.join("Cargo.toml")).map_err(|e| e.to_string())?;
     bins_in(&String::from_utf8_lossy(&out.stdout), &manifest)
 }
 

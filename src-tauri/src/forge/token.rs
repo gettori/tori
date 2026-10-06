@@ -192,7 +192,6 @@ mod dev_file {
 
     fn write(all: &BTreeMap<String, Secret>) -> Result<(), ForgeError> {
         use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
         let fail = |e: std::io::Error| ForgeError::Transport {
             message: format!("dev secrets: {e}"),
         };
@@ -205,12 +204,7 @@ mod dev_file {
         let text = serde_json::to_string(all).map_err(|e| ForgeError::Malformed {
             message: format!("secret: {e}"),
         })?;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)
-            .map_err(fail)?;
+        let mut file = crate::platform::fs::create_private(&tmp).map_err(fail)?;
         file.write_all(text.as_bytes()).map_err(fail)?;
         std::fs::rename(tmp, path).map_err(fail)
     }

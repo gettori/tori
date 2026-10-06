@@ -1697,11 +1697,13 @@ mod tests {
     #[test]
     fn a_topic_home_chat_adds_every_member_and_carries_their_rules_but_not_their_hooks() {
         use crate::topics::{create_topic_with, MemberMode, NewMember, Store};
-        let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap().join(format!(
-            "tori-home-spawn-{}-{}",
-            std::process::id(),
-            crate::owned_state::now_ms()
-        ));
+        let tmp = crate::platform::fs::canonical(std::env::temp_dir())
+            .unwrap()
+            .join(format!(
+                "tori-home-spawn-{}-{}",
+                std::process::id(),
+                crate::owned_state::now_ms()
+            ));
         let root = tmp.join("api");
         std::fs::create_dir_all(root.join(".claude")).unwrap();
         let git = |args: &[&str]| {

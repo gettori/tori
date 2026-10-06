@@ -538,7 +538,7 @@ mod tests {
     /// `whoami` and `logout` together.
     #[test]
     fn every_probe_runs_with_no_browser_set() {
-        let path = std::path::Path::new("/bin/true");
+        let path = std::path::Path::new("never-run");
         let cfg = config(Some(WhoamiKind::ClaudeJson));
         for args in [&cfg.whoami_args, &cfg.logout_args] {
             let cmd = probe_command(path, args, None);
@@ -582,7 +582,7 @@ mod tests {
         );
         // The positive half is behavioural rather than counted here:
         // `a_successful_logout_is_ok` and `a_failing_logout_reports_what_the_agent_said`
-        // really do run `/bin/sh`, so a probe that spawned nothing would fail
+        // really do run a shell, so a probe that spawned nothing would fail
         // them. A `matches().count()` would only pin how often this file happens
         // to say the name.
     }
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn a_probe_for_an_added_profile_carries_its_home() {
         let home = ("CLAUDE_CONFIG_DIR".to_string(), "/canonical/work".to_string());
-        let cmd = probe_command(std::path::Path::new("/bin/true"), &["status".into()], Some(&home));
+        let cmd = probe_command(std::path::Path::new("never-run"), &["status".into()], Some(&home));
         let set: Vec<_> = cmd
             .get_envs()
             .filter(|(k, _)| *k == std::ffi::OsStr::new("CLAUDE_CONFIG_DIR"))
@@ -604,7 +604,7 @@ mod tests {
     /// than the one a default session runs as.
     #[test]
     fn a_probe_for_the_default_profile_sets_no_home() {
-        let cmd = probe_command(std::path::Path::new("/bin/true"), &["status".into()], None);
+        let cmd = probe_command(std::path::Path::new("never-run"), &["status".into()], None);
         assert_eq!(cmd.get_envs().count(), 1, "only NO_BROWSER");
     }
 
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn an_adapter_with_no_probe_is_unknown_not_signed_out() {
         let cfg = config(None);
-        let answer = whoami(std::path::Path::new("/bin/true"), &cfg, None);
+        let answer = whoami(std::path::Path::new("never-run"), &cfg, None);
         assert_eq!(answer.state, SignIn::Unknown);
     }
 
@@ -634,22 +634,26 @@ mod tests {
     fn logout_refuses_when_the_adapter_declares_none() {
         let mut cfg = config(Some(WhoamiKind::ExitCode));
         cfg.logout_args.clear();
-        assert!(logout(std::path::Path::new("/bin/true"), &cfg, None).is_err());
+        assert!(logout(std::path::Path::new("never-run"), &cfg, None).is_err());
     }
 
     #[test]
     fn a_failing_logout_reports_what_the_agent_said() {
         let mut cfg = config(Some(WhoamiKind::ExitCode));
-        cfg.logout_args = vec!["-c".into(), "echo could not reach the server >&2; exit 1".into()];
-        let err = logout(std::path::Path::new("/bin/sh"), &cfg, None).unwrap_err();
+        let mut argv = crate::platform::testing::sh_argv("echo could not reach the server >&2; exit 1");
+        let sh = argv.remove(0);
+        cfg.logout_args = argv;
+        let err = logout(std::path::Path::new(&sh), &cfg, None).unwrap_err();
         assert!(err.contains("could not reach the server"), "{err}");
     }
 
     #[test]
     fn a_successful_logout_is_ok() {
         let mut cfg = config(Some(WhoamiKind::ExitCode));
-        cfg.logout_args = vec!["-c".into(), "exit 0".into()];
-        assert!(logout(std::path::Path::new("/bin/sh"), &cfg, None).is_ok());
+        let mut argv = crate::platform::testing::sh_argv("exit 0");
+        let sh = argv.remove(0);
+        cfg.logout_args = argv;
+        assert!(logout(std::path::Path::new(&sh), &cfg, None).is_ok());
     }
 
     // --- the login ladder ---
