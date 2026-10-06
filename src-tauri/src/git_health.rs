@@ -16,6 +16,10 @@ const APPLE_SHIM: &str = "/usr/bin/git";
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum GitHealth {
     Ready { path: String, version: Option<String> },
+    // Git for Windows without the bash it ships, as MinGit or a scoop git are.
+    // Git itself still runs; setup commands, hooks and the credential helper,
+    // which all run in that bash, do not.
+    BashMissing { path: String, version: Option<String> },
     ToolsMissing,
     NotFound,
 }
@@ -49,7 +53,7 @@ fn probe(
         .filter(|o| o.status.success())
         .and_then(|o| crate::health::parse_version(&String::from_utf8_lossy(&o.stdout)));
     GitHealth::Ready {
-        path: path.to_string_lossy().into_owned(),
+        path: crate::platform::fs::display(&path),
         version,
     }
 }
@@ -65,11 +69,17 @@ fn developer_tools_present() -> bool {
 }
 
 fn check() -> GitHealth {
-    probe(
+    let health = probe(
         || crate::env::resolve_binary("git"),
         developer_tools_present,
         |path| crate::env::output_with_timeout(crate::platform::process::command(path).arg("--version")),
-    )
+    );
+    match health {
+        GitHealth::Ready { path, version } if !crate::platform::shell::has_posix_shell() => {
+            GitHealth::BashMissing { path, version }
+        }
+        other => other,
+    }
 }
 
 // Only a working git is remembered, so an install made outside Tori counts on
@@ -99,9 +109,12 @@ fn forget() {
 /// this has to have somewhere quiet to go, and guessing yes would send it into
 /// a subcommand that answers with a usage error.
 pub(crate) fn at_least(major: u32, minor: u32) -> bool {
-    let GitHealth::Ready {
+    let (GitHealth::Ready {
         version: Some(version), ..
-    } = current()
+    }
+    | GitHealth::BashMissing {
+        version: Some(version), ..
+    }) = current()
     else {
         return false;
     };
@@ -113,7 +126,10 @@ fn install_route(health: &GitHealth) -> InstallRoute {
     let (program, args) = match health {
         GitHealth::Ready { .. } => return InstallRoute::Undeclared,
         GitHealth::ToolsMissing => ("/usr/bin/xcode-select", vec!["--install"]),
-        GitHealth::NotFound => ("brew", vec!["install", "git"]),
+        GitHealth::NotFound | GitHealth::BashMissing { .. } => (
+            crate::platform::shell::GIT_INSTALL.0,
+            crate::platform::shell::GIT_INSTALL.1.to_vec(),
+        ),
     };
     InstallRoute::Terminal {
         program: program.into(),
@@ -133,7 +149,7 @@ pub fn run(cmd: &mut Command) -> Result<Output, String> {
 }
 
 pub(crate) fn run_with(cmd: &mut Command, health: impl FnOnce() -> GitHealth) -> Result<Output, String> {
-    if !matches!(health(), GitHealth::Ready { .. }) {
+    if !matches!(health(), GitHealth::Ready { .. } | GitHealth::BashMissing { .. }) {
         return Err(MISSING.into());
     }
     cmd.output().map_err(|e| {

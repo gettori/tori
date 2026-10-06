@@ -30,7 +30,8 @@ const MODE_HINT: Record<NewProjectMode, string> = {
   bare: "One bare repo, with each branch you work on checked out as its own sibling folder. Best for running several agents on different branches at once.",
 };
 
-type GitMissing = Exclude<GitHealth["kind"], "ready">;
+// A git without Git Bash still clones; Settings is where that gap is shown.
+type GitMissing = Exclude<GitHealth["kind"], "ready" | "bashMissing">;
 
 const GIT_MISSING: Record<GitMissing, string> = {
   toolsMissing: "Cloning and worktrees need git on your PATH. The Xcode command line tools include it.",
@@ -43,7 +44,7 @@ export function gitMissing(
   mode: NewProjectMode,
   git: GitReport | null,
 ): { kind: GitMissing; install: Extract<InstallRoute, { type: "terminal" }> | null } | null {
-  if (mode === "folder" || !git || git.health.kind === "ready") return null;
+  if (mode === "folder" || !git || git.health.kind === "ready" || git.health.kind === "bashMissing") return null;
   return { kind: git.health.kind, install: git.install.type === "terminal" ? git.install : null };
 }
 

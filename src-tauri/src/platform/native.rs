@@ -46,6 +46,23 @@ pub fn os_version() -> String {
     format!("{version} {}", std::env::consts::ARCH)
 }
 
+pub fn credential_store() -> Result<std::sync::Arc<keyring_core::CredentialStore>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let store =
+            apple_native_keyring_store::keychain::Store::new().map_err(|e| format!("keychain unavailable: {e}"))?;
+        Ok(store)
+    }
+    #[cfg(windows)]
+    {
+        let store =
+            windows_native_keyring_store::Store::new().map_err(|e| format!("Credential Manager unavailable: {e}"))?;
+        Ok(store)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    Err("no credential store on Linux yet (#21)".into())
+}
+
 #[cfg(target_os = "macos")]
 mod mac_sound {
     use std::cell::RefCell;

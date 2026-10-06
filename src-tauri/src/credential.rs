@@ -326,7 +326,7 @@ fn lone_remote(repo: &str) -> Option<String> {
 /// survives the shell.
 fn helper_config() -> String {
     let exe = crate::platform::helper_exe().unwrap_or_default();
-    format!("!{} {ARG}", quoted(&exe.to_string_lossy()))
+    format!("!{} {ARG}", quoted(&crate::platform::fs::display(&exe)))
 }
 
 fn quoted(s: &str) -> String {

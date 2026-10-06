@@ -54,22 +54,13 @@ impl Secret {
 /// Called once from setup. `keyring-core` has no default store until something
 /// sets one (`Entry::new` answers `NoDefaultStore` otherwise), which is exactly
 /// what lets a test install the mock instead.
+///
+/// Fails where the OS has no store Tori uses, rather than running with none and
+/// failing every save far from the cause.
 pub fn install_store() -> Result<(), ForgeError> {
-    #[cfg(target_os = "macos")]
-    {
-        keyring_core::set_default_store(apple_native_keyring_store::keychain::Store::new().map_err(|e| {
-            ForgeError::Transport {
-                message: format!("keychain unavailable: {e}"),
-            }
-        })?);
-        Ok(())
-    }
-    // Tori is macOS-only today. Rather than silently running with no store (so
-    // every save fails at the point of use, far from the cause), say so here.
-    #[cfg(not(target_os = "macos"))]
-    Err(ForgeError::Transport {
-        message: "no credential store on this platform".into(),
-    })
+    let store = crate::platform::native::credential_store().map_err(|message| ForgeError::Transport { message })?;
+    keyring_core::set_default_store(store);
+    Ok(())
 }
 
 fn account_entry(account_id: &str) -> Result<Entry, ForgeError> {

@@ -4,6 +4,7 @@ import type { InstallRoute } from "./install";
 /** Mirrors `crate::git_health::GitHealth`. */
 export type GitHealth =
   | { kind: "ready"; path: string; version: string | null }
+  | { kind: "bashMissing"; path: string; version: string | null }
   | { kind: "toolsMissing" }
   | { kind: "notFound" };
 

@@ -131,14 +131,20 @@ pub fn prune_stale(sessions: impl Fn() -> Vec<SessionMeta>) {
 /// unquoted-path concatenation below - claude's own session ids are UUIDs,
 /// so this should never actually trip).
 fn status_writer_command() -> String {
-    let dir = hooks_status_dir().to_string_lossy().into_owned();
+    let dir = crate::platform::fs::display(hooks_status_dir());
     format!(
         r#"in=$(cat); sid=$(printf '%s' "$in" | grep -o '"session_id" *: *"[^"]*"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/'); ev=$(printf '%s' "$in" | grep -o '"hook_event_name" *: *"[^"]*"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/'); case "$sid" in */*|"") sid="" ;; esac; if [ -n "$sid" ] && [ -n "$ev" ]; then mkdir -p '{dir}'; printf '{{"event":"%s","at":%s}}' "$ev" "$(date +%s)" > '{dir}/'"$sid"'.json'; fi"#
     )
 }
 
+// Claude Code on Windows runs a hook in PowerShell when Git Bash is not where
+// it looks, and these commands are POSIX.
+pub(crate) fn command_hook(command: &str) -> serde_json::Value {
+    json!({ "type": "command", "command": command, "shell": "bash" })
+}
+
 fn hook_entry(command: &str) -> serde_json::Value {
-    json!([{ "hooks": [{ "type": "command", "command": command }] }])
+    json!([{ "hooks": [command_hook(command)] }])
 }
 
 fn claude_settings_json() -> String {
@@ -148,7 +154,7 @@ fn claude_settings_json() -> String {
         "permissions": { "allow": crate::rpc::mcp_allow(false) },
         "hooks": {
             "UserPromptSubmit": entry,
-            "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": cmd }] }],
+            "PreToolUse": [{ "matcher": "*", "hooks": [command_hook(&cmd)] }],
             "Notification": entry,
             "Stop": entry,
         }

@@ -382,9 +382,10 @@ pub fn accounts_path() -> PathBuf {
 
 /// Where profile homes live: the platform data dir, never `~/.config/tori`.
 ///
-/// macOS resolves this to `~/Library/Application Support/tori/profiles`.
+/// macOS resolves this to `~/Library/Application Support/tori/profiles`,
+/// Windows to `%APPDATA%\tori\profiles`.
 pub fn profile_home_root() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("tori/profiles")
+    dirs::data_dir().unwrap_or_default().join("tori").join("profiles")
 }
 
 /// Whether the default profile exists: the adapter's `home_default` is on disk.

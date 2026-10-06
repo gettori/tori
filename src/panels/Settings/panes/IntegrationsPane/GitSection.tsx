@@ -10,16 +10,19 @@ import styles from "../../Settings.module.css";
 type Missing = Exclude<GitHealth["kind"], "ready">;
 
 const STATUS: Record<Missing, string> = {
+  bashMissing: "This git has no Git Bash beside it. Setup commands, agent hooks and the credential helper run in it.",
   toolsMissing: "macOS ships git inside its Command Line Tools, which are not installed.",
   notFound: "git is not on your login shell PATH.",
 };
 
 const WAITING: Record<Missing, string> = {
+  bashMissing: "winget is installing Git for Windows in a terminal tab. Check again when it finishes.",
   toolsMissing: "The installer opened in its own window. Check again when it finishes.",
   notFound: "Homebrew is installing git in a terminal tab. Check again when it finishes.",
 };
 
 const INSTALL_LABEL: Record<Missing, string> = {
+  bashMissing: "Install Git for Windows",
   toolsMissing: "Install Command Line Tools",
   notFound: "Install with Homebrew",
 };
@@ -81,7 +84,7 @@ export default function GitSection() {
             </div>
           </div>
           <span class={`${styles.statePill} ${ready() ? styles.statePillOk : ""}`}>
-            {ready() ? "Ready" : "Not installed"}
+            {ready() ? "Ready" : missing() === "bashMissing" ? "Incomplete" : "Not installed"}
           </span>
           <Show when={missing()}>
             {(kind) => (

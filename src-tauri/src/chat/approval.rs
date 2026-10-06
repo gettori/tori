@@ -441,10 +441,10 @@ pub fn hook_command(exe: &Path, sock: &Path, token: &str) -> String {
     format!(
         "{}={} {}={} {}",
         ENV_SOCK,
-        sh_quote(&sock.to_string_lossy()),
+        sh_quote(&crate::platform::fs::display(sock)),
         ENV_TOKEN,
         sh_quote(token),
-        sh_quote(&exe.to_string_lossy()),
+        sh_quote(&crate::platform::fs::display(exe)),
     )
 }
 
@@ -492,16 +492,14 @@ pub fn settings_json_with(
                 .extend(rules.iter().cloned().map(Value::String));
         }
     }
+    let mut hook = crate::hooks::command_hook(&hook_command(exe, sock, token));
+    hook["timeout"] = json!(HOOK_TIMEOUT_SECS);
     json!({
         "permissions": permissions,
         "hooks": {
             "PreToolUse": [{
                 "matcher": matcher(),
-                "hooks": [{
-                    "type": "command",
-                    "command": hook_command(exe, sock, token),
-                    "timeout": HOOK_TIMEOUT_SECS,
-                }],
+                "hooks": [hook],
             }],
         }
     })

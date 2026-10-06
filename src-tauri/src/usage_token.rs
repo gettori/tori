@@ -60,8 +60,8 @@ impl TokenFailure {
     pub fn reason(&self) -> String {
         match self {
             Self::OptedOut => "the account token source is off".to_string(),
-            Self::NoItem => "no Claude login in the Keychain for this account".to_string(),
-            Self::NotALogin => "the Keychain item holds no Claude login".to_string(),
+            Self::NoItem => format!("no Claude login in the {STORE} for this account"),
+            Self::NotALogin => format!("the {STORE} holds no Claude login"),
             Self::Expired => "the stored token has expired, run a turn to refresh it".to_string(),
             Self::Refused(401 | 403) => "Claude refused the token".to_string(),
             // The endpoint's own floor, not a fault in the token. Said as such,
@@ -72,6 +72,11 @@ impl TokenFailure {
         }
     }
 }
+
+#[cfg(target_os = "macos")]
+const STORE: &str = "Keychain";
+#[cfg(not(target_os = "macos"))]
+const STORE: &str = "credentials file";
 
 /// Anything that can hand over a stored secret.
 ///
@@ -244,10 +249,13 @@ pub fn read_usage(
 /// Read through `/usr/bin/security`, the tool `claude` writes the item with, so
 /// the item already trusts it. Read in process, every Tori build needs its own
 /// "Always Allow", and a dev build's signature changes on every rebuild.
+#[cfg(target_os = "macos")]
 pub struct Keychain;
 
+#[cfg(target_os = "macos")]
 const ITEM_NOT_FOUND: i32 = 44;
 
+#[cfg(target_os = "macos")]
 impl Vault for Keychain {
     fn secret(&self, service: &str, account: &str) -> Result<Option<String>, String> {
         let mut cmd = crate::platform::process::command("/usr/bin/security");
@@ -258,6 +266,44 @@ impl Vault for Keychain {
             Some(ITEM_NOT_FOUND) => Ok(None),
             _ => Err(format!("keychain: {}", String::from_utf8_lossy(&out.stderr).trim())),
         }
+    }
+}
+
+/// Off macOS `claude` keeps the same JSON in `.credentials.json` inside its
+/// config dir, so a profile is isolated by directory rather than by item name,
+/// and the service name goes unused.
+#[cfg(not(target_os = "macos"))]
+pub struct CredentialsFile {
+    pub dir: std::path::PathBuf,
+}
+
+#[cfg(not(target_os = "macos"))]
+impl Vault for CredentialsFile {
+    fn secret(&self, _service: &str, _account: &str) -> Result<Option<String>, String> {
+        let path = self.dir.join(".credentials.json");
+        match std::fs::read_to_string(&path) {
+            Ok(text) => Ok(Some(text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
+    }
+}
+
+/// Where this machine keeps the login for a profile whose home is `home`
+/// (`None` for the default account).
+fn vault_for(home: Option<&str>) -> Box<dyn Vault> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = home;
+        Box::new(Keychain)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let dir = home.map_or_else(
+            || dirs::home_dir().unwrap_or_default().join(".claude"),
+            std::path::PathBuf::from,
+        );
+        Box::new(CredentialsFile { dir })
     }
 }
 
@@ -317,11 +363,12 @@ pub async fn usage_token_claude(profile: Option<String>) -> Result<TokenReading,
         } else {
             UsageSource::Off
         };
+        let home = home_of(&id);
         read_usage(
             source,
-            home_of(&id).as_deref(),
+            home.as_deref(),
             &os_account(),
-            &Keychain,
+            &*vault_for(home.as_deref()),
             &Anthropic,
             now_ms(),
         )
@@ -616,10 +663,17 @@ mod tests {
     /// Re-measures the whole rung against this machine: the real item, the real
     /// endpoint, the real shapes. Run by hand, since it reads a live login.
     #[test]
-    #[ignore = "reads the real Keychain item and calls the usage endpoint"]
+    #[ignore = "reads the real stored login and calls the usage endpoint"]
     fn the_real_account_answers_with_its_scoped_window() {
-        let reading = read_usage(UsageSource::Token, None, &os_account(), &Keychain, &Anthropic, now_ms())
-            .expect("a signed-in claude answers");
+        let reading = read_usage(
+            UsageSource::Token,
+            None,
+            &os_account(),
+            &*vault_for(None),
+            &Anthropic,
+            now_ms(),
+        )
+        .expect("a signed-in claude answers");
 
         let kinds: Vec<&str> = reading.windows.iter().map(|w| w.kind.as_str()).collect();
         assert!(kinds.contains(&"five_hour"), "{kinds:?}");

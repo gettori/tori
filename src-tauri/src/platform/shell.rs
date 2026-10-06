@@ -161,6 +161,23 @@ pub fn posix_command(script: &str) -> Command {
     cmd
 }
 
+pub fn has_posix_shell() -> bool {
+    #[cfg(unix)]
+    {
+        true
+    }
+    #[cfg(windows)]
+    {
+        git_bash().is_some()
+    }
+}
+
+pub const GIT_INSTALL: (&str, &[&str]) = if cfg!(windows) {
+    ("winget", &["install", "--id", "Git.Git", "-e"])
+} else {
+    ("brew", &["install", "git"])
+};
+
 // `bash.exe` in the Git for Windows install that owns the `git` on PATH, which
 // sits in its `cmd` or `bin` folder.
 #[cfg(windows)]
