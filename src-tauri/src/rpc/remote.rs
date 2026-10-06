@@ -8,12 +8,12 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 
 use super::auth::Credential;
-use super::awake::Awake;
 use super::devices::Devices;
 use super::pairing::{Offer, Pairing};
 use super::server::{serve, Server};
 use super::transport::Transport;
 use super::ws::WsTransport;
+use crate::platform::native::KeepAwake;
 use crate::settings::Remote as Config;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -26,7 +26,7 @@ pub enum Status {
 
 struct Running {
     transport: Arc<WsTransport>,
-    _awake: Option<Awake>,
+    _awake: Option<KeepAwake>,
 }
 
 pub struct Remote {
@@ -80,7 +80,7 @@ impl Remote {
                     serve(transport.clone() as Arc<dyn Transport>, credential, self.server.clone());
                     state.0 = Some(Running {
                         transport,
-                        _awake: Awake::hold("Tori remote front is listening"),
+                        _awake: KeepAwake::hold("Tori remote front is listening").ok(),
                     });
                     Status::Listening { url }
                 }

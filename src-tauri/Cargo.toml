@@ -69,6 +69,28 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 # file under half the tree.
 libc = "0.2"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+# The Keychain service name `claude` derives for a non-default CLAUDE_CONFIG_DIR
+# is `sha256(dir)[:8]`, so the token rung has to compute one. Already in the
+# lock file as a tauri build dependency; this makes it a runtime one too.
+sha2 = "0.10"
+# GitLab identifies a diff line by a SHA1 of its path, which is the only way to
+# anchor a multi-line review comment (`forge/gitlab.rs`).
+sha1 = "0.10"
+# One process table on every OS: a sweep refreshes it once with command lines
+# instead of spawning `pgrep` per agent, and Windows has no `pgrep` or `ps`.
+# 0.37 because 0.38 moved to `windows` 0.62, a second copy beside tauri's 0.61.
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+# Interface addresses for the remote front on every OS; `getifaddrs` is Unix only.
+if-addrs = "0.15"
+# Socket tokens from the OS generator rather than reading `/dev/urandom`.
+getrandom = "0.4"
+# `canonicalize` on Windows returns a `\\?\` path nothing else accepts. Already
+# in the lock file.
+dunce = "1"
+# Folder and file pickers on every OS, replacing `osascript`.
+tauri-plugin-dialog = "2"
+# Icon resizing without `sips`. Already in the lock file under tauri.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The notification plugin's desktop send never reports a click, so a needs-you
@@ -81,16 +103,6 @@ uuid = { version = "1", features = ["v4"] }
 # other credential the user has); `protected` is the data-protection keychain,
 # which needs an app-group entitlement Tori does not have.
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
-# The Keychain service name `claude` derives for a non-default CLAUDE_CONFIG_DIR
-# is `sha256(dir)[:8]`, so the token rung has to compute one. Already in the
-# lock file as a tauri build dependency; this makes it a runtime one too.
-sha2 = "0.10"
-# GitLab identifies a diff line by a SHA1 of its path, which is the only way to
-# anchor a multi-line review comment (`forge/gitlab.rs`).
-sha1 = "0.10"
-# `com.apple.quarantine` on a downloaded agent: read to decide whether Gatekeeper
-# will even be asked, and cleared only when the user says so.
-xattr = "1"
 # NSUserDefaults for WebKit's text-checking switches (spell check on, smart
 # substitutions off). Already in the tree under tauri; only the features are new.
 objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", "NSData", "NSArray", "NSUserNotification"] }
@@ -99,6 +111,26 @@ objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", 
 # features are new.
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSPasteboard", "NSSound"] }
+
+[target.'cfg(windows)'.dependencies]
+# AF_UNIX on Windows 10 1803+ with std's `UnixStream` API, timeouts and shutdown
+# included, so every socket above `platform::ipc` stays one type. Named pipes
+# (interprocess) have no I/O timeouts on Windows. Already in the lock file.
+uds_windows = "1.2"
+# A directory junction when a `.shared` symlink needs Developer Mode.
+junction = "2"
+# Whether a hardlinked `.shared` file is its target; std has no stable file id
+# on Windows. Already in the lock file.
+same-file = "1"
+# The forge token store: Credential Manager, as the Keychain is on macOS.
+windows-native-keyring-store = "1"
+# Job Objects for process trees, process liveness, owner-only DACLs, PlaySoundW
+# and the keep-awake power request. 0.61 is the one already in the lock file under tauri.
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Power", "Win32_System_SystemServices", "Win32_Security_Authorization", "Win32_Media_Audio"] }
+# Off macOS the crate refuses to compile unless one COM model is chosen, and the
+# defaults that pick it are off above. Apartment, because the main thread is
+# already an STA under WebView2.
+trash = { version = "5.2.6", default-features = false, features = ["coinit_apartmentthreaded"] }
 
 # 0.6.15 plus an `identifier` builder option; drop this once upstream has one.
 [patch.crates-io]

@@ -9,7 +9,6 @@
 pub mod approvals;
 pub mod asks;
 pub mod auth;
-pub mod awake;
 pub mod bridge;
 pub mod client;
 pub mod devices;
