@@ -412,7 +412,10 @@ pub(crate) struct TrashDisposer;
 
 impl Disposer for TrashDisposer {
     fn dispose(&self, p: &Path) -> Result<(), String> {
-        trash::delete(p).map_err(|e| format!("Moving {} to the Trash failed: {e}", p.display()))
+        trash::delete(p).map_err(|e| {
+            let bin = if cfg!(windows) { "Recycle Bin" } else { "Trash" };
+            format!("Moving {} to the {bin} failed: {e}", p.display())
+        })
     }
 }
 

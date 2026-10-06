@@ -1166,25 +1166,11 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
 
 // --- first-run onboarding + create space/folder ---
 
-/// Native macOS folder picker (dependency-free, via osascript). Returns the
-/// chosen folder, or None when the user cancels (so the UI can stay put).
+/// The base folder picker. `None` when the user cancels, so the UI can stay put.
 #[tauri::command(async)]
-pub fn pick_folder() -> Result<Option<String>, String> {
-    let out = crate::platform::process::command("osascript")
-        .args([
-            "-e",
-            "POSIX path of (choose folder with prompt \"Choose a base folder for your projects\")",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Ok(None); // cancelled
-    }
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if path.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(path.trim_end_matches('/').to_string()))
+pub fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let picked = crate::platform::native::pick_folder(&app, "Choose a base folder for your projects", None);
+    Ok(picked.map(crate::platform::fs::display))
 }
 
 /// Replace `[discovery].roots` with exactly `[path]` (the single-root model),

@@ -6,24 +6,64 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
-// Both pickers block until the user picks or cancels, so call them off the main
-// thread (an async command).
-pub fn pick_folder(app: &AppHandle, title: &str) -> Option<PathBuf> {
-    app.dialog()
-        .file()
-        .set_title(title)
-        .blocking_pick_folder()?
-        .into_path()
-        .ok()
+// Every picker blocks until the user picks or cancels, so call them off the
+// main thread (an async command).
+pub fn pick_folder(app: &AppHandle, title: &str, start: Option<&Path>) -> Option<PathBuf> {
+    let mut dialog = app.dialog().file().set_title(title);
+    if let Some(start) = start {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.blocking_pick_folder()?.into_path().ok()
 }
 
-pub fn pick_file(app: &AppHandle, title: &str) -> Option<PathBuf> {
-    app.dialog()
-        .file()
-        .set_title(title)
-        .blocking_pick_file()?
-        .into_path()
-        .ok()
+pub fn pick_file(app: &AppHandle, title: &str, start: Option<&Path>) -> Option<PathBuf> {
+    let mut dialog = app.dialog().file().set_title(title);
+    if let Some(start) = start {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.blocking_pick_file()?.into_path().ok()
+}
+
+// The macOS panel rfd opens cannot show dot folders, and every agent config
+// folder is one, so there AppleScript's `with invisibles` stays. The start path
+// goes in as an argument, so no spelling of it can break the script.
+#[cfg(target_os = "macos")]
+pub fn pick_folder_showing_dot_folders(
+    _app: &AppHandle,
+    title: &'static str,
+    start: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let script = format!(
+        "POSIX path of (choose folder with prompt \"{title}\" default location ((POSIX file (item 1 of argv)) as alias) with invisibles)"
+    );
+    let out = super::process::command("/usr/bin/osascript")
+        .args(["-e", "on run argv", "-e", &script, "-e", "end run"])
+        .arg(start)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let said = String::from_utf8_lossy(&out.stderr);
+        // -128 is AppleScript's "User canceled".
+        return if said.contains("(-128)") {
+            Ok(None)
+        } else {
+            Err(said.trim().to_string())
+        };
+    }
+    let path = String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    Ok((!path.is_empty()).then(|| PathBuf::from(path)))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn pick_folder_showing_dot_folders(
+    app: &AppHandle,
+    title: &'static str,
+    start: &Path,
+) -> Result<Option<PathBuf>, String> {
+    Ok(pick_folder(app, title, Some(start)))
 }
 
 pub fn reveal(app: &AppHandle, path: &Path) -> Result<(), String> {
@@ -39,6 +79,58 @@ pub fn open_path(app: &AppHandle, path: &Path) -> Result<(), String> {
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+// Starts the app again and quits this process. On macOS the new copy opens
+// once this pid is gone: the running bundle may be the DMG, and `open -n` at
+// once would run two Tori processes over one config dir and RPC socket.
+#[cfg(target_os = "macos")]
+pub fn relaunch(app: &AppHandle) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let bundle = exe
+        .ancestors()
+        .find(|p| p.extension().is_some_and(|e| e == "app"))
+        .map_or_else(|| PathBuf::from("/Applications/Tori.app"), Path::to_path_buf);
+    super::process::command("/bin/sh")
+        .arg("-c")
+        .arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec open "$2""#)
+        .arg("sh")
+        .arg(std::process::id().to_string())
+        .arg(&bundle)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    app.exit(0);
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn relaunch(app: &AppHandle) -> Result<(), String> {
+    app.restart()
+}
+
+// The dock badge on macOS and Linux. Windows has no taskbar count, so a needs-you
+// session shows as a dot overlaid on the taskbar button instead.
+pub fn set_badge(window: &tauri::WebviewWindow, count: usize) -> Result<(), String> {
+    #[cfg(windows)]
+    let set = window.set_overlay_icon((count > 0).then(badge_dot));
+    #[cfg(not(windows))]
+    let set = window.set_badge_count((count > 0).then_some(count as i64));
+    set.map_err(|e| e.to_string())
+}
+
+#[cfg(windows)]
+fn badge_dot() -> tauri::image::Image<'static> {
+    const SIZE: u32 = 16;
+    let centre = (SIZE as f32 - 1.0) / 2.0;
+    let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let d = ((x as f32 - centre).powi(2) + (y as f32 - centre).powi(2)).sqrt();
+            let alpha = (centre + 0.5 - d).clamp(0.0, 1.0);
+            rgba.extend_from_slice(&[0xFB, 0x71, 0x85, (alpha * 255.0) as u8]);
+        }
+    }
+    tauri::image::Image::new_owned(rgba, SIZE, SIZE)
 }
 
 pub fn os_version() -> String {

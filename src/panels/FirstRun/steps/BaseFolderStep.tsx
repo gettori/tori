@@ -5,6 +5,7 @@ import Icon from "../../../components/Icon/Icon";
 import type { FirstRunSpace } from "../../../utils/firstRun";
 import { shortHome } from "../../../utils/names";
 import styles from "../FirstRun.module.css";
+import { OS_NAME } from "../../../utils/platform";
 
 export const BASE_FOLDER_LEAD = (
   <>
@@ -33,7 +34,7 @@ export default function BaseFolderStep(props: {
             <Button variant="primary" disabled={props.busy} onClick={() => props.onChoose()}>
               Choose folder
             </Button>
-            <span class={styles.hint}>Opens the macOS folder picker.</span>
+            <span class={styles.hint}>Opens the {OS_NAME} folder picker.</span>
           </div>
           <div class={styles.placeholder}>No folder chosen yet</div>
         </>

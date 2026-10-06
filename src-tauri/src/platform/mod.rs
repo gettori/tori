@@ -49,15 +49,7 @@ mod gate {
 
     /// Files that still call around this module, from the Windows inventory.
     /// Each migration phase deletes its entries; the list ends empty.
-    const KNOWN: &[&str] = &[
-        "accounts.rs",
-        "config.rs",
-        "crash.rs",
-        "dap.rs",
-        "icons.rs",
-        "launch.rs",
-        "update.rs",
-    ];
+    const KNOWN: &[&str] = &[];
 
     fn sources(dir: &Path, root: &Path, out: &mut Vec<(String, String)>) {
         for entry in std::fs::read_dir(dir).unwrap().flatten() {

@@ -12,6 +12,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { createStore, produce } from "solid-js/store";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFWorker } from "pdfjs-dist";
 import type { PdfZoom } from "./pdfLayout";
+import { isMac, isWindows } from "../../utils/platform";
 
 /** Which paths this subsystem owns. Re-exported rather than defined here: the
  *  composers and the two transports ask the same question to spell a location as
@@ -218,7 +219,8 @@ export function pdfLoadCount(): number {
 export function pdfFailureMessage(path: string, err: unknown): string {
   const name = path.split("/").pop() || path;
   if (err instanceof PdfRuntimeError) {
-    return `${name} needs a newer macOS: this version of WebKit cannot run the PDF viewer.`;
+    if (isMac) return `${name} needs a newer macOS: this version of WebKit cannot run the PDF viewer.`;
+    return `${name} needs a newer ${isWindows ? "WebView2 Runtime" : "WebKitGTK"} to run the PDF viewer.`;
   }
   if ((err as { name?: string } | null)?.name === "PasswordException") {
     return `${name} is password-protected, and Tori cannot open protected PDFs.`;

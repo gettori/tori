@@ -9,8 +9,8 @@
 // **This module holds data and no behaviour, deliberately.** `commands.ts`
 // imports it, `hotkeys.ts` derives its bindings from `commands.ts`, and
 // `TerminalView` imports `hotkeys.ts`, so anything reachable from here lands in
-// the terminal's chunk. The one import below is `import type`, which the bundler
-// erases; the matching rule that searches this list lives next to the panel, in
+// the terminal's chunk. The imports below are `import type`, which the bundler
+// erases, and `platform.ts`, which holds only constants; the matching rule that searches this list lives next to the panel, in
 // `panels/Settings/utils/settingsSearch.ts`, for the same reason.
 /** A boolean the three-layer resolution answers for (default < user <
  *  workspace), so it can be flipped without opening the panel. Defined beside
@@ -18,6 +18,7 @@
  *  because this is where the catalog names it. */
 export type { EditorToggleKey } from "../panels/Settings/settingsStore";
 import type { EditorDefaults, EditorToggleKey } from "../panels/Settings/settingsStore";
+import { OS_NAME, THIS_MACHINE } from "./platform";
 
 /**
  * A section of the panel, in the order the panel renders them.
@@ -541,25 +542,25 @@ export const SETTINGS: SettingEntry[] = [
     id: "notify-needs-you",
     section: "chat",
     label: "Notify when a session needs you",
-    hint: "A macOS notification when a session is waiting on you: a question, an approval, a spend limit or a failing check. Not for the one you are looking at.",
+    hint: `A ${OS_NAME} notification when a session is waiting on you: a question, an approval, a spend limit or a failing check. Not for the one you are looking at.`,
   },
   {
     id: "sound-needs-you",
     section: "chat",
     label: "Play a sound when a session needs you",
-    hint: "Played by Tori, whatever macOS does with the notification. Silent for the session you are looking at.",
+    hint: `Played by Tori, whatever ${OS_NAME} does with the notification. Silent for the session you are looking at.`,
   },
   {
     id: "notify-turn-finished",
     section: "chat",
     label: "Notify when a chat finishes its turn",
-    hint: "A macOS notification when a chat's turn runs to its end. Not for a turn you stopped or one that failed, and not for the chat on screen.",
+    hint: `A ${OS_NAME} notification when a chat's turn runs to its end. Not for a turn you stopped or one that failed, and not for the chat on screen.`,
   },
   {
     id: "sound-turn-finished",
     section: "chat",
     label: "Play a sound when a chat finishes its turn",
-    hint: "Played by Tori, whatever macOS does with the notification. Silent for the chat on screen.",
+    hint: `Played by Tori, whatever ${OS_NAME} does with the notification. Silent for the chat on screen.`,
   },
 
   {
@@ -666,19 +667,19 @@ export const SETTINGS: SettingEntry[] = [
     id: "remote-on",
     section: "remote",
     label: "Remote access",
-    hint: "Lets a paired device reach Tori over the network on the address below. While on, this Mac is kept awake so the connection holds, which costs battery on a laptop.",
+    hint: `Lets a paired device reach Tori over the network on the address below. While on, ${THIS_MACHINE} is kept awake so the connection holds, which costs battery on a laptop.`,
   },
   {
     id: "remote-tailscale",
     section: "remote",
     label: "Tailscale",
-    hint: "Lets your phone reach this Mac from anywhere, over an encrypted connection. Install it on both and sign in with the same account, then listen on the Tailscale address.",
+    hint: `Lets your phone reach ${THIS_MACHINE} from anywhere, over an encrypted connection. Install it on both and sign in with the same account, then listen on the Tailscale address.`,
   },
   {
     id: "remote-address",
     section: "remote",
     label: "Listen on",
-    hint: "One address on this Mac: your Tailscale address, or this Mac only. A local network address is not offered, because the connection is not encrypted there.",
+    hint: `One address on ${THIS_MACHINE}: your Tailscale address, or ${THIS_MACHINE} only. A local network address is not offered, because the connection is not encrypted there.`,
   },
   {
     id: "remote-port",

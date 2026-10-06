@@ -222,7 +222,7 @@ export default function PaneView(props: {
         e.preventDefault();
         e.stopPropagation();
         setFilesOver(false);
-        void openDropped();
+        void openDropped(e);
         return;
       }
       const z = zoneAt(e);
@@ -279,9 +279,9 @@ export default function PaneView(props: {
   /** Open every dropped file here, whatever it is: the strip is the one target
    *  that means "show me this", so a kind the editor renders poorly is still a
    *  better answer than refusing. A folder is not a file and says so. */
-  async function openDropped() {
+  async function openDropped(e: DragEvent) {
     if (props.paneId) setFocusedPane(props.ws ?? "", props.paneId);
-    const paths = await droppedPaths();
+    const paths = await droppedPaths(e);
     if (!paths.length) {
       emitWith<ToastEvent>(TOAST, { message: "That drag held nothing on disk to open." });
       return;

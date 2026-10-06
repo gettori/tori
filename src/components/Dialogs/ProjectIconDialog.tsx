@@ -141,7 +141,7 @@ export default function ProjectIconDialog(props: {
     if (!isFileDrag(e)) return;
     e.preventDefault();
     setOver(false);
-    const [path] = await droppedPaths();
+    const [path] = await droppedPaths(e);
     if (path) setFile(path);
   }
 

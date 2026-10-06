@@ -100,7 +100,7 @@ dunce = "1"
 # Folder and file pickers on every OS, replacing `osascript`.
 tauri-plugin-dialog = "2"
 # Icon resizing without `sips`. Already in the lock file under tauri.
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "ico"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The notification plugin's desktop send never reports a click, so a needs-you
@@ -134,6 +134,8 @@ junction = "2"
 same-file = "1"
 # The forge token store: Credential Manager, as the Keychain is on macOS.
 windows-native-keyring-store = "1"
+# The WebView2 bindings wry already uses, for the host side of a file drop.
+webview2-com = "0.38"
 # Job Objects for process trees, process liveness, owner-only DACLs, PlaySoundW
 # and the keep-awake power request. 0.61 is the one already in the lock file under tauri.
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Power", "Win32_System_SystemServices", "Win32_Security_Authorization", "Win32_Media_Audio"] }

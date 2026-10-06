@@ -930,47 +930,16 @@ pub async fn add_agent_account(
 
 /// Ask the user for a folder to add as an account, starting at `default_path`
 /// or their home. `None` when they cancel.
-///
-/// `with invisibles`, because every Claude config folder is a dot folder. The
-/// start path goes in as an argument rather than into the script text, so no
-/// spelling of it can break the script.
 #[tauri::command(async)]
-pub fn pick_account_folder(default_path: Option<String>) -> Result<Option<String>, String> {
-    if !cfg!(target_os = "macos") {
-        return Err(format!(
-            "the folder picker is not available on {}",
-            std::env::consts::OS
-        ));
-    }
+pub fn pick_account_folder(app: tauri::AppHandle, default_path: Option<String>) -> Result<Option<String>, String> {
     let start = default_path
         .map(|p| crate::agents::expand_tilde(p.trim()))
         .filter(|p| p.is_dir())
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("/"));
-    let out = crate::platform::process::command("osascript")
-        .args([
-            "-e",
-            "on run argv",
-            "-e",
-            "POSIX path of (choose folder with prompt \"Choose the folder for this account\" \
-             default location ((POSIX file (item 1 of argv)) as alias) with invisibles)",
-            "-e",
-            "end run",
-        ])
-        .arg(&start)
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        let said = String::from_utf8_lossy(&out.stderr);
-        // -128 is AppleScript's "User canceled".
-        return if said.contains("(-128)") {
-            Ok(None)
-        } else {
-            Err(said.trim().to_string())
-        };
-    }
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok((!path.is_empty()).then(|| path.trim_end_matches('/').to_string()))
+    let picked =
+        crate::platform::native::pick_folder_showing_dot_folders(&app, "Choose the folder for this account", &start)?;
+    Ok(picked.map(crate::platform::fs::display))
 }
 
 /// A stable id for a new profile, derived from the label and made unique.

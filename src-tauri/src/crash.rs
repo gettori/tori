@@ -45,7 +45,7 @@ pub fn dir() -> PathBuf {
 /// before this runs and keep the default hook: they are short-lived children
 /// of another program and a crash file from them would read as Tori's.
 pub fn install() {
-    // Asked now, not in the hook: a subprocess from a panicking process is one
+    // Asked now, not in the hook: a system query from a panicking process is one
     // more thing that can go wrong at the moment nothing else may.
     let _ = os_version();
     let default = std::panic::take_hook();
@@ -126,17 +126,7 @@ fn stamp(secs: u64) -> String {
 
 fn os_version() -> &'static str {
     static OS: OnceLock<String> = OnceLock::new();
-    OS.get_or_init(|| {
-        let out = crate::platform::process::command("sw_vers")
-            .arg("-productVersion")
-            .output();
-        let version = out
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "unknown".into());
-        format!("macOS {version} {}", std::env::consts::ARCH)
-    })
+    OS.get_or_init(crate::platform::native::os_version)
 }
 
 /// Keep the newest `KEEP` files. Best effort, like everything here.
@@ -285,9 +275,9 @@ fn unstamp(s: &str) -> Option<u64> {
 /// fixed destination built here, not a URL the frontend hands in, the same
 /// rule as `update::open_releases_page`.
 #[tauri::command(async)]
-pub fn open_crash_issue() -> Result<(), String> {
+pub fn open_crash_issue(app: tauri::AppHandle) -> Result<(), String> {
     let url = issue_url(list(&dir()).last());
-    crate::exec::spawn_detached(crate::platform::process::command("open").arg(url)).map_err(|e| e.to_string())
+    crate::platform::native::open_url(&app, &url)
 }
 
 fn issue_url(newest: Option<&CrashFile>) -> String {

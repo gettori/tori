@@ -91,6 +91,7 @@ import FileTree, { clearListingCache } from "./FileTree";
 import { resetExpanded } from "../../../utils/treeExpanded";
 import styles from "./FileTree.module.css";
 import { loadWorkspaceSettings } from "../../Settings/settingsStore";
+import { FILE_MANAGER } from "../../../utils/platform";
 
 const ROOT = "/proj";
 
@@ -282,7 +283,7 @@ describe("the editable project tree", () => {
     fireEvent.contextMenu(screen.getByText("README.md"));
 
     // The menu still opens, because revealing mutates nothing.
-    await screen.findByText("Reveal in Finder");
+    await screen.findByText(`Reveal in ${FILE_MANAGER}`);
     expect(screen.queryByText("Rename")).toBeNull();
     expect(sent("fs_rename")).toHaveLength(0);
   });
@@ -533,7 +534,7 @@ describe("selecting and revealing", () => {
     await screen.findByText("README.md");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    pointerClick(await screen.findByText("Reveal in Finder"));
+    pointerClick(await screen.findByText(`Reveal in ${FILE_MANAGER}`));
 
     await waitFor(() => expect(sent("plugin:opener|reveal_item_in_dir")).toHaveLength(1));
     // A list even for one, which is the shape the plugin's command takes.
@@ -550,7 +551,7 @@ describe("selecting and revealing", () => {
     cmdClick("docs");
 
     fireEvent.contextMenu(screen.getByText("README.md"));
-    pointerClick(await screen.findByText("Reveal in Finder"));
+    pointerClick(await screen.findByText(`Reveal in ${FILE_MANAGER}`));
 
     await waitFor(() => expect(sent("plugin:opener|reveal_item_in_dir")).toHaveLength(1));
     expect(sent("plugin:opener|reveal_item_in_dir")[0].args).toEqual({

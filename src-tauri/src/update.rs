@@ -17,7 +17,7 @@
 //    has nothing to act on.
 // 3. Never downgrades or nags sideways: only a strictly greater semver counts.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -63,40 +63,16 @@ pub struct UpdateInfo {
 /// cannot be talked into opening something arbitrary. Matches `launch.rs`'s
 /// "spawn the real tool" convention.
 #[tauri::command(async)]
-pub fn open_releases_page() -> Result<(), String> {
+pub fn open_releases_page(app: tauri::AppHandle) -> Result<(), String> {
     let found = FOUND_TAG.lock().ok().and_then(|t| t.clone());
     let url = found.map_or_else(|| RELEASES_PAGE.to_string(), |tag| format!("{RELEASES_PAGE}/tag/{tag}"));
-    crate::exec::spawn_detached(crate::platform::process::command("open").arg(url)).map_err(|e| e.to_string())
+    crate::platform::native::open_url(&app, &url)
 }
 
-/// Start this app's bundle again and quit this process.
-///
-/// The new instance is opened only once this pid is gone. `open -n` straight
-/// away would run two Tori processes over one config dir and RPC socket for
-/// as long as this one takes to shut down.
+/// Start this app again and quit this process.
 #[tauri::command]
 pub fn relaunch(app: tauri::AppHandle) -> Result<(), String> {
-    let bundle = running_bundle().unwrap_or_else(|| PathBuf::from("/Applications/Tori.app"));
-    crate::exec::spawn_detached(
-        crate::platform::process::command("/bin/sh")
-            .arg("-c")
-            .arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec open "$2""#)
-            .arg("sh")
-            .arg(std::process::id().to_string())
-            .arg(&bundle),
-    )
-    .map_err(|e| e.to_string())?;
-    app.exit(0);
-    Ok(())
-}
-
-/// The `.app` folder the running binary sits in, or `None` outside a bundle
-/// (a dev build runs from `target/`).
-fn running_bundle() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    exe.ancestors()
-        .find(|p| p.extension().is_some_and(|e| e == "app"))
-        .map(Path::to_path_buf)
+    crate::platform::native::relaunch(&app)
 }
 
 /// `brew` on the login PATH and a Caskroom folder for tori: the same rule

@@ -8,6 +8,7 @@ import { badName, shortHome } from "../../../utils/names";
 import type { NewProjectMode } from "../../../utils/newProject";
 import { commandLine } from "./AgentsStep";
 import styles from "../FirstRun.module.css";
+import { isWindows } from "../../../utils/platform";
 
 export const PROJECT_LEAD =
   "Projects live inside the space. Start empty, clone a repo, or set up a bare repo with one worktree per branch.";
@@ -35,7 +36,9 @@ type GitMissing = Exclude<GitHealth["kind"], "ready" | "bashMissing">;
 
 const GIT_MISSING: Record<GitMissing, string> = {
   toolsMissing: "Cloning and worktrees need git on your PATH. The Xcode command line tools include it.",
-  notFound: "Cloning and worktrees need git on your login shell's PATH. Homebrew can install it.",
+  notFound: isWindows
+    ? "Cloning and worktrees need Git for Windows on your PATH. winget can install it."
+    : "Cloning and worktrees need git on your login shell's PATH. Homebrew can install it.",
 };
 
 /** git is only a question for the modes that run it, and an unanswered probe

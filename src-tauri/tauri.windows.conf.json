@@ -13,6 +13,18 @@
     }
   },
   "bundle": {
-    "externalBin": ["binaries/tori-cli"]
+    "externalBin": ["binaries/tori-cli"],
+    "resources": [
+      "resources/lsp/**/*",
+      "resources/schemas/**/*",
+      "resources/dap/**/*",
+      "resources/autopilot/**/*",
+      "resources/sounds/*.wav"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }

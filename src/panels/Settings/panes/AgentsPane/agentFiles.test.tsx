@@ -14,6 +14,7 @@ import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";
 import { COMPOSE_DRAFT, OPEN_IN_EDITOR, type ComposeDraft, type OpenInEditor } from "../../../../utils/events";
 import type { ConfigFilesView, EntryView } from "./AgentFiles";
+import { FILE_MANAGER } from "../../../../utils/platform";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));
@@ -194,7 +195,7 @@ describe("the Files group", () => {
 
     // Closed: no children, no actions.
     expect(r.queryByRole("button", { name: "alpha" })).toBeNull();
-    expect(r.queryByRole("button", { name: "Reveal in Finder" })).toBeNull();
+    expect(r.queryByRole("button", { name: `Reveal in ${FILE_MANAGER}` })).toBeNull();
   });
 
   it("shows the absolute path, the children and the actions when opened", async () => {
@@ -205,7 +206,7 @@ describe("the Files group", () => {
     expect(r.container.textContent).toContain("/home/me/.claude/skills");
     expect(r.getByRole("button", { name: "alpha" })).toBeTruthy();
     expect(r.getByRole("button", { name: "beta" })).toBeTruthy();
-    expect(r.getByRole("button", { name: "Reveal in Finder" })).toBeTruthy();
+    expect(r.getByRole("button", { name: `Reveal in ${FILE_MANAGER}` })).toBeTruthy();
     expect(r.getByRole("button", { name: "Write with an agent" })).toBeTruthy();
   });
 
@@ -315,7 +316,7 @@ describe("revealing a row in Finder", () => {
     const r = await open(mount());
 
     await expand(r, "Instructions");
-    fireEvent.click(r.getByRole("button", { name: "Reveal in Finder" }));
+    fireEvent.click(r.getByRole("button", { name: `Reveal in ${FILE_MANAGER}` }));
 
     await waitFor(() =>
       expect(invoked).toHaveBeenCalledWith("reveal_in_finder", {
@@ -331,7 +332,7 @@ describe("revealing a row in Finder", () => {
     fireEvent.click(r.getByRole("button", { name: "Work" }));
     await expand(r, "Instructions");
 
-    expect(r.queryByRole("button", { name: "Reveal in Finder" })).toBeNull();
+    expect(r.queryByRole("button", { name: `Reveal in ${FILE_MANAGER}` })).toBeNull();
   });
 });
 
@@ -412,7 +413,7 @@ describe("creating a file from a row", () => {
     await expand(r, "Rules");
 
     expect(r.queryByRole("button", { name: "New" })).toBeNull();
-    expect(r.getByRole("button", { name: "Reveal in Finder" })).toBeTruthy();
+    expect(r.getByRole("button", { name: `Reveal in ${FILE_MANAGER}` })).toBeTruthy();
   });
 });
 

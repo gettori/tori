@@ -118,7 +118,7 @@ html {
    window controls float on the gradient above the raised work-card. */
 /* Fixed height, deliberately not scaled with --ui-scale like the rest of the
    chrome. The system traffic lights sit in the window's own titlebar at a fixed
-   inset (`trafficLightPosition` in tauri.conf.json), and that inset is static
+   inset (`trafficLightPosition` in tauri.macos.conf.json), and that inset is static
    config: if this bar grew with the UI scale, the lights would drift off its
    centre at every zoom step. So the titlebar is a fixed-size ornament, the way
    the traffic lights themselves are. Its contents still scale. */
@@ -126,8 +126,14 @@ html {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  height: 44px;
+  height: 36px;
   background: transparent;
+}
+
+/* Off macOS the system title bar sits above this one, so only the overlay
+   strip on macOS needs the room for the traffic lights. */
+:root[data-os="mac"] .topbar {
+  height: 44px;
 }
 
 /* The cockpit covers the workspace, so its sidebar toggle, history arrows and

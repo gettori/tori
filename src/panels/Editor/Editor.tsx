@@ -368,6 +368,7 @@ import { forgetTab, setPaneActive, stampOrder } from "../../layout/tabPlacement"
 import { editorStageId, stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 import patterns from "../../styles/patterns.module.css";
+import { FILE_MANAGER } from "../../utils/platform";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
 // filtered list hands OverflowTabBar the same object references on every read:
@@ -1194,7 +1195,7 @@ export default function Editor(props: {
     const paths: MenuItem[] = [
       { label: "Copy path", onClick: () => void copyPaths([t.path]) },
       ...(relFrom ? [{ label: "Copy relative path", onClick: () => void copyPaths([relFrom]) }] : []),
-      { label: "Reveal in Finder", onClick: () => void revealPaths([t.path]) },
+      { label: `Reveal in ${FILE_MANAGER}`, onClick: () => void revealPaths([t.path]) },
     ];
     const history: MenuItem[] =
       r && rel

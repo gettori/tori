@@ -89,13 +89,17 @@ use tauri::{Emitter, Manager};
 fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     // A template image (black on transparent), not the app icon: macOS paints
     // it black or white to match the menu bar and dims it when the bar is
-    // inactive, which the coloured mark would never do.
+    // inactive, which the coloured mark would never do. Nothing repaints a
+    // template elsewhere, so there a black mark would vanish on a dark taskbar.
+    #[cfg(target_os = "macos")]
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
+    #[cfg(not(target_os = "macos"))]
+    let icon = app.default_window_icon().ok_or("no app icon")?.clone();
     let empty_menu = Menu::new(app)?;
     let tray_app = app.handle().clone();
     let tray = TrayIconBuilder::new()
         .icon(icon)
-        .icon_as_template(true)
+        .icon_as_template(cfg!(target_os = "macos"))
         .menu(&empty_menu)
         .tooltip("Tori")
         .on_menu_event(move |_tray, event| {
@@ -210,7 +214,7 @@ pub fn run() {
             // (close all, minimize all, zoom), the hover glyphs, the dimming that
             // says which window is focused, and the accessibility affordances.
             // None of that is reachable from the web layer, so the buttons stay
-            // native and `trafficLightPosition` in tauri.conf.json places them.
+            // native and `trafficLightPosition` in tauri.macos.conf.json places them.
             // The topbar reserves their space (WindowControls) and is pinned to a
             // fixed height, since that inset is a constant the UI scale must not
             // move out from under.
@@ -230,6 +234,13 @@ pub fn run() {
             }
 
             setup::set_publisher(app.handle().clone());
+
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = dragboard::listen(&window) {
+                    eprintln!("tori: file drops will carry no paths: {e}");
+                }
+            }
 
             // The app level socket the CLI and MCP fronts talk to. Fail-soft like
             // the askpass bridge: without it Tori runs, nothing outside can ask.

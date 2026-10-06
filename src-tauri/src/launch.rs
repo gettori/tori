@@ -1,4 +1,4 @@
-use crate::env::augmented_path;
+use std::path::Path;
 
 /// Is there something at `path` worth revealing?
 ///
@@ -14,15 +14,9 @@ fn check_reveal_target(path: &str) -> Result<(), String> {
 
 /// Reveal a file or folder in Finder, selected in its parent.
 #[tauri::command(async)]
-pub fn reveal_in_finder(path: String) -> Result<(), String> {
+pub fn reveal_in_finder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     check_reveal_target(&path)?;
-    crate::exec::spawn_detached(
-        crate::platform::process::command("open")
-            .env("PATH", augmented_path())
-            .arg("-R")
-            .arg(&path),
-    )
-    .map_err(|e| e.to_string())
+    crate::platform::native::reveal(&app, Path::new(&path))
 }
 
 #[cfg(test)]

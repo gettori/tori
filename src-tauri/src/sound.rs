@@ -13,9 +13,12 @@ pub enum Sound {
 
 /// Play one of Tori's sounds. Silent when its file is not there.
 pub fn play(app: &AppHandle, sound: Sound) {
-    let file = match sound {
-        Sound::NeedsYou => "resources/sounds/needs-you.mp3",
-        Sound::TurnFinished => "resources/sounds/turn-finished.mp3",
+    // `PlaySoundW` plays wav only.
+    let file = match (sound, cfg!(windows)) {
+        (Sound::NeedsYou, false) => "resources/sounds/needs-you.mp3",
+        (Sound::NeedsYou, true) => "resources/sounds/needs-you.wav",
+        (Sound::TurnFinished, false) => "resources/sounds/turn-finished.mp3",
+        (Sound::TurnFinished, true) => "resources/sounds/turn-finished.wav",
     };
     let _ = crate::platform::native::play_sound(app, file);
 }

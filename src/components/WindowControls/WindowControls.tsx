@@ -5,7 +5,7 @@ import styles from "./WindowControls.module.css";
 
 // The top-left cluster of the titlebar. It draws no window controls: the traffic
 // lights are the system's own (placed by `trafficLightPosition` in
-// tauri.conf.json), because everything AppKit attaches to them - the hover
+// tauri.macos.conf.json), because everything AppKit attaches to them - the hover
 // tiling menu, option-click close-all / minimize-all / zoom, the hover glyphs,
 // focus dimming, accessibility - is unreachable from the web layer. What this
 // owns is the space they sit in, the sidebar toggle at their right, and the

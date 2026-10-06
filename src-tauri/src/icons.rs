@@ -833,7 +833,7 @@ pub fn cached_project_icon(project: &Path, folders: &[PathBuf]) -> Option<String
 // A frame to the phone carries the image base64 inline, so a larger one is
 // sent shrunk: a manifest's 512px icon is far more than a 40px tile needs.
 const DEVICE_IMAGE_MAX: u64 = 96 * 1024;
-const DEVICE_IMAGE_PX: &str = "128";
+const DEVICE_IMAGE_PX: u32 = 128;
 
 /// The image a project row shows, in the sidebar's order: an upload, then a
 /// picked glyph (which is no image), then the favicon.
@@ -869,19 +869,17 @@ fn image_mime(path: &str) -> Option<&'static str> {
 }
 
 fn shrunk(path: &str) -> Option<Vec<u8>> {
-    let out = std::env::temp_dir().join(format!(
-        "tori-icon-{}-{:016x}.png",
-        std::process::id(),
-        fnv1a(path.as_bytes())
-    ));
-    let done = crate::platform::process::command("sips")
-        .args(["-s", "format", "png", "-Z", DEVICE_IMAGE_PX, path, "--out"])
-        .arg(&out)
-        .output()
-        .is_ok_and(|o| o.status.success());
-    let bytes = if done { std::fs::read(&out).ok() } else { None };
-    let _ = std::fs::remove_file(&out);
-    bytes.filter(|b| b.len() as u64 <= DEVICE_IMAGE_MAX)
+    let img = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?;
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    img.thumbnail(DEVICE_IMAGE_PX, DEVICE_IMAGE_PX)
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .ok()?;
+    Some(bytes.into_inner()).filter(|b| b.len() as u64 <= DEVICE_IMAGE_MAX)
 }
 
 #[derive(serde::Serialize)]
@@ -1010,28 +1008,12 @@ pub fn prune_stored(old: Option<&str>, keep: Option<&str>) {
     }
 }
 
-/// Native file picker for an icon image. Unfiltered on purpose: AppleScript's
-/// `of type` list is quietly inconsistent about extensions vs UTIs, and a
-/// filter that matches nothing is worse than none - `store_icon` rejects an
-/// unsupported pick with a message the user can act on. Mirrors `pick_folder`:
-/// a cancel is `Ok(None)`, not an error.
+/// Unfiltered on purpose: `store_icon` rejects an unsupported pick with a
+/// message the user can act on. A cancel is `Ok(None)`, not an error.
 #[tauri::command(async)]
-pub fn pick_icon_file() -> Result<Option<String>, String> {
-    let out = crate::platform::process::command("osascript")
-        .args([
-            "-e",
-            "POSIX path of (choose file with prompt \"Choose an icon image (SVG, PNG or ICO)\")",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Ok(None); // cancelled
-    }
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if path.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(path))
+pub fn pick_icon_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let picked = crate::platform::native::pick_file(&app, "Choose an icon image (SVG, PNG or ICO)", None);
+    Ok(picked.map(crate::platform::fs::display))
 }
 
 #[cfg(test)]

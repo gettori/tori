@@ -4,9 +4,13 @@ import App from "./App";
 import { applyCachedTheme } from "./theme";
 import { installTrace } from "./utils/perfTrace";
 import { installCrashReport } from "./utils/crashReport";
+import { isMac } from "./utils/platform";
 
 // Paint with the last-known theme synchronously, before first render.
 applyCachedTheme();
+
+// For the CSS that lays out around macOS's overlay title bar.
+document.documentElement.dataset.os = isMac ? "mac" : "other";
 
 // Uncaught errors and rejections go to ~/.config/tori/crashes beside the
 // backend's panic files. Before render, so a throw in the first frame counts.

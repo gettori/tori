@@ -376,9 +376,7 @@ pub fn withdraw_notification(app: &AppHandle, session: &str) {
 
 pub fn set_badge_count(app: &AppHandle, count: usize) -> Result<(), String> {
     let window = app.get_webview_window("main").ok_or("no main window")?;
-    window
-        .set_badge_count((count > 0).then_some(count as i64))
-        .map_err(|e| e.to_string())
+    crate::platform::native::set_badge(&window, count)
 }
 
 #[cfg(test)]

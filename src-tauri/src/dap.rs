@@ -193,7 +193,8 @@ fn xcrun_find(program: &str) -> Option<PathBuf> {
     if !Path::new(String::from_utf8_lossy(&dir.stdout).trim()).is_dir() {
         return None;
     }
-    let out = crate::env::output_with_timeout(crate::platform::process::command("xcrun").args(["-f", program]))?;
+    let out =
+        crate::env::output_with_timeout(crate::platform::process::command("/usr/bin/xcrun").args(["-f", program]))?;
     if !out.status.success() {
         return None;
     }
@@ -899,23 +900,9 @@ pub fn dap_cargo_cancel(build_id: String) {
 /// A program to debug, chosen in a native file picker opened at `root`. `None`
 /// when the pick is cancelled, as `pick_icon_file` answers.
 #[tauri::command(async)]
-pub fn dap_pick_program(root: String) -> Result<Option<String>, String> {
-    // `root` travels as an argument rather than inside the script, so no path
-    // can break out of the AppleScript string.
-    let out = crate::platform::process::command("osascript")
-        .args([
-            "-e",
-            "on run argv",
-            "-e",
-            "POSIX path of (choose file with prompt \"Choose the program to debug\" default location (POSIX file (item 1 of argv)))",
-            "-e",
-            "end run",
-            &root,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok((out.status.success() && !path.is_empty()).then_some(path))
+pub fn dap_pick_program(app: tauri::AppHandle, root: String) -> Result<Option<String>, String> {
+    let picked = crate::platform::native::pick_file(&app, "Choose the program to debug", Some(Path::new(&root)));
+    Ok(picked.map(crate::platform::fs::display))
 }
 
 #[cfg(test)]

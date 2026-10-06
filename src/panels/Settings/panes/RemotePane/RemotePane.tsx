@@ -15,6 +15,7 @@ import Switch from "../../../../components/Switch/Switch";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import Button from "../../../../components/Button/Button";
 import { pushToast } from "../../../../components/Toasts/Toasts";
+import { THIS_MACHINE } from "../../../../utils/platform";
 
 /** Mirrors `remote::Interface` in src-tauri/src/rpc/remote.rs. */
 type Interface = { name: string; address: string; kind: "tailscale" | "loopback" };
@@ -67,7 +68,7 @@ function pairedOn(ms: number): string {
 }
 
 function optionFor(i: Interface): SelectOption {
-  const where = i.kind === "tailscale" ? "Tailscale" : "this Mac only";
+  const where = i.kind === "tailscale" ? "Tailscale" : `${THIS_MACHINE} only`;
   return { value: i.address, label: `${i.address} (${where})` };
 }
 

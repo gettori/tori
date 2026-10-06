@@ -50,6 +50,7 @@ import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import dialogStyles from "../../../../components/Dialogs/Dialogs.module.css";
 import styles from "../../Settings.module.css";
+import { isMac } from "../../../../utils/platform";
 
 // One card per account: who is signed in, what their quota is at, and every
 // control that belongs to that login rather than to the agent.
@@ -307,7 +308,7 @@ function WindowChips(props: {
       ? `Show the ${limitTypeLabel(c.reading ? c.reading.kind : c.id)} window in the titlebar`
       : tokenAlreadyRead(props.agentId, props.profile)
         ? `This account's token reports no ${c.label} window.`
-        : `Tori reads this account's token from the login Keychain to see its ${c.label} window.`;
+        : `Tori reads this account's token from ${isMac ? "the login Keychain" : "its credentials file"} to see its ${c.label} window.`;
 
   return (
     <div class={styles.chipRow}>

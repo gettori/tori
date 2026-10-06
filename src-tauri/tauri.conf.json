@@ -17,9 +17,6 @@
         "height": 900,
         "minWidth": 900,
         "minHeight": 600,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": { "x": 16, "y": 24 },
         "dragDropEnabled": false
       }
     ],
@@ -53,7 +50,7 @@
       "dangerousDisableAssetCspModification": ["style-src"],
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/**", "$HOME/.config/tori/**", "/Volumes/**", "$TEMP/**", "/tmp/**", "/private/tmp/**"]
+        "scope": ["$HOME/**", "$TEMP/**"]
       }
     }
   },
@@ -65,8 +62,8 @@
       "resources/schemas/**/*",
       "resources/dap/**/*",
       "resources/autopilot/**/*",
-      "resources/sounds/**/*"
+      "resources/sounds/*.mp3"
     ],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"]
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
   }
 }

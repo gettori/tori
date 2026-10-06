@@ -17,6 +17,7 @@ import {
 } from "../../../../utils/events";
 import { fileMentionBlocks } from "../../../../utils/chatCompose";
 import styles from "../../Settings.module.css";
+import { FILE_MANAGER } from "../../../../utils/platform";
 
 /** Mirrors `crate::agent_config::EntryState`. */
 export type EntryState = "missing" | "present" | "symlink" | "dangling";
@@ -326,7 +327,7 @@ function FileRow(props: {
 
             {/* Every state but `missing`: there is nothing to reveal until
                 there is something at the path, and a dangling link is still an
-                entry Finder can show. */}
+                entry the file manager can show. */}
             <Show when={e().state !== "missing"}>
               <Button
                 size="sm"
@@ -335,7 +336,7 @@ function FileRow(props: {
                   void invoke("reveal_in_finder", { path: e().path }).catch((err) => toast(String(err), "error"))
                 }
               >
-                Reveal in Finder
+                Reveal in {FILE_MANAGER}
               </Button>
             </Show>
           </div>

@@ -22,6 +22,8 @@ const spy = vi.hoisted(() => ({
   failWith: null as unknown,
 }));
 
+vi.mock("../../utils/platform", () => ({ isMac: true, isWindows: false }));
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://localhost/${path}`,
 }));

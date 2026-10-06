@@ -37,6 +37,7 @@ import { syntheticId } from "../../../utils/syntheticTabs";
 import { collapseDirs, isDirOpen, nextSessionKey, setDirOpen } from "../../../utils/treeExpanded";
 import { editorDefaults } from "../../Settings/settingsStore";
 import styles from "./FileTree.module.css";
+import { FILE_MANAGER, TRASH } from "../../../utils/platform";
 
 type Entry = { name: string; path: string; is_dir: boolean; ignored: boolean };
 
@@ -378,7 +379,7 @@ async function deleteEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
     title: targets.length > 1 ? `Delete ${targets.length} selected items?` : `Delete the ${what} “${entry.name}”?`,
     // Not "cannot be undone": the backend trashes rather than unlinks, and a
     // dialog that overstates the damage teaches people to distrust the next one.
-    message: "They move to the Trash, where you can put them back.",
+    message: `They move to the ${TRASH}, where you can put them back.`,
     confirmLabel: "Delete",
     danger: true,
   });
@@ -456,8 +457,8 @@ async function copyInto(ctx: EditCtx, paths: readonly string[], dir: string) {
 /** Copy in what another app dropped on `dir`. The paths come from the OS rather
  *  than from the event (see utils/externalDrop), so a folder arrives as one entry
  *  and the backend copies it whole. Answers whether anything landed. */
-async function importInto(ctx: EditCtx, dir: string): Promise<boolean> {
-  const paths = await droppedPaths();
+async function importInto(ctx: EditCtx, dir: string, e: DragEvent): Promise<boolean> {
+  const paths = await droppedPaths(e);
   if (!paths.length) {
     emitWith<ToastEvent>(TOAST, { message: "That drag held nothing on disk to copy." });
     return false;
@@ -644,7 +645,7 @@ function TreeNode(props: {
       [
         !e.is_dir && { label: "Open to the Side", onClick: open({ side: true }) },
         !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ rendered: true }) },
-        { label: "Reveal in Finder", onClick: () => revealPaths(targetsOf(e, ctx)) },
+        { label: `Reveal in ${FILE_MANAGER}`, onClick: () => revealPaths(targetsOf(e, ctx)) },
         {
           label: "Open in Integrated Terminal",
           onClick: () => emitWith<OpenShellAt>(OPEN_SHELL_AT, { cwd: dir }),
@@ -761,7 +762,7 @@ function TreeNode(props: {
             e.stopPropagation();
             setDropInto(false);
             const into = dropDir();
-            void importInto(props.ctx, into).then((landed) => landed && props.expand.setOpen(into, true));
+            void importInto(props.ctx, into, e).then((landed) => landed && props.expand.setOpen(into, true));
             return;
           }
           if (!acceptsDrop(e)) return;
@@ -1186,7 +1187,7 @@ export default function FileTree(props: {
         c && a && { label: "New Folder", onClick: () => newFolderIn(c, root, a.reload) },
       ],
       [
-        { label: "Reveal in Finder", onClick: () => revealPaths([root]) },
+        { label: `Reveal in ${FILE_MANAGER}`, onClick: () => revealPaths([root]) },
         {
           label: "Open in Integrated Terminal",
           onClick: () => emitWith<OpenShellAt>(OPEN_SHELL_AT, { cwd: root }),
@@ -1224,7 +1225,7 @@ export default function FileTree(props: {
         if (isFileDrag(e)) {
           e.preventDefault();
           setDropRoot(false);
-          void importInto(c, c.root);
+          void importInto(c, c.root, e);
           return;
         }
         if (!isTreeDrag(e)) return;
