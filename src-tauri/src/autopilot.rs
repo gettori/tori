@@ -875,7 +875,7 @@ impl AutopilotStore {
     }
 
     pub fn update(&self, target: Target, patch: Patch) -> Result<Item, UpdateError> {
-        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let mint = || format!("item-{}", crate::platform::ipc::random_id());
         let changed = self.write(|items| apply(items, target, patch, now_ms(), mint).map(|item| vec![item]))?;
         changed
             .into_iter()
@@ -948,7 +948,7 @@ impl AutopilotStore {
         cap: usize,
     ) -> Result<Vec<Item>, UpdateError> {
         let pickup = self.contract(project).unwrap_or_default().pickup;
-        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let mint = || format!("item-{}", crate::platform::ipc::random_id());
         self.write(|items| {
             Ok(plan_pickup(
                 items,

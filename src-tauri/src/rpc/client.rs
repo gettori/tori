@@ -5,12 +5,12 @@
 use std::collections::VecDeque;
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 
 use serde_json::{json, Value};
 
 use super::frame::{to_line, RpcError};
 use super::{bridge_path, ENV_CALLER, ENV_SOCK};
+use crate::platform::ipc::{self, UnixStream};
 
 // `File` means Tori did not start this process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +76,7 @@ pub struct Client {
 
 impl Client {
     pub fn connect(endpoint: &Endpoint) -> Result<Self, ClientError> {
-        let writer = UnixStream::connect(&endpoint.sock)?;
+        let writer = ipc::connect(&endpoint.sock)?;
         let reader = BufReader::new(writer.try_clone()?);
         let mut client = Client {
             reader,

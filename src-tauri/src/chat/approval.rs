@@ -30,16 +30,14 @@
 //! stopped. The cost of a failure is a tool card with no diff.
 //!
 //! **The shape is [[concept_askpass_bridge]]'s, reused rather than reinvented**:
-//! a private `0700` dir under `$TMPDIR`, a short socket path (Darwin caps
-//! `sun_path` at 104 bytes), a per-server random token, and an accept loop with a
+//! a socket in a private dir (`platform::ipc::PrivateListener`, which keeps the
+//! path under Darwin's 104 byte `sun_path`), a per-server random token, and an accept loop with a
 //! thread per connection. The gate needed a cheap path that answered most calls
 //! from a file without opening a socket, because it matched *all* tools and a
 //! turn doing fifty `Read`s must not cost fifty round trips. The capture gets
 //! that for free by never being handed a `Read` in the first place.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -49,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::agents::ChatTransport;
-use crate::owned_state::now_ms;
+use crate::platform::ipc::{self, random_token, PrivateListener, UnixStream};
 
 /// Env markers the helper reads. Set inline on the hook command string rather
 /// than inherited, so only the hook process ever sees them.
@@ -261,7 +259,7 @@ fn emit(output: &str) -> i32 {
 /// One round trip to the server. Isolated from env and stdout so it is testable
 /// against a stub listener, the same split `askpass.rs` uses.
 fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<CaptureAck> {
-    let mut stream = UnixStream::connect(sock)?;
+    let mut stream = ipc::connect(sock)?;
     stream.write_all(serde_json::to_string(req)?.as_bytes())?;
     stream.write_all(b"\n")?;
     stream.flush()?;
@@ -291,7 +289,6 @@ type Guard = Box<dyn Fn(&HookRequest) -> Option<String> + Send + Sync>;
 pub struct CaptureServer {
     token: String,
     sock_path: PathBuf,
-    dir: PathBuf,
     /// Counts accepted connections, so a test can assert a read-shaped tool
     /// really avoided the socket rather than merely being answered quickly.
     connections: AtomicU64,
@@ -302,13 +299,6 @@ pub struct CaptureServer {
     observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
     /// Asked first; a reason refuses the write, which then has nothing to capture.
     guard: Guard,
-}
-
-impl Drop for CaptureServer {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.sock_path);
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
 }
 
 impl CaptureServer {
@@ -341,7 +331,7 @@ impl CaptureServer {
         if self.stopping.swap(true, Ordering::SeqCst) {
             return;
         }
-        let _ = UnixStream::connect(&self.sock_path);
+        let _ = ipc::connect(self.sock_path());
     }
 }
 
@@ -355,27 +345,12 @@ pub fn start_guarded(
     observe: Box<dyn Fn(&HookRequest) + Send + Sync>,
     guard: Guard,
 ) -> std::io::Result<Arc<CaptureServer>> {
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("tori-cha-{}-{seq:08x}", std::process::id()));
-    std::fs::create_dir_all(&dir)?;
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
-    let sock_path = dir.join("s");
-    let _ = std::fs::remove_file(&sock_path);
-    if sock_path.as_os_str().len() >= 104 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("approval socket path too long for sun_path: {}", sock_path.display()),
-        ));
-    }
-
-    let listener = UnixListener::bind(&sock_path)?;
-    std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o700))?;
-
+    // The accept thread owns the listener, so the socket closes when the loop
+    // exits and a helper arriving after `shutdown` is refused, not left waiting.
+    let listener = PrivateListener::bind("tori-cha")?;
     let server = Arc::new(CaptureServer {
-        token: random_token(),
-        sock_path,
-        dir,
+        token: random_token()?,
+        sock_path: listener.path().to_path_buf(),
         connections: AtomicU64::new(0),
         stopping: AtomicBool::new(false),
         observe,
@@ -384,7 +359,7 @@ pub fn start_guarded(
 
     let accept = server.clone();
     thread::spawn(move || {
-        for stream in listener.incoming() {
+        for stream in listener.listener().incoming() {
             // Checked before the stream is served, so `shutdown`'s own wake-up
             // connect is never mistaken for a real tool call.
             if accept.stopping.load(Ordering::SeqCst) {
@@ -449,16 +424,6 @@ fn write_response(mut stream: &UnixStream, ack: &CaptureAck) -> std::io::Result<
     stream.write_all(serde_json::to_string(ack)?.as_bytes())?;
     stream.write_all(b"\n")?;
     stream.flush()
-}
-
-pub(crate) fn random_token() -> String {
-    let mut buf = [0u8; 16];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        if f.read_exact(&mut buf).is_ok() {
-            return buf.iter().map(|b| format!("{b:02x}")).collect();
-        }
-    }
-    format!("{}-{}", std::process::id(), now_ms())
 }
 
 // ---------------------------------------------------------------------------
@@ -564,8 +529,11 @@ pub fn settings_args(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, settings_json_with(&exe, sock, token, background, home)).map_err(|e| e.to_string())?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    crate::platform::fs::write_private(
+        &path,
+        settings_json_with(&exe, sock, token, background, home).as_bytes(),
+    )
+    .map_err(|e| e.to_string())?;
     let mut args = match transport {
         ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),
         ChatTransport::Acp => Vec::new(),
@@ -689,7 +657,7 @@ mod tests {
     #[test]
     fn shutdown_stops_the_accept_loop_so_nothing_is_leaked_per_session() {
         let (server, _observed) = observing_server();
-        let dir = server.dir.clone();
+        let dir = server.sock_path().parent().unwrap().to_path_buf();
         assert!(dir.exists());
 
         server.shutdown();
@@ -972,7 +940,7 @@ mod tests {
     fn toris_deadline_is_strictly_inside_the_one_the_cli_is_told() {
         const { assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS) };
         let settings: Value = serde_json::from_str(&settings_json(
-            Path::new("/bin/tori"),
+            Path::new("/usr/local/bin/tori"),
             Path::new("/tmp/s"),
             "tok",
             false,
@@ -988,7 +956,7 @@ mod tests {
     /// would strip them, and must never ship.
     #[test]
     fn the_settings_payload_never_disables_the_users_own_sources() {
-        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false);
+        let text = settings_json(Path::new("/usr/local/bin/tori"), Path::new("/tmp/s"), "tok", false);
         assert!(
             !text.contains("setting-sources"),
             "the payload must not touch setting sources"
@@ -1019,7 +987,7 @@ mod tests {
     #[test]
     fn the_hook_matches_the_write_tools_and_only_those() {
         let parsed: Value = serde_json::from_str(&settings_json(
-            Path::new("/bin/tori"),
+            Path::new("/usr/local/bin/tori"),
             Path::new("/tmp/s"),
             "tok",
             false,
@@ -1098,7 +1066,7 @@ mod tests {
     /// names no source list, so nothing it contains can displace the user's settings.
     #[test]
     fn toris_settings_payload_can_only_add_a_hook_never_replace_the_users() {
-        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok", false);
+        let text = settings_json(Path::new("/usr/local/bin/tori"), Path::new("/tmp/s"), "tok", false);
         let parsed: Value = serde_json::from_str(&text).unwrap();
 
         // One hook event, one entry and allow rules for Tori's tools: a merge
@@ -1142,8 +1110,7 @@ mod tests {
         );
         assert!(!args.iter().any(|a| a.contains("super-secret-token")));
 
-        let mode = std::fs::metadata(file).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "the settings file holds a token");
+        crate::platform::testing::assert_private(Path::new(file));
         let _ = std::fs::remove_file(file);
     }
 

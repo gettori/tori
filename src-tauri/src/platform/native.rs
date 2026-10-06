@@ -34,6 +34,13 @@ pub fn open_url(app: &AppHandle, url: &str) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Opens `path` with its default program: an app bundle or an exe launches.
+pub fn open_path(app: &AppHandle, path: &Path) -> Result<(), String> {
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 pub fn os_version() -> String {
     let version = sysinfo::System::long_os_version().unwrap_or_else(|| "unknown".into());
     format!("{version} {}", std::env::consts::ARCH)

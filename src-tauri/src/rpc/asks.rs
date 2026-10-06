@@ -210,7 +210,7 @@ impl Asks {
         item: Option<String>,
     ) -> Ask {
         // Unguessable, since any caller can wait on an id and reading an answer consumes it.
-        let id = format!("ask-{}", crate::chat::approval::random_token());
+        let id = format!("ask-{}", crate::platform::ipc::random_id());
         let options = match approval {
             Some(_) => vec![APPROVE.to_string(), REJECT.to_string()],
             None => options,

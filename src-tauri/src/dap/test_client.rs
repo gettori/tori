@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::registry::{self, DapAdapter, Launch};
-use super::{connect_retry, locate, next_id, pump_frames, start_adapter, stop, write_frame, Server, CONNECT_TIMEOUT};
+use super::{locate, next_id, pump_frames, start_adapter, stop, write_frame, Endpoint, Server, CONNECT_TIMEOUT};
 
 /// Room for a cold adapter and a source map, short enough that a breakpoint
 /// that never binds fails the run rather than hanging it.
@@ -38,7 +38,7 @@ pub(super) fn run_to_breakpoint(
     let (tx, rx) = mpsc::channel();
     let mut client = Client {
         adapter,
-        socket: started.socket.clone(),
+        endpoint: started.endpoint.clone(),
         file,
         line,
         tx,
@@ -51,7 +51,7 @@ pub(super) fn run_to_breakpoint(
         .and_then(|()| client.run());
     stop(&mut Server {
         child: started.child,
-        socket: started.socket,
+        endpoint: started.endpoint,
         child_sessions: adapter.child_sessions,
         sessions: HashMap::new(),
     });
@@ -69,7 +69,7 @@ struct Conn {
 
 struct Client<'a> {
     adapter: &'a DapAdapter,
-    socket: Option<PathBuf>,
+    endpoint: Option<Endpoint>,
     file: &'a Path,
     line: u32,
     tx: mpsc::Sender<(usize, Value)>,
@@ -196,13 +196,12 @@ impl Client<'_> {
         if config.get("request").is_none() {
             config["request"] = args.get("request").cloned().unwrap_or_else(|| "launch".into());
         }
-        let socket = self
-            .socket
+        let endpoint = self
+            .endpoint
             .clone()
             .ok_or("startDebugging from an adapter with no socket")?;
-        let stream = connect_retry(&socket, CONNECT_TIMEOUT)?;
-        let reader = stream.try_clone().map_err(|e| e.to_string())?;
-        self.open(Box::new(reader), Box::new(stream), config)
+        let (reader, writer) = endpoint.dial(|| None, CONNECT_TIMEOUT)?;
+        self.open(reader, writer, config)
     }
 
     fn on_event(&mut self, id: usize, event: &Value) -> Result<Option<Value>, String> {

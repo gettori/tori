@@ -148,7 +148,6 @@ fn bridge_path() -> PathBuf {
 }
 
 pub(crate) fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -156,11 +155,7 @@ pub(crate) fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Res
     let _ = std::fs::remove_file(&tmp);
     // Created 0600 rather than narrowed after, so the token is never readable
     // by anyone else, not even between two calls.
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)?;
+    let mut file = crate::platform::fs::create_private(&tmp)?;
     let text = serde_json::to_string(&BridgeFile {
         sock: sock.to_string(),
         token: token.to_string(),
@@ -470,7 +465,6 @@ mod tests {
 
     #[test]
     fn git_outside_tori_finds_the_socket_in_a_file_only_its_owner_can_read() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("tori-bridge-{}", std::process::id()));
         let path = dir.join("askpass.json");
         write_bridge(&path, "/tmp/tori-akp-1/s", "credential-token").unwrap();
@@ -479,7 +473,7 @@ mod tests {
             socket_in_file(&path),
             Some(("/tmp/tori-akp-1/s".to_string(), "credential-token".to_string()))
         );
-        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        crate::platform::testing::assert_private(&path);
 
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(socket_in_file(&path), None);

@@ -33,12 +33,10 @@ mod gate {
     const KNOWN: &[&str] = &[
         "accounts.rs",
         "agent_config.rs",
-        "askpass.rs",
         "attempts.rs",
         "auth.rs",
         "catalog_probe.rs",
         "chat/acp_transport.rs",
-        "chat/approval.rs",
         "chat/claude_transport.rs",
         "chat/commands.rs",
         "chat/host.rs",
@@ -47,7 +45,6 @@ mod gate {
         "checkpoint.rs",
         "config.rs",
         "crash.rs",
-        "credential.rs",
         "dap.rs",
         "dap/cargo.rs",
         "env.rs",
@@ -65,12 +62,7 @@ mod gate {
         "mcp.rs",
         "owned_state.rs",
         "pty.rs",
-        "rpc/client.rs",
-        "rpc/devices.rs",
         "rpc/mod.rs",
-        "rpc/remote.rs",
-        "rpc/server.rs",
-        "rpc/transport.rs",
         "search.rs",
         "sessions.rs",
         "setup.rs",
@@ -97,7 +89,7 @@ mod gate {
             r"std::os::unix|",
             r#""/bin/|"#,
             r#"Command::new\("(kill|ps|pgrep|sh|sleep|osascript|open|security|sips)"\)|"#,
-            r"\.mode\(0o|ExitStatusExt|libc::"
+            r"\.mode\(0o|ExitStatusExt|libc::|/dev/urandom"
         ))
         .unwrap();
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

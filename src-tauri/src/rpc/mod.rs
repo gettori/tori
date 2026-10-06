@@ -111,7 +111,7 @@ fn devices_changed(app: &AppHandle, ended: Option<pairing::Ended>) {
 
 pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let transport = Arc::new(UnixTransport::bind()?);
-    let token = crate::chat::approval::random_token();
+    let token = crate::platform::ipc::random_token()?;
     let hub = Arc::new(Hub::default());
     {
         let app = app.clone();
@@ -753,8 +753,8 @@ pub fn remote_tailscale() -> remote::Tailscale {
 }
 
 #[tauri::command(async)]
-pub fn tailscale_open() -> Result<(), String> {
-    remote::open_tailscale()
+pub fn tailscale_open(app: tauri::AppHandle) -> Result<(), String> {
+    remote::open_tailscale(&app)
 }
 
 #[derive(serde::Serialize)]

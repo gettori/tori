@@ -632,7 +632,7 @@ fn rebind(states: &SessionStates, asks: &Asks, from: &str, to: &str) -> Vec<supe
 
 // Claude takes `--session-id` only as a UUID.
 fn new_session_id() -> String {
-    let mut hex: Vec<char> = crate::chat::approval::random_token()
+    let mut hex: Vec<char> = crate::platform::ipc::random_id()
         .chars()
         .filter(char::is_ascii_hexdigit)
         .collect();

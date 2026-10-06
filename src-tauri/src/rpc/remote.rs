@@ -150,16 +150,47 @@ pub fn classify(name: &str, ip: Ipv4Addr) -> Option<Kind> {
     let [a, b, ..] = ip.octets();
     match () {
         _ if ip.is_loopback() => Some(Kind::Loopback),
-        // Tailscale hands out 100.64.0.0/10 on a utun.
-        _ if name.starts_with("utun") && a == 100 && (64..128).contains(&b) => Some(Kind::Tailscale),
+        // Tailscale hands out 100.64.0.0/10 on its own interface.
+        _ if is_tailnet(name) && a == 100 && (64..128).contains(&b) => Some(Kind::Tailscale),
         // Everything else is refused, a LAN too: a device's credential would
         // cross it unencrypted.
         _ => None,
     }
 }
 
-const TAILSCALE_APP: &str = "/Applications/Tailscale.app";
+#[cfg(target_os = "macos")]
+fn is_tailnet(name: &str) -> bool {
+    name.starts_with("utun")
+}
+
+// The adapter's friendly name, which the installer sets.
+#[cfg(windows)]
+fn is_tailnet(name: &str) -> bool {
+    name.to_ascii_lowercase().starts_with("tailscale")
+}
+
+#[cfg(target_os = "linux")]
+fn is_tailnet(name: &str) -> bool {
+    name.starts_with("tailscale")
+}
+
+#[cfg(target_os = "macos")]
 const TAILSCALE_DOWNLOAD: &str = "https://tailscale.com/download/mac";
+#[cfg(windows)]
+const TAILSCALE_DOWNLOAD: &str = "https://tailscale.com/download/windows";
+#[cfg(target_os = "linux")]
+const TAILSCALE_DOWNLOAD: &str = "https://tailscale.com/download/linux";
+
+fn tailscale_app() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    let app = Some(std::path::PathBuf::from("/Applications/Tailscale.app"));
+    #[cfg(windows)]
+    let app =
+        std::env::var_os("ProgramFiles").map(|dir| std::path::Path::new(&dir).join(r"Tailscale\tailscale-ipn.exe"));
+    #[cfg(target_os = "linux")]
+    let app: Option<std::path::PathBuf> = None;
+    app.filter(|p| p.exists())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "lowercase")]
@@ -169,12 +200,12 @@ pub enum Tailscale {
     Connected { address: String },
 }
 
-// Connected is checked first: a CLI-only install has no app in /Applications.
+// Connected is checked first: a CLI-only install has no app to find.
 pub fn tailscale() -> Tailscale {
     if let Some(i) = interfaces().into_iter().find(|i| i.kind == Kind::Tailscale) {
         return Tailscale::Connected { address: i.address };
     }
-    if std::path::Path::new(TAILSCALE_APP).exists() {
+    if tailscale_app().is_some() {
         Tailscale::Stopped
     } else {
         Tailscale::Missing
@@ -183,51 +214,45 @@ pub fn tailscale() -> Tailscale {
 
 /// Opens the Tailscale app, or its download page when it is not installed.
 /// The destination is fixed here so the webview cannot open anything else.
-pub fn open_tailscale() -> Result<(), String> {
-    let mut open = std::process::Command::new("open");
-    if std::path::Path::new(TAILSCALE_APP).exists() {
-        open.arg(TAILSCALE_APP);
-    } else {
-        open.arg(TAILSCALE_DOWNLOAD);
+pub fn open_tailscale(app: &tauri::AppHandle) -> Result<(), String> {
+    match tailscale_app() {
+        Some(path) => crate::platform::native::open_path(app, &path),
+        None => crate::platform::native::open_url(app, TAILSCALE_DOWNLOAD),
     }
-    crate::exec::spawn_detached(&mut open).map_err(|e| e.to_string())
 }
 
 pub fn interfaces() -> Vec<Interface> {
-    let mut found = Vec::new();
-    let mut head: *mut libc::ifaddrs = std::ptr::null_mut();
-    if unsafe { libc::getifaddrs(&mut head) } != 0 {
-        return found;
-    }
-    let mut at = head;
-    while let Some(ifa) = unsafe { at.as_ref() } {
-        at = ifa.ifa_next;
-        let Some(addr) = (unsafe { ifa.ifa_addr.as_ref() }) else {
-            continue;
-        };
-        if addr.sa_family as i32 != libc::AF_INET {
-            continue;
-        }
-        let v4 = unsafe { &*(ifa.ifa_addr as *const libc::sockaddr_in) };
-        let ip = Ipv4Addr::from(u32::from_be(v4.sin_addr.s_addr));
-        let name = unsafe { std::ffi::CStr::from_ptr(ifa.ifa_name) }
-            .to_string_lossy()
-            .into_owned();
-        if let Some(kind) = classify(&name, ip) {
-            found.push(Interface {
-                name,
-                address: ip.to_string(),
+    if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|i| {
+            let if_addrs::IfAddr::V4(v4) = &i.addr else {
+                return None;
+            };
+            classify(&i.name, v4.ip).map(|kind| Interface {
+                name: i.name.clone(),
+                address: v4.ip.to_string(),
                 kind,
-            });
-        }
-    }
-    unsafe { libc::freeifaddrs(head) };
-    found
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // What Tailscale's interface is called on this OS, and another VPN's.
+    #[cfg(target_os = "macos")]
+    const TAILNET: &str = "utun4";
+    #[cfg(windows)]
+    const TAILNET: &str = "Tailscale";
+    #[cfg(target_os = "linux")]
+    const TAILNET: &str = "tailscale0";
+    #[cfg(target_os = "macos")]
+    const OTHER_VPN: &str = "utun2";
+    #[cfg(not(target_os = "macos"))]
+    const OTHER_VPN: &str = "wg0";
 
     #[test]
     fn the_picker_offers_tailscale_and_loopback_and_nothing_else() {
@@ -236,26 +261,26 @@ mod tests {
             None,
             "a LAN is not encrypted"
         );
-        assert_eq!(classify("utun4", Ipv4Addr::new(100, 101, 7, 9)), Some(Kind::Tailscale));
+        assert_eq!(classify(TAILNET, Ipv4Addr::new(100, 101, 7, 9)), Some(Kind::Tailscale));
         assert_eq!(classify("lo0", Ipv4Addr::LOCALHOST), Some(Kind::Loopback));
         assert_eq!(classify("en0", Ipv4Addr::UNSPECIFIED), None);
         assert_eq!(classify("en0", Ipv4Addr::new(169, 254, 3, 4)), None);
         assert_eq!(
-            classify("utun2", Ipv4Addr::new(10, 8, 0, 2)),
+            classify(OTHER_VPN, Ipv4Addr::new(10, 8, 0, 2)),
             None,
             "another VPN's tunnel"
         );
         assert_eq!(
             classify("en0", Ipv4Addr::new(100, 101, 7, 9)),
             None,
-            "100.x off a utun is a carrier LAN"
+            "100.x off the tailnet interface is a carrier LAN"
         );
     }
 
     #[test]
     fn a_saved_lan_address_is_refused_and_tailscale_and_loopback_are_not() {
         let tailnet = [Interface {
-            name: "utun4".into(),
+            name: TAILNET.into(),
             address: "100.101.7.9".into(),
             kind: Kind::Tailscale,
         }];
@@ -286,13 +311,12 @@ mod tests {
         use crate::rpc::transport::UnixTransport;
         use serde_json::{json, Value};
         use std::io::{BufRead, BufReader, Write};
-        use std::os::unix::net::UnixStream;
         use tungstenite::Message;
 
         let dir = std::env::temp_dir().join(format!(
             "tori-remote-{}-{}",
             std::process::id(),
-            crate::chat::approval::random_token()
+            crate::platform::ipc::random_id()
         ));
         let devices = Arc::new(Devices::open(dir.join("devices.json")));
         let secret = devices.mint("test").unwrap().1;
@@ -348,7 +372,7 @@ mod tests {
         let offer = remote.start_pairing().unwrap();
         assert_eq!(offer.url, url);
 
-        let mut shell = UnixStream::connect(unix.sock_path()).unwrap();
+        let mut shell = crate::platform::ipc::connect(unix.sock_path()).unwrap();
         let mut lines = BufReader::new(shell.try_clone().unwrap());
         let mut call = |line: Value| {
             shell.write_all(format!("{line}\n").as_bytes()).unwrap();

@@ -900,10 +900,10 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::platform::ipc::UnixStream;
     use crate::rpc::auth::{Caller, Children};
     use crate::rpc::transport::UnixTransport;
     use std::io::{BufRead, Write};
-    use std::os::unix::net::UnixStream;
 
     // Echoes like every other stub method, unless given a real queue to write.
     #[derive(Default)]
@@ -1134,7 +1134,7 @@ pub mod tests {
 
     impl Client {
         pub fn connect(r: &Running) -> Self {
-            let out = UnixStream::connect(r.transport.sock_path()).unwrap();
+            let out = crate::platform::ipc::connect(r.transport.sock_path()).unwrap();
             out.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
             let input = BufReader::new(out.try_clone().unwrap());
             Self { out, input }
@@ -1838,7 +1838,7 @@ pub mod tests {
         let dir = std::env::temp_dir().join(format!(
             "tori-server-revoke-{}-{}",
             std::process::id(),
-            crate::chat::approval::random_token()
+            crate::platform::ipc::random_id()
         ));
         let devices = Arc::new(Devices::open(dir.join("devices.json")));
         let (device, secret) = devices.mint("phone").unwrap();

@@ -106,7 +106,7 @@ pub struct Approvals {
 
 impl Approvals {
     pub fn grant(&self, session: &str, approval: Approval) -> String {
-        let id = format!("appr-{}", crate::chat::approval::random_token());
+        let id = format!("appr-{}", crate::platform::ipc::random_id());
         self.granted().insert(
             id.clone(),
             Granted {

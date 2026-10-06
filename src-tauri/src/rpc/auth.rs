@@ -57,7 +57,7 @@ pub struct Children(Mutex<HashMap<String, Caller>>);
 
 impl Children {
     pub fn mint(&self, caller: Caller) -> String {
-        let token = crate::chat::approval::random_token();
+        let token = crate::platform::ipc::random_id();
         self.lock().insert(token.clone(), caller);
         token
     }
@@ -291,7 +291,7 @@ mod tests {
             .join(format!(
                 "tori-auth-fronts-{}-{}",
                 std::process::id(),
-                crate::chat::approval::random_token()
+                crate::platform::ipc::random_id()
             ))
             .join("devices.json");
         let devices = Arc::new(Devices::open(path.clone()));
@@ -325,7 +325,7 @@ mod tests {
             .join(format!(
                 "tori-auth-pair-{}-{}",
                 std::process::id(),
-                crate::chat::approval::random_token()
+                crate::platform::ipc::random_id()
             ))
             .join("devices.json");
         let pairing = Arc::new(Pairing::new(Box::new(|_| {})));

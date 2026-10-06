@@ -39,7 +39,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -54,6 +53,7 @@ use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, State};
 
 use crate::env::augmented_path;
+use crate::platform::ipc;
 
 mod cargo;
 mod managed;
@@ -88,8 +88,8 @@ struct Session {
 
 struct Server {
     child: Child,
-    /// The bundled adapter's socket, removed on stop.
-    socket: Option<PathBuf>,
+    /// Where the bundled adapter listens, removed on stop.
+    endpoint: Option<Endpoint>,
     child_sessions: bool,
     sessions: HashMap<String, Session>,
 }
@@ -262,10 +262,57 @@ fn dial<T>(
     }
 }
 
-/// Dial the bundled adapter's socket, retrying until it has bound it. Also what
-/// a child session dials, with no process in hand to watch.
-fn connect_retry(socket: &Path, timeout: Duration) -> Result<UnixStream, String> {
-    dial(|| UnixStream::connect(socket), || None, timeout)
+type Halves = (Box<dyn Read + Send>, Box<dyn Write + Send>);
+
+/// Where the bundled js-debug listens, and so where a child session dials.
+/// Node binds a path on Windows as a named pipe, which an AF_UNIX client cannot
+/// dial, so there it gets a localhost port instead of a socket.
+#[derive(Clone)]
+enum Endpoint {
+    Socket(PathBuf),
+    Port(u16),
+}
+
+impl Endpoint {
+    fn pick() -> Result<Self, String> {
+        if cfg!(unix) {
+            socket_path().map(Self::Socket)
+        } else {
+            free_port().map(Self::Port)
+        }
+    }
+
+    /// `dapDebugServer.js <socket path>`, or `<port> <host>`: its default host
+    /// is `localhost`, which can resolve to `::1` while the dial goes to
+    /// 127.0.0.1.
+    fn args(&self) -> Vec<std::ffi::OsString> {
+        match self {
+            Self::Socket(path) => vec![path.clone().into_os_string()],
+            Self::Port(port) => vec![port.to_string().into(), "127.0.0.1".into()],
+        }
+    }
+
+    fn dial(&self, exited: impl FnMut() -> Option<ExitStatus>, timeout: Duration) -> Result<Halves, String> {
+        fn halves<S: Read + Write + Send + 'static>(s: S, clone: std::io::Result<S>) -> Result<Halves, String> {
+            Ok((Box::new(clone.map_err(|e| e.to_string())?), Box::new(s)))
+        }
+        match self {
+            Self::Socket(path) => dial(|| ipc::connect(path), exited, timeout).and_then(|s| {
+                let clone = s.try_clone();
+                halves(s, clone)
+            }),
+            Self::Port(port) => dial(|| TcpStream::connect(("127.0.0.1", *port)), exited, timeout).and_then(|s| {
+                let clone = s.try_clone();
+                halves(s, clone)
+            }),
+        }
+    }
+
+    fn remove(&self) {
+        if let Self::Socket(path) = self {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 /// A port nothing listens on right now. It is released before the adapter binds
@@ -278,13 +325,13 @@ fn free_port() -> Result<u16, String> {
     listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
 }
 
-/// A started adapter: its process, both halves of its first session, and the
-/// socket a child session dials, for the one kind that has one.
+/// A started adapter: its process, both halves of its first session, and
+/// where a child session dials, for the one kind that has one.
 struct Started {
     child: Child,
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
-    socket: Option<PathBuf>,
+    endpoint: Option<Endpoint>,
 }
 
 /// What a start of `adapter` runs: the bundled script (under `node`) for the
@@ -316,22 +363,20 @@ fn locate(adapter: &DapAdapter, bundled: impl FnOnce(&str) -> Option<PathBuf>) -
 fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Started, String> {
     match &adapter.launch {
         Launch::BundledNodeSocket { .. } => {
-            let socket = socket_path()?;
-            let mut child = spawn_adapter(Command::new("node").arg(located).arg(&socket), root, Stdio::null())?;
+            let endpoint = Endpoint::pick()?;
+            let mut child = spawn_adapter(
+                Command::new("node").arg(located).args(endpoint.args()),
+                root,
+                Stdio::null(),
+            )?;
             log_stdout(&mut child);
-            let dialled = dial(
-                || UnixStream::connect(&socket),
-                || child.try_wait().ok().flatten(),
-                CONNECT_TIMEOUT,
-            )
-            .and_then(|s| Ok((s.try_clone().map_err(|e| e.to_string())?, s)));
-            let (reader, stream) = match dialled {
+            let (reader, writer) = match endpoint.dial(|| child.try_wait().ok().flatten(), CONNECT_TIMEOUT) {
                 Ok(pair) => pair,
                 Err(e) => {
                     // The adapter is up but unreachable; do not leak it.
                     stop(&mut Server {
                         child,
-                        socket: Some(socket),
+                        endpoint: Some(endpoint),
                         child_sessions: false,
                         sessions: HashMap::new(),
                     });
@@ -340,9 +385,9 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
             };
             Ok(Started {
                 child,
-                reader: Box::new(reader),
-                writer: Box::new(stream),
-                socket: Some(socket),
+                reader,
+                writer,
+                endpoint: Some(endpoint),
             })
         }
         Launch::Stdio { args, .. } => {
@@ -353,7 +398,7 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
                 child,
                 reader: Box::new(reader),
                 writer: Box::new(writer),
-                socket: None,
+                endpoint: None,
             })
         }
         Launch::Tcp { args, .. } => {
@@ -372,7 +417,7 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
                 Err(e) => {
                     stop(&mut Server {
                         child,
-                        socket: None,
+                        endpoint: None,
                         child_sessions: false,
                         sessions: HashMap::new(),
                     });
@@ -383,7 +428,7 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
                 child,
                 reader: Box::new(reader),
                 writer: Box::new(stream),
-                socket: None,
+                endpoint: None,
             })
         }
     }
@@ -433,7 +478,7 @@ fn write_frame(writer: &mut impl Write, message: &str) -> Result<(), String> {
     writer.flush().map_err(|e| e.to_string())
 }
 
-/// Stop a server: kill its whole process group, reap it, and remove the socket.
+/// Stop a server: kill its whole process group, reap it, and remove its socket.
 ///
 /// The group kill is what takes a launched debuggee down with the adapter. The
 /// `wait` is not optional bookkeeping: `kill` only delivers the signal, so
@@ -452,8 +497,8 @@ fn stop(server: &mut Server) {
         .status();
     let _ = server.child.kill();
     let _ = server.child.wait();
-    if let Some(socket) = &server.socket {
-        let _ = std::fs::remove_file(socket);
+    if let Some(endpoint) = &server.endpoint {
+        endpoint.remove();
     }
 }
 
@@ -516,7 +561,7 @@ pub async fn dap_start(
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let server = guard.entry(handle.server.clone()).or_insert(Server {
         child: started.child,
-        socket: started.socket,
+        endpoint: started.endpoint,
         child_sessions: adapter.child_sessions,
         sessions: HashMap::new(),
     });
@@ -529,8 +574,8 @@ pub async fn dap_start(
 /// Where another session on `server` dials in. Only an adapter with
 /// `child_sessions` takes a second connection; any other runs one session per
 /// process.
-fn child_socket(server: &Server) -> Option<&PathBuf> {
-    server.socket.as_ref().filter(|_| server.child_sessions)
+fn child_endpoint(server: &Server) -> Option<&Endpoint> {
+    server.endpoint.as_ref().filter(|_| server.child_sessions)
 }
 
 /// Open another session on a server that is already running.
@@ -545,12 +590,12 @@ pub async fn dap_connect(
     server: DapServerId,
     on_message: Channel<String>,
 ) -> Result<DapHandle, String> {
-    let socket = {
+    let endpoint = {
         let guard = state.0.lock().map_err(|e| e.to_string())?;
         let running = guard
             .get(&server)
             .ok_or_else(|| format!("debug adapter {} is not running", server.0))?;
-        child_socket(running)
+        child_endpoint(running)
             .ok_or_else(|| {
                 format!(
                     "debug adapter {} runs one session per process and cannot open another",
@@ -562,8 +607,7 @@ pub async fn dap_connect(
 
     // Not holding the lock across the connect: it is a retry loop, and blocking
     // every other session's sends behind it would stall the whole tree.
-    let stream = connect_retry(&socket, CONNECT_TIMEOUT)?;
-    let reader = stream.try_clone().map_err(|e| e.to_string())?;
+    let (reader, writer) = endpoint.dial(|| None, CONNECT_TIMEOUT)?;
     pump_frames(reader, move |body| {
         let _ = on_message.send(body);
     });
@@ -578,12 +622,7 @@ pub async fn dap_connect(
         // rather than registering a session nothing can reach.
         return Err(format!("debug adapter {} stopped while connecting", server.0));
     };
-    entry.sessions.insert(
-        handle.session.clone(),
-        Session {
-            writer: Box::new(stream),
-        },
-    );
+    entry.sessions.insert(handle.session.clone(), Session { writer });
     Ok(handle)
 }
 
@@ -878,8 +917,13 @@ mod test_client;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::net::UnixListener;
+    use crate::platform::ipc::{UnixListener, UnixStream};
     use std::sync::mpsc;
+
+    /// Dial a socket, retrying until something has bound it.
+    fn connect_retry(socket: &Path, timeout: Duration) -> Result<UnixStream, String> {
+        dial(|| ipc::connect(socket), || None, timeout)
+    }
 
     /// A listener that accepts one connection and echoes frames back, so the
     /// transport is testable with no adapter and no `node` on the machine.
@@ -945,7 +989,7 @@ mod tests {
 
         // The naive implementation, and why it is not the one shipped.
         assert!(
-            UnixStream::connect(&socket).is_err(),
+            ipc::connect(&socket).is_err(),
             "nothing is listening yet, so an immediate connect must fail"
         );
 
@@ -1039,7 +1083,7 @@ mod tests {
         let grandchild: u32 = line.trim().parse().expect("child pid");
         let server = Server {
             child,
-            socket: None,
+            endpoint: None,
             child_sessions: false,
             sessions: HashMap::new(),
         };
@@ -1176,7 +1220,7 @@ mod tests {
         assert!(socket.exists());
 
         let (mut server, _) = group_with_child();
-        server.socket = Some(socket.clone());
+        server.endpoint = Some(Endpoint::Socket(socket.clone()));
         stop(&mut server);
 
         assert!(!socket.exists(), "the socket outlived the server that bound it");
@@ -1197,7 +1241,7 @@ mod tests {
             child,
             reader,
             mut writer,
-            socket,
+            endpoint,
         } = started;
         let (tx, rx) = mpsc::channel();
         pump_frames(reader, move |b| {
@@ -1207,7 +1251,7 @@ mod tests {
         let echoed = recv(&rx);
         stop(&mut Server {
             child,
-            socket,
+            endpoint,
             child_sessions: false,
             sessions: HashMap::new(),
         });
@@ -1218,7 +1262,7 @@ mod tests {
     fn a_stdio_adapter_round_trips_a_frame_over_its_pipes() {
         let cat = adapter("kind = \"stdio\"\nprogram = \"cat\"");
         let started = start_adapter(&cat, "/tmp", &locate(&cat, |_| None).unwrap()).expect("cat starts");
-        assert!(started.socket.is_none());
+        assert!(started.endpoint.is_none());
         assert_eq!(round_trip(started), r#"{"seq":1,"type":"request"}"#);
     }
 
@@ -1317,7 +1361,7 @@ mod tests {
         let mut writer = started.writer;
         let mut server = Server {
             child: started.child,
-            socket: started.socket,
+            endpoint: started.endpoint,
             child_sessions: js.child_sessions,
             sessions: HashMap::new(),
         };

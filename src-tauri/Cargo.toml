@@ -65,8 +65,8 @@ schemars = "1"
 # thread per connection model with no async runtime.
 base64 = "0.22"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
-# getifaddrs, for the addresses the remote front may bind. Already in the lock
-# file under half the tree.
+# Signals for process groups and liveness on Unix (`platform::process`).
+# Already in the lock file under half the tree.
 libc = "0.2"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # The Keychain service name `claude` derives for a non-default CLAUDE_CONFIG_DIR

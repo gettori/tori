@@ -30,8 +30,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
@@ -39,6 +37,8 @@ use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
+
+use crate::platform::ipc::{self, random_token, PrivateListener, UnixStream};
 
 /// Env marker + fields git/ssh see when Tori re-execs itself as the helper.
 pub const ENV_SOCK: &str = "TORI_ASKPASS_SOCK";
@@ -157,7 +157,7 @@ pub fn ask_credential(sock: &Path, token: &str, op_id: &str, host: &str, path: &
 /// return its `value`. Isolated from env/stdout so it is unit-testable against a
 /// stub listener.
 fn exchange(sock: &Path, req: serde_json::Value) -> std::io::Result<String> {
-    let mut stream = UnixStream::connect(sock)?;
+    let mut stream = ipc::connect(sock)?;
     let req = serde_json::to_string(&req)?;
     stream.write_all(req.as_bytes())?;
     stream.write_all(b"\n")?;
@@ -202,7 +202,6 @@ pub struct AskpassInner {
     // it reaches only hosts set to answer git everywhere.
     everywhere_token: String,
     sock_path: PathBuf,
-    dir: PathBuf,
     timeout: Duration,
     state: Mutex<ServerState>,
     emit: Box<dyn Fn(PromptEvent) + Send + Sync>,
@@ -223,57 +222,24 @@ impl AskpassInner {
     }
 }
 
-impl Drop for AskpassInner {
-    fn drop(&mut self) {
-        // Best-effort cleanup of the private socket dir on shutdown.
-        let _ = std::fs::remove_file(&self.sock_path);
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
-}
-
 /// Handle to the running server, stored as Tauri managed state.
 pub struct AskpassState(pub Arc<AskpassInner>);
 
-/// Start the askpass server: create a private `0700` dir under `$TMPDIR`, bind a
-/// short-path Unix socket in it (Darwin's `sun_path` caps at 104 bytes), mint a
-/// per-session random token, and spawn the accept loop (thread per connection).
+/// Start the askpass server: bind a socket in a private dir, mint a per-session
+/// random token, and spawn the accept loop (thread per connection).
 pub fn start(emit: Box<dyn Fn(PromptEvent) + Send + Sync>) -> std::io::Result<Arc<AskpassInner>> {
     start_with(emit, RESOLVE_TIMEOUT)
 }
 
 fn start_with(emit: Box<dyn Fn(PromptEvent) + Send + Sync>, timeout: Duration) -> std::io::Result<Arc<AskpassInner>> {
-    let token = random_token();
-
-    // Short path: `$TMPDIR` is already short on macOS; the dir + socket names
-    // are tiny. Assert we stay under the 104-byte sun_path limit. A per-start
-    // counter keeps concurrent servers (e.g. parallel tests) on distinct dirs.
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let base = std::env::temp_dir();
-    let dir = base.join(format!("tori-akp-{}-{}", std::process::id(), seq));
-    std::fs::create_dir_all(&dir)?;
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
-    let sock_path = dir.join("s");
-    // A stale socket from a crashed prior run would make bind fail with EADDRINUSE.
-    let _ = std::fs::remove_file(&sock_path);
-    // Darwin caps `sun_path` at 104 bytes; fail soft (the caller logs and the app
-    // still runs) rather than panicking startup on a pathological $TMPDIR.
-    if sock_path.as_os_str().len() >= 104 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("askpass socket path too long for sun_path: {}", sock_path.display()),
-        ));
-    }
-
-    let listener = UnixListener::bind(&sock_path)?;
-    std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o700))?;
+    let token = random_token()?;
+    let listener = PrivateListener::bind("tori-akp")?;
 
     let inner = Arc::new(AskpassInner {
         token,
-        credential_token: random_token(),
-        everywhere_token: random_token(),
-        sock_path,
-        dir,
+        credential_token: random_token()?,
+        everywhere_token: random_token()?,
+        sock_path: listener.path().to_path_buf(),
         timeout,
         state: Mutex::new(ServerState::default()),
         emit,
@@ -281,7 +247,7 @@ fn start_with(emit: Box<dyn Fn(PromptEvent) + Send + Sync>, timeout: Duration) -
 
     let accept_inner = inner.clone();
     thread::spawn(move || {
-        for stream in listener.incoming() {
+        for stream in listener.listener().incoming() {
             match stream {
                 Ok(stream) => {
                     let conn_inner = accept_inner.clone();
@@ -424,22 +390,6 @@ fn classify(prompt: &str) -> String {
     } else {
         "password".to_string()
     }
-}
-
-/// A per-session random token from `/dev/urandom`, hex-encoded. Falls back to a
-/// pid/time mix if urandom is unreadable (the 0700 dir is the real gate).
-fn random_token() -> String {
-    let mut buf = [0u8; 16];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        if f.read_exact(&mut buf).is_ok() {
-            return buf.iter().map(|b| format!("{b:02x}")).collect();
-        }
-    }
-    let t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{}-{}", std::process::id(), t)
 }
 
 #[cfg(test)]

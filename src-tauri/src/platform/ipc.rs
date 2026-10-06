@@ -27,10 +27,11 @@ pub struct PrivateListener {
 
 impl PrivateListener {
     pub fn bind(prefix: &str) -> io::Result<Self> {
-        // The counter keeps two listeners in one process (parallel tests) apart.
+        // The counter keeps two listeners in one process (parallel tests) apart, and
+        // its fixed width keeps every path of one prefix the same length.
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("{prefix}-{}-{seq}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("{prefix}-{}-{seq:08x}", std::process::id()));
         let path = dir.join("s");
         if path.as_os_str().len() >= MAX_SOCKET_PATH {
             return Err(io::Error::new(
@@ -75,10 +76,16 @@ pub fn connect(path: impl AsRef<Path>) -> io::Result<UnixStream> {
     UnixStream::connect(path)
 }
 
-pub fn random_token() -> String {
+pub fn random_token() -> io::Result<String> {
     let mut buf = [0u8; 16];
-    getrandom::fill(&mut buf).expect("the OS random generator is unavailable");
-    buf.iter().map(|b| format!("{b:02x}")).collect()
+    getrandom::fill(&mut buf).map_err(|e| io::Error::other(e.to_string()))?;
+    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// `random_token` for what is minted after startup, where the app socket's own
+/// token has already proved the generator works.
+pub fn random_id() -> String {
+    random_token().expect("the OS random generator failed after it worked at startup")
 }
 
 #[cfg(test)]
@@ -118,7 +125,7 @@ mod tests {
 
     #[test]
     fn tokens_are_32_hex_chars_and_differ() {
-        let (a, b) = (random_token(), random_token());
+        let (a, b) = (random_token().unwrap(), random_id());
         assert_eq!(a.len(), 32);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);

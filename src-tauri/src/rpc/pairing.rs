@@ -2,7 +2,6 @@
 //! time, it dies on first use, and it is short enough to type, so a handful of
 //! wrong tries burns it rather than letting it be guessed.
 
-use std::io::Read;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -137,9 +136,7 @@ fn normalise(typed: &str) -> String {
 
 fn random_code() -> Result<String, String> {
     let mut buf = [0u8; 8];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut buf))
-        .map_err(|e| e.to_string())?;
+    getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
     Ok(buf.iter().map(|b| ALPHABET[(b & 31) as usize] as char).collect())
 }
 

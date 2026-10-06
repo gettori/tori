@@ -1,7 +1,6 @@
 //! The devices allowed on a network front, each with its own credential. Only
 //! a hash is kept, so the file alone cannot be replayed as a login.
 
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -136,16 +135,13 @@ fn hash(credential: &str) -> String {
 
 fn random_hex<const N: usize>() -> Result<String, String> {
     let mut buf = [0u8; N];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut buf))
-        .map_err(|e| e.to_string())?;
+    getrandom::fill(&mut buf).map_err(|e| e.to_string())?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::MetadataExt;
     use std::sync::Arc;
 
     fn temp_path(name: &str) -> PathBuf {
@@ -186,7 +182,7 @@ mod tests {
         let reloaded = Devices::open(path.clone());
         assert_eq!(reloaded.find(&credential), Some(device.id));
         assert_eq!(reloaded.find("not-a-credential"), None);
-        assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        crate::platform::testing::assert_private(&path);
         assert!(!std::fs::read_to_string(&path).unwrap().contains(&credential));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }

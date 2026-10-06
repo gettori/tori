@@ -416,7 +416,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "tori-ws-{}-{}",
             std::process::id(),
-            crate::chat::approval::random_token()
+            crate::platform::ipc::random_id()
         ));
         let devices = Arc::new(Devices::open(dir.join("devices.json")));
         let credential = devices.mint("test").unwrap().1;
