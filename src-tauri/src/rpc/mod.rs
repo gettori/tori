@@ -962,7 +962,16 @@ pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<Str
 fn link_cli(sock: &std::path::Path) -> std::io::Result<PathBuf> {
     let dir = sock.parent().unwrap_or(sock).join("bin");
     std::fs::create_dir_all(&dir)?;
-    std::os::unix::fs::symlink(std::env::current_exe()?, dir.join("tori"))?;
+    let exe = crate::platform::helper_exe()?;
+    let link = dir.join(crate::platform::CLI_NAME);
+    match crate::platform::fs::link_entry(&exe, &link) {
+        Ok(_) => {}
+        // A hardlink cannot cross volumes, and the temp dir may be on another.
+        Err(_) if cfg!(windows) => {
+            std::fs::copy(&exe, &link)?;
+        }
+        Err(e) => return Err(e),
+    }
     Ok(dir)
 }
 
@@ -972,7 +981,7 @@ fn link_cli(sock: &std::path::Path) -> std::io::Result<PathBuf> {
 pub fn path_with_cli(path: &str) -> String {
     match CLI_DIR.get() {
         Some(dir) if path.is_empty() => dir.to_string_lossy().into_owned(),
-        Some(dir) => format!("{}:{path}", dir.to_string_lossy()),
+        Some(dir) => format!("{}{}{path}", dir.to_string_lossy(), crate::platform::shell::PATH_SEP),
         None => path.to_string(),
     }
 }
@@ -1066,7 +1075,7 @@ pub fn mcp_config_args() -> Vec<String> {
     let path = crate::owned_state::config_dir().join("claude-mcp.json");
     let command = CLI_DIR.get().map_or_else(
         || "tori".to_string(),
-        |dir| dir.join("tori").to_string_lossy().into_owned(),
+        |dir| dir.join(crate::platform::CLI_NAME).to_string_lossy().into_owned(),
     );
     let config = json!({ "mcpServers": { MCP_SERVER: { "command": command, "args": ["mcp"] } } });
     let written = path
@@ -1085,7 +1094,7 @@ pub fn mcp_config_args() -> Vec<String> {
 pub fn mcp_launch(caller: Caller) -> Option<(PathBuf, Vec<(String, String)>)> {
     let dir = CLI_DIR.get()?;
     let env = child_env(caller);
-    (!env.is_empty()).then(|| (dir.join("tori"), env))
+    (!env.is_empty()).then(|| (dir.join(crate::platform::CLI_NAME), env))
 }
 
 pub(crate) fn bridge_path() -> PathBuf {

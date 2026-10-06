@@ -70,6 +70,11 @@ pub fn is_cli() -> bool {
         .is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
 }
 
+pub fn print_usage() -> i32 {
+    eprintln!("{USAGE}");
+    2
+}
+
 pub fn run() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match dispatch(&args) {

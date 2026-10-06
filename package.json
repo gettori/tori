@@ -13,6 +13,7 @@
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "lsp:install": "npm --prefix src-tauri/resources/lsp install",
     "dap:install": "node scripts/install-dap.mjs",
+    "cli:build": "node scripts/build-cli.mjs",
     "test": "node scripts/check-tokens.mjs && vp test run",
     "check:tokens": "node scripts/check-tokens.mjs",
     "storybook": "storybook dev -p 6006",

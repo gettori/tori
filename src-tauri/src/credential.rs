@@ -325,7 +325,7 @@ fn lone_remote(repo: &str) -> Option<String> {
 /// path cannot carry the mode argument, and single-quoted so a path with spaces
 /// survives the shell.
 fn helper_config() -> String {
-    let exe = std::env::current_exe().unwrap_or_default();
+    let exe = crate::platform::helper_exe().unwrap_or_default();
     format!("!{} {ARG}", quoted(&exe.to_string_lossy()))
 }
 

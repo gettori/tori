@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": "pnpm lsp:install && pnpm dap:install && pnpm cli:build && pnpm dev",
+    "beforeBuildCommand": "pnpm lsp:install && pnpm dap:install && pnpm cli:build && pnpm build"
+  },
+  "bundle": {
+    "externalBin": ["binaries/tori-cli"]
+  }
+}

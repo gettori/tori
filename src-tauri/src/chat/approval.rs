@@ -524,7 +524,7 @@ pub fn settings_args(
     background: bool,
     home: Option<&crate::topic_home::HomeLaunch>,
 ) -> Result<Vec<String>, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = crate::platform::helper_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

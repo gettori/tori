@@ -23,6 +23,17 @@ pub mod shell;
 #[cfg(test)]
 pub mod testing;
 
+pub const CLI_NAME: &str = if cfg!(windows) { "tori.exe" } else { "tori" };
+
+// On Windows the console `tori-cli.exe` beside the app, since a shell cannot
+// wait on a GUI exe and git, the MCP config and the hooks all run this.
+pub fn helper_exe() -> std::io::Result<std::path::PathBuf> {
+    let exe = std::env::current_exe()?;
+    #[cfg(windows)]
+    let exe = exe.with_file_name("tori-cli.exe");
+    Ok(exe)
+}
+
 #[cfg(test)]
 mod gate {
     use std::collections::BTreeSet;
@@ -62,7 +73,6 @@ mod gate {
         "mcp.rs",
         "owned_state.rs",
         "pty.rs",
-        "rpc/mod.rs",
         "search.rs",
         "sessions.rs",
         "setup.rs",

@@ -2097,7 +2097,7 @@ fn next_op_id() -> String {
 /// auto-add an unknown host, still reject a *changed* key). The op id and socket
 /// coordinates ride through the env into the helper.
 fn git_command(repo: &str, op_id: &str, sock: &Path, token: &str) -> Command {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("git"));
+    let exe = crate::platform::helper_exe().unwrap_or_else(|_| PathBuf::from("git"));
     let mut cmd = crate::exec::git_in(repo);
     cmd.env("GIT_ASKPASS", &exe);
     cmd.env("SSH_ASKPASS", &exe);

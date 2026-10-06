@@ -142,7 +142,9 @@ fn set_dock_icon() {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+// Both binaries call this before any Tauri init: the app below, and `tori-cli`
+// on Windows, so a helper or `tori <command>` never pays for the app.
+pub fn helper_mode() -> Option<i32> {
     // Same-binary re-exec as the askpass helper: git/ssh invoke this exe with the
     // socket marker env set. Detect it and run the stdout-answer-only helper path
     // *before* any Tauri/AppKit init, then exit. The app's own process never has
@@ -151,16 +153,16 @@ pub fn run() {
         // Before the askpass check, not after: git runs its credential helper
         // with the whole environment of the op, askpass markers included, so
         // the argv marker is the only thing telling the two modes apart.
-        std::process::exit(credential::run_helper());
+        return Some(credential::run_helper());
     }
 
     // Ahead of the env markers, which a `tori` run from a git hook inherits.
     if cli::is_cli() {
-        std::process::exit(cli::run());
+        return Some(cli::run());
     }
 
     if askpass::is_helper() {
-        std::process::exit(askpass::run_helper());
+        return Some(askpass::run_helper());
     }
 
     // Same re-exec trick for the chat approval hook: `claude` runs this binary
@@ -168,7 +170,18 @@ pub fn run() {
     // string. Checked before any Tauri/AppKit init, because this path runs on
     // every single tool call and must stay cheap.
     if chat::approval::is_helper() {
-        std::process::exit(chat::approval::run_helper());
+        return Some(chat::approval::run_helper());
+    }
+    None
+}
+
+pub fn cli_usage() -> i32 {
+    cli::print_usage()
+}
+
+pub fn run() {
+    if let Some(code) = helper_mode() {
+        std::process::exit(code);
     }
 
     // Before the builder, so a panic in setup is on disk too.
