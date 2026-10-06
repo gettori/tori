@@ -2598,10 +2598,8 @@ mod tests {
             );
             let start = StartSpec {
                 session_id: id.clone(),
-                program: "/bin/sh".into(),
                 // Holds stdin open forever, the way a real chat child does.
-                args: vec!["-c".into(), "cat > /dev/null".into()],
-                ..Default::default()
+                ..StartSpec::sh("cat > /dev/null")
             };
             let factory_id = id.clone();
             host.spawn_plain(&id, &id, Box::new(|_| {}), start, move || {
@@ -2629,11 +2627,7 @@ mod tests {
             let mut alive = true;
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while std::time::Instant::now() < deadline {
-                alive = std::process::Command::new("kill")
-                    .args(["-0", &pid.to_string()])
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
+                alive = crate::platform::process::pid_alive(pid);
                 if !alive {
                     break;
                 }

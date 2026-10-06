@@ -708,7 +708,7 @@ pub struct AgentAdapter {
     /// mints its session id inside `session/new`, puts it on no command line and
     /// keeps the conversation somewhere only `session/load` reaches, so no
     /// directory-and-regex describes its sessions, no parser kind has anything
-    /// to parse, and a `pgrep` pattern would match every session of that agent
+    /// to parse, and a running pattern would match every session of that agent
     /// at once (measured in Phase 5: two sessions of one ACP agent are two
     /// identical command lines). Declaring plausible values would be worse than
     /// declaring none: a wrong liveness pattern reports a live session dead or a
@@ -716,7 +716,8 @@ pub struct AgentAdapter {
     #[serde(skip)]
     pub discovery: Option<Discovery>,
     pub parser_kind: Option<ParserKind>,
-    /// ERE template (for `pgrep -f`) with an `{id}` placeholder.
+    /// Regex template matched against each process's command line, with an
+    /// `{id}` placeholder.
     pub running_pattern: Option<String>,
     pub pty_quiet_ms: u64,
     /// Whether the quiet-PTY x pending-tool_use join is trusted as a "needs
@@ -1671,8 +1672,7 @@ pub fn apply_template(template: &[String], id: &str, file: &str) -> Vec<String> 
         .collect()
 }
 
-/// ERE pattern (for `pgrep -f`) matching a live process resuming session
-/// `id`. Falls back to the claude pattern for an unrecognized agent id,
+/// Regex matching the command line of a live process resuming session `id`. Falls back to the claude pattern for an unrecognized agent id,
 /// matching this function's pre-registry implicit default.
 ///
 /// `None` for an adapter that declares no pattern, which is a protocol-backed
@@ -3046,7 +3046,7 @@ default = true
 
         // `--version` on a bare program name, as the cheapest possible check
         // that the binary is both present and runnable.
-        if std::process::Command::new(&chat.program)
+        if crate::platform::process::command(&chat.program)
             .arg("--version")
             .output()
             .is_err()
@@ -3063,7 +3063,7 @@ default = true
             let args = chat
                 .mode_args_for(&m.id)
                 .expect("a declared mode resolves its own args");
-            let out = std::process::Command::new(&chat.program)
+            let out = crate::platform::process::command(&chat.program)
                 .args(&args)
                 .arg("--version")
                 .output()

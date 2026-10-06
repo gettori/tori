@@ -318,11 +318,16 @@ pub(crate) fn git_conflict_resolve_body(
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::process::Command;
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
-        Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        crate::platform::process::command("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap();
     }
 
     /// A repo on `main` with `f.txt` committed, plus a `feature` branch, both
@@ -531,7 +536,7 @@ mod tests {
             &["worktree", "add", "-q", "-b", "side", &linked.to_string_lossy(), "main"],
         );
         // Conflict inside the linked worktree, not the main one.
-        Command::new("git")
+        crate::platform::process::command("git")
             .arg("-C")
             .arg(&linked)
             .args(["merge", "feature"])
@@ -557,7 +562,7 @@ mod tests {
 
     /// The unmerged stages git still holds for `file`, as text.
     fn unmerged(dir: &Path, file: &str) -> String {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(["ls-files", "-u", "--", file])
@@ -582,7 +587,7 @@ mod tests {
             "one\nRESOLVED\nthree\n"
         );
         assert!(unmerged(&dir, "f.txt").is_empty(), "the stages are gone");
-        let staged = Command::new("git")
+        let staged = crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["diff", "--cached", "--name-only"])

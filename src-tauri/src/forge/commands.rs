@@ -1910,7 +1910,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tori_forge_repo_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         let git = |args: &[&str]| {
-            std::process::Command::new("git")
+            crate::platform::process::command("git")
                 .arg("-C")
                 .arg(&dir)
                 .args(args)
@@ -2033,7 +2033,7 @@ mod tests {
     fn a_worktree_resolves_to_the_same_account_as_its_project() {
         let project = repo_at(Some("git@github.com:skarif2/tori.git"));
         let git = |args: &[&str]| {
-            std::process::Command::new("git")
+            crate::platform::process::command("git")
                 .arg("-C")
                 .arg(&project)
                 .args(args)

@@ -4,17 +4,9 @@
 // spawns (PTY, external editors, the language server) uses this so binaries
 // resolve the same way they do in the user's shell.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-// The user's login shell, so PTY tabs spawn a real interactive shell (which
-// re-sources the user's profile, and thus owns PATH itself). Falls back to zsh,
-// the macOS default, when $SHELL is unset (e.g. an unusual launch environment).
-pub fn login_shell() -> String {
-    std::env::var("SHELL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "/bin/zsh".into())
-}
+use crate::platform::shell::{self, PATH_SEP};
 
 // --- login-shell PATH (agent binary resolution) ---
 //
@@ -69,10 +61,7 @@ pub fn output_with_timeout(cmd: &mut std::process::Command) -> Option<std::proce
     match rx.recv_timeout(PROBE_TIMEOUT) {
         Ok(result) => result.ok(),
         Err(_) => {
-            let _ = std::process::Command::new("kill")
-                .arg("-9")
-                .arg(pid.to_string())
-                .status();
+            crate::platform::process::kill(pid);
             None
         }
     }
@@ -89,11 +78,14 @@ fn extract_sentinel(stdout: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
 }
 
+// Windows has no login shell to ask, and needs none: a GUI process there
+// inherits the user's PATH from the registry.
 fn capture_login_path() -> Option<String> {
-    let out = output_with_timeout(
-        std::process::Command::new(login_shell())
-            .args(["-lic", &format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\"")]),
-    )?;
+    let script = format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\"");
+    let Some(mut cmd) = shell::login_shell_command(&script) else {
+        return Some(augmented_path());
+    };
+    let out = output_with_timeout(&mut cmd)?;
     extract_sentinel(&String::from_utf8_lossy(&out.stdout))
 }
 
@@ -111,13 +103,6 @@ pub fn login_path_if_captured() -> Option<&'static str> {
     LOGIN_PATH.get().and_then(|p| p.as_deref())
 }
 
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
 /// Ask the login shell itself where `program` lives. The fallback path when
 /// `login_path` came back `None`: slower (one shell per binary) but it asks the
 /// only authority that is always right.
@@ -125,33 +110,21 @@ fn probe_binary(program: &str) -> Option<PathBuf> {
     // Single-quote the program and escape any embedded quote, so an adapter's
     // `launch.program` can never break out into the probe command.
     let quoted = format!("'{}'", program.replace('\'', r"'\''"));
-    let out = output_with_timeout(
-        std::process::Command::new(login_shell()).args(["-lic", &format!("command -v -- {quoted}")]),
-    )?;
+    let out = output_with_timeout(&mut shell::login_shell_command(&format!("command -v -- {quoted}"))?)?;
     let line = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string();
     let path = PathBuf::from(line);
-    path.is_absolute().then_some(path).filter(|p| is_executable(p))
-}
-
-/// Search a colon-separated PATH for an executable named `program`. Pure, so
-/// the lookup that matters most (a binary living only in a dir the GUI process
-/// never sees, e.g. an nvm shim dir) is testable without a real login shell.
-fn resolve_in_path(program: &str, path: &str) -> Option<PathBuf> {
-    path.split(':')
-        .filter(|dir| !dir.is_empty())
-        .map(|dir| Path::new(dir).join(program))
-        .find(|candidate| is_executable(candidate))
+    path.is_absolute().then_some(path).filter(|p| shell::is_executable(p))
 }
 
 /// Absolute path of `program` as the user's login shell would resolve it, or
 /// `None` when it is not installed. Never consults the GUI process PATH.
 pub fn resolve_binary(program: &str) -> Option<PathBuf> {
-    if program.contains('/') {
+    if program.contains('/') || program.contains(std::path::MAIN_SEPARATOR) {
         let path = expand_tilde(program);
-        return is_executable(&path).then_some(path);
+        return shell::is_executable(&path).then_some(path);
     }
     match login_path() {
-        Some(path) => resolve_in_path(program, path),
+        Some(path) => shell::resolve_binary(program, path),
         None => probe_binary(program),
     }
 }
@@ -171,23 +144,30 @@ pub fn session_path() -> String {
 }
 
 pub fn augmented_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut parts: Vec<String> = vec![
-        format!("{home}/.local/bin"),
-        format!("{home}/.cargo/bin"),
-        format!("{home}/.volta/bin"),
-        "/opt/homebrew/bin".into(),
-        "/usr/local/bin".into(),
+    let home = dirs::home_dir().unwrap_or_default();
+    let mut parts: Vec<PathBuf> = vec![
+        home.join(".local/bin"),
+        home.join(".cargo/bin"),
+        home.join(".volta/bin"),
     ];
+    #[cfg(unix)]
+    parts.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    #[cfg(windows)]
+    {
+        parts.extend(dirs::config_dir().map(|roaming| roaming.join("npm")));
+        parts.extend(dirs::data_local_dir().map(|local| local.join("pnpm")));
+    }
+    let mut parts: Vec<String> = parts.iter().map(|p| p.to_string_lossy().into_owned()).collect();
     if let Ok(existing) = std::env::var("PATH") {
         parts.push(existing);
     }
-    parts.join(":")
+    parts.join(&PATH_SEP.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::testing::{shell_command, sleep_command};
 
     #[test]
     fn sentinel_extraction_survives_rc_file_noise() {
@@ -211,30 +191,10 @@ mod tests {
     }
 
     #[test]
-    fn a_binary_only_on_the_login_path_is_found() {
-        // The nvm case: the agent CLI lives in a dir the GUI process PATH has
-        // never heard of, so only the captured login PATH can resolve it.
-        use std::os::unix::fs::PermissionsExt;
-        let nvm_like = std::env::temp_dir().join(format!("tori-nvm-test-{}/bin", std::process::id()));
-        std::fs::create_dir_all(&nvm_like).unwrap();
-        let agent = nvm_like.join("some-agent-cli");
-        std::fs::write(&agent, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&agent, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        let login = format!("/usr/bin:{}", nvm_like.display());
-        assert_eq!(resolve_in_path("some-agent-cli", &login), Some(agent));
-        // Absent that dir, the same binary is invisible: the exact false
-        // "not installed" this resolution path exists to prevent.
-        assert_eq!(resolve_in_path("some-agent-cli", "/usr/bin:/bin"), None);
-
-        std::fs::remove_dir_all(nvm_like.parent().unwrap()).ok();
-    }
-
-    #[test]
     fn a_hanging_child_is_killed_rather_than_waited_on_forever() {
         let start = std::time::Instant::now();
         // `sleep 60` far outlives PROBE_TIMEOUT: the call must give up early.
-        let out = output_with_timeout(std::process::Command::new("/bin/sleep").arg("60"));
+        let out = output_with_timeout(&mut sleep_command(60));
         assert!(out.is_none(), "a timed-out probe yields no output");
         assert!(
             start.elapsed() < PROBE_TIMEOUT * 2,
@@ -246,30 +206,22 @@ mod tests {
     #[test]
     fn a_prompt_reading_stdin_sees_eof_instead_of_hanging() {
         // stdin is /dev/null, so a child that reads it terminates on its own.
-        let out = output_with_timeout(&mut std::process::Command::new("/bin/cat"))
-            .expect("cat should exit at EOF, well inside the timeout");
+        let out =
+            output_with_timeout(&mut shell_command("sort")).expect("sort should exit at EOF, well inside the timeout");
         assert!(out.stdout.is_empty());
     }
 
     #[test]
     fn output_with_timeout_returns_a_fast_child_normally() {
-        let out = output_with_timeout(std::process::Command::new("/bin/echo").arg("hi")).expect("echo succeeds");
+        let out = output_with_timeout(&mut shell_command("echo hi")).expect("echo succeeds");
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
     }
 
     #[test]
     fn resolve_binary_honours_an_absolute_path() {
-        assert_eq!(resolve_binary("/bin/sh"), Some(PathBuf::from("/bin/sh")));
-        assert_eq!(resolve_binary("/bin/definitely-not-a-real-binary"), None);
-    }
-
-    #[test]
-    fn is_executable_rejects_dirs_and_plain_files() {
-        let file = std::env::temp_dir().join(format!("tori-env-test-{}", std::process::id()));
-        std::fs::write(&file, "not executable").unwrap();
-        assert!(!is_executable(&file));
-        assert!(!is_executable(&std::env::temp_dir()));
-        assert!(is_executable(Path::new("/bin/sh")));
-        std::fs::remove_file(&file).ok();
+        let exe = std::env::current_exe().unwrap();
+        assert_eq!(resolve_binary(&exe.to_string_lossy()), Some(exe.clone()));
+        let missing = exe.with_file_name("definitely-not-a-real-binary");
+        assert_eq!(resolve_binary(&missing.to_string_lossy()), None);
     }
 }

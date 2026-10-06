@@ -52,6 +52,7 @@ use super::model::{
     QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
+use crate::platform::process::Group;
 
 /// How long Tori waits for `initialize` before giving up on an agent.
 ///
@@ -441,15 +442,11 @@ impl AgentTransport for AcpTransport {
         // would spawn a child with no `augmented_path()`, which fails to find
         // the agent binary on a normal desktop launch.
         let mut std_cmd = build_command(&spec);
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt as _;
-            // Agents are commonly launched behind a wrapper (`npx …`, `uvx …`).
-            // Killing only the immediate child orphans the real agent, which
-            // re-parents to pid 1 and does not reliably exit on stdin EOF, so
-            // the whole group has to be killable at once.
-            std_cmd.process_group(0);
-        }
+        // Agents are commonly launched behind a wrapper (`npx …`, `uvx …`).
+        // Killing only the immediate child orphans the real agent, which
+        // re-parents to pid 1 and does not reliably exit on stdin EOF, so
+        // the whole group has to be killable at once.
+        Group::prepare(&mut std_cmd);
 
         // The pipes are configured **after** the conversion, not before:
         // `async_process::Command::from` does not carry a std command's stdio
@@ -461,6 +458,10 @@ impl AgentTransport for AcpTransport {
             .stderr(std::process::Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| format!("could not start the agent: {e}"))?;
+        let group = Group::adopt(child.id()).map_err(|e| {
+            let _ = child.kill();
+            format!("could not start the agent: {e}")
+        })?;
         self.pid = Some(child.id());
 
         let stdin = child.stdin.take().ok_or("the agent gave no stdin")?;
@@ -511,6 +512,7 @@ impl AgentTransport for AcpTransport {
                 // ended for any reason would otherwise leave a live agent with
                 // nobody holding it - the exact orphan the ownership registry
                 // exists to detect, manufactured by the code meant to prevent it.
+                group.kill_tree();
                 let _ = child.kill();
             })
             .map_err(|e| format!("could not start the agent's connection thread: {e}"))?;
@@ -2448,7 +2450,7 @@ mod tests {
         // degrades to unavailable, which is the same answer the capture hook
         // gives for the same reason, and asserting the exact diff would then be
         // asserting something Tori cannot do anywhere.
-        std::process::Command::new("git")
+        crate::platform::process::command("git")
             .current_dir(&root)
             .args(["init", "-q"])
             .output()
@@ -2660,18 +2662,15 @@ mod tests {
         std::fs::create_dir_all(&real).unwrap();
         let real_s = real.to_string_lossy().into_owned();
 
-        #[cfg(unix)]
-        {
-            let link = base.join("link");
-            std::os::unix::fs::symlink(&real, &link).unwrap();
-            let link_s = link.to_string_lossy().into_owned();
-            assert_eq!(
-                canonical(&link_s),
-                canonical(&real_s),
-                "a symlink and its target are one directory"
-            );
-            assert_ne!(link_s, real_s, "under two spellings, which is the whole problem");
-        }
+        let link = base.join("link");
+        crate::platform::fs::link_entry(&real, &link).unwrap();
+        let link_s = link.to_string_lossy().into_owned();
+        assert_eq!(
+            canonical(&link_s),
+            canonical(&real_s),
+            "a symlink and its target are one directory"
+        );
+        assert_ne!(link_s, real_s, "under two spellings, which is the whole problem");
 
         // A directory that does not resolve answers `None` rather than echoing
         // the path back. That is what keeps a deleted cwd from comparing equal to

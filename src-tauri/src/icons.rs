@@ -42,7 +42,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
@@ -875,7 +874,7 @@ fn shrunk(path: &str) -> Option<Vec<u8>> {
         std::process::id(),
         fnv1a(path.as_bytes())
     ));
-    let done = Command::new("sips")
+    let done = crate::platform::process::command("sips")
         .args(["-s", "format", "png", "-Z", DEVICE_IMAGE_PX, path, "--out"])
         .arg(&out)
         .output()
@@ -1018,7 +1017,7 @@ pub fn prune_stored(old: Option<&str>, keep: Option<&str>) {
 /// a cancel is `Ok(None)`, not an error.
 #[tauri::command(async)]
 pub fn pick_icon_file() -> Result<Option<String>, String> {
-    let out = Command::new("osascript")
+    let out = crate::platform::process::command("osascript")
         .args([
             "-e",
             "POSIX path of (choose file with prompt \"Choose an icon image (SVG, PNG or ICO)\")",

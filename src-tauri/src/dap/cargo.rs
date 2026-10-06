@@ -4,7 +4,6 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
-use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
@@ -13,10 +12,12 @@ use std::thread;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::platform::process::Group;
+
 /// What a cancelled build rejects with, so the editor says nothing about it.
 pub const CANCELLED: &str = "cancelled";
 
-static BUILDS: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
+static BUILDS: Mutex<Option<HashMap<String, Group>>> = Mutex::new(None);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,7 +29,8 @@ pub struct Built {
 }
 
 fn tool(program: &str, root: &Path) -> Command {
-    let mut cmd = Command::new(crate::env::resolve_binary(program).unwrap_or_else(|| program.into()));
+    let mut cmd =
+        crate::platform::process::command(crate::env::resolve_binary(program).unwrap_or_else(|| program.into()));
     cmd.current_dir(root)
         .env("PATH", crate::env::augmented_path())
         .stdin(Stdio::null());
@@ -84,22 +86,22 @@ fn first_error<'a>(mut lines: impl Iterator<Item = &'a str>) -> Option<String> {
 /// and rendered diagnostics) to `on_line`. Resolves to the executable from the
 /// `compiler-artifact` message, or to the first error.
 pub fn build(root: &Path, bin: &str, id: &str, mut on_line: impl FnMut(&str)) -> Result<Built, String> {
-    let mut child = tool("cargo", root)
-        .args(["build", "--bin", bin, "--message-format=json-render-diagnostics"])
-        // A shell that forces colour would wrap `error[E0308]` in escape codes,
-        // and the first error is found by its plain text.
-        .env("CARGO_TERM_COLOR", "never")
-        // Its own group, so a cancel takes rustc and build scripts with it.
-        .process_group(0)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("could not run cargo: {e}"))?;
+    // Its own group, so a cancel takes rustc and build scripts with it.
+    let (mut child, group) = Group::spawn(
+        tool("cargo", root)
+            .args(["build", "--bin", bin, "--message-format=json-render-diagnostics"])
+            // A shell that forces colour would wrap `error[E0308]` in escape codes,
+            // and the first error is found by its plain text.
+            .env("CARGO_TERM_COLOR", "never")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|e| format!("could not run cargo: {e}"))?;
     BUILDS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get_or_insert_with(HashMap::new)
-        .insert(id.into(), child.id());
+        .insert(id.into(), group);
 
     let stdout = child.stdout.take().ok_or("cargo has no stdout")?;
     let name = bin.to_string();
@@ -159,19 +161,13 @@ fn sysroot(root: &Path) -> Option<String> {
 
 /// Stop the build the editor started as `id`, if it is still running.
 pub fn cancel(id: &str) {
-    let pid = BUILDS
+    let group = BUILDS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .as_mut()
         .and_then(|b| b.remove(id));
-    if let Some(pid) = pid {
-        // The negative pid is the group, as `dap::stop` kills an adapter's.
-        let _ = Command::new("kill")
-            .arg("-KILL")
-            .arg(format!("-{pid}"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+    if let Some(group) = group {
+        group.kill_tree();
     }
 }
 

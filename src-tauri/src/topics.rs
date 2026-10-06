@@ -1266,7 +1266,6 @@ pub mod commands {
 mod tests {
     use super::*;
     use crate::owned_state::now_ms;
-    use std::process::Command;
 
     fn unique_tmp() -> PathBuf {
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -1279,7 +1278,7 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)
@@ -1525,7 +1524,7 @@ mod tests {
         repo(&src);
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .args([
                 "clone",
                 "-q",
@@ -1594,7 +1593,7 @@ mod tests {
         );
 
         // The plain repo stays clean and its walkers do not see the worktree.
-        let status = Command::new("git")
+        let status = crate::platform::process::command("git")
             .arg("-C")
             .arg(&a)
             .args(["status", "--porcelain"])
@@ -1734,7 +1733,7 @@ mod tests {
         let a = repo(&tmp.join("a"));
         let store = Store::at(tmp.join("topics.json"));
         let head = |wt: &str| {
-            let out = Command::new("git")
+            let out = crate::platform::process::command("git")
                 .arg("-C")
                 .arg(wt)
                 .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -1977,7 +1976,7 @@ mod tests {
         repo(&src);
         let cont = tmp.join(name);
         std::fs::create_dir_all(&cont).unwrap();
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .args([
                 "clone",
                 "-q",
@@ -1993,7 +1992,12 @@ mod tests {
     }
 
     fn git_out(dir: &str, args: &[&str]) -> String {
-        let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        let out = crate::platform::process::command("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 
@@ -2073,7 +2077,7 @@ mod tests {
     fn cloned(tmp: &Path, name: &str) -> (String, String) {
         let src = repo(&tmp.join(format!("{name}-src")));
         let clone = tmp.join(name);
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .args(["clone", "-q", &src, clone.to_str().unwrap()])
             .output()
             .unwrap();

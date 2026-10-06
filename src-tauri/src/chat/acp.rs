@@ -1731,7 +1731,7 @@ mod tests {
     fn tmp_repo(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("tori-acp-diff-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::process::Command::new("git")
+        crate::platform::process::command("git")
             .current_dir(&dir)
             .args(["init", "-q"])
             .output()

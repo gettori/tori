@@ -786,7 +786,7 @@ pub fn remove_worktree_and_branch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_tmp() -> PathBuf {
@@ -862,7 +862,12 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        crate::platform::process::command("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap();
     }
 
     #[test]
@@ -882,7 +887,7 @@ mod tests {
         // A bare container with one worktree (the layout create_worktree produces).
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
-        Command::new("git")
+        crate::platform::process::command("git")
             .args([
                 "clone",
                 "-q",
@@ -930,7 +935,7 @@ mod tests {
         // A bare container with a `main` worktree tracking origin/main.
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
-        Command::new("git")
+        crate::platform::process::command("git")
             .args([
                 "clone",
                 "-q",
@@ -994,7 +999,7 @@ mod tests {
 
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
-        Command::new("git")
+        crate::platform::process::command("git")
             .args([
                 "clone",
                 "-q",
@@ -1157,7 +1162,7 @@ mod tests {
 
         let cont = tmp.join("cont");
         std::fs::create_dir_all(&cont).unwrap();
-        Command::new("git")
+        crate::platform::process::command("git")
             .args([
                 "clone",
                 "-q",
@@ -1264,7 +1269,7 @@ mod tests {
         let made = create_worktree_in(&repo_s, "feat/x", &container, None).unwrap();
         assert_eq!(made, container.join("x"));
         assert!(made.join("a.txt").is_file());
-        let status = Command::new("git")
+        let status = crate::platform::process::command("git")
             .arg("-C")
             .arg(&repo)
             .args(["status", "--porcelain"])
@@ -1318,7 +1323,7 @@ mod tests {
         std::fs::create_dir_all(&container).unwrap();
 
         let made = create_worktree_in(&repo_s, "207-ticket-flow", &container, None).unwrap();
-        let upstream = Command::new("git")
+        let upstream = crate::platform::process::command("git")
             .arg("-C")
             .arg(&made)
             .args(["rev-parse", "--abbrev-ref", "207-ticket-flow@{u}"])

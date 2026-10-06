@@ -46,39 +46,23 @@ mod gate {
         "agent_config.rs",
         "attempts.rs",
         "auth.rs",
-        "catalog_probe.rs",
-        "chat/acp_transport.rs",
-        "chat/claude_transport.rs",
-        "chat/commands.rs",
-        "chat/host.rs",
-        "chat/ownership.rs",
-        "chat/transport.rs",
         "checkpoint.rs",
         "config.rs",
         "crash.rs",
         "dap.rs",
-        "dap/cargo.rs",
-        "env.rs",
-        "exec.rs",
         "forge/token.rs",
-        "format.rs",
         "fs.rs",
         "git.rs",
         "git_health.rs",
         "icons.rs",
         "launch.rs",
-        "lsp.rs",
         "lsp/managed.rs",
         "lsp/registry.rs",
         "mcp.rs",
         "owned_state.rs",
-        "pty.rs",
         "search.rs",
-        "sessions.rs",
-        "setup.rs",
         "shared.rs",
         "update.rs",
-        "usage_probe.rs",
         "worktree.rs",
     ];
 
@@ -94,26 +78,41 @@ mod gate {
         }
     }
 
-    fn offenders() -> BTreeSet<String> {
-        let unix_only = regex::Regex::new(concat!(
-            r"std::os::unix|",
-            r#""/bin/|"#,
-            r#"Command::new\("(kill|ps|pgrep|sh|sleep|osascript|open|security|sips)"\)|"#,
-            r"\.mode\(0o|ExitStatusExt|libc::|/dev/urandom"
-        ))
-        .unwrap();
+    // Every source file outside this module, as (path, its non-comment lines).
+    fn outside() -> Vec<(String, Vec<String>)> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
         sources(&root, &root, &mut files);
         files
             .into_iter()
             .filter(|(rel, _)| !rel.starts_with("platform/"))
-            .filter(|(_, text)| {
-                text.lines()
-                    .any(|l| !l.trim_start().starts_with("//") && unix_only.is_match(l))
+            .map(|(rel, text)| {
+                let code = text
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .map(str::to_string)
+                    .collect();
+                (rel, code)
             })
+            .collect()
+    }
+
+    fn matching(pattern: &str) -> BTreeSet<String> {
+        let re = regex::Regex::new(pattern).unwrap();
+        outside()
+            .into_iter()
+            .filter(|(_, code)| code.iter().any(|l| re.is_match(l)))
             .map(|(rel, _)| rel)
             .collect()
+    }
+
+    fn offenders() -> BTreeSet<String> {
+        matching(concat!(
+            r"std::os::unix|",
+            r#""/bin/|"#,
+            r#"command\("(kill|ps|pgrep|sh|sleep|osascript|open|security|sips)"\)|"#,
+            r"\.mode\(0o|ExitStatusExt|libc::|/dev/urandom"
+        ))
     }
 
     #[test]
@@ -129,6 +128,40 @@ mod gate {
         assert!(
             cleaned.is_empty(),
             "these files no longer call around platform/, delete them from KNOWN: {cleaned:?}"
+        );
+    }
+
+    #[test]
+    fn every_spawn_goes_through_platform_command() {
+        let found = matching(r"\bCommand::new\(");
+        assert!(
+            found.is_empty(),
+            "these files build a std Command directly, which flashes a console window on Windows; \
+             use platform::process::command instead: {found:?}"
+        );
+    }
+
+    // A bare name reaches the OS lookup, which on Windows finds `name.exe`
+    // only, never the `.cmd` shim npm installs. These are real executables on
+    // every OS; anything else is spawned by the path `resolve_binary` gave.
+    #[test]
+    fn a_program_spawned_by_bare_name_is_never_a_shim() {
+        const EXES: &[&str] = &["git", "node", "rg", "tar", "curl"];
+        let literal = regex::Regex::new(r#"(?:process::command|CommandBuilder::new)\("([^"]+)"\)"#).unwrap();
+        let shims: Vec<String> = outside()
+            .into_iter()
+            .filter(|(rel, _)| !KNOWN.contains(&rel.as_str()))
+            .flat_map(|(rel, code)| {
+                code.iter()
+                    .flat_map(|l| literal.captures_iter(l).map(|c| c[1].to_string()))
+                    .filter(|name| !name.starts_with('/') && !EXES.contains(&name.as_str()))
+                    .map(|name| format!("{rel}: {name}"))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(
+            shims.is_empty(),
+            "spawn these by the path platform::shell::resolve_binary returns: {shims:?}"
         );
     }
 }

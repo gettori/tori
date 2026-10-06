@@ -66,7 +66,7 @@ pub struct UpdateInfo {
 pub fn open_releases_page() -> Result<(), String> {
     let found = FOUND_TAG.lock().ok().and_then(|t| t.clone());
     let url = found.map_or_else(|| RELEASES_PAGE.to_string(), |tag| format!("{RELEASES_PAGE}/tag/{tag}"));
-    crate::exec::spawn_detached(std::process::Command::new("open").arg(url)).map_err(|e| e.to_string())
+    crate::exec::spawn_detached(crate::platform::process::command("open").arg(url)).map_err(|e| e.to_string())
 }
 
 /// Start this app's bundle again and quit this process.
@@ -78,7 +78,7 @@ pub fn open_releases_page() -> Result<(), String> {
 pub fn relaunch(app: tauri::AppHandle) -> Result<(), String> {
     let bundle = running_bundle().unwrap_or_else(|| PathBuf::from("/Applications/Tori.app"));
     crate::exec::spawn_detached(
-        std::process::Command::new("/bin/sh")
+        crate::platform::process::command("/bin/sh")
             .arg("-c")
             .arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec open "$2""#)
             .arg("sh")

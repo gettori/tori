@@ -175,9 +175,26 @@ pub fn is_link_into(link: &Path, target: &Path) -> bool {
     }
     #[cfg(windows)]
     if meta.is_file() && link != target {
-        return same_file::is_same_file(link, target).unwrap_or(false);
+        return same_file(link, target);
     }
     false
+}
+
+/// Are `a` and `b` one file, by identity rather than by path, so a hardlink and
+/// its target count as one?
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (std::fs::metadata(a), std::fs::metadata(b)) {
+            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(windows)]
+    {
+        same_file::is_same_file(a, b).unwrap_or(false)
+    }
 }
 
 /// The one spelling of `path` used as a key: symlinks resolved, no `\\?\`

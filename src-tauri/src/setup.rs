@@ -5,9 +5,8 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -15,6 +14,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::platform::process::Group;
 use crate::rpc::events::same_folder;
 use crate::settings::WorktreePrefs;
 
@@ -58,6 +58,7 @@ pub struct Spec<'a> {
 struct Entry {
     report: Report,
     pid: u32,
+    group: Option<Arc<Group>>,
 }
 
 #[derive(Default)]
@@ -76,14 +77,6 @@ fn canonical(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
-}
-
-fn kill_group(pid: u32) {
-    // SAFETY: killpg only sends a signal. The pid is a child spawned with
-    // process_group(0), so it names that child's own group.
-    unsafe {
-        libc::killpg(pid as libc::pid_t, libc::SIGKILL);
-    }
 }
 
 fn note(log: &Path, line: &str) {
@@ -115,21 +108,19 @@ impl Runs {
 
         let spawned = File::create(&log).and_then(|out| {
             let err = out.try_clone()?;
-            Command::new("sh")
-                .arg("-c")
-                .arg(spec.command)
-                .current_dir(spec.worktree)
-                .env("TORI_PROJECT_ROOT", spec.project)
-                .env("TORI_WORKTREE_PATH", &worktree)
-                .env("PATH", spec.path_env)
-                .stdin(Stdio::null())
-                .stdout(out)
-                .stderr(err)
-                .process_group(0)
-                .spawn()
+            Group::spawn(
+                crate::platform::shell::posix_command(spec.command)
+                    .current_dir(spec.worktree)
+                    .env("TORI_PROJECT_ROOT", spec.project)
+                    .env("TORI_WORKTREE_PATH", &worktree)
+                    .env("PATH", spec.path_env)
+                    .stdin(Stdio::null())
+                    .stdout(out)
+                    .stderr(err),
+            )
         });
         let log_str = log.to_string_lossy().into_owned();
-        let mut child = match spawned {
+        let (mut child, group) = match spawned {
             Ok(child) => child,
             Err(e) => {
                 note(&log, &format!("setup did not start: {e}"));
@@ -142,12 +133,14 @@ impl Runs {
                 self.put(Entry {
                     report: report.clone(),
                     pid: 0,
+                    group: None,
                 });
                 publish(&report);
                 return report;
             }
         };
         let pid = child.id();
+        let group = Arc::new(group);
         let report = Report {
             worktree: worktree.clone(),
             state: State::Running,
@@ -157,6 +150,7 @@ impl Runs {
         self.put(Entry {
             report: report.clone(),
             pid,
+            group: Some(group.clone()),
         });
         publish(&report);
 
@@ -167,7 +161,7 @@ impl Runs {
                 match child.try_wait() {
                     Ok(Some(status)) => break Some(status),
                     Ok(None) if Instant::now() >= deadline => {
-                        kill_group(pid);
+                        group.kill_tree();
                         note(&log, &format!("setup killed after {} minutes", limit.as_secs() / 60));
                         let _ = child.wait();
                         break None;
@@ -235,16 +229,16 @@ impl Runs {
     /// end so nothing is still writing into the folder.
     pub fn kill(&self, worktree: &Path) {
         let key = canonical(worktree);
-        let pid = self
+        let group = self
             .lock()
             .iter()
             .find(|e| same_folder(&e.report.worktree, &key) && e.report.state == State::Running)
-            .map(|e| e.pid);
-        let Some(pid) = pid else { return };
+            .and_then(|e| e.group.clone());
+        let Some(group) = group else { return };
         if let Some(log) = self.status(worktree).map(|r| r.log) {
             note(Path::new(&log), "setup killed because the worktree was removed");
         }
-        kill_group(pid);
+        group.kill_tree();
         self.wait(worktree, KILL_GRACE);
     }
 }
@@ -341,11 +335,12 @@ mod tests {
     }
 
     fn run(runs: &'static Runs, dir: &Path, command: &str, limit: Duration) -> Report {
+        let path_env = std::env::var("PATH").unwrap_or_default();
         let spec = Spec {
             command,
             project: "/the/project",
             worktree: &dir.join("wt"),
-            path_env: "/usr/bin:/bin",
+            path_env: &path_env,
             log_dir: &dir.join("logs"),
             limit,
         };

@@ -497,11 +497,11 @@ pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)

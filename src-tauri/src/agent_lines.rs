@@ -317,7 +317,6 @@ pub fn agent_lines(project_path: String, file: String, sessions: Vec<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
 
     fn turn(session: &str, ts: u64, ordinal: usize) -> AgentTurn {
         AgentTurn {
@@ -500,7 +499,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)

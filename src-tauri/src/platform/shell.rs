@@ -35,13 +35,51 @@ pub fn default_shell() -> String {
     std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".into())
 }
 
+// What a terminal tab passes its shell: a login shell on Unix, so it sources
+// the user's profile and owns PATH. Windows shells have no login mode.
+#[cfg(unix)]
+pub const INTERACTIVE_ARGS: &[&str] = &["-l", "-i"];
+#[cfg(windows)]
+pub const INTERACTIVE_ARGS: &[&str] = &[];
+
+// portable-pty passes the program as `lpApplicationName`, which refuses a batch
+// file. `call` keeps the quoted path from being the first token, which `cmd /c`
+// strips the quotes off.
+pub fn pty_command(path: &Path) -> portable_pty::CommandBuilder {
+    if is_batch(path) {
+        let mut cmd = portable_pty::CommandBuilder::new("cmd.exe");
+        cmd.args(["/d", "/c", "call"]);
+        cmd.arg(path);
+        return cmd;
+    }
+    portable_pty::CommandBuilder::new(path)
+}
+
+pub fn is_batch(path: &Path) -> bool {
+    cfg!(windows)
+        && path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
+}
+
+// The launcher npm writes into `node_modules/.bin` for a package's `bin`
+// entry `name`: a link to the script on Unix, and on Windows a `.cmd` shim
+// that starts node itself.
+pub fn npm_shim(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.cmd")
+    } else {
+        name.to_string()
+    }
+}
+
 // `script` run by the user's login shell, which sources their profile and so
 // knows the PATH their rc files build. `None` on Windows, where a GUI process
 // already inherits the user's PATH from the registry and there is no login
 // shell to ask.
 #[cfg(unix)]
 pub fn login_shell_command(script: &str) -> Option<Command> {
-    let mut cmd = Command::new(default_shell());
+    let mut cmd = super::process::command(default_shell());
     cmd.args(["-lic", script]);
     Some(cmd)
 }
@@ -109,11 +147,35 @@ pub fn resolve_binary(program: &str, path: &str) -> Option<PathBuf> {
     found
 }
 
+// `script` run by a POSIX sh, for what users and repos write in sh syntax: a
+// worktree setup command. On Windows that is the bash Git for Windows ships,
+// which Tori requires; a bare `bash` there can be WSL's launcher instead.
+pub fn posix_command(script: &str) -> Command {
+    #[cfg(unix)]
+    let mut cmd = super::process::command("/bin/sh");
+    #[cfg(windows)]
+    let Some(mut cmd) = git_bash().map(super::process::command) else {
+        return refusing_command("Git Bash was not found", 127);
+    };
+    cmd.args(["-c", script]);
+    cmd
+}
+
+// `bash.exe` in the Git for Windows install that owns the `git` on PATH, which
+// sits in its `cmd` or `bin` folder.
+#[cfg(windows)]
+pub(super) fn git_bash() -> Option<PathBuf> {
+    let git = resolve_binary("git", &std::env::var("PATH").ok()?)?;
+    let root = git.parent()?.parent()?;
+    let bash = root.join(r"bin\bash.exe");
+    bash.is_file().then_some(bash)
+}
+
 // A command that prints `message` to stderr and exits with `code`, standing in
 // for one that must not run. Arguments a caller appends are never executed.
 #[cfg(unix)]
 pub fn refusing_command(message: &'static str, code: u8) -> Command {
-    let mut cmd = Command::new("/bin/sh");
+    let mut cmd = super::process::command("/bin/sh");
     cmd.args(["-c", &format!("echo \"$0\" >&2; exit {code}"), message]);
     cmd
 }
@@ -125,7 +187,7 @@ pub fn refusing_command(message: &'static str, code: u8) -> Command {
 pub fn refusing_command(message: &'static str, code: u8) -> Command {
     use std::os::windows::process::CommandExt;
     debug_assert!(message.chars().all(|c| c.is_ascii_alphanumeric() || c == ' '));
-    let mut cmd = Command::new("cmd.exe");
+    let mut cmd = super::process::command("cmd.exe");
     cmd.args(["/d", "/c"])
         .raw_arg(format!("echo {message} 1>&2 & exit /b {code} & rem"));
     cmd
@@ -135,29 +197,10 @@ pub fn refusing_command(message: &'static str, code: u8) -> Command {
 mod tests {
     use super::*;
 
-    fn fixture_binary(dir: &Path, name: &str) -> PathBuf {
-        std::fs::create_dir_all(dir).unwrap();
-        #[cfg(unix)]
-        let bin = {
-            use std::os::unix::fs::PermissionsExt;
-            let bin = dir.join(name);
-            std::fs::write(&bin, "#!/bin/sh\n").unwrap();
-            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-            bin
-        };
-        #[cfg(windows)]
-        let bin = {
-            let bin = dir.join(format!("{name}.cmd"));
-            std::fs::write(&bin, "@echo off\r\n").unwrap();
-            bin
-        };
-        bin
-    }
-
     #[test]
     fn a_binary_is_found_only_on_the_path_that_holds_it() {
         let root = std::env::temp_dir().join(format!("tori-platform-shell-{}", std::process::id()));
-        let bin = fixture_binary(&root.join("bin"), "some-agent-cli");
+        let bin = crate::platform::testing::script_bin(&root.join("bin"), "some-agent-cli", "exit 0");
         let empty = root.join("empty");
         std::fs::create_dir_all(&empty).unwrap();
 

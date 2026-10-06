@@ -250,7 +250,7 @@ const ITEM_NOT_FOUND: i32 = 44;
 
 impl Vault for Keychain {
     fn secret(&self, service: &str, account: &str) -> Result<Option<String>, String> {
-        let mut cmd = std::process::Command::new("/usr/bin/security");
+        let mut cmd = crate::platform::process::command("/usr/bin/security");
         cmd.args(["find-generic-password", "-a", account, "-s", service, "-w"]);
         let out = crate::env::output_with_timeout(&mut cmd).ok_or_else(|| "the keychain did not answer".to_string())?;
         match out.status.code() {

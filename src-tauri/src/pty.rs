@@ -16,7 +16,8 @@ use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::env::{augmented_path, login_path_if_captured, login_shell};
+use crate::env::{augmented_path, login_path_if_captured};
+use crate::platform::{process, shell};
 
 // How long a shell that prints nothing is given before its `init` is judged.
 // One that prints is judged once it has been quiet for `INIT_QUIET_MS`.
@@ -401,36 +402,28 @@ impl Seeder {
         }
     }
 
-    fn refuse(&self, pgrp: i32) -> Seeded {
+    fn refuse(&self, pid: u32) -> Seeded {
         if let Ok(mut done) = self.initialized.lock() {
             *done = true;
         }
-        Seeded::Refused(command_name(pgrp).unwrap_or_else(|| format!("process {pgrp}")))
+        let name = process::Snapshot::tree().command_name(pid).map(str::to_string);
+        Seeded::Refused(name.unwrap_or_else(|| format!("process {pid}")))
     }
 
     // A foreground that cannot be read counts as the shell's, so the init is
     // typed as it always was rather than every agent tab being refused.
-    fn foreign_foreground(&self) -> Option<i32> {
-        let pgrp = self.master.lock().ok()?.process_group_leader()?;
-        (i64::from(pgrp) != i64::from(self.shell_pid?)).then_some(pgrp)
+    fn foreign_foreground(&self) -> Option<u32> {
+        let master = self.master.lock().ok()?;
+        process::foreign_foreground(&**master, self.shell_pid?)
     }
 }
 
-fn command_name(pid: i32) -> Option<String> {
-    let out = crate::env::output_with_timeout(std::process::Command::new("ps").args([
-        "-o",
-        "ucomm=",
-        "-p",
-        &pid.to_string(),
-    ]))?;
-    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!name.is_empty()).then_some(name)
-}
-
 fn command_tab(program: &str, args: &[String], login_path: Option<&str>) -> CommandBuilder {
-    let mut cmd = CommandBuilder::new(program);
+    let path = login_path.map_or_else(augmented_path, str::to_string);
+    let resolved = shell::resolve_binary(program, &path).unwrap_or_else(|| program.into());
+    let mut cmd = shell::pty_command(&resolved);
     cmd.args(args);
-    cmd.env("PATH", login_path.map_or_else(augmented_path, str::to_string));
+    cmd.env("PATH", path);
     cmd
 }
 
@@ -565,11 +558,9 @@ pub fn pty_spawn(
         // Not `login_path()`: this is the IPC thread, and the probe can take 5 s.
         command_tab(&program, &args, login_path_if_captured())
     } else {
-        // A login + interactive shell. `-l` re-sources the user's profile so the
-        // shell owns PATH, and exiting a seeded agent drops back to this prompt.
-        let mut cmd = CommandBuilder::new(login_shell());
-        cmd.arg("-l");
-        cmd.arg("-i");
+        // Exiting a seeded agent drops back to this prompt.
+        let mut cmd = CommandBuilder::new(shell::default_shell());
+        cmd.args(shell::INTERACTIVE_ARGS);
         cmd
     };
     cmd.cwd(&cwd);
@@ -877,6 +868,7 @@ pub fn pty_busy_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::testing::{shell_argv, sleep_argv};
 
     fn fresh() -> Activity {
         Activity {
@@ -921,8 +913,7 @@ mod tests {
                 pixel_height: 0,
             })
             .expect("openpty");
-        let mut cmd = CommandBuilder::new("sleep");
-        cmd.arg("30");
+        let cmd = CommandBuilder::from_argv(sleep_argv(30).into_iter().map(Into::into).collect());
         let child = pair.slave.spawn_command(cmd).expect("spawn");
         let writer: Box<dyn Write + Send> = pair.master.take_writer().expect("writer");
         Session {
@@ -949,9 +940,7 @@ mod tests {
                 pixel_height: 0,
             })
             .expect("openpty");
-        let mut cmd = CommandBuilder::new("/bin/sh");
-        cmd.arg("-c");
-        cmd.arg(line);
+        let cmd = CommandBuilder::from_argv(shell_argv(line).into_iter().map(Into::into).collect());
         let child: SharedChild = Arc::new(Mutex::new(pair.slave.spawn_command(cmd).expect("spawn")));
         // Or the master never sees EOF: this process would still hold the slave.
         drop(pair.slave);
@@ -1297,11 +1286,13 @@ mod tests {
                 pixel_height: 0,
             })
             .expect("openpty");
-        let cmd = command_tab(
-            "sh",
-            &["-c".into(), "echo $PATH".into()],
-            Some("/tori-login-only/bin:/usr/bin:/bin"),
-        );
+        #[cfg(unix)]
+        let script = "echo $PATH";
+        #[cfg(windows)]
+        let script = "echo %PATH%";
+        let argv = shell_argv(script);
+        let login = format!("/tori-login-only/bin{}/usr/bin", shell::PATH_SEP);
+        let cmd = command_tab(&argv[0], &argv[1..], Some(&login));
         let mut child = pair.slave.spawn_command(cmd).expect("spawn");
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().expect("reader");
@@ -1325,12 +1316,9 @@ mod tests {
         poll: Duration::from_millis(5),
     };
 
-    /// A seeder over a real PTY running `program args`, typing into a recorder
-    /// so a test can see whether anything was typed at all.
-    fn seeded(
-        program: &str,
-        args: &[&str],
-    ) -> (Seeder, Arc<Mutex<Vec<u8>>>, Box<dyn portable_pty::Child + Send + Sync>) {
+    /// A seeder over a real PTY running `argv`, typing into a recorder so a
+    /// test can see whether anything was typed at all.
+    fn seeded(argv: Vec<String>) -> (Seeder, Arc<Mutex<Vec<u8>>>, Box<dyn portable_pty::Child + Send + Sync>) {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
@@ -1339,8 +1327,7 @@ mod tests {
                 pixel_height: 0,
             })
             .expect("openpty");
-        let mut cmd = CommandBuilder::new(program);
-        cmd.args(args);
+        let cmd = CommandBuilder::from_argv(argv.into_iter().map(Into::into).collect());
         let child = pair.slave.spawn_command(cmd).expect("spawn");
         drop(pair.slave);
         let (writer, seen) = recorder();
@@ -1357,16 +1344,16 @@ mod tests {
 
     /// The tmux case without tmux: `set -m` gives `sleep` a process group of its
     /// own and the terminal with it, which is what an rc that attaches tmux does
-    /// to the shell Tori spawned.
+    /// to the shell Tori spawned. On Windows any child of the shell holds it.
     #[test]
     fn a_shell_that_handed_its_terminal_on_is_not_typed_into() {
-        let (seeder, seen, mut child) = seeded("/bin/sh", &["-c", "set -m; sleep 5"]);
+        #[cfg(unix)]
+        let (script, holder) = ("set -m; sleep 5", "sleep");
+        #[cfg(windows)]
+        let (script, holder) = ("ping -n 6 127.0.0.1 >NUL", "PING.EXE");
+        let (seeder, seen, mut child) = seeded(shell_argv(script));
         let deadline = Instant::now() + Duration::from_secs(2);
-        let handed_on = || {
-            let fg = seeder.master.lock().unwrap().process_group_leader();
-            fg.is_some_and(|p| i64::from(p) != i64::from(seeder.shell_pid.unwrap()))
-        };
-        while !handed_on() {
+        while seeder.foreign_foreground().is_none() {
             assert!(
                 Instant::now() < deadline,
                 "sleep never took the terminal, so this proves nothing"
@@ -1376,13 +1363,13 @@ mod tests {
 
         let outcome = seeder.run(|| true, &FAST);
         let _ = child.kill();
-        assert_eq!(outcome, Seeded::Refused("sleep".into()));
+        assert_eq!(outcome, Seeded::Refused(holder.into()));
         assert!(seen.lock().unwrap().is_empty(), "typed into what took the terminal");
     }
 
     #[test]
     fn a_shell_that_kept_its_terminal_gets_its_init() {
-        let (seeder, seen, mut child) = seeded("/bin/sh", &[]);
+        let (seeder, seen, mut child) = seeded(sleep_argv(30));
         let outcome = seeder.run(|| true, &FAST);
         let _ = child.kill();
         assert_eq!(outcome, Seeded::Typed);
@@ -1394,7 +1381,7 @@ mod tests {
     /// reaches EOF, and so `pty://exit`, all the same.
     #[test]
     fn a_pending_init_does_not_keep_the_terminal_open() {
-        let (seeder, _seen, _child) = seeded("/bin/sh", &["-c", "exit 0"]);
+        let (seeder, _seen, _child) = seeded(shell_argv("exit 0"));
         let mut reader = seeder.master.lock().unwrap().try_clone_reader().expect("reader");
         let waiting = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let still = waiting.clone();

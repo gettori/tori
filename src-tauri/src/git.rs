@@ -4061,7 +4061,7 @@ mod tests {
         std::fs::write(dir.join("f.txt"), "ours\n").unwrap();
         git(&dir, &["commit", "-qam", "ours"]);
         // Deliberately fails, leaving f.txt unmerged in the index.
-        Command::new("git")
+        crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["merge", "feature"])
@@ -4203,7 +4203,7 @@ diff --git a/f b/f
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)
@@ -5145,7 +5145,7 @@ diff --git a/f b/f
     }
 
     fn current_branch(dir: &Path) -> String {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -5199,19 +5199,19 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
 
-        let _ = Command::new("git")
+        let _ = crate::platform::process::command("git")
             .arg("-C")
             .arg(&p)
             .args(["config", "--local", "--unset-all", "user.name"])
             .output();
-        let _ = Command::new("git")
+        let _ = crate::platform::process::command("git")
             .arg("-C")
             .arg(&p)
             .args(["config", "--local", "--unset-all", "user.email"])
             .output();
         // Without this git invents an identity from the login and the hostname
         // wherever the hostname is fully qualified, as it is on a CI runner.
-        let _ = Command::new("git")
+        let _ = crate::platform::process::command("git")
             .arg("-C")
             .arg(&p)
             .args(["config", "--local", "user.useConfigOnly", "true"])
@@ -5291,7 +5291,7 @@ diff --git a/f b/f
         git(&dir, &["config", "user.email", "t@t.test"]);
         let p = dir.to_string_lossy().into_owned();
         let count = |d: &Path| {
-            let out = Command::new("git")
+            let out = crate::platform::process::command("git")
                 .arg("-C")
                 .arg(d)
                 .args(["rev-list", "--count", "HEAD"])
@@ -5363,7 +5363,7 @@ diff --git a/f b/f
         // (rev-parse --abbrev-ref reports "HEAD" before the first commit, so read
         // the symbolic ref directly).
         assert!(dir.join(".git").exists());
-        let head = Command::new("git")
+        let head = crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["symbolic-ref", "--short", "HEAD"])
@@ -5403,7 +5403,7 @@ diff --git a/f b/f
         git(&dir, &["add", "-A"]);
 
         // Only the real file is staged; node_modules is ignored.
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["diff", "--cached", "--name-only"])
@@ -5431,7 +5431,7 @@ diff --git a/f b/f
 
         // Discovery sees a bare container with exactly one (non-bare) worktree on an
         // unborn `main`, and no remote yet (add origin later).
-        let list = Command::new("git")
+        let list = crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["worktree", "list", "--porcelain"])
@@ -5440,7 +5440,7 @@ diff --git a/f b/f
         let text = String::from_utf8_lossy(&list.stdout);
         assert!(text.contains("bare"));
         assert!(text.contains("branch refs/heads/main"));
-        let head = Command::new("git")
+        let head = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir.join("main"))
             .args(["symbolic-ref", "--short", "HEAD"])
@@ -5461,7 +5461,7 @@ diff --git a/f b/f
         // Whatever git's default is, the worktree folder is named after it and the
         // pointer + bare repo exist.
         assert!(dir.join(".bare").is_dir());
-        let def = Command::new("git")
+        let def = crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["symbolic-ref", "--short", "HEAD"])
@@ -5566,7 +5566,7 @@ diff --git a/f b/f
     }
 
     fn status_of(dir: &Path, file: &str) -> String {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(["status", "--porcelain", "--", file])
@@ -5577,7 +5577,7 @@ diff --git a/f b/f
 
     /// The file's content as currently staged in the index.
     fn indexed(dir: &Path, file: &str) -> String {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(["show", &format!(":{file}")])
@@ -6152,7 +6152,7 @@ diff --git a/f b/f
     }
 
     fn rev_parse(dir: &Path, rev: &str) -> String {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(["rev-parse", rev])
@@ -6205,7 +6205,7 @@ diff --git a/f b/f
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
         let head = String::from_utf8_lossy(
-            &Command::new("git")
+            &crate::platform::process::command("git")
                 .arg("-C")
                 .arg(&dir)
                 .args(["rev-parse", "HEAD"])
@@ -6233,7 +6233,7 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         let sock = Path::new("/tmp/tori-akp-x/s");
         let head = String::from_utf8_lossy(
-            &Command::new("git")
+            &crate::platform::process::command("git")
                 .arg("-C")
                 .arg(&dir)
                 .args(["rev-parse", "HEAD"])
@@ -6631,7 +6631,7 @@ diff --git a/f b/f
         std::fs::write(dir.join("f.txt"), "main\n").unwrap();
         git(&dir, &["commit", "-qam", "main"]);
         // Merge deliberately fails, leaving f.txt unmerged in the index.
-        Command::new("git")
+        crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["merge", "side"])

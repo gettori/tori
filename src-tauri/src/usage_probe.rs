@@ -5,13 +5,15 @@
 //! so unlike Claude there is nothing passive to merge and a reading exists only
 //! because Tori asked for one.
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+use crate::platform::process::{self, Group};
 
 /// A ceiling on the whole exchange: spawn, handshake, two reads.
 pub const PROBE_DEADLINE: Duration = Duration::from_secs(20);
@@ -129,22 +131,26 @@ pub fn parse(account: Option<&Value>, limits: Option<&Value>) -> UsageProbe {
 
 // --- driving the server ---
 
-/// End a child we are about to stop holding a handle to: ask, then insist.
+/// End a child we are about to stop holding a handle to: ask, then insist,
+/// on the whole tree so a wrapper's real server goes with it.
 ///
 /// The `wait` is not optional. Rust's `Child` does not kill on drop, and a kill
 /// without a reap leaves a zombie.
-fn end_child(child: &mut Child) {
+fn end_child(child: &mut Child, group: &Group) {
     if matches!(child.try_wait(), Ok(Some(_))) {
+        group.kill_tree();
         return;
     }
-    let _ = Command::new("kill").args(["-TERM", &child.id().to_string()]).status();
+    process::terminate(child.id());
     let deadline = std::time::Instant::now() + TERM_GRACE;
     while std::time::Instant::now() < deadline {
         if matches!(child.try_wait(), Ok(Some(_))) {
+            group.kill_tree();
             return;
         }
         thread::sleep(Duration::from_millis(20));
     }
+    group.kill_tree();
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -244,13 +250,14 @@ fn exchange(mut stdin: impl Write, stdout: impl BufRead, methods: &[&str]) -> Re
 /// The program is a parameter so the tests can point it at a scripted fake, and
 /// so a hung child can be driven on a deadline nobody would sit through.
 pub fn probe_with(program: &str, args: &[String], deadline: Duration) -> Result<UsageProbe, String> {
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("could not start {program}: {e}"))?;
+    let (mut child, group) = Group::spawn(
+        crate::platform::process::command(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|e| format!("could not start {program}: {e}"))?;
 
     let stdin = child.stdin.take().ok_or("no stdin on the probe child")?;
     let stdout = child.stdout.take().ok_or("no stdout on the probe child")?;
@@ -270,7 +277,7 @@ pub fn probe_with(program: &str, args: &[String], deadline: Duration) -> Result<
     });
 
     let answered = rx.recv_timeout(deadline);
-    end_child(&mut child);
+    end_child(&mut child, &group);
     match answered {
         Ok(Ok(answers)) => Ok(parse(answers.first(), answers.get(1))),
         Ok(Err(e)) => Err(quoting(e, said)),
@@ -288,7 +295,9 @@ pub fn probe_codex() -> Result<UsageProbe, String> {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    probe_with("codex", &args, PROBE_DEADLINE)
+    let codex =
+        crate::env::resolve_binary("codex").map_or_else(|| "codex".into(), |p| p.to_string_lossy().into_owned());
+    probe_with(&codex, &args, PROBE_DEADLINE)
 }
 
 #[tauri::command]
@@ -310,8 +319,10 @@ mod tests {
         serde_json::from_str(&std::fs::read_to_string(&path).expect("the committed capture")).unwrap()
     }
 
-    fn sh(script: &str) -> Vec<String> {
-        vec!["-c".to_string(), script.to_string()]
+    /// A probe of a fake server: `script` under a POSIX sh.
+    fn probe_sh(script: &str, deadline: Duration) -> Result<UsageProbe, String> {
+        let argv = crate::platform::testing::sh_argv(script);
+        probe_with(&argv[0], &argv[1..], deadline)
     }
 
     #[test]
@@ -387,8 +398,7 @@ mod tests {
             read -r _limits
             printf '%s\n' '{"jsonrpc":"2.0","id":3,"error":{"code":401,"message":"not logged in"}}'
         "#;
-        let err =
-            probe_with("/bin/sh", &sh(script), Duration::from_secs(5)).expect_err("a refused read is not a reading");
+        let err = probe_sh(script, Duration::from_secs(5)).expect_err("a refused read is not a reading");
         assert!(err.contains("not logged in"), "{err}");
     }
 
@@ -405,7 +415,7 @@ mod tests {
             read -r _limits
             printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"rateLimits":{"primary":{"usedPercent":50,"windowDurationMins":300,"resetsAt":9}}}}'
         "#;
-        let probe = probe_with("/bin/sh", &sh(script), Duration::from_secs(5)).expect("answered");
+        let probe = probe_sh(script, Duration::from_secs(5)).expect("answered");
 
         assert_eq!(probe.email.as_deref(), Some("a@b.c"));
         assert_eq!(probe.plan_type.as_deref(), Some("pro"));
@@ -419,8 +429,8 @@ mod tests {
     #[test]
     fn a_silent_server_is_killed_on_the_deadline() {
         let started = std::time::Instant::now();
-        let err = probe_with("/bin/sh", &sh("sleep 30"), Duration::from_millis(300))
-            .expect_err("a server that never answers has said nothing");
+        let err =
+            probe_sh("sleep 30", Duration::from_millis(300)).expect_err("a server that never answers has said nothing");
 
         assert!(err.contains("did not answer"), "{err}");
         assert!(
@@ -433,9 +443,8 @@ mod tests {
     /// nowhere else, so the reason has to survive into the error.
     #[test]
     fn a_server_that_dies_quotes_what_it_said() {
-        let err = probe_with(
-            "/bin/sh",
-            &sh("echo 'not logged in, run codex login' >&2; exit 1"),
+        let err = probe_sh(
+            "echo 'not logged in, run codex login' >&2; exit 1",
             Duration::from_secs(5),
         )
         .expect_err("nothing was answered");

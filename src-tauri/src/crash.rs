@@ -127,7 +127,9 @@ fn stamp(secs: u64) -> String {
 fn os_version() -> &'static str {
     static OS: OnceLock<String> = OnceLock::new();
     OS.get_or_init(|| {
-        let out = std::process::Command::new("sw_vers").arg("-productVersion").output();
+        let out = crate::platform::process::command("sw_vers")
+            .arg("-productVersion")
+            .output();
         let version = out
             .ok()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -285,7 +287,7 @@ fn unstamp(s: &str) -> Option<u64> {
 #[tauri::command(async)]
 pub fn open_crash_issue() -> Result<(), String> {
     let url = issue_url(list(&dir()).last());
-    crate::exec::spawn_detached(std::process::Command::new("open").arg(url)).map_err(|e| e.to_string())
+    crate::exec::spawn_detached(crate::platform::process::command("open").arg(url)).map_err(|e| e.to_string())
 }
 
 fn issue_url(newest: Option<&CrashFile>) -> String {

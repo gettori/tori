@@ -1592,8 +1592,7 @@ pub mod tests {
     /// racy to provoke, but the thing they all call is not.
     #[test]
     fn abandon_really_ends_the_child_since_drop_would_not() {
-        let mut child = std::process::Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
+        let mut child = crate::platform::testing::sleep_command(30)
             .spawn()
             .expect("the stand-in child should start");
         let pid = child.id();
@@ -1604,14 +1603,7 @@ pub mod tests {
         assert!(!pid_is_alive(pid), "abandon must leave no live process behind");
     }
 
-    #[cfg(test)]
-    fn pid_is_alive(pid: u32) -> bool {
-        std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
+    use crate::platform::process::pid_alive as pid_is_alive;
 
     /// A child that exits immediately is the mock-child case: the reader hits
     /// EOF and a fatal error must reach the sink, since that is what the host
@@ -1627,9 +1619,7 @@ pub mod tests {
         // a child dying mid-turn.
         let spec = StartSpec {
             session_id: "s-exits".into(),
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), "exit 1".into()],
-            ..Default::default()
+            ..StartSpec::sh("exit 1")
         };
         // The handshake write races the exit, so its result is not the subject.
         let _ = t.start(spec, sink);
@@ -1664,9 +1654,7 @@ pub mod tests {
         let mut t = ClaudeTransport::new("s-noisy");
         let spec = StartSpec {
             session_id: "s-noisy".into(),
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), "printf 'unknown option --nope' >&2; exit 2".into()],
-            ..Default::default()
+            ..StartSpec::sh("printf 'unknown option --nope' >&2; exit 2")
         };
         let _ = t.start(spec, sink);
 
@@ -1698,10 +1686,8 @@ pub mod tests {
         let mut t = ClaudeTransport::new("s-closed");
         let spec = StartSpec {
             session_id: "s-closed".into(),
-            program: "/bin/sh".into(),
             // Reads stdin forever, so nothing ends it but our own close.
-            args: vec!["-c".into(), "cat > /dev/null".into()],
-            ..Default::default()
+            ..StartSpec::sh("cat > /dev/null")
         };
         t.start(spec, sink).unwrap();
         assert!(
@@ -1912,9 +1898,7 @@ pub mod tests {
         let mut t = ClaudeTransport::new("s-steer");
         let spec = StartSpec {
             session_id: "s-steer".into(),
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), format!("cat > '{}'", log.display())],
-            ..Default::default()
+            ..StartSpec::sh(&format!("cat > '{}'", log.display()))
         };
         t.start(spec, new_sink(Box::new(|_| {}))).unwrap();
         t.steer(&[ContentBlock::Text {
@@ -1959,9 +1943,7 @@ pub mod tests {
         let mut t = ClaudeTransport::new("s-garbage");
         let spec = StartSpec {
             session_id: "s-garbage".into(),
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), "printf 'not json\\n'; cat > /dev/null".into()],
-            ..Default::default()
+            ..StartSpec::sh("printf 'not json\\n'; cat > /dev/null")
         };
         t.start(spec, sink).unwrap();
 

@@ -959,7 +959,7 @@ pub fn pick_account_folder(default_path: Option<String>) -> Result<Option<String
         .filter(|p| p.is_dir())
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("/"));
-    let out = std::process::Command::new("osascript")
+    let out = crate::platform::process::command("osascript")
         .args([
             "-e",
             "on run argv",

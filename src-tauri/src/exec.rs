@@ -26,9 +26,6 @@ pub fn spawn_detached(cmd: &mut Command) -> std::io::Result<()> {
     Ok(())
 }
 
-/// What a refused [`git_in`] prints, which is `trust::UNTRUSTED`.
-const REFUSE: &str = "echo untrusted >&2; exit 128";
-
 /// `git -C <repo>`, or a command that fails with `untrusted` when `repo` is not
 /// a trusted project.
 ///
@@ -44,11 +41,9 @@ fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
     #[cfg(test)]
     count_git(repo);
     if !allowed {
-        let mut refused = Command::new("/bin/sh");
-        refused.args(["-c", REFUSE, "git"]);
-        return refused;
+        return crate::platform::shell::refusing_command(crate::trust::UNTRUSTED, 128);
     }
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::platform::process::command("git");
     cmd.arg("-C").arg(repo);
     cmd
 }
@@ -84,7 +79,7 @@ pub(crate) fn git_spawns_under(dir: &std::path::Path) -> usize {
 /// `git` for a subcommand that opens no repository, so there is no config of
 /// anyone else's to run.
 pub fn git_outside_a_repo() -> Command {
-    Command::new("git")
+    crate::platform::process::command("git")
 }
 
 /// Run `f` on the blocking pool and await its result.
@@ -204,7 +199,7 @@ mod tests {
     use super::*;
 
     fn git(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
-        Command::new("git")
+        crate::platform::process::command("git")
             .current_dir(dir)
             .args(args)
             .output()
@@ -256,7 +251,7 @@ mod tests {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
         sources(&src, &mut files);
-        let spawn = format!("Command::new(\"{}\")", "git");
+        let spawn = format!("process::command(\"{}\")", "git");
         let mut outside = Vec::new();
         for file in files.iter().filter(|f| !f.ends_with("exec.rs")) {
             let text = std::fs::read_to_string(file).unwrap();

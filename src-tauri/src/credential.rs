@@ -442,7 +442,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tori-cred-{}-{seq}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let git = |args: &[&str]| {
-            Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap();
+            crate::platform::process::command("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .unwrap();
         };
         git(&["init", "-q"]);
         for (name, url) in remotes {
@@ -553,17 +558,17 @@ mod tests {
         let dir = repo_with(&[("origin", "https://git.invalid.test/a/b.git")]);
         let repo = dir.to_string_lossy().into_owned();
 
-        let mut https = Command::new("git");
+        let mut https = crate::platform::process::command("git");
         assert!(bridge(&mut https, &repo, "origin", "op-no-account").is_none());
         assert_eq!(https.get_args().count(), 0, "nothing configured, so nothing overridden");
 
-        Command::new("git")
+        crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["remote", "set-url", "origin", "git@github.com:skarif2/tori.git"])
             .output()
             .unwrap();
-        let mut ssh = Command::new("git");
+        let mut ssh = crate::platform::process::command("git");
         assert!(
             bridge(&mut ssh, &repo, "origin", "op-ssh").is_none(),
             "a key, not a token"
@@ -585,7 +590,7 @@ mod tests {
         ]);
         let repo = two.to_string_lossy().into_owned();
         assert_eq!(lone_remote(&repo), None);
-        let mut cmd = Command::new("git");
+        let mut cmd = crate::platform::process::command("git");
         assert!(bridge_all(&mut cmd, &repo, "op-all").is_none());
         assert!(!answers_fetch(&repo));
 

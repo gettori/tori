@@ -17,11 +17,13 @@ pub mod registry;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde::Serialize;
 
 use registry::{DirScan, Formatter, LaunchKind};
+
+use crate::platform::{process::Group, shell};
 
 /// Long enough for a cold `prettier` (node start plus a large file), short
 /// enough that a wedged formatter cannot hold a save open forever. Deliberately
@@ -108,7 +110,10 @@ fn resolve(formatter: &Formatter, from: &Path, project_root: &Path) -> Option<Pa
 
 // The names uv and `python -m venv` use. Poetry and pipenv keep theirs outside
 // the project by default, so their tools come from the PATH.
+#[cfg(unix)]
 const PROJECT_BIN_DIRS: [&str; 3] = ["node_modules/.bin", ".venv/bin", "venv/bin"];
+#[cfg(windows)]
+const PROJECT_BIN_DIRS: [&str; 3] = ["node_modules/.bin", ".venv/Scripts", "venv/Scripts"];
 
 /// `program` from the nearest `node_modules/.bin` or Python virtualenv between
 /// `from` and `project_root`, else the login PATH. The resolver behind both a
@@ -118,8 +123,7 @@ pub fn project_bin(program: &str, from: &Path, project_root: &Path) -> Option<Pa
     while let Some(current) = dir {
         if let Some(candidate) = PROJECT_BIN_DIRS
             .iter()
-            .map(|d| current.join(d).join(program))
-            .find(|c| c.is_file())
+            .find_map(|d| shell::resolve_binary(program, &current.join(d).to_string_lossy()))
         {
             return Some(candidate);
         }
@@ -166,16 +170,16 @@ impl Failure {
 /// the pipe buffer blocks on write while this process blocks on the stdin
 /// write, and the two would deadlock waiting on each other.
 fn run(program: &Path, args: &[String], cwd: &Path, input: &str) -> Result<String, Failure> {
-    let mut child = Command::new(program)
-        .args(args)
-        .current_dir(cwd)
-        .env("PATH", crate::env::augmented_path())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| Failure::other(format!("could not run {}: {e}", program.display())))?;
-    let pid = child.id();
+    let (mut child, group) = Group::spawn(
+        crate::platform::process::command(program)
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", crate::env::augmented_path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|e| Failure::other(format!("could not run {}: {e}", program.display())))?;
 
     let mut stdin = child
         .stdin
@@ -198,7 +202,7 @@ fn run(program: &Path, args: &[String], cwd: &Path, input: &str) -> Result<Strin
     let output = match rx.recv_timeout(FORMAT_TIMEOUT) {
         Ok(result) => result.map_err(|e| Failure::other(e.to_string()))?,
         Err(_) => {
-            let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
+            group.kill_tree();
             let _ = writer.join();
             return Err(Failure::other(format!(
                 "{} did not finish within {} seconds",
@@ -455,7 +459,6 @@ pub fn formatter_health() -> Vec<FormatterHealth> {
 mod tests {
     use super::*;
     use registry::load_formatter_str;
-    use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -477,11 +480,7 @@ mod tests {
     /// exit status on refusal) is tested without needing Biome or Prettier
     /// installed. Same trick as the LSP suite's `/bin/cat` echo server.
     fn stub(dir: &Path, name: &str, body: &str) -> PathBuf {
-        let path = dir.join(name);
-        std::fs::create_dir_all(dir).unwrap();
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        path
+        crate::platform::testing::script_bin(dir, name, body)
     }
 
     fn bundled() -> Vec<Formatter> {
@@ -806,13 +805,13 @@ mod tests {
 
     #[test]
     fn a_project_copy_beats_a_login_path_copy_of_the_same_program() {
-        // `sh` is on every PATH, so the project copy winning is the order, not luck.
+        // `git` is on every PATH Tori runs on, so the project copy winning is the order, not luck.
         let root = tmp_tree();
-        let local = stub(&root.join("node_modules/.bin"), "sh", "exit 0");
-        assert_eq!(project_bin("sh", &root, &root), Some(local));
+        let local = stub(&root.join("node_modules/.bin"), "git", "exit 0");
+        assert_eq!(project_bin("git", &root, &root), Some(local));
         let bare = tmp_tree();
-        assert_eq!(project_bin("sh", &bare, &bare), crate::env::resolve_binary("sh"));
-        assert!(project_bin("sh", &bare, &bare).is_some());
+        assert_eq!(project_bin("git", &bare, &bare), crate::env::resolve_binary("git"));
+        assert!(project_bin("git", &bare, &bare).is_some());
         std::fs::remove_dir_all(&root).ok();
         std::fs::remove_dir_all(&bare).ok();
     }
@@ -820,13 +819,13 @@ mod tests {
     #[test]
     fn a_path_formatter_ignores_the_projects_node_modules() {
         let root = tmp_tree();
-        stub(&root.join("node_modules/.bin"), "sh", "exit 0");
+        stub(&root.join("node_modules/.bin"), "git", "exit 0");
         let on_path = load_formatter_str(
-            "schema_version = 1\nid = \"s\"\nlabel = \"s\"\n[launch]\nkind = \"path\"\nprogram = \"sh\"\n",
+            "schema_version = 1\nid = \"s\"\nlabel = \"s\"\n[launch]\nkind = \"path\"\nprogram = \"git\"\n",
             "test",
         )
         .unwrap();
-        assert_eq!(resolve(&on_path, &root, &root), crate::env::resolve_binary("sh"));
+        assert_eq!(resolve(&on_path, &root, &root), crate::env::resolve_binary("git"));
         std::fs::remove_dir_all(&root).ok();
     }
 

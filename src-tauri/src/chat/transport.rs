@@ -63,18 +63,35 @@ pub struct StartSpec {
     pub env: HashMap<String, String>,
 }
 
+#[cfg(test)]
+impl StartSpec {
+    /// A spec that runs `script` under a POSIX sh, standing in for an agent.
+    pub fn sh(script: &str) -> Self {
+        let mut argv = crate::platform::testing::sh_argv(script);
+        Self {
+            program: argv.remove(0),
+            args: argv,
+            ..Self::default()
+        }
+    }
+}
+
 /// Build the child command for a spec. Shared by every transport so PATH
 /// handling and env layering cannot drift between them.
 pub fn build_command(spec: &StartSpec) -> std::process::Command {
-    let mut cmd = std::process::Command::new(&spec.program);
+    // No login shell runs to set PATH for a directly-spawned child, so the
+    // agent binary would be unfindable without this - the same reason
+    // `pty.rs`'s `command` tabs use it.
+    let path = crate::env::session_path();
+    // By full path: std looks only for `name.exe` on Windows, and agents that
+    // npm installed are `.cmd` shims.
+    let program = crate::platform::shell::resolve_binary(&spec.program, &path);
+    let mut cmd = crate::platform::process::command(program.as_deref().unwrap_or(std::path::Path::new(&spec.program)));
     cmd.args(&spec.args);
     if !spec.cwd.is_empty() {
         cmd.current_dir(&spec.cwd);
     }
-    // No login shell runs to set PATH for a directly-spawned child, so the
-    // agent binary would be unfindable without this - the same reason
-    // `pty.rs`'s `command` tabs use it.
-    cmd.env("PATH", crate::rpc::path_with_cli(&crate::env::session_path()));
+    cmd.env("PATH", crate::rpc::path_with_cli(&path));
     cmd.envs(crate::credential::spawn_env());
     cmd.envs(crate::rpc::child_env(crate::rpc::auth::Caller::Chat(
         spec.session_id.clone(),
@@ -309,10 +326,8 @@ mod tests {
     fn the_env_map_reaches_the_spawned_command() {
         let spec = StartSpec {
             session_id: "s1".to_string(),
-            cwd: String::new(),
-            program: "/bin/sh".to_string(),
-            args: vec!["-c".to_string(), "printf '%s' \"$TORI_CHAT_TEST\"".to_string()],
             env: HashMap::from([("TORI_CHAT_TEST".to_string(), "reached".to_string())]),
+            ..StartSpec::sh("printf '%s' \"$TORI_CHAT_TEST\"")
         };
         let mut child = build_command(&spec)
             .stdout(std::process::Stdio::piped())

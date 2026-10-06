@@ -206,7 +206,7 @@ pub fn probe_command(
     args: &[String],
     home: Option<&(String, String)>,
 ) -> std::process::Command {
-    let mut cmd = std::process::Command::new(path);
+    let mut cmd = crate::platform::process::command(path);
     cmd.args(args);
     cmd.env(NO_BROWSER.0, NO_BROWSER.1);
     if let Some((var, value)) = home {
@@ -776,7 +776,7 @@ mod tests {
 
     fn keychain_needles() -> [&'static str; 6] {
         [
-            concat!("Command::new(\"", "security", "\")"),
+            concat!("process::command(\"", "security", "\")"),
             concat!("\"/usr/bin/", "security", "\""),
             concat!("Claude Code", "-credentials"),
             concat!("find-generic", "-password"),

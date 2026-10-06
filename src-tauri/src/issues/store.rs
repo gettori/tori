@@ -121,7 +121,6 @@ fn record_in(file: &Path, repo: &str, branch: &str, issue: UnitIssue) -> Result<
 mod tests {
     use super::*;
     use crate::config::ProjectKind;
-    use std::process::Command;
 
     fn issue(key: &str) -> UnitIssue {
         UnitIssue {
@@ -151,7 +150,7 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let ok = Command::new("git")
+        let ok = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)

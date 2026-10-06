@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::registry::{inside, platform, Install, Launch, LspServer, Runtime};
+use crate::platform::shell;
 
 const MANIFEST: &str = "tori-install.json";
 
@@ -60,15 +61,16 @@ pub fn command(server: &LspServer, dir: &Path) -> Result<Command, String> {
         return Err(format!("{}: not a managed server", server.id));
     };
     let mut cmd = if let Some(path) = crate::env::resolve_binary(program) {
-        Command::new(path)
+        crate::platform::process::command(path)
     } else if let Some((bin, _)) = installed(dir, &server.id) {
         match runtime {
-            Runtime::Node => {
-                let mut cmd = Command::new("node");
+            // npm's Windows shim starts node itself.
+            Runtime::Node if !shell::is_batch(&bin) => {
+                let mut cmd = crate::platform::process::command("node");
                 cmd.arg(bin);
                 cmd
             }
-            Runtime::Native => Command::new(bin),
+            _ => crate::platform::process::command(bin),
         }
     } else if server.install.as_ref().is_some_and(|i| i.available_version().is_some()) {
         return Err(NOT_INSTALLED.to_string());
@@ -132,7 +134,7 @@ fn fill(
             let npm = crate::env::resolve_binary("npm").ok_or("npm was not found on your PATH")?;
             // `--ignore-scripts`: an install script is arbitrary code, and a
             // server that needs one to run is not one Tori can ship.
-            let out = Command::new(npm)
+            let out = crate::platform::process::command(npm)
                 .arg("install")
                 .arg("--prefix")
                 .arg(staging)
@@ -150,7 +152,7 @@ fn fill(
             }
             Installed {
                 version: version.clone(),
-                bin: format!("node_modules/.bin/{program}"),
+                bin: format!("node_modules/.bin/{}", shell::npm_shim(program)),
             }
         }
         Some(Install::GithubRelease { repo, version, assets }) => {
@@ -223,7 +225,7 @@ fn is_archive(file: &str) -> bool {
 // compression, and refuses an entry with `..` in its path or one that writes
 // through a symlink, the containment an archive Tori did not build needs.
 fn unpack(archive: &Path, into: &Path) -> Result<(), String> {
-    let out = Command::new("tar")
+    let out = crate::platform::process::command("tar")
         .arg("-xf")
         .arg(archive)
         .arg("-C")
@@ -322,7 +324,7 @@ mod tests {
         std::fs::create_dir_all(src.join("bin")).unwrap();
         std::fs::write(src.join("bin").join(program), "#!/bin/sh\necho demo\n").unwrap();
         let out = src.join("demo.tar.gz");
-        let status = Command::new("tar")
+        let status = crate::platform::process::command("tar")
             .arg("-czf")
             .arg(&out)
             .arg("-C")
@@ -366,12 +368,12 @@ mod tests {
 
     #[test]
     fn a_path_copy_beats_an_installed_copy() {
-        let (bytes, digest) = archive("sh");
+        let (bytes, digest) = archive("git");
         let dir = temp_dir("path_first");
-        let server = release_server("sh", "demo.tar.gz", &digest, "bin/sh");
+        let server = release_server("git", "demo.tar.gz", &digest, "bin/git");
         install_with(&server, &dir, |_| Ok(bytes.clone())).unwrap();
 
-        let on_path = crate::env::resolve_binary("sh").expect("sh is on every PATH");
+        let on_path = crate::env::resolve_binary("git").expect("git is on every PATH Tori runs on");
         assert_eq!(Path::new(command(&server, &dir).unwrap().get_program()), on_path);
 
         let (bytes, digest) = archive("tori-not-on-any-path");

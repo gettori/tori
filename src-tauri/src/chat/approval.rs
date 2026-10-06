@@ -897,7 +897,7 @@ mod tests {
         let mut samples = Vec::new();
         for _ in 0..20 {
             let start = std::time::Instant::now();
-            let mut child = std::process::Command::new(&exe)
+            let mut child = crate::platform::process::command(&exe)
                 .env(ENV_SOCK, server.sock_path())
                 .env(ENV_TOKEN, server.token())
                 .stdin(std::process::Stdio::piped())
@@ -1243,7 +1243,7 @@ mod tests {
         args.push("--settings".to_string());
         args.push(settings_file.to_string_lossy().into_owned());
 
-        let mut child = std::process::Command::new(&chat.program)
+        let mut child = crate::platform::process::command(&chat.program)
             .args(&args)
             .current_dir(&cwd)
             .env("PATH", crate::env::augmented_path())
@@ -1337,7 +1337,7 @@ mod tests {
         args.push("--settings".to_string());
         args.push(settings_file.to_string_lossy().into_owned());
 
-        let mut child = std::process::Command::new(&chat.program)
+        let mut child = crate::platform::process::command(&chat.program)
             .args(&args)
             .current_dir(&cwd)
             .env("PATH", crate::env::augmented_path())

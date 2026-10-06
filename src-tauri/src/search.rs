@@ -19,7 +19,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
-use std::process::Command;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use regex::Regex;
@@ -100,7 +99,7 @@ struct Candidate {
 }
 
 fn has_rg() -> bool {
-    Command::new("rg")
+    crate::platform::process::command("rg")
         .arg("--version")
         .output()
         .map(|o| o.status.success())
@@ -372,7 +371,7 @@ fn pick_backend(root: &str, use_rg: bool) -> (&'static str, Vec<String>) {
 }
 
 fn run_rg(root: &str, pattern: &str, opts: &SearchOptions, max: usize) -> Result<Vec<Candidate>, String> {
-    let mut cmd = Command::new("rg");
+    let mut cmd = crate::platform::process::command("rg");
     cmd.args(["--json", "--line-number"]);
     // A coarse bound on how much JSON a single pathological file can emit.
     // `--max-count` is per file, not global, so it is not the result cap; it is
@@ -437,7 +436,7 @@ fn run_git_grep(root: &str, literal: Option<&str>, opts: &SearchOptions) -> Resu
 /// reported to the UI as an unsupported option rather than left to look like a
 /// working toggle.
 fn plain_grep(root: &str, literal: Option<&str>, opts: &SearchOptions) -> Result<Vec<Candidate>, String> {
-    let mut cmd = Command::new("grep");
+    let mut cmd = crate::platform::process::command("grep");
     cmd.arg("-rn");
     if !opts.case {
         cmd.arg("-i");
@@ -914,7 +913,7 @@ mod tests {
     use super::*;
 
     fn git(dir: &Path, args: &[&str]) {
-        let status = Command::new("git")
+        let status = crate::platform::process::command("git")
             .current_dir(dir)
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@test.com")

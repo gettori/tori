@@ -1649,12 +1649,12 @@ pub(crate) fn checkpoint_prune_body(repo_path: String, session_id: String) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)

@@ -512,11 +512,11 @@ pub(crate) fn local_history_prune_body(repo_path: String) -> Result<(), String> 
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::process::Command;
+
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)

@@ -35,7 +35,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -44,6 +43,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::agents;
+use crate::platform::process::Snapshot;
 
 const HEAD_LINES: usize = 60;
 
@@ -969,11 +969,10 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
     deleted
 }
 
-/// Extended-regex pattern for `pgrep -f` (BSD pgrep treats the pattern as ERE
-/// natively, no `-E` needed) that matches only a live `agent` process actually
-/// resuming session `id` - not merely any process whose command line contains
-/// the id, which is what a bare `pgrep -f <uuid>` would also catch (a `less`/
-/// `tail`/editor with the transcript file open). The template itself is now
+/// Regex matching the command line of a live `agent` process actually resuming
+/// session `id` - not merely any process whose command line contains the id,
+/// which is what a bare match on the uuid would also catch (a `less`/`tail`/
+/// editor with the transcript file open). The template itself is now
 /// adapter data (`agents::session_pattern`); this stays as the call site's
 /// entry point so callers/tests are unaffected by the registry underneath.
 ///
@@ -1026,7 +1025,7 @@ pub fn session_running(
 /// [`session_running`] answers wrongly for them. A chat session's child belongs
 /// to this process, not to the webview: reload the frontend and every tab is
 /// gone while the child is still there, still carrying the session id on its
-/// command line. The pgrep then finds Tori's own child and reports the session
+/// command line. The process table then shows Tori's own child and reports the session
 /// as somebody else's, which routed a reopen onto the PTY surface and got it
 /// refused by the chat claim this same process holds.
 ///
@@ -1060,11 +1059,10 @@ pub(crate) fn running_by_pattern(agent: &str, id: &str) -> bool {
     if !found_by_pattern(agent) {
         return false;
     }
-    let Some(pattern) = session_pattern(agent, id) else {
+    let Some(Ok(pattern)) = session_pattern(agent, id).map(|p| regex::Regex::new(&p)) else {
         return false;
     };
-    let out = Command::new("pgrep").args(["-f", &pattern]).output();
-    out.map(|o| o.status.success() && !o.stdout.is_empty()).unwrap_or(false)
+    !Snapshot::take().matching(&pattern).is_empty()
 }
 
 /// One session to probe: an id is only meaningful against the agent that owns it.
@@ -1074,37 +1072,29 @@ pub struct SessionRef {
     pub agent: String,
 }
 
-/// The command lines of every live process that looks like a session of `agent`.
+/// The command lines in `snapshot` that look like a session of `agent`.
 ///
-/// One `pgrep` for the whole agent rather than one per id, driven by the
-/// adapter's own running pattern with the id slot generalized to "one argument
-/// token". Reusing that pattern is what keeps this from assuming anything new
-/// about the agent: it already encodes what a live session of this agent looks
-/// like, so a user-added adapter whose program is spelled nothing like its id
-/// still works.
-///
-/// `-lf`, not `-af`. On BSD/macOS `pgrep -a` means "include process ancestors"
-/// and prints bare pids; `-l` combined with `-f` is what prints the full
-/// argument list this has to match against.
-fn agent_command_lines(agent: &str) -> Vec<String> {
+/// Driven by the adapter's own running pattern with the id slot generalized to
+/// "one argument token". Reusing that pattern is what keeps this from assuming
+/// anything new about the agent: it already encodes what a live session of this
+/// agent looks like, so a user-added adapter whose program is spelled nothing
+/// like its id still works.
+fn agent_command_lines(snapshot: &Snapshot, agent: &str) -> Vec<String> {
     // No pattern, no command lines: an adapter whose sessions are not on any
     // command line has none to collect, and `running_ids` would reject them all
     // anyway.
-    let Some(any_session) = session_pattern(agent, "[^ ]+") else {
+    let Some(Ok(any_session)) = session_pattern(agent, "[^ ]+").map(|p| regex::Regex::new(&p)) else {
         return Vec::new();
     };
-    let out = match Command::new("pgrep").args(["-lf", &any_session]).output() {
-        Ok(o) => o,
-        Err(_) => return Vec::new(),
-    };
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| l.split_once(' ').map(|(_pid, cmd)| cmd.to_string()))
+    snapshot
+        .matching(&any_session)
+        .into_iter()
+        .map(|(_pid, cmd)| cmd.to_string())
         .collect()
 }
 
 /// Which of `ids` a live `agent` process is driving, given command lines already
-/// in hand. Pure, so the matching is tested against captured `pgrep` output
+/// in hand. Pure, so the matching is tested against captured command lines
 /// instead of whatever happens to be running on the machine.
 fn running_ids(agent: &str, ids: &[String], command_lines: &[String]) -> Vec<String> {
     ids.iter()
@@ -1124,10 +1114,10 @@ fn running_ids(agent: &str, ids: &[String], command_lines: &[String]) -> Vec<Str
 /// Which of `sessions` have a live agent process driving them, as the subset of
 /// ids that are running.
 ///
-/// Spawns one `pgrep` per *registered agent*, never one per id. The folder sweep
-/// this exists for asks about every session in a folder at once, and at one
-/// subprocess per id a 47-session folder costs 47 spawns; throttling only
-/// spreads that out rather than removing it.
+/// Reads the process table once per sweep, never once per id or per agent. The
+/// folder sweep this exists for asks about every session in a folder at once,
+/// and at one read per id a 47-session folder costs 47; throttling only spreads
+/// that out rather than removing it.
 /// Group `sessions` by agent, then resolve each agent's ids against the command
 /// lines `lines_for` returns for it. Split from the command so that "one lookup
 /// per agent, whatever the number of ids" is a property a test can observe
@@ -1178,9 +1168,13 @@ pub fn sessions_running(
 }
 
 pub(crate) fn running_now(registry: &crate::chat::ownership::Registry, sessions: Vec<SessionRef>) -> Vec<String> {
-    resolve_running(sessions, found_by_pattern, agent_command_lines, |ids| {
-        registry.sessions_with_live_child(ids)
-    })
+    let snapshot = std::cell::OnceCell::new();
+    resolve_running(
+        sessions,
+        found_by_pattern,
+        |agent| agent_command_lines(snapshot.get_or_init(Snapshot::take), agent),
+        |ids| registry.sessions_with_live_child(ids),
+    )
 }
 
 #[derive(Serialize, Default)]
@@ -3689,17 +3683,9 @@ mod tests {
         ));
     }
 
-    /// Does `pattern` (an extended regex passed to `pgrep -f`) match `cmdline`?
-    /// Verified via the system's own ERE engine (`grep -E`), the same dialect
-    /// BSD `pgrep -f` uses natively, so the test exercises real matching
-    /// behavior without a Rust regex dependency.
+    /// Does `pattern` match `cmdline` the way a process snapshot matches it?
     fn ere_matches(pattern: &str, cmdline: &str) -> bool {
-        Command::new("sh")
-            .arg("-c")
-            .arg(format!("printf '%s' '{cmdline}' | grep -Eq -- '{pattern}'"))
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+        regex::Regex::new(pattern).unwrap().is_match(cmdline)
     }
 
     #[test]
@@ -3714,15 +3700,15 @@ mod tests {
             "claude --resume abc-123-def --dangerously-skip-permissions"
         ));
         // A transcript merely opened in `less` must NOT match - the bare-uuid
-        // pgrep collision this pattern replaces.
+        // collision this pattern replaces.
         assert!(!ere_matches(
             &pat,
             "less /Users/x/.claude/projects/-Users-x-proj/abc-123-def.jsonl"
         ));
     }
 
-    /// The batch probe's matching half, against real `pgrep -lf` output captured
-    /// on macOS (pids stripped, home path redacted). One chat session is live;
+    /// The batch probe's matching half, against real command lines captured
+    /// on macOS (home path redacted). One chat session is live;
     /// the two PTY-style ids are not, and the decoys are processes that merely
     /// mention an id.
     ///
@@ -3730,7 +3716,7 @@ mod tests {
     /// the `--settings` path), which is why the pattern has to anchor on an
     /// argument token rather than just containing the id.
     #[test]
-    fn running_ids_resolves_a_batch_against_captured_pgrep_output() {
+    fn running_ids_resolves_a_batch_against_captured_command_lines() {
         let live = "ff243892-6e71-469f-913c-7e9c39d4916f";
         let pty = "0c7aeea2-b79a-4ce7-8819-c10b3a1b0dd5";
         let dead = "22748218-3a63-4c8c-9012-11338279bf8e";
@@ -3821,7 +3807,7 @@ mod tests {
         let running = resolve_running(
             sessions,
             |_| false,
-            |_| unreachable!("an agent with no usable pattern must never reach pgrep"),
+            |_| unreachable!("an agent with no usable pattern must never reach the process table"),
             |ids| ids.iter().filter(|id| *id == live).cloned().collect(),
         );
 
@@ -3863,16 +3849,29 @@ mod tests {
             source.contains("    sessions: Vec<SessionRef>,\n) -> Result<Vec<String>, String>"),
             "the batch probe must take a list of sessions, not one id"
         );
-        // The single-id `pgrep` belongs to `session_running` alone. A third call
-        // site would mean some path went back to probing per session.
-        //
-        // Assembled rather than written out, so this line is not itself a match.
-        let call_site = format!("Command::new(\"{}\")", "pgrep");
-        assert_eq!(
-            source.matches(&call_site).count(),
-            2,
-            "expected exactly two pgrep call sites: the single probe and the batch one"
+    }
+
+    /// One sweep reads the process table once, however many agents and ids it
+    /// asks about.
+    #[test]
+    fn a_sweep_over_every_agent_takes_one_snapshot() {
+        use crate::platform::process::TAKEN;
+        assert!(crate::agents::registry().iter().any(|a| found_by_pattern(&a.id)));
+        let sessions: Vec<SessionRef> = crate::agents::registry()
+            .iter()
+            .flat_map(|a| {
+                (0..3).map(|n| SessionRef {
+                    id: format!("00000000-0000-0000-0000-00000000000{n}"),
+                    agent: a.id.clone(),
+                })
+            })
+            .collect();
+        let registry = crate::chat::ownership::Registry::at(
+            std::env::temp_dir().join(format!("tori-sweep-claims-{}.json", std::process::id())),
         );
+        let before = TAKEN.with(|n| n.get());
+        running_now(&registry, sessions);
+        assert_eq!(TAKEN.with(|n| n.get()) - before, 1);
     }
 
     /// **Opening a folder must not start a single agent.** Every ACP row in the
@@ -3884,11 +3883,11 @@ mod tests {
     /// Structural, because the failure is a call that should not be there rather
     /// than a wrong answer: `acp_sessions()` returning good rows proves nothing
     /// about what it started to get them. The call site is assembled so this
-    /// line is not itself a match, the same way the `pgrep` count above is.
+    /// line is not itself a match.
     #[test]
     fn opening_a_folder_reads_locators_rather_than_starting_an_agent() {
         let source = include_str!("chat/acp_sessions.rs");
-        let spawn = format!("Command::new{}", "(");
+        let spawn = format!("process::command{}", "(");
         assert_eq!(
             source.matches(&spawn).count(),
             0,

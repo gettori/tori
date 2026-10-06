@@ -37,10 +37,11 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+
+use crate::platform::process;
 
 /// Which kind of surface holds a session.
 ///
@@ -300,20 +301,8 @@ fn is_signalable_pid(pid: u32) -> bool {
     pid > 1
 }
 
-/// Is `pid` a live process?
-///
-/// `kill(pid, 0)` via the `kill` binary rather than a libc dependency, matching
-/// this codebase's habit of shelling out for process questions (`pgrep` in
-/// `sessions::session_running`).
 fn pid_alive(pid: u32) -> bool {
-    if !is_signalable_pid(pid) {
-        return false;
-    }
-    Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    is_signalable_pid(pid) && process::pid_alive(pid)
 }
 
 /// Which of `ids` `claims` says are still driven by a live agent child.
@@ -386,9 +375,9 @@ fn held_by(
 /// Is `pid` a process whose command line still matches `agent`'s running pattern
 /// for `session_id`?
 ///
-/// One `pgrep -f` answers both halves at once: the pattern restricts matches to
-/// a real resume of this session, and pid membership in the result restricts it
-/// to *this* process. A bare liveness check would let a recycled pid be reported
+/// One process snapshot answers both halves at once: the pattern restricts
+/// matches to a real resume of this session, and pid membership in the result
+/// restricts it to *this* process. A bare liveness check would let a recycled pid be reported
 /// as an orphan and offered up to be killed.
 ///
 /// **An adapter with no running pattern degrades to the bare liveness check**,
@@ -403,16 +392,13 @@ fn pid_runs_session(agent: &str, session_id: &str, pid: u32) -> bool {
     let Some(pattern) = crate::agents::session_pattern(agent, session_id) else {
         return pid_alive(pid);
     };
-    let Ok(out) = Command::new("pgrep").args(["-f", &pattern]).output() else {
+    let Ok(pattern) = regex::Regex::new(&pattern) else {
         return false;
     };
-    if !out.status.success() {
-        return false;
-    }
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| l.trim().parse::<u32>().ok())
-        .any(|p| p == pid)
+    process::Snapshot::take()
+        .matching(&pattern)
+        .iter()
+        .any(|(p, _)| *p == pid)
 }
 
 /// The process-wide registry. One per app; `lib.rs` manages it as Tauri state.
@@ -665,10 +651,7 @@ pub fn terminate_orphan(registry: &Registry, session_id: &str, child_pid: u32, a
         registry.forget(session_id);
         return Ok(());
     }
-    Command::new("kill")
-        .args(["-TERM", &child_pid.to_string()])
-        .status()
-        .map_err(|e| e.to_string())?;
+    process::terminate(child_pid);
     registry.forget(session_id);
     Ok(())
 }
@@ -1205,7 +1188,7 @@ mod tests {
     }
 
     /// The external-vs-orphan distinction against the **real** process table, so
-    /// the `pgrep` pattern and the pid membership check are exercised rather
+    /// the running pattern and the pid membership check are exercised rather
     /// than stubbed.
     ///
     /// A process whose command line matches the adapter's running pattern stands
@@ -1218,14 +1201,13 @@ mod tests {
         let id = format!("ext-{}", std::process::id());
         // The shell's own command line contains `claude --resume <id>`, which is
         // what the adapter's running pattern matches on.
-        let mut child = Command::new("/bin/sh")
-            .args(["-c", &format!("claude --resume {id} ; sleep 5")])
+        let mut child = crate::platform::testing::sh_command(&format!("claude --resume {id} ; sleep 5"))
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .expect("the stand-in external session should start");
 
-        // pgrep needs a moment to see a freshly forked process.
+        // The process table needs a moment to show a freshly forked process.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let mut seen = false;
         while std::time::Instant::now() < deadline && !seen {
@@ -1236,7 +1218,7 @@ mod tests {
         }
         assert!(
             seen,
-            "the stand-in should be visible to the same pgrep the claim path uses"
+            "the stand-in should be visible to the same snapshot the claim path uses"
         );
 
         let registry = Registry::at(temp_store("contested"));
@@ -1268,8 +1250,7 @@ mod tests {
     #[test]
     fn pid_runs_session_matches_only_the_process_actually_running_that_session() {
         let id = format!("orph-{}", std::process::id());
-        let mut child = Command::new("/bin/sh")
-            .args(["-c", &format!("claude --resume {id} ; sleep 5")])
+        let mut child = crate::platform::testing::sh_command(&format!("claude --resume {id} ; sleep 5"))
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -1310,8 +1291,7 @@ mod tests {
     #[test]
     fn a_crashed_tori_leaves_a_named_orphan_and_the_session_stays_unclaimable() {
         let id = format!("crash-{}", std::process::id());
-        let mut child = Command::new("/bin/sh")
-            .args(["-c", &format!("claude --resume {id} ; sleep 10")])
+        let mut child = crate::platform::testing::sh_command(&format!("claude --resume {id} ; sleep 10"))
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()

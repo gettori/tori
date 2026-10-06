@@ -42,7 +42,7 @@ pub fn token_from(host: &str, run: impl FnOnce(&str) -> Answer) -> Option<String
 /// that sends the caller to the token screen.
 fn spawn(host: &str) -> Answer {
     let gh = env::resolve_binary("gh")?;
-    let out = std::process::Command::new(gh)
+    let out = crate::platform::process::command(gh)
         .args(["auth", "token", "--hostname", host])
         .output()
         .ok()?;

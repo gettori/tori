@@ -29,6 +29,7 @@ use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::env::augmented_path;
+use crate::platform::process::Group;
 
 pub mod managed;
 pub mod registry;
@@ -47,6 +48,7 @@ pub struct LspHandle {
 
 pub struct LspSession {
     child: Child,
+    group: Group,
     stdin: ChildStdin,
     // A handle outlives its process: after a stop and a start, a late EOF from
     // the old process must not reap the new one.
@@ -149,7 +151,7 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
         Launch::BundledNode { entry, args } => {
             let path = bundled_entry(app, entry)
                 .ok_or_else(|| format!("{}: bundled server not found (run `pnpm lsp:install`)", server.id))?;
-            let mut cmd = Command::new("node");
+            let mut cmd = crate::platform::process::command("node");
             cmd.arg(path).args(args);
             Ok(cmd)
         }
@@ -160,7 +162,7 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
             // the user chasing a problem that is not there.
             let path = crate::env::resolve_binary(program)
                 .ok_or_else(|| format!("{}: `{program}` was not found on your PATH", server.id))?;
-            let mut cmd = Command::new(path);
+            let mut cmd = crate::platform::process::command(path);
             cmd.args(args);
             Ok(cmd)
         }
@@ -171,7 +173,7 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
                     server.id
                 )
             })?;
-            let mut cmd = Command::new(path);
+            let mut cmd = crate::platform::process::command(path);
             cmd.args(args);
             Ok(cmd)
         }
@@ -182,20 +184,29 @@ fn command_for(app: &AppHandle, server: &LspServer, root: &Path, project: &Path)
 /// Spawn a server rooted at `root`, returning the session plus its stdout and
 /// stderr.
 fn spawn_session(mut cmd: Command, root: &str) -> Result<(LspSession, ChildStdout, ChildStderr), String> {
-    let mut child = cmd
-        .current_dir(root)
-        .env("PATH", augmented_path())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("failed to spawn the language server: {e}"))?;
+    let (mut child, group) = Group::spawn(
+        cmd.current_dir(root)
+            .env("PATH", augmented_path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|e| format!("failed to spawn the language server: {e}"))?;
 
     let stdout = child.stdout.take().ok_or("language server has no stdout")?;
     let stderr = child.stderr.take().ok_or("language server has no stderr")?;
     let stdin = child.stdin.take().ok_or("language server has no stdin")?;
     let serial = NEXT_SERIAL.fetch_add(1, Ordering::Relaxed);
-    Ok((LspSession { child, stdin, serial }, stdout, stderr))
+    Ok((
+        LspSession {
+            child,
+            group,
+            stdin,
+            serial,
+        },
+        stdout,
+        stderr,
+    ))
 }
 
 /// Keep the last `LOG_CAP` bytes of `stderr` in `log`. A server that is never
@@ -266,6 +277,7 @@ fn pump_frames<R: Read + Send + 'static>(
 /// runs, and a session-per-root registry stops far more servers than the old
 /// one-server host ever did.
 fn stop(session: &mut LspSession) -> Option<String> {
+    session.group.kill_tree();
     let _ = session.child.kill();
     session.child.wait().ok().map(|s| s.to_string())
 }
@@ -513,31 +525,14 @@ pub struct LspHealth {
 // only prints an error and exits. `--version` cannot tell, since a working server
 // may refuse the flag (sourcekit-lsp exits 64 on it), so ask rustup itself.
 fn missing_rustup_component(path: &Path) -> Option<String> {
-    let rustup = path.with_file_name("rustup");
-    if path == rustup || !same_file(path, &rustup) {
+    let rustup = path.with_file_name(format!("rustup{}", std::env::consts::EXE_SUFFIX));
+    if path == rustup || !crate::platform::fs::same_file(path, &rustup) {
         return None;
     }
     let name = path.file_name()?.to_string_lossy().into_owned();
-    let out = crate::env::output_with_timeout(Command::new(&rustup).arg("which").arg(&name))?;
+    let out = crate::env::output_with_timeout(crate::platform::process::command(&rustup).arg("which").arg(&name))?;
     (!out.status.success())
         .then(|| format!("`{name}` on your PATH is rustup's proxy, and the {name} component is not installed."))
-}
-
-// Metadata rather than the paths: rustup links its proxies as symlinks on some
-// installs and hard links on others.
-fn same_file(a: &Path, b: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        match (std::fs::metadata(a), std::fs::metadata(b)) {
-            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
-            _ => false,
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(a), Ok(b)) if a == b)
-    }
 }
 
 /// Build one server's health card.
@@ -717,7 +712,7 @@ mod tests {
     /// server for the transport, with nothing to install and nothing to commit:
     /// these tests run on a machine with no rust-analyzer and no `node`.
     fn echo_server() -> Command {
-        Command::new("cat")
+        sh("exec cat")
     }
 
     fn start_echo(root: &str) -> (LspSession, mpsc::Receiver<String>) {
@@ -737,15 +732,8 @@ mod tests {
         rx.recv_timeout(Duration::from_secs(5)).expect("no frame arrived")
     }
 
-    fn alive(pid: u32) -> bool {
-        Command::new("kill")
-            .arg("-0")
-            .arg(pid.to_string())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap()
-            .success()
-    }
+    use crate::platform::process::pid_alive as alive;
+    use crate::platform::testing::sh_command as sh;
 
     /// Start `cmd` the way `lsp_start` does, with every EOF's `reap` sent back.
     fn start_reaped(state: &Arc<LspState>, handle: &LspHandle, cmd: Command) -> mpsc::Receiver<Option<LspExited>> {
@@ -766,12 +754,6 @@ mod tests {
 
     fn pid_of(state: &LspState, handle: &LspHandle) -> u32 {
         state.sessions.lock().unwrap()[handle].child.id()
-    }
-
-    fn sh(script: &str) -> Command {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(script);
-        cmd
     }
 
     fn wait_for_log(state: &LspState, handle: &LspHandle, done: impl Fn(&str) -> bool) -> String {
@@ -831,17 +813,20 @@ mod tests {
         let exits = start_reaped(&state, &handle, echo_server());
         let pid = pid_of(&state, &handle);
 
-        Command::new("kill").arg("-9").arg(pid.to_string()).status().unwrap();
+        state.sessions.lock().unwrap()[&handle].group.kill_tree();
         let exited = exits
             .recv_timeout(Duration::from_secs(5))
             .unwrap()
             .expect("a crash is reported");
         assert_eq!(exited.handle, handle);
         assert!(!exited.deliberate);
+        #[cfg(unix)]
         assert!(
             exited.status.is_some_and(|s| s.contains("signal")),
             "the status says how it died"
         );
+        #[cfg(windows)]
+        assert!(exited.status.is_some(), "the status says how it died");
         // `kill -0` succeeds on a zombie, so failing here means it was reaped.
         assert!(!alive(pid), "pid {pid} is still in the process table");
 
@@ -881,7 +866,7 @@ mod tests {
         let (mut session, rx) = start_echo("/");
         write_frame(&mut session.stdin, r#"{"jsonrpc":"2.0","id":1}"#).unwrap();
         assert_eq!(recv(&rx), r#"{"jsonrpc":"2.0","id":1}"#);
-        let _ = session.child.kill();
+        stop(&mut session);
     }
 
     #[test]
@@ -894,7 +879,7 @@ mod tests {
         write_frame(&mut session.stdin, r#"{"b":2}"#).unwrap();
         assert_eq!(recv(&rx), body);
         assert_eq!(recv(&rx), r#"{"b":2}"#);
-        let _ = session.child.kill();
+        stop(&mut session);
     }
 
     #[test]
@@ -929,12 +914,12 @@ mod tests {
 
         // Stopping one leaves the other serving.
         let mut stopped = map.remove(&a).unwrap();
-        let _ = stopped.child.kill();
+        stop(&mut stopped);
         write_frame(&mut map.get_mut(&b).unwrap().stdin, r#"{"still":"here"}"#).unwrap();
         assert_eq!(recv(&rx_b), r#"{"still":"here"}"#);
 
         for (_, mut s) in map.drain() {
-            let _ = s.child.kill();
+            stop(&mut s);
         }
     }
 
@@ -966,15 +951,14 @@ mod tests {
         assert!(map.get_mut(&other).is_none());
 
         for (_, mut s) in map.drain() {
-            let _ = s.child.kill();
+            stop(&mut s);
         }
     }
 
     #[test]
     fn the_reader_thread_ends_when_the_server_does() {
         let (mut session, rx) = start_echo("/");
-        let _ = session.child.kill();
-        let _ = session.child.wait();
+        stop(&mut session);
         // Sender dropped at EOF, so the channel closes rather than hanging.
         assert!(rx.recv_timeout(Duration::from_secs(5)).is_err());
     }
@@ -1074,13 +1058,8 @@ mod tests {
         );
 
         // The loser is actually dead, not merely forgotten.
-        let reaped = Command::new("kill")
-            .arg("-0")
-            .arg(loser_pid.to_string())
-            .status()
-            .expect("kill -0");
         assert!(
-            !reaped.success(),
+            !alive(loser_pid),
             "pid {loser_pid} is still alive after losing the race"
         );
 
@@ -1090,7 +1069,7 @@ mod tests {
         assert_eq!(recv(&rx), r#"{"alive":1}"#);
 
         for (_, mut s) in map.drain() {
-            let _ = s.child.kill();
+            stop(&mut s);
         }
     }
 

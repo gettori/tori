@@ -522,13 +522,12 @@ fn apply_reverse(repo: &Path, patch: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::process::Command;
 
     fn temp_repo(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("tori-snap-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let ok = Command::new("git")
+        let ok = crate::platform::process::command("git")
             .current_dir(&dir)
             .args(["init", "-q"])
             .status()
@@ -584,7 +583,7 @@ mod tests {
     }
 
     fn git_out(repo: &std::path::Path, args: &[&str]) -> String {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .current_dir(repo)
             .args(args)
             .env("GIT_AUTHOR_NAME", "t")

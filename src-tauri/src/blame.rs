@@ -138,11 +138,16 @@ pub fn git_blame(project_path: String, file: String) -> Result<Blame, String> {
 mod tests {
     use super::*;
     use std::path::Path;
-    use std::process::Command;
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        let out = crate::platform::process::command("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap();
         assert!(
             out.status.success(),
             "git {:?}: {}",

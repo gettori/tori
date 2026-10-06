@@ -3,6 +3,22 @@
 use std::io;
 use std::process::{Child, Command};
 
+// A std command that opens no console window on Windows, where a console
+// program started from a GUI app flashes one otherwise. Every non-PTY spawn in
+// the crate starts here.
+pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let cmd = Command::new(program);
+    #[cfg(windows)]
+    let cmd = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut cmd = cmd;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd
+    };
+    cmd
+}
+
 // A child and everything it spawns, killable as one: a process group on Unix,
 // a Job Object on Windows.
 pub struct Group {
@@ -181,15 +197,30 @@ pub struct Snapshot {
     entries: Vec<Entry>,
 }
 
+// How many full snapshots this thread has taken, so a test can assert a sweep
+// reads the process table once.
+#[cfg(test)]
+thread_local! {
+    pub static TAKEN: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl Snapshot {
     pub fn take() -> Self {
-        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+        #[cfg(test)]
+        TAKEN.with(|n| n.set(n.get() + 1));
+        Self::read(sysinfo::ProcessRefreshKind::nothing().with_cmd(sysinfo::UpdateKind::Always))
+    }
+
+    // Names and parents only. Reading every command line is the slow part, and
+    // a walk down from one pid needs none of them.
+    pub fn tree() -> Self {
+        Self::read(sysinfo::ProcessRefreshKind::nothing())
+    }
+
+    fn read(kind: sysinfo::ProcessRefreshKind) -> Self {
+        use sysinfo::{ProcessesToUpdate, System};
         let mut system = System::new();
-        system.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
-        );
+        system.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
         let entries = system
             .processes()
             .values()
@@ -233,6 +264,22 @@ impl Snapshot {
             .find(|e| e.pid == pid)
             .map(|e| e.name.as_str())
             .filter(|n| !n.is_empty())
+    }
+}
+
+// What holds a terminal other than the shell Tori spawned in it, if anything:
+// the foreground process group on Unix. Windows has no foreground group, so
+// there it is the shell's first child, whatever the shell is running.
+pub fn foreign_foreground(master: &dyn portable_pty::MasterPty, shell: u32) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        let pgrp = u32::try_from(master.process_group_leader()?).ok()?;
+        (pgrp != shell).then_some(pgrp)
+    }
+    #[cfg(windows)]
+    {
+        let _ = master;
+        Snapshot::tree().children_of(shell).first().copied()
     }
 }
 

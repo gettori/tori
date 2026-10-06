@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use crate::env::augmented_path;
 
 /// Is there something at `path` worth revealing?
@@ -18,8 +16,13 @@ fn check_reveal_target(path: &str) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn reveal_in_finder(path: String) -> Result<(), String> {
     check_reveal_target(&path)?;
-    crate::exec::spawn_detached(Command::new("open").env("PATH", augmented_path()).arg("-R").arg(&path))
-        .map_err(|e| e.to_string())
+    crate::exec::spawn_detached(
+        crate::platform::process::command("open")
+            .env("PATH", augmented_path())
+            .arg("-R")
+            .arg(&path),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

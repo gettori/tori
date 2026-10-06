@@ -39,7 +39,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,6 +53,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::env::augmented_path;
 use crate::platform::ipc;
+use crate::platform::process::Group;
 
 mod cargo;
 mod managed;
@@ -88,6 +88,7 @@ struct Session {
 
 struct Server {
     child: Child,
+    group: Group,
     /// Where the bundled adapter listens, removed on stop.
     endpoint: Option<Endpoint>,
     child_sessions: bool,
@@ -187,12 +188,12 @@ fn xcrun_find(program: &str) -> Option<PathBuf> {
     // `xcrun` opens Apple's installer when there are no developer tools, and
     // health asks on every Settings open, so it runs only once `xcode-select`
     // names a developer directory that exists.
-    let dir = crate::env::output_with_timeout(Command::new("/usr/bin/xcode-select").arg("-p"))
+    let dir = crate::env::output_with_timeout(crate::platform::process::command("/usr/bin/xcode-select").arg("-p"))
         .filter(|o| o.status.success())?;
     if !Path::new(String::from_utf8_lossy(&dir.stdout).trim()).is_dir() {
         return None;
     }
-    let out = crate::env::output_with_timeout(Command::new("xcrun").args(["-f", program]))?;
+    let out = crate::env::output_with_timeout(crate::platform::process::command("xcrun").args(["-f", program]))?;
     if !out.status.success() {
         return None;
     }
@@ -203,19 +204,17 @@ fn xcrun_find(program: &str) -> Option<PathBuf> {
 /// Spawn an adapter at `root` in its own process group. stdout is always piped:
 /// it is the DAP wire for a `stdio` adapter, and `log_stdout` drains it for the
 /// others.
-fn spawn_adapter(cmd: &mut Command, root: &str, stdin: Stdio) -> Result<Child, String> {
+fn spawn_adapter(cmd: &mut Command, root: &str, stdin: Stdio) -> Result<(Child, Group), String> {
     cmd.current_dir(root)
         // The login-shell PATH, not the GUI process one: the adapter resolves
         // the debuggee's runtime (`node`, `pnpm`) from what it inherits, and a
         // Finder-launched Tori has almost nothing on PATH.
         .env("PATH", augmented_path())
-        // Its own process group, so `stop` can take the debuggee with it.
-        .process_group(0)
         .stdin(stdin)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("failed to spawn the debug adapter: {e}"))
+        .stderr(Stdio::null());
+    // Its own process group, so `stop` can take the debuggee with it.
+    Group::spawn(cmd).map_err(|e| format!("failed to spawn the debug adapter: {e}"))
 }
 
 /// Drain stdout so a chatty adapter cannot block on a full pipe, and log it
@@ -329,6 +328,7 @@ fn free_port() -> Result<u16, String> {
 /// where a child session dials, for the one kind that has one.
 struct Started {
     child: Child,
+    group: Group,
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
     endpoint: Option<Endpoint>,
@@ -364,8 +364,10 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
     match &adapter.launch {
         Launch::BundledNodeSocket { .. } => {
             let endpoint = Endpoint::pick()?;
-            let mut child = spawn_adapter(
-                Command::new("node").arg(located).args(endpoint.args()),
+            let (mut child, group) = spawn_adapter(
+                crate::platform::process::command("node")
+                    .arg(located)
+                    .args(endpoint.args()),
                 root,
                 Stdio::null(),
             )?;
@@ -376,6 +378,7 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
                     // The adapter is up but unreachable; do not leak it.
                     stop(&mut Server {
                         child,
+                        group,
                         endpoint: Some(endpoint),
                         child_sessions: false,
                         sessions: HashMap::new(),
@@ -385,17 +388,23 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
             };
             Ok(Started {
                 child,
+                group,
                 reader,
                 writer,
                 endpoint: Some(endpoint),
             })
         }
         Launch::Stdio { args, .. } => {
-            let mut child = spawn_adapter(Command::new(located).args(args), root, Stdio::piped())?;
+            let (mut child, group) = spawn_adapter(
+                crate::platform::process::command(located).args(args),
+                root,
+                Stdio::piped(),
+            )?;
             let reader = child.stdout.take().ok_or("the debug adapter has no stdout")?;
             let writer = child.stdin.take().ok_or("the debug adapter has no stdin")?;
             Ok(Started {
                 child,
+                group,
                 reader: Box::new(reader),
                 writer: Box::new(writer),
                 endpoint: None,
@@ -404,7 +413,11 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
         Launch::Tcp { args, .. } => {
             let port = free_port()?;
             let args = args.iter().map(|a| a.replace("{port}", &port.to_string()));
-            let mut child = spawn_adapter(Command::new(located).args(args), root, Stdio::null())?;
+            let (mut child, group) = spawn_adapter(
+                crate::platform::process::command(located).args(args),
+                root,
+                Stdio::null(),
+            )?;
             log_stdout(&mut child);
             let dialled = dial(
                 || TcpStream::connect(("127.0.0.1", port)),
@@ -417,6 +430,7 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
                 Err(e) => {
                     stop(&mut Server {
                         child,
+                        group,
                         endpoint: None,
                         child_sessions: false,
                         sessions: HashMap::new(),
@@ -426,6 +440,7 @@ fn start_adapter(adapter: &DapAdapter, root: &str, located: &Path) -> Result<Sta
             };
             Ok(Started {
                 child,
+                group,
                 reader: Box::new(reader),
                 writer: Box::new(stream),
                 endpoint: None,
@@ -485,16 +500,7 @@ fn write_frame(writer: &mut impl Write, message: &str) -> Result<(), String> {
 /// without reaping every stopped adapter stays a zombie for as long as Tori
 /// runs.
 fn stop(server: &mut Server) {
-    let pid = server.child.id();
-    // Negative pid means "the group", which the adapter leads because it was
-    // spawned with `process_group(0)`. Shelling out to `kill` keeps this
-    // dependency-free; `libc` is not a direct dependency of this crate.
-    let _ = Command::new("kill")
-        .arg("-KILL")
-        .arg(format!("-{pid}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+    server.group.kill_tree();
     let _ = server.child.kill();
     let _ = server.child.wait();
     if let Some(endpoint) = &server.endpoint {
@@ -561,6 +567,7 @@ pub async fn dap_start(
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let server = guard.entry(handle.server.clone()).or_insert(Server {
         child: started.child,
+        group: started.group,
         endpoint: started.endpoint,
         child_sessions: adapter.child_sessions,
         sessions: HashMap::new(),
@@ -895,7 +902,7 @@ pub fn dap_cargo_cancel(build_id: String) {
 pub fn dap_pick_program(root: String) -> Result<Option<String>, String> {
     // `root` travels as an argument rather than inside the script, so no path
     // can break out of the AppleScript string.
-    let out = Command::new("osascript")
+    let out = crate::platform::process::command("osascript")
         .args([
             "-e",
             "on run argv",
@@ -1053,36 +1060,29 @@ mod tests {
         assert!(err.contains("over the 104-byte limit"), "got {err}");
     }
 
-    /// Is `pid` alive? `kill -0` signals nothing and only reports reachability.
-    fn alive(pid: u32) -> bool {
-        Command::new("kill")
-            .arg("-0")
-            .arg(pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
+    use crate::platform::process::{pid_alive as alive, Snapshot};
+    use crate::platform::testing::{shell_command, sleep_command};
 
     /// Stand in for an adapter that launched a debuggee: a group leader with a
     /// long-lived child, spawned exactly the way `spawn_adapter` spawns.
     fn group_with_child() -> (Server, u32) {
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg("sleep 30 & echo $!; wait")
-            .process_group(0)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
+        #[cfg(unix)]
+        let script = "sleep 30 & wait";
+        #[cfg(windows)]
+        let script = "ping -n 30 127.0.0.1 >NUL";
+        let (child, group) = Group::spawn(shell_command(script).stdout(Stdio::null()).stderr(Stdio::null()))
             .expect("spawn group leader");
-        let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut line)
-            .unwrap();
-        let grandchild: u32 = line.trim().parse().expect("child pid");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let grandchild = loop {
+            if let Some(&pid) = Snapshot::tree().children_of(child.id()).first() {
+                break pid;
+            }
+            assert!(Instant::now() < deadline, "the group leader never started its child");
+            thread::sleep(Duration::from_millis(20));
+        };
         let server = Server {
             child,
+            group,
             endpoint: None,
             child_sessions: false,
             sessions: HashMap::new(),
@@ -1120,12 +1120,7 @@ mod tests {
     /// process Tori never started.
     #[test]
     fn stopping_a_server_cannot_touch_a_process_it_did_not_start() {
-        let mut independent = Command::new("sleep")
-            .arg("30")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn independent target");
+        let mut independent = sleep_command(30).spawn().expect("spawn independent target");
         let target = independent.id();
 
         let (mut server, _) = group_with_child();
@@ -1199,15 +1194,8 @@ mod tests {
         let pid = server.child.id();
         stop(&mut server);
 
-        // A zombie still answers `kill -0`, so ask the process table what state
-        // it is in rather than whether it is reachable.
-        let out = Command::new("ps")
-            .args(["-o", "state=", "-p", &pid.to_string()])
-            .output();
-        let state = out
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default();
-        assert!(!state.starts_with('Z'), "pid {pid} was left a zombie (state {state:?})");
+        // A zombie still answers `kill -0`, so a pid that does not is reaped.
+        assert!(!alive(pid), "pid {pid} was left a zombie");
     }
 
     /// A stopped server leaves nothing for a late `dap_connect` to dial, so a
@@ -1239,6 +1227,7 @@ mod tests {
     fn round_trip(started: Started) -> String {
         let Started {
             child,
+            group,
             reader,
             mut writer,
             endpoint,
@@ -1251,6 +1240,7 @@ mod tests {
         let echoed = recv(&rx);
         stop(&mut Server {
             child,
+            group,
             endpoint,
             child_sessions: false,
             sessions: HashMap::new(),
@@ -1361,6 +1351,7 @@ mod tests {
         let mut writer = started.writer;
         let mut server = Server {
             child: started.child,
+            group: started.group,
             endpoint: started.endpoint,
             child_sessions: js.child_sessions,
             sessions: HashMap::new(),

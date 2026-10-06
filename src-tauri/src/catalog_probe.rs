@@ -54,6 +54,7 @@ use crate::chat::model::{
     ChatAccount, ChatCapabilities, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo, SlashCommand,
 };
 use crate::chat::transport::{build_command, StartSpec};
+use crate::platform::process::Group;
 
 /// How long one agent gets to answer before the probe gives up on it.
 ///
@@ -902,28 +903,32 @@ fn probe_acp(
     use futures::AsyncReadExt as _;
 
     let mut std_cmd = build_command(spec);
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt as _;
-        // Same reason as the transport's: agents are commonly launched behind a
-        // wrapper, and killing only the immediate child orphans the real agent.
-        std_cmd.process_group(0);
-    }
+    // Same reason as the transport's: agents are commonly launched behind a
+    // wrapper, and killing only the immediate child orphans the real agent.
+    Group::prepare(&mut std_cmd);
     // The pipes go on **after** the conversion: `async_process::Command::from`
     // does not carry a std command's stdio settings across, which would leave
     // the child with inherited stdio and no protocol to speak over.
     let mut cmd = async_process::Command::from(std_cmd);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| {
+    let spawn_failed = |e: std::io::Error| {
         ProbeFailure::now(
             FailureReason::SpawnFailed,
             format!("could not start {}: {e}", spec.program),
         )
-    })?;
+    };
+    let mut child = cmd.spawn().map_err(spawn_failed)?;
+    let group = match Group::adopt(child.id()) {
+        Ok(group) => group,
+        Err(e) => {
+            let _ = child.kill();
+            return Err(spawn_failed(e));
+        }
+    };
     let (Some(stdin), Some(stdout), Some(mut stderr)) = (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {
-        abandon_group(&mut child);
+        abandon_group(&mut child, &group);
         return Err(ProbeFailure::now(
             FailureReason::SpawnFailed,
             "the child produced no pipes",
@@ -1003,7 +1008,7 @@ fn probe_acp(
 
     // Unconditional and before anything is returned, the timeout path included:
     // that is the one where leaving it running leaks an agent per failed sweep.
-    abandon_group(&mut child);
+    abandon_group(&mut child, &group);
 
     let failed = match answer {
         Some(Ok((options, per_model, capabilities))) => {
@@ -1045,21 +1050,14 @@ fn probe_acp(
 
 /// Kill an ACP probe's child **and the group it leads**, then reap it.
 ///
-/// The group is not optional here. The child is spawned with `process_group(0)`
-/// because agents are commonly launched behind a wrapper (`npx …`, `bun …`), and
+/// The group is not optional here. The child leads a group of its own because
+/// agents are commonly launched behind a wrapper (`npx …`, `bun …`), and
 /// signalling only the leader leaves the real agent re-parented to pid 1, where
 /// it does not reliably exit on stdin EOF. A chat session at least has the
 /// ownership registry watching for that; a probe is fire-and-forget, so it would
-/// leak one agent per sweep with nobody to notice. Same shape as `dap.rs::stop`,
-/// shelling out for the same reason: `libc` is not a direct dependency.
-fn abandon_group(child: &mut async_process::Child) {
-    let pid = child.id();
-    let _ = std::process::Command::new("kill")
-        .arg("-KILL")
-        .arg(format!("-{pid}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+/// leak one agent per sweep with nobody to notice. Same shape as `dap.rs::stop`.
+fn abandon_group(child: &mut async_process::Child, group: &Group) {
+    group.kill_tree();
     let _ = child.kill();
 }
 
@@ -1802,13 +1800,7 @@ mod tests {
     // --- the probe's bounds ---
 
     fn sh(script: &str) -> StartSpec {
-        StartSpec {
-            session_id: String::new(),
-            cwd: String::new(),
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), script.into()],
-            env: HashMap::new(),
-        }
+        StartSpec::sh(script)
     }
 
     /// The deadline is what stops a hung agent from wedging the sweep, so it
@@ -2171,11 +2163,8 @@ mod tests {
     #[test]
     fn an_agent_that_never_speaks_the_protocol_is_still_quoted() {
         let spec = StartSpec {
-            session_id: String::new(),
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), "echo 'npx: command not found' >&2; exit 127".into()],
-            env: HashMap::new(),
+            ..sh("echo 'npx: command not found' >&2; exit 127")
         };
         let failure = probe_acp(&spec, &acp::AcpOverrides::default(), None, Duration::from_secs(5))
             .expect_err("a child that says nothing cannot produce a catalogue");

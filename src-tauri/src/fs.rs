@@ -935,7 +935,7 @@ fn fs_watch_set_body(app: AppHandle, state: &FsWatch, roots: Vec<String>) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+
     use std::sync::Mutex;
 
     fn temp_tree(name: &str) -> PathBuf {
@@ -1050,7 +1050,11 @@ mod tests {
     fn compact_listing_respects_gitignore_and_hidden() {
         let root = temp_tree("compact-ign");
         let git = |args: &[&str]| {
-            let out = Command::new("git").current_dir(&root).args(args).output().unwrap();
+            let out = crate::platform::process::command("git")
+                .current_dir(&root)
+                .args(args)
+                .output()
+                .unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         };
         git(&["init", "-q"]);

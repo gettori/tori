@@ -11,7 +11,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
@@ -1176,7 +1175,7 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
 /// chosen folder, or None when the user cancels (so the UI can stay put).
 #[tauri::command(async)]
 pub fn pick_folder() -> Result<Option<String>, String> {
-    let out = Command::new("osascript")
+    let out = crate::platform::process::command("osascript")
         .args([
             "-e",
             "POSIX path of (choose folder with prompt \"Choose a base folder for your projects\")",
@@ -1944,7 +1943,7 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)
@@ -1996,7 +1995,7 @@ mod tests {
         let dir = unique_tmp();
         init_repo(&dir, "main");
         let head = {
-            let out = Command::new("git")
+            let out = crate::platform::process::command("git")
                 .arg("-C")
                 .arg(&dir)
                 .args(["rev-parse", "HEAD"])

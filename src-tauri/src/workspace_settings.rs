@@ -89,7 +89,6 @@ pub fn set_workspace_settings(root: String, settings: Value) -> Result<Value, St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
 
     /// A fresh repo per test. Named per test, not per process: these run
     /// concurrently in one binary, and a shared path means one test's cleanup
@@ -98,7 +97,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tori-ws-{name}-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
-        Command::new("git").arg("-C").arg(&dir).arg("init").output().unwrap();
+        crate::platform::process::command("git")
+            .arg("-C")
+            .arg(&dir)
+            .arg("init")
+            .output()
+            .unwrap();
         dir
     }
 
@@ -133,7 +137,7 @@ mod tests {
 
         // The whole point of the tracking story: the first override must not
         // leave an unexplained untracked file in the Changes panel.
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(&dir)
             .args(["status", "--porcelain", "--untracked-files=all"])

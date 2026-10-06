@@ -1705,7 +1705,7 @@ mod tests {
         let root = tmp.join("api");
         std::fs::create_dir_all(root.join(".claude")).unwrap();
         let git = |args: &[&str]| {
-            assert!(std::process::Command::new("git")
+            assert!(crate::platform::process::command("git")
                 .arg("-C")
                 .arg(&root)
                 .args(args)
@@ -1737,7 +1737,7 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["--add-dir", "/attachments"]));
 
         let settings = approval::settings_json_with(
-            std::path::Path::new("/bin/tori"),
+            std::path::Path::new("/usr/local/bin/tori"),
             std::path::Path::new("/tmp/s"),
             "tok",
             false,

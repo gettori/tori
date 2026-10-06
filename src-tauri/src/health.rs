@@ -186,7 +186,7 @@ pub(crate) fn compare(running: Option<&str>, verified: Option<&str>) -> BinarySt
 pub(crate) fn run_version(path: &Path) -> Option<String> {
     // Bounded: an agent CLI that blocks on `--version` (prompting for auth, say)
     // would otherwise strand the memoized sweep and every later caller with it.
-    let out = crate::env::output_with_timeout(std::process::Command::new(path).arg("--version"))?;
+    let out = crate::env::output_with_timeout(crate::platform::process::command(path).arg("--version"))?;
     // Some CLIs write their version to stderr; take whichever stream spoke.
     let stdout = String::from_utf8_lossy(&out.stdout);
     let text = if stdout.trim().is_empty() {

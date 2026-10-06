@@ -33,12 +33,18 @@ fn install_with(adapter: &DapAdapter, dir: &Path, python: &Path) -> Result<Insta
         // run as `venv/bin/python -m ...`: only its console scripts carry the
         // staging path in their shebangs.
         let venv = staging.join("venv");
-        run(Command::new(python).arg("-m").arg("venv").arg(&venv), "python3 -m venv")?;
+        run(
+            crate::platform::process::command(python)
+                .arg("-m")
+                .arg("venv")
+                .arg(&venv),
+            "python3 -m venv",
+        )?;
         // Wheels only: building an sdist runs its setup code, the pip twin of
         // the npm install's `--ignore-scripts`.
         let spec = format!("{package}=={version}");
         run(
-            Command::new(venv.join("bin/python"))
+            crate::platform::process::command(venv.join("bin/python"))
                 .args([
                     "-m",
                     "pip",
@@ -73,7 +79,7 @@ fn run(cmd: &mut Command, what: &str) -> Result<(), String> {
 /// `None` when it does not: the interpreter fails, the package is missing, or
 /// the module is broken.
 pub fn package_version(python: &Path, package: &str, module: &str) -> Option<String> {
-    let out = crate::env::output_with_timeout(Command::new(python).args([
+    let out = crate::env::output_with_timeout(crate::platform::process::command(python).args([
         "-c",
         "import importlib, importlib.metadata, sys; importlib.import_module(sys.argv[2]); \
          print(importlib.metadata.version(sys.argv[1]))",

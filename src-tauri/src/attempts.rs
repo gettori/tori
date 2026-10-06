@@ -23,7 +23,6 @@
 //     rebase or cherry-pick, and `promotion_never_merges` pins that.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -171,7 +170,7 @@ fn clone_dep_dirs(source: &Path, dest: &Path) -> Vec<String> {
         if to.symlink_metadata().is_ok() {
             continue; // the branch tracks it; never clobber real content
         }
-        let ok = Command::new("cp")
+        let ok = crate::platform::process::command("cp")
             .arg("-c")
             .arg("-R")
             .arg(&from)
@@ -437,7 +436,7 @@ mod tests {
     use super::*;
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)
@@ -655,7 +654,7 @@ mod tests {
         // And it actually takes effect: an attempt directory is not untracked dirt.
         std::fs::create_dir_all(dir.path().join(ATTEMPTS_DIR)).unwrap();
         std::fs::write(dir.path().join(ATTEMPTS_DIR).join("x"), "x").unwrap();
-        let out = Command::new("git")
+        let out = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir.path())
             .args(["status", "--porcelain"])
@@ -709,7 +708,7 @@ mod tests {
         assert!(container.join("a").exists(), "the winner's worktree stays");
         assert!(container.join("c").exists(), "another group is untouched");
 
-        let branches = Command::new("git")
+        let branches = crate::platform::process::command("git")
             .arg("-C")
             .arg(dir.path())
             .args(["branch", "--format=%(refname:short)"])
@@ -818,7 +817,11 @@ mod tests {
     /// full second copy. Measured directly while writing this: three clones of a
     /// 200MB tree consumed zero blocks and `du` still reported 200MB apiece.
     fn free_kb(path: &Path) -> i64 {
-        let out = Command::new("df").arg("-k").arg(path).output().expect("df runs");
+        let out = crate::platform::process::command("df")
+            .arg("-k")
+            .arg(path)
+            .output()
+            .expect("df runs");
         String::from_utf8_lossy(&out.stdout)
             .lines()
             .nth(1)
@@ -829,7 +832,11 @@ mod tests {
 
     /// What one copy *would* cost, which is what `du` is actually good for.
     fn apparent_kb(path: &Path) -> i64 {
-        let out = Command::new("du").arg("-sk").arg(path).output().expect("du runs");
+        let out = crate::platform::process::command("du")
+            .arg("-sk")
+            .arg(path)
+            .output()
+            .expect("du runs");
         String::from_utf8_lossy(&out.stdout)
             .split_whitespace()
             .next()
@@ -877,7 +884,7 @@ mod tests {
         let _ = std::fs::remove_file(&index);
         let tree = crate::checkpoint::write_tree_scratch(&root_str, &index).expect("snapshot");
 
-        let listing = Command::new("git")
+        let listing = crate::platform::process::command("git")
             .arg("-C")
             .arg(root)
             .args(["ls-tree", "-r", "--name-only", &tree])

@@ -55,7 +55,7 @@ fn probe(
 }
 
 fn developer_tools_present() -> bool {
-    crate::env::output_with_timeout(Command::new("/usr/bin/xcode-select").arg("-p"))
+    crate::env::output_with_timeout(crate::platform::process::command("/usr/bin/xcode-select").arg("-p"))
         .filter(|o| o.status.success())
         .is_some_and(|o| {
             Path::new(String::from_utf8_lossy(&o.stdout).trim())
@@ -68,7 +68,7 @@ fn check() -> GitHealth {
     probe(
         || crate::env::resolve_binary("git"),
         developer_tools_present,
-        |path| crate::env::output_with_timeout(Command::new(path).arg("--version")),
+        |path| crate::env::output_with_timeout(crate::platform::process::command(path).arg("--version")),
     )
 }
 

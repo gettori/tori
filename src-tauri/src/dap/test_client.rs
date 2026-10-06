@@ -51,6 +51,7 @@ pub(super) fn run_to_breakpoint(
         .and_then(|()| client.run());
     stop(&mut Server {
         child: started.child,
+        group: started.group,
         endpoint: started.endpoint,
         child_sessions: adapter.child_sessions,
         sessions: HashMap::new(),
@@ -279,7 +280,7 @@ fn it_hits_a_breakpoint_in_a_python_file_whose_venv_has_no_debugpy() {
         .or_else(|| crate::env::resolve_binary("python3"))
         .expect("python3 is on PATH");
     let project = dir.join("project");
-    let status = std::process::Command::new(project_base)
+    let status = crate::platform::process::command(project_base)
         .args(["-m", "venv"])
         .arg(project.join(".venv"))
         .status();
@@ -375,10 +376,10 @@ fn it_hits_a_breakpoint_in_a_go_package_and_in_its_test() {
 #[test]
 fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
     let lldb = registry::find("lldb").expect("lldb is registered");
-    if locate(lldb, dev_bundled).is_err() || crate::env::resolve_binary("cc").is_none() {
+    let Some(cc) = crate::env::resolve_binary("cc").filter(|_| locate(lldb, dev_bundled).is_ok()) else {
         eprintln!("skipping: lldb-dap or `cc` is not installed");
         return;
-    }
+    };
 
     let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
     std::fs::create_dir_all(&dir).unwrap();
@@ -389,7 +390,7 @@ fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
     )
     .unwrap();
     let binary = dir.join("sample");
-    let built = std::process::Command::new("cc")
+    let built = crate::platform::process::command(cc)
         .args(["-g", "-O0", "-o"])
         .arg(&binary)
         .arg(&source)
