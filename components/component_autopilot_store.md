@@ -1,8 +1,8 @@
 ---
-summary: the autopilot queue and project contracts on disk; reads derive liveness and worktrees, only a merged PR is written back
+summary: autopilot queue and contracts on disk, issue sources included; reads derive liveness, a merge is written back
 status: current
-updated: 2026-09-25
-source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'
+updated: 2026-10-08
+source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan \"Issue sources per project, and the autopilot on Tori's own repo\", commits e7d4df6f, 8646bb90
 ---
 
 # Autopilot store
@@ -15,8 +15,8 @@ It owns `queue.json` (items), `projects.json` (one contract per project) and `lo
 
 - **Item**: id, kind `ship|review`, source `issue {key, project}` or `pr {number, repo}`, project, state `proposed|queued|running|waiting_on_you|taken_over|done|failed`, worktree, session, pr_url, note, title, contract, timestamps. `title` is what a cockpit card reads (else "Ship in <project>"), and `contract` the autopilot's short statement of what to build and how it ships; both are optional and serde default, so an older `queue.json` loads, and `note` stays the status line the next update overwrites. `done` and `failed` are terminal.
 - **Reference**: every `Row`, and every `autopilot.changed` item, carries a derived `reference` naming the item as `#212 (personal -> tori -> y-test)` (`reference` in `autopilot.rs`). The label is `#N` for a number, else the key as written (`ENG-123`), and a url key reads by the key inside it. The place is space and project read off the path, since Tori lays folders out as `<root>/<space>/<project>`, then the worktree's branch from the listing, else its folder name; a folder outside the root leaves it empty. `url` is the item's own (`Item.url`, optional, what `issues_get` or the forge gave), `pr` comes from `pr_url`, `target` is a `NavTarget` ([[concept_in_app_navigation]]), and `markdown` is the whole thing, percent-encoded, for the autopilot to paste. A full read keeps its worktree listing and root in `Seen`, so an event names its place without a git call; only a worktree the last read did not list asks git.
-- **Picked up**: `picked_by` (the account whose assigned list made the item) and `gone_upstream` (closed because it left that list), both serde default. See "Assigned pickup" below.
-- **Contract**: `ships: pr|local`, `autonomy: ask_everything|auto_until_outward`, `pickup: ask|auto`, optional agent, account and model. `#[serde(default)]` on the container, so a missing field reads as its cautious default.
+- **Picked up**: `picked_by` (the account whose assigned list made the item), `gone_upstream` (closed because it left that list) and `picked_from` (the search of the issue source that made it, `None` for the origin's own list), all serde default. See "Assigned pickup" below.
+- **Contract**: `ships: pr|local`, `autonomy: ask_everything|auto_until_outward`, `pickup: ask|auto`, optional agent, account and model, and `issues: Vec<IssueQuery>`, the project's issue sources ([[component_issue_source]], [[adr_issue_sources_live_on_the_contract]]). `#[serde(default)]` on the container, so a missing field reads as its cautious default. `ContractPatch.issues` replaces the whole list.
 - Projects are compared with `same_folder`, never as strings ([[concept_one_directory_two_spellings]]), in the upsert key and in the contract map.
 
 ## How a read works
@@ -30,11 +30,12 @@ It owns `queue.json` (items), `projects.json` (one contract per project) and `lo
 
 ## Assigned pickup
 
-`pickup(project, repo, account, rows, cap)` applies one tick of the assigned list through `write`; the rules are the pure `plan_pickup` ([[adr_assigned_pickup_rides_the_forge_poll_tick]]).
+`pickup(project, repo, account, lists, failed)` applies one tick through `write`; the rules are the pure `plan_pickup` ([[adr_assigned_pickup_rides_the_forge_poll_tick]]). `lists` is one `SourceList` per issue source plus the origin's review requests, or with no sources the origin's own two lists; `failed` names each source that did not answer this tick.
 
-- A new issue becomes a `ship` item with `Source::Issue`, a review request a `review` item with `Source::Pr`, titled and linked from the row. `pickup: ask` makes it `proposed`, `auto` makes it `queued`. A project's first tick (no item ever picked up there) makes everything `proposed`, whatever the contract, so a backlog never starts on its own.
-- A row is skipped while any item names the same work, unless every such item closed as gone upstream. So a declined item stays declined while it stays assigned, and comes back only after it left the list and was assigned again. Issues compare by `label_of`, since a hand-made item may key its issue by url.
-- An open item pickup made closes `done`, `gone_upstream`, with the note "no longer assigned or open upstream" (or "review request cleared (reviewed or withdrawn)" for a review) only when a list from the same account leaves it out, and only when that search came back under the cap ([[gotcha_an_assigned_list_at_the_search_cap_proves_nothing_missing]]). Another account's `@me` is someone else. A hand-made item is never closed by pickup.
+- A new issue becomes a `ship` item with `Source::Issue`, a review request a `review` item with `Source::Pr`, titled and linked from the row. `pickup: ask` makes it `proposed`, `auto` makes it `queued`. A list's first tick (no item here has its `picked_from`) makes everything `proposed`, whatever the contract, so neither a new project nor a new or edited source starts a backlog on its own. The flags are read before any row lands, because the origin's issue and review lists share `search: None`.
+- A row is skipped while any item names the same work, unless every such item closed as gone upstream. So a declined item stays declined while it stays assigned, and comes back only after it left the list and was assigned again. Issues compare by canonical key against the origin, so a URL, `#N` and `owner/name#N` are one issue. A row two sources list becomes one item, and a repo-qualified key another project holds open is left to it.
+- An item pickup made that left every list closes `done`, `gone_upstream` only while it is `proposed` or `queued`; a `running` or `waiting_on_you` one gets the note "no longer matches its issue source" (or the review-cleared note) once and keeps going. Nothing closes unless every source answered and came back under the cap ([[gotcha_an_assigned_list_at_the_search_cap_proves_nothing_missing]]). Another account's `@me` is someone else. A hand-made item is never closed by pickup.
+- A failed source and a row held by another project are logged once per change through `note_once`, not on every poll.
 
 ## How a write works
 
@@ -48,7 +49,9 @@ A file that exists but doesn't parse (say, written by a newer Tori) loads as emp
 - `update(Target, Patch)`: `Target::Id`, or `Target::Key {kind, source, project}`, which matches an open item and creates one when there is none. A retry after a crash finds the item it already made, and a closed item's source opens a fresh one.
 - `closed_by_hand(session, held)`: a person closed the tab, so a `running|waiting_on_you` item naming the session goes `failed` with note "closed by hand", unless it has a `pr_url` or a pending hold (`held` is the items `Asks::holds` names), which its merge or its answer closes. Called by the `autopilot_closed_by_hand` command from the tab's real close paths, never from a view unmount, and not when a fork or rewind replaces the tab.
 - `state_for_session(session)` (an open item over a closed one) and `sessions()`, for the lock in [[component_autopilot_runner]].
-- `set_project(project, ContractPatch)`, `state(observe) -> Snapshot {items, projects}`, `session_ended(id)`, `has(id)`.
+- `set_project(project, ContractPatch)`, `projects()` (the contracts alone, no forge reads), `state(observe) -> Snapshot {items, projects}`, `session_ended(id)`, `has(id)`.
+- `Target::Key` carries the project's `origin` (`owner/name`), which `autopilot_item_update` resolves from the project's git remote; an issue key is stored canonical.
+- Tauri: `autopilot_contracts` and `autopilot_project_set(project_path, patch)`, which runs the socket's `ProjectSetParams` so Settings > Autopilot > Projects gets the same refusals as the tool. That editor saves the four choices on change and the issue sources as one list.
 - `recent_log(limit)`: the last lines of `log.jsonl`, read backwards from the end in 8 KiB chunks since the log only grows; a fragment or a line that does not parse is skipped. The webview reads it through the `autopilot_log` command, and the whole state through `autopilot_state`.
 - The `publish` closure `rpc::start` hands in also emits the Tauri event `autopilot://changed`, and so does the holds one, because the webview is not a hub subscriber ([[gotcha_the_webview_is_not_a_hub_subscriber]]).
 - Socket methods: `autopilot.state` (anyone), `autopilot.item.update`, `autopilot.project.set`, `autopilot.hold.resolve` (not workers). Front ends: [[component_tori_cli]] and the MCP tools from the same table rows.
@@ -64,3 +67,5 @@ A file that exists but doesn't parse (say, written by a newer Tori) loads as emp
 - [[component_autopilot_runner]]: the session this is the memory of
 - [[adr_assigned_pickup_rides_the_forge_poll_tick]]: where pickup's ticks come from
 - [[lesson_pure_core_for_global_stores]]: the pure `apply`, `reconcile` and `settle`, tested apart from the files
+- [[adr_issue_sources_live_on_the_contract]]: why sources replace the origin and pickup never closes running work
+- [[component_issue_source]]: the lists and keys pickup reads

@@ -32,3 +32,4 @@ It turns argv into one socket call (or a subscription, for `events`) and prints 
 - [[gotcha_codex_shell_drops_env_names_containing_token_key_or_secret]] - why the caller token is `TORI_CALLER`
 - [[concept_socket_event_vocabulary]] - what `tori events` prints
 - [[component_autopilot_store]] - what `tori autopilot` reads and writes
+- [[gotcha_the_debug_cli_reaches_tori_dev_not_the_installed_app]]: which app a debug build's CLI talks to
