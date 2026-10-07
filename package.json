@@ -11,7 +11,7 @@
     "serve": "vp preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
-    "lsp:install": "npm --prefix src-tauri/resources/lsp install",
+    "lsp:install": "node scripts/install-lsp.mjs",
     "dap:install": "node scripts/install-dap.mjs",
     "cli:build": "node scripts/build-cli.mjs",
     "test": "node scripts/check-tokens.mjs && vp test run",
