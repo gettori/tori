@@ -1087,6 +1087,7 @@ export default function LeftSidebar(props: {
   // session's tab or the unit. Never a checkout, which would change the tree
   // under whatever else is open in that repo behind a click that said "show me".
   async function navigateTo(t: NavTarget) {
+    if (t.project || t.space) return showInSpaces(t);
     if (t.session && !findSession(t.session) && t.folder) await fetchSessions(t.folder);
     const hit = t.session ? findSession(t.session) : undefined;
     const at = hit ? locate(hit.folder, hit.session.branch) : t.folder ? locate(t.folder) : undefined;
@@ -1104,6 +1105,23 @@ export default function LeftSidebar(props: {
     setExpanded(new Set([...expanded(), pkey(at.g, at.p)]));
     if (hit) void selectSession(at.g, at.p, at.u, hit.session);
     else void selectUnit(at.g, at.p, at.u);
+  }
+
+  // A project or space a prompt referenced: shown, with nothing selected, so
+  // a click on a reference never moves what the editor and terminal are on.
+  function showInSpaces(t: NavTarget) {
+    const spaces = config()?.spaces ?? [];
+    const g = t.project
+      ? spaces.find((g) => g.projects.some((p) => samePath(p.path, t.project!)))
+      : spaces.find((g) => g.name === t.space);
+    if (!g) {
+      pushToast(`That ${t.project ? "project" : "space"} is no longer in Tori.`, "info");
+      return;
+    }
+    setMode("spaces");
+    setActiveSpaceName(g.name);
+    const p = g.projects.find((p) => samePath(p.path, t.project ?? ""));
+    if (p) setExpanded(new Set([...expanded(), pkey(g, p)]));
   }
 
   // A History row was acted on. The dropdown has no access to the selection

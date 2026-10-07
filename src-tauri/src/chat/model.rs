@@ -846,6 +846,21 @@ pub enum RefTarget {
         agent: String,
         project: String,
     },
+    Project {
+        name: String,
+        folder: String,
+        space: String,
+    },
+    Space {
+        name: String,
+        projects: Vec<RefProject>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefProject {
+    pub name: String,
+    pub folder: String,
 }
 
 impl RefTarget {
@@ -853,6 +868,8 @@ impl RefTarget {
         match self {
             RefTarget::Pr { .. } => "pr",
             RefTarget::Session { .. } => "session",
+            RefTarget::Project { .. } => "project",
+            RefTarget::Space { .. } => "space",
         }
     }
 
@@ -860,6 +877,9 @@ impl RefTarget {
         match self {
             RefTarget::Pr { url, .. } => format!("Read it with the pr_get tool, key {url}."),
             RefTarget::Session { id, .. } => format!("Read it with the session_history tool, id {id}."),
+            RefTarget::Project { .. } | RefTarget::Space { .. } => {
+                "The projects_list and sessions_list tools have more.".into()
+            }
         }
     }
 }
@@ -1685,6 +1705,49 @@ mod tests {
                 target
             })
         );
+    }
+
+    #[test]
+    fn a_project_and_a_space_ref_are_sent_as_notes_naming_their_tools() {
+        let project = RefTarget::Project {
+            name: "tori".into(),
+            folder: "/p/tori".into(),
+            space: "Work".into(),
+        };
+        assert_eq!(
+            ref_note("[Project: tori]", &project),
+            "<tori kind=\"ref-project\">\n[Project: tori]: {\"kind\":\"project\",\"name\":\"tori\",\
+             \"folder\":\"/p/tori\",\"space\":\"Work\"}\n\
+             The projects_list and sessions_list tools have more.\n</tori>"
+        );
+        let space = RefTarget::Space {
+            name: "Work".into(),
+            projects: vec![
+                RefProject {
+                    name: "tori".into(),
+                    folder: "/p/tori".into(),
+                },
+                RefProject {
+                    name: "docs".into(),
+                    folder: "/p/docs".into(),
+                },
+            ],
+        };
+        assert_eq!(
+            ref_note("[Space: Work]", &space),
+            "<tori kind=\"ref-space\">\n[Space: Work]: {\"kind\":\"space\",\"name\":\"Work\",\"projects\":\
+             [{\"name\":\"tori\",\"folder\":\"/p/tori\"},{\"name\":\"docs\",\"folder\":\"/p/docs\"}]}\n\
+             The projects_list and sessions_list tools have more.\n</tori>"
+        );
+        for (label, target) in [("[Project: tori]", project), ("[Space: Work]", space)] {
+            assert_eq!(
+                ref_from_note(&ref_note(label, &target)),
+                Some(ContentBlock::Ref {
+                    label: label.into(),
+                    target
+                })
+            );
+        }
     }
 
     #[test]

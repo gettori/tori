@@ -8,7 +8,7 @@ import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatSto
 import type { ChatItem, QuestionItem, ToolItem } from "./chatStore";
 import type { ContentBlock, QuestionAnswer } from "../../utils/chatTypes";
 import { invoke } from "@tauri-apps/api/core";
-import { onWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
+import { NAVIGATE, onWith, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => []),
@@ -196,6 +196,32 @@ describe("a prompt that references a session", () => {
     expect(chip.getAttribute("title")).toBe("Fix login (codex)");
     fireEvent.click(chip);
     expect(opened).toEqual([{ sessionId: "abc", action: "open" }]);
+    off();
+  });
+
+  it("shows a project or a space chip's target in the sidebar", () => {
+    const blocks: ContentBlock[] = [
+      {
+        type: "ref",
+        label: "[Project: tori]",
+        target: { kind: "project", name: "tori", folder: "/p/tori", space: "Work" },
+      },
+      {
+        type: "ref",
+        label: "[Space: Work]",
+        target: { kind: "space", name: "Work", projects: [{ name: "tori", folder: "/p/tori" }] },
+      },
+      { type: "text", text: "compare [Project: tori] with [Space: Work]" },
+    ];
+    const shown: NavTarget[] = [];
+    const off = onWith<NavTarget>(NAVIGATE, (t) => shown.push(t));
+    const { container } = render(() => list({ items: [{ kind: "user", id: "u1", blocks, steer: false }] }));
+    const [project, space] = container.querySelectorAll("button[title]");
+    expect(project.getAttribute("title")).toBe("/p/tori (Work)");
+    expect(space.getAttribute("title")).toBe("tori");
+    fireEvent.click(project);
+    fireEvent.click(space);
+    expect(shown).toEqual([{ project: "/p/tori" }, { space: "Work" }]);
     off();
   });
 });
