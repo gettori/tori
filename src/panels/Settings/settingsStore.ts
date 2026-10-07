@@ -51,8 +51,13 @@ export type ForgeSettings = { enabled: boolean; picks: Record<string, string>; p
 
 /** Git behaviour Tori decides, as opposed to git's own config. Mirrors `Git` in
  *  src-tauri/src/settings.rs. `fetchEveryMinutes: 0` is off, and off stops the
- *  focus fetch as well as the timer. */
-export type GitSettings = { fetchEveryMinutes: number; showTopicWorktrees: boolean };
+ *  focus fetch as well as the timer, and `cleanupAfterIdleDays: 0` is off. */
+export type GitSettings = {
+  fetchEveryMinutes: number;
+  showTopicWorktrees: boolean;
+  cleanupAfterMerge: boolean;
+  cleanupAfterIdleDays: number;
+};
 /** What one session state does when a session crosses into it: the OS
  *  notification, and the sound Tori plays itself. Mirrors `Alert` in
  *  src-tauri/src/settings.rs, which is where both are acted on. */
@@ -362,7 +367,7 @@ export type AgentRow = { agent: string; profile: string };
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark", spaceStrip: "bottom" },
   forge: { enabled: true, picks: {}, prWatch: false },
-  git: { fetchEveryMinutes: 10, showTopicWorktrees: false },
+  git: { fetchEveryMinutes: 10, showTopicWorktrees: false, cleanupAfterMerge: false, cleanupAfterIdleDays: 0 },
   notifications: { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: false } },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',

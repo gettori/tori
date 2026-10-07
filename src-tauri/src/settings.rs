@@ -706,6 +706,11 @@ pub struct Git {
     /// under their repo too doubles every member in Spaces.
     #[serde(default)]
     pub show_topic_worktrees: bool,
+    #[serde(default)]
+    pub cleanup_after_merge: bool,
+    /// Zero is off.
+    #[serde(default)]
+    pub cleanup_after_idle_days: u32,
 }
 
 impl Default for Git {
@@ -713,6 +718,8 @@ impl Default for Git {
         Self {
             fetch_every_minutes: default_fetch_every_minutes(),
             show_topic_worktrees: false,
+            cleanup_after_merge: false,
+            cleanup_after_idle_days: 0,
         }
     }
 }
@@ -1317,6 +1324,25 @@ mod tests {
         s.forge.pr_watch = true;
         save_to(&p, &s).unwrap();
         assert!(load_from(&p).forge.pr_watch);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn worktree_cleanup_defaults_off_and_survives_a_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"git":{"fetchEveryMinutes":5}}"#).unwrap();
+        let g = load_from(&p).git;
+        assert!(!g.cleanup_after_merge, "a file written before the fields is off");
+        assert_eq!(g.cleanup_after_idle_days, 0);
+        assert_eq!(g.fetch_every_minutes, 5, "a new field leaves its siblings alone");
+
+        let mut s = load_from(&p);
+        s.git.cleanup_after_merge = true;
+        s.git.cleanup_after_idle_days = 14;
+        save_to(&p, &s).unwrap();
+        let g = load_from(&p).git;
+        assert!(g.cleanup_after_merge);
+        assert_eq!(g.cleanup_after_idle_days, 14);
         let _ = std::fs::remove_file(&p);
     }
 

@@ -257,6 +257,26 @@ export function unitStatus(path: string, branch: string | null): UnitStatus | nu
   return statuses()[key(path, branch)] ?? null;
 }
 
+/** Each branch of this project whose pull request merged, with the head that
+ *  merged, as far as the ticks so far have seen. */
+export function mergedHeads(path: string): Record<string, string> {
+  const prefix = `${path}\n`;
+  const out: Record<string, string> = {};
+  for (const [k, status] of Object.entries(statuses())) {
+    const pr = status.pullRequest;
+    if (k.startsWith(prefix) && pr?.state === "merged") out[k.slice(prefix.length)] = pr.headSha;
+  }
+  return out;
+}
+
+const reportListeners = new Set<(path: string) => void>();
+
+/** Runs `fn` with the project path each time a tick's answer lands. */
+export function onForgeReport(fn: (path: string) => void): () => void {
+  reportListeners.add(fn);
+  return () => reportListeners.delete(fn);
+}
+
 /** The unit whose pull request carries this number, or null when no tick has
  *  covered it.
  *
@@ -352,6 +372,7 @@ function applyReport(path: string, repo: RepoAccount, report: StatusReport, now:
   // standing it would outlive the authorization that cleared it, and the row
   // would keep offering a route the user has already taken.
   setOrgBlocked(({ [path]: _gone, ...rest }) => rest);
+  for (const fn of reportListeners) fn(path);
 }
 
 async function noteFailure(path: string, repo: RepoAccount, err: unknown, now: number) {

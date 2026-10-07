@@ -15,6 +15,9 @@ import { stageHost } from "./tabs/stageHost";
 import { traceMark, tracePaint } from "./utils/perfTrace";
 import { registerRecipeHost } from "./utils/perfRecipe";
 import { startRemoteFetch } from "./utils/remoteSync";
+import { startWorktreeCleanup } from "./utils/worktreeCleanup";
+import { tabsByWs } from "./panels/Editor/editorTabStore";
+import { open as openTerms } from "./panels/Terminal/terminalTabStore";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
@@ -546,6 +549,15 @@ function App() {
   // this one answers for every repo in the config, not for the tree that
   // happens to be rendered, and it has to keep running with the sidebar shut.
   onCleanup(startRemoteFetch());
+  onCleanup(
+    startWorktreeCleanup({
+      selectedRoot: () => selectionRoot(selected()),
+      openPaths: () => [
+        ...Object.values(tabsByWs()).flatMap((tabs) => tabs.map((t) => t.path)),
+        ...openTerms().map((t) => t.cwd),
+      ],
+    }),
+  );
 
   function persistLayout() {
     try {
