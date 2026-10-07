@@ -1,3 +1,4 @@
+mod account_commands;
 mod accounts;
 mod agent_config;
 mod agent_lines;
@@ -279,6 +280,8 @@ pub fn run() {
             std::thread::spawn(|| {
                 env::login_path();
             });
+
+            std::thread::spawn(account_commands::sync_quietly);
 
             // Install the keychain store and restore the forge credential.
             // Non-fatal like the askpass bridge and the tray above: a keychain

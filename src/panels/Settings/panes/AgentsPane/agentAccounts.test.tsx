@@ -61,6 +61,7 @@ const profile = (over: Record<string, unknown> = {}) => ({
   account: "a@b.c",
   apiKeySource: null,
   duplicateOf: null,
+  command: "claude",
   login: { type: "terminal", program: "claude", args: ["auth", "login"], home: null },
   ...over,
 });
@@ -71,6 +72,9 @@ const view = (over: Record<string, unknown> = {}) => ({
   canAdd: true,
   canSignOut: true,
   defaultPresent: true,
+  program: "claude",
+  commandDir: "/home/me/.local/bin",
+  commandDirOnPath: true,
   profiles: [profile()],
   ...over,
 });
@@ -707,42 +711,76 @@ describe("the quota on an account card", () => {
   });
 });
 
-// The name itself is the control: click it, type, Enter. The default account
-// renames too, which is what lets "Default" become "Personal".
+// The name opens the rename dialog. The default account renames too, which is
+// what lets "Default" become "Personal".
 describe("renaming an account", () => {
   beforeEach(() => invoked.mockReset());
 
-  const renameTo = (row: HTMLElement, name: string) => {
+  const globex = () =>
+    profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex", command: "claude-globex" });
+
+  const typeName = (row: HTMLElement, name: string) => {
     fireEvent.click(row);
-    const field = screen.getByLabelText(`Rename ${row.textContent}`) as HTMLInputElement;
+    const field = screen.getByLabelText("Name") as HTMLInputElement;
     fireEvent.input(field, { target: { value: name } });
-    fireEvent.keyDown(field, { key: "Enter" });
-    fireEvent.blur(field);
+    return field;
+  };
+  const renameTo = (row: HTMLElement, name: string) => {
+    typeName(row, name);
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
   };
 
-  const sent = (profileId: string, label: string) =>
-    invoked.mock.calls.some(
+  const sentWith = (profileId: string, label: string) =>
+    invoked.mock.calls.find(
       ([cmd, args]) =>
         cmd === "rename_agent_account" &&
         (args as { profileId?: string; label?: string })?.profileId === profileId &&
         (args as { label?: string })?.label === label,
-    );
+    )?.[1] as { renameCommand?: boolean } | undefined;
 
-  it("sends the new name for an account Tori added", async () => {
-    const { container, getByRole } = await open(
-      mount({
-        accounts: {
-          profiles: [profile(), profile({ id: "globex", label: "Globex", isDefault: false, home: "/h/globex" })],
-        },
-      }),
-    );
+  it("sends the new name for an account Tori added, with the command following", async () => {
+    const { container, getByRole } = await open(mount({ accounts: { profiles: [profile(), globex()] } }));
     await waitFor(() => expect(container.textContent).toContain("Globex"));
 
-    renameTo(getByRole("button", { name: "Globex" }), "Work");
-    await waitFor(() => expect(sent("globex", "Work")).toBe(true));
+    typeName(getByRole("button", { name: "Globex" }), "Work");
+    expect(screen.getByText("Also rename command to claude-work")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(sentWith("globex", "Work")?.renameCommand).toBe(true));
     // And the page re-reads its own copy of the sweep, or the Models tabs keep
     // the old name until Settings is closed and reopened.
     await waitFor(() => expect(invoked.mock.calls.filter(([cmd]) => cmd === "agent_health").length).toBeGreaterThan(1));
+  });
+
+  it("keeps the old command when the box is unchecked", async () => {
+    const { container, getByRole } = await open(mount({ accounts: { profiles: [profile(), globex()] } }));
+    await waitFor(() => expect(container.textContent).toContain("Globex"));
+
+    typeName(getByRole("button", { name: "Globex" }), "Work");
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(sentWith("globex", "Work")?.renameCommand).toBe(false));
+  });
+
+  it("offers no command box for the default account or a name with the same command", async () => {
+    const { container, getByRole } = await open(mount({ accounts: { profiles: [profile(), globex()] } }));
+    await waitFor(() => expect(container.textContent).toContain("Globex"));
+
+    typeName(getByRole("button", { name: "Default" }), "Personal");
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    typeName(getByRole("button", { name: "Globex" }), "GLOBEX");
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("changes nothing on Cancel", async () => {
+    const { container, getByRole } = await open(mount({ accounts: { profiles: [profile(), globex()] } }));
+    await waitFor(() => expect(container.textContent).toContain("Globex"));
+
+    typeName(getByRole("button", { name: "Globex" }), "Work");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    expect(invoked.mock.calls.some(([cmd]) => cmd === "rename_agent_account")).toBe(false);
   });
 
   it("renames the login the user already had, and sends nothing for an unchanged name", async () => {
@@ -753,6 +791,45 @@ describe("renaming an account", () => {
     expect(invoked.mock.calls.some(([cmd]) => cmd === "rename_agent_account")).toBe(false);
 
     renameTo(getByRole("button", { name: "Default" }), "Personal");
-    await waitFor(() => expect(sent("default", "Personal")).toBe(true));
+    await waitFor(() => expect(sentWith("default", "Personal")?.renameCommand).toBe(false));
+  });
+});
+
+describe("the command an account runs as", () => {
+  beforeEach(() => invoked.mockReset());
+
+  const two = (over: Record<string, unknown> = {}) => ({
+    profiles: [
+      profile(),
+      profile({ id: "work", label: "Work", isDefault: false, home: "/h/work", command: "claude-work" }),
+    ],
+    ...over,
+  });
+
+  it("shows plain claude on the default account and the named command on an added one", async () => {
+    const r = await open(mount({ accounts: two() }));
+    await expand(r);
+    await expand(r, "Work");
+    await waitFor(() => expect(r.container.textContent).toContain("claude-work"));
+    const commands = [...r.container.querySelectorAll(`.${styles.acctCommand} code`)].map((c) => c.textContent);
+    expect(commands).toEqual(["claude", "claude-work"]);
+    expect(r.container.textContent).not.toContain("is not on your shell's PATH");
+  });
+
+  it("says when the command folder is off the login PATH", async () => {
+    const r = await open(mount({ accounts: two({ commandDirOnPath: false }) }));
+    await expand(r, "Work");
+    await waitFor(() => expect(r.container.textContent).toContain("~/.local/bin is not on your shell's PATH"));
+  });
+
+  it("says plain claude runs the inherited folder only when one is inherited", async () => {
+    const r = await open(mount({ accounts: two() }));
+    await expand(r);
+    await waitFor(() => expect(r.container.textContent).toContain("claude"));
+    expect(r.container.textContent).not.toContain("If your shell exports it too");
+
+    const inherited = await open(mount({ accounts: two({ inheritedHome: "/h/work" }) }));
+    await expand(inherited);
+    await waitFor(() => expect(inherited.container.textContent).toContain("If your shell exports it too"));
   });
 });
