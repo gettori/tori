@@ -5,7 +5,9 @@
 //! name an API can read (its default is built server side at link time), so
 //! the suggestion is computed here.
 
-use super::{suggested_branch, Issue, IssueKind, IssueRef, IssueSource, LinkOutcome};
+use super::{
+    canonical_key, display_of, suggested_branch, Issue, IssueKind, IssueQuery, IssueRef, IssueSource, LinkOutcome,
+};
 use crate::forge::github::GitHubForge;
 use crate::forge::http::graphql_data;
 use crate::forge::model::RepoRef;
@@ -16,10 +18,16 @@ pub const ASSIGNED_CAP: u32 = 50;
 
 const ASSIGNED: &str = "query($issues: String!, $reviews: String!, $first: Int!) {
   issues: search(query: $issues, type: ISSUE, first: $first) {
-    nodes { ... on Issue { number title url } }
+    nodes { ... on Issue { number title url repository { nameWithOwner } } }
   }
   reviews: search(query: $reviews, type: ISSUE, first: $first) {
-    nodes { ... on PullRequest { number title url } }
+    nodes { ... on PullRequest { number title url repository { nameWithOwner } } }
+  }
+}";
+
+const MATCHING: &str = "query($issues: String!, $first: Int!) {
+  issues: search(query: $issues, type: ISSUE, first: $first) {
+    nodes { ... on Issue { number title url repository { nameWithOwner } } }
   }
 }";
 
@@ -32,13 +40,15 @@ const GET: &str = "query($owner: String!, $name: String!, $number: Int!) {
   }
 }";
 
-const LINK_PLAN: &str =
-    "query($owner: String!, $name: String!, $number: Int!, $base: String!, $head: String!, $named: Boolean!) {
+// The branch goes in the project's repo, the issue may sit in another.
+const LINK_PLAN: &str = "query($owner: String!, $name: String!, $issueOwner: String!, $issueName: String!, $number: Int!, $base: String!, $head: String!, $named: Boolean!) {
   repository(owner: $owner, name: $name) {
     id
     defaultBranchRef { target { oid } }
     base: ref(qualifiedName: $base) @include(if: $named) { target { oid } }
     head: ref(qualifiedName: $head) { name }
+  }
+  issueRepository: repository(owner: $issueOwner, name: $issueName) {
     issue(number: $number) {
       id
       linkedBranches(first: 100) { nodes { ref { name } } }
@@ -52,18 +62,48 @@ const LINK: &str = "mutation($issueId: ID!, $oid: GitObjectID!, $name: String!, 
   }
 }";
 
-fn number_of(key: &str) -> Result<u64, ForgeError> {
-    key.trim()
+// The repo the key names, else `repo`, and the issue's number there.
+fn issue_at(repo: &RepoRef, key: &str) -> Result<(RepoRef, u64), ForgeError> {
+    if let Some((named, number)) = super::split_key(key) {
+        if let Some((owner, name)) = named.split_once('/') {
+            return Ok((
+                RepoRef {
+                    owner: owner.to_string(),
+                    repo: name.to_string(),
+                },
+                number,
+            ));
+        }
+    }
+    let number = key
+        .trim()
         .trim_start_matches('#')
         .parse()
         .ok()
         .filter(|n| *n > 0)
         .ok_or_else(|| ForgeError::Invalid {
             message: format!("\"{key}\" is not an issue number"),
-        })
+        })?;
+    Ok((repo.clone(), number))
 }
 
-fn refs_from(data: &Value, alias: &str, kind: IssueKind) -> Vec<IssueRef> {
+// An issue from another repo leads with that repo's name, so it never shares
+// a prefix with the project's own issue of the same number.
+fn branch_prefix(key: &str, at: &RepoRef, number: u64) -> String {
+    if key.contains('#') {
+        format!("{}-{number}", at.repo)
+    } else {
+        number.to_string()
+    }
+}
+
+fn full_name(repo: &RepoRef) -> String {
+    format!("{}/{}", repo.owner, repo.repo)
+}
+
+// Keyed against `origin`, so an issue from another repo carries that repo.
+fn refs_from(data: &Value, alias: &str, kind: IssueKind, origin: &RepoRef) -> Vec<IssueRef> {
+    let origin = full_name(origin);
     let nodes = data.pointer(&format!("/{alias}/nodes")).and_then(Value::as_array);
     nodes
         .into_iter()
@@ -71,9 +111,13 @@ fn refs_from(data: &Value, alias: &str, kind: IssueKind) -> Vec<IssueRef> {
         // A search node of another type comes back as `{}` through the fragment.
         .filter_map(|n| {
             let number = n.get("number")?.as_u64()?;
+            let key = match n.pointer("/repository/nameWithOwner").and_then(Value::as_str) {
+                Some(repo) => canonical_key(&format!("{repo}#{number}"), &origin),
+                None => number.to_string(),
+            };
             Some(IssueRef {
-                key: number.to_string(),
-                display: format!("#{number}"),
+                display: display_of(&key),
+                key,
                 title: n.get("title")?.as_str()?.to_string(),
                 url: n.get("url")?.as_str()?.to_string(),
                 kind,
@@ -115,31 +159,37 @@ impl IssueSource for GitHubForge {
                 "first": ASSIGNED_CAP,
             }),
         )?;
-        let mut out = refs_from(&data, "issues", IssueKind::Issue);
-        out.extend(refs_from(&data, "reviews", IssueKind::ReviewRequest));
+        let mut out = refs_from(&data, "issues", IssueKind::Issue, repo);
+        out.extend(refs_from(&data, "reviews", IssueKind::ReviewRequest, repo));
         Ok(out)
     }
 
+    fn list_matching(&self, origin: &RepoRef, query: &IssueQuery) -> Result<Vec<IssueRef>, ForgeError> {
+        let data = self.graphql(MATCHING, json!({ "issues": query.search(), "first": ASSIGNED_CAP }))?;
+        Ok(refs_from(&data, "issues", IssueKind::Issue, origin))
+    }
+
     fn get(&self, repo: &RepoRef, key: &str) -> Result<Issue, ForgeError> {
-        let number = number_of(key)?;
-        let resp = self.graphql_response(GET, json!({ "owner": repo.owner, "name": repo.repo, "number": number }))?;
+        let (at, number) = issue_at(repo, key)?;
+        let resp = self.graphql_response(GET, json!({ "owner": at.owner, "name": at.repo, "number": number }))?;
         if resp.status == 200 && only_not_found(&resp.body) {
-            return Err(not_an_issue(number, repo, "not an issue"));
+            return Err(not_an_issue(number, &at, "not an issue"));
         }
         let data = graphql_data(&resp)?;
         let node = data.pointer("/repository/issueOrPullRequest").filter(|n| !n.is_null());
         let Some(node) = node else {
-            return Err(not_an_issue(number, repo, "not an issue"));
+            return Err(not_an_issue(number, &at, "not an issue"));
         };
         if node.get("__typename").and_then(Value::as_str) != Some("Issue") {
-            return Err(not_an_issue(number, repo, "a pull request, not an issue,"));
+            return Err(not_an_issue(number, &at, "a pull request, not an issue,"));
         }
         let text = |k: &str| node.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
         let title = text("title");
+        let key = canonical_key(&format!("{}#{number}", full_name(&at)), &full_name(repo));
         Ok(Issue {
-            key: number.to_string(),
-            display: format!("#{number}"),
-            suggested_branch: suggested_branch(&number.to_string(), &title),
+            display: display_of(&key),
+            suggested_branch: suggested_branch(&branch_prefix(&key, &at, number), &title),
+            key,
             title,
             body: text("body"),
             url: text("url"),
@@ -153,7 +203,7 @@ impl IssueSource for GitHubForge {
         branch: &str,
         base: Option<&str>,
     ) -> Result<LinkOutcome, ForgeError> {
-        let number = number_of(key)?;
+        let (at, number) = issue_at(repo, key)?;
         let name = branch.trim().trim_start_matches("refs/heads/");
         if name.is_empty() {
             return Err(ForgeError::Invalid {
@@ -166,6 +216,8 @@ impl IssueSource for GitHubForge {
             json!({
                 "owner": repo.owner,
                 "name": repo.repo,
+                "issueOwner": at.owner,
+                "issueName": at.repo,
                 "number": number,
                 "base": qualified(base.unwrap_or_default()),
                 "head": qualified(name),
@@ -173,17 +225,17 @@ impl IssueSource for GitHubForge {
             }),
         )?;
         if resp.status == 200 && only_not_found(&resp.body) {
-            return Err(not_an_issue(number, repo, "not an issue"));
+            return Err(not_an_issue(number, &at, "not an issue"));
         }
         let plan = graphql_data(&resp)?;
         let repository = plan
             .get("repository")
             .filter(|r| !r.is_null())
             .ok_or(ForgeError::NotFound)?;
-        let issue = repository
-            .get("issue")
+        let issue = plan
+            .pointer("/issueRepository/issue")
             .filter(|i| !i.is_null())
-            .ok_or_else(|| not_an_issue(number, repo, "not an issue"))?;
+            .ok_or_else(|| not_an_issue(number, &at, "not an issue"))?;
         let linked = issue
             .pointer("/linkedBranches/nodes")
             .and_then(Value::as_array)
@@ -328,8 +380,8 @@ mod tests {
             200,
             &format!(
                 r#"{{"data":{{"repository":{{"id":"R_1","defaultBranchRef":{{"target":{{"oid":"d3f"}}}},
-                "base":{{"target":{{"oid":"ba5e"}}}},"head":{head},
-                "issue":{{"id":"I_1","linkedBranches":{{"nodes":[{linked}]}}}}}}}}}}"#
+                "base":{{"target":{{"oid":"ba5e"}}}},"head":{head}}},
+                "issueRepository":{{"issue":{{"id":"I_1","linkedBranches":{{"nodes":[{linked}]}}}}}}}}}}"#
             ),
         )
     }
@@ -392,7 +444,7 @@ mod tests {
     fn linking_a_pull_request_number_is_not_an_issue() {
         let (f, stub) = forge(vec![StubTransport::json(
             200,
-            r#"{"data":{"repository":{"id":"R_1","defaultBranchRef":null,"head":null,"issue":null}},
+            r#"{"data":{"repository":{"id":"R_1","defaultBranchRef":null,"head":null},"issueRepository":{"issue":null}},
                "errors":[{"type":"NOT_FOUND","message":"Could not resolve to an Issue"}]}"#,
         )]);
         let err = f.link_branch(&repo(), "193", "193-x", None).unwrap_err();
@@ -407,8 +459,8 @@ mod tests {
     fn a_base_missing_on_the_host_is_refused_before_the_mutation() {
         let (f, stub) = forge(vec![StubTransport::json(
             200,
-            r#"{"data":{"repository":{"id":"R_1","defaultBranchRef":null,"base":null,"head":null,
-               "issue":{"id":"I_1","linkedBranches":{"nodes":[]}}}}}"#,
+            r#"{"data":{"repository":{"id":"R_1","defaultBranchRef":null,"base":null,"head":null},
+               "issueRepository":{"issue":{"id":"I_1","linkedBranches":{"nodes":[]}}}}}"#,
         )]);
         let err = f
             .link_branch(&repo(), "202", "202-issues", Some("local-only"))
@@ -418,5 +470,94 @@ mod tests {
             "{err:?}"
         );
         assert_eq!(stub.request_count(), 1);
+    }
+
+    #[test]
+    fn an_issue_from_another_repo_is_keyed_by_its_repo() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"issues":{"nodes":[
+              {"number":31,"title":"Dogfood","url":"https://github.com/gettori/tickets/issues/31","repository":{"nameWithOwner":"gettori/tickets"}},
+              {"number":7,"title":"Here","url":"https://github.com/gettori/tori/issues/7","repository":{"nameWithOwner":"GetTori/Tori"}},
+              {"number":2,"title":"Docs","url":"https://github.com/gettori/docs/issues/2","repository":{"nameWithOwner":"gettori/docs"}}
+            ]}}}"#,
+        )]);
+        let query = IssueQuery {
+            repo: "gettori/tickets".into(),
+            labels: vec!["block 1".into()],
+            extra: Some("repo:gettori/docs".into()),
+            ..IssueQuery::default()
+        };
+        let list = f.list_matching(&repo(), &query).unwrap();
+        let keys: Vec<(&str, &str)> = list.iter().map(|r| (r.key.as_str(), r.display.as_str())).collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("gettori/tickets#31", "gettori/tickets#31"),
+                ("7", "#7"),
+                ("gettori/docs#2", "gettori/docs#2")
+            ]
+        );
+        assert_eq!(vars(&stub, 0)["issues"], query.search());
+    }
+
+    #[test]
+    fn an_issue_in_another_repo_is_read_there_and_keyed_by_it() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{"issueOrPullRequest":{"__typename":"Issue","number":31,"title":"Dogfood","body":"b","url":"https://github.com/gettori/tickets/issues/31"}}}}"#,
+        )]);
+        let issue = f.get(&repo(), "https://github.com/gettori/tickets/issues/31").unwrap();
+        let asked = vars(&stub, 0);
+        assert_eq!(
+            (asked["owner"].as_str(), asked["name"].as_str()),
+            (Some("gettori"), Some("tickets"))
+        );
+        assert_eq!(
+            (
+                issue.key.as_str(),
+                issue.display.as_str(),
+                issue.suggested_branch.as_str()
+            ),
+            ("gettori/tickets#31", "gettori/tickets#31", "tickets-31-dogfood")
+        );
+    }
+
+    #[test]
+    fn a_url_in_the_projects_own_repo_keys_as_a_bare_number() {
+        let (f, _) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{"issueOrPullRequest":{"__typename":"Issue","number":5,"title":"t","body":"","url":"u"}}}}"#,
+        )]);
+        let issue = f.get(&repo(), "https://github.com/gettori/tori/issues/5").unwrap();
+        assert_eq!((issue.key.as_str(), issue.display.as_str()), ("5", "#5"));
+    }
+
+    #[test]
+    fn linking_an_issue_from_another_repo_makes_the_branch_in_the_projects_repo() {
+        let (f, stub) = forge(vec![
+            plan("", "null"),
+            StubTransport::json(200, r#"{"data":{"createLinkedBranch":{"linkedBranch":{"id":"LB_1"}}}}"#),
+        ]);
+        f.link_branch(&repo(), "gettori/tickets#31", "31-dogfood", None)
+            .unwrap();
+        let asked = vars(&stub, 0);
+        assert_eq!(
+            (
+                asked["owner"].as_str(),
+                asked["name"].as_str(),
+                asked["issueOwner"].as_str(),
+                asked["issueName"].as_str(),
+                asked["number"].as_u64()
+            ),
+            (
+                Some("gettori"),
+                Some("tori"),
+                Some("gettori"),
+                Some("tickets"),
+                Some(31)
+            )
+        );
+        assert_eq!(vars(&stub, 1)["repositoryId"], "R_1");
     }
 }

@@ -323,6 +323,16 @@ fn web_ref(key: &str, kinds: &[&str]) -> Option<(String, String)> {
     repo.contains('/').then(|| (repo.to_lowercase(), number.to_string()))
 }
 
+// `owner/name` of a project's origin, empty where it has none git can read.
+fn origin_of(project: &str) -> String {
+    crate::git::remote_url(project, "origin")
+        .ok()
+        .flatten()
+        .and_then(|url| crate::forge::remote::parse(&url).ok())
+        .map(|r| format!("{}/{}", r.repo.owner, r.repo.repo))
+        .unwrap_or_default()
+}
+
 fn project_for_repo(
     repo: &str,
     dirs: &[std::path::PathBuf],
@@ -349,6 +359,30 @@ fn project_for_repo(
                 many.join(", ")
             ),
         )),
+    }
+}
+
+// A project whose issue sources read `repo`; `Err(None)` when none does, so the
+// caller keeps its own refusal.
+fn project_for_source(
+    repo: &str,
+    projects: &std::collections::BTreeMap<String, Contract>,
+) -> Result<String, Option<RpcError>> {
+    let matches: Vec<&String> = projects
+        .iter()
+        .filter(|(_, c)| c.issues.iter().any(|q| q.repo.trim().eq_ignore_ascii_case(repo)))
+        .map(|(project, _)| project)
+        .collect();
+    match matches.as_slice() {
+        [one] => Ok((*one).clone()),
+        [] => Err(None),
+        many => Err(Some(RpcError::new(
+            INVALID_PARAMS,
+            format!(
+                "several projects read issues from {repo}, pass one as project: {}",
+                many.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+        ))),
     }
 }
 
@@ -1476,21 +1510,29 @@ impl Backend for TauriBackend {
 
     fn issues_assigned(&self, principal: &Principal, params: IssuesAssignedParams) -> Result<Value, RpcError> {
         let project = self.project(principal, params.project)?;
-        to_json(crate::issues::commands::assigned(&project, params.refresh.unwrap_or(false)).map_err(forge_refused)?)
+        let sources = self.autopilot.contract(&project).unwrap_or_default().issues;
+        to_json(
+            crate::issues::commands::assigned(&project, &sources, params.refresh.unwrap_or(false))
+                .map_err(forge_refused)?,
+        )
     }
 
     fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError> {
-        let (project, key) = match (params.project, issue_ref(&params.key)) {
-            (Some(project), named) => (project, named.map_or(params.key, |(_, key)| key)),
-            (None, Some((repo, key))) => {
+        let project = match (params.project, issue_ref(&params.key)) {
+            (Some(project), _) => project,
+            (None, Some((repo, _))) => {
                 let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
-                (
-                    project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?,
-                    key,
-                )
+                let dirs = crate::config::discovered_project_dirs();
+                match project_for_repo(&repo, &dirs, origin) {
+                    Ok(project) => project,
+                    Err(none) => {
+                        project_for_source(&repo, &self.autopilot.projects()).map_err(|e| e.unwrap_or(none))?
+                    }
+                }
             }
-            (None, None) => (self.project(principal, None)?, params.key),
+            (None, None) => self.project(principal, None)?,
         };
+        let key = params.key;
         let mut issue = to_json(crate::issues::commands::get(&project, &key).map_err(forge_refused)?)?;
         issue["project"] = json!(project);
         Ok(issue)
@@ -1658,7 +1700,8 @@ impl Backend for TauriBackend {
             Some(_) => params.project.clone(),
             None => Some(self.project(principal, params.project.clone())?),
         };
-        params.apply(&self.autopilot, project)
+        let origin = project.as_deref().map(origin_of).unwrap_or_default();
+        params.apply(&self.autopilot, project, origin)
     }
 
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError> {
@@ -1696,6 +1739,33 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    #[test]
+    fn an_issue_url_with_no_checkout_finds_the_one_project_reading_its_repo() {
+        let reading = |repo: &str| Contract {
+            issues: vec![crate::issues::IssueQuery {
+                repo: repo.into(),
+                ..Default::default()
+            }],
+            ..Contract::default()
+        };
+        let one = std::collections::BTreeMap::from([
+            ("/tori".to_string(), reading("GetTori/Tickets")),
+            ("/docs".to_string(), reading("gettori/docs")),
+        ]);
+        assert_eq!(project_for_source("gettori/tickets", &one).unwrap(), "/tori");
+        assert!(matches!(project_for_source("gettori/other", &one), Err(None)));
+        let two = std::collections::BTreeMap::from([
+            ("/tori".to_string(), reading("gettori/tickets")),
+            ("/web".to_string(), reading("gettori/tickets")),
+        ]);
+        let refused = project_for_source("gettori/tickets", &two).unwrap_err().unwrap();
+        assert!(
+            refused.message.contains("/tori") && refused.message.contains("/web"),
+            "{}",
+            refused.message
+        );
+    }
 
     #[test]
     fn worktree_new_reports_setup_and_waits_only_when_the_project_asks() {

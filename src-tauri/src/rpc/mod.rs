@@ -836,13 +836,15 @@ pub fn autopilot_pickup(rpc: tauri::State<RpcState>, project_path: String) -> Re
     if !crate::settings::autopilot().available {
         return Ok(());
     }
-    let Some(list) = crate::issues::commands::assigned_if_offered(&project_path).map_err(|e| e.to_string())? else {
+    let sources = rpc.autopilot.contract(&project_path).unwrap_or_default().issues;
+    let Some(list) =
+        crate::issues::commands::assigned_if_offered(&project_path, &sources).map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
-    let cap = crate::issues::github::ASSIGNED_CAP as usize;
     let picked = rpc
         .autopilot
-        .pickup(&project_path, &list.repo, &list.account, &list.rows, cap)
+        .pickup(&project_path, &list.repo, &list.account, &list.lists, &list.failed)
         .map_err(|e| e.to_string())?;
     if let Some(watcher) = WATCHER.get() {
         watcher.picked(&picked);
@@ -1122,6 +1124,7 @@ mod tests {
             kind: Kind::Review,
             source,
             project: "/p".into(),
+            origin: "o/r".into(),
         };
         store
             .update(
@@ -1207,6 +1210,7 @@ mod tests {
                     kind: Kind::Review,
                     source,
                     project: "/p".into(),
+                    origin: "o/r".into(),
                 },
                 Patch::default(),
             )

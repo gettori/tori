@@ -11,7 +11,9 @@
 
 use super::gate::gate;
 use super::store::{self, UnitIssue};
-use super::{offers_issues, Issue, IssueRef, IssueSource, LinkOutcome};
+use super::{
+    offers_issues, FailedSource, Issue, IssueKind, IssueQuery, IssueRef, IssueSource, LinkOutcome, SourceList,
+};
 use crate::forge::accounts;
 use crate::forge::commands::{attempt, gated_client, Client, ForgeErrorDto};
 use crate::forge::{Forge, ForgeError};
@@ -54,39 +56,100 @@ pub fn offered(project_path: &str) -> bool {
     issue_client(project_path).is_ok_and(|c| offers(&c))
 }
 
+fn full_name(c: &Client) -> String {
+    format!("{}/{}", c.repo.owner, c.repo.repo)
+}
+
 fn fetch_assigned(c: &Client, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
     gate()
-        .assigned(&c.account_id, &c.repo, refresh, || {
+        .assigned(&c.account_id, &full_name(c), refresh, || {
             attempt(c, |f| source_of(f)?.list_assigned(&c.repo))
         })
         .map_err(named_access)
 }
 
-pub fn assigned(project_path: &str, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
-    fetch_assigned(&issue_client(project_path)?, refresh)
+fn fetch_matching(c: &Client, query: &IssueQuery, refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
+    gate()
+        .assigned(&c.account_id, &query.search(), refresh, || {
+            attempt(c, |f| source_of(f)?.list_matching(&c.repo, query))
+        })
+        .map_err(named_access)
 }
 
 pub struct Assigned {
     pub account: String,
     // `owner/name`
     pub repo: String,
-    pub rows: Vec<IssueRef>,
+    pub lists: Vec<SourceList>,
+    pub failed: Vec<FailedSource>,
+}
+
+impl Assigned {
+    pub fn rows(&self) -> Vec<IssueRef> {
+        let mut out: Vec<IssueRef> = Vec::new();
+        for row in self.lists.iter().flat_map(|l| &l.rows) {
+            if !out.iter().any(|r| r.kind == row.kind && r.key == row.key) {
+                out.push(row.clone());
+            }
+        }
+        out
+    }
+}
+
+/// The project's lists: with no `sources` its own assigned list as before,
+/// else one list per source beside the origin's review requests.
+fn gather(c: &Client, sources: &[IssueQuery], refresh: bool) -> Result<Assigned, ForgeError> {
+    let cap = super::github::ASSIGNED_CAP as usize;
+    let list = |search: Option<String>, kind: IssueKind, rows: Vec<IssueRef>| SourceList {
+        complete: rows.len() < cap,
+        search,
+        kind,
+        rows,
+    };
+    let assigned = fetch_assigned(c, refresh)?;
+    let (issues, reviews): (Vec<IssueRef>, Vec<IssueRef>) =
+        assigned.into_iter().partition(|r| r.kind == IssueKind::Issue);
+    let mut lists = vec![list(None, IssueKind::ReviewRequest, reviews)];
+    let mut failed = Vec::new();
+    if sources.is_empty() {
+        lists.insert(0, list(None, IssueKind::Issue, issues));
+    }
+    for query in sources {
+        match query
+            .check()
+            .and_then(|()| fetch_matching(c, query, refresh).map_err(|e| e.to_string()))
+        {
+            Ok(rows) => lists.push(list(Some(query.search()), IssueKind::Issue, rows)),
+            Err(error) => failed.push(FailedSource {
+                search: query.search(),
+                error,
+            }),
+        }
+    }
+    Ok(Assigned {
+        repo: full_name(c),
+        account: c.account_id.clone(),
+        lists,
+        failed,
+    })
+}
+
+/// Every row the project's sources list, issues then review requests, once each.
+pub fn assigned(project_path: &str, sources: &[IssueQuery], refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
+    let mut rows = gather(&issue_client(project_path)?, sources, refresh)?.rows();
+    rows.sort_by_key(|r| r.kind == IssueKind::ReviewRequest);
+    Ok(rows)
 }
 
 // `None` where `offered` says no; one client resolve, since the poll tick calls it per project.
-pub fn assigned_if_offered(project_path: &str) -> Result<Option<Assigned>, ForgeError> {
+pub fn assigned_if_offered(project_path: &str, sources: &[IssueQuery]) -> Result<Option<Assigned>, ForgeError> {
     let Ok(c) = issue_client(project_path) else {
         return Ok(None);
     };
     if !offers(&c) {
         return Ok(None);
     }
-    let rows = fetch_assigned(&c, false)?;
-    Ok(Some(Assigned {
-        repo: format!("{}/{}", c.repo.owner, c.repo.repo),
-        account: c.account_id,
-        rows,
-    }))
+    gather(&c, sources, false).map(Some)
 }
 
 pub fn get(project_path: &str, key: &str) -> Result<Issue, ForgeError> {
@@ -117,8 +180,13 @@ pub fn issues_source(project_path: String) -> bool {
 }
 
 #[tauri::command(async)]
-pub fn issues_assigned(project_path: String, refresh: Option<bool>) -> Result<Vec<IssueRef>, ForgeErrorDto> {
-    Ok(assigned(&project_path, refresh.unwrap_or(false))?)
+pub fn issues_assigned(
+    rpc: tauri::State<crate::rpc::RpcState>,
+    project_path: String,
+    refresh: Option<bool>,
+) -> Result<Vec<IssueRef>, ForgeErrorDto> {
+    let sources = rpc.autopilot.contract(&project_path).unwrap_or_default().issues;
+    Ok(assigned(&project_path, &sources, refresh.unwrap_or(false))?)
 }
 
 #[tauri::command(async)]
@@ -143,4 +211,52 @@ pub fn issues_record(app: AppHandle, project_path: String, branch: String, issue
     store::record(&project_path, &branch, issue)?;
     let _ = app.emit("config://changed", ());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(key: &str, kind: IssueKind) -> IssueRef {
+        IssueRef {
+            key: key.into(),
+            display: key.into(),
+            title: "t".into(),
+            url: "u".into(),
+            kind,
+        }
+    }
+
+    #[test]
+    fn the_rows_are_every_lists_once_each() {
+        let list = |search: &str, rows: Vec<IssueRef>| SourceList {
+            search: Some(search.into()),
+            kind: IssueKind::Issue,
+            rows,
+            complete: true,
+        };
+        let assigned = Assigned {
+            account: "a".into(),
+            repo: "gettori/tori".into(),
+            lists: vec![
+                SourceList {
+                    search: None,
+                    kind: IssueKind::ReviewRequest,
+                    rows: vec![row("4", IssueKind::ReviewRequest)],
+                    complete: true,
+                },
+                list("a", vec![row("gettori/tickets#31", IssueKind::Issue)]),
+                list(
+                    "b",
+                    vec![
+                        row("gettori/tickets#31", IssueKind::Issue),
+                        row("gettori/tickets#32", IssueKind::Issue),
+                    ],
+                ),
+            ],
+            failed: Vec::new(),
+        };
+        let keys: Vec<String> = assigned.rows().into_iter().map(|r| r.key).collect();
+        assert_eq!(keys, ["4", "gettori/tickets#31", "gettori/tickets#32"]);
+    }
 }

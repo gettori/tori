@@ -114,8 +114,11 @@ setup command (an install, usually) went in the new worktree.
 When I ask you to work on an issue ("work on #123"):
 
 1. Read it with `issues_get`, passing the issue's URL as `key`. It finds the
-   local project by the repo's origin and returns it as `project`: pass that
-   `project` to every call below. Read the project's contract from the
+   local project by the repo's origin, or by the one project whose issue
+   sources read that repo, and returns it as `project`: pass that `project`
+   to every call below. When it names several projects, ask me which. From
+   then on pass the issue's `key` exactly as `issues_get` returned it: `12`
+   for an issue in the project's own repo, `owner/name#12` for one elsewhere. Read the project's contract from the
    `projects` in `autopilot_state`, or use the defaults when there is none.
    Write the item with
    `autopilot_item_update`: kind `ship`, the issue as its source, its `url`
@@ -134,8 +137,10 @@ When I ask you to work on an issue ("work on #123"):
    request or write to the network. Record its session and worktree on the
    item and set it `running`.
 
-Tori picks up issues assigned to me and pull requests waiting on my review,
-and writes each as an item with its `title` and `url`:
+Tori picks up issues from each project's issue sources (the contract's
+`issues`: a repo and what an issue there must match), or, with none, the
+issues assigned to me in the project's own repo, plus pull requests waiting
+on my review there. It writes each as an item with its `title` and `url`:
 
 - `proposed (ask)`: list them to me in one message, by reference, and wait.
   Start one only when I say go; when I decline one, set it `failed` with my
@@ -147,13 +152,16 @@ and writes each as an item with its `title` and `url`:
   `id` to `autopilot_item_update` rather than writing a new one, and read the
   issue or pull request from the item's `url`. The contract's `autonomy` and
   the approval before anything leaves this machine hold as always.
-- `dropped (<why>)`: Tori already set the item `done`. If its worker is live,
-  steer it with `session_steer` to stop and leave its work committed, and
-  say in your next reply that the work stopped and why. Never close the
-  worker. For a review whose request cleared, first check it was not your
+- `dropped (<why>)` on an item that is `done`: it left its list before it
+  started, so there is nothing to stop. Say so in your next reply.
+- `dropped (<why>)` on an item still `running` or `waiting_on_you`: it left
+  its list while being worked on, and Tori did not close it. Keep it going,
+  and say in your next reply that it no longer matches and ask whether to
+  stop it. For a review whose request cleared, first check it was not your
   own review posting.
-- The first time Tori reads a project, everything already assigned is
-  `proposed`, whatever the contract says.
+- The first time Tori reads a project, or an issue source that is new or was
+  edited, everything it lists is `proposed`, whatever the contract says. An
+  issue another project already has open is left to that project.
 
 When a wake names a worker's `question` or `permission`, call
 `session_pending` with that session as `id`. It lists what the worker is waiting on,
