@@ -11,8 +11,9 @@ body:
         [ADAPTERS.md](../../docs/ADAPTERS.md).
 
         Open this issue if you tried that and the agent's transcript format
-        does not fit any implemented parser kind, or if you want your working
-        adapter bundled for everyone.
+        does not fit any implemented parser kind. A working adapter you want
+        bundled for everyone goes in as a pull request instead:
+        [CONTRIBUTING.md](../../CONTRIBUTING.md) says what one needs.
 
   - type: input
     id: agent
