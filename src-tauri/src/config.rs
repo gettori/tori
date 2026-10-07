@@ -679,6 +679,13 @@ pub(crate) fn discovered_project_dirs() -> Vec<PathBuf> {
     }
 }
 
+/// The discovered project `folder` sits in, the deepest when they nest, or
+/// None outside every project. Walks the discovery root without probing.
+#[tauri::command]
+pub fn project_of_folder(folder: String) -> Option<String> {
+    crate::rpc::events::project_of(&folder, &discovered_project_dirs())
+}
+
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     let skip = |name: &str| skipped(name, &raw.discovery.ignore);
     // Single canonical root: a legacy multi-root config collapses to the first on

@@ -24,6 +24,9 @@ import type { ChatCapabilities } from "../../utils/chatTypes";
 import type { PullRequest } from "../../utils/forgeTypes";
 import { ensurePrList, prListEntry } from "../../utils/prListStore";
 import { prLabel, prRef } from "../../utils/prMention";
+import { createSignal } from "solid-js";
+import type { SessionMeta } from "../../utils/sessionStore";
+import { sessionLabel, sessionRef, sessionTitle } from "../../utils/sessionMention";
 
 /** A pasted or dropped file, as the composer read it. */
 export type UploadFile = { name: string; bytes: Uint8Array };
@@ -45,6 +48,12 @@ export type ComposerAttachments = {
    *  answers its token without a second chip. */
   onAttachPr: (pr: PullRequest) => string;
   resolvePr: (number: number) => Promise<PullRequest | null>;
+  /** The repo's sessions for `@`, or undefined for an agent without the
+   *  `tori` MCP server, which has no tool to read one through. */
+  sessions: () => readonly SessionMeta[] | undefined;
+  loadSessions: () => void;
+  /** Answers the token the session's chip is named by. */
+  onAttachSession: (s: SessionMeta) => string;
 };
 
 /** The filename rides in a header because the body is the file itself. */
@@ -71,7 +80,12 @@ export function composerAttachments(
   tier: () => ChatTier,
   capabilities: () => ChatCapabilities | null | undefined,
   onRejected: (reason: string) => void,
+  toriMcp: () => boolean,
+  self: () => string | null = () => null,
 ): ComposerAttachments {
+  const [listed, setListed] = createSignal<SessionMeta[]>([]);
+  let project: string | null = null;
+
   // A path the agent already has. Labelled by kind so the prose can name it,
   // and refused by kind when this agent's Read would not open it.
   function mention(path: string): string | null {
@@ -97,6 +111,24 @@ export function composerAttachments(
       const label = prLabel(pr.number);
       const held = pendingFor(key()).some((p) => p.block.type === "ref" && p.block.label === label);
       if (!held) offerToComposer(key(), [prRef(pr)]);
+      return label;
+    },
+    sessions: () => (toriMcp() ? listed().filter((s) => s.id !== self()) : undefined),
+    // The repo's whole tree, every worktree included, which a plain listing of
+    // the cwd would hide.
+    loadSessions: () =>
+      void (async () => {
+        const folder = cwd();
+        project = (await invoke<string | null>("project_of_folder", { folder }).catch(() => null)) ?? folder;
+        setListed(await invoke<SessionMeta[]>("list_sessions", { folder: project, inclusive: true }).catch(() => []));
+      })(),
+    onAttachSession: (s) => {
+      const taken = new Map<string, string>();
+      for (const p of pendingFor(key())) {
+        if (p.block.type === "ref" && p.block.target.kind === "session") taken.set(p.block.label, p.block.target.id);
+      }
+      const label = sessionLabel(sessionTitle(s), taken, s.id);
+      if (taken.get(label) !== s.id) offerToComposer(key(), [sessionRef(s, label, project ?? s.cwd)]);
       return label;
     },
     resolvePr: (number) => invoke<PullRequest>("forge_get_pr", { projectPath: cwd(), number }).catch(() => null),

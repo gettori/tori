@@ -2034,6 +2034,8 @@ export default function ChatView(props: {
     tier,
     () => state.capabilities,
     (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+    () => !!findAdapter(props.agentId).chat?.tori_mcp,
+    () => props.sessionId,
   );
 
   // Move what is in the composer to a brand-new chat and let it open with that
@@ -2531,6 +2533,9 @@ export default function ChatView(props: {
           loadPrs={attachments.loadPrs}
           onAttachPr={attachments.onAttachPr}
           resolvePr={attachments.resolvePr}
+          sessions={attachments.sessions()}
+          loadSessions={attachments.loadSessions}
+          onAttachSession={attachments.onAttachSession}
           parked={state.queueParked}
           restored={state.queueRestored}
           disabled={refused() || state.ended}

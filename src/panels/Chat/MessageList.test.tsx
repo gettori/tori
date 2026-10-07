@@ -8,6 +8,7 @@ import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatSto
 import type { ChatItem, QuestionItem, ToolItem } from "./chatStore";
 import type { ContentBlock, QuestionAnswer } from "../../utils/chatTypes";
 import { invoke } from "@tauri-apps/api/core";
+import { onWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => []),
@@ -174,6 +175,28 @@ describe("a prompt that references a pull request", () => {
     const { container } = render(() => list({ items: paths[0][1]() }));
     fireEvent.click(container.querySelector("button[title]")!);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("forge_get_pr", { projectPath: "/tmp", number: 7 }));
+  });
+});
+
+describe("a prompt that references a session", () => {
+  it("opens the session it names", () => {
+    const blocks: ContentBlock[] = [
+      {
+        type: "ref",
+        label: "[Session: Fix login]",
+        target: { kind: "session", id: "abc", title: "Fix login", agent: "codex", project: "/p" },
+      },
+      { type: "text", text: "what did [Session: Fix login] decide?" },
+    ];
+    const opened: SessionAction[] = [];
+    const off = onWith<SessionAction>(SESSION_ACTION, (d) => opened.push(d));
+    const { container } = render(() => list({ items: [{ kind: "user", id: "u1", blocks, steer: false }] }));
+    const chip = container.querySelector("button[title]")!;
+    expect(chip.textContent).toBe("[Session: Fix login]");
+    expect(chip.getAttribute("title")).toBe("Fix login (codex)");
+    fireEvent.click(chip);
+    expect(opened).toEqual([{ sessionId: "abc", action: "open" }]);
+    off();
   });
 });
 
