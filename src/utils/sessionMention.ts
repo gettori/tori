@@ -3,13 +3,23 @@ import type { SessionMeta } from "./sessionStore";
 
 /** What a session is called: the user's own name for it over its title. */
 export function sessionTitle(s: Pick<SessionMeta, "name" | "title">): string {
-  return (s.name || s.title).replace(/[[\]]/g, "").replace(/\s+/g, " ").trim() || "untitled";
+  return refName(s.name || s.title);
+}
+
+/** A name as a token holds it: a bracket would end the token early. */
+export function refName(name: string): string {
+  return name.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim() || "untitled";
 }
 
 /** `[Session: title]`, with ` (2)` and up when `taken` already holds that
- *  label for a different session, so one message never names two by one token. */
-export function sessionLabel(title: string, taken: ReadonlyMap<string, string>, id: string): string {
-  const base = `[Session: ${title}`;
+ *  label for a different target, so one message never names two by one token. */
+export function refLabel(
+  kind: "Session" | "Project" | "Space",
+  title: string,
+  taken: ReadonlyMap<string, string>,
+  id: string,
+): string {
+  const base = `[${kind}: ${title}`;
   for (let n = 1; ; n++) {
     const label = n === 1 ? `${base}]` : `${base} (${n})]`;
     const owner = taken.get(label);

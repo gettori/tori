@@ -499,6 +499,97 @@ describe("@ sessions beside files", () => {
   });
 });
 
+describe("@ project and space navigator", () => {
+  const meta = (id: string, title: string) => ({
+    id,
+    path: `/t/${id}.jsonl`,
+    cwd: "/code/tori/main",
+    branch: "main",
+    title,
+    last_active: 0,
+    created_at: 0,
+    name: null,
+    agent: "claude",
+  });
+  const unit = (folderPath: string) => ({
+    label: folderPath.split("/").pop()!,
+    folderPath,
+    branch: "main",
+    kind: "worktree",
+    isCurrent: false,
+  });
+  const TORI = { name: "tori", path: "/code/tori", branchUnits: [unit("/code/tori/main")] };
+  const FORK = { name: "tori", path: "/forks/tori", branchUnits: [] };
+  const WORK = { name: "Client Work", path: "/spaces/client-work", projects: [TORI, FORK] };
+  const withNav = () => {
+    const nav = {
+      spaces: () => [WORK],
+      here: () => WORK,
+      sessionsOf: (path: string) => (path === TORI.path ? [meta("s1", "Fix login flow")] : []),
+      filesOf: (folder: string) => (folder === "/code/tori/main" ? ["src/a.ts", "README.md"] : []),
+      loadSessionsOf: vi.fn(),
+      loadFilesOf: vi.fn(),
+      onAttachProject: vi.fn((_g, p: { name: string }) => `[Project: ${p.name}]`),
+      onAttachSpace: vi.fn((g: { name: string }) => `[Space: ${g.name}]`),
+      onAttachSession: vi.fn((s: { title: string }) => `[Session: ${s.title}]`),
+    };
+    const onAttachPaths = vi.fn(() => ["[File 1]"]);
+    return { ...setup({ navigator: nav, onAttachPaths }), nav, onAttachPaths };
+  };
+
+  it("drills @spaces/ by path keys down to a file, which attaches by its absolute path", async () => {
+    const { input, findByText, onAttachPaths } = withNav();
+    type(input, "see @spaces/");
+    expect(await findByText("Client Work")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "/" });
+    expect(input.value).toBe("see @spaces/client-work/");
+    type(input, "see @spaces/client-work/tori/main/rea");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onAttachPaths).toHaveBeenCalledWith(["/code/tori/main/README.md"]);
+    expect(input.value).toBe("see [File 1]");
+  });
+
+  it("keys two projects of one name apart", async () => {
+    const { input, findByText, container } = withNav();
+    type(input, "@projects/");
+    await findByText("tori-2/");
+    const hints = [...container.querySelectorAll('[role="option"]')].map((o) => o.textContent);
+    expect(hints).toEqual(["toritori/Project", "toritori-2/Project"]);
+  });
+
+  it("lists a project's checkouts and its sessions, and Enter references a session", async () => {
+    const { input, findByText, nav } = withNav();
+    type(input, "ask @projects/tori/login");
+    expect(nav.loadSessionsOf).toHaveBeenCalledWith("/code/tori");
+    await findByText("Fix login flow");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(nav.onAttachSession).toHaveBeenCalledWith(expect.objectContaining({ id: "s1" }), "/code/tori");
+    expect(input.value).toBe("ask [Session: Fix login flow]");
+  });
+
+  it("leaves the draft alone on / over a session, which has nothing under it", async () => {
+    const { input, findByText } = withNav();
+    type(input, "@projects/tori/login");
+    await findByText("Fix login flow");
+    expect(fireEvent.keyDown(input, { key: "/" })).toBe(false);
+    expect(input.value).toBe("@projects/tori/login");
+  });
+
+  it("Enter references the highlighted space or project", async () => {
+    const { input, findByText, nav } = withNav();
+    type(input, "@spaces/cli");
+    await findByText("Client Work");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(nav.onAttachSpace).toHaveBeenCalledWith(WORK);
+    expect(input.value).toBe("[Space: Client Work]");
+    type(input, "@projects/tori-2");
+    await findByText("tori-2/");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(nav.onAttachProject).toHaveBeenCalledWith(WORK, FORK);
+    expect(input.value).toBe("[Project: tori]");
+  });
+});
+
 describe("@ file completion", () => {
   it("opens on @ and filters as you type", async () => {
     const { input, findByText, queryByText } = setup({ loadFiles: async () => FILES });

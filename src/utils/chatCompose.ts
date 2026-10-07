@@ -597,7 +597,7 @@ export function chipLabel(block: ContentBlock): string {
   // A chip never holds an `imageRef` - one only comes out of replayed history,
   // which no composer reads - but both are an image to anything naming one.
   if (block.type === "image" || block.type === "imageRef") return "image";
-  if (block.type === "ref") return `${block.label} ${block.target.title}`;
+  if (block.type === "ref") return "title" in block.target ? `${block.label} ${block.target.title}` : block.label;
   const name = block.path.split("/").pop() || block.path;
   if (block.label) return `${block.label} ${name}`;
   if (block.startLine === null) return `@${name}`;
