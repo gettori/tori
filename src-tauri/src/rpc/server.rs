@@ -28,6 +28,7 @@ use crate::autopilot::{
 };
 use crate::forge::model::{DraftComment, ReviewEvent};
 use crate::forge::MergeMethod;
+use crate::issues::IssueQuery;
 
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DEFAULT_LOG_LIMIT: usize = 50;
@@ -532,8 +533,9 @@ pub struct ItemUpdateParams {
 }
 
 impl ItemUpdateParams {
-    /// `project` is the one resolved for a new item; with an id it must be left out.
-    pub fn apply(self, store: &AutopilotStore, project: Option<String>) -> Result<Value, RpcError> {
+    /// `project` is the one resolved for a new item; with an id it must be left out. `origin` is that
+    /// project's `owner/name`, which an issue key is read against.
+    pub fn apply(self, store: &AutopilotStore, project: Option<String>, origin: String) -> Result<Value, RpcError> {
         let target = match (self.id, self.kind, self.source, project) {
             (Some(id), None, None, None) => Target::Id(id),
             (Some(_), ..) => {
@@ -542,7 +544,12 @@ impl ItemUpdateParams {
                     "kind, source and project name a new item: with an id pass only what changes",
                 ))
             }
-            (None, Some(kind), Some(source), Some(project)) => Target::Key { kind, source, project },
+            (None, Some(kind), Some(source), Some(project)) => Target::Key {
+                kind,
+                source,
+                project,
+                origin,
+            },
             (None, ..) => {
                 return Err(RpcError::new(
                     INVALID_PARAMS,
@@ -585,10 +592,16 @@ pub struct ProjectSetParams {
     pub account: Option<String>,
     /// The model they use.
     pub model: Option<String>,
+    /// Where the project's issues come from, replacing the list before. Empty, it is the issues assigned to you
+    /// in the project's own repo.
+    pub issues: Option<Vec<IssueQuery>>,
 }
 
 impl ProjectSetParams {
     pub fn apply(self, store: &AutopilotStore, project: String) -> Result<Value, RpcError> {
+        for query in self.issues.iter().flatten() {
+            query.check().map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        }
         let patch = ContractPatch {
             ships: self.ships,
             autonomy: self.autonomy,
@@ -596,6 +609,7 @@ impl ProjectSetParams {
             agent: self.agent,
             account: self.account,
             model: self.model,
+            issues: self.issues,
         };
         let contract = store
             .set_project(project, patch)
@@ -1063,7 +1077,7 @@ pub mod tests {
             match &self.autopilot {
                 Some(store) => {
                     let project = p.project.clone();
-                    p.apply(store, project)
+                    p.apply(store, project, String::new())
                 }
                 None => Ok(json!({ "id": p.id })),
             }
@@ -1278,6 +1292,36 @@ pub mod tests {
             );
         }
         assert!(schema["required"].as_array().is_none_or(|r| r.is_empty()), "{schema}");
+    }
+
+    #[test]
+    fn issue_sources_set_through_project_set_come_back_in_state() {
+        let schema = schemars::schema_for!(ProjectSetParams).to_value();
+        assert!(
+            schema["properties"]["issues"]["description"].as_str().is_some(),
+            "{schema}"
+        );
+        let dir = crate::autopilot::tests::temp_dir("project-set-issues");
+        let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        let params: ProjectSetParams = serde_json::from_value(json!({
+            "issues": [{ "repo": "gettori/tickets", "milestone": "Phase 1: Mac and Android" }]
+        }))
+        .unwrap();
+        params.apply(&store, "/p".into()).unwrap();
+        for repo in ["", "gettori", "a/b/c", "a /b"] {
+            let bad: ProjectSetParams = serde_json::from_value(json!({ "issues": [{ "repo": repo }] })).unwrap();
+            assert!(bad.apply(&store, "/p".into()).is_err(), "{repo:?}");
+        }
+        let issues = &store.state(|_| Observed::default()).projects["/p"].issues;
+        assert_eq!(
+            (
+                issues[0].repo.as_str(),
+                issues[0].milestone.as_deref(),
+                issues[0].assignee.as_deref()
+            ),
+            ("gettori/tickets", Some("Phase 1: Mac and Android"), None)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // Params built from each row's own schema, so a row added later is covered

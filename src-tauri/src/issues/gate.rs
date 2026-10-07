@@ -7,7 +7,6 @@
 //! goes out for that account until the deadline the host named.
 
 use super::IssueRef;
-use crate::forge::model::RepoRef;
 use crate::forge::status::{SingleFlight, FRESH_FOR};
 use crate::forge::{now_secs, ForgeError, RateLimitKind};
 use std::collections::HashMap;
@@ -71,16 +70,18 @@ impl Gate {
         out
     }
 
-    /// The assigned list, from the cache when it is fresh, else one request
-    /// however many callers ask at once. A failure caches nothing.
+    /// A list, from the cache when it is fresh, else one request however many
+    /// callers ask at once. `scope` is what was asked, the repo for the
+    /// assigned list or a query's search, so two queries never share an answer.
+    /// A failure caches nothing.
     pub fn assigned(
         &self,
         account: &str,
-        repo: &RepoRef,
+        scope: &str,
         refresh: bool,
         fetch: impl FnOnce() -> Result<Vec<IssueRef>, ForgeError>,
     ) -> Result<Vec<IssueRef>, ForgeError> {
-        let key = format!("{account}\n{}/{}", repo.owner, repo.repo);
+        let key = format!("{account}\n{scope}");
         if !refresh {
             let fresh = self.fresh.lock().unwrap_or_else(|e| e.into_inner());
             if let Some((at, list)) = fresh.get(&key) {
@@ -110,11 +111,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Barrier};
 
-    fn repo() -> RepoRef {
-        RepoRef {
-            owner: "gettori".into(),
-            repo: "tori".into(),
-        }
+    fn repo() -> &'static str {
+        "gettori/tori"
     }
 
     fn limited(reset_at: u64) -> ForgeError {
@@ -166,8 +164,8 @@ mod tests {
     #[test]
     fn a_failed_list_is_not_cached() {
         let gate = Gate::default();
-        let _ = gate.assigned("a1", &repo(), false, || Err(ForgeError::NotFound));
-        let got = gate.assigned("a1", &repo(), false, || Ok(vec![])).unwrap();
+        let _ = gate.assigned("a1", repo(), false, || Err(ForgeError::NotFound));
+        let got = gate.assigned("a1", repo(), false, || Ok(vec![])).unwrap();
         assert!(got.is_empty());
     }
 
@@ -181,9 +179,9 @@ mod tests {
             url: "u".into(),
             kind: IssueKind::Issue,
         };
-        gate.assigned("a1", &repo(), false, || Ok(vec![item.clone()])).unwrap();
+        gate.assigned("a1", repo(), false, || Ok(vec![item.clone()])).unwrap();
         let again = gate
-            .assigned("a1", &repo(), false, || panic!("should come from the cache"))
+            .assigned("a1", repo(), false, || panic!("should come from the cache"))
             .unwrap();
         assert_eq!(again, vec![item]);
     }
@@ -196,7 +194,7 @@ mod tests {
         let lead = {
             let (gate, sent, start) = (gate.clone(), sent.clone(), start.clone());
             std::thread::spawn(move || {
-                gate.assigned("a1", &repo(), true, || {
+                gate.assigned("a1", repo(), true, || {
                     start.wait();
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     sent.fetch_add(1, Ordering::SeqCst);
@@ -205,12 +203,31 @@ mod tests {
             })
         };
         start.wait();
-        let follow = gate.assigned("a1", &repo(), true, || {
+        let follow = gate.assigned("a1", repo(), true, || {
             sent.fetch_add(1, Ordering::SeqCst);
             Ok(vec![])
         });
         assert!(lead.join().unwrap().is_ok());
         assert!(follow.is_ok());
         assert_eq!(sent.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn two_queries_on_one_repo_each_get_their_own_list() {
+        let gate = Gate::default();
+        let row = |key: &str| IssueRef {
+            key: key.into(),
+            display: format!("#{key}"),
+            title: "t".into(),
+            url: "u".into(),
+            kind: IssueKind::Issue,
+        };
+        let tori = "repo:gettori/tickets is:open is:issue label:\"tori\"";
+        let docs = "repo:gettori/tickets is:open is:issue label:\"docs\"";
+        gate.assigned("a1", tori, false, || Ok(vec![row("1")])).unwrap();
+        let got = gate.assigned("a1", docs, false, || Ok(vec![row("2")])).unwrap();
+        assert_eq!(got, vec![row("2")]);
+        let again = gate.assigned("a1", tori, false, || panic!("cached")).unwrap();
+        assert_eq!(again, vec![row("1")]);
     }
 }

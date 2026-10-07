@@ -782,6 +782,7 @@ mod tests {
                 repo: "o/r".into(),
             },
             project: "/p".into(),
+            origin: "o/r".into(),
         };
         let made = store
             .update(
@@ -811,6 +812,7 @@ mod tests {
                 project: "/p".into(),
             },
             project: "/p".into(),
+            origin: "o/r".into(),
         };
         let url = "https://github.com/o/r/pull/9";
         let shipped = store
@@ -829,6 +831,7 @@ mod tests {
                 repo: "O/R".into(),
             },
             project: "/p".into(),
+            origin: "o/r".into(),
         };
         let reviewed = store.update(review, Patch::default()).unwrap();
         let watcher = watcher(Arc::new(SessionStates::default()), store);
