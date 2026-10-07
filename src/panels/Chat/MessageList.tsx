@@ -18,7 +18,7 @@ import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, ty
 import { attachmentKind } from "../../utils/chatCompose";
 import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget } from "../../utils/chatTypes";
 import { openPrByNumber } from "../../utils/openPrTab";
-import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
+import { emitWith, NAVIGATE, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
@@ -48,6 +48,26 @@ function blockText(blocks: readonly ContentBlock[]): string {
 }
 
 type PromptRef = { path: string } | { target: RefTarget };
+
+function refTitle(t: RefTarget): string {
+  switch (t.kind) {
+    case "pr":
+      return `${t.title} (${t.state})`;
+    case "session":
+      return `${t.title} (${t.agent})`;
+    case "project":
+      return `${t.folder} (${t.space})`;
+    case "space":
+      return t.projects.map((p) => p.name).join(", ");
+  }
+}
+
+function openRef(t: RefTarget, cwd: string) {
+  if (t.kind === "pr") void openPrByNumber(cwd, t.number);
+  else if (t.kind === "session") emitWith<SessionAction>(SESSION_ACTION, { sessionId: t.id, action: "open" });
+  else if (t.kind === "project") emitWith<NavTarget>(NAVIGATE, { project: t.folder });
+  else emitWith<NavTarget>(NAVIGATE, { space: t.name });
+}
 
 /** What this turn attached or referenced, by the token naming each. */
 function promptRefs(blocks: readonly ContentBlock[]): Map<string, PromptRef> {
@@ -95,16 +115,7 @@ function PromptText(props: { blocks: readonly ContentBlock[]; cwd: string }) {
             }
             const t = r.target;
             return (
-              <button
-                type="button"
-                class={styles.promptChip}
-                title={t.kind === "pr" ? `${t.title} (${t.state})` : `${t.title} (${t.agent})`}
-                onClick={() =>
-                  t.kind === "pr"
-                    ? void openPrByNumber(props.cwd, t.number)
-                    : emitWith<SessionAction>(SESSION_ACTION, { sessionId: t.id, action: "open" })
-                }
-              >
+              <button type="button" class={styles.promptChip} title={refTitle(t)} onClick={() => openRef(t, props.cwd)}>
                 {part()}
               </button>
             );

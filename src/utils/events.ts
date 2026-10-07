@@ -96,10 +96,12 @@ export const ZOOM_IN = "tori:zoom-in";
 export const TOGGLE_AUTOPILOT_VIEW = "tori:toggle-autopilot-view";
 export const TOGGLE_AUTOPILOT_POPUP = "tori:toggle-autopilot-popup";
 // Take the user somewhere in Tori: a branch-unit folder, a session's tab, or
-// both. The sidebar answers, since selection is its; the cockpit steps aside.
+// both, or a project or space to show. The sidebar answers, since selection is
+// its; the cockpit steps aside.
 export const NAVIGATE = "tori:navigate";
-/** Mirrors `NavTarget` in src-tauri/src/autopilot.rs; at least one is set. */
-export type NavTarget = { folder?: string; session?: string };
+/** `folder` and `session` mirror `NavTarget` in src-tauri/src/autopilot.rs;
+ *  at least one field is set. */
+export type NavTarget = { folder?: string; session?: string; project?: string; space?: string };
 export const ZOOM_OUT = "tori:zoom-out";
 export const ZOOM_RESET = "tori:zoom-reset";
 

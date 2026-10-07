@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack, type JSX } from "solid-js";
 import { ArrowUp, Check, CornerDownRight, GripVertical, Pencil, Plus, Square, SquarePen, X } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
@@ -12,7 +12,7 @@ import {
   type AttachmentSource,
   type PendingBlock,
 } from "../../utils/chatCompose";
-import type { UploadFile } from "./composerAttachments";
+import type { ComposerAttachments, UploadFile } from "./composerAttachments";
 import type { StashEntry } from "./promptStash";
 import { ago } from "../../utils/relativeTime";
 import FileIcon from "../../seti/FileIcon";
@@ -42,8 +42,46 @@ import type { PullRequest } from "../../utils/forgeTypes";
 import { prHits, prLabel } from "../../utils/prMention";
 import type { SessionMeta } from "../../utils/sessionStore";
 import { sessionTitle } from "../../utils/sessionMention";
+import { navLevel, type NavProject, type NavSpace, type NavUnit } from "../../utils/mentionNavigator";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+
+type NavRow =
+  | { kind: "space"; key: string; space: NavSpace }
+  | { kind: "project"; key: string; space: NavSpace; project: NavProject }
+  | { kind: "unit"; key: string; unit: NavUnit }
+  | { kind: "session"; session: SessionMeta; project: NavProject }
+  | { kind: "file"; path: string; folder: string };
+
+function navName(row: NavRow): string {
+  switch (row.kind) {
+    case "space":
+      return row.space.name;
+    case "project":
+      return row.project.name;
+    case "unit":
+      return row.unit.label;
+    case "session":
+      return sessionTitle(row.session);
+    case "file":
+      return row.path;
+  }
+}
+
+function navDesc(row: NavRow): string | null {
+  switch (row.kind) {
+    case "space":
+      return `Space, ${row.space.projects.length} projects`;
+    case "project":
+      return "Project";
+    case "unit":
+      return row.unit.branch ? `Checkout, ${row.unit.branch}` : "Checkout";
+    case "session":
+      return `Session, ${row.session.agent ?? "claude"}`;
+    case "file":
+      return null;
+  }
+}
 
 // Sessions above files in a bare `@`, few enough that files stay in view;
 // `@session/` lists the rest.
@@ -207,7 +245,21 @@ export default function Composer(props: {
   sessions?: readonly SessionMeta[];
   loadSessions?: () => void;
   /** A picked session. Answers the token its chip is named by. */
-  onAttachSession?: (s: SessionMeta) => string | null;
+  onAttachSession?: (s: SessionMeta, project?: string) => string | null;
+  /** The `@spaces/` and `@projects/` navigator, which offers nothing while
+   *  its `spaces` is undefined. */
+  navigator?: Pick<
+    ComposerAttachments,
+    | "spaces"
+    | "here"
+    | "sessionsOf"
+    | "filesOf"
+    | "loadSessionsOf"
+    | "loadFilesOf"
+    | "onAttachProject"
+    | "onAttachSpace"
+    | "onAttachSession"
+  >;
   onSend: (text: string) => void;
   onQueue?: (text: string) => void;
   onInterrupt: () => void;
@@ -387,13 +439,59 @@ export default function Composer(props: {
   });
   const sessionHits = createMemo(() => {
     const m = scoped();
-    if (!m || m.scope === "file" || !props.sessions || !props.onAttachSession) return [];
+    if (!m || (m.scope !== "all" && m.scope !== "session") || !props.sessions || !props.onAttachSession) return [];
     const hits = rank(props.sessions, m.query, (s) => sessionTitle(s));
     return m.scope === "all" ? hits.slice(0, MIXED_SESSIONS) : hits;
   });
   const fileHits = createMemo(() => {
     const m = scoped();
-    return m && m.scope !== "session" ? rank(files(), m.query, (f) => f) : [];
+    return m && (m.scope === "all" || m.scope === "file") ? rank(files(), m.query, (f) => f) : [];
+  });
+  const navAt = createMemo(() => {
+    const m = scoped();
+    const spaces = props.navigator?.spaces();
+    if (!m || (m.scope !== "spaces" && m.scope !== "projects") || !spaces) return null;
+    return navLevel(m.scope, m.query, spaces, props.navigator!.here());
+  });
+  createEffect(() => {
+    const at = navAt();
+    const nav = props.navigator;
+    if (!nav) return;
+    untrack(() => {
+      if (at?.level === "project") nav.loadSessionsOf(at.project.path);
+      else if (at?.level === "files") nav.loadFilesOf(at.unit.folderPath);
+    });
+  });
+  const navHits = createMemo((): NavRow[] => {
+    const at = navAt();
+    const nav = props.navigator;
+    if (!at || !nav) return [];
+    switch (at.level) {
+      case "spaces":
+        return rank(at.spaces, at.query, (k) => k.key).map((k) => ({ kind: "space", key: k.key, space: k.item }));
+      case "projects":
+        return rank(at.projects, at.query, (k) => k.key).map((k) => ({
+          kind: "project",
+          key: k.key,
+          space: at.space,
+          project: k.item,
+        }));
+      case "project":
+        return [
+          ...rank(at.units, at.query, (k) => k.key).map((k): NavRow => ({ kind: "unit", key: k.key, unit: k.item })),
+          ...rank(nav.sessionsOf(at.project.path), at.query, (s) => sessionTitle(s)).map((s): NavRow => ({
+            kind: "session",
+            session: s,
+            project: at.project,
+          })),
+        ];
+      case "files":
+        return rank(nav.filesOf(at.unit.folderPath), at.query, (f) => f).map((f) => ({
+          kind: "file",
+          path: f,
+          folder: at.unit.folderPath,
+        }));
+    }
   });
   const commandHits = createMemo(() => {
     const t = token();
@@ -403,7 +501,8 @@ export default function Composer(props: {
     const t = token();
     return t?.kind === "pr" && props.onAttachPr ? prHits(props.prs ?? [], t.query) : [];
   });
-  const menuLength = () => sessionHits().length + fileHits().length + commandHits().length + prMenu().length;
+  const menuLength = () =>
+    sessionHits().length + fileHits().length + navHits().length + commandHits().length + prMenu().length;
   const resolveActive = () => prMenu()[menuIndex()]?.kind === "resolve";
   const [stashOpen, setStashOpen] = createSignal(false);
   const [stashIndex, setStashIndex] = createSignal(0);
@@ -459,9 +558,37 @@ export default function Composer(props: {
     fit();
   }
 
+  function drill(t: CompletionToken, key: string) {
+    const seg = t.query.slice(t.query.lastIndexOf("/") + 1);
+    const { text: next, caret } = replaceToken(text(), { ...t, start: t.end - seg.length }, `${key}/`);
+    setInputText(next, caret);
+    syncToken();
+  }
+
+  function acceptNav(t: CompletionToken, row: NavRow) {
+    const nav = props.navigator!;
+    if (row.kind === "unit") {
+      drill(t, row.key);
+      return;
+    }
+    let label: string | null;
+    if (row.kind === "space") label = nav.onAttachSpace(row.space);
+    else if (row.kind === "project") label = nav.onAttachProject(row.space, row.project);
+    else if (row.kind === "session") label = nav.onAttachSession(row.session, row.project.path);
+    else label = props.onAttachPaths([`${row.folder}/${row.path}`])[0] ?? null;
+    const { text: next, caret } = label ? replaceToken(text(), t, label) : dropToken(text(), t);
+    setInputText(next, caret);
+    closeMenu();
+  }
+
   function accept() {
     const t = token();
     if (!t) return;
+    const row = navHits()[menuIndex()];
+    if (t.kind === "file" && row) {
+      acceptNav(t, row);
+      return;
+    }
     if (t.kind === "file" && menuIndex() < sessionHits().length) {
       const label = props.onAttachSession?.(sessionHits()[menuIndex()]);
       if (label) {
@@ -812,6 +939,14 @@ export default function Composer(props: {
         setMenuIndex((i) => moveIndex(i, e.key === "ArrowDown" ? 1 : -1, menuLength()));
         return;
       }
+      // `/` on a navigator node opens it; on a session, which has nothing
+      // under it, it does nothing. In a file list it is part of the path.
+      const row = navHits()[menuIndex()];
+      if (e.key === "/" && row && row.kind !== "file") {
+        e.preventDefault();
+        if (row.kind !== "session") drill(token()!, row.key);
+        return;
+      }
       if (e.key === "Enter" && resolveActive()) {
         closeMenu();
       } else if (e.key === "Enter" || e.key === "Tab") {
@@ -1074,6 +1209,26 @@ export default function Composer(props: {
                 </button>
               );
             }}
+          </For>
+          <For each={navHits()}>
+            {(row, i) => (
+              <button
+                type="button"
+                class={styles.completion}
+                classList={{ [styles.completionActive]: i() === menuIndex() }}
+                role="option"
+                aria-selected={i() === menuIndex()}
+                onMouseEnter={() => setMenuIndex(i())}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={accept}
+              >
+                <span class={styles.completionName}>{navName(row)}</span>
+                <Show when={"key" in row && row.key}>
+                  {(key) => <span class={styles.completionHint}>{key()}/</span>}
+                </Show>
+                <Show when={navDesc(row)}>{(desc) => <span class={styles.completionDesc}>{desc()}</span>}</Show>
+              </button>
+            )}
           </For>
           <For each={prMenu()}>
             {(hit, i) => (

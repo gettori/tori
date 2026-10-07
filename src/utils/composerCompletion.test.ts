@@ -124,6 +124,8 @@ describe("mentionScope", () => {
   it("narrows to one group on a leading keyword and keeps the rest as the query", () => {
     expect(mentionScope("file/src/a")).toEqual({ scope: "file", query: "src/a" });
     expect(mentionScope("session/login")).toEqual({ scope: "session", query: "login" });
+    expect(mentionScope("spaces/work/tori")).toEqual({ scope: "spaces", query: "work/tori" });
+    expect(mentionScope("projects/")).toEqual({ scope: "projects", query: "" });
   });
 
   it("leaves anything else to both groups", () => {

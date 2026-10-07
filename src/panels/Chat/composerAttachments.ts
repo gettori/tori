@@ -20,13 +20,15 @@ import {
   pendingFor,
   type ComposerKey,
 } from "../../utils/chatCompose";
-import type { ChatCapabilities } from "../../utils/chatTypes";
+import type { ChatCapabilities, ContentBlock } from "../../utils/chatTypes";
 import type { PullRequest } from "../../utils/forgeTypes";
 import { ensurePrList, prListEntry } from "../../utils/prListStore";
 import { prLabel, prRef } from "../../utils/prMention";
 import { createSignal } from "solid-js";
 import type { SessionMeta } from "../../utils/sessionStore";
-import { sessionLabel, sessionRef, sessionTitle } from "../../utils/sessionMention";
+import { refLabel, refName, sessionRef, sessionTitle } from "../../utils/sessionMention";
+import { projectRef, spaceRef, type NavProject, type NavSpace } from "../../utils/mentionNavigator";
+import { samePath } from "../LeftSidebar/attempts";
 
 /** A pasted or dropped file, as the composer read it. */
 export type UploadFile = { name: string; bytes: Uint8Array };
@@ -52,8 +54,21 @@ export type ComposerAttachments = {
    *  `tori` MCP server, which has no tool to read one through. */
   sessions: () => readonly SessionMeta[] | undefined;
   loadSessions: () => void;
-  /** Answers the token the session's chip is named by. */
-  onAttachSession: (s: SessionMeta) => string;
+  /** Answers the token the session's chip is named by. `project` is the
+   *  folder of the project it was picked under, the chat's own by default. */
+  onAttachSession: (s: SessionMeta, project?: string) => string;
+  /** Every space for `@spaces/` and `@projects/`, undefined like `sessions`,
+   *  and the one the chat's project sits in. */
+  spaces: () => readonly NavSpace[] | undefined;
+  here: () => NavSpace | null;
+  /** A project's sessions across its every checkout, and a checkout's files,
+   *  read on the first ask for each and empty until then. */
+  sessionsOf: (projectPath: string) => readonly SessionMeta[];
+  filesOf: (folder: string) => readonly string[];
+  loadSessionsOf: (projectPath: string) => void;
+  loadFilesOf: (folder: string) => void;
+  onAttachProject: (space: NavSpace, project: NavProject) => string;
+  onAttachSpace: (space: NavSpace) => string;
 };
 
 /** The filename rides in a header because the body is the file itself. */
@@ -84,7 +99,37 @@ export function composerAttachments(
   self: () => string | null = () => null,
 ): ComposerAttachments {
   const [listed, setListed] = createSignal<SessionMeta[]>([]);
-  let project: string | null = null;
+  const [project, setProject] = createSignal<string | null>(null);
+  const [spaces, setSpaces] = createSignal<NavSpace[]>([]);
+  const [sessionsBy, setSessionsBy] = createSignal<Record<string, SessionMeta[]>>({});
+  const [filesBy, setFilesBy] = createSignal<Record<string, string[]>>({});
+
+  // Labels the pending refs already hold, each against what it names, so a
+  // second pick of one target reuses its token and two targets never share one.
+  function taken(): Map<string, string> {
+    const by = new Map<string, string>();
+    for (const p of pendingFor(key())) {
+      if (p.block.type !== "ref") continue;
+      const t = p.block.target;
+      const id =
+        t.kind === "pr" ? String(t.number) : t.kind === "session" ? t.id : t.kind === "project" ? t.folder : t.name;
+      by.set(p.block.label, `${t.kind}:${id}`);
+    }
+    return by;
+  }
+
+  function attachRef(
+    kind: "Session" | "Project" | "Space",
+    name: string,
+    id: string,
+    block: (label: string) => ContentBlock,
+  ) {
+    const held = taken();
+    const owner = `${kind.toLowerCase()}:${id}`;
+    const label = refLabel(kind, refName(name), held, owner);
+    if (held.get(label) !== owner) offerToComposer(key(), [block(label)]);
+    return label;
+  }
 
   // A path the agent already has. Labelled by kind so the prose can name it,
   // and refused by kind when this agent's Read would not open it.
@@ -115,22 +160,40 @@ export function composerAttachments(
     },
     sessions: () => (toriMcp() ? listed().filter((s) => s.id !== self()) : undefined),
     // The repo's whole tree, every worktree included, which a plain listing of
-    // the cwd would hide.
+    // the cwd would hide. A new `@` reads it afresh and drops what the
+    // navigator read under the last one.
     loadSessions: () =>
       void (async () => {
+        setSessionsBy({});
+        setFilesBy({});
         const folder = cwd();
-        project = (await invoke<string | null>("project_of_folder", { folder }).catch(() => null)) ?? folder;
-        setListed(await invoke<SessionMeta[]>("list_sessions", { folder: project, inclusive: true }).catch(() => []));
+        const root = (await invoke<string | null>("project_of_folder", { folder }).catch(() => null)) ?? folder;
+        setProject(root);
+        setListed(await invoke<SessionMeta[]>("list_sessions", { folder: root, inclusive: true }).catch(() => []));
+        if (toriMcp()) setSpaces((await invoke<{ spaces: NavSpace[] }>("get_config").catch(() => null))?.spaces ?? []);
       })(),
-    onAttachSession: (s) => {
-      const taken = new Map<string, string>();
-      for (const p of pendingFor(key())) {
-        if (p.block.type === "ref" && p.block.target.kind === "session") taken.set(p.block.label, p.block.target.id);
-      }
-      const label = sessionLabel(sessionTitle(s), taken, s.id);
-      if (taken.get(label) !== s.id) offerToComposer(key(), [sessionRef(s, label, project ?? s.cwd)]);
-      return label;
+    onAttachSession: (s, at) =>
+      attachRef("Session", sessionTitle(s), s.id, (label) => sessionRef(s, label, at ?? project() ?? s.cwd)),
+    spaces: () => (toriMcp() ? spaces() : undefined),
+    here: () => spaces().find((g) => g.projects.some((p) => samePath(p.path, project() ?? ""))) ?? null,
+    sessionsOf: (path) => (sessionsBy()[path] ?? []).filter((s) => s.id !== self()),
+    filesOf: (folder) => filesBy()[folder] ?? [],
+    loadSessionsOf: (path) => {
+      if (path in sessionsBy()) return;
+      setSessionsBy((m) => ({ ...m, [path]: [] }));
+      void invoke<SessionMeta[]>("list_sessions", { folder: path, inclusive: true })
+        .catch(() => [])
+        .then((list) => setSessionsBy((m) => ({ ...m, [path]: list })));
     },
+    loadFilesOf: (folder) => {
+      if (folder in filesBy()) return;
+      setFilesBy((m) => ({ ...m, [folder]: [] }));
+      void invoke<string[]>("list_project_files", { projectPath: folder })
+        .catch(() => [])
+        .then((list) => setFilesBy((m) => ({ ...m, [folder]: list })));
+    },
+    onAttachProject: (space, p) => attachRef("Project", p.name, p.path, (label) => projectRef(space, p, label)),
+    onAttachSpace: (space) => attachRef("Space", space.name, space.name, (label) => spaceRef(space, label)),
     resolvePr: (number) => invoke<PullRequest>("forge_get_pr", { projectPath: cwd(), number }).catch(() => null),
     // The project's file index, for `@` completion. Fetched on demand rather
     // than on mount: it is a full walk of the tree, and a chat that never

@@ -2536,6 +2536,7 @@ export default function ChatView(props: {
           sessions={attachments.sessions()}
           loadSessions={attachments.loadSessions}
           onAttachSession={attachments.onAttachSession}
+          navigator={attachments}
           parked={state.queueParked}
           restored={state.queueRestored}
           disabled={refused() || state.ended}

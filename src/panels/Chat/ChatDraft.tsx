@@ -312,6 +312,7 @@ export default function ChatDraft(props: {
         sessions={attachments.sessions()}
         loadSessions={attachments.loadSessions}
         onAttachSession={attachments.onAttachSession}
+        navigator={attachments}
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}

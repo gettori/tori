@@ -363,7 +363,9 @@ export type RefTarget =
       head: string;
       base: string;
     }
-  | { kind: "session"; id: string; title: string; agent: string; project: string };
+  | { kind: "session"; id: string; title: string; agent: string; project: string }
+  | { kind: "project"; name: string; folder: string; space: string }
+  | { kind: "space"; name: string; projects: { name: string; folder: string }[] };
 
 // ---------------------------------------------------------------------------
 // Events

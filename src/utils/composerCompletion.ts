@@ -62,13 +62,14 @@ export function activeToken(text: string, caret: number): CompletionToken | null
   return candidates.sort((a, b) => b.start - a.start)[0] ?? null;
 }
 
-export type MentionScope = "all" | "file" | "session";
+export type MentionScope = "all" | "file" | "session" | "spaces" | "projects";
 
-/** Which group an `@` query asks for. `file/` and `session/` as the first
- *  segment narrow it to one group and win over a folder of that name, which
- *  stays reachable as `@file/file/...` or by fuzzy match. */
+/** Which group an `@` query asks for. A keyword as the first segment narrows
+ *  it to one group and wins over a folder of that name, which stays reachable
+ *  as `@file/file/...` or by fuzzy match. `spaces/` and `projects/` start the
+ *  navigator, and the rest of the query is its path. */
 export function mentionScope(query: string): { scope: MentionScope; query: string } {
-  for (const scope of ["file", "session"] as const) {
+  for (const scope of ["file", "session", "spaces", "projects"] as const) {
     if (query.startsWith(`${scope}/`)) return { scope, query: query.slice(scope.length + 1) };
   }
   return { scope: "all", query };
