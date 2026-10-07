@@ -2527,6 +2527,10 @@ export default function ChatView(props: {
               : cachedCommands(catalogFor(props.agentId, resolvedProfile()))
           }
           loadFiles={attachments.loadProjectFiles}
+          prs={attachments.prs()}
+          loadPrs={attachments.loadPrs}
+          onAttachPr={attachments.onAttachPr}
+          resolvePr={attachments.resolvePr}
           parked={state.queueParked}
           restored={state.queueRestored}
           disabled={refused() || state.ended}

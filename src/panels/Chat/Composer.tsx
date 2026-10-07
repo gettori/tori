@@ -37,6 +37,8 @@ import { insideFence } from "../../utils/composerFence";
 import { createDragReorder, moveKey } from "../../utils/dragReorder";
 import { fmtTokens } from "../../utils/chatUsage";
 import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
+import type { PullRequest } from "../../utils/forgeTypes";
+import { prHits, prLabel } from "../../utils/prMention";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
@@ -186,6 +188,14 @@ export default function Composer(props: {
   /** The project's file list, fetched on the first `@` and cached here: a chat
    *  that never mentions a file should not pay for the walk. */
   loadFiles: () => Promise<string[]>;
+  /** The project's open pull requests, for `#`, read on the first `#`.
+   *  Absent, `#` offers nothing. */
+  prs?: readonly PullRequest[];
+  loadPrs?: () => void;
+  /** A picked pull request. Answers the token its chip is named by. */
+  onAttachPr?: (pr: PullRequest) => string | null;
+  /** One pull request by number, for one the open list does not hold. */
+  resolvePr?: (number: number) => Promise<PullRequest | null>;
   onSend: (text: string) => void;
   onQueue?: (text: string) => void;
   onInterrupt: () => void;
@@ -283,6 +293,7 @@ export default function Composer(props: {
   let picker: HTMLInputElement | undefined;
   let input: HTMLTextAreaElement | undefined;
   let filesRequested = false;
+  let prsRequested = false;
 
   // A turn of nothing but a file reference is a real thing to send ("look at
   // this"), so an attachment is enough on its own.
@@ -363,7 +374,12 @@ export default function Composer(props: {
     const t = token();
     return t?.kind === "command" ? rank(props.commands, t.query, (c) => c.name) : [];
   });
-  const menuLength = () => fileHits().length + commandHits().length;
+  const prMenu = createMemo(() => {
+    const t = token();
+    return t?.kind === "pr" && props.onAttachPr ? prHits(props.prs ?? [], t.query) : [];
+  });
+  const menuLength = () => fileHits().length + commandHits().length + prMenu().length;
+  const resolveActive = () => prMenu()[menuIndex()]?.kind === "resolve";
   const [stashOpen, setStashOpen] = createSignal(false);
   const [stashIndex, setStashIndex] = createSignal(0);
   const stashRows = createMemo(() => [...(props.stash ?? [])].reverse());
@@ -396,6 +412,10 @@ export default function Composer(props: {
         .then(setFiles)
         .catch(() => setFiles([]));
     }
+    if (next?.kind === "pr" && !prsRequested) {
+      prsRequested = true;
+      props.loadPrs?.();
+    }
   }
 
   function setInputText(next: string, caret: number) {
@@ -422,6 +442,18 @@ export default function Composer(props: {
       const label = props.onAttachFile(hit);
       const { text: next, caret } = label ? replaceToken(text(), t, label) : dropToken(text(), t);
       setInputText(next, caret);
+    } else if (t.kind === "pr") {
+      const hit = prMenu()[menuIndex()];
+      if (!hit) return;
+      if (hit.kind === "resolve") {
+        void resolveInto(t, hit.number);
+        return;
+      }
+      const label = props.onAttachPr?.(hit.pr);
+      if (label) {
+        const { text: next, caret } = replaceToken(text(), t, label);
+        setInputText(next, caret);
+      }
     } else {
       const hit = commandHits()[menuIndex()];
       if (!hit) return;
@@ -431,6 +463,22 @@ export default function Composer(props: {
       setInputText(next, caret);
     }
     closeMenu();
+  }
+
+  async function resolveInto(t: CompletionToken, number: number) {
+    closeMenu();
+    const typed = text().slice(t.start, t.end);
+    const pr = await (props.resolvePr?.(number) ?? Promise.resolve(null)).catch(() => null);
+    if (!pr) {
+      props.onAttachRejected(`No pull request ${number} in this repository.`);
+      return;
+    }
+    const label = props.onAttachPr?.(pr);
+    // Only where the number still stands: the user may have typed on meanwhile.
+    if (label && text().slice(t.start, t.end) === typed) {
+      const { text: next, caret } = replaceToken(text(), t, label);
+      setInputText(next, caret);
+    }
   }
 
   // Drop, paste and the picker all land here, so the limits are applied once
@@ -728,7 +776,9 @@ export default function Composer(props: {
         setMenuIndex((i) => moveIndex(i, e.key === "ArrowDown" ? 1 : -1, menuLength()));
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if (e.key === "Enter" && resolveActive()) {
+        closeMenu();
+      } else if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         accept();
         return;
@@ -966,6 +1016,32 @@ export default function Composer(props: {
                 onClick={accept}
               >
                 <span class={styles.completionName}>{path}</span>
+              </button>
+            )}
+          </For>
+          <For each={prMenu()}>
+            {(hit, i) => (
+              <button
+                type="button"
+                class={styles.completion}
+                classList={{ [styles.completionActive]: i() === menuIndex() }}
+                role="option"
+                aria-selected={i() === menuIndex()}
+                onMouseEnter={() => setMenuIndex(i())}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={accept}
+              >
+                {hit.kind === "pr" ? (
+                  <>
+                    <span class={styles.completionName}>{prLabel(hit.pr.number)}</span>
+                    <span class={styles.completionDesc}>{hit.pr.title}</span>
+                  </>
+                ) : (
+                  <>
+                    <span class={styles.completionName}>{prLabel(hit.number)}</span>
+                    <span class={styles.completionDesc}>Tab to look it up, Enter sends as typed</span>
+                  </>
+                )}
               </button>
             )}
           </For>
