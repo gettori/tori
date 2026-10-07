@@ -8,6 +8,7 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Checkbox from "../../../../components/Checkbox/Checkbox";
 import AddAccountDialog from "../../../../components/Dialogs/AddAccountDialog";
+import RenameAccountDialog from "../../../../components/Dialogs/RenameAccountDialog";
 import Switch from "../../../../components/Switch/Switch";
 import Tooltip from "../../../../components/Tooltip/Tooltip";
 import { homeDir } from "@tauri-apps/api/path";
@@ -99,6 +100,7 @@ export type ProfileStatus = {
   account: string | null;
   apiKeySource: string | null;
   duplicateOf: string | null;
+  command: string | null;
 };
 
 /** What the card is asked to confirm. `removable` adds the "remove it too"
@@ -133,6 +135,9 @@ export type AccountsView = {
   /** Where the default account really runs when Tori's own environment set the
    *  adapter's home variable. Null is the normal case. */
   inheritedHome: string | null;
+  program: string;
+  commandDir: string;
+  commandDirOnPath: boolean;
   profiles: ProfileStatus[];
 };
 
@@ -454,19 +459,19 @@ function AccountCard(props: {
     props.onChanged();
   };
 
-  const [editing, setEditing] = createSignal(false);
-  let abandoned = false;
+  const [renaming, setRenaming] = createSignal(false);
 
-  const rename = async (value: string) => {
-    setEditing(false);
+  const rename = async (value: string, renameCommand: boolean) => {
+    setRenaming(false);
     const label = value.trim();
-    if (abandoned || !label || label === p().label) return;
+    if (!label || (label === p().label && !renameCommand)) return;
     setBusy(true);
     try {
       await invoke("rename_agent_account", {
         adapterId: props.agentId,
         profileId: p().id,
         label,
+        renameCommand,
       });
       props.onChanged();
     } catch (e) {
@@ -529,33 +534,17 @@ function AccountCard(props: {
         {/* Green only for the agent's own "yes": unknown is dim, because most
             agents have no way to answer and dim must not read as broken. */}
         <span class={`${styles.dot} ${p().signIn === "signedIn" ? styles.dotOk : styles.dotOff}`} />
-        <Show
-          when={editing()}
-          fallback={
-            <button
-              type="button"
-              class={styles.accountName}
-              onClick={() => {
-                abandoned = false;
-                setEditing(true);
-              }}
-            >
-              {p().label}
-            </button>
-          }
-        >
-          <input
-            class={styles.accountNameEdit}
-            aria-label={`Rename ${p().label}`}
-            value={p().label}
-            ref={(el) => queueMicrotask(() => el.select())}
-            onBlur={(e) => void rename(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              // Escape abandons through the same blur, so the commit above has
-              // to know which of the two ways out it is on.
-              abandoned = e.key === "Escape";
-              if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
-            }}
+        <button type="button" class={styles.accountName} onClick={() => setRenaming(true)}>
+          {p().label}
+        </button>
+        <Show when={renaming()}>
+          <RenameAccountDialog
+            label={p().label}
+            profileId={p().id}
+            program={props.view.program}
+            command={p().isDefault ? null : p().command}
+            onSubmit={(a) => void rename(a.label, a.renameCommand)}
+            onCancel={() => setRenaming(false)}
           />
         </Show>
         {/* Which account new sessions start on, where there is more than one to
@@ -622,6 +611,19 @@ function AccountCard(props: {
               exists to stop exactly that shape. The default account has no path
               to show, because it is the variable left unset. */}
           <div class={styles.acctHome}>{home() ?? "Your existing login"}</div>
+          <Show when={p().command}>
+            {(cmd) => (
+              <div class={styles.acctCommand}>
+                In a terminal: <code>{cmd()}</code>
+              </div>
+            )}
+          </Show>
+          <Show when={!p().isDefault && p().command && !props.view.commandDirOnPath}>
+            <div class={styles.hint}>
+              <code>{shortHome(props.view.commandDir, props.cwd)}</code> is not on your shell's PATH, so the terminal
+              will not find <code>{p().command}</code>. Add it in your shell's startup file.
+            </div>
+          </Show>
           {/* The one case where "the variable left unset" is not this account:
               Tori itself was started with it set, and every child of this row
               inherits it. Said here, because signing out whichever named
@@ -631,6 +633,8 @@ function AccountCard(props: {
               <div class={styles.hint}>
                 Runs in <code>{inherited()}</code>: the home variable was already set when Tori started, so this is that
                 account and not the variable left unset. Start Tori from a shell without it to get your own login back.
+                If your shell exports it too, plain <code>{props.view.program}</code> in a terminal runs this folder as
+                well.
               </div>
             )}
           </Show>

@@ -2998,6 +2998,7 @@ mod tests {
             email: None,
             home: Some(home.to_string_lossy().into_owned()),
             managed: true,
+            command: None,
         }
     }
 

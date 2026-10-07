@@ -83,6 +83,11 @@ pub struct Profile {
     /// Tori created.
     #[serde(default = "managed_by_default")]
     pub managed: bool,
+    /// The shell command that runs the agent as this account, see
+    /// [`crate::account_commands`]. Stored rather than derived from the label,
+    /// so a rename that keeps the command keeps it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 fn managed_by_default() -> bool {
@@ -103,6 +108,7 @@ pub fn default_profile() -> Profile {
         email: None,
         home: None,
         managed: false,
+        command: None,
     }
 }
 
@@ -553,6 +559,15 @@ pub fn load() -> AccountsFile {
         .unwrap_or_default()
 }
 
+static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Held from load to save by every writer of `accounts.json`: the launch-time
+/// command backfill runs beside the Settings commands, and two unlocked writers
+/// would each save a copy missing the other's change.
+pub fn lock_store() -> std::sync::MutexGuard<'static, ()> {
+    STORE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Write `accounts.json` atomically, so a crash mid-write cannot truncate it.
 ///
 /// Truncation matters more here than the file's size suggests: a lenient reader
@@ -599,6 +614,9 @@ pub struct ProfileStatus {
     /// person may genuinely want (a scratch home, a different set of project
     /// settings), so this says what it sees and leaves the decision alone.
     pub duplicate_of: Option<String>,
+    /// The shell command that runs the agent as this account, `None` for an
+    /// adapter with no home variable.
+    pub command: Option<String>,
 }
 
 /// Everything one adapter's accounts card renders.
@@ -619,6 +637,12 @@ pub struct AccountsView {
     /// the adapter's `home_env`; see [`inherited_home`]. `None` is the normal
     /// case, the variable unset.
     pub inherited_home: Option<String>,
+    /// The agent's binary, which every account command is named after.
+    pub program: String,
+    /// Where the account commands live, and whether the login shell can find
+    /// them there.
+    pub command_dir: String,
+    pub command_dir_on_path: bool,
     pub profiles: Vec<ProfileStatus>,
 }
 
@@ -774,6 +798,7 @@ fn status_of(
         account: answer.and_then(|h| h.account.clone()),
         api_key_source: answer.and_then(|h| h.api_key_source.clone()),
         duplicate_of: None,
+        command: crate::account_commands::command_for(adapter, profile, &crate::account_commands::command_dir()),
     }
 }
 
@@ -801,6 +826,9 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
             default_present: true,
             default_home: None,
             inherited_home: None,
+            program: adapter.program.clone(),
+            command_dir: String::new(),
+            command_dir_on_path: true,
             profiles: Vec::new(),
         });
     };
@@ -825,6 +853,12 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
         default_present: default_on_disk,
         default_home: accounts.home_default.as_ref().map(|h| h.to_string_lossy().into_owned()),
         inherited_home,
+        program: adapter.program.clone(),
+        command_dir: crate::account_commands::command_dir().to_string_lossy().into_owned(),
+        command_dir_on_path: crate::account_commands::on_path(
+            &crate::account_commands::command_dir(),
+            crate::env::login_path_if_captured(),
+        ),
         profiles,
     })
 }
@@ -901,6 +935,7 @@ pub async fn add_agent_account(
         return Err("a profile label cannot be empty".into());
     }
 
+    let held = lock_store();
     let mut file = load();
     let id = mint_profile_id(&file, &adapter_id, label);
     let folder = home.as_deref().map(str::trim).filter(|f| !f.is_empty());
@@ -914,6 +949,7 @@ pub async fn add_agent_account(
         email: None,
         home: Some(home.clone()),
         managed,
+        command: None,
     };
     // The directory exists before the store does, because the stored path is
     // the canonical one and canonicalizing needs something to resolve. So if
@@ -925,6 +961,8 @@ pub async fn add_agent_account(
         }
         return Err(e);
     }
+    drop(held);
+    crate::account_commands::sync_quietly();
 
     let pair = spawn_env(&accounts, &profile)?;
     // A login tab over a folder that is already signed in would only ask the
@@ -1080,8 +1118,7 @@ pub async fn remove_agent_account(
         return Err(refusal);
     }
 
-    let mut file = load();
-    let profile = profile(&file, &adapter_id, &profile_id)
+    let profile = profile(&load(), &adapter_id, &profile_id)
         .ok_or_else(|| format!("no profile `{profile_id}` for `{adapter_id}`"))?;
 
     let revoke = profile.managed || sign_out;
@@ -1101,8 +1138,14 @@ pub async fn remove_agent_account(
         RemovalStep::ForgetWithoutSigningOut => {}
     }
 
+    // Read again under the lock: the sign-out above can take seconds, too long
+    // to hold every other writer off for.
+    let held = lock_store();
+    let mut file = load();
     let removed = remove_profile(&mut file, &adapter_id, &profile_id)?;
     save(&file)?;
+    drop(held);
+    crate::account_commands::sync_quietly();
     // The catalogue is this account's answer, so it goes with the account. Left
     // behind, it would be handed to the next profile minted under the same id.
     crate::catalog_probe::forget(&adapter_id, &profile_id);
@@ -1190,13 +1233,25 @@ pub async fn complete_sign_in(adapter_id: String, profile_id: String) -> Result<
     .await
 }
 
-/// Relabel a profile. The label is the only thing the user chose, so it is the
-/// only thing renaming touches.
+/// Relabel a profile, and with `rename_command` move its shell command to the
+/// new name too. Without it the command stays, so scripts using it keep working.
 #[tauri::command]
-pub async fn rename_agent_account(adapter_id: String, profile_id: String, label: String) -> Result<(), String> {
-    let mut file = load();
-    rename_profile(&mut file, &adapter_id, &profile_id, &label)?;
-    save(&file)
+pub async fn rename_agent_account(
+    adapter_id: String,
+    profile_id: String,
+    label: String,
+    rename_command: bool,
+) -> Result<(), String> {
+    if rename_command && profile_id != DEFAULT_PROFILE_ID {
+        crate::account_commands::rename_with_command(&adapter_id, &profile_id, &label)?;
+    } else {
+        let _held = lock_store();
+        let mut file = load();
+        rename_profile(&mut file, &adapter_id, &profile_id, &label)?;
+        save(&file)?;
+    }
+    crate::account_commands::sync_quietly();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1210,6 +1265,7 @@ mod tests {
             email: None,
             home: Some(home.to_string()),
             managed: true,
+            command: None,
         }
     }
 
@@ -1641,6 +1697,7 @@ mod tests {
             account: account.map(str::to_string),
             api_key_source: None,
             duplicate_of: None,
+            command: None,
         }
     }
 

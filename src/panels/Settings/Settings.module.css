@@ -1519,6 +1519,10 @@
     font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
+  .acctCommand {
+    font-size: var(--tori-text-2xs);
+    color: var(--fg-subtle);
+  }
 
   /* One control per line, label left. Not the pane's own .row grid: the chip
      row and the stepper are both wider than its 196px control column, and a
@@ -1743,28 +1747,17 @@
     font-weight: 600;
     color: var(--fg-default);
   }
-  /* The name is the rename control: click it and it becomes the field. */
+  /* The name is the rename control: click it for the rename dialog. */
   button.accountName {
     padding: 0;
     border: 0;
     background: none;
     font-family: inherit;
-    cursor: text;
+    cursor: pointer;
     border-bottom: var(--tori-border-thin) dashed transparent;
   }
   button.accountName:hover {
     border-bottom-color: var(--border-default);
-  }
-  .accountNameEdit {
-    width: 10rem;
-    padding: 0 var(--tori-space-2);
-    font-family: inherit;
-    font-size: var(--tori-text-sm);
-    font-weight: 600;
-    color: var(--fg-default);
-    background: var(--canvas-input);
-    border: var(--tori-border-thin) solid var(--border-strong);
-    border-radius: var(--tori-radius-sm);
   }
   .accountAside {
     font-size: var(--tori-text-xs);
