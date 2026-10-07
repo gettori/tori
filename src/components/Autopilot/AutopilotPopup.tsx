@@ -25,6 +25,7 @@ import type {
   TicketHandlers,
 } from "./autopilot";
 import styles from "./AutopilotPopup.module.css";
+import { shortcut } from "../../utils/hotkeys";
 
 export interface AutopilotPopupProps extends TicketHandlers {
   state: AutopilotState;
@@ -68,7 +69,7 @@ export default function AutopilotPopup(props: AutopilotPopupProps) {
             {props.stateLine}
           </span>
         </div>
-        <kbd class={styles.kbd}>{"\u2318L"}</kbd>
+        <kbd class={styles.kbd}>{shortcut("autopilot-popup")}</kbd>
         <IconButton
           size="md"
           icon={<Icon icon={SquareArrowOutUpRight} />}

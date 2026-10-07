@@ -12,6 +12,7 @@
 
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { Facet, StateEffect, StateField, type EditorState } from "@codemirror/state";
+import { chordLabel } from "../../utils/platform";
 
 /** Styled in `App.css`: it ends up in CodeMirror's own DOM, outside any scoped tree. */
 export const CODE_ACTION_MARKER_CLASS = "cm-code-action";
@@ -37,7 +38,7 @@ class BulbWidget extends WidgetType {
   toDOM(view: EditorView) {
     const el = document.createElement("span");
     el.className = CODE_ACTION_MARKER_CLASS;
-    el.title = "Code actions available (\u2325\u23ce)";
+    el.title = `Code actions available (${chordLabel(["Alt", "\u23ce"])})`;
     el.setAttribute("aria-hidden", "true");
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");

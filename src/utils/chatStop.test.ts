@@ -79,7 +79,7 @@ describe("the stop hotkey", () => {
 
   it("is bound and listed in the shortcut sheet", () => {
     expect(binding()).toBeDefined();
-    expect(binding()!.keys).toEqual(["⌘", "."]);
+    expect(binding()!.keys).toEqual(["Mod", "."]);
     expect(binding()!.group).toBe("session");
   });
 

@@ -10,7 +10,8 @@
 // imports it, `hotkeys.ts` derives its bindings from `commands.ts`, and
 // `TerminalView` imports `hotkeys.ts`, so anything reachable from here lands in
 // the terminal's chunk. The imports below are `import type`, which the bundler
-// erases, and `platform.ts`, which holds only constants; the matching rule that searches this list lives next to the panel, in
+// erases, and `platform.ts`, which imports nothing; the matching rule that
+// searches this list lives next to the panel, in
 // `panels/Settings/utils/settingsSearch.ts`, for the same reason.
 /** A boolean the three-layer resolution answers for (default < user <
  *  workspace), so it can be flipped without opening the panel. Defined beside
@@ -18,7 +19,7 @@
  *  because this is where the catalog names it. */
 export type { EditorToggleKey } from "../panels/Settings/settingsStore";
 import type { EditorDefaults, EditorToggleKey } from "../panels/Settings/settingsStore";
-import { OS_NAME, THIS_MACHINE } from "./platform";
+import { OS_NAME, THIS_MACHINE, chordLabel } from "./platform";
 
 /**
  * A section of the panel, in the order the panel renders them.
@@ -342,7 +343,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "zoom",
     section: "appearance",
     label: "Zoom",
-    hint: "Scales the whole interface, on top of the font sizes below. ⌘= and ⌘- move it a step, ⌘0 resets it.",
+    hint: `Scales the whole interface, on top of the font sizes below. ${chordLabel(["Mod", "="])} and ${chordLabel(["Mod", "-"])} move it a step, ${chordLabel(["Mod", "0"])} resets it.`,
   },
   {
     id: "space-strip",
@@ -408,7 +409,7 @@ export const SETTINGS: SettingEntry[] = [
     section: "editor",
     label: "Vim keybindings",
     toggles: "vimMode",
-    hint: "Modal editing in the code editor, with a status line showing pending commands. Tori's own shortcuts keep working: ⌘S still saves, and the language commands still fire from normal mode.",
+    hint: `Modal editing in the code editor, with a status line showing pending commands. Tori's own shortcuts keep working: ${chordLabel(["Mod", "S"])} still saves, and the language commands still fire from normal mode.`,
   },
 
   // The editing-comfort toggles, in the order they read as a list rather than in
@@ -443,7 +444,7 @@ export const SETTINGS: SettingEntry[] = [
     section: "editing",
     label: "Soft wrap long lines",
     toggles: "softWrap",
-    hint: "The default for every buffer. ⌘K's “Toggle soft wrap” overrides it for one tab.",
+    hint: `The default for every buffer. ${chordLabel(["Mod", "K"])}'s “Toggle soft wrap” overrides it for one tab.`,
   },
   { id: "render-whitespace", section: "editing", label: "Show spaces and tabs", toggles: "renderWhitespace" },
   { id: "scroll-past-end", section: "editing", label: "Scroll past the last line", toggles: "scrollPastEnd" },

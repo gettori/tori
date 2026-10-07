@@ -74,7 +74,7 @@ import {
   PURGE_WORKSPACE,
   type PurgeWorkspace,
 } from "./utils/events";
-import { dispatchWindowHotkey } from "./utils/hotkeys";
+import { dispatchWindowHotkey, shortcut } from "./utils/hotkeys";
 import { registerCloseGuard } from "./utils/closeGuard";
 import { windowDragStart } from "./utils/windowDrag";
 import {
@@ -936,7 +936,7 @@ function App() {
         const running = stoppableChats(liveChats());
         emitWith<ToastEvent>(TOAST, {
           message: running.length
-            ? `${running.length} chats are running. Pick one from the command palette (⌘K) or stop it from its own tab.`
+            ? `${running.length} chats are running. Pick one from the command palette (${shortcut("command-palette")}) or stop it from its own tab.`
             : "Nothing is running.",
           kind: "info",
         });

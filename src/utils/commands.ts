@@ -4,9 +4,10 @@
 // changed, or removed in one surface without the others following, which is the
 // drift that makes a printed shortcut list lie.
 //
-// **This module imports `./events` and `./settingsCatalog`, and nothing else,
-// deliberately.** `hotkeys.ts` derives its bindings from here and `TerminalView`
-// imports `hotkeys.ts`, so any import added here lands in the terminal's chunk.
+// **This module imports `./events`, `./settingsCatalog` and `./platform`, and
+// nothing else, deliberately.** `hotkeys.ts` derives its bindings from here and
+// `TerminalView` imports `hotkeys.ts`, so any import added here lands in the
+// terminal's chunk.
 // That is why every `run` emits an event instead of calling the thing it means,
 // and why enablement travels as a declarative `requires` tag rather than as a
 // read of some store: resolving the tags is the omnibox's job (see
@@ -14,6 +15,7 @@
 // editor and git stores costs nothing. The catalogue is admitted on the same
 // terms: it is a list of labels that imports nothing at runtime, which
 // `commands.test.ts` checks rather than takes on trust.
+import { chordLabel, isMac, mod, modOnly, otherMod } from "./platform";
 import { SECTION_TITLES, SETTINGS } from "./settingsCatalog";
 import {
   emit,
@@ -183,27 +185,35 @@ export type Command = {
   hidden?: boolean;
 };
 
-const cmd = (key: string) => (e: KeyboardEvent) =>
-  e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === key;
+const modKey = (key: string) => (e: KeyboardEvent) =>
+  mod(e) && !e.shiftKey && !otherMod(e) && !e.altKey && e.key.toLowerCase() === key;
 
-const cmdShift = (key: string) => (e: KeyboardEvent) =>
-  e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === key;
+const modShift = (key: string) => (e: KeyboardEvent) =>
+  mod(e) && e.shiftKey && !otherMod(e) && !e.altKey && e.key.toLowerCase() === key;
 
-// Cmd+Option chords match on `e.code` (physical key), never `e.key`: macOS
+// AltGr is Ctrl+Alt to the browser, so off macOS a Mod+Alt chord on a layout
+// that types with AltGr (AltGr+E is the euro sign) must not fire.
+const altGraph = (e: KeyboardEvent) => !isMac && !!e.getModifierState?.("AltGraph");
+
+// Mod+Alt chords match on `e.code` (physical key), never `e.key`: macOS
 // rewrites `e.key` to the Option glyph while Option is held (Opt+J -> "∆"), so a
 // key-based match would silently never fire.
-const cmdOpt = (code: string) => (e: KeyboardEvent) =>
-  e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey && e.code === code;
+const modAlt = (code: string) => (e: KeyboardEvent) =>
+  mod(e) && e.altKey && !e.shiftKey && !otherMod(e) && !altGraph(e) && e.code === code;
 
-// Same reason as `cmdOpt` for matching on `e.code`: Option rewrites `e.key`
+const modAltShift = (code: string) => (e: KeyboardEvent) =>
+  mod(e) && e.altKey && e.shiftKey && !otherMod(e) && !altGraph(e) && e.code === code;
+
+// Same reason as `modAlt` for matching on `e.code`: Option rewrites `e.key`
 // (Shift+Opt+F -> "Ï"). This one is the library's own Shift-Alt-F, mirrored
 // here so the sheet can print it.
-const shiftOpt = (code: string) => (e: KeyboardEvent) =>
+const shiftAlt = (code: string) => (e: KeyboardEvent) =>
   e.shiftKey && e.altKey && !e.metaKey && !e.ctrlKey && e.code === code;
 
-// Ctrl chords, on `e.code` for the same reason the Option ones are: Shift
-// rewrites `e.key` for a punctuation key (Shift+- -> "_"), so the shifted half
-// of a pair would never match its own unshifted spelling.
+// Physical Ctrl chords, macOS only: elsewhere Ctrl is Mod. On `e.code` for the
+// same reason the Option ones are: Shift rewrites `e.key` for a punctuation key
+// (Shift+- -> "_"), so the shifted half of a pair would never match its own
+// unshifted spelling.
 const ctrl = (code: string) => (e: KeyboardEvent) =>
   e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === code;
 
@@ -233,11 +243,11 @@ const RIGHT_MODES: { mode: SetRightMode["mode"]; section?: SetRightMode["section
 export const COMMANDS: Command[] = [
   {
     id: "omnibox",
-    keys: ["⌘", "P"],
+    keys: ["Mod", "P"],
     label: "Go to a file, action, symbol or line",
     group: "navigate",
     scope: "window",
-    match: cmd("p"),
+    match: modKey("p"),
     run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { prefix: "" }),
     // Listing the box inside the box.
     hidden: true,
@@ -248,65 +258,66 @@ export const COMMANDS: Command[] = [
     // differently often, and one of them being a prefix away does not make the
     // other worth a detour through it.
     id: "command-palette",
-    keys: ["⌘", "K"],
+    keys: ["Mod", "K"],
     label: "Run an action",
     group: "navigate",
     scope: "global",
-    match: cmd("k"),
+    match: modKey("k"),
     run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { prefix: ">" }),
     hidden: true,
   },
   {
     id: "nav-back",
-    keys: ["⌃", "−"],
+    // Off macOS Ctrl+- is zoom out.
+    keys: isMac ? ["Ctrl", "−"] : ["Mod", "Alt", "−"],
     label: "Go back to where you were",
     group: "navigate",
     // `window`, not `global`, for the omnibox's reason: these act on the editor's
     // jump list, and a program running in the terminal should keep its own
     // control keys.
     scope: "window",
-    match: ctrl("Minus"),
+    match: isMac ? ctrl("Minus") : modAlt("Minus"),
     run: () => emit(EDITOR_NAV_BACK),
   },
   {
     id: "nav-forward",
-    keys: ["⌃", "⇧", "−"],
+    keys: isMac ? ["Ctrl", "Shift", "−"] : ["Mod", "Alt", "Shift", "−"],
     label: "Go forward again",
     group: "navigate",
     scope: "window",
-    match: ctrlShift("Minus"),
+    match: isMac ? ctrlShift("Minus") : modAltShift("Minus"),
     run: () => emit(EDITOR_NAV_FORWARD),
   },
   {
     id: "reopen-closed-tab",
-    keys: ["⌘", "⇧", "T"],
+    keys: ["Mod", "Shift", "T"],
     label: "Reopen the tab you just closed",
     group: "navigate",
     // `window` for the same reason as its neighbours: this acts on the editor's
     // tab strip, and a terminal has its own claim on Cmd+Shift+T.
     scope: "window",
-    match: cmdShift("t"),
+    match: modShift("t"),
     run: () => emit(EDITOR_REOPEN_CLOSED),
   },
   {
     // `window`, like its neighbours: it acts on the editor's tab strip, and a
     // program in the terminal keeps its own Cmd+Shift+R.
     id: "focus-pr-review",
-    keys: ["⌘", "⇧", "R"],
+    keys: ["Mod", "Shift", "R"],
     label: "Go to the pull request review form",
     group: "git",
     scope: "window",
-    match: cmdShift("r"),
+    match: modShift("r"),
     run: () => emit(FOCUS_PR_REVIEW),
     requires: ["editorTab"],
   },
   {
     id: "filter-sidebar",
-    keys: ["⌘", "⇧", "E"],
+    keys: ["Mod", "Shift", "E"],
     label: "Filter the sidebar",
     group: "navigate",
     scope: "global",
-    match: cmdShift("e"),
+    match: modShift("e"),
     run: () => emit(FOCUS_SEARCH),
   },
   {
@@ -318,123 +329,124 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "shortcut-sheet",
-    keys: ["⌘", "/"],
+    keys: ["Mod", "/"],
     label: "Show this shortcut sheet",
     group: "help",
     scope: "global",
-    match: cmd("/"),
+    match: modKey("/"),
     run: () => emit(TOGGLE_SHORTCUTS),
   },
   {
     id: "autopilot-view",
-    keys: ["⌘", "⇧", "J"],
+    keys: ["Mod", "Shift", "J"],
     label: "Switch between Autopilot and Workspace",
     group: "view",
     scope: "global",
-    match: cmdShift("j"),
+    match: modShift("j"),
     run: () => emit(TOGGLE_AUTOPILOT_VIEW),
   },
   {
     id: "autopilot-popup",
-    keys: ["⌘", "L"],
+    keys: ["Mod", "L"],
     label: "Show or hide the autopilot over Workspace",
     group: "view",
     scope: "window",
-    match: cmd("l"),
+    match: modKey("l"),
     run: () => emit(TOGGLE_AUTOPILOT_POPUP),
   },
   {
     id: "zoom-in",
-    keys: ["⌘", "+"],
+    keys: ["Mod", "+"],
     label: "Increase font size",
     group: "view",
     scope: "global",
     // Accept both ⌘= and ⌘⇧+ (same physical key): e.key is "=" unshifted, "+"
     // shifted, so a user pressing either way zooms in.
-    match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "=" || e.key === "+"),
+    match: (e) => mod(e) && !otherMod(e) && !e.altKey && (e.key === "=" || e.key === "+"),
     run: () => emit(ZOOM_IN),
   },
   {
     id: "zoom-out",
-    keys: ["⌘", "−"],
+    keys: ["Mod", "−"],
     label: "Decrease font size",
     group: "view",
     scope: "global",
-    match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "-" || e.key === "_"),
+    match: (e) => mod(e) && !otherMod(e) && !e.altKey && (e.key === "-" || e.key === "_"),
     run: () => emit(ZOOM_OUT),
   },
   {
     id: "zoom-reset",
-    keys: ["⌘", "0"],
+    keys: ["Mod", "0"],
     label: "Reset font size",
     group: "view",
     scope: "global",
-    match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === "0",
+    match: (e) => modOnly(e) && e.key === "0",
     run: () => emit(ZOOM_RESET),
   },
   {
     id: "reload",
-    keys: ["⌘", "R"],
+    keys: ["Mod", "R"],
     label: "Reload the app (frontend only)",
     group: "view",
     scope: "global",
-    match: cmd("r"),
+    match: modKey("r"),
     run: () => emit(RELOAD_APP),
   },
   {
     id: "toggle-sidebar",
-    keys: ["⌘", "B"],
+    keys: ["Mod", "B"],
     label: "Show or hide the sidebar",
     group: "view",
     scope: "global",
-    match: cmd("b"),
+    match: modKey("b"),
     run: () => emit(TOGGLE_SIDEBAR),
   },
   {
     id: "toggle-terminal",
-    keys: ["⌘", "⌥", "J"],
+    keys: ["Mod", "Alt", "J"],
     label: "Show or hide the terminal",
     group: "view",
     scope: "global",
-    match: cmdOpt("KeyJ"),
+    match: modAlt("KeyJ"),
     run: () => emit(TOGGLE_TERMINAL),
   },
   {
     id: "toggle-dock",
-    // Not ⌘⇧J: the editor joins lines on it.
-    keys: ["⌘", "⌃", "J"],
+    // Not Mod+Shift+J: the editor joins lines on it. Off macOS Mod is Ctrl, so
+    // the macOS Cmd+Ctrl chord has no second key there.
+    keys: isMac ? ["Mod", "Ctrl", "J"] : ["Mod", "Alt", "Shift", "J"],
     label: "Show or hide the dock",
     group: "view",
     scope: "global",
-    match: cmdCtrl("KeyJ"),
+    match: isMac ? cmdCtrl("KeyJ") : modAltShift("KeyJ"),
     run: () => emit(TOGGLE_DOCK),
   },
   {
     id: "toggle-editor",
-    keys: ["⌘", "⌥", "E"],
+    keys: ["Mod", "Alt", "E"],
     label: "Show or hide the editor",
     group: "view",
     scope: "global",
-    match: cmdOpt("KeyE"),
+    match: modAlt("KeyE"),
     run: () => emit(TOGGLE_EDITOR),
   },
   {
     id: "toggle-filetree",
-    keys: ["⌘", "⌥", "B"],
+    keys: ["Mod", "Alt", "B"],
     label: "Show or hide the file tree",
     group: "view",
     scope: "global",
-    match: cmdOpt("KeyB"),
+    match: modAlt("KeyB"),
     run: () => emit(TOGGLE_FILETREE),
   },
   {
     id: "focus-toasts",
-    keys: ["⌘", "⌥", "T"],
+    keys: ["Mod", "Alt", "T"],
     label: "Focus notifications",
     sub: "Tab moves between toasts; Escape dismisses the focused one.",
     group: "view",
     scope: "global",
-    match: cmdOpt("KeyT"),
+    match: modAlt("KeyT"),
     // Kobalte ships its own Alt+T document listener for this; it is disabled in
     // ToastRegion because Option+T types a glyph on macOS and the listener
     // never yields to a defaultPrevented key. This entry is the one handler.
@@ -442,30 +454,32 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "project-search",
-    keys: ["⌘", "⇧", "F"],
+    keys: ["Mod", "Shift", "F"],
     label: "Search across the project",
     group: "search",
     scope: "global",
-    match: cmdShift("f"),
+    match: modShift("f"),
     run: () => emit(FOCUS_PROJECT_SEARCH),
   },
   {
     id: "terminal-search",
-    keys: ["⌘", "F"],
+    // Off macOS Ctrl+F is the shell's, so the terminal takes Ctrl+Shift+F, and
+    // project search is out of reach while a terminal has focus.
+    keys: isMac ? ["Mod", "F"] : ["Mod", "Shift", "F"],
     label: "Search in the focused terminal",
     group: "search",
     scope: "terminal",
-    match: cmd("f"),
+    match: isMac ? modKey("f") : modShift("f"),
     // No `run`: the focused xterm owns it. Nothing for the palette to offer.
     hidden: true,
   },
   {
     id: "focus-terminal",
-    keys: ["⌘", "J"],
+    keys: ["Mod", "J"],
     label: "Focus the terminal",
     group: "terminal",
     scope: "global",
-    match: cmd("j"),
+    match: modKey("j"),
     run: () => emit(FOCUS_TERMINAL),
   },
   {
@@ -477,20 +491,20 @@ export const COMMANDS: Command[] = [
     // of a running program's keys does not apply, since re-running the build is
     // exactly what you want while reading the last one's output.
     id: "rerun-last-task",
-    keys: ["⌘", "⇧", "B"],
+    keys: ["Mod", "Shift", "B"],
     label: "Run the last task again",
     group: "terminal",
     scope: "global",
-    match: cmdShift("b"),
+    match: modShift("b"),
     run: () => emit(RUN_LAST_TASK),
   },
   {
     id: "tab-jump",
-    keys: ["⌘", "1–9"],
+    keys: ["Mod", "1–9"],
     label: "Jump to tab 1 to 9 in the focused pane",
     group: "terminal",
     scope: "global",
-    match: (e) => e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key),
+    match: (e) => modOnly(e) && /^[1-9]$/.test(e.key),
     // The only command whose target is the key that fired it, so it is the only
     // one that cannot be run from a list of names.
     run: (e) => {
@@ -500,7 +514,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "tab-cycle",
-    keys: ["⌃", "Tab"],
+    keys: ["Ctrl", "Tab"],
     label: "Cycle the focused pane's tabs",
     group: "terminal",
     scope: "global",
@@ -509,32 +523,32 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "close-tab",
-    keys: ["⌘", "W"],
+    keys: ["Mod", "W"],
     label: "Close the focused pane's tab",
     group: "terminal",
     scope: "global",
-    match: cmd("w"),
+    match: modKey("w"),
     run: () => emit(CLOSE_TAB),
   },
   {
     id: "next-waiting",
-    keys: ["⌘", "⇧", "A"],
+    keys: ["Mod", "Shift", "A"],
     label: "Jump to the next session waiting for approval",
     group: "session",
     scope: "global",
-    match: cmdShift("a"),
+    match: modShift("a"),
     run: () => emit(NEXT_WAITING_SESSION),
   },
   {
     id: "stop-chat",
-    keys: ["⌘", "."],
+    keys: ["Mod", "."],
     label: "Stop the running turn",
     group: "session",
     // Global, not window: stopping a runaway turn is the thing you most want to
     // do while looking at something else, and a `window` binding would be
     // swallowed the moment a terminal had focus.
     scope: "global",
-    match: cmd("."),
+    match: modKey("."),
     run: () => emitWith<StopChat>(STOP_CHAT, { sessionId: null }),
     // The palette lists every stoppable chat by name instead, which is the case
     // this binding deliberately refuses to guess at (see `chatToStop`).
@@ -550,14 +564,14 @@ export const COMMANDS: Command[] = [
   // keymap to hold it.
   {
     id: "editor-new-scratch",
-    keys: ["⌘", "N"],
+    keys: ["Mod", "N"],
     label: "New scratch buffer",
     sub: "An untitled file, kept until you save it somewhere.",
     group: "editor",
     // `window` for the tab strip's reason: this opens an editor tab, and a
     // program running in the terminal keeps its own claim on the key.
     scope: "window",
-    match: cmd("n"),
+    match: modKey("n"),
     run: () => emit(EDITOR_NEW_SCRATCH),
   },
   {
@@ -659,48 +673,48 @@ export const COMMANDS: Command[] = [
   // pressing one of these with the editor focused cannot fire it twice.
   {
     id: "lsp-definition",
-    keys: ["⌘", "⌥", "D"],
+    keys: ["Mod", "Alt", "D"],
     label: "Go to definition",
     sub: "F12",
     group: "editor",
     scope: "window",
-    match: cmdOpt("KeyD"),
+    match: modAlt("KeyD"),
     run: () => emit(EDITOR_LSP_DEFINITION),
     requires: ["editorFile"],
   },
   {
     id: "lsp-references",
-    keys: ["⌘", "⌥", "R"],
+    keys: ["Mod", "Alt", "R"],
     label: "Find references",
     sub: "⇧F12",
     group: "editor",
     scope: "window",
-    match: cmdOpt("KeyR"),
+    match: modAlt("KeyR"),
     run: () => emit(EDITOR_LSP_REFERENCES),
     requires: ["editorFile"],
   },
   {
     id: "lsp-rename",
-    keys: ["⌘", "⌥", "N"],
+    keys: ["Mod", "Alt", "N"],
     label: "Rename symbol",
     sub: "F2",
     group: "editor",
     scope: "window",
-    match: cmdOpt("KeyN"),
+    match: modAlt("KeyN"),
     run: () => emit(EDITOR_LSP_RENAME),
     requires: ["editorFile"],
   },
   {
     id: "lsp-code-action",
-    keys: ["⌘", "⌥", "A"],
+    keys: ["Mod", "Alt", "A"],
     label: "Show code actions",
     // The chord every other editor uses, bound in CodeEditor's own keymap
     // beside F2. `⌘.` is not free: it is `stop-chat`, deliberately global so a
     // runaway turn can be stopped from any surface, including this one.
-    sub: "⌥⏎",
+    sub: chordLabel(["Alt", "⏎"]),
     group: "editor",
     scope: "window",
-    match: cmdOpt("KeyA"),
+    match: modAlt("KeyA"),
     run: () => emit(EDITOR_LSP_CODE_ACTION),
     requires: ["editorFile"],
   },
@@ -742,25 +756,25 @@ export const COMMANDS: Command[] = [
     //
     // Already reachable on a Mac keyboard, so it keeps the library's binding
     // rather than gaining a second one.
-    keys: ["⇧", "⌥", "F"],
+    keys: ["Shift", "Alt", "F"],
     label: "Format document",
     group: "editor",
     scope: "window",
-    match: shiftOpt("KeyF"),
+    match: shiftAlt("KeyF"),
     run: () => emit(EDITOR_LSP_FORMAT),
     requires: ["editorFile"],
   },
   {
     id: "peek-definition",
-    keys: ["⌘", "⌥", "P"],
+    keys: ["Mod", "Alt", "P"],
     label: "Peek definition",
     // VS Code's own chord for this, bound in CodeEditor's keymap beside F2 and
     // ⌥⏎. Peek is the counterpart to `⌘⌥D`, not a replacement: that one takes
     // you there, this one brings it here.
-    sub: "⌥F12",
+    sub: chordLabel(["Alt", "F12"]),
     group: "editor",
     scope: "window",
-    match: cmdOpt("KeyP"),
+    match: modAlt("KeyP"),
     run: () => emit(EDITOR_PEEK_DEFINITION),
     requires: ["editorFile"],
   },
@@ -778,7 +792,7 @@ export const COMMANDS: Command[] = [
   {
     id: "peek-implementation",
     label: "Go to implementation",
-    sub: "⌘F12",
+    sub: chordLabel(["Mod", "F12"]),
     group: "editor",
     run: () => emit(EDITOR_PEEK_IMPLEMENTATION),
     requires: ["editorFile", "implementationProvider"],
@@ -786,7 +800,7 @@ export const COMMANDS: Command[] = [
   {
     id: "peek-type-definition",
     label: "Go to type definition",
-    sub: "⇧⌘F12",
+    sub: chordLabel(["Shift", "Mod", "F12"]),
     group: "editor",
     run: () => emit(EDITOR_PEEK_TYPE_DEFINITION),
     requires: ["editorFile", "typeDefinitionProvider"],
@@ -814,7 +828,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "debug-stop",
-    keys: ["\u21e7", "F5"],
+    keys: ["Shift", "F5"],
     label: "Stop debugging",
     group: "editor",
     scope: "window",

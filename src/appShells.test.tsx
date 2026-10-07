@@ -174,7 +174,7 @@ describe("the dock", () => {
   it("toggles on its own key, and says so when there is nothing in it", async () => {
     mount();
     expect(dockShown()).toBe(false);
-    expect(BINDINGS.find((b) => b.id === "toggle-dock")?.keys).toEqual(["⌘", "⌃", "J"]);
+    expect(BINDINGS.find((b) => b.id === "toggle-dock")?.keys).toEqual(["Mod", "Ctrl", "J"]);
 
     fireEvent.keyDown(window, { key: "j", code: "KeyJ", metaKey: true, ctrlKey: true });
     await waitFor(() => expect(dockShown()).toBe(true));

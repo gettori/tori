@@ -18,7 +18,8 @@ import {
   DRAG_PATH_MIME,
   DRAG_ABS_PATH_MIME,
 } from "../../utils/events";
-import { dispatchHotkey } from "../../utils/hotkeys";
+import { TERMINAL_SEARCH, dispatchHotkey } from "../../utils/hotkeys";
+import { isMac, modOnly } from "../../utils/platform";
 import { initRefusal } from "./initRefusal";
 import { traceMark } from "../../utils/perfTrace";
 import { findAdapter } from "../../utils/agents";
@@ -285,25 +286,38 @@ export default function TerminalView(props: {
       },
     });
 
-    // ⌘F opens the in-terminal search; the global remap (Cmd+1..9, Ctrl+Tab,
-    // Cmd+Shift+A/E/F, Cmd+J/K) is re-dispatched here too, since an xterm
-    // textarea's keydown never reaches the window listener via xterm's own
-    // handling once it has focus (adversary E3). Both branches call
-    // stopPropagation(), not just preventDefault(): xterm's custom-key-handler
-    // return value only tells xterm itself to ignore the key, it doesn't stop
-    // the native event from continuing to bubble up to window - without this,
-    // App.tsx's own keydown listener would fire a second time on the same
-    // keystroke (e.g. Cmd+Shift+A would skip two waiting sessions, not one).
-    // ⌘Shift+F is excluded from the ⌘F branch so it falls through to
-    // dispatchHotkey's project-search binding instead.
+    // The terminal-search binding opens the in-terminal search; the global
+    // bindings are re-dispatched here too, since an xterm textarea's keydown
+    // never reaches the window listener via xterm's own handling once it has
+    // focus (adversary E3). Both branches call stopPropagation(), not just
+    // preventDefault(): xterm's custom-key-handler return value only tells xterm
+    // itself to ignore the key, it doesn't stop the native event from continuing
+    // to bubble up to window - without this, App.tsx's own keydown listener would
+    // fire a second time on the same keystroke (e.g. Mod+Shift+A would skip two
+    // waiting sessions, not one).
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
-      if (e.metaKey && !e.shiftKey && e.key === "f") {
+      if (TERMINAL_SEARCH.match(e)) {
         e.preventDefault();
         e.stopPropagation();
         openSearch();
         return false;
       }
+      if (!isMac && e.ctrlKey && e.shiftKey && !e.altKey && (e.code === "KeyC" || e.code === "KeyV")) {
+        // Ctrl+C and Ctrl+V are the shell's here. The copy event is what xterm
+        // fills from its own selection; a paste is the browser's default for
+        // Ctrl+Shift+V once xterm lets the key go.
+        e.stopPropagation();
+        if (e.code === "KeyC") {
+          e.preventDefault();
+          document.execCommand("copy");
+        }
+        return false;
+      }
+      // Off macOS Mod is Ctrl, and Ctrl plus a letter is the shell's own
+      // (Ctrl+R, Ctrl+W), so only the palette's Ctrl+K and the chords that also
+      // carry Shift or Alt, or no letter, reach the app from a focused terminal.
+      if (!isMac && modOnly(e) && /^Key[A-Z]$/.test(e.code) && e.code !== "KeyK") return true;
       if (props.hotkeys !== false && dispatchHotkey(e)) {
         e.preventDefault();
         e.stopPropagation();

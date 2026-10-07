@@ -13,6 +13,7 @@ import { StateEffect, StateField, type EditorState } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { Command, DecorationSet, ViewUpdate } from "@codemirror/view";
 import { jumpToDefinition, LSPPlugin } from "@codemirror/lsp-client";
+import { modOnly } from "../../utils/platform";
 
 /**
  * Handle a mousedown as a possible Cmd-click jump. Returns whether it was
@@ -23,7 +24,9 @@ import { jumpToDefinition, LSPPlugin } from "@codemirror/lsp-client";
  * caret happened to be.
  */
 export function cmdClickDefinition(event: MouseEvent, view: EditorView, jump: Command = jumpToDefinition): boolean {
-  if (!cmdAlone(event) || event.button !== 0) return false;
+  // Mod alone: Mod-Alt-click and Mod-Shift-click are CodeMirror's own
+  // multiple-cursor and range gestures, and taking them would cost more than this adds.
+  if (!modOnly(event) || event.button !== 0) return false;
   const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
   // Null below the last line or outside the content, where there is no symbol
   // to ask about.
@@ -34,12 +37,6 @@ export function cmdClickDefinition(event: MouseEvent, view: EditorView, jump: Co
   if (!jump(view)) return false;
   event.preventDefault();
   return true;
-}
-
-// Cmd-Alt-click and Cmd-Shift-click are CodeMirror's own multiple-cursor and
-// range gestures, and taking them would cost more than this adds.
-function cmdAlone(event: MouseEvent | KeyboardEvent): boolean {
-  return event.metaKey && !event.altKey && !event.shiftKey && !event.ctrlKey;
 }
 
 type Span = { from: number; to: number };
@@ -87,7 +84,7 @@ class DefinitionLink {
 
   onMove(event: MouseEvent) {
     this.pointer = { x: event.clientX, y: event.clientY };
-    this.probe(cmdAlone(event));
+    this.probe(modOnly(event));
   }
 
   onLeave() {
@@ -95,7 +92,7 @@ class DefinitionLink {
     this.clear();
   }
 
-  private onKey = (event: KeyboardEvent) => this.probe(cmdAlone(event));
+  private onKey = (event: KeyboardEvent) => this.probe(modOnly(event));
 
   private probe(held: boolean) {
     const span = held && this.pointer ? this.spanUnder(this.pointer) : null;

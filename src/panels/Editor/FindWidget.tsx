@@ -29,6 +29,7 @@ import {
 } from "lucide-solid";
 import { InlineToggle } from "./SearchFields";
 import styles from "./FindWidget.module.css";
+import { mod, MOD_WORD } from "../../utils/platform";
 
 // A literal class, as the minimap's is: the element lives in CodeMirror's DOM
 // and the theme below has to name it.
@@ -135,7 +136,7 @@ function createFindPanel(view: EditorView): Panel {
     if (runScopeHandlers(view, e, "search-panel")) return e.preventDefault();
     if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement)) return;
     e.preventDefault();
-    if (e.target !== findInput) (e.metaKey ? replaceAll : replaceNext)(view);
+    if (e.target !== findInput) (mod(e) ? replaceAll : replaceNext)(view);
     else if (e.altKey) {
       selectMatches(view);
       view.focus();
@@ -238,7 +239,7 @@ function createFindPanel(view: EditorView): Panel {
                 />
                 <InlineToggle
                   icon={ReplaceAll}
-                  label="Replace All (Cmd+Enter)"
+                  label={`Replace All (${MOD_WORD}+Enter)`}
                   disabled={none()}
                   onClick={() => replaceAll(view)}
                 />

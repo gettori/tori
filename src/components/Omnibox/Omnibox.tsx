@@ -37,6 +37,7 @@ import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import styles from "./Omnibox.module.css";
+import { keyLabel } from "../../utils/platform";
 
 /** How many project files the list holds. Past this the scroll bar is a hint
  *  rather than a control, and the query is what narrows anyway. */
@@ -661,7 +662,7 @@ export default function Omnibox(props: {
         <Show when={item.keys}>
           {(keys) => (
             <span class={styles.itemKeys}>
-              <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
+              <For each={keys()}>{(key) => <kbd class={styles.key}>{keyLabel(key)}</kbd>}</For>
             </span>
           )}
         </Show>

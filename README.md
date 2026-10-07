@@ -57,8 +57,9 @@ request, and a worker's permission prompts stay yours to answer.
   <img alt="The autopilot's cockpit: two workers on deck, one waiting for approval to open its pull request, and a log of what happened" src="docs/images/autopilot.png" width="900">
 </p>
 
-**Interface.** Command palette (`Cmd+K`), quick open (`Cmd+P`), a shortcut
-sheet on `Cmd+/`, and remappable hotkeys. Menu-bar tray, OS notifications, and
+**Interface.** Command palette (`Cmd+K` on macOS, `Ctrl+K` on Windows), quick
+open (`Cmd+P` or `Ctrl+P`), a shortcut sheet on `Cmd+/` or `Ctrl+/`, and
+remappable hotkeys. Menu-bar tray, OS notifications, and
 a dock badge for sessions that need you. Dark and light themes, and you can
 import a VS Code theme file.
 

@@ -10,8 +10,12 @@
 // from `requestAnimationFrame`, which means the missing method surfaces as an
 // *unhandled* error after the test that caused it has already passed.
 import { afterEach } from "vite-plus/test";
-import { cleanup } from "@solidjs/testing-library";
+import { cleanup, configure } from "@solidjs/testing-library";
 import { installTabLayout, resetTabBarWidth } from "./tabLayout";
+
+// On an Apple platform Kobalte's combobox repeats the active option into a
+// `role="log"` live region for VoiceOver, which is never the text a test means.
+configure({ defaultIgnore: 'script, style, [role="log"], [role="log"] *' });
 
 Element.prototype.scrollTo ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};

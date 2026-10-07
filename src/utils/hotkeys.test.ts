@@ -284,3 +284,60 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatched.map((e) => e.detail?.prefix)).toEqual(["", ">"]);
   });
 });
+
+// The event a binding's own key chips describe, on the platform the table was
+// built for, so the chips and the matcher cannot drift apart on either one.
+function pressed(keys: string[], mac: boolean): KeyboardEvent {
+  const held = new Set(keys.slice(0, -1));
+  const last = keys[keys.length - 1];
+  const shift = held.has("Shift");
+  const named: Record<string, [string, string]> = {
+    "−": [shift ? "_" : "-", "Minus"],
+    "+": ["=", "Equal"],
+    "/": ["/", "Slash"],
+    ".": [".", "Period"],
+    "1–9": ["1", "Digit1"],
+    "⏎": ["Enter", "Enter"],
+  };
+  const [k, code] =
+    named[last] ??
+    (/^[A-Z]$/.test(last)
+      ? [shift ? last : last.toLowerCase(), `Key${last}`]
+      : /^[0-9]$/.test(last)
+        ? [last, `Digit${last}`]
+        : [last, last]);
+  return {
+    key: k,
+    code,
+    metaKey: mac && held.has("Mod"),
+    ctrlKey: held.has("Ctrl") || (!mac && held.has("Mod")),
+    altKey: held.has("Alt"),
+    shiftKey: shift,
+    getModifierState: () => false,
+  } as unknown as KeyboardEvent;
+}
+
+describe.each([
+  ["macOS", "MacIntel", true],
+  ["Windows", "Win32", false],
+])("the whole table on %s", (_name, platform, mac) => {
+  async function table() {
+    vi.stubGlobal("navigator", { platform });
+    vi.resetModules();
+    return (await import("./hotkeys")).BINDINGS;
+  }
+
+  it("fires every binding on the keys its chips show, and nothing else with it", async () => {
+    const bindings = await table();
+    // The terminal's own keys are matched inside the focused xterm, before the
+    // app's, so they may share a chord with an app binding the terminal shadows.
+    const app = bindings.filter((b) => b.scope !== "terminal");
+    for (const b of bindings) {
+      const e = pressed(b.keys, mac);
+      expect(b.match(e), `${b.id} on ${b.keys.join("+")}`).toBe(true);
+      if (b.scope === "terminal") continue;
+      const also = app.filter((o) => o !== b && o.match(e)).map((o) => o.id);
+      expect(also, `${b.id} collides`).toEqual([]);
+    }
+  });
+});

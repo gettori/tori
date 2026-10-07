@@ -39,6 +39,7 @@ import { fmtTokens } from "../../utils/chatUsage";
 import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import { ALT_WORD, isMac, mod, MOD_WORD, modOnly } from "../../utils/platform";
 
 const MAX_ROWS = 9;
 // The floor is what the box returns to after every send, so it is the height
@@ -660,7 +661,7 @@ export default function Composer(props: {
         return;
       }
     }
-    if (e.key === "s" && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && props.onStash) {
+    if (e.key === "s" && modOnly(e) && props.onStash) {
       e.preventDefault();
       if (props.editing || props.linked || props.holding) return;
       if (hasContent()) {
@@ -697,7 +698,8 @@ export default function Composer(props: {
     // there being prose to drop, so an empty box leaves the key alone, and on the
     // draft being the input's to clear rather than the scratch tab's. The chips
     // stay: each one is a file that was picked, and each already has its own x.
-    if (e.key === "c" && e.ctrlKey && !e.metaKey && !e.altKey && !props.linked && text()) {
+    // macOS only: elsewhere Ctrl+C is copy.
+    if (isMac && e.key === "c" && e.ctrlKey && !e.metaKey && !e.altKey && !props.linked && text()) {
       e.preventDefault();
       clearDraft();
       return;
@@ -1027,10 +1029,10 @@ export default function Composer(props: {
               }
               const reason = () => (missing() && path ? `. No file at ${path}` : "");
               function open(e: MouseEvent, at: string) {
-                // Cmd+click keeps the chip's old job. A plain click opens the
+                // Mod+click keeps the chip's old job. A plain click opens the
                 // file, which is what a preview of one is expected to do, and
                 // the token is placed when the file is attached now anyway.
-                if (e.metaKey && token) {
+                if (mod(e) && token) {
                   insertToken(token);
                   return;
                 }
@@ -1073,7 +1075,7 @@ export default function Composer(props: {
                         missing()
                           ? `No file at ${path}`
                           : token
-                            ? "Click to open it. Cmd+click or drag to name it in the message"
+                            ? `Click to open it. ${MOD_WORD}+click or drag to name it in the message`
                             : "Click to open it"
                       }
                       aria-label={`Open ${chipLabel(a.block)}${reason()}`}
@@ -1134,7 +1136,8 @@ export default function Composer(props: {
                 ? props.steering
                   ? (props.steerCost
                       ? `Steer this turn, picked up in ${props.steerCost}`
-                      : "Steer this turn, picked up at its next step") + (props.onQueue ? ". Option+Enter queues" : "")
+                      : "Steer this turn, picked up at its next step") +
+                    (props.onQueue ? `. ${ALT_WORD}+Enter queues` : "")
                   : "Type to queue for the next turn"
                 : "Reply, or @ a file · / for commands"
           }
@@ -1216,7 +1219,7 @@ export default function Composer(props: {
             as="button"
             type="button"
             class={styles.sendButton}
-            label={props.running ? "Stop this turn (Esc)" : inFence() ? "Send (Cmd+Enter)" : "Send (Enter)"}
+            label={props.running ? "Stop this turn (Esc)" : inFence() ? `Send (${MOD_WORD}+Enter)` : "Send (Enter)"}
             aria-label={props.running ? "Stop" : "Send"}
             disabled={props.disabled || (!props.running && !hasContent())}
             onClick={() => (props.running ? props.onInterrupt() : submit())}
@@ -1229,7 +1232,7 @@ export default function Composer(props: {
         when={props.linked}
         fallback={
           <Show when={inFence()}>
-            <div class={styles.composerHint}>Enter adds a line inside the code block. Cmd+Enter sends.</div>
+            <div class={styles.composerHint}>Enter adds a line inside the code block. {MOD_WORD}+Enter sends.</div>
           </Show>
         }
       >

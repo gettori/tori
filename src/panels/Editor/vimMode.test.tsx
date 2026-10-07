@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vite-plus/test";
+import { describe, it, expect, afterEach, vi } from "vite-plus/test";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
@@ -14,6 +14,11 @@ import { CURSOR_LAYER, vimExtension } from "./vimMode";
 // takes is dead in CodeMirror's other keymaps *and* in Tori's window-level
 // hotkey dispatcher. Every binding this app has had to reach the editor before
 // now has to survive that.
+
+// These claims are about CodeMirror's keymap off macOS, which is what jsdom
+// reports: the setup's macOS pin would turn Option chords into glyphs CodeMirror
+// no longer re-derives. Hoisted, so it lands before CodeMirror reads it.
+vi.hoisted(() => Object.defineProperty(navigator, "platform", { value: "", configurable: true }));
 
 const held: EditorView[] = [];
 

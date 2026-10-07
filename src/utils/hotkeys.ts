@@ -11,6 +11,7 @@
 // terminal's chunk. `commands.ts` imports only `./events`, which is what keeps
 // that true now that the editor and git commands live in the same table.
 import { COMMANDS, type Command, type CommandGroup, type CommandScope } from "./commands";
+import { chordLabel } from "./platform";
 
 /** Where a binding is listed in the Cmd+/ sheet. */
 export type BindingGroup = CommandGroup;
@@ -42,6 +43,14 @@ export type Binding = Command & {
  * other following - the drift that makes printed shortcut lists lie.
  */
 export const BINDINGS: Binding[] = COMMANDS.filter((c): c is Binding => !!c.keys && !!c.scope && !!c.match);
+
+/** A binding's keys as one string for a tooltip or a sentence. */
+export function shortcut(id: string): string {
+  return chordLabel(BINDINGS.find((b) => b.id === id)!.keys);
+}
+
+/** The focused terminal's own find key, which it matches before any other. */
+export const TERMINAL_SEARCH = BINDINGS.find((b) => b.id === "terminal-search")!;
 
 /** Bindings for the sheet, grouped in `GROUP_LABELS` order. A group with no
  *  key-carrying command (Editor, Git) drops out rather than showing empty. */

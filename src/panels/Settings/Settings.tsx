@@ -55,6 +55,7 @@ import {
 import { overlayRoot } from "./settingsStore";
 import { rowDomId, workspaceName, type PaneProps } from "./components/paneKit";
 import styles from "./Settings.module.css";
+import { shortcut } from "../../utils/hotkeys";
 
 /** Re-exported because the Editor rows moved to `paneKit` when the panel became
  *  six panes, and `editorSection.test.tsx` reads the list from here. */
@@ -410,7 +411,7 @@ export default function Settings(props: {
                 icon={<Icon icon={Keyboard} />}
                 size="sm"
                 aria-label="Keyboard shortcuts"
-                tooltip="Keyboard shortcuts (⌘/)"
+                tooltip={`Keyboard shortcuts (${shortcut("shortcut-sheet")})`}
                 onClick={() => emit(TOGGLE_SHORTCUTS)}
               />
               <IconButton

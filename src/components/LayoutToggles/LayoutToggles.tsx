@@ -4,6 +4,7 @@ import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import { emit, TOGGLE_SIDEBAR } from "../../utils/events";
 import styles from "./LayoutToggles.module.css";
+import { shortcut } from "../../utils/hotkeys";
 
 // The topbar's sidebar show/hide toggle: one Kobalte toggle group in `multiple`
 // mode, so the item is an independent toggle rather than a selection. The
@@ -33,7 +34,7 @@ export default function LayoutToggles(props: { showSidebar: boolean }) {
         size="md"
         class={styles.item}
         icon={<Icon icon={PanelLeft} />}
-        tooltip="Show or hide the sidebar (⌘B)"
+        tooltip={`Show or hide the sidebar (${shortcut("toggle-sidebar")})`}
       />
     </ToggleGroup.Root>
   );

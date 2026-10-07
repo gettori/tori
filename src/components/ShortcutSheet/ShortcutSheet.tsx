@@ -2,6 +2,7 @@ import { For } from "solid-js";
 import { bindingsByGroup, GROUP_LABELS } from "../../utils/hotkeys";
 import Dialog from "../Dialog/Dialog";
 import styles from "./ShortcutSheet.module.css";
+import { keyLabel } from "../../utils/platform";
 
 /**
  * The Cmd+/ shortcut sheet. Renders straight from the canonical BINDINGS
@@ -46,7 +47,7 @@ export default function ShortcutSheet(props: { onClose: () => void }) {
                   <div class={styles.row}>
                     <span class={styles.label}>{binding.label}</span>
                     <span class={styles.keys}>
-                      <For each={binding.keys}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
+                      <For each={binding.keys}>{(key) => <kbd class={styles.key}>{keyLabel(key)}</kbd>}</For>
                     </span>
                   </div>
                 )}

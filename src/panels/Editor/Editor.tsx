@@ -369,6 +369,7 @@ import { editorStageId, stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 import patterns from "../../styles/patterns.module.css";
 import { FILE_MANAGER } from "../../utils/platform";
+import { shortcut } from "../../utils/hotkeys";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
 // filtered list hands OverflowTabBar the same object references on every read:
@@ -554,7 +555,7 @@ export default function Editor(props: {
       icon={<Icon icon={PanelRight} />}
       aria-pressed={shown}
       onClick={() => props.onToggleFiletree?.()}
-      tooltip={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
+      tooltip={`${shown ? "Hide" : "Show"} the file tree (${shortcut("toggle-filetree")})`}
     />
   );
   // The store key, not the folder: a Topic is one workspace over several
@@ -2855,13 +2856,13 @@ export default function Editor(props: {
         icon={<Icon icon={ArrowLeft} />}
         disabled={!canGoBack(jumps())}
         onClick={() => goJump(-1)}
-        tooltip="Go back to where you were (⌃−)"
+        tooltip={`Go back to where you were (${shortcut("nav-back")})`}
       />
       <IconButton
         icon={<Icon icon={ArrowRight} />}
         disabled={!canGoForward(jumps())}
         onClick={() => goJump(1)}
-        tooltip="Go forward again (⌃⇧−)"
+        tooltip={`Go forward again (${shortcut("nav-forward")})`}
       />
     </>
   );
@@ -3048,7 +3049,7 @@ export default function Editor(props: {
           fallback={
             <Show when={!filePaths().length}>
               <div class={styles.editorEmpty}>
-                Open a file from the tree to start editing, or press ⌘P to find one by name.
+                Open a file from the tree to start editing, or press {shortcut("omnibox")} to find one by name.
               </div>
             </Show>
           }

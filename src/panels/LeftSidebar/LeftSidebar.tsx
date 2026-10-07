@@ -186,6 +186,7 @@ import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
 import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./LeftSidebar.module.css";
+import { shortcut } from "../../utils/hotkeys";
 
 // Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
 // .bare stub) reads as a folder with a branch off it, a branch of a plain repo
@@ -3278,7 +3279,7 @@ export default function LeftSidebar(props: {
             // A placeholder is not a name: it goes the moment anything is
             // typed, and this field is now mounted only while it is in use.
             aria-label={`Filter ${filterNoun()}`}
-            placeholder={`Filter ${filterNoun()} (⌘⇧E)`}
+            placeholder={`Filter ${filterNoun()} (${shortcut("filter-sidebar")})`}
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={(e) => e.key === "Escape" && closeSearch()}
@@ -3306,7 +3307,7 @@ export default function LeftSidebar(props: {
             variant="ghost"
             size="md"
             aria-label="Filter"
-            tooltip="Filter (⌘⇧E)"
+            tooltip={`Filter (${shortcut("filter-sidebar")})`}
             icon={<Icon icon={Search} />}
             onClick={() => setSearching(true)}
           />
@@ -3513,7 +3514,7 @@ export default function LeftSidebar(props: {
             type="button"
             class={`${styles.stripBtn} ${styles.dockBtn}`}
             classList={{ [styles.active]: dockOpen() }}
-            label={dockOpen() ? "Hide the dock (⌘⌃J)" : "Show the dock (⌘⌃J)"}
+            label={`${dockOpen() ? "Hide" : "Show"} the dock (${shortcut("toggle-dock")})`}
             placement={railed() ? "right" : undefined}
             aria-label="Dock"
             aria-pressed={dockOpen()}

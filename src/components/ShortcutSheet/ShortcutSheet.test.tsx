@@ -4,6 +4,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 import { bindingsByGroup, GROUP_LABELS } from "../../utils/hotkeys";
 import styles from "./ShortcutSheet.module.css";
 import ShortcutSheet from "./ShortcutSheet";
+import { keyLabel } from "../../utils/platform";
 
 // Characterization test for the Cmd+/ sheet, written against the hand-rolled
 // implementation and kept green across the migration onto `components/Dialog`
@@ -74,7 +75,7 @@ describe("ShortcutSheet", () => {
         for (const binding of group.bindings) {
           expect(screen.getAllByText(binding.label).length).toBeGreaterThan(0);
           for (const key of binding.keys) {
-            expect(screen.getAllByText(key).length).toBeGreaterThan(0);
+            expect(screen.getAllByText(keyLabel(key)).length).toBeGreaterThan(0);
           }
         }
       }

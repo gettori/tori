@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { Lane } from "./chatStore";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
 import styles from "./Chat.module.css";
+import { chordLabel } from "../../utils/platform";
 
 /** Finished lanes show inline up to this many, and fold behind one chip past it. */
 const FOLD_AFTER = 2;
@@ -116,7 +117,7 @@ export default function LaneStrip(props: {
             shortcut nothing answers. */}
         <Show when={p.at < 9}>
           <span class={styles.laneKey} aria-hidden="true">
-            {`⌥${p.at + 1}`}
+            {chordLabel(["Alt", String(p.at + 1)])}
           </span>
         </Show>
       </button>

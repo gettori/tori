@@ -16,6 +16,7 @@ import {
   type PageSize,
 } from "./pdfLayout";
 import styles from "./PdfView.module.css";
+import { mod, otherMod } from "../../utils/platform";
 
 /** How long a resize drag has to settle before the visible pages are rasterised
  *  again. The column reflows immediately either way; only the repaint waits, so
@@ -510,7 +511,7 @@ function PdfDocumentView(props: {
    *  pane's chord: a selection left standing in a PDF must not answer for a
    *  keystroke typed in the composer. */
   function onQuoteKey(e: KeyboardEvent) {
-    if (!e.metaKey || !e.shiftKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== "m") return;
+    if (!mod(e) || !e.shiftKey || otherMod(e) || e.altKey || e.key.toLowerCase() !== "m") return;
     const text = document.getSelection()?.toString();
     if (!selected() || !text) return;
     e.preventDefault();

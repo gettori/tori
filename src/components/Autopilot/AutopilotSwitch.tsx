@@ -5,6 +5,7 @@ import Tooltip from "../Tooltip/Tooltip";
 import Wheel from "./Wheel";
 import type { AutopilotState, AutopilotView } from "./autopilot";
 import styles from "./AutopilotSwitch.module.css";
+import { shortcut } from "../../utils/hotkeys";
 
 export interface AutopilotSwitchProps {
   view: AutopilotView;
@@ -42,7 +43,7 @@ export default function AutopilotSwitch(props: AutopilotSwitchProps) {
             as="button"
             type="button"
             class={styles.segment}
-            label={"Cockpit (\u2318\u21e7J)"}
+            label={`Cockpit (${shortcut("autopilot-view")})`}
             aria-pressed="false"
             onClick={() => props.onSelectView?.("autopilot")}
           >
@@ -63,7 +64,7 @@ export default function AutopilotSwitch(props: AutopilotSwitchProps) {
             as="button"
             type="button"
             class={styles.segment}
-            label={"Workspace (\u2318\u21e7J)"}
+            label={`Workspace (${shortcut("autopilot-view")})`}
             aria-pressed="false"
             onClick={() => props.onSelectView?.("workspace")}
           >
@@ -76,7 +77,7 @@ export default function AutopilotSwitch(props: AutopilotSwitchProps) {
           type="button"
           class={`${styles.segment} ${styles.active}`}
           classList={{ [styles.open]: !!props.popupOpen }}
-          label={props.popupOpen ? "Hide autopilot (\u2318L)" : "Show autopilot (\u2318L)"}
+          label={`${props.popupOpen ? "Hide" : "Show"} autopilot (${shortcut("autopilot-popup")})`}
           aria-pressed="true"
           aria-expanded={!!props.popupOpen}
           onClick={() => props.onTogglePopup?.()}

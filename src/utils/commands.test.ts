@@ -3,6 +3,7 @@ import { describe, it, expect } from "vite-plus/test";
 // and `?raw` is how the other source-inspecting test (revertGuard) does it.
 import commandsSource from "./commands.ts?raw";
 import catalogSource from "./settingsCatalog.ts?raw";
+import platformSource from "./platform.ts?raw";
 import { COMMANDS } from "./commands";
 import { SETTINGS } from "./settingsCatalog";
 import * as events from "./events";
@@ -125,13 +126,13 @@ describe("the canonical command table", () => {
     }
   });
 
-  it("imports nothing outside utils/events and the settings catalogue", () => {
+  it("imports nothing outside utils/events, the settings catalogue and utils/platform", () => {
     // Load-bearing, not stylistic. `hotkeys.ts` derives BINDINGS from this table
     // and TerminalView imports `hotkeys.ts`, so an import added here lands in
     // the terminal's chunk. That is the whole reason every `run` emits an event
     // and `requires` is a tag rather than a store read.
     const imports = [...commandsSource.matchAll(/^import[\s\S]*?from\s+"([^"]+)";$/gm)].map((m) => m[1]);
-    expect([...imports].sort()).toEqual(["./events", "./settingsCatalog"]);
+    expect([...imports].sort()).toEqual(["./events", "./platform", "./settingsCatalog"]);
   });
 
   it("keeps the settings catalogue free of anything that survives the bundler", () => {
@@ -139,10 +140,11 @@ describe("the canonical command table", () => {
     // of labels. An ordinary import added to it would reach the terminal's chunk
     // through this table, which is exactly what the rule above exists to stop, so
     // it is checked rather than trusted. `import type` is erased and costs
-    // nothing.
+    // nothing, and `platform.ts` is admitted only while it imports nothing.
     const imports = [...catalogSource.matchAll(/^import\s+(type\s+)?[\s\S]*?from\s+"([^"]+)";$/gm)];
     const runtime = imports.filter((m) => !m[1]).map((m) => m[2]);
-    expect(runtime).toEqual([]);
+    expect(runtime).toEqual(["./platform"]);
+    expect(platformSource).not.toMatch(/^import\s/m);
   });
 });
 
@@ -179,8 +181,8 @@ describe("the registry after the omnibox absorbed the two pickers", () => {
     // often. One overlay, because they are the same list read two ways.
     const box = COMMANDS.find((c) => c.id === "omnibox")!;
     const alias = COMMANDS.find((c) => c.id === "command-palette")!;
-    expect(box.keys).toEqual(["⌘", "P"]);
-    expect(alias.keys).toEqual(["⌘", "K"]);
+    expect(box.keys).toEqual(["Mod", "P"]);
+    expect(alias.keys).toEqual(["Mod", "K"]);
     // Neither lists itself: opening the box is what you already did.
     expect(box.hidden).toBe(true);
     expect(alias.hidden).toBe(true);

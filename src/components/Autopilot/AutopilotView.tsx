@@ -30,6 +30,7 @@ import type {
   WorkerCard,
 } from "./autopilot";
 import styles from "./AutopilotView.module.css";
+import { shortcut } from "../../utils/hotkeys";
 
 export interface AutopilotViewProps extends TicketHandlers {
   state: AutopilotState;
@@ -194,12 +195,12 @@ export default function AutopilotView(props: AutopilotViewProps) {
                     hints={
                       props.decisions.length
                         ? [
-                            [["\u2318\u21e7J"], "workspace"],
+                            [[shortcut("autopilot-view")], "workspace"],
                             [["J", "K"], "move"],
                             [["A"], "approve"],
                             [["R"], "reply"],
                           ]
-                        : [[["\u2318\u21e7J"], "workspace"]]
+                        : [[[shortcut("autopilot-view")], "workspace"]]
                     }
                   />
                 }

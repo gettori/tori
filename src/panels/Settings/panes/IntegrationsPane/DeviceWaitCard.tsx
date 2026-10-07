@@ -5,6 +5,7 @@ import Icon from "../../../../components/Icon/Icon";
 import { openInBrowser } from "./deviceFlow";
 import type { DevicePrompt } from "../../../../utils/forgeTypes";
 import cards from "./ForgeSection.module.css";
+import { MOD_WORD } from "../../../../utils/platform";
 
 function codeGroups(code: string): [string, string] {
   const chars = code.replace(/[^0-9A-Za-z]/g, "");
@@ -71,7 +72,7 @@ export default function DeviceWaitCard(props: {
                     <Icon icon={Check} size={10} strokeWidth={2.5} />
                   </span>
                   <span>
-                    <span class={cards.copiedWord}>Already on your clipboard</span>, Cmd+V is all you need
+                    <span class={cards.copiedWord}>Already on your clipboard</span>, {MOD_WORD}+V is all you need
                   </span>
                 </div>
               </Show>

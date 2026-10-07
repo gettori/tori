@@ -217,9 +217,9 @@ describe("the way in", () => {
   });
 
   it("binds the chord with a matcher that already existed", () => {
-    // `⌘⌥P`, on `e.code` like every other Cmd-Option chord: macOS rewrites
+    // `Mod+Alt+P`, on `e.code` like every other Mod-Alt chord: macOS rewrites
     // `e.key` while Option is held, so a key-based match would never fire.
-    expect(commandsSource.includes('match: cmdOpt("KeyP")')).toBe(true);
+    expect(commandsSource.includes('match: modAlt("KeyP")')).toBe(true);
     // And `⌥F12` in the editor's own keymap, which is what the `sub:` prints.
     expect(codeEditorSource.includes('key: "Alt-F12"')).toBe(true);
   });
