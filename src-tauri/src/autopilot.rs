@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::forge::model::PrState;
-use crate::issues::{IssueKind, IssueRef};
+use crate::issues::{canonical_key, FailedSource, IssueKind, IssueQuery, IssueRef, SourceList};
 use crate::owned_state::{now_ms, write_atomically};
 use crate::rpc::events::same_folder;
 
@@ -27,6 +27,7 @@ const PR_STATES_TTL: Duration = Duration::from_secs(30);
 const CLOSED_NOTE: &str = "its pull request was closed without merging";
 const CLOSED_BY_HAND: &str = "closed by hand";
 const GONE_UPSTREAM: &str = "no longer assigned or open upstream";
+const LEFT_SOURCE: &str = "no longer matches its issue source";
 const REVIEW_CLEARED: &str = "review request cleared (reviewed or withdrawn)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -94,6 +95,8 @@ pub struct Item {
     // A reassign brings back only an item that left the list, never one declined.
     #[serde(default)]
     pub gone_upstream: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picked_from: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -143,6 +146,7 @@ pub struct Contract {
     pub agent: Option<String>,
     pub account: Option<String>,
     pub model: Option<String>,
+    pub issues: Vec<IssueQuery>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -159,15 +163,18 @@ pub struct ContractPatch {
     pub agent: Option<String>,
     pub account: Option<String>,
     pub model: Option<String>,
+    pub issues: Option<Vec<IssueQuery>>,
 }
 
 pub enum Target {
     Id(String),
     // Matched among open items only, so a retry after a crash finds the item it made.
+    // `origin` is the project's `owner/name`, which an issue key's spellings are read against.
     Key {
         kind: Kind,
         source: Source,
         project: String,
+        origin: String,
     },
 }
 
@@ -269,9 +276,24 @@ fn apply(
 ) -> Result<Item, UpdateError> {
     let at = match target {
         Target::Id(id) => items.iter().position(|i| i.id == id).ok_or(UpdateError::NoItem(id))?,
-        Target::Key { kind, source, project } => {
+        Target::Key {
+            kind,
+            source,
+            project,
+            origin,
+        } => {
+            let source = match source {
+                Source::Issue { key, project } => Source::Issue {
+                    key: canonical_key(&key, &origin),
+                    project,
+                },
+                pr => pr,
+            };
             let open = items.iter().position(|i| {
-                !i.state.terminal() && i.kind == kind && i.source == source && same_folder(&i.project, &project)
+                !i.state.terminal()
+                    && i.kind == kind
+                    && same_source(&i.source, &source, &origin)
+                    && same_folder(&i.project, &project)
             });
             match open {
                 Some(at) => at,
@@ -293,6 +315,7 @@ fn apply(
                         contract: None,
                         picked_by: None,
                         gone_upstream: false,
+                        picked_from: None,
                     });
                     items.len() - 1
                 }
@@ -332,6 +355,9 @@ fn set_contract(
     contract.ships = patch.ships.unwrap_or(contract.ships);
     contract.autonomy = patch.autonomy.unwrap_or(contract.autonomy);
     contract.pickup = patch.pickup.unwrap_or(contract.pickup);
+    if let Some(issues) = patch.issues {
+        contract.issues = issues;
+    }
     for (field, value) in [
         (&mut contract.agent, patch.agent),
         (&mut contract.account, patch.account),
@@ -405,16 +431,19 @@ fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, no
     changed
 }
 
-// An issue compares by label, since a hand-made item may key it by its url.
+fn same_source(a: &Source, b: &Source, origin: &str) -> bool {
+    match (a, b) {
+        (Source::Issue { key: a, .. }, Source::Issue { key: b, .. }) => {
+            canonical_key(a, origin) == canonical_key(b, origin)
+        }
+        _ => a == b,
+    }
+}
+
+// A hand-made item may key its issue by url, so both sides are read against the origin.
 fn same_work(item: &Item, row: &IssueRef, repo: &str) -> bool {
     match (&item.source, row.kind) {
-        (Source::Issue { .. }, IssueKind::Issue) => {
-            label_of(&item.source)
-                == label_of(&Source::Issue {
-                    key: row.key.clone(),
-                    project: String::new(),
-                })
-        }
+        (Source::Issue { key, .. }, IssueKind::Issue) => canonical_key(key, repo) == canonical_key(&row.key, repo),
         (Source::Pr { .. }, IssueKind::ReviewRequest) => row
             .key
             .parse()
@@ -431,96 +460,139 @@ fn kind_of(item: &Item) -> IssueKind {
     }
 }
 
-/// One tick of `account`'s assigned list for `project` (in `repo`, `owner/name`),
-/// against the items: new rows become items, and items it picked that left a
-/// list shorter than `cap` close as gone upstream. A project's first tick only
-/// proposes, whatever its contract, so a backlog never starts on its own.
+// Only a key naming its repo can be compared across projects: a bare number is
+// each project's own origin.
+fn held_elsewhere<'a>(items: &'a [Item], project: &str, key: &str) -> Option<&'a str> {
+    if !key.contains('#') {
+        return None;
+    }
+    items
+        .iter()
+        .find(|i| {
+            !i.state.terminal()
+                && !same_folder(&i.project, project)
+                && matches!(&i.source, Source::Issue { key: k, .. } if k.eq_ignore_ascii_case(key))
+        })
+        .map(|i| i.project.as_str())
+}
+
+/// One tick of `account`'s lists for `project` (in `repo`, `owner/name`),
+/// against the items. New rows become items; a list's first tick only
+/// proposes, whatever the contract, so a new or changed source never starts a
+/// backlog on its own. An item it picked that left every list closes as gone
+/// upstream while it is still waiting to start, and only gets a note once
+/// running; nothing closes unless every list answered under `cap`. A row
+/// another project already holds open is left to that project. Answers the
+/// items it changed, and the projects that held a row.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_pickup(
     items: &mut Vec<Item>,
     project: &str,
     repo: &str,
     account: &str,
-    rows: &[IssueRef],
-    cap: usize,
+    lists: &[SourceList],
+    answered: bool,
     pickup: Pickup,
     now: u64,
     mut mint: impl FnMut() -> String,
-) -> Vec<Item> {
+) -> (Vec<Item>, Vec<(String, String)>) {
     let here = |i: &Item| same_folder(&i.project, project);
-    let first = !items.iter().any(|i| here(i) && i.picked_by.is_some());
-    let start = if first || pickup == Pickup::Ask {
-        State::Proposed
-    } else {
-        State::Queued
+    let complete = |kind: IssueKind| {
+        (answered || kind == IssueKind::ReviewRequest) && lists.iter().filter(|l| l.kind == kind).all(|l| l.complete)
     };
-    let complete = |kind: IssueKind| rows.iter().filter(|r| r.kind == kind).count() < cap;
+    let listed = |item: &Item| lists.iter().flat_map(|l| &l.rows).any(|r| same_work(item, r, repo));
     let mut changed = Vec::new();
     for item in items
         .iter_mut()
         .filter(|i| here(i) && !i.state.terminal() && i.picked_by.as_deref() == Some(account))
     {
-        if !complete(kind_of(item)) || rows.iter().any(|r| same_work(item, r, repo)) {
+        let kind = kind_of(item);
+        if !complete(kind) || listed(item) {
             continue;
         }
-        item.state = State::Done;
-        item.gone_upstream = true;
-        item.note = Some(
-            match kind_of(item) {
-                IssueKind::Issue => GONE_UPSTREAM,
-                IssueKind::ReviewRequest => REVIEW_CLEARED,
-            }
-            .to_string(),
-        );
+        let note = match kind {
+            IssueKind::Issue if matches!(item.state, State::Proposed | State::Queued) => GONE_UPSTREAM,
+            IssueKind::Issue => LEFT_SOURCE,
+            IssueKind::ReviewRequest => REVIEW_CLEARED,
+        };
+        if matches!(item.state, State::Proposed | State::Queued) {
+            item.state = State::Done;
+            item.gone_upstream = true;
+        } else if item.note.as_deref() == Some(note) {
+            continue;
+        }
+        item.note = Some(note.to_string());
         item.updated = now;
         changed.push(item.clone());
     }
-    for row in rows {
-        let known: Vec<&Item> = items.iter().filter(|i| here(i) && same_work(i, row, repo)).collect();
-        if !known.is_empty() && !known.iter().all(|i| i.state.terminal() && i.gone_upstream) {
-            continue;
-        }
-        let (kind, source) = match row.kind {
-            IssueKind::Issue => (
-                Kind::Ship,
-                Source::Issue {
-                    key: row.key.clone(),
-                    project: project.to_string(),
-                },
-            ),
-            IssueKind::ReviewRequest => match row.key.parse() {
-                Ok(number) => (
-                    Kind::Review,
-                    Source::Pr {
-                        number,
-                        repo: repo.to_string(),
+    // Read before any row lands, since the origin's two lists share one `search`.
+    let firsts: Vec<bool> = lists
+        .iter()
+        .map(|list| {
+            !items
+                .iter()
+                .any(|i| here(i) && i.picked_by.is_some() && i.picked_from == list.search)
+        })
+        .collect();
+    let mut held = Vec::new();
+    for (list, first) in lists.iter().zip(firsts) {
+        let start = if first || pickup == Pickup::Ask {
+            State::Proposed
+        } else {
+            State::Queued
+        };
+        for row in &list.rows {
+            let known: Vec<&Item> = items.iter().filter(|i| here(i) && same_work(i, row, repo)).collect();
+            if !known.is_empty() && !known.iter().all(|i| i.state.terminal() && i.gone_upstream) {
+                continue;
+            }
+            if let Some(other) = held_elsewhere(items, project, &row.key) {
+                held.push((row.key.clone(), other.to_string()));
+                continue;
+            }
+            let (kind, source) = match row.kind {
+                IssueKind::Issue => (
+                    Kind::Ship,
+                    Source::Issue {
+                        key: row.key.clone(),
+                        project: project.to_string(),
                     },
                 ),
-                Err(_) => continue,
-            },
-        };
-        let item = Item {
-            id: mint(),
-            kind,
-            source,
-            project: project.to_string(),
-            state: start,
-            worktree: None,
-            session: None,
-            pr_url: None,
-            url: Some(row.url.clone()),
-            created: now,
-            updated: now,
-            note: None,
-            title: Some(row.title.clone()),
-            contract: None,
-            picked_by: Some(account.to_string()),
-            gone_upstream: false,
-        };
-        items.push(item.clone());
-        changed.push(item);
+                IssueKind::ReviewRequest => match row.key.parse() {
+                    Ok(number) => (
+                        Kind::Review,
+                        Source::Pr {
+                            number,
+                            repo: repo.to_string(),
+                        },
+                    ),
+                    Err(_) => continue,
+                },
+            };
+            let item = Item {
+                id: mint(),
+                kind,
+                source,
+                project: project.to_string(),
+                state: start,
+                worktree: None,
+                session: None,
+                pr_url: None,
+                url: Some(row.url.clone()),
+                created: now,
+                updated: now,
+                note: None,
+                title: Some(row.title.clone()),
+                contract: None,
+                picked_by: Some(account.to_string()),
+                gone_upstream: false,
+                picked_from: list.search.clone(),
+            };
+            items.push(item.clone());
+            changed.push(item);
+        }
     }
-    changed
+    (changed, held)
 }
 
 /// The PR numbers of every open item, by project.
@@ -810,6 +882,8 @@ pub struct AutopilotStore {
     // The last full read's worktrees and root, so a change names its place
     // without a git call per update.
     seen: Mutex<Seen>,
+    // The pickup trouble already logged, by project, so a tick repeating it every poll writes nothing.
+    noted: Mutex<HashMap<String, HashSet<String>>>,
 }
 
 #[derive(Default)]
@@ -848,6 +922,7 @@ impl AutopilotStore {
             closed: Box::new(|_| {}),
             pr_states: PrStates::default(),
             seen: Mutex::default(),
+            noted: Mutex::default(),
         }
     }
 
@@ -937,31 +1012,60 @@ impl AutopilotStore {
         Ok(contract)
     }
 
-    /// Applies one tick of the assigned list; see [`plan_pickup`]. Answers the
-    /// items it made or closed.
+    /// Applies one tick of the project's lists; see [`plan_pickup`]. `failed`
+    /// names each source that did not answer, with why, and holds back every
+    /// close. Answers the items it made or closed.
     pub fn pickup(
         &self,
         project: &str,
         repo: &str,
         account: &str,
-        rows: &[IssueRef],
-        cap: usize,
+        lists: &[SourceList],
+        failed: &[FailedSource],
     ) -> Result<Vec<Item>, UpdateError> {
         let pickup = self.contract(project).unwrap_or_default().pickup;
         let mint = || format!("item-{}", crate::chat::approval::random_token());
-        self.write(|items| {
-            Ok(plan_pickup(
+        let mut held = Vec::new();
+        let changed = self.write(|items| {
+            let (changed, by_others) = plan_pickup(
                 items,
                 project,
                 repo,
                 account,
-                rows,
-                cap,
+                lists,
+                failed.is_empty(),
                 pickup,
                 now_ms(),
                 mint,
-            ))
-        })
+            );
+            held = by_others;
+            Ok(changed)
+        })?;
+        let trouble = failed
+            .iter()
+            .map(|f| json!({ "project": project, "source": f.search, "pickup_failed": f.error }))
+            .chain(
+                held.iter()
+                    .map(|(key, other)| json!({ "project": project, "issue": key, "held_by": other })),
+            );
+        self.note_once(project, trouble.collect());
+        Ok(changed)
+    }
+
+    // Logs each line the project's last tick did not, and forgets what cleared.
+    fn note_once(&self, project: &str, lines: Vec<Value>) {
+        let now: HashSet<String> = lines.iter().map(Value::to_string).collect();
+        let before = {
+            let mut noted = self.noted.lock().unwrap_or_else(|e| e.into_inner());
+            noted.insert(project.to_string(), now.clone()).unwrap_or_default()
+        };
+        for line in lines.into_iter().filter(|l| !before.contains(&l.to_string())) {
+            self.log(line);
+        }
+    }
+
+    pub fn projects(&self) -> BTreeMap<String, Contract> {
+        self.lock().projects.clone()
     }
 
     pub fn contract(&self, project: &str) -> Option<Contract> {
@@ -1126,6 +1230,7 @@ pub mod tests {
                 project: "/p".into(),
             },
             project: "/p".into(),
+            origin: "o/r".into(),
         }
     }
 
@@ -1161,6 +1266,7 @@ pub mod tests {
             contract: None,
             picked_by: None,
             gone_upstream: false,
+            picked_from: None,
         }
     }
 
@@ -1364,6 +1470,7 @@ pub mod tests {
                 repo: "o/r".into(),
             },
             project: "/p".into(),
+            origin: "o/r".into(),
         };
         let merged = store.update(review(1), state(State::Running)).unwrap().id;
         let shut = store.update(review(2), state(State::Running)).unwrap().id;
@@ -1395,6 +1502,7 @@ pub mod tests {
                 repo: "Someone/Else".into(),
             },
             project: "/p".into(),
+            origin: "o/r".into(),
         };
         let elsewhere = store.update(fork, state(State::Running)).unwrap().id;
         let key = |n| ("o/r".to_string(), n);
@@ -1649,12 +1757,44 @@ pub mod tests {
         }
     }
 
-    fn tick(items: &mut Vec<Item>, account: &str, rows: &[IssueRef], cap: usize, pickup: Pickup) -> Vec<Item> {
+    // The origin's own lists, as a project with no issue sources reads them.
+    fn origin_lists(rows: &[IssueRef], cap: usize) -> Vec<SourceList> {
+        [IssueKind::Issue, IssueKind::ReviewRequest]
+            .into_iter()
+            .map(|kind| {
+                let rows: Vec<IssueRef> = rows.iter().filter(|r| r.kind == kind).cloned().collect();
+                SourceList {
+                    search: None,
+                    kind,
+                    complete: rows.len() < cap,
+                    rows,
+                }
+            })
+            .collect()
+    }
+
+    fn tick_lists(
+        items: &mut Vec<Item>,
+        project: &str,
+        lists: &[SourceList],
+        answered: bool,
+        pickup: Pickup,
+    ) -> (Vec<Item>, Vec<(String, String)>) {
         let n = std::cell::Cell::new(items.len());
-        plan_pickup(items, "/p", "o/r", account, rows, cap, pickup, 9, || {
+        plan_pickup(items, project, "o/r", "me", lists, answered, pickup, 9, || {
             n.set(n.get() + 1);
             format!("p{}", n.get())
         })
+    }
+
+    fn tick(items: &mut Vec<Item>, account: &str, rows: &[IssueRef], cap: usize, pickup: Pickup) -> Vec<Item> {
+        let n = std::cell::Cell::new(items.len());
+        let lists = origin_lists(rows, cap);
+        plan_pickup(items, "/p", "o/r", account, &lists, true, pickup, 9, || {
+            n.set(n.get() + 1);
+            format!("p{}", n.get())
+        })
+        .0
     }
 
     #[test]
@@ -1819,6 +1959,249 @@ pub mod tests {
         );
     }
 
+    fn tickets(search: &str, keys: &[&str], complete: bool) -> SourceList {
+        SourceList {
+            search: Some(search.into()),
+            kind: IssueKind::Issue,
+            rows: keys.iter().map(|k| row(k, IssueKind::Issue)).collect(),
+            complete,
+        }
+    }
+
+    fn reviews() -> SourceList {
+        SourceList {
+            search: None,
+            kind: IssueKind::ReviewRequest,
+            rows: Vec::new(),
+            complete: true,
+        }
+    }
+
+    fn keys(items: &[Item]) -> Vec<(String, State)> {
+        items
+            .iter()
+            .map(|i| match &i.source {
+                Source::Issue { key, .. } => (key.clone(), i.state),
+                Source::Pr { number, .. } => (format!("pr{number}"), i.state),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_issue_two_sources_list_becomes_one_item() {
+        let mut items = Vec::new();
+        let (made, _) = tick_lists(
+            &mut items,
+            "/p",
+            &[
+                tickets("a", &["x/t#1", "x/t#2"], true),
+                tickets("b", &["x/t#2"], true),
+                reviews(),
+            ],
+            true,
+            Pickup::Ask,
+        );
+        assert_eq!(
+            keys(&made),
+            vec![("x/t#1".into(), State::Proposed), ("x/t#2".into(), State::Proposed)]
+        );
+        assert_eq!(made[1].picked_from.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn a_failed_or_capped_source_closes_nothing() {
+        let mut items = Vec::new();
+        tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("a", &["x/t#1"], true), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        let (failed, _) = tick_lists(&mut items, "/p", &[reviews()], false, Pickup::Ask);
+        assert!(failed.is_empty(), "a source that did not answer proves nothing gone");
+        let (capped, _) = tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("a", &["x/t#2"], false), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        assert_eq!(keys(&capped), vec![("x/t#2".into(), State::Proposed)]);
+        assert_eq!(items[0].state, State::Proposed);
+    }
+
+    #[test]
+    fn leaving_its_source_closes_a_waiting_item_but_only_notes_a_running_one() {
+        let mut items = Vec::new();
+        tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("a", &["x/t#1", "x/t#2"], true), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        items[1].state = State::Running;
+        let (changed, _) = tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("a", &[], true), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        assert_eq!(
+            changed.iter().map(|i| (i.state, i.note.as_deref())).collect::<Vec<_>>(),
+            vec![(State::Done, Some(GONE_UPSTREAM)), (State::Running, Some(LEFT_SOURCE))]
+        );
+        let (again, _) = tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("a", &[], true), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        assert!(again.is_empty(), "the note is written once, not every tick");
+    }
+
+    #[test]
+    fn a_new_or_edited_source_only_proposes_on_its_first_tick() {
+        let mut items = Vec::new();
+        tick(&mut items, "me", &[row("1", IssueKind::Issue)], 50, Pickup::Auto);
+        let origin = tick(
+            &mut items,
+            "me",
+            &[row("1", IssueKind::Issue), row("2", IssueKind::Issue)],
+            50,
+            Pickup::Auto,
+        );
+        assert_eq!(keys(&origin), vec![("2".into(), State::Queued)]);
+        let mut lists = origin_lists(
+            &[
+                row("1", IssueKind::Issue),
+                row("2", IssueKind::Issue),
+                row("3", IssueKind::Issue),
+            ],
+            50,
+        );
+        lists.push(tickets("label:a", &["x/t#9"], true));
+        let (added, _) = tick_lists(&mut items, "/p", &lists, true, Pickup::Auto);
+        assert_eq!(
+            keys(&added),
+            vec![("3".into(), State::Queued), ("x/t#9".into(), State::Proposed)]
+        );
+        let (later, _) = tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("label:a", &["x/t#9", "x/t#10"], true), reviews()],
+            true,
+            Pickup::Auto,
+        );
+        assert_eq!(keys(&later).last().unwrap(), &("x/t#10".to_string(), State::Queued));
+        let (edited, _) = tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("label:b", &["x/t#9", "x/t#10", "x/t#11"], true), reviews()],
+            true,
+            Pickup::Auto,
+        );
+        assert_eq!(keys(&edited), vec![("x/t#11".into(), State::Proposed)]);
+    }
+
+    #[test]
+    fn an_issue_another_project_holds_open_is_left_to_it() {
+        let mut items = Vec::new();
+        tick_lists(
+            &mut items,
+            "/q",
+            &[tickets("a", &["x/t#1"], true), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        let (made, held) = tick_lists(
+            &mut items,
+            "/p",
+            &[tickets("b", &["x/t#1", "x/t#2"], true), reviews()],
+            true,
+            Pickup::Ask,
+        );
+        assert_eq!(keys(&made), vec![("x/t#2".into(), State::Proposed)]);
+        assert_eq!(held, vec![("x/t#1".to_string(), "/q".to_string())]);
+    }
+
+    #[test]
+    fn a_retried_update_finds_the_item_by_any_spelling_of_its_issue() {
+        let mut items = Vec::new();
+        let target = |key: &str| Target::Key {
+            kind: Kind::Ship,
+            source: Source::Issue {
+                key: key.into(),
+                project: "/p".into(),
+            },
+            project: "/p".into(),
+            origin: "o/r".into(),
+        };
+        let made = apply(
+            &mut items,
+            target("https://github.com/x/t/issues/4"),
+            Patch::default(),
+            1,
+            || "a".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            made.source,
+            Source::Issue {
+                key: "x/t#4".into(),
+                project: "/p".into()
+            }
+        );
+        apply(&mut items, target("X/T#4"), Patch::default(), 2, || "b".into()).unwrap();
+        apply(
+            &mut items,
+            target("https://github.com/o/r/issues/4"),
+            Patch::default(),
+            3,
+            || "c".into(),
+        )
+        .unwrap();
+        apply(&mut items, target("#4"), Patch::default(), 4, || "d".into()).unwrap();
+        assert_eq!(items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["a", "c"]);
+    }
+
+    #[test]
+    fn a_foreign_issue_is_labelled_by_its_repo() {
+        let label = |key: &str| {
+            label_of(&Source::Issue {
+                key: key.into(),
+                project: "/p".into(),
+            })
+        };
+        assert_eq!(
+            [label("31"), label("#31"), label("gettori/tickets#31")],
+            ["#31".to_string(), "#31".to_string(), "gettori/tickets#31".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_contract_written_before_issue_sources_loads_with_none() {
+        let old: Projects = serde_json::from_str(r#"{"projects":{"/p":{"ships":"pr","pickup":"auto"}}}"#).unwrap();
+        assert!(old.projects["/p"].issues.is_empty());
+        let mut projects = old.projects;
+        let query = IssueQuery {
+            repo: "gettori/tickets".into(),
+            ..IssueQuery::default()
+        };
+        let (_, set) = set_contract(
+            &mut projects,
+            "/p".into(),
+            ContractPatch {
+                issues: Some(vec![query.clone()]),
+                ..ContractPatch::default()
+            },
+        );
+        assert_eq!((set.issues, set.pickup), (vec![query], Pickup::Auto));
+    }
+
     #[test]
     fn a_pickup_publishes_each_item_it_made_or_closed_and_reads_back() {
         let dir = temp_dir("pickup");
@@ -1829,9 +2212,9 @@ pub mod tests {
             Box::new(move |event| tx.lock().unwrap().send(event).unwrap()),
         );
         store
-            .pickup("/p", "o/r", "me", &[row("1", IssueKind::Issue)], 50)
+            .pickup("/p", "o/r", "me", &origin_lists(&[row("1", IssueKind::Issue)], 50), &[])
             .unwrap();
-        store.pickup("/p", "o/r", "me", &[], 50).unwrap();
+        store.pickup("/p", "o/r", "me", &origin_lists(&[], 50), &[]).unwrap();
         let events: Vec<Value> = rx.try_iter().collect();
         assert_eq!(
             events.iter().map(|e| e["item"]["state"].clone()).collect::<Vec<_>>(),

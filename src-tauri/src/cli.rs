@@ -60,7 +60,7 @@ const USAGE: &str = "usage:
                       [--state <state>] [--worktree <path>] [--session <id>] [--pr-url <url>] [--note <text>]
                       [--title <text>] [--contract <text>] [--json]
   tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
-                         [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--json]
+                         [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--issues <json>] [--json]
   tori autopilot hold resolve <id> [--json]
   tori mcp";
 
@@ -1006,7 +1006,9 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
             Ok(("autopilot.item.update", params))
         }
         "project" => {
-            let valued = ["project", "ships", "autonomy", "pickup", "agent", "account", "model"];
+            let valued = [
+                "project", "ships", "autonomy", "pickup", "agent", "account", "model", "issues",
+            ];
             let p = Parsed::new(rest, &valued, &["json"])?;
             if !p.positional.is_empty() {
                 return Err(usage(
@@ -1014,6 +1016,11 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 ));
             }
             let choice = |name: &str| p.value(name).map(|v| v.replace('-', "_"));
+            let issues = p
+                .value("issues")
+                .map(serde_json::from_str::<Value>)
+                .transpose()
+                .map_err(|e| usage(format!("--issues takes a JSON list of sources: {e}")))?;
             let params = json!({
                 "project": p.value("project").map(absolute).transpose()?,
                 "ships": choice("ships"),
@@ -1022,6 +1029,7 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 "agent": p.value("agent"),
                 "account": p.value("account"),
                 "model": p.value("model"),
+                "issues": issues,
             });
             Ok(("autopilot.project.set", params))
         }
@@ -1099,6 +1107,10 @@ fn render_contract(contract: &Value) -> String {
         if let Some(value) = contract[key].as_str() {
             text.push_str(&format!("{key}: {}\n", value.replace('_', " ")));
         }
+    }
+    let sources = serde_json::from_value::<Vec<crate::issues::IssueQuery>>(contract["issues"].clone());
+    for source in sources.unwrap_or_default() {
+        text.push_str(&format!("issues: {}\n", source.search()));
     }
     text
 }
@@ -1347,6 +1359,19 @@ mod tests {
             "a flag left out keeps its value"
         );
         assert!(autopilot_request(&args(&["project", "/p"])).is_err());
+        let (_, params) = autopilot_request(&args(&[
+            "project",
+            "--issues",
+            r#"[{"repo":"gettori/tickets","labels":["block 1"]}]"#,
+        ]))
+        .ok()
+        .unwrap();
+        assert_eq!(params["issues"][0]["labels"], json!(["block 1"]));
+        assert!(autopilot_request(&args(&["project", "--issues", "not json"])).is_err());
+        assert_eq!(
+            render_contract(&json!({ "ships": "pr", "issues": [{ "repo": "gettori/tickets" }] })),
+            "ships: pr\nissues: repo:gettori/tickets is:open is:issue assignee:@me\n"
+        );
         assert!(USAGE.contains("tori autopilot project"));
 
         assert_eq!(
