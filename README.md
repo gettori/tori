@@ -163,9 +163,11 @@ where the agents put them; Tori reads them and never modifies or uploads them.
 ## Contributing
 
 Issues are welcome: bug reports, feature requests and adapter requests. Pull
-requests from outside the project are turned off for now, while one person
+requests are open for the adapters: the bundled TOML files, their captures and
+ADAPTERS.md, which is the part of Tori that breaks most often and the part
+someone else can own. The core stays issue-first for now, while one person
 maintains it and the design is still moving. The reasons, the build steps for
-a clean clone, and how to write an adapter are in
+a clean clone, how to write an adapter and how to send one are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
@@ -179,11 +181,12 @@ Report it privately, as [SECURITY.md](SECURITY.md) describes.
 The licence covers the code. The name Tori and its logo are not part of it: a
 fork is welcome, under a name and a mark of its own.
 
-**What that means if the project stops.** One person maintains Tori and does
-not take outside code, so it is fair to ask what you are relying on. The answer
-is the licence, which cannot be withdrawn for anything already published: every
-released version stays Apache-2.0 for good, and anyone may keep using it, build
-it from source, or fork it and carry on. The worst case is a fork, not a loss.
+**What that means if the project stops.** One person maintains Tori and takes
+outside code only for the adapters, so it is fair to ask what you are relying
+on. The answer is the licence, which cannot be withdrawn for anything already
+published: every released version stays Apache-2.0 for good, and anyone may
+keep using it, build it from source, or fork it and carry on. The worst case
+is a fork, not a loss.
 
 Nothing of yours is held inside Tori either. As the Privacy section says, your
 sessions are the agents' own transcripts and Tori's state is plain files under
