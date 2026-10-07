@@ -421,6 +421,84 @@ describe("# pull request completion", () => {
   });
 });
 
+describe("@ sessions beside files", () => {
+  const meta = (id: string, title: string) => ({
+    id,
+    path: `/t/${id}.jsonl`,
+    cwd: "/work/repo",
+    branch: "main",
+    title,
+    last_active: 0,
+    created_at: 0,
+    name: null,
+    agent: "codex",
+  });
+  const SESSIONS = [meta("a", "Fix login flow"), meta("b", "Write docs")];
+  const withSessions = (over: Partial<Parameters<typeof Composer>[0]> = {}) =>
+    setup({
+      loadFiles: async () => FILES,
+      sessions: SESSIONS,
+      loadSessions: () => {},
+      onAttachSession: (m) => `[Session: ${m.title}]`,
+      ...over,
+    });
+
+  it("lists sessions above files on a bare @", async () => {
+    const { input, findByText, container } = withSessions();
+    type(input, "@");
+    await findByText("README.md");
+    const names = [...container.querySelectorAll('[role="option"]')].map((o) => o.textContent);
+    expect(names.slice(0, 2)).toEqual(["Fix login flowSession, codex", "Write docsSession, codex"]);
+  });
+
+  it("reads the session list again for each new @, not per keystroke", () => {
+    const loadSessions = vi.fn();
+    const { input } = withSessions({ loadSessions });
+    type(input, "@a");
+    type(input, "@ab");
+    expect(loadSessions).toHaveBeenCalledTimes(1);
+    type(input, "@ab @c");
+    expect(loadSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("narrows to sessions with @session/ and to files with @file/", async () => {
+    const { input, findByText, queryByText } = withSessions();
+    type(input, "@session/docs");
+    expect(await findByText("Write docs")).toBeTruthy();
+    expect(queryByText("README.md")).toBeNull();
+    type(input, "@file/read");
+    expect(await findByText("README.md")).toBeTruthy();
+    expect(queryByText("Write docs")).toBeNull();
+  });
+
+  it("still fuzzy matches a file path through a slash", async () => {
+    const { input, findByText } = withSessions();
+    type(input, "@utils/chat");
+    expect(await findByText("src/utils/chatCompose.ts")).toBeTruthy();
+  });
+
+  it("names the picked session where the mention was", async () => {
+    const { input, findByText } = withSessions();
+    type(input, "ask @session/login");
+    await findByText("Fix login flow");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("ask [Session: Fix login flow]");
+  });
+
+  it("offers files only when no sessions are passed, as for pi, and # still works", async () => {
+    const { input, findByText, queryByText } = withSessions({
+      sessions: undefined,
+      prs: [pr(12, "Fix login")],
+      onAttachPr: () => "[PR 12]",
+    });
+    type(input, "@");
+    await findByText("README.md");
+    expect(queryByText("Fix login flow")).toBeNull();
+    type(input, "#login");
+    expect(await findByText("Fix login")).toBeTruthy();
+  });
+});
+
 describe("@ file completion", () => {
   it("opens on @ and filters as you type", async () => {
     const { input, findByText, queryByText } = setup({ loadFiles: async () => FILES });

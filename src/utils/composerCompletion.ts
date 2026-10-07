@@ -62,6 +62,18 @@ export function activeToken(text: string, caret: number): CompletionToken | null
   return candidates.sort((a, b) => b.start - a.start)[0] ?? null;
 }
 
+export type MentionScope = "all" | "file" | "session";
+
+/** Which group an `@` query asks for. `file/` and `session/` as the first
+ *  segment narrow it to one group and win over a folder of that name, which
+ *  stays reachable as `@file/file/...` or by fuzzy match. */
+export function mentionScope(query: string): { scope: MentionScope; query: string } {
+  for (const scope of ["file", "session"] as const) {
+    if (query.startsWith(`${scope}/`)) return { scope, query: query.slice(scope.length + 1) };
+  }
+  return { scope: "all", query };
+}
+
 /** Fuzzy-rank `items` against a query by the `text` each is matched on, best
  *  first, capped. An empty query keeps the source order, which for files is the
  *  project's own walk order and for commands is the catalogue's. */

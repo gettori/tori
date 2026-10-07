@@ -352,16 +352,18 @@ export type ContentBlock =
   | { type: "ref"; label: string; target: RefTarget };
 
 /** What a `ref` block points at, as it stood when it was attached. */
-export type RefTarget = {
-  kind: "pr";
-  number: number;
-  title: string;
-  url: string;
-  state: string;
-  draft: boolean;
-  head: string;
-  base: string;
-};
+export type RefTarget =
+  | {
+      kind: "pr";
+      number: number;
+      title: string;
+      url: string;
+      state: string;
+      draft: boolean;
+      head: string;
+      base: string;
+    }
+  | { kind: "session"; id: string; title: string; agent: string; project: string };
 
 // ---------------------------------------------------------------------------
 // Events

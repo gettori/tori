@@ -14,6 +14,7 @@ const claude = composerAttachments(
   () => chatTier("claude_stream_json"),
   () => null,
   (reason) => rejected.push(reason),
+  () => false,
 );
 const acp = composerAttachments(
   () => KEY,
@@ -21,6 +22,7 @@ const acp = composerAttachments(
   () => chatTier("acp"),
   () => null,
   (reason) => rejected.push(reason),
+  () => false,
 );
 const acpImages = composerAttachments(
   () => KEY,
@@ -28,6 +30,7 @@ const acpImages = composerAttachments(
   () => chatTier("acp"),
   () => ({ loadSession: true, listSessions: true, imageInput: true }),
   (reason) => rejected.push(reason),
+  () => false,
 );
 let rejected: string[] = [];
 
@@ -125,5 +128,61 @@ describe("where uploads go", () => {
     expect(await attachmentsDir()).toBe("/home/me/.config/tori/attachments");
     expect(await attachmentsDir()).toBe("/home/me/.config/tori/attachments");
     expect(invoke).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("session references", () => {
+  const session = (id: string, title: string, cwd = "/work/repo") => ({
+    id,
+    path: `/t/${id}.jsonl`,
+    cwd,
+    branch: "main",
+    title,
+    last_active: 0,
+    created_at: 0,
+    name: null,
+    agent: "codex",
+  });
+  const withMcp = (self: string | null = null) =>
+    composerAttachments(
+      () => KEY,
+      () => "/work/repo",
+      () => chatTier("acp"),
+      () => null,
+      (reason) => rejected.push(reason),
+      () => true,
+      () => self,
+    );
+
+  it("lists the whole tree, sibling worktrees included, and leaves out this session", async () => {
+    const sibling = session("b", "Sibling", "/work/feat");
+    invoke.mockImplementation(async (cmd: string) =>
+      cmd === "project_of_folder" ? "/work" : [session("a", "Me"), sibling],
+    );
+    const a = withMcp("a");
+    a.loadSessions();
+    await vi.waitFor(() => expect(a.sessions()).toEqual([sibling]));
+    expect(invoke).toHaveBeenCalledWith("project_of_folder", { folder: "/work/repo" });
+    expect(invoke).toHaveBeenCalledWith("list_sessions", { folder: "/work", inclusive: true });
+  });
+
+  it("offers no sessions to an agent without the tori server", () => {
+    expect(acp.sessions()).toBeUndefined();
+  });
+
+  it("names a picked session once, and a second with the same title apart", () => {
+    const a = withMcp();
+    expect(a.onAttachSession(session("a", "Fix [login]"))).toBe("[Session: Fix login]");
+    expect(a.onAttachSession(session("a", "Fix [login]"))).toBe("[Session: Fix login]");
+    expect(a.onAttachSession(session("b", "Fix login"))).toBe("[Session: Fix login (2)]");
+    expect(pendingFor(KEY).map((p) => (p.block.type === "ref" ? p.block.label : null))).toEqual([
+      "[Session: Fix login]",
+      "[Session: Fix login (2)]",
+    ]);
+    expect(pendingFor(KEY)[0].block).toEqual({
+      type: "ref",
+      label: "[Session: Fix login]",
+      target: { kind: "session", id: "a", title: "Fix login", agent: "codex", project: "/work/repo" },
+    });
   });
 });

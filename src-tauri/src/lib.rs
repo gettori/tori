@@ -386,6 +386,7 @@ pub fn run() {
             chat::commands::chat_retired_stores,
             chat::commands::chat_terminate_orphan,
             config::get_config,
+            config::project_of_folder,
             config::list_branches,
             config::list_remote_branches,
             config::repo_default_branch,

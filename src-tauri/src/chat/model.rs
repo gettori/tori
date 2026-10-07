@@ -840,18 +840,26 @@ pub enum RefTarget {
         head: String,
         base: String,
     },
+    Session {
+        id: String,
+        title: String,
+        agent: String,
+        project: String,
+    },
 }
 
 impl RefTarget {
     fn kind(&self) -> &'static str {
         match self {
             RefTarget::Pr { .. } => "pr",
+            RefTarget::Session { .. } => "session",
         }
     }
 
     fn hint(&self) -> String {
         match self {
             RefTarget::Pr { url, .. } => format!("Read it with the pr_get tool, key {url}."),
+            RefTarget::Session { id, .. } => format!("Read it with the session_history tool, id {id}."),
         }
     }
 }
@@ -1653,6 +1661,29 @@ mod tests {
             "<tori kind=\"ref-pr\">\n[PR 123]: {\"kind\":\"pr\",\"number\":123,\"title\":\"Fix it\",\
              \"url\":\"https://github.com/o/r/pull/123\",\"state\":\"open\",\"draft\":false,\"head\":\"feat/x\",\
              \"base\":\"main\"}\nRead it with the pr_get tool, key https://github.com/o/r/pull/123.\n</tori>"
+        );
+    }
+
+    #[test]
+    fn a_session_ref_is_sent_as_one_note_naming_its_tool() {
+        let target = RefTarget::Session {
+            id: "abc".into(),
+            title: "Fix login".into(),
+            agent: "codex".into(),
+            project: "/p/tori".into(),
+        };
+        assert_eq!(
+            ref_note("[Session: Fix login]", &target),
+            "<tori kind=\"ref-session\">\n[Session: Fix login]: {\"kind\":\"session\",\"id\":\"abc\",\
+             \"title\":\"Fix login\",\"agent\":\"codex\",\"project\":\"/p/tori\"}\n\
+             Read it with the session_history tool, id abc.\n</tori>"
+        );
+        assert_eq!(
+            ref_from_note(&ref_note("[Session: Fix login]", &target)),
+            Some(ContentBlock::Ref {
+                label: "[Session: Fix login]".into(),
+                target
+            })
         );
     }
 
