@@ -23,6 +23,16 @@ const triple = process.env.TAURI_ENV_TARGET_TRIPLE || native;
 const release = process.env.TAURI_ENV_DEBUG === "false";
 const exe = triple.includes("windows") ? ".exe" : "";
 
+const out = path.join(crate, "binaries", `tori-cli-${triple}${exe}`);
+
+// The crate's build script copies the sidecar and fails when it is missing,
+// and this build is the one that makes it. A placeholder breaks the cycle and
+// is overwritten below.
+if (!fs.existsSync(out)) {
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, "");
+}
+
 // No `--target` for the host, so this shares `target/debug` with the app build
 // instead of compiling every dependency a second time.
 const args = ["build", "--bin", "tori-cli", "--manifest-path", path.join(crate, "Cargo.toml")];
@@ -32,7 +42,5 @@ execFileSync("cargo", args, { stdio: "inherit" });
 
 const profile = release ? "release" : "debug";
 const built = path.join(crate, "target", ...(triple === native ? [] : [triple]), profile, `tori-cli${exe}`);
-const out = path.join(crate, "binaries", `tori-cli-${triple}${exe}`);
-fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.copyFileSync(built, out);
 console.log(`cli:build: ${path.relative(root, out)}`);
