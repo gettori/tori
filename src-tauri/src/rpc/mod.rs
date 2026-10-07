@@ -829,6 +829,21 @@ pub fn autopilot_state(app: AppHandle, rpc: tauri::State<RpcState>) -> Result<Va
     backend.autopilot_state().map_err(|e| e.message)
 }
 
+// The contracts alone, without the forge reads a full `autopilot_state` makes.
+#[tauri::command]
+pub fn autopilot_contracts(
+    rpc: tauri::State<RpcState>,
+) -> std::collections::BTreeMap<String, crate::autopilot::Contract> {
+    rpc.autopilot.projects()
+}
+
+// Through the socket's own params, so the editor gets the same refusals a tool does.
+#[tauri::command]
+pub fn autopilot_project_set(rpc: tauri::State<RpcState>, project_path: String, patch: Value) -> Result<Value, String> {
+    let params: server::ProjectSetParams = serde_json::from_value(patch).map_err(|e| e.to_string())?;
+    params.apply(&rpc.autopilot, project_path).map_err(|e| e.message)
+}
+
 // Called from the webview's forge poll tick, so it rides that cadence and its
 // pause and backoff rather than a clock of its own.
 #[tauri::command(async)]

@@ -57,9 +57,17 @@ const CARD_ENTRIES: Record<string, string> = {
   forge: "Hosts",
 };
 /** Entries the pane anchors by id rather than drawing as a `<label>` row: the
- *  agents table, and Advanced's base-folder card and its two danger boxes,
- *  whose titles are headings on a box and not labels for a control. */
-const ANCHORED_ENTRIES = ["agents", "base-folder", "crash-logs", "change-base-folder", "forget-base-folder"];
+ *  agents table, the autopilot's per-project contracts, and Advanced's
+ *  base-folder card and its two danger boxes, whose titles are headings on a
+ *  box and not labels for a control. */
+const ANCHORED_ENTRIES = [
+  "agents",
+  "autopilot-projects",
+  "base-folder",
+  "crash-logs",
+  "change-base-folder",
+  "forget-base-folder",
+];
 /** Entries whose control lives on **an account's card**, on an agent's own
  *  detail page, which the panel reaches only once a reader picks an agent. They
  *  are in the catalogue because that is what the filter searches and what the
