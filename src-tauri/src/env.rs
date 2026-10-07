@@ -4,7 +4,7 @@
 // spawns (PTY, external editors, the language server) uses this so binaries
 // resolve the same way they do in the user's shell.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::platform::shell::{self, PATH_SEP};
 
@@ -127,6 +127,18 @@ pub fn resolve_binary(program: &str) -> Option<PathBuf> {
         Some(path) => shell::resolve_binary(program, path),
         None => probe_binary(program),
     }
+}
+
+/// `python3`, or `python` on Windows, from the PATH, skipping the Store alias.
+pub fn resolve_python() -> Option<PathBuf> {
+    let Some(path) = login_path() else {
+        return probe_binary(shell::PYTHON).filter(|p| !shell::is_store_alias(p));
+    };
+    let real: Vec<&str> = path
+        .split(shell::PATH_SEP)
+        .filter(|dir| !shell::is_store_alias(Path::new(dir)))
+        .collect();
+    shell::resolve_binary(shell::PYTHON, &real.join(&shell::PATH_SEP.to_string()))
 }
 
 /// PATH for a child that runs the user's own tools (an agent session, its

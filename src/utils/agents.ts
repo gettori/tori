@@ -182,7 +182,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
     parser_kind: "claude_jsonl",
     // The token run matches a chat's command line too, where base_args come
     // before `--resume`/`--session-id`. See agents/claude.toml.
-    running_pattern: "claude ([^ ]+ )*(--resume|-r|--session-id) {id}",
+    running_pattern: String.raw`claude(\.exe|-code[\\/]cli\.js)? ([^ ]+ )*(--resume|-r|--session-id) {id}`,
     pty_quiet_ms: 2000,
     // The chat table is deliberately omitted here rather than duplicated: the
     // fallback exists so the *sidebar* paints before `list_agents` resolves,

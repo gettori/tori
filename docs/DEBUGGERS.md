@@ -113,6 +113,12 @@ child_sessions = false
 # normal and makes the card render neutral; it never renders as drift.
 # verified_against = "1.8.22"
 
+# optional (default every OS): the OSes (`macos`, `windows`, `linux`) whose
+# Settings card shows before the program is found, because the install hint is
+# for them. Elsewhere the card appears once the program is on the PATH. lldb
+# sets ["macos"], since its hint is Apple's tools.
+# offered_on = ["macos"]
+
 # --- tables below this line; nothing top-level may follow them ---
 
 # required: which file extensions this adapter claims, and the DAP `type` a

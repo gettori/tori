@@ -31,3 +31,8 @@ bin = "bin/lua-language-server"
 file = "lua-language-server-3.19.1-darwin-x64.tar.gz"
 sha256 = "eb373c159cbe556711d7cd316315de2dce969bfd54b31edb7eb9cab2937f2cca"
 bin = "bin/lua-language-server"
+
+[install.assets.windows-x86_64]
+file = "lua-language-server-3.19.1-win32-x64.zip"
+sha256 = "fdb9a59108cf62517813c97fa5549b0e16d1ef0688306bac728b08434db7e4cd"
+bin = "bin/lua-language-server.exe"

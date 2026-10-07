@@ -185,6 +185,9 @@ fn find_program(adapter: &DapAdapter, debuggers: &Path) -> Option<PathBuf> {
 }
 
 fn xcrun_find(program: &str) -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
     // `xcrun` opens Apple's installer when there are no developer tools, and
     // health asks on every Settings open, so it runs only once `xcode-select`
     // names a developer directory that exists.
@@ -700,8 +703,14 @@ fn root_for_adapter(adapter_id: &str, file_path: &str, project_path: &str) -> Re
 /// Tori's own venv, which holds the adapter and none of the project's packages.
 #[tauri::command(async)]
 pub fn dap_python(root: String, project_path: String) -> Option<String> {
-    crate::format::project_bin("python3", Path::new(&root), Path::new(&project_path))
-        .map(|p| p.to_string_lossy().into_owned())
+    crate::format::project_bin(
+        crate::platform::shell::PYTHON,
+        Path::new(&root),
+        Path::new(&project_path),
+    )
+    .filter(|p| !crate::platform::shell::is_store_alias(p))
+    .or_else(crate::env::resolve_python)
+    .map(|p| p.to_string_lossy().into_owned())
 }
 
 /// The environment a launched debuggee should run with.
@@ -844,11 +853,20 @@ pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
                 Launch::BundledNodeSocket { entry, .. } => bundled_entry(&app, entry).is_none(),
                 Launch::Stdio { .. } | Launch::Tcp { .. } => false,
             };
-            DapHealth {
-                disabled: disabled.contains(&adapter.id),
-                ..check(adapter, entry_missing, &debuggers)
-            }
+            (
+                adapter,
+                DapHealth {
+                    disabled: disabled.contains(&adapter.id),
+                    ..check(adapter, entry_missing, &debuggers)
+                },
+            )
         })
+        .filter(|(adapter, health)| {
+            adapter.offered_on.is_empty()
+                || adapter.offered_on.iter().any(|os| os == std::env::consts::OS)
+                || health.path.is_some()
+        })
+        .map(|(_, health)| health)
         .collect()
 }
 

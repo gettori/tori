@@ -865,6 +865,21 @@ struct InstallToml {
     update_args: Vec<String>,
     #[serde(default)]
     uninstall_args: Vec<String>,
+    /// The vendor's Windows command, where it documents a different one. It
+    /// replaces the whole table there, verbs included.
+    windows: Option<InstallWindowsToml>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstallWindowsToml {
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
+    #[serde(default)]
+    update_args: Vec<String>,
+    #[serde(default)]
+    uninstall_args: Vec<String>,
 }
 
 /// `[accounts]`, v3's addition.
@@ -1448,14 +1463,22 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     let install = raw
         .install
         .map(|i| {
-            if i.program.trim().is_empty() {
+            if i.program.trim().is_empty() || i.windows.as_ref().is_some_and(|w| w.program.trim().is_empty()) {
                 return Err(format!("{source}: install.program must not be empty"));
             }
-            Ok(InstallSpec {
-                program: i.program,
-                args: i.args,
-                update_args: i.update_args,
-                uninstall_args: i.uninstall_args,
+            Ok(match i.windows {
+                Some(w) if cfg!(windows) => InstallSpec {
+                    program: w.program,
+                    args: w.args,
+                    update_args: w.update_args,
+                    uninstall_args: w.uninstall_args,
+                },
+                _ => InstallSpec {
+                    program: i.program,
+                    args: i.args,
+                    update_args: i.update_args,
+                    uninstall_args: i.uninstall_args,
+                },
             })
         })
         .transpose()?;
@@ -1681,7 +1704,9 @@ pub fn session_pattern(agent: &str, id: &str) -> Option<String> {
         // Kept in step with `agents/claude.toml`'s `[running] pattern`: the
         // token run is what makes a chat's command line match, since the chat
         // transport puts its base_args before `--resume`/`--session-id`.
-        None => Some(format!("claude ([^ ]+ )*(--resume|-r|--session-id) {id}")),
+        None => Some(format!(
+            r"claude(\.exe|-code[\\/]cli\.js)? ([^ ]+ )*(--resume|-r|--session-id) {id}"
+        )),
     }
 }
 

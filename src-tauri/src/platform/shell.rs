@@ -172,6 +172,19 @@ pub fn has_posix_shell() -> bool {
     }
 }
 
+// Python's own installer puts `python.exe` on a Windows PATH, and `python3`
+// there is usually the Store's alias, which opens the Store.
+pub const PYTHON: &str = if cfg!(windows) { "python" } else { "python3" };
+
+// The Store's App Execution Aliases. Its `python.exe` opens the Store when
+// Python is not installed, so an interpreter found there is no interpreter.
+pub fn is_store_alias(path: &Path) -> bool {
+    cfg!(windows) && path.ancestors().any(|dir| dir.ends_with("Microsoft/WindowsApps"))
+}
+
+// Where a venv keeps its interpreter and scripts.
+pub const VENV_BIN: &str = if cfg!(windows) { "Scripts" } else { "bin" };
+
 pub const GIT_INSTALL: (&str, &[&str]) = if cfg!(windows) {
     ("winget", &["install", "--id", "Git.Git", "-e"])
 } else {

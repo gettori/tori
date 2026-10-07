@@ -1,15 +1,17 @@
 // Debuggers Tori installs itself, for `[install] kind = "pip"`. Each is a venv
-// in `~/.config/tori/debuggers/<id>/`, made with the `python3` on the login PATH
+// in `~/.config/tori/debuggers/<id>/`, made with the Python on the login PATH
 // and holding one exact version of its package. Only the adapter runs from it:
 // the program being debugged runs on the project's own interpreter.
 //
 // The staging, the manifest and the swap are the language servers' own
 // (`lsp::managed`), so a failed install leaves the previous one, or nothing.
 
+use std::env::consts::EXE_SUFFIX;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::lsp::managed::{install_staged, last_line, Installed};
+use crate::platform::shell;
 
 use super::registry::{DapAdapter, Install};
 
@@ -20,7 +22,7 @@ pub fn debuggers_dir() -> PathBuf {
 
 /// Install (or replace) Tori's copy of `adapter`.
 pub fn install(adapter: &DapAdapter, dir: &Path) -> Result<Installed, String> {
-    let python = crate::env::resolve_binary("python3").ok_or("python3 was not found on your PATH")?;
+    let python = crate::env::resolve_python().ok_or_else(|| format!("{} was not found on your PATH", shell::PYTHON))?;
     install_with(adapter, dir, &python)
 }
 
@@ -38,13 +40,13 @@ fn install_with(adapter: &DapAdapter, dir: &Path, python: &Path) -> Result<Insta
                 .arg("-m")
                 .arg("venv")
                 .arg(&venv),
-            "python3 -m venv",
+            "python -m venv",
         )?;
         // Wheels only: building an sdist runs its setup code, the pip twin of
         // the npm install's `--ignore-scripts`.
         let spec = format!("{package}=={version}");
         run(
-            crate::platform::process::command(venv.join("bin/python"))
+            crate::platform::process::command(venv.join(shell::VENV_BIN).join(format!("python{EXE_SUFFIX}")))
                 .args([
                     "-m",
                     "pip",
@@ -58,7 +60,7 @@ fn install_with(adapter: &DapAdapter, dir: &Path, python: &Path) -> Result<Insta
         )?;
         Ok(Installed {
             version: version.clone(),
-            bin: format!("venv/bin/{}", adapter.launch.program()),
+            bin: format!("venv/{}/{}{EXE_SUFFIX}", shell::VENV_BIN, adapter.launch.program()),
         })
     })
 }

@@ -585,7 +585,13 @@ fn load_install(raw: InstallToml, program: &str, source: &str) -> Result<Install
                 if asset.sha256.len() != 64 || !asset.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
                     return Err(format!("{source}: asset `{platform}`: `sha256` must be 64 hex digits"));
                 }
-                let bin = asset.bin.unwrap_or_else(|| program.to_string());
+                let bin = asset.bin.unwrap_or_else(|| {
+                    if platform.starts_with("windows-") {
+                        format!("{program}.exe")
+                    } else {
+                        program.to_string()
+                    }
+                });
                 if !inside(Path::new(&bin)) {
                     return Err(format!(
                         "{source}: asset `{platform}`: `bin` must be a relative path inside the install"

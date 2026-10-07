@@ -14,6 +14,10 @@ label = "Rust, C and C++ (lldb-dap)"
 # have no marker every project shares, so they run from the project root.
 root_markers = ["Cargo.toml"]
 
+# The install hint is Apple's tools, so elsewhere the card shows only once an
+# `lldb-dap` is on the PATH.
+offered_on = ["macos"]
+
 [languages]
 rs = "lldb-dap"
 c = "lldb-dap"

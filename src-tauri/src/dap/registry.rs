@@ -128,7 +128,7 @@ pub enum Install {
         update: Option<String>,
         uninstall: Option<String>,
     },
-    /// A venv Tori creates with the PATH `python3` and installs `package` into,
+    /// A venv Tori creates with the PATH Python and installs `package` into,
     /// at an exact version.
     Pip { package: String, version: String },
 }
@@ -164,6 +164,11 @@ pub struct DapAdapter {
     /// The adapter version this config was captured against. `None` is normal
     /// and renders neutral, never as drift.
     pub verified_against: Option<String>,
+    /// The OSes (as `std::env::consts::OS` names them) whose Settings card
+    /// shows before the program is found, because the install hint is for
+    /// them. Elsewhere the card shows once the program is on the PATH. Empty
+    /// means every OS.
+    pub offered_on: Vec<String>,
 }
 
 // --- raw TOML shape, kept apart from `DapAdapter` for `lsp::registry`'s
@@ -184,6 +189,8 @@ struct AdapterToml {
     install: Option<InstallToml>,
     #[serde(default)]
     verified_against: Option<String>,
+    #[serde(default)]
+    offered_on: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -372,6 +379,16 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
         .map(|(ext, ty)| (ext.trim_start_matches('.').to_lowercase(), ty))
         .collect();
 
+    if let Some(os) = raw
+        .offered_on
+        .iter()
+        .find(|os| !["macos", "windows", "linux"].contains(&os.as_str()))
+    {
+        return Err(format!(
+            "{source}: unknown OS `{os}` in offered_on (macos, windows, linux)"
+        ));
+    }
+
     Ok(DapAdapter {
         id: raw.id,
         label: raw.label,
@@ -381,6 +398,7 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
         child_sessions: raw.child_sessions,
         install,
         verified_against: raw.verified_against,
+        offered_on: raw.offered_on,
     })
 }
 

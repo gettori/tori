@@ -35,3 +35,8 @@ bin = "lemminx-osx-aarch_64"
 file = "lemminx-osx-x86_64.zip"
 sha256 = "9e56123194b5c1fdc7d87f1bd21c83cc996ba7be913def3a2836a13305bcd273"
 bin = "lemminx-osx-x86_64"
+
+[install.assets.windows-x86_64]
+file = "lemminx-win32.zip"
+sha256 = "7eaefaac68253b0ec8e0ad1f1c0f2d0755423d4e99e52497428b52f80df28eb7"
+bin = "lemminx-win32.exe"

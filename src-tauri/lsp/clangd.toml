@@ -28,7 +28,7 @@ runtime = "native"
 program = "clangd"
 args = []
 
-# One universal build for both architectures.
+# One universal macOS build for both architectures.
 [install]
 kind = "github_release"
 repo = "clangd/clangd"
@@ -43,3 +43,8 @@ bin = "clangd_22.1.6/bin/clangd"
 file = "clangd-mac-22.1.6.zip"
 sha256 = "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d"
 bin = "clangd_22.1.6/bin/clangd"
+
+[install.assets.windows-x86_64]
+file = "clangd-windows-22.1.6.zip"
+sha256 = "ce54f16e0b4fd76d450eeda9664420b195360b73febcfe40e661108fa57f2ce1"
+bin = "clangd_22.1.6/bin/clangd.exe"

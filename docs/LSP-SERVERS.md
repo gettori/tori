@@ -250,9 +250,9 @@ one of them: Tori installs into `~/.config/tori/servers/<id>/`, and only
 `managed` looks there.
 
 Each release asset is keyed by platform, `<os>-<arch>` as Rust names them
-(`macos-aarch64`, `macos-x86_64`), and names its `file`, its `sha256`, and
-optionally `bin`, the server binary's path inside the install, which defaults
-to `program`. A `.zip` or `.tar` archive is unpacked with the system `tar`,
+(`macos-aarch64`, `macos-x86_64`, `windows-x86_64`), and names its `file`, its
+`sha256`, and optionally `bin`, the server binary's path inside the install,
+which defaults to `program` (`program.exe` for a `windows-` asset). A `.zip` or `.tar` archive is unpacked with the system `tar`,
 which refuses an entry that would land outside the install; any other file is
 the binary itself.
 

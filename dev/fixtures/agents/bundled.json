@@ -13,7 +13,7 @@
       "{id}"
     ],
     "parser_kind": "claude_jsonl",
-    "running_pattern": "claude ([^ ]+ )*(--resume|-r|--session-id) {id}",
+    "running_pattern": "claude(\\.exe|-code[\\\\/]cli\\.js)? ([^ ]+ )*(--resume|-r|--session-id) {id}",
     "pty_quiet_ms": 2000,
     "needs_you": true,
     "hooks": true,

@@ -18,7 +18,7 @@ runtime = "native"
 program = "marksman"
 args = ["server"]
 
-# One universal binary for both architectures, not an archive.
+# One universal macOS binary for both architectures, not an archive.
 [install]
 kind = "github_release"
 repo = "artempyanykh/marksman"
@@ -31,3 +31,7 @@ sha256 = "6a801c17b5ac0dba69787c5282b3b3bd416e66c96253fae098d311c6bbd1833b"
 [install.assets.macos-x86_64]
 file = "marksman-macos"
 sha256 = "6a801c17b5ac0dba69787c5282b3b3bd416e66c96253fae098d311c6bbd1833b"
+
+[install.assets.windows-x86_64]
+file = "marksman.exe"
+sha256 = "a6d05beb08ebe41b0a9f09c98a438540421436fa5531424c22e0bb1d22529705"

@@ -157,7 +157,7 @@ filename_pattern = '...'        # required when backend = "file"; regex with a n
 kind = "..."     # required with [discovery]; must be one of the implemented kinds below
 
 [running]
-pattern = '...'   # required with [discovery]; ERE template (for `pgrep -f`) with an `{id}` placeholder
+pattern = '...'   # required with [discovery]; regex over a process's command line, with an `{id}` placeholder
 
 [capabilities]
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
@@ -228,6 +228,9 @@ program = "npm"             # the vendor's own documented install command...
 args = []                   # ...run in a visible PTY tab, never captured
 update_args = []            # optional; the same program's update verb
 uninstall_args = []         # optional; its removal verb
+
+[install.windows]           # optional; replaces the whole table on Windows
+program = "powershell"      # same four keys
 ```
 
 ### The `[chat]` table
@@ -485,6 +488,12 @@ the uninstall from the Agent group on the same page, each in the same kind of
 visible tab. Either list left empty means that verb is undeclared and gets no
 button - the install verb does not lend its args to the others.
 
+Where the vendor documents a different command for Windows, `[install.windows]`
+carries it, with the same four keys, and on Windows it replaces the whole table,
+verbs included: a verb it leaves out has no button there, rather than borrowing
+the other platform's. The bundled claude adapter uses it for Anthropic's
+`install.ps1`.
+
 ### `capabilities.hooks`
 
 An agent whose `hooks = true` gets its working/needs-you status from its own
@@ -555,7 +564,7 @@ one, set `needs_you = false` and the dot caps at working.
   file rather than by id (`--session <path>` rather than `--resume <id>`).
 
 **Write `running.pattern` against the chat command line, not just the terminal
-one.** `pgrep -f` matches the whole command line, and the two surfaces build
+one.** The pattern is matched against each process's whole command line, and the two surfaces build
 different ones: a PTY tab runs `agent --resume <id>`, while a chat session runs
 `agent <chat.base_args...> --resume <id>` (or `--session-id <id>` for a new
 one). A pattern that assumes the flag sits right after the program name matches
@@ -564,12 +573,14 @@ invisible to the worktree-removal count, the delete warning and the revert
 guard. Allow for the intervening arguments, as the bundled claude adapter does:
 
 ```toml
-pattern = 'claude ([^ ]+ )*(--resume|-r|--session-id) {id}'
+pattern = 'claude(\.exe|-code[\\/]cli\.js)? ([^ ]+ )*(--resume|-r|--session-id) {id}'
 ```
 
 The `([^ ]+ )*` matches whole argument tokens, so it spans the base args without
 also matching an unrelated process that merely mentions the id (a `tail` on the
-transcript, an editor with it open).
+transcript, an editor with it open). The optional suffix is Windows: there the
+program token is `claude.exe`, or `claude-code\cli.js` when an npm shim starts
+node.
 
 ### Parser kinds
 

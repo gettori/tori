@@ -25,9 +25,9 @@ filename_pattern = '^(?P<id>.+)\.jsonl$'
 kind = "claude_jsonl"
 
 [running]
-# ERE for `pgrep -f`; matches a live claude process driving this session id, not
-# merely any process whose command line contains the id (a `less`/`tail` on the
-# transcript file, an editor with it open).
+# A regex over each process's command line; matches a live claude process
+# driving this session id, not merely any process whose command line contains
+# the id (a `less`/`tail` on the transcript file, an editor with it open).
 #
 # The `([^ ]+ )*` is load-bearing, and was measured rather than assumed. The
 # original `claude (--resume|-r) {id}` required the flag to sit immediately
@@ -40,7 +40,11 @@ kind = "claude_jsonl"
 #
 # Matching a run of whole argument tokens keeps the decoys out: a `tail` on
 # `~/.claude/projects/<p>/<id>.jsonl` has no flag token before the id.
-pattern = 'claude ([^ ]+ )*(--resume|-r|--session-id) {id}'
+#
+# On Windows the program token is `...\claude.exe`, or, for an npm install
+# whose shim starts node, `node ...\claude-code\cli.js`. Not yet measured on
+# a Windows machine.
+pattern = 'claude(\.exe|-code[\\/]cli\.js)? ([^ ]+ )*(--resume|-r|--session-id) {id}'
 
 [capabilities]
 # Empirically confirmed (2026-07-18, phase 2 capture): a real permission
@@ -415,3 +419,11 @@ program = "npm"
 args = ["install", "-g", "@anthropic-ai/claude-code"]
 update_args = ["install", "-g", "@anthropic-ai/claude-code"]
 uninstall_args = ["uninstall", "-g", "@anthropic-ai/claude-code"]
+
+# Anthropic's documented Windows installer, which puts `claude.exe` in
+# `~/.local/bin` and needs neither Node nor npm. Run again it installs the
+# latest, and it has no uninstall verb. Not yet run on a Windows machine.
+[install.windows]
+program = "powershell"
+args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"]
+update_args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"]

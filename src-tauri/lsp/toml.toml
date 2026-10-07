@@ -33,3 +33,7 @@ bin = "tombi-cli-1.5.5-aarch64-apple-darwin/tombi"
 file = "tombi-cli-1.5.5-x86_64-apple-darwin.tar.gz"
 sha256 = "9276c456e4a0217e95fb84ac3cde29d281d7b53e5eb168d83cb038ec07e2083d"
 bin = "tombi-cli-1.5.5-x86_64-apple-darwin/tombi"
+
+[install.assets.windows-x86_64]
+file = "tombi-cli-1.5.5-x86_64-pc-windows-msvc.zip"
+sha256 = "49e8aa14e82038a13c5f9f50cc6524b56b9bce167734bead31439939e0830a3b"
