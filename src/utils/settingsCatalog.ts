@@ -322,6 +322,18 @@ export const SETTINGS: SettingEntry[] = [
     hint: "List a Topic's worktrees under their repository in Spaces too. Off, they live only in their Topic.",
   },
   {
+    id: "cleanup-after-merge",
+    section: "git",
+    label: "Remove worktrees after merge",
+    hint: "Remove a clean worktree once its pull request merged and nothing in it is newer than what merged. The branch stays, so Add Worktree brings it back. Only for projects in the active Space.",
+  },
+  {
+    id: "cleanup-after-idle",
+    section: "git",
+    label: "Remove idle worktrees after",
+    hint: "Remove a clean, fully pushed worktree nobody has committed in, chatted in or created for this many days. The branch stays, so Add Worktree brings it back.",
+  },
+  {
     id: "forge",
     section: "forge",
     label: "Hosts",

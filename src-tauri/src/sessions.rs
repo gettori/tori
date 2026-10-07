@@ -657,6 +657,15 @@ pub(crate) fn ids_under(index: &SessionIndex, folder: &str) -> Vec<String> {
         .collect()
 }
 
+/// Every session's cwd with when it last wrote its transcript, for a caller
+/// asking about many folders at once rather than scanning once per folder.
+pub(crate) fn activity_by_cwd(index: &SessionIndex) -> Vec<(String, u64)> {
+    ensure_index(index, &crate::accounts::load())
+        .into_iter()
+        .map(|s| (s.cwd, s.last_active))
+        .collect()
+}
+
 /// Sessions (every registered agent) anchored at `folder` or nested under it,
 /// newest first.
 #[tauri::command(async)]

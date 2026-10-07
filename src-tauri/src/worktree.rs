@@ -480,7 +480,7 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
 /// regenerable pointer to a shared file, not user work). Without this exception a
 /// freshly created worktree that linked any `.shared/` file would read as dirty and
 /// could never be removed. See [[gotchas#shared-symlinks-read-as-untracked-and-block-worktree-removal]].
-fn tree_dirty(worktree: &Path) -> Result<bool, String> {
+pub(crate) fn tree_dirty(worktree: &Path) -> Result<bool, String> {
     let out = crate::exec::git_in(worktree)
         .args(["status", "--porcelain"])
         .output()
@@ -618,7 +618,7 @@ fn branch_at(path: &Path) -> Option<String> {
 /// True when this worktree's checked-out branch has commits not on its remote: it
 /// is ahead of its upstream, or has no upstream at all (a local-only branch) while
 /// carrying at least one commit. A detached / unborn HEAD has nothing to push.
-fn branch_unpushed(worktree: &Path) -> bool {
+pub(crate) fn branch_unpushed(worktree: &Path) -> bool {
     let cap = |args: &[&str]| {
         crate::exec::git_in(worktree)
             .args(args)
