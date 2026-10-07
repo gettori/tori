@@ -58,3 +58,6 @@ Each entry records the tab id it produced into a **sparse** array indexed by sto
 - [[gotcha_a_persist_effect_derived_from_live_state_erases_everything_not_currently_live]]
 - [[gotcha_an_offer_banner_built_by_early_return_leaks_across_contexts]]
 - [[gotcha_an_always_mounted_for_gated_behind_a_show_fallback_unmounts_every_row]] — why the offer is an overlay, not a `<Show fallback>`.
+- [[gotcha_stripready_waits_only_for_terminal_tabs]] - the file restore is separate, and an emptiness check needs both.
+- [[gotcha_terminal_focustab_never_writes_the_pane_pick]] - why restore stays on plain `focusTab`.
+- [[concept_empty_strip_auto_draft]] - what opens once both restores leave a strip empty.
