@@ -1,7 +1,7 @@
 ---
 summary: profile homes sit under Application Support at 0700 holding transcripts, so custody means never spawning security
 status: current
-updated: 2026-08-15
+updated: 2026-10-08
 source: Make a harness installable, signed in, and discoverable (personal/tori, branch `harness-lifecycle`); Phases 0, 2, 3; `src-tauri/src/accounts.rs`, `src-tauri/src/auth.rs`; `handoff_2026-07-27-multi-account-profiles` (deleted, absorbed)
 ---
 
@@ -42,6 +42,7 @@ Identity and secret are already split by the tool: `oauthAccount` (email, org, s
 - An adapter that declares no `logout_args` cannot revoke on removal, so deleting its profile leaves tokens valid until expiry. That requires explicit confirmation rather than a silent delete.
 - Account isolation is per-adapter and unavailable for most of the ACP tail, published through `supports_isolation` rather than hidden. Codex and OpenCode relocate a credential store but claim **no** isolation, because nobody has run two accounts side by side on either.
 - **While an inherited `ANTHROPIC_API_KEY` is in force there is no email**, so duplicate-account detection cannot work. A real gap, visible on screen rather than papered over.
+- **Each added account's home path is also written into a `0755` script in `~/.local/bin`**, so a terminal can run the agent as that account. The script holds a path, never a secret, so the custody boundary holds. See [[component_account_commands]].
 
 ## Related
 
@@ -51,3 +52,4 @@ Identity and secret are already split by the tool: `oauthAccount` (email, org, s
 - [[adr_three_session_stores]] - the sibling decision from the same plan
 - [[lesson_pure_core_for_global_stores]] - the shape `create_profile_home_in` follows so `0700` is assertable
 - [[adr_usage_source_ladder]] - amends this boundary with one gated exception: an opt-in usage source may read the Keychain token, and the custody test asserts it never does while the setting is off
+- [[component_account_commands]] - the per-account terminal commands that carry each home path
