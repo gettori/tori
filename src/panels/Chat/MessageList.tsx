@@ -115,9 +115,15 @@ function PromptText(props: { blocks: readonly ContentBlock[]; cwd: string }) {
             }
             const t = r.target;
             return (
-              <button type="button" class={styles.promptChip} title={refTitle(t)} onClick={() => openRef(t, props.cwd)}>
+              <Tooltip
+                as="button"
+                type="button"
+                class={styles.promptChip}
+                label={refTitle(t)}
+                onClick={() => openRef(t, props.cwd)}
+              >
                 {part()}
-              </button>
+              </Tooltip>
             );
           }}
         </Show>
