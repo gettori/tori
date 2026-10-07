@@ -38,6 +38,19 @@ function turn(n: number): ChatItem[] {
 
 const ITEMS: ChatItem[] = [1, 2, 3].flatMap(turn);
 
+// A reference chip is a button whose text is its token, and what it names is its tooltip.
+const chips = (container: HTMLElement) =>
+  [...container.querySelectorAll("button")].filter((b) => b.textContent?.startsWith("["));
+
+function described(chip: HTMLElement): string {
+  chip.focus();
+  fireEvent.focus(chip);
+  const text = screen.getByRole("tooltip").textContent ?? "";
+  chip.blur();
+  fireEvent.blur(chip);
+  return text;
+}
+
 function list(
   over: {
     items?: ChatItem[];
@@ -163,9 +176,9 @@ describe("a prompt that references a pull request", () => {
   for (const [name, items] of paths) {
     it(`draws the ${name} token as one chip and no Tori row`, () => {
       const { container } = render(() => list({ items: items() }));
-      const chips = container.querySelectorAll("button[title]");
-      expect([...chips].map((c) => c.textContent)).toEqual(["[PR 7]"]);
-      expect(chips[0].getAttribute("title")).toBe("Seven (merged)");
+      const found = chips(container);
+      expect(found.map((c) => c.textContent)).toEqual(["[PR 7]"]);
+      expect(described(found[0])).toBe("Seven (merged)");
       expect(container.textContent).toContain("why did [PR 7] land?");
       expect(container.textContent).not.toContain("ref-pr");
     });
@@ -173,7 +186,7 @@ describe("a prompt that references a pull request", () => {
 
   it("opens the pull request it names", async () => {
     const { container } = render(() => list({ items: paths[0][1]() }));
-    fireEvent.click(container.querySelector("button[title]")!);
+    fireEvent.click(chips(container)[0]);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("forge_get_pr", { projectPath: "/tmp", number: 7 }));
   });
 });
@@ -191,9 +204,9 @@ describe("a prompt that references a session", () => {
     const opened: SessionAction[] = [];
     const off = onWith<SessionAction>(SESSION_ACTION, (d) => opened.push(d));
     const { container } = render(() => list({ items: [{ kind: "user", id: "u1", blocks, steer: false }] }));
-    const chip = container.querySelector("button[title]")!;
+    const chip = chips(container)[0];
     expect(chip.textContent).toBe("[Session: Fix login]");
-    expect(chip.getAttribute("title")).toBe("Fix login (codex)");
+    expect(described(chip)).toBe("Fix login (codex)");
     fireEvent.click(chip);
     expect(opened).toEqual([{ sessionId: "abc", action: "open" }]);
     off();
@@ -216,9 +229,9 @@ describe("a prompt that references a session", () => {
     const shown: NavTarget[] = [];
     const off = onWith<NavTarget>(NAVIGATE, (t) => shown.push(t));
     const { container } = render(() => list({ items: [{ kind: "user", id: "u1", blocks, steer: false }] }));
-    const [project, space] = container.querySelectorAll("button[title]");
-    expect(project.getAttribute("title")).toBe("/p/tori (Work)");
-    expect(space.getAttribute("title")).toBe("tori");
+    const [project, space] = chips(container);
+    expect(described(project)).toBe("/p/tori (Work)");
+    expect(described(space)).toBe("tori");
     fireEvent.click(project);
     fireEvent.click(space);
     expect(shown).toEqual([{ project: "/p/tori" }, { space: "Work" }]);
