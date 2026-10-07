@@ -68,6 +68,7 @@ mod usage_snapshot;
 mod usage_token;
 mod workspace_settings;
 mod worktree;
+mod worktree_cleanup;
 
 use chat::host::ChatState;
 use config::{ConfigWatch, ProjectIndex, RootWatch};
@@ -656,6 +657,7 @@ pub fn run() {
             worktree::remove_worktree,
             worktree::prune_worktree_records,
             worktree::remove_worktree_and_branch,
+            worktree_cleanup::worktree_cleanup_facts,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_start,
             forge::commands::forge_cli_installed,
