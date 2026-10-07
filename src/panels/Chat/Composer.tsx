@@ -28,6 +28,7 @@ import {
 import {
   activeToken,
   dropToken,
+  mentionScope,
   moveIndex,
   rank,
   replaceToken,
@@ -39,9 +40,14 @@ import { fmtTokens } from "../../utils/chatUsage";
 import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
 import type { PullRequest } from "../../utils/forgeTypes";
 import { prHits, prLabel } from "../../utils/prMention";
+import type { SessionMeta } from "../../utils/sessionStore";
+import { sessionTitle } from "../../utils/sessionMention";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
+// Sessions above files in a bare `@`, few enough that files stay in view;
+// `@session/` lists the rest.
+const MIXED_SESSIONS = 5;
 const MAX_ROWS = 9;
 // The floor is what the box returns to after every send, so it is the height
 // the composer is looked at for most of a session: a prompt worth writing is a
@@ -196,6 +202,12 @@ export default function Composer(props: {
   onAttachPr?: (pr: PullRequest) => string | null;
   /** One pull request by number, for one the open list does not hold. */
   resolvePr?: (number: number) => Promise<PullRequest | null>;
+  /** The repo's sessions, newest first, read on the first `@`. Absent, `@`
+   *  offers files only. */
+  sessions?: readonly SessionMeta[];
+  loadSessions?: () => void;
+  /** A picked session. Answers the token its chip is named by. */
+  onAttachSession?: (s: SessionMeta) => string | null;
   onSend: (text: string) => void;
   onQueue?: (text: string) => void;
   onInterrupt: () => void;
@@ -294,6 +306,9 @@ export default function Composer(props: {
   let input: HTMLTextAreaElement | undefined;
   let filesRequested = false;
   let prsRequested = false;
+  // The `@` the session list was last read for, so each new mention reads it
+  // fresh and typing inside one does not.
+  let sessionsAt = -1;
 
   // A turn of nothing but a file reference is a real thing to send ("look at
   // this"), so an attachment is enough on its own.
@@ -366,9 +381,19 @@ export default function Composer(props: {
     onCleanup(() => ro.disconnect());
   });
 
-  const fileHits = createMemo(() => {
+  const scoped = createMemo(() => {
     const t = token();
-    return t?.kind === "file" ? rank(files(), t.query, (f) => f) : [];
+    return t?.kind === "file" ? mentionScope(t.query) : null;
+  });
+  const sessionHits = createMemo(() => {
+    const m = scoped();
+    if (!m || m.scope === "file" || !props.sessions || !props.onAttachSession) return [];
+    const hits = rank(props.sessions, m.query, (s) => sessionTitle(s));
+    return m.scope === "all" ? hits.slice(0, MIXED_SESSIONS) : hits;
+  });
+  const fileHits = createMemo(() => {
+    const m = scoped();
+    return m && m.scope !== "session" ? rank(files(), m.query, (f) => f) : [];
   });
   const commandHits = createMemo(() => {
     const t = token();
@@ -378,7 +403,7 @@ export default function Composer(props: {
     const t = token();
     return t?.kind === "pr" && props.onAttachPr ? prHits(props.prs ?? [], t.query) : [];
   });
-  const menuLength = () => fileHits().length + commandHits().length + prMenu().length;
+  const menuLength = () => sessionHits().length + fileHits().length + commandHits().length + prMenu().length;
   const resolveActive = () => prMenu()[menuIndex()]?.kind === "resolve";
   const [stashOpen, setStashOpen] = createSignal(false);
   const [stashIndex, setStashIndex] = createSignal(0);
@@ -412,6 +437,11 @@ export default function Composer(props: {
         .then(setFiles)
         .catch(() => setFiles([]));
     }
+    if (next?.kind !== "file") sessionsAt = -1;
+    else if (next.start !== sessionsAt && props.loadSessions) {
+      sessionsAt = next.start;
+      props.loadSessions();
+    }
     if (next?.kind === "pr" && !prsRequested) {
       prsRequested = true;
       props.loadPrs?.();
@@ -432,8 +462,14 @@ export default function Composer(props: {
   function accept() {
     const t = token();
     if (!t) return;
-    if (t.kind === "file") {
-      const hit = fileHits()[menuIndex()];
+    if (t.kind === "file" && menuIndex() < sessionHits().length) {
+      const label = props.onAttachSession?.(sessionHits()[menuIndex()]);
+      if (label) {
+        const { text: next, caret } = replaceToken(text(), t, label);
+        setInputText(next, caret);
+      }
+    } else if (t.kind === "file") {
+      const hit = fileHits()[menuIndex() - sessionHits().length];
       if (!hit) return;
       // The mention becomes a chip and keeps its place: the token is what the
       // sentence names the attachment by, so taking the words out would leave
@@ -1000,8 +1036,8 @@ export default function Composer(props: {
           off-screen. */}
       <Show when={menuOpen()}>
         <div class={styles.completions} role="listbox">
-          <For each={fileHits()}>
-            {(path, i) => (
+          <For each={sessionHits()}>
+            {(s, i) => (
               <button
                 type="button"
                 class={styles.completion}
@@ -1009,15 +1045,35 @@ export default function Composer(props: {
                 role="option"
                 aria-selected={i() === menuIndex()}
                 onMouseEnter={() => setMenuIndex(i())}
-                // Blur fires before click, and closing on blur would leave
-                // `accept` with no token to complete. Keeping focus on the
-                // textarea makes the click land on a menu that is still open.
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={accept}
               >
-                <span class={styles.completionName}>{path}</span>
+                <span class={styles.completionName}>{sessionTitle(s)}</span>
+                <span class={styles.completionDesc}>{`Session, ${s.agent ?? "claude"}`}</span>
               </button>
             )}
+          </For>
+          <For each={fileHits()}>
+            {(path, at) => {
+              const i = () => at() + sessionHits().length;
+              return (
+                <button
+                  type="button"
+                  class={styles.completion}
+                  classList={{ [styles.completionActive]: i() === menuIndex() }}
+                  role="option"
+                  aria-selected={i() === menuIndex()}
+                  onMouseEnter={() => setMenuIndex(i())}
+                  // Blur fires before click, and closing on blur would leave
+                  // `accept` with no token to complete. Keeping focus on the
+                  // textarea makes the click land on a menu that is still open.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={accept}
+                >
+                  <span class={styles.completionName}>{path}</span>
+                </button>
+              );
+            }}
           </For>
           <For each={prMenu()}>
             {(hit, i) => (

@@ -266,11 +266,11 @@ pub(crate) fn clean_title(raw: &str) -> String {
     let referenced;
     let raw = match crate::rpc::events::split_notes(raw) {
         (notes, "") if !notes.is_empty() => match crate::chat::model::ref_from_note(notes[0]) {
-            Some(crate::chat::model::ContentBlock::Ref {
-                label,
-                target: crate::chat::model::RefTarget::Pr { title, .. },
-            }) => {
-                referenced = format!("{label} {title}");
+            Some(crate::chat::model::ContentBlock::Ref { label, target }) => {
+                referenced = match target {
+                    crate::chat::model::RefTarget::Pr { title, .. } => format!("{label} {title}"),
+                    _ => label,
+                };
                 &referenced
             }
             _ => tori_body(notes[0]).unwrap_or(raw),

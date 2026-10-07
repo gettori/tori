@@ -1,8 +1,5 @@
-// What the `#` menu offers, and the ref a picked pull request becomes.
-//
-// Pure, beside the recognizer, so the rule for what Enter does on a bare number
-// is tested without a composer: "fixes #42" is a sentence far more often than it
-// is a pick, so a number the list does not hold resolves only on Tab.
+// "fixes #42" is a sentence far more often than it is a pick, so a number the
+// list does not hold resolves only on Tab.
 import type { ContentBlock } from "./chatTypes";
 import { MAX_COMPLETIONS, rank } from "./composerCompletion";
 import type { PullRequest } from "./forgeTypes";

@@ -82,6 +82,9 @@ export type ChatConfig = {
   // `[chat.acp]`: how this agent departs from a spec-correct ACP client. Present
   // and at its defaults for every transport, inert for the ones that are not ACP.
   acp: AcpOverrides;
+  // Whether a chat gets the `tori` MCP server, so a session reference has a
+  // tool to be read through.
+  tori_mcp?: boolean;
 };
 
 // The two per-agent ACP quirks an adapter may declare. Two named fields rather

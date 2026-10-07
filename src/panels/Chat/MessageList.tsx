@@ -18,6 +18,7 @@ import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, ty
 import { attachmentKind } from "../../utils/chatCompose";
 import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget } from "../../utils/chatTypes";
 import { openPrByNumber } from "../../utils/openPrTab";
+import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
@@ -92,12 +93,17 @@ function PromptText(props: { blocks: readonly ContentBlock[]; cwd: string }) {
                 </span>
               );
             }
+            const t = r.target;
             return (
               <button
                 type="button"
                 class={styles.promptChip}
-                title={`${r.target.title} (${r.target.state})`}
-                onClick={() => void openPrByNumber(props.cwd, r.target.number)}
+                title={t.kind === "pr" ? `${t.title} (${t.state})` : `${t.title} (${t.agent})`}
+                onClick={() =>
+                  t.kind === "pr"
+                    ? void openPrByNumber(props.cwd, t.number)
+                    : emitWith<SessionAction>(SESSION_ACTION, { sessionId: t.id, action: "open" })
+                }
               >
                 {part()}
               </button>

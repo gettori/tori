@@ -109,6 +109,7 @@ export default function ChatDraft(props: {
     tier,
     () => catalogFor(props.agentId, props.profile)?.catalogue?.capabilities,
     (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+    () => !!findAdapter(props.agentId).chat?.tori_mcp,
   );
 
   onMount(() => {
@@ -308,6 +309,9 @@ export default function ChatDraft(props: {
         loadPrs={attachments.loadPrs}
         onAttachPr={attachments.onAttachPr}
         resolvePr={attachments.resolvePr}
+        sessions={attachments.sessions()}
+        loadSessions={attachments.loadSessions}
+        onAttachSession={attachments.onAttachSession}
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}

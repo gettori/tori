@@ -155,7 +155,8 @@
       "acp": {
         "send_mcp_servers": false,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": true
     },
     "accounts": {
       "home_env": "CLAUDE_CONFIG_DIR",
@@ -220,7 +221,8 @@
       "acp": {
         "send_mcp_servers": true,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": true
     },
     "accounts": {
       "home_env": null,
@@ -281,7 +283,8 @@
       "acp": {
         "send_mcp_servers": false,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": false
     },
     "accounts": {
       "home_env": null,
@@ -333,7 +336,8 @@
       "acp": {
         "send_mcp_servers": false,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": false
     },
     "accounts": null,
     "usage": null,
@@ -374,7 +378,8 @@
       "acp": {
         "send_mcp_servers": false,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": false
     },
     "accounts": null,
     "usage": null,
@@ -417,7 +422,8 @@
       "acp": {
         "send_mcp_servers": true,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": true
     },
     "accounts": {
       "home_env": null,
@@ -472,7 +478,8 @@
       "acp": {
         "send_mcp_servers": false,
         "serve_client_fs": false
-      }
+      },
+      "tori_mcp": false
     },
     "accounts": null,
     "usage": null,

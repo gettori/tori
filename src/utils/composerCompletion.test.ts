@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vite-plus/test";
-import { activeToken, dropToken, moveIndex, rank, replaceToken, MAX_COMPLETIONS } from "./composerCompletion";
+import {
+  activeToken,
+  dropToken,
+  mentionScope,
+  moveIndex,
+  rank,
+  replaceToken,
+  MAX_COMPLETIONS,
+} from "./composerCompletion";
 
 describe("activeToken", () => {
   it("finds a file mention at the start and after a space", () => {
@@ -109,5 +117,17 @@ describe("moveIndex", () => {
 
   it("stays at zero when there is nothing to move through", () => {
     expect(moveIndex(0, 1, 0)).toBe(0);
+  });
+});
+
+describe("mentionScope", () => {
+  it("narrows to one group on a leading keyword and keeps the rest as the query", () => {
+    expect(mentionScope("file/src/a")).toEqual({ scope: "file", query: "src/a" });
+    expect(mentionScope("session/login")).toEqual({ scope: "session", query: "login" });
+  });
+
+  it("leaves anything else to both groups", () => {
+    expect(mentionScope("proj/x")).toEqual({ scope: "all", query: "proj/x" });
+    expect(mentionScope("files/x")).toEqual({ scope: "all", query: "files/x" });
   });
 });

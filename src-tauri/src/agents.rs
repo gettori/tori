@@ -372,6 +372,10 @@ pub struct ChatConfig {
     /// a per-transport option table would make the common case pay for the
     /// uncommon one.
     pub acp: crate::chat::acp::AcpOverrides,
+    /// Whether a chat session gets the `tori` MCP server: always over stream
+    /// json, and over ACP only where the adapter sends `mcpServers`. The
+    /// composer hides the references only a Tori tool can read without it.
+    pub tori_mcp: bool,
 }
 
 impl ChatConfig {
@@ -1232,6 +1236,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 effort_extras: c.effort_extras,
                 split_model_names: c.split_model_names,
                 modes: c.modes,
+                tori_mcp: transport == ChatTransport::ClaudeStreamJson || c.acp.send_mcp_servers,
                 acp: c.acp,
             })
         })
@@ -1929,6 +1934,15 @@ mod tests {
 
     /// Sent only where `dev/mcp-probe.mjs --acp` saw the server called. pi-acp
     /// accepts the array and drops it, so it stays at the default.
+    #[test]
+    fn only_a_chat_that_gets_the_tori_server_says_so() {
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let tori_mcp = |id: &str| reg.iter().find(|a| a.id == id).unwrap().chat.as_ref().unwrap().tori_mcp;
+        assert!(tori_mcp("claude"));
+        assert!(tori_mcp("codex"));
+        assert!(!tori_mcp("pi"));
+    }
+
     #[test]
     fn only_agents_measured_calling_an_mcp_server_are_sent_one() {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
