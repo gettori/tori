@@ -1,7 +1,7 @@
 ---
 summary: worktree creation is a shared core taking a target dir, so a plain repo's Feature worktree lands under .tori/worktrees
 status: current
-updated: 2026-10-04
+updated: 2026-10-08
 source: Sidebar as Project Manager + Sidebar Context-Menu Redesign + Shared tab + Attach worktree + Add Branch/Worktree unify (personal/tori, branch code-mirror-6); commits 09ad986, dac1093, e704411, _shared-tab_, _attach-worktree_, _add-branch-worktree_; Features phase 0 (#152, branch feature-workspace); commit 4f9c5ab; Feature lifecycle, member management and repair (#159); commits ef3779b, ede61ff, 70756f3; gettori/tori#208 commit b25293df (create_pr_worktree_in); plan "Run a setup command when a worktree is created" on branch setup-command, ticket gettori/tickets#2
 ---
 
@@ -36,6 +36,8 @@ After a worktree is created, each top-level entry of `<container>/.shared/` is s
 - `prune_worktrees(repo)` (#159): best-effort `git worktree prune`, extracted so the two Feature-side callers share it. `build_member` prunes before it reads the list, because git keeps listing a folder deleted outside Tori ([[gotcha_git_keeps_listing_a_worktree_you_deleted_outside_it]]); `relocate_member` prunes **after** `git worktree repair`, never before ([[gotcha_git_worktree_repair_before_git_worktree_prune_never_the_reverse]]).
 - **`remove_worktree_and_branch`** removes the folder first, then `git branch -D`. It **emits `config://changed` *before* returning a `-D` failure**, so the tree refreshes (folder gone) and the frontend surfaces an explicit "folder removed, branch not deleted" message - the partial outcome is never swallowed.
 - **Live-use guard (UI-side)**: the shared `worktreeRemovalBlock(u)` refuses removal when the worktree is the open editor root (`selected.folderPath` equals or is under it) or hosts a running agent, prefix-matching nested sessions via `list_sessions(worktree)` then `session_running` per id. Nothing is deleted when refused; used by both remove and delete+branch.
+
+- **Automatic cleanup** is a third caller: the sweep in [[component_worktree_cleanup]] removes clean, merged or idle worktrees with `force: false`, after its own purge.
 
 ## The UI owes a purge first (`removeMemberWorktree`, #159)
 
@@ -91,3 +93,4 @@ checkout) there is no `node_modules` to clone and attempts start without one.
 - [[adr_feature_workspace]] - the decision behind `create_worktree_in`; the removal dialog is reused as the offer on member removal
 - [[component_feature_store]] - the second caller of the creation core
 - [[component_worktree_setup]] - the setup command a created worktree runs, and the run a removal kills
+- [[component_worktree_cleanup]] - the automatic sweep, the third removal caller
