@@ -1,8 +1,8 @@
 ---
 summary: `tori mcp` is a stdio MCP server over the socket's method table: tools listed per caller kind, one connection per call
 status: current
-updated: 2026-09-24
-source: plan "tori mcp: the MCP front on the socket" on branch orchestrator; commits b69f5ada, 1fbc5991, cee102ec, 5963da85, 928f500e, 12bcab53, a375fb7a; src-tauri/src/mcp.rs; src-tauri/src/rpc/table.rs; src-tauri/src/rpc/mod.rs (mcp_config_args, mcp_launch, mcp_allow); plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce
+updated: 2026-10-08
+source: plan "tori mcp: the MCP front on the socket" on branch orchestrator; commits b69f5ada, 1fbc5991, cee102ec, 5963da85, 928f500e, 12bcab53, a375fb7a; src-tauri/src/mcp.rs; src-tauri/src/rpc/table.rs; src-tauri/src/rpc/mod.rs (mcp_config_args, mcp_launch, mcp_allow); plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; plan "Session, pull request, project and space references in the composer" (gettori/tickets#10), src-tauri/src/agents.rs (ChatConfig.tori_mcp)
 ---
 
 # tori MCP server
@@ -32,6 +32,10 @@ What it owns is only what MCP needs and the socket cannot know:
 - **claude**: one static `~/.config/tori/claude-mcp.json` (`command: "tori", args: ["mcp"]`), passed as `--mcp-config` on every spawn and resume. The server finds `tori` through the `bin/tori` PATH link and inherits `TORI_SOCK` and `TORI_CALLER`. The injected settings pre-allow Tori's tools per session: `mcp__tori__*` for a background session, every row not marked `outward` by name otherwise, so `pr_create`, `review_submit` and `pr_merge` prompt in the foreground. See [[concept_mcp_config_scopes]].
 - **ACP**: `session/new` and `session/load` carry one stdio server whose command is the `bin/tori` link, with `TORI_SOCK` and `TORI_CALLER` as `env` pairs minted for that session (`rpc::mcp_launch`). Only when the adapter sets `send_mcp_servers` (codex, opencode). pi-acp drops the array.
 
+## Prompt references
+
+A reference in a prompt names the tool that reads it: `pr_get` for `[PR n]`, `session_history` for `[Session: x]`, `projects_list` and `sessions_list` for `[Project: x]` and `[Space: x]`. The webview learns whether a chat has this server from `ChatConfig.tori_mcp`, set at adapter load for stream-json and for ACP with `send_mcp_servers`, and offers session, project and space references only when it does ([[concept_prompt_references]]).
+
 ## Workers
 
 A session spawned by a chat session is a worker. It is refused `session_spawn`, `session_steer`, `session_wait` and `ask_answer`, none of which its list shows, with "a worker never spawns or steers; finish your turn and your spawner reads it". Its questions are not refused: `ask_create` puts the card in the worker's own panel, and the spawner sees the same question in `session_wait`'s reply (`{id, state, question, last}`) and can relay it and settle it with `ask_answer`. Whichever side answers first settles the ask. A permission pending in the worker shows up in `session_wait` only as `needs_you` with `question: null`. An approval ask is the exception to the spawner answering: `ask_answer` refuses it, and its card is mirrored into the worker's root background chat so the user sees it there ([[adr_a_background_session_needs_a_tori_gate]]).
@@ -46,3 +50,4 @@ A session spawned by a chat session is a worker. It is refused `session_spawn`, 
 - [[concept_blocking_tool_call_ceiling]]: why the blocking default is 240s
 - [[adr_a_background_session_needs_a_tori_gate]]: why pre-allowing these tools is a recorded narrowing
 - [[adr_a_workers_questions_bubble_up_to_its_spawner]]: why a worker asks rather than being refused
+- [[concept_prompt_references]]: the composer references these tools read

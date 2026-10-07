@@ -35,6 +35,7 @@ Every attachment in a chat is a token the prose can name. Paste a screenshot, dr
 
 ## Related
 
+- [[concept_prompt_references]]: PR, session, project and space tokens that share this model but are read through a tool
 - [[adr_attachments_are_labelled_paths]] - the decision, its rejected options and its consequences
 - [[component_attachment_store]] - where uploaded bytes live and how they are swept
 - [[concept_composer_queue]]: queued entries that carry labels across a relaunch
