@@ -304,6 +304,10 @@ export default function ChatDraft(props: {
         parked={false}
         disabled={starting() || blocked() !== null}
         loadFiles={attachments.loadProjectFiles}
+        prs={attachments.prs()}
+        loadPrs={attachments.loadPrs}
+        onAttachPr={attachments.onAttachPr}
+        resolvePr={attachments.resolvePr}
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}

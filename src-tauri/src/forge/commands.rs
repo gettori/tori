@@ -1510,6 +1510,13 @@ pub fn pull_request(project_path: &str, number: u64) -> Result<PullRequest, Forg
     attempt(&c, |f| f.pull_request(&c.repo, number))
 }
 
+/// One pull request by its number, for a `#` reference to one the open list
+/// does not hold: an old one, or a merged one.
+#[tauri::command(async)]
+pub fn forge_get_pr(project_path: String, number: u64) -> Result<PullRequest, ForgeErrorDto> {
+    Ok(pull_request(&project_path, number)?)
+}
+
 /// One pull request with its files, whether the signed in account wrote it,
 /// and what the host lets a review say, for a socket caller about to review it.
 pub fn pr_view(project_path: &str, number: u64) -> Result<super::pr_view::PrView, ForgeError> {

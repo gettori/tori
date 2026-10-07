@@ -37,6 +37,18 @@ describe("activeToken", () => {
     expect(activeToken("/plan @sr", 9)).toEqual({ kind: "file", query: "sr", start: 6, end: 9 });
   });
 
+  it("finds a pull request reference at a word boundary, mid-sentence too", () => {
+    const text = `fixes #${42}`;
+    expect(activeToken(text, text.length)).toEqual({ kind: "pr", query: "42", start: 6, end: 9 });
+    expect(activeToken("a#b", 3)).toBeNull();
+  });
+
+  // In a code block a `#` is a comment or a heading.
+  it("ignores a # inside a fenced block", () => {
+    const text = "```sh\n#";
+    expect(activeToken(text, text.length)).toBeNull();
+  });
+
   it("has nothing to complete in empty or plain text", () => {
     expect(activeToken("", 0)).toBeNull();
     expect(activeToken("just words", 10)).toBeNull();

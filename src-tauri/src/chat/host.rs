@@ -592,6 +592,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 // The panel draws a note as Tori's row only when it stands alone in a message.
 fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
+    use super::model::ref_from_note;
     use crate::rpc::events::split_notes;
     let ChatEvent::UserMessage {
         session_id,
@@ -607,28 +608,32 @@ fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
         blocks,
     };
     let mut out = Vec::new();
+    let mut refs = Vec::new();
     let mut rest = blocks.into_iter().peekable();
     while let Some(ContentBlock::Text { text }) = rest.peek() {
         let (notes, after) = split_notes(text);
         if notes.is_empty() {
             break;
         }
-        out.extend(
-            notes
-                .iter()
-                .map(|n| message(vec![ContentBlock::Text { text: n.to_string() }])),
-        );
+        for n in notes {
+            match ref_from_note(n) {
+                Some(r) => refs.push(r),
+                None => out.push(message(vec![ContentBlock::Text { text: n.to_string() }])),
+            }
+        }
         let after = after.to_string();
         rest.next();
         if !after.is_empty() {
-            let tail: Vec<ContentBlock> = std::iter::once(ContentBlock::Text { text: after })
+            let tail: Vec<ContentBlock> = refs
+                .into_iter()
+                .chain(std::iter::once(ContentBlock::Text { text: after }))
                 .chain(rest)
                 .collect();
             out.push(message(tail));
             return out;
         }
     }
-    let tail: Vec<ContentBlock> = rest.collect();
+    let tail: Vec<ContentBlock> = refs.into_iter().chain(rest).collect();
     if !tail.is_empty() || out.is_empty() {
         out.push(message(tail));
     }
@@ -1613,6 +1618,50 @@ mod tests {
         );
         let typed = split_user_notes(message(vec![text("about <tori kind=\"x\">")]));
         assert_eq!(bodies(typed), vec![vec![text("about <tori kind=\"x\">")]]);
+    }
+
+    #[test]
+    fn a_turns_ref_notes_stay_in_its_message_as_refs() {
+        use super::super::claude_transport::turn_frame;
+        use super::super::model::RefTarget;
+        let r = |n: u64| ContentBlock::Ref {
+            label: format!("[PR {n}]"),
+            target: RefTarget::Pr {
+                number: n,
+                title: "t".into(),
+                url: format!("https://h/o/r/pull/{n}"),
+                state: "open".into(),
+                draft: false,
+                head: "h".into(),
+                base: "main".into(),
+            },
+        };
+        let text = |t: &str| ContentBlock::Text { text: t.to_string() };
+        let frame = turn_frame(&[text("compare [PR 1] and [PR 2]"), r(1), r(2)]);
+        let sent: Vec<ContentBlock> = frame["message"]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| text(b["text"].as_str().unwrap()))
+            .collect();
+        assert_eq!(sent.len(), 3);
+        let topic = crate::rpc::events::from_tori("topic", None, "# Auth");
+        let echoed = split_user_notes(ChatEvent::UserMessage {
+            session_id: "s".into(),
+            turn_id: "t".into(),
+            blocks: std::iter::once(text(&topic)).chain(sent).collect(),
+        });
+        let bodies: Vec<Vec<ContentBlock>> = echoed
+            .into_iter()
+            .map(|e| match e {
+                ChatEvent::UserMessage { blocks, .. } => blocks,
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            bodies,
+            vec![vec![text(&topic)], vec![r(1), r(2), text("compare [PR 1] and [PR 2]")]]
+        );
     }
 
     #[test]

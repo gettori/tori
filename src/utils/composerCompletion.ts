@@ -5,13 +5,14 @@
 // catalogue the `initialize` handshake returned and resolves to text. They
 // differ in what they produce, not in how they are recognised, so the
 // recognition lives here, pure, and each menu is a list plus a keydown.
+import { insideFence } from "./composerFence";
 import { fuzzyScore } from "./fuzzy";
 import { traceWork } from "./perfTrace";
 
 /** How many candidates a menu shows. Enough to scroll, few enough to scan. */
 export const MAX_COMPLETIONS = 12;
 
-export type CompletionKind = "file" | "command";
+export type CompletionKind = "file" | "command" | "pr";
 
 export type CompletionToken = {
   kind: CompletionKind;
@@ -39,10 +40,20 @@ export function activeToken(text: string, caret: number): CompletionToken | null
 
   const at = before.lastIndexOf("@");
   const slash = before.lastIndexOf("/");
+  const hash = before.lastIndexOf("#");
 
   const candidates: CompletionToken[] = [];
   if (at !== -1 && (at === 0 || /\s/.test(before[at - 1])) && !/\s/.test(before.slice(at + 1))) {
     candidates.push({ kind: "file", query: before.slice(at + 1), start: at, end: before.length });
+  }
+  // A `#` in a code block is a comment or a heading, never a pull request.
+  if (
+    hash !== -1 &&
+    (hash === 0 || /\s/.test(before[hash - 1])) &&
+    !/\s/.test(before.slice(hash + 1)) &&
+    !insideFence(text, hash)
+  ) {
+    candidates.push({ kind: "pr", query: before.slice(hash + 1), start: hash, end: before.length });
   }
   if (slash === 0 && !/\s/.test(before.slice(1))) {
     candidates.push({ kind: "command", query: before.slice(1), start: 0, end: before.length });

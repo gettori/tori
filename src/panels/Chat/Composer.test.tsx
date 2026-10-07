@@ -4,6 +4,7 @@ import { render, fireEvent } from "@solidjs/testing-library";
 import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
+import type { PullRequest } from "../../utils/forgeTypes";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 // The chip draws a stored file through the asset protocol, which needs the
@@ -32,6 +33,10 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
       attachments={[]}
       commands={[]}
       loadFiles={async () => []}
+      prs={[]}
+      loadPrs={() => {}}
+      onAttachPr={() => null}
+      resolvePr={async () => null}
       onAttachFile={onAttachFile}
       uploads={OPENS_EVERYTHING}
       onAttachUploads={onAttachUploads}
@@ -338,6 +343,84 @@ function type(input: HTMLTextAreaElement, value: string) {
 
 const FILES = ["src/utils/chatCompose.ts", "src/panels/Chat/Composer.tsx", "README.md"];
 
+function pr(number: number, title: string): PullRequest {
+  return {
+    number,
+    title,
+    body: null,
+    state: "open",
+    isDraft: false,
+    author: "a",
+    createdAt: "2026-10-01T00:00:00Z",
+    mergedAt: null,
+    closedAt: null,
+    comments: 0,
+    headRef: "h",
+    baseRef: "main",
+    headSha: "abc",
+    headRepoIsOrigin: true,
+    url: `https://github.com/o/r/pull/${number}`,
+    mergeableState: "clean",
+  };
+}
+
+describe("# pull request completion", () => {
+  const PRS = [pr(12, "Fix login"), pr(9, "Docs")];
+  const hash = (n: number | string) => `#${n}`;
+
+  it("lists the open pull requests and Enter names the picked one", async () => {
+    const onAttachPr = vi.fn((p: PullRequest) => `[PR ${p.number}]`);
+    const loadPrs = vi.fn();
+    const { input, findByText, onSend } = setup({ prs: PRS, loadPrs, onAttachPr });
+    type(input, `see ${hash("login")}`);
+    expect(await findByText("Fix login")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onAttachPr).toHaveBeenCalledWith(PRS[0]);
+    expect(input.value).toBe("see [PR 12]");
+    expect(onSend).not.toHaveBeenCalled();
+    expect(loadPrs).toHaveBeenCalledTimes(1);
+  });
+
+  // "fixes #4" is a sentence far more often than a pick.
+  it("sends the sentence as typed on Enter over a number the list does not hold", async () => {
+    const onAttachPr = vi.fn(() => "[PR 4]");
+    const resolvePr = vi.fn(async () => pr(4, "Old"));
+    const { input, findByText, onSend } = setup({ prs: PRS, onAttachPr, resolvePr });
+    type(input, `fixes ${hash(4)}`);
+    await findByText("Tab to look it up, Enter sends as typed");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith(`fixes ${hash(4)}`);
+    expect(resolvePr).not.toHaveBeenCalled();
+    expect(onAttachPr).not.toHaveBeenCalled();
+  });
+
+  it("looks up a number the list does not hold on Tab", async () => {
+    const old = pr(4, "Old");
+    const onAttachPr = vi.fn(() => "[PR 4]");
+    const resolvePr = vi.fn(async () => old);
+    const { input, findByText, onSend } = setup({ prs: PRS, onAttachPr, resolvePr });
+    type(input, `fixes ${hash(4)}`);
+    await findByText("Tab to look it up, Enter sends as typed");
+    fireEvent.keyDown(input, { key: "Tab" });
+    await vi.waitFor(() => expect(onAttachPr).toHaveBeenCalledWith(old));
+    expect(input.value).toBe("fixes [PR 4]");
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("says so when the number is not a pull request here", async () => {
+    const { input, findByText, onAttachRejected } = setup({
+      prs: PRS,
+      onAttachPr: () => "[PR 4]",
+      resolvePr: async () => null,
+    });
+    type(input, hash(4));
+    await findByText("Tab to look it up, Enter sends as typed");
+    fireEvent.keyDown(input, { key: "Tab" });
+    await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
+    expect(input.value).toBe(hash(4));
+  });
+});
+
 describe("@ file completion", () => {
   it("opens on @ and filters as you type", async () => {
     const { input, findByText, queryByText } = setup({ loadFiles: async () => FILES });
@@ -401,6 +484,14 @@ describe("@ file completion", () => {
     // The next Escape reaches the turn, so nothing is unreachable.
     fireEvent.keyDown(input, { key: "Escape" });
     expect(onInterrupt).toHaveBeenCalled();
+  });
+
+  it("Tab accepts like Enter", async () => {
+    const { input, findByText, onAttachFile } = setup({ loadFiles: async () => FILES });
+    type(input, "@compose");
+    await findByText("src/utils/chatCompose.ts");
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(onAttachFile).toHaveBeenCalledWith("src/utils/chatCompose.ts");
   });
 
   it("arrows move the selection that Enter accepts", async () => {

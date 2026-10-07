@@ -14,26 +14,18 @@
 // This list is exactly where that happens, because it lists every open pull
 // request on the repo and most of them are on branches that are not here. So a
 // pick hands the row's own `PullRequest` to `prReviewStore` before it opens
-// anything (`notePr`), which is the only thing that makes those tabs work.
+// anything (`notePr`, in `openPrTab`), which is the only thing that makes those tabs work.
 
-import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
-import { prTabId } from "../../../utils/syntheticTabs";
-import { notePr, setViewingPr } from "../../../utils/prReviewStore";
+import { openPrTab } from "../../../utils/openPrTab";
 import type { PullRequest } from "../../../utils/forgeTypes";
 import PrList from "./PrList";
 import styles from "./PrListView.module.css";
 
 export default function PrListView(props: { workspace: string }) {
-  function pick(pr: PullRequest) {
-    // Before the tab opens, not after: the tab reads the store on mount, and a
-    // pull request the poll never covered has no other source.
-    notePr(props.workspace, pr.number, pr);
-    // The panel follows the pick rather than the checked-out branch, so the
-    // verdict rows beside the reader are about what they just opened. Cleared
-    // by its own Back, or by the branch changing.
-    setViewingPr(props.workspace, pr.number);
-    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: prTabId(props.workspace, pr.number) });
-  }
+  // The panel follows the pick rather than the checked-out branch, so the
+  // verdict rows beside the reader are about what they just opened. Cleared by
+  // its own Back, or by the branch changing.
+  const pick = (pr: PullRequest) => openPrTab(props.workspace, pr);
 
   return (
     <div class={styles.stage}>

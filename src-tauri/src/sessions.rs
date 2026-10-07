@@ -263,8 +263,18 @@ fn local_command_turn(text: &str, ts: u64) -> Option<TranscriptTurn> {
 }
 
 pub(crate) fn clean_title(raw: &str) -> String {
+    let referenced;
     let raw = match crate::rpc::events::split_notes(raw) {
-        (notes, "") if !notes.is_empty() => tori_body(notes[0]).unwrap_or(raw),
+        (notes, "") if !notes.is_empty() => match crate::chat::model::ref_from_note(notes[0]) {
+            Some(crate::chat::model::ContentBlock::Ref {
+                label,
+                target: crate::chat::model::RefTarget::Pr { title, .. },
+            }) => {
+                referenced = format!("{label} {title}");
+                &referenced
+            }
+            _ => tori_body(notes[0]).unwrap_or(raw),
+        },
         (_, typed) => typed,
     };
     let one_line: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -3534,6 +3544,19 @@ mod tests {
         assert_eq!(extract_text(&joined).as_deref(), Some("fix the login"));
         assert_eq!(clean_title(&format!("{note}\n\nfix the login")), "fix the login");
         assert_eq!(clean_title(&note), "# Auth Branch: `auth`");
+        let pr = crate::chat::model::ref_note(
+            "[PR 7]",
+            &crate::chat::model::RefTarget::Pr {
+                number: 7,
+                title: "Seven".into(),
+                url: "https://h/o/r/pull/7".into(),
+                state: "open".into(),
+                draft: false,
+                head: "h".into(),
+                base: "main".into(),
+            },
+        );
+        assert_eq!(clean_title(&pr), "[PR 7] Seven");
     }
 
     #[test]

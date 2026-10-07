@@ -44,6 +44,33 @@ describe("the saved queue", () => {
     expect(calls[calls.length - 1].args.queue).toEqual([]);
   });
 
+  it("keeps a queued pull request reference across a relaunch", async () => {
+    const entry = {
+      id: "q1",
+      blocks: [
+        {
+          type: "ref" as const,
+          label: "[PR 7]",
+          target: {
+            kind: "pr" as const,
+            number: 7,
+            title: "Seven",
+            url: "https://github.com/o/r/pull/7",
+            state: "open",
+            draft: false,
+            head: "h",
+            base: "main",
+          },
+        },
+        { type: "text" as const, text: "look at [PR 7]" },
+      ],
+    };
+    await saveQueue("s-ref", [entry]);
+    const saved = calls[calls.length - 1].args.queue;
+    reply = () => Promise.resolve(saved);
+    expect(await loadQueue("s-ref")).toEqual([entry]);
+  });
+
   it("never writes or restores a steer in flight", async () => {
     await saveQueue("s-steer", [{ ...text("q1", "a"), steering: true }]);
     expect(calls[0].args.queue).toEqual([text("q1", "a")]);

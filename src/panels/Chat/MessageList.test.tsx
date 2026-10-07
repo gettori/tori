@@ -4,8 +4,10 @@ import { Show, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
+import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatStore";
 import type { ChatItem, QuestionItem, ToolItem } from "./chatStore";
-import type { QuestionAnswer } from "../../utils/chatTypes";
+import type { ContentBlock, QuestionAnswer } from "../../utils/chatTypes";
+import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => []),
@@ -107,6 +109,71 @@ describe("a prompt shows what it attached", () => {
     const items: ChatItem[] = [{ kind: "user", id: "u1", blocks: [{ type: "imageRef" }], steer: false }];
     const { container } = render(() => list({ items }));
     expect(container.textContent).toContain("[Image #1]");
+  });
+});
+
+describe("a prompt that references a pull request", () => {
+  const ref: ContentBlock = {
+    type: "ref",
+    label: "[PR 7]",
+    target: {
+      kind: "pr",
+      number: 7,
+      title: "Seven",
+      url: "https://github.com/o/r/pull/7",
+      state: "merged",
+      draft: false,
+      head: "h",
+      base: "main",
+    },
+  };
+  const blocks: ContentBlock[] = [ref, { type: "text", text: "why did [PR 7] land?" }];
+  const event = { type: "userMessage" as const, sessionId: "s1", turnId: "t1", blocks };
+
+  // Live (the panel draws its own bubble), the ACP echo, and a replay all land
+  // as one user item holding the ref: Rust lifts the note off the wire.
+  const paths: [string, () => ChatItem[]][] = [
+    [
+      "live",
+      () => {
+        const s = initialChat("s1");
+        pushUserTurn(s, blocks);
+        return s.items;
+      },
+    ],
+    [
+      "echoed",
+      () => {
+        const s = initialChat("s1");
+        applyEvent(s, event);
+        return s.items;
+      },
+    ],
+    [
+      "replayed",
+      () => {
+        const s = initialChat("s1");
+        prependHistory(s, [event]);
+        return s.items;
+      },
+    ],
+  ];
+
+  for (const [name, items] of paths) {
+    it(`draws the ${name} token as one chip and no Tori row`, () => {
+      const { container } = render(() => list({ items: items() }));
+      const chips = container.querySelectorAll("button[title]");
+      expect([...chips].map((c) => c.textContent)).toEqual(["[PR 7]"]);
+      expect(chips[0].getAttribute("title")).toBe("Seven (merged)");
+      expect(container.textContent).toContain("why did [PR 7] land?");
+      expect(container.textContent).not.toContain("ref-pr");
+    });
+  }
+
+  it("opens the pull request it names", async () => {
+    const { container } = render(() => list({ items: paths[0][1]() }));
+    fireEvent.click(container.querySelector("button[title]")!);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("forge_get_pr", { projectPath: "/tmp", number: 7 }));
   });
 });
 

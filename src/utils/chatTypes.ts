@@ -346,7 +346,22 @@ export type ContentBlock =
       /** `[Image 3]`: the token the prose names this attachment by. Only an
        *  attachment carries one; a selection or hunk comment never does. */
       label?: string | null;
-    };
+    }
+  /** Something the prompt names that the agent reads through a tool: `[PR 123]`.
+   *  Sent as a `ref-*` note and read back off it. */
+  | { type: "ref"; label: string; target: RefTarget };
+
+/** What a `ref` block points at, as it stood when it was attached. */
+export type RefTarget = {
+  kind: "pr";
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  draft: boolean;
+  head: string;
+  base: string;
+};
 
 // ---------------------------------------------------------------------------
 // Events

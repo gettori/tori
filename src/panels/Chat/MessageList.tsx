@@ -16,7 +16,8 @@ import { Brain, ChevronDown, ChevronRight, FoldVertical, Info, TriangleAlert, We
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
 import { attachmentKind } from "../../utils/chatCompose";
-import type { ContentBlock, PermissionMode, QuestionAnswer } from "../../utils/chatTypes";
+import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget } from "../../utils/chatTypes";
+import { openPrByNumber } from "../../utils/openPrTab";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
@@ -29,17 +30,12 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
 import { foldEdits, groupRuns, runLabel, thoughtLabel, type RunCache, type WorkRun } from "./toolRenderers";
 
-/** Every token that could name an attachment, for splitting a prompt into the
- *  parts that name one and the parts that are prose. */
-// Case-insensitive: a turn sent before the capitalisation still says
-// `[Image 1]`, and it named a real attachment when it was sent.
-const TOKEN_SPLIT = /(\[(?:image|pdf|file) \d+\])/gi;
-
 function blockText(blocks: readonly ContentBlock[]): string {
   const typed = blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
   return blocks
     .flatMap((b) => {
       if (b.type === "text") return [b.text];
+      if (b.type === "ref") return typed.includes(b.label) ? [] : [b.label];
       if (b.type !== "fileRef") return [];
       if (!b.label) return [`@${b.path}`];
       // A labelled attachment is drawn where the sentence names it. One the
@@ -50,11 +46,22 @@ function blockText(blocks: readonly ContentBlock[]): string {
     .join("\n");
 }
 
-/** The paths this turn attached, by the token naming each. */
-function promptRefs(blocks: readonly ContentBlock[]): Map<string, string> {
-  const by = new Map<string, string>();
-  for (const b of blocks) if (b.type === "fileRef" && b.label) by.set(b.label, b.path);
+type PromptRef = { path: string } | { target: RefTarget };
+
+/** What this turn attached or referenced, by the token naming each. */
+function promptRefs(blocks: readonly ContentBlock[]): Map<string, PromptRef> {
+  const by = new Map<string, PromptRef>();
+  for (const b of blocks) {
+    if (b.type === "fileRef" && b.label) by.set(b.label, { path: b.path });
+    else if (b.type === "ref") by.set(b.label, { target: b.target });
+  }
   return by;
+}
+
+/** Splits a prompt on this turn's own tokens, each kept as its own part. */
+function tokenSplit(labels: Iterable<string>): RegExp | null {
+  const alternatives = [...labels].map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return alternatives.length ? new RegExp(`(${alternatives.join("|")})`) : null;
 }
 
 /**
@@ -65,22 +72,37 @@ function promptRefs(blocks: readonly ContentBlock[]): Map<string, string> {
  * meant those characters, and dressing them up as an attachment would claim
  * the turn carried something it did not.
  */
-function PromptText(props: { blocks: readonly ContentBlock[] }) {
+function PromptText(props: { blocks: readonly ContentBlock[]; cwd: string }) {
   const refs = createMemo(() => promptRefs(props.blocks));
-  const parts = createMemo(() =>
-    blockText(props.blocks)
-      .split(TOKEN_SPLIT)
-      .filter((p) => p !== ""),
-  );
+  const parts = createMemo(() => {
+    const text = blockText(props.blocks);
+    const split = tokenSplit(refs().keys());
+    return (split ? text.split(split) : [text]).filter((p) => p !== "");
+  });
   return (
     <Index each={parts()}>
       {(part) => (
         <Show when={refs().get(part())} fallback={part()}>
-          {(path) => (
-            <span class={styles.promptChip} title={path()}>
-              {part()}
-            </span>
-          )}
+          {(ref) => {
+            const r = ref();
+            if ("path" in r) {
+              return (
+                <span class={styles.promptChip} title={r.path}>
+                  {part()}
+                </span>
+              );
+            }
+            return (
+              <button
+                type="button"
+                class={styles.promptChip}
+                title={`${r.target.title} (${r.target.state})`}
+                onClick={() => void openPrByNumber(props.cwd, r.target.number)}
+              >
+                {part()}
+              </button>
+            );
+          }}
         </Show>
       )}
     </Index>
@@ -572,7 +594,7 @@ export default function MessageList(props: {
               <Show when={it().steer}>
                 <span class={styles.steerLabel}>Steer</span>
               </Show>
-              <PromptText blocks={it().blocks} />
+              <PromptText blocks={it().blocks} cwd={props.cwd} />
             </div>
           </div>
         )}

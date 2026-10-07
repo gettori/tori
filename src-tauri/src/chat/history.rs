@@ -98,12 +98,17 @@ pub fn events_and_prompts(
                     let Some(text) = &block.text else { continue };
                     // A note queued for this turn was sent ahead of what the
                     // user typed; it comes back as its own row, as it was drawn.
-                    let (notes, rest) = match user_blocks.is_empty() {
+                    let leading = user_blocks.iter().all(|b| matches!(b, ContentBlock::Ref { .. }));
+                    let (notes, rest) = match leading {
                         true => crate::rpc::events::split_notes(text),
                         false => (Vec::new(), text.as_str()),
                     };
                     let noted = !notes.is_empty();
                     for note in notes {
+                        if let Some(r) = super::model::ref_from_note(note) {
+                            user_blocks.push(r);
+                            continue;
+                        }
                         events.push(ChatEvent::UserMessage {
                             session_id: session_id.to_string(),
                             turn_id: turn_id.clone(),
@@ -745,6 +750,36 @@ mod tests {
             .collect();
 
         assert_eq!(user_blocks_of(&[turn("user", written)])[0], sent);
+    }
+
+    #[test]
+    fn a_pr_ref_replays_as_the_ref_that_was_sent() {
+        let sent = vec![
+            ContentBlock::Ref {
+                label: "[PR 7]".into(),
+                target: crate::chat::model::RefTarget::Pr {
+                    number: 7,
+                    title: "a </tori> title".into(),
+                    url: "https://h/o/r/pull/7".into(),
+                    state: "merged".into(),
+                    draft: false,
+                    head: "h".into(),
+                    base: "main".into(),
+                },
+            },
+            ContentBlock::Text {
+                text: "why did [PR 7] land?".into(),
+            },
+        ];
+        let frame = crate::chat::claude_transport::turn_frame(&sent);
+        let written: Vec<TranscriptBlock> = frame["message"]["content"]
+            .as_array()
+            .expect("a user frame carries content")
+            .iter()
+            .map(|b| text_block("text", b["text"].as_str().expect("a text block").to_string()))
+            .collect();
+
+        assert_eq!(user_blocks_of(&[turn("user", written)]), vec![sent]);
     }
 
     /// The composer spelled its kinds in lower case before it capitalised

@@ -239,7 +239,7 @@ export function pendingFor(key: ComposerKey): PendingBlock[] {
  *  turn will not carry. */
 export function dropPending(key: ComposerKey, id: string) {
   const gone = pendingFor(key).find((p) => p.id === id);
-  const label = gone?.block.type === "fileRef" ? gone.block.label : null;
+  const label = gone?.block.type === "fileRef" || gone?.block.type === "ref" ? gone.block.label : null;
   setPending((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((p) => p.id !== id) }));
   if (label) setDrafts((prev) => (key in prev ? { ...prev, [key]: stripToken(prev[key], label) } : prev));
 }
@@ -597,6 +597,7 @@ export function chipLabel(block: ContentBlock): string {
   // A chip never holds an `imageRef` - one only comes out of replayed history,
   // which no composer reads - but both are an image to anything naming one.
   if (block.type === "image" || block.type === "imageRef") return "image";
+  if (block.type === "ref") return `${block.label} ${block.target.title}`;
   const name = block.path.split("/").pop() || block.path;
   if (block.label) return `${block.label} ${name}`;
   if (block.startLine === null) return `@${name}`;

@@ -685,6 +685,7 @@ pub fn run() {
             forge::commands::forge_submit_review,
             forge::commands::forge_add_review_comment,
             forge::commands::forge_pr_summary,
+            forge::commands::forge_get_pr,
             forge::commands::forge_merge,
             forge::commands::forge_update_branch,
             forge::commands::forge_reopen,
